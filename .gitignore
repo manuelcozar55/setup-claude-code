@@ -1,0 +1,18 @@
+# Capturas de origen (WhatsApp): fondo negro, barras de estado; no profesionales para compartir.
+# Se conservan en local pero fuera del repo. Ver README (sección "Origen de los diagramas").
+data/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*~
+
+# Temporales
+*.log
+*.tmp

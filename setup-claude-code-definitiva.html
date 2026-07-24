@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cómo trabajo con Claude Code — el método, no el modelo</title>
+<meta name="description" content="Cómo trabajo con Claude Code en esta máquina: el método por encima del modelo, con spec como fuente de verdad y datos reales de superpowers, Sentinel y Headroom — no cifras ilustrativas.">
+<meta property="og:title" content="Cómo trabajo con Claude Code — el método, no el modelo">
+<meta property="og:description" content="No es el modelo, es el método: LLM = CPU, contexto = RAM, spec = fuente de verdad. Con datos reales de esta máquina.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&display=swap">
+<style>
+  /* ============================================================
+     DESIGN TOKENS — Task 1
+     Editorial ADN tokenized for true light + dark.
+     Light = warm off-white; Dark = warm near-black (never pure #000).
+     Accent semantics: violet = método (protagonista) ·
+     green = seguridad (Sentinel) · blue = eficiencia (Headroom).
+     ============================================================ */
+  :root {
+    color-scheme: light;
+
+    /* surfaces / ink */
+    --bg: #fbfbf9;
+    --surface: #ffffff;
+    --ink: #1c211e;
+    --muted: #5c6560;
+    --faint: #8a938d;
+    --border: #e2e4de;
+    --hairline: #ebede7;
+
+    /* accent — método (NEW protagonist) */
+    --method: #5b46c9;
+    --method-ink: #4a37b0;
+    --method-soft: #ece9fb;
+
+    /* accent — seguridad (Sentinel) */
+    --sec-green: #15803d;
+    --sec-green-ink: #166534;
+    --sec-green-soft: #e9f4ec;
+
+    /* accent — eficiencia (Headroom) */
+    --sec-blue: #1d4ed8;
+    --sec-blue-ink: #1e40af;
+    --sec-blue-soft: #e9eefb;
+
+    /* status */
+    --danger: #b42318;
+    --danger-soft: #fbeae8;
+    --warn: #b54708;
+    --warn-soft: #fdf0e3;
+
+    /* neutral utility surface (chips, hovers, inline code) */
+    --wash: #f1f2ec;
+    --wash-2: #f7f8f4;
+
+    /* code */
+    --code-bg: #22261f;
+    --code-border: #363b32;
+    --code-ink: #e6e9e2;
+    --code-muted: #9aa494;
+    --code-str: #d9b566;
+    --code-flag: #8fb8f6;
+
+    /* families */
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --display: "Newsreader", Georgia, "Times New Roman", serif;
+
+    /* radii */
+    --r-xs: 4px;
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 10px;
+    --r-pill: 999px;
+
+    /* spacing (8pt-ish editorial scale) */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 24px;
+    --sp-6: 32px;
+    --sp-7: 48px;
+    --sp-8: 64px;
+
+    /* shadows */
+    --shadow-sm: 0 2px 10px -6px rgba(28, 33, 30, 0.25);
+    --shadow-md: 0 10px 30px -18px rgba(28, 33, 30, 0.45);
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+
+    --bg: #181a17;
+    --surface: #212320;
+    --ink: #eceee7;
+    --muted: #a7afa4;
+    --faint: #7d857b;
+    --border: #363a33;
+    --hairline: #2a2d27;
+
+    --method: #a99cf5;
+    --method-ink: #bcb2f7;
+    --method-soft: #241f3d;
+
+    --sec-green: #5fd18a;
+    --sec-green-ink: #7bdaa0;
+    --sec-green-soft: #16281c;
+
+    --sec-blue: #7ea8ff;
+    --sec-blue-ink: #9dbcff;
+    --sec-blue-soft: #17203a;
+
+    --danger: #f38b7f;
+    --danger-soft: #331a17;
+    --warn: #e8a765;
+    --warn-soft: #322414;
+
+    --wash: #24261f;
+    --wash-2: #26291f;
+
+    --code-bg: #101210;
+    --code-border: #2c2f28;
+    --code-ink: #e6e9e2;
+    --code-muted: #9aa494;
+    --code-str: #e0c079;
+    --code-flag: #9dc0ff;
+
+    --shadow-sm: 0 2px 12px -6px rgba(0, 0, 0, 0.6);
+    --shadow-md: 0 14px 34px -18px rgba(0, 0, 0, 0.7);
+  }
+
+  /* ============================================================
+     RESET + BASE TYPOGRAPHY
+     ============================================================ */
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: clamp(16px, 0.4vw + 14px, 18px);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition: background-color 220ms ease, color 220ms ease;
+  }
+
+  a { color: var(--method-ink); text-decoration-color: color-mix(in srgb, var(--method-ink) 35%, transparent); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: currentColor; }
+  :focus-visible { outline: 2px solid var(--method); outline-offset: 3px; border-radius: 2px; }
+
+  h1, h2, h3, h4 { line-height: 1.25; margin: 0 0 0.5em; text-wrap: balance; letter-spacing: -0.015em; }
+  p { margin: 0 0 1em; text-wrap: pretty; }
+
+  code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: var(--wash); border: 1px solid var(--hairline); border-radius: var(--r-xs);
+    padding: 0.08em 0.35em;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+  .mono { font-family: var(--mono); font-size: 0.88em; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  .wrap { max-width: 1400px; margin: 0 auto; padding-inline: clamp(20px, 4vw, 48px); }
+  .prose { max-width: none; line-height: 1.7; }
+
+  svg.icon {
+    width: 1em; height: 1em; stroke: currentColor; stroke-width: 1.75;
+    fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
+  }
+
+  /* ---------- skip link ---------- */
+  .skip-link {
+    position: absolute; left: 24px; top: -48px; z-index: 100;
+    background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 0 0 6px 6px;
+    font-size: 0.85rem; text-decoration: none; transition: top 120ms ease;
+  }
+  .skip-link:focus { top: 0; }
+
+  /* ============================================================
+     TOP BAR — Task 2
+     ============================================================ */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar-inner {
+    display: flex; align-items: center; gap: 24px;
+    padding-block: 12px;
+  }
+  .topbar .brand {
+    font-family: var(--mono); font-size: 0.82rem; font-weight: 600;
+    color: var(--ink); text-decoration: none; letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  .topbar .brand .sep { color: var(--faint); font-weight: 400; }
+  .topbar nav { margin-left: auto; display: flex; gap: 20px; }
+  .topbar nav a {
+    font-size: 0.78rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); text-decoration: none; padding-block: 2px;
+    touch-action: manipulation;
+  }
+  .topbar nav a:hover { color: var(--ink); }
+
+  .theme-toggle {
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; padding: 0;
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    cursor: pointer; touch-action: manipulation;
+    transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+  }
+  .theme-toggle:hover { color: var(--ink); border-color: var(--faint); background: var(--wash-2); }
+  .theme-toggle .icon { width: 18px; height: 18px; }
+  .theme-toggle .i-moon { display: none; }
+  .theme-toggle .i-sun { display: block; }
+  :root[data-theme="dark"] .theme-toggle .i-moon { display: block; }
+  :root[data-theme="dark"] .theme-toggle .i-sun { display: none; }
+
+  @media (max-width: 700px) {
+    .topbar-inner { flex-wrap: wrap; row-gap: 4px; }
+    .topbar nav { order: 3; margin-left: 0; flex-basis: 100%; gap: 16px; flex-wrap: wrap; }
+    .theme-toggle { margin-left: auto; }
+  }
+
+  /* ============================================================
+     HERO — Task 2
+     ============================================================ */
+  .hero {
+    position: relative; overflow: hidden;
+    padding-block: clamp(3rem, 8vh, 5.5rem) clamp(2rem, 4vh, 3rem);
+    background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 6%, transparent) 1.1px, transparent 1.6px);
+    background-size: 24px 24px; background-position: -13px -13px;
+  }
+  .hero::after {
+    content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      linear-gradient(180deg, transparent 40%, var(--bg) 92%),
+      radial-gradient(130% 90% at 80% -30%, color-mix(in srgb, var(--method) 9%, transparent), transparent 60%),
+      radial-gradient(120% 90% at 6% -20%, color-mix(in srgb, var(--sec-green) 6%, transparent), transparent 55%);
+  }
+  .hero > * { position: relative; z-index: 1; }
+
+  .masthead-rule { display: flex; width: 92px; height: 3px; margin-bottom: 1.7em; border-radius: 2px; overflow: hidden; }
+  .masthead-rule span { flex: 1; }
+  .masthead-rule .mr-m { background: var(--method); }
+  .masthead-rule .mr-g { background: var(--sec-green); }
+  .masthead-rule .mr-b { background: var(--sec-blue); }
+
+  .overline {
+    font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 1.5em;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .overline::before { content: ""; width: 28px; height: 1px; background: var(--ink); flex-shrink: 0; }
+
+  .hero h1 {
+    font-family: var(--display);
+    font-size: clamp(2.15rem, 4.8vw, 3.65rem);
+    font-weight: 600;
+    letter-spacing: -0.012em;
+    line-height: 1.1;
+    margin-bottom: 0.5em;
+  }
+  .hero h1 em { font-style: italic; font-weight: 500; color: var(--method-ink); }
+
+  .hero .subtitle {
+    font-family: var(--display);
+    font-size: clamp(1.15rem, 1.8vw, 1.45rem);
+    font-weight: 500; font-style: italic;
+    color: var(--ink); line-height: 1.45; margin-bottom: 1em; max-width: none;
+  }
+  .hero .subtitle .code-eq { font-family: var(--mono); font-style: normal; font-size: 0.82em; color: var(--method-ink); }
+
+  .hero .lede { font-size: clamp(1.05rem, 1.3vw, 1.2rem); color: var(--muted); line-height: 1.7; max-width: none; }
+  .hero .lede strong { color: var(--ink); font-weight: 600; }
+  .hero .lede .p-method   { color: var(--method-ink); }
+  .hero .lede .p-sentinel { color: var(--sec-green-ink); }
+  .hero .lede .p-headroom { color: var(--sec-blue-ink); }
+
+  .hero-facts {
+    list-style: none; margin: 2.4rem 0 0; padding: 1.35rem 0 0;
+    border-top: 1px solid var(--border);
+    display: flex; flex-wrap: wrap; gap: 18px 44px;
+  }
+  .hero-facts li { font-size: 0.82rem; color: var(--muted); line-height: 1.35; max-width: 22ch; }
+  .hero-facts b {
+    display: block; font-family: var(--display); font-weight: 600;
+    font-size: 1.9rem; line-height: 1; letter-spacing: -0.015em;
+    color: var(--ink); font-variant-numeric: tabular-nums; margin-bottom: 6px;
+  }
+  .hero-facts b.m { color: var(--method-ink); }
+  .hero-facts b.g { color: var(--sec-green-ink); }
+  .hero-facts b.b { color: var(--sec-blue-ink); }
+  @media (max-width: 560px) { .hero-facts { gap: 16px 30px; } .hero-facts b { font-size: 1.6rem; } }
+
+  /* ============================================================
+     SECTION SCAFFOLD (shared shell for downstream builds)
+     ============================================================ */
+  main > section { padding-block: clamp(2.5rem, 5vh, 4rem); scroll-margin-top: 72px; }
+  main > section + section { border-top: 1px solid var(--border); }
+  main > section:empty { padding-block: 0; border-top: none; }
+
+  /* .sec-head editorial header primitive — downstream builds use this */
+  .sec-head { display: flex; gap: clamp(16px, 3vw, 34px); margin-bottom: 2rem; align-items: flex-start; }
+  .sec-num {
+    font-family: var(--display); font-size: clamp(2.4rem, 5.4vw, 3.6rem); font-weight: 600;
+    line-height: 0.82; letter-spacing: -0.02em; color: var(--hairline);
+    font-variant-numeric: tabular-nums; flex-shrink: 0;
+  }
+  .sec-head > div { padding-top: 0.15em; }
+  .sec-head .kicker {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+    font-weight: 600; display: block; margin-bottom: 0.7em; color: var(--method);
+  }
+  .sec-head .kicker::before {
+    content: ""; display: block; width: 32px; height: 3px; border-radius: 2px;
+    background: currentColor; margin-bottom: 13px;
+  }
+  .sec-head h2 { font-family: var(--display); font-size: clamp(1.6rem, 3.2vw, 2rem); font-weight: 600; letter-spacing: -0.005em; margin-bottom: 0.2em; }
+  .sec-head .sub { color: var(--muted); margin: 0; max-width: none; }
+
+  h3 { font-size: 1.05rem; font-weight: 650; margin-top: 2.5rem; }
+  h3 .h-num { font-family: var(--mono); font-size: 0.78rem; color: var(--faint); font-weight: 500; margin-right: 0.75em; font-variant-numeric: tabular-nums; }
+
+  /* ============================================================
+     FOOTER (Build D fills content)
+     ============================================================ */
+  .site-footer { border-top: 1px solid var(--border); padding: 40px 0 64px; color: var(--muted); font-size: 0.85rem; }
+  .site-footer:empty { padding: 0; border-top: none; }
+  .site-footer code { background: var(--wash); }
+
+  /* ============================================================
+     SCROLL REVEAL (JS-gated; Build D owns activation)
+     ============================================================ */
+  @media (prefers-reduced-motion: no-preference) {
+    .js [data-reveal] {
+      opacity: 0; transform: translateY(16px);
+      transition: opacity 600ms ease, transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .js [data-reveal].in { opacity: 1; transform: none; }
+  }
+
+  /* ============================================================
+     BUILD B — #metodo (operating loop + 14 skills) + #sdd
+     Accent discipline: violet --method is the protagonist here.
+     Green/blue stay reserved for Sentinel/Headroom cross-refs.
+     ============================================================ */
+
+  /* -- section lead paragraph -- */
+  .sec-lead { font-size: clamp(1.02rem, 1.1vw, 1.12rem); color: var(--ink); max-width: none; margin: 0 0 2rem; line-height: 1.7; }
+  .sec-lead strong { font-weight: 600; }
+  .sec-lead .arrows { font-family: var(--mono); font-size: 0.9em; color: var(--method-ink); white-space: nowrap; }
+
+  /* -- shared: horizontally-scrollable data table -- */
+  .table-scroll { overflow-x: auto; margin: 1.4rem 0 0; border: 1px solid var(--border); border-radius: var(--r-lg); -webkit-overflow-scrolling: touch; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; min-width: 560px; }
+  .data-table th, .data-table td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  .data-table thead th {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; background: var(--wash-2); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0;
+  }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table tbody tr { transition: background-color 160ms ease; }
+  .data-table tbody tr:hover { background: var(--wash-2); }
+  .data-table td .agent { font-family: var(--mono); font-weight: 600; font-size: 0.86rem; color: var(--ink); }
+  .data-table td .kp { color: var(--ink); }
+  .data-table .kp strong { color: var(--method-ink); font-weight: 600; }
+
+  /* -- model-tier pill (opus=pensar, sonnet=ejecutar/revisar, haiku=verificar) -- */
+  .tier { display: inline-flex; align-items: baseline; gap: 6px; font-family: var(--mono); font-size: 0.74rem; font-weight: 600; padding: 2px 10px; border-radius: var(--r-pill); border: 1px solid var(--border); white-space: nowrap; }
+  .tier .role { font-weight: 400; font-size: 0.66rem; color: var(--muted); }
+  .tier.think  { color: var(--method-ink); background: var(--method-soft); border-color: color-mix(in srgb, var(--method) 35%, var(--border)); }
+  .tier.run    { color: var(--ink); background: var(--wash); }
+  .tier.verify { color: var(--muted); background: var(--surface); }
+
+  /* ---------- .spine — timeline of the loop ---------- */
+  .spine {
+    list-style: none; margin: 1.5rem 0 0; padding: 0;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(14px, 2.4vw, 28px);
+    position: relative; counter-reset: spine;
+  }
+  .spine::before {
+    content: ""; position: absolute; top: 18px; left: 15px; right: 15px; height: 2px;
+    background: linear-gradient(90deg, var(--border), color-mix(in srgb, var(--method) 40%, var(--border)), var(--border));
+    border-radius: 2px;
+  }
+  .spine-node { position: relative; counter-increment: spine; padding-top: 48px; }
+  .spine-node .dot {
+    position: absolute; top: 4px; left: 0; width: 32px; height: 32px; border-radius: 50%;
+    display: grid; place-items: center; background: var(--surface); border: 2px solid var(--method);
+    color: var(--method-ink); font-family: var(--mono); font-size: 0.82rem; font-weight: 600; z-index: 1;
+    transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 200ms ease;
+  }
+  .spine-node .dot::before { content: counter(spine); }
+  .spine-node:hover .dot, .spine-node:focus-within .dot { transform: scale(1.09); box-shadow: 0 0 0 5px var(--method-soft); }
+  .spine-phase { font-family: var(--display); font-size: 1.18rem; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 8px; }
+  .spine-skills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .spine-skills code { font-size: 0.78rem; }
+  .spine-gate { margin: 0; font-size: 0.86rem; color: var(--muted); line-height: 1.5; }
+  .spine-gate .g-tag {
+    display: inline-block; font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase;
+    font-weight: 600; color: var(--method-ink); background: var(--method-soft);
+    border: 1px solid color-mix(in srgb, var(--method) 30%, transparent); padding: 1px 7px; border-radius: var(--r-pill);
+    margin-right: 8px; vertical-align: 1px;
+  }
+  .spine-gate em { font-style: italic; color: var(--ink); }
+  @media (max-width: 560px) {
+    .spine { grid-template-columns: 1fr; gap: 0; }
+    .spine::before { top: 15px; bottom: 22px; left: 15px; right: auto; width: 2px; height: auto;
+      background: linear-gradient(180deg, var(--border), color-mix(in srgb, var(--method) 40%, var(--border)), var(--border)); }
+    .spine-node { padding: 4px 0 26px 48px; }
+    .spine-node:last-child { padding-bottom: 0; }
+  }
+
+  /* ---------- the 14 skills grid ---------- */
+  .skills { list-style: none; margin: 1.5rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 10px; counter-reset: skill; }
+  .skill {
+    position: relative; border: 1px solid var(--border); border-radius: var(--r-md);
+    padding: 14px 16px 15px 48px; background: var(--surface);
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .skill::before {
+    counter-increment: skill; content: counter(skill, decimal-leading-zero);
+    position: absolute; left: 16px; top: 16px; font-family: var(--mono); font-size: 0.72rem;
+    color: var(--faint); font-variant-numeric: tabular-nums;
+  }
+  .skill:hover { border-color: var(--faint); box-shadow: var(--shadow-sm); }
+  .skill-name { font-family: var(--mono); font-weight: 600; font-size: 0.85rem; color: var(--ink); }
+  .skill p { margin: 5px 0 0; font-size: 0.88rem; color: var(--muted); line-height: 1.5; }
+  .skill.iron { border-color: color-mix(in srgb, var(--method) 42%, var(--border)); background: color-mix(in srgb, var(--method-soft) 50%, var(--surface)); }
+  .skill.iron::before { color: var(--method); }
+  .skill.iron .skill-name { color: var(--method-ink); }
+  .ley {
+    display: inline-block; font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.07em; text-transform: uppercase;
+    font-weight: 600; color: var(--surface); background: var(--method); padding: 2px 8px; border-radius: var(--r-pill);
+    margin-left: 8px; vertical-align: 2px; white-space: nowrap;
+  }
+  .ley .q { opacity: 0.82; font-weight: 500; }
+
+  /* ---------- governance callout ---------- */
+  .gov { margin-top: 2.6rem; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--wash-2); padding: clamp(18px, 3vw, 30px); }
+  .gov-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(16px, 2.6vw, 30px); margin-bottom: 18px; }
+  .gov-item { position: relative; padding-left: 16px; }
+  .gov-item::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; border-radius: 2px; background: var(--method); }
+  .gov-item h4 { font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.02em; margin: 0 0 6px; color: var(--method-ink); }
+  .gov-item p { margin: 0; font-size: 0.9rem; color: var(--muted); line-height: 1.5; }
+  .gov-reconcile { margin: 0; padding-top: 16px; border-top: 1px solid var(--border); font-family: var(--display); font-style: italic; font-size: 1.05rem; color: var(--ink); line-height: 1.55; }
+  @media (max-width: 640px) { .gov-grid { grid-template-columns: 1fr; } }
+
+  /* ---------- SDD flow stepper ---------- */
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 1.5rem 0 0; padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--wash-2); }
+  .flow-step { font-family: var(--mono); font-size: 0.8rem; padding: 6px 12px; border-radius: var(--r-pill); background: var(--surface); border: 1px solid var(--border); color: var(--ink); white-space: nowrap; }
+  .flow-step.art { color: var(--method-ink); background: var(--method-soft); border-color: color-mix(in srgb, var(--method) 40%, var(--border)); font-weight: 600; }
+  .flow-arrow { color: var(--faint); flex-shrink: 0; font-family: var(--mono); }
+  .flow-note { margin: 10px 0 0; font-size: 0.82rem; color: var(--muted); }
+  .flow-note .dot-art { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--method); vertical-align: middle; margin-right: 5px; }
+
+  /* ---------- SDD evidence block ---------- */
+  .evidence { margin: 1.4rem 0 0; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); }
+  .evidence-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 12px 16px; background: var(--wash-2); border-bottom: 1px solid var(--border); }
+  .evidence-head .t { font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .evidence-head .src { margin-left: auto; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+  .ev-list { list-style: none; margin: 0; padding: 4px 16px; }
+  .ev-task { display: flex; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--hairline); align-items: flex-start; }
+  .ev-task:last-child { border-bottom: none; }
+  .ev-task .tk { font-family: var(--mono); font-size: 0.72rem; font-weight: 600; color: var(--method-ink); white-space: nowrap; padding-top: 2px; min-width: 58px; }
+  .ev-task .ev-body { font-size: 0.89rem; color: var(--muted); line-height: 1.55; margin: 0; }
+  .ev-task .ev-body strong { color: var(--ink); font-weight: 600; }
+  .ev-verdict { display: inline-block; font-family: var(--mono); font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; padding: 1px 8px; border-radius: var(--r-pill); margin-left: 4px; vertical-align: 1px; }
+  .ev-verdict.ok { color: var(--muted); background: var(--wash); border: 1px solid var(--border); }
+  .ev-verdict.pend { color: var(--warn); background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 25%, transparent); }
+  .ev-foot { margin: 0; padding: 14px 16px; border-top: 1px solid var(--border); background: var(--wash-2); font-size: 0.85rem; color: var(--muted); line-height: 1.55; }
+  .ev-foot strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- honest-measurement callout ---------- */
+  .callout { margin-top: 2.6rem; border: 1px solid color-mix(in srgb, var(--method) 30%, var(--border)); border-left: 3px solid var(--method); background: var(--method-soft); border-radius: 0 var(--r-lg) var(--r-lg) 0; padding: clamp(18px, 2.6vw, 26px); }
+  .callout h4 { font-family: var(--display); font-size: 1.18rem; font-weight: 600; margin: 0 0 8px; color: var(--method-ink); }
+  .callout p { margin: 0; color: var(--ink); line-height: 1.65; }
+  .callout strong { color: var(--method-ink); font-weight: 600; }
+
+  /* ============================================================
+     BUILD C — #capas (Sentinel + Headroom) + #rutina (session hygiene)
+     Accent discipline: green = Sentinel, blue = Headroom,
+     violet = método (cross-ref) in #rutina. Components read a local
+     --accent set by .acc-g / .acc-b / .acc-m — never a hardcoded hex.
+     ============================================================ */
+
+  .acc-g { --accent: var(--sec-green); --accent-ink: var(--sec-green-ink); --accent-soft: var(--sec-green-soft); }
+  .acc-b { --accent: var(--sec-blue);  --accent-ink: var(--sec-blue-ink);  --accent-soft: var(--sec-blue-soft); }
+  .acc-m { --accent: var(--method);    --accent-ink: var(--method-ink);    --accent-soft: var(--method-soft); }
+
+  /* token-driven accent text */
+  .ac-g { color: var(--sec-green-ink); }
+  .ac-b { color: var(--sec-blue-ink); }
+  .ac-m { color: var(--method-ink); }
+
+  /* layer tag riding on an h3 */
+  h3 .layer-tag {
+    font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase;
+    font-weight: 600; color: var(--accent-ink); background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    padding: 2px 9px; border-radius: var(--r-pill); margin-right: 10px; vertical-align: 2px; white-space: nowrap;
+  }
+
+  .layer-lead { color: var(--ink); max-width: none; margin: 0.5rem 0 0; line-height: 1.65; }
+  .layer-lead strong { font-weight: 600; }
+  .sub-note { font-size: 0.85rem; color: var(--muted); margin: 1.1rem 0 0; line-height: 1.55; max-width: none; }
+  .sub-note strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- pipeline chips (Sentinel / Headroom flow) ---------- */
+  .pipe { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 1.3rem 0 0; padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--wash-2); }
+  .pipe-node { font-family: var(--mono); font-size: 0.8rem; padding: 6px 12px; border-radius: var(--r-pill); background: var(--surface); border: 1px solid var(--border); color: var(--ink); white-space: nowrap; }
+  .pipe-node.acc { color: var(--accent-ink); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); font-weight: 600; }
+  .pipe-arrow { color: var(--faint); flex-shrink: 0; font-family: var(--mono); }
+  .pipe-out { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pipe-verdict { font-family: var(--mono); font-size: 0.74rem; font-weight: 600; padding: 4px 10px; border-radius: var(--r-pill); border: 1px solid var(--border); white-space: nowrap; }
+  .pipe-verdict.deny  { color: var(--danger); background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+  .pipe-verdict.ask   { color: var(--ink); background: var(--wash); }
+  .pipe-verdict.warn  { color: var(--warn); background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+  .pipe-verdict.allow { color: var(--accent-ink); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .pipe-note { margin: 10px 0 0; font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+  .pipe-note strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- stat row (real audit / stats figures) ---------- */
+  .stat-row { list-style: none; margin: 1.6rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 20px 40px; }
+  .stat-row li { font-size: 0.82rem; color: var(--muted); line-height: 1.35; max-width: 24ch; }
+  .stat-row b { display: block; font-family: var(--display); font-weight: 600; font-size: clamp(1.55rem, 3vw, 1.85rem); line-height: 1; letter-spacing: -0.015em; color: var(--accent-ink); font-variant-numeric: tabular-nums; margin-bottom: 6px; }
+
+  /* ---------- cost waterfall (static, proportional, JS-off safe) ---------- */
+  .waterfall { margin: 1.4rem 0 0; display: grid; gap: 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--wash-2); padding: clamp(16px, 2.4vw, 24px); }
+  .wf-row { display: grid; grid-template-columns: minmax(150px, 220px) 1fr minmax(104px, auto); gap: 8px 16px; align-items: center; }
+  .wf-name { font-size: 0.86rem; color: var(--ink); line-height: 1.3; }
+  .wf-track { position: relative; height: 30px; background: var(--wash); border: 1px solid var(--hairline); border-radius: var(--r-sm); overflow: hidden; }
+  .wf-bar { position: absolute; top: 0; bottom: 0; border-radius: var(--r-xs); }
+  .wf-bar.total { background: color-mix(in srgb, var(--ink) 14%, var(--surface)); border: 1px solid var(--border); }
+  .wf-bar.cut   { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .wf-bar.net   { background: var(--accent); }
+  .wf-val { text-align: right; font-family: var(--mono); font-size: 0.84rem; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .wf-val .pct { display: block; font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+  @media (max-width: 620px) {
+    .wf-row { grid-template-columns: 1fr auto; }
+    .wf-track { grid-column: 1 / -1; order: 3; }
+  }
+  /* bar grow-in (JS toggles .bars-in; inline width stays the source of truth) */
+  @media (prefers-reduced-motion: no-preference) {
+    .js .waterfall .wf-bar { transform: scaleX(0); transform-origin: left center; transition: transform 950ms cubic-bezier(0.16, 1, 0.3, 1); }
+    .js .waterfall.bars-in .wf-bar { transform: scaleX(1); }
+  }
+
+  /* ---------- honest-measurement callout (accent-scoped) ---------- */
+  .honest { margin-top: 2.2rem; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 var(--r-lg) var(--r-lg) 0; padding: clamp(16px, 2.4vw, 24px); }
+  .honest h4 { font-family: var(--display); font-size: 1.12rem; font-weight: 600; margin: 0 0 8px; color: var(--accent-ink); }
+  .honest p { margin: 0; color: var(--ink); line-height: 1.6; }
+  .honest strong { color: var(--accent-ink); font-weight: 600; }
+
+  /* right-aligned numeric cell in the DENY table */
+  .data-table td.num, .data-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .data-table td.num { font-family: var(--mono); font-weight: 600; color: var(--accent-ink); }
+
+  /* ============================================================
+     #rutina — 6am ping timeline + discipline cards (violet = método)
+     ============================================================ */
+  .tl { margin: 1.4rem 0 0; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--wash-2); padding: clamp(18px, 3vw, 28px) clamp(18px, 3vw, 30px) clamp(14px, 2.2vw, 20px); }
+  .tl-ends { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+  .tl-ends span { font-size: 0.76rem; font-weight: 600; color: var(--method-ink); }
+  .tl-ends .r { text-align: right; }
+  .tl-scale { position: relative; height: 40px; }
+  .tl-band { position: absolute; left: 0; right: 0; top: 12px; height: 16px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--method) 18%, var(--surface)); border: 1px solid color-mix(in srgb, var(--method) 40%, var(--border)); display: grid; place-items: center; }
+  .tl-band b { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--method-ink); }
+  .tl-dot { position: absolute; top: 9px; width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--method); }
+  .tl-dot.start { left: 0; transform: translateX(-8px); background: var(--method); border: 3px solid var(--surface); }
+  .tl-dot.end { right: 0; transform: translateX(8px); background: var(--surface); box-shadow: inset 0 0 0 3px var(--method), 0 0 0 1.5px var(--method); }
+  .tl-ticks { display: flex; justify-content: space-between; margin-top: 8px; }
+  .tl-ticks span { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .caveats { list-style: none; margin: 1.3rem 0 0; padding: 0; display: grid; gap: 9px; }
+  .caveats li { position: relative; padding-left: 22px; font-size: 0.88rem; color: var(--muted); line-height: 1.5; }
+  .caveats li::before { content: ""; position: absolute; left: 3px; top: 8px; width: 7px; height: 7px; border-radius: 2px; transform: rotate(45deg); background: var(--warn); }
+  .caveats strong { color: var(--ink); font-weight: 600; }
+
+  .disc-grid { list-style: none; margin: 1.5rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+  .disc { position: relative; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); padding: 18px 18px 18px 24px; transition: border-color 160ms ease, box-shadow 160ms ease; }
+  .disc::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 2px; background: var(--method); }
+  .disc:hover { border-color: var(--faint); box-shadow: var(--shadow-sm); }
+  .disc-title { font-family: var(--mono); font-weight: 600; font-size: 0.9rem; color: var(--method-ink); margin: 0 0 8px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .disc-title .badge { font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--muted); background: var(--wash); border: 1px solid var(--border); padding: 1px 8px; border-radius: var(--r-pill); }
+  .disc p { margin: 0; font-size: 0.9rem; color: var(--muted); line-height: 1.55; }
+  .disc p strong { color: var(--ink); font-weight: 600; }
+
+  /* ============================================================
+     BUILD D — #sintesis (una sola filosofía) + #verificalo + footer
+     ============================================================ */
+
+  /* one philosophy, three roles — reuses .acc-g/.acc-b/.acc-m for --accent */
+  .synth-trio { list-style: none; margin: 1.6rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .synth-trio li { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--r-md); background: var(--surface); padding: 16px 18px; }
+  .synth-trio .st-name { font-family: var(--mono); font-weight: 600; font-size: 0.9rem; color: var(--accent-ink); margin: 0 0 5px; }
+  .synth-trio .st-role { margin: 0; font-size: 0.9rem; color: var(--muted); line-height: 1.55; }
+  .synth-trio .st-role strong { color: var(--ink); font-weight: 600; }
+  @media (max-width: 640px) { .synth-trio { grid-template-columns: 1fr; } }
+
+  /* mejoras honestas — an open backlog (unchecked boxes), not failures */
+  .backlog { list-style: none; margin: 1.4rem 0 0; padding: 0; display: grid; gap: 11px; }
+  .backlog li { position: relative; padding-left: 30px; font-size: 0.92rem; color: var(--muted); line-height: 1.55; }
+  .backlog li::before {
+    content: ""; position: absolute; left: 0; top: 4px; width: 16px; height: 16px;
+    border: 1.5px solid var(--method); border-radius: var(--r-xs); background: var(--method-soft);
+  }
+  .backlog strong { color: var(--ink); font-weight: 600; }
+
+  /* prominent frozen-snapshot caveat (warn accent = attention, not error) */
+  .snapshot { margin: 1.6rem 0 0; border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border)); border-left: 3px solid var(--warn); background: var(--warn-soft); border-radius: 0 var(--r-lg) var(--r-lg) 0; padding: clamp(16px, 2.6vw, 26px); }
+  .snapshot h4 { font-family: var(--display); font-size: 1.18rem; font-weight: 600; margin: 0 0 8px; color: var(--warn); }
+  .snapshot p { margin: 0; color: var(--ink); line-height: 1.65; }
+  .snapshot strong { color: var(--warn); font-weight: 600; }
+
+  /* verifícalo table: cifra cell + command code */
+  .data-table td.cifra { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .data-table td .cmd { font-size: 0.82rem; }
+
+  /* footer content */
+  .site-footer .foot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 22px 40px; margin-bottom: 26px; }
+  .site-footer .foot-grid h4 { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  .site-footer .foot-grid ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .site-footer .foot-grid li { font-size: 0.82rem; line-height: 1.5; color: var(--muted); }
+  .site-footer .foot-grid strong { color: var(--ink); font-weight: 600; }
+  .site-footer .foot-signoff { margin: 0; padding-top: 20px; border-top: 1px solid var(--border); font-family: var(--display); font-style: italic; font-size: 1.02rem; color: var(--ink); line-height: 1.55; max-width: 62ch; }
+
+  @media print {
+    .topbar { display: none; }
+    main > section { break-inside: avoid-page; }
+    [data-reveal] { opacity: 1 !important; transform: none !important; }
+    .waterfall .wf-bar { transform: none !important; }
+  }
+</style>
+<script>
+  /* Anti-FOUC: set theme before first paint. */
+  (function () {
+    try {
+      var stored = localStorage.getItem("theme");
+      var theme = stored === "light" || stored === "dark"
+        ? stored
+        : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+    } catch (e) {
+      document.documentElement.dataset.theme = "light";
+    }
+    document.documentElement.classList.add("js");
+  })();
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Saltar al contenido</a>
+
+<!-- SVG icon sprite (toggle icons now; downstream builds append their own symbols) -->
+<svg aria-hidden="true" style="position:absolute; width:0; height:0; overflow:hidden;">
+  <defs>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="5.1" y1="5.1" x2="6.9" y2="6.9"/><line x1="17.1" y1="17.1" x2="18.9" y2="18.9"/><line x1="5.1" y1="18.9" x2="6.9" y2="17.1"/><line x1="17.1" y1="6.9" x2="18.9" y2="5.1"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5 A8.5 8.5 0 1 1 9.5 4 A6.6 6.6 0 0 0 20 14.5 Z"/></symbol>
+  </defs>
+</svg>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="#main">claude code <span class="sep">·</span> el método</a>
+    <nav aria-label="Secciones">
+      <a href="#metodo">Método</a>
+      <a href="#sdd">SDD</a>
+      <a href="#capas">Capas</a>
+      <a href="#rutina">Rutina</a>
+      <a href="#verificalo">Verifícalo</a>
+    </nav>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Activar tema oscuro">
+      <svg class="icon i-sun" aria-hidden="true"><use href="#i-sun"/></svg>
+      <svg class="icon i-moon" aria-hidden="true"><use href="#i-moon"/></svg>
+    </button>
+  </div>
+</header>
+
+<section class="hero wrap">
+  <div class="masthead-rule" aria-hidden="true"><span class="mr-m"></span><span class="mr-g"></span><span class="mr-b"></span></div>
+  <p class="overline">Informe · datos reales de esta máquina · julio 2026</p>
+  <h1>No es el modelo. Es el <em>método</em>.</h1>
+  <p class="subtitle">
+    El LLM es la <span class="code-eq">CPU</span>. El contexto es la <span class="code-eq">RAM</span>. La spec es la <span class="code-eq">fuente de verdad</span>.
+  </p>
+  <p class="lede">
+    Tres piezas sostienen mi forma de trabajar: <strong class="p-method">superpowers</strong> es el método,
+    <strong class="p-sentinel">Sentinel</strong> es la puerta y <strong class="p-headroom">Headroom</strong> es la factura.
+    Cada cifra de esta página sale de un log, un audit real o una llamada a <code>headroom_stats</code> de esta misma máquina — no de un folleto.
+  </p>
+  <ul class="hero-facts">
+    <li><b class="m" data-count="14">14</b> skills en superpowers v6.1.1</li>
+    <li><b class="g" data-count="204">204</b> DENY reales registrados por Sentinel</li>
+    <li><b class="b" data-count="57.3" data-dec="1" data-suffix="&nbsp;M">57,3&nbsp;M</b> tokens comprimidos por Headroom</li>
+    <li><b data-count="4">4</b> fases del operating loop</li>
+  </ul>
+</section>
+
+<main id="main">
+  <!-- BUILD-B:METODO -->
+  <section id="metodo" class="wrap" aria-label="El método">
+    <header class="sec-head" data-reveal>
+      <span class="sec-num" aria-hidden="true">01</span>
+      <div>
+        <span class="kicker">Método</span>
+        <h2>El operating loop</h2>
+      </div>
+    </header>
+
+    <p class="sec-lead" data-reveal>
+      <code>deep-change</code> es el bucle operativo: <strong>compone</strong> las <strong>14</strong> skills de
+      <span class="mono">superpowers</span> en cuatro fases —<span class="arrows">brainstorm → plan → execute → verify</span>—
+      y ajusta la ceremonia al riesgo: trivial = directo, sustancial = bucle completo.
+    </p>
+
+    <h3 data-reveal><span class="h-num">1.1</span>El bucle, fase a fase</h3>
+    <ol class="spine" aria-label="Las cuatro fases del operating loop" data-reveal>
+      <li class="spine-node">
+        <span class="dot" aria-hidden="true"></span>
+        <p class="spine-phase">Brainstorm</p>
+        <p class="spine-skills"><code>brainstorming</code></p>
+        <p class="spine-gate"><span class="g-tag">gate</span><em>no se escribe código antes de acordar el diseño.</em></p>
+      </li>
+      <li class="spine-node">
+        <span class="dot" aria-hidden="true"></span>
+        <p class="spine-phase">Plan</p>
+        <p class="spine-skills"><code>writing-plans</code></p>
+        <p class="spine-gate"><span class="g-tag">gate</span><em>una spec / plan de pasos verificables antes de tocar código.</em></p>
+      </li>
+      <li class="spine-node">
+        <span class="dot" aria-hidden="true"></span>
+        <p class="spine-phase">Execute</p>
+        <p class="spine-skills"><code>subagent-driven-development</code> <code>test-driven-development</code></p>
+        <p class="spine-gate"><span class="g-tag">gate</span><em>el test antes que la implementación (TDD).</em></p>
+      </li>
+      <li class="spine-node">
+        <span class="dot" aria-hidden="true"></span>
+        <p class="spine-phase">Verify</p>
+        <p class="spine-skills"><code>verification-before-completion</code> <code>requesting-code-review</code></p>
+        <p class="spine-gate"><span class="g-tag">gate</span><em>evidencia (comando + salida) antes de declarar «hecho».</em></p>
+      </li>
+    </ol>
+
+    <h3 data-reveal><span class="h-num">1.2</span>Las 14 skills de superpowers <span class="mono" style="color:var(--faint);font-weight:500">v6.1.1</span></h3>
+    <p class="sec-lead" style="margin-bottom:0" data-reveal>
+      Cuatro son <strong>leyes de hierro</strong> —invariantes que el bucle nunca salta—; las otras diez son
+      herramientas que se invocan según la tarea lo pida.
+    </p>
+    <ol class="skills" aria-label="Las 14 skills de superpowers" data-reveal>
+      <li class="skill iron">
+        <span class="skill-name">using-superpowers</span><span class="ley">ley de hierro <span class="q">· skills-first</span></span>
+        <p>El bootstrap: invocar la skill relevante ANTES de cualquier respuesta o acción.</p>
+      </li>
+      <li class="skill iron">
+        <span class="skill-name">brainstorming</span><span class="ley">ley de hierro <span class="q">· gate</span></span>
+        <p>Explora intención, requisitos y diseño antes de cualquier trabajo creativo.</p>
+      </li>
+      <li class="skill">
+        <span class="skill-name">writing-plans</span>
+        <p>Convierte una spec en un plan de pasos verificables antes de tocar código.</p>
+      </li>
+      <li class="skill">
+        <span class="skill-name">executing-plans</span>
+        <p>Ejecuta un plan escrito en sesión aparte con checkpoints de revisión humana.</p>
+      </li>
+      <li class="skill">
+        <span class="skill-name">subagent-driven-development</span>
+        <p>Ejecuta el plan despachando un subagente fresco por tarea + revisión por tarea.</p>
+      </li>
+      <li class="skill iron">
+        <span class="skill-name">test-driven-development</span><span class="ley">ley de hierro</span>
+        <p>Escribe el test antes que la implementación, en cada feature o bugfix.</p>
+      </li>
+      <li class="skill">
+        <span class="skill-name">systematic-debugging</span>
+        <p>Ante cualquier bug o fallo, investiga la causa raíz antes de proponer el arreglo.</p>
+      </li>
+      <li class="skill iron">
+        <span class="skill-name">verification-before-completion</span><span class="ley">ley de hierro</span>
+        <p>Exige ejecutar comandos y confirmar la salida antes de declarar algo «hecho».</p>
+      </li>
+      <li class="skill">
+        <span class="skill-name">requesting-code-review</span>
+        <p>Pide revisión al completar features o antes de fusionar, para verificar el trabajo.</p>
+      </li>
+      <li class="skill">
+        <span class="skill-name">receiving-code-review</span>
+        <p>Recibe el feedback con rigor técnico y verificación, no con acuerdo performativo.</p>
+      </li>
+      <li class="skill">
+        <span class="skill-name">finishing-a-development-branch</span>
+        <p>Cierra el trabajo con opciones estructuradas: merge, PR o limpieza.</p>
+      </li>
+      <li class="skill">
+        <span class="skill-name">using-git-worktrees</span>
+        <p>Asegura un espacio de trabajo aislado antes de ejecutar un plan.</p>
+      </li>
+      <li class="skill">
+        <span class="skill-name">dispatching-parallel-agents</span>
+        <p>Lanza agentes en paralelo ante 2+ tareas independientes sin estado compartido.</p>
+      </li>
+      <li class="skill">
+        <span class="skill-name">writing-skills</span>
+        <p>Crea, edita y verifica skills antes de desplegarlas.</p>
+      </li>
+    </ol>
+
+    <h3 data-reveal><span class="h-num">1.3</span>Delegación: agente → rol → modelo</h3>
+    <p class="sec-lead" style="margin-bottom:0" data-reveal>
+      <strong>8</strong> subagentes locales. El <em>tiering</em> asigna el modelo más potente a <strong>pensar</strong>,
+      el intermedio a <strong>ejecutar / revisar</strong> y el barato a <strong>verificar</strong>.
+    </p>
+    <div class="table-scroll" data-reveal tabindex="0" role="region" aria-label="Tabla de delegación de agentes (desplazable)">
+      <table class="data-table">
+        <caption class="mono" style="text-align:left;padding:12px 16px 0;font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)">8 subagentes locales · tiering de modelo</caption>
+        <thead>
+          <tr><th scope="col">Agente</th><th scope="col">Rol</th><th scope="col">Modelo</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="agent">orchestrator</span></td><td>coordina especialistas en paralelo</td><td><span class="tier think">opus <span class="role">pensar</span></span></td></tr>
+          <tr><td><span class="agent">strategist</span></td><td>IntentGate + plan estructurado</td><td><span class="tier think">opus <span class="role">pensar</span></span></td></tr>
+          <tr><td><span class="agent">planner</span></td><td>planificación de features / refactors</td><td><span class="tier think">opus <span class="role">pensar</span></span></td></tr>
+          <tr><td><span class="agent">deep-worker</span></td><td>implementación autónoma end-to-end</td><td><span class="tier run">sonnet <span class="role">ejecutar</span></span></td></tr>
+          <tr><td><span class="agent">code-reviewer</span></td><td>revisión pre-PR (APPROVE / WARNING / BLOCK)</td><td><span class="tier run">sonnet <span class="role">revisar</span></span></td></tr>
+          <tr><td><span class="agent">security-reviewer</span></td><td>auditoría OWASP Top 10</td><td><span class="tier run">sonnet <span class="role">revisar</span></span></td></tr>
+          <tr><td><span class="agent">code-explorer</span></td><td>exploración enfocada del código</td><td><span class="tier run">sonnet <span class="role">revisar</span></span></td></tr>
+          <tr><td><span class="agent">quick-checker</span></td><td>lint / tipos / tests (PASS / FAIL)</td><td><span class="tier verify">haiku <span class="role">verificar</span></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <aside class="gov" data-reveal aria-label="Principios de gobierno">
+      <div class="gov-grid">
+        <div class="gov-item">
+          <h4>IntentGate</h4>
+          <p>El arnés ANTES de ejecutar: intención real, alcance, criterios de éxito y supuestos.</p>
+        </div>
+        <div class="gov-item">
+          <h4>Never-Stop</h4>
+          <p>DENTRO de la ejecución: una vez aprobado el diseño, ejecutar hasta el final sin «¿sigo?».</p>
+        </div>
+        <div class="gov-item">
+          <h4>Parallel-First</h4>
+          <p>Topología: paralelo por defecto en workstreams independientes; secuencial solo si hay dependencia.</p>
+        </div>
+      </div>
+      <p class="gov-reconcile">El gate + aprobación y el never-stop no se contradicen — uno es pre-ejecución, el otro intra-ejecución.</p>
+    </aside>
+  </section>
+  <!-- /BUILD-B:METODO -->
+
+  <!-- BUILD-B:SDD -->
+  <section id="sdd" class="wrap" aria-label="Spec-Driven Development">
+    <header class="sec-head" data-reveal>
+      <span class="sec-num" aria-hidden="true">02</span>
+      <div>
+        <span class="kicker">Spec-Driven Development</span>
+        <h2>La spec es la fuente de verdad</h2>
+      </div>
+    </header>
+
+    <p class="sec-lead" data-reveal>
+      El par <strong>spec → plan</strong> es la unidad de trabajo <strong>durable</strong>: sobrevive a la
+      compactación del contexto. Cuando la ventana se llena y hay que descartar historial, la spec y el plan
+      persisten en disco y reconstruyen el estado sin re-derivar lo ya acordado.
+    </p>
+
+    <h3 data-reveal><span class="h-num">2.1</span>El flujo</h3>
+    <div class="flow" data-reveal role="list" aria-label="Flujo de Spec-Driven Development">
+      <span class="flow-step" role="listitem">brainstorming</span>
+      <span class="flow-arrow" aria-hidden="true">→</span>
+      <span class="flow-step art" role="listitem">spec</span>
+      <span class="flow-arrow" aria-hidden="true">→</span>
+      <span class="flow-step" role="listitem">writing-plans</span>
+      <span class="flow-arrow" aria-hidden="true">→</span>
+      <span class="flow-step art" role="listitem">plan</span>
+      <span class="flow-arrow" aria-hidden="true">→</span>
+      <span class="flow-step" role="listitem">subagent-driven</span>
+      <span class="flow-arrow" aria-hidden="true">→</span>
+      <span class="flow-step art" role="listitem">ledger</span>
+    </div>
+    <p class="flow-note"><span class="dot-art" aria-hidden="true"></span>Los nodos resaltados —<span class="mono">spec</span>, <span class="mono">plan</span>, <span class="mono">ledger</span>— son los artefactos durables que quedan en disco.</p>
+
+    <h3 data-reveal><span class="h-num">2.2</span>Evidencia real de esta máquina</h3>
+    <div class="evidence" data-reveal>
+      <div class="evidence-head">
+        <span class="t">Evidencia real de esta máquina</span>
+        <span class="src">~/.claude/.superpowers/sdd/progress.md</span>
+      </div>
+      <ol class="ev-list">
+        <li class="ev-task">
+          <span class="tk">Task 1</span>
+          <p class="ev-body">Commits <code>ad4733a..b54638a</code>. Review limpio tras 1 fix (exclusión de <code>__pycache__</code>). <span class="ev-verdict ok">review limpio</span></p>
+        </li>
+        <li class="ev-task">
+          <span class="tk">Task 2</span>
+          <p class="ev-body">Commit <code>32f34c5</code>. <span class="ev-verdict ok">Approved</span></p>
+        </li>
+        <li class="ev-task">
+          <span class="tk">Task 3</span>
+          <p class="ev-body">Commit <code>4633263</code>, review Approved; <strong>completada parcial por diseño</strong> — la retirada de hooks se abortó por la regla de &gt;10 huérfanos, con decisión de usuario pendiente. <span class="ev-verdict ok">Approved</span> <span class="ev-verdict pend">parcial · por diseño</span></p>
+        </li>
+        <li class="ev-task">
+          <span class="tk">Task 4</span>
+          <p class="ev-body">Commit <code>ddf9b03</code>, review Approved; <strong>checkpoint humano R1 pendiente</strong> — el usuario debe ejecutar <code>wsl --shutdown</code>. <span class="ev-verdict ok">Approved</span> <span class="ev-verdict pend">checkpoint R1</span></p>
+        </li>
+      </ol>
+      <p class="ev-foot">
+        Los <strong>3 review packages</strong> se entregaron como fichero en disco
+        —<code>review-b54638a..32f34c5.diff</code>, <code>review-32f34c5..4633263.diff</code>,
+        <code>review-4633263..ddf9b03.diff</code>—, <strong>no pegados en el contexto</strong>: así el diff no consume ventana.
+      </p>
+    </div>
+
+    <h3 data-reveal><span class="h-num">2.3</span>Karpathy ↔ mi setup</h3>
+    <div class="table-scroll" data-reveal tabindex="0" role="region" aria-label="Mapeo Karpathy a mi setup (desplazable)">
+      <table class="data-table">
+        <caption class="mono" style="text-align:left;padding:12px 16px 0;font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)">Las metáforas de Karpathy, materializadas</caption>
+        <thead>
+          <tr><th scope="col">Idea de Karpathy</th><th scope="col">Cómo se materializa aquí</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>El contexto es RAM (finito, se llena)</td><td class="kp">handoffs por fichero + autocompact al <strong>75 %</strong></td></tr>
+          <tr><td>El LLM es la CPU</td><td class="kp"><code>MAX_THINKING_TOKENS 32000</code> · effort <strong>xhigh</strong> · tiering de modelo por agente</td></tr>
+          <tr><td>Spec primero</td><td class="kp">el par <strong>spec → plan</strong> como unidad de trabajo</td></tr>
+          <tr><td>Correa corta (<span class="mono">tight leash</span>)</td><td class="kp">tareas de 2-5 min + <strong>TDD</strong> (test antes que código)</td></tr>
+          <tr><td>Verificar, no confiar</td><td class="kp"><code>verification-before-completion</code> + gates de revisión</td></tr>
+          <tr><td>Autonomía acotada</td><td class="kp"><strong>IntentGate</strong> (antes) + risk containment (copia aislada; aplicar a producción como paso confirmado)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <aside class="callout" data-reveal aria-label="Medición honesta">
+      <h4>Medición honesta</h4>
+      <p>
+        Por qué el par spec/plan es auditable: es un <strong>contrato verificable</strong> con checkpoints empíricos,
+        mantiene el <strong>contexto mínimo curado</strong> —solo lo que la tarea necesita— y evita
+        <strong>re-derivar</strong> hechos ya establecidos.
+      </p>
+    </aside>
+  </section>
+  <!-- /BUILD-B:SDD -->
+
+  <!-- BUILD-C:CAPAS -->
+  <section id="capas" class="wrap" aria-label="Las dos capas">
+    <header class="sec-head" data-reveal>
+      <span class="sec-num" aria-hidden="true">03</span>
+      <div>
+        <span class="kicker">Las dos capas</span>
+        <h2>Lo que me deja soltar el método</h2>
+      </div>
+    </header>
+
+    <p class="sec-lead" data-reveal>
+      Dos capas de infraestructura son las que me dejan <em>soltar el control</em> y confiar en el bucle:
+      <strong class="ac-g">Sentinel</strong> deja ejercer <span class="ac-m">Never-Stop</span> sin miedo —una puerta que
+      bloquea lo catastrófico, así la ejecución autónoma no es temeraria—; <strong class="ac-b">Headroom</strong> deja
+      <strong>sostener</strong> sesiones largas de <span class="arrows">spec → plan → execute</span> comprimiendo el
+      contexto para que la ventana no se llene a mitad de tarea.
+    </p>
+
+    <!-- ===== Sentinel (green) ===== -->
+    <h3 class="acc-g" data-reveal><span class="h-num">3.1</span><span class="layer-tag">seguridad</span><span class="ac-g mono">Sentinel</span> — la puerta</h3>
+    <p class="layer-lead" data-reveal>
+      Un hook <code>PreToolUse</code> de coste cero que aplica a <strong>todas</strong> las tools (<code>matcher: ""</code>):
+      se interpone entre cada acción y su ejecución.
+    </p>
+
+    <div class="pipe acc-g" data-reveal role="list" aria-label="Pipeline de decisión de Sentinel: una acción pasa por el pipeline de hooks y termina en DENY, ASK, WARN o ALLOW, con fail-open al final">
+      <span class="pipe-node" role="listitem">acción</span>
+      <span class="pipe-arrow" aria-hidden="true">→</span>
+      <span class="pipe-node acc" role="listitem">pipeline de hooks</span>
+      <span class="pipe-arrow" aria-hidden="true">→</span>
+      <span class="pipe-out" role="listitem">
+        <span class="pipe-verdict deny">DENY</span>
+        <span class="pipe-verdict ask">ASK</span>
+        <span class="pipe-verdict warn">WARN</span>
+        <span class="pipe-verdict allow">ALLOW</span>
+      </span>
+    </div>
+    <p class="pipe-note"><strong>Fail-open por diseño:</strong> si el hook falla, deja pasar la acción — prioriza no romper el flujo sobre el bloqueo estricto.</p>
+
+    <ul class="stat-row acc-g" data-reveal aria-label="Estadísticas reales del audit log de Sentinel">
+      <li><b data-count="216">216</b>eventos registrados</li>
+      <li><b data-count="204">204</b>DENY (bloqueos)</li>
+      <li><b data-count="12">12</b>warn</li>
+      <li><b data-count="207">207</b>comandos bloqueados <span class="mono">blocked-commands.log</span></li>
+    </ul>
+
+    <div class="table-scroll acc-g" data-reveal tabindex="0" role="region" aria-label="Top motivos de DENY reales (desplazable)">
+      <table class="data-table">
+        <caption class="mono" style="text-align:left;padding:12px 16px 0;font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)">Top motivos de DENY (reales)</caption>
+        <thead>
+          <tr><th scope="col">Motivo</th><th scope="col" class="num">Nº</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Ruta sensible</td><td class="num">75</td></tr>
+          <tr><td>Comando peligroso</td><td class="num">53</td></tr>
+          <tr><td>IP en crudo</td><td class="num">25</td></tr>
+          <tr><td><code>~/.ssh/</code></td><td class="num">18</td></tr>
+          <tr><td>Env <code>ANTHROPIC_API_KEY</code></td><td class="num">8</td></tr>
+          <tr><td>Dominio malicioso <code>giftshop.club</code></td><td class="num">4</td></tr>
+          <tr><td>Prompt injection</td><td class="num">4</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <aside class="honest acc-g" data-reveal aria-label="Nota honesta sobre el audit de Sentinel">
+      <h4>El log tiene sesgo — y es honesto decirlo</h4>
+      <p>
+        El audit solo registra <strong>lo que se bloqueó</strong>, así que refleja mis propios hábitos, no una amenaza
+        externa. Y Sentinel es <strong>fail-open por diseño</strong>: si el hook falla, deja pasar. Es una red de
+        seguridad calibrada para no estorbar, no un cortafuegos infalible.
+      </p>
+    </aside>
+    <p class="sub-note" data-reveal>
+      Endurecido tras auditoría real con <strong>normalización de rutas</strong> (traversal <code>../</code>) y
+      <strong>split de comandos compuestos</strong> (<code>a &amp;&amp; b</code>) para no dejar huecos.
+    </p>
+
+    <!-- ===== Headroom (blue) ===== -->
+    <h3 class="acc-b" data-reveal><span class="h-num">3.2</span><span class="layer-tag">eficiencia</span><span class="ac-b mono">Headroom</span> — la factura</h3>
+    <p class="layer-lead" data-reveal>
+      Un proxy local de optimización de contexto. <strong>No resume con otro LLM</strong>: es un
+      <strong>router de contenido</strong> que comprime cada resultado de herramienta antes de que llegue al modelo.
+    </p>
+
+    <div class="pipe acc-b" data-reveal role="list" aria-label="Ruta de Headroom: Claude Code pasa por el proxy local en 127.0.0.1 puerto 8787 antes de llegar a la API de Anthropic">
+      <span class="pipe-node" role="listitem">Claude Code</span>
+      <span class="pipe-arrow" aria-hidden="true">→</span>
+      <span class="pipe-node acc" role="listitem">proxy <span class="mono">127.0.0.1:8787</span></span>
+      <span class="pipe-arrow" aria-hidden="true">→</span>
+      <span class="pipe-node" role="listitem">API de Anthropic</span>
+    </div>
+
+    <ul class="stat-row acc-b" data-reveal aria-label="Estadísticas reales de Headroom vía headroom_stats">
+      <li><b>v0.32.1</b>versión en uso</li>
+      <li><b data-count="57.3" data-dec="1" data-suffix="&nbsp;M">57,3&nbsp;M</b>tokens comprimidos</li>
+      <li><b>$<span class="tnum" data-count="231.71" data-dec="2">231,71</span></b>ahorro propio (compresión)</li>
+      <li><b>$<span class="tnum" data-count="1852.87" data-dec="2">1.852,87</span></b>ahorro por caché nativa · <span class="mono">438&nbsp;M</span> tokens cache-read</li>
+      <li><b>$<span class="tnum" data-count="2973.13" data-dec="2">2.973,13</span></b>coste input total pagado</li>
+    </ul>
+    <p class="sub-note" data-reveal>
+      Compresión típica <strong>~8,2 %/evento</strong> (agregado global <strong>3,1 %</strong>).
+    </p>
+
+    <h4 class="mono" style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin:2rem 0 0" data-reveal>Cascada de coste · potencial → real</h4>
+    <div class="waterfall acc-b" data-reveal role="group" aria-label="Cascada de coste. Coste potencial sin optimización: 5.057,71 dólares, el 100 %. Menos caché nativa de Anthropic: 1.852,87 dólares, el 36,6 %. Menos compresión de Headroom: 231,71 dólares, el 4,6 %. Coste real pagado: 2.973,13 dólares, el 58,8 % del potencial. Ahorro total 41,2 %.">
+      <div class="wf-row">
+        <span class="wf-name">Coste potencial <span style="color:var(--muted)">(sin optimización)</span></span>
+        <span class="wf-track"><span class="wf-bar total" style="left:0;width:100%"></span></span>
+        <span class="wf-val">$5.057,71 <span class="pct">100 %</span></span>
+      </div>
+      <div class="wf-row">
+        <span class="wf-name">− Caché nativa de Anthropic</span>
+        <span class="wf-track"><span class="wf-bar cut" style="left:63.4%;width:36.6%"></span></span>
+        <span class="wf-val">−$1.852,87 <span class="pct">36,6 %</span></span>
+      </div>
+      <div class="wf-row">
+        <span class="wf-name">− Compresión de Headroom</span>
+        <span class="wf-track"><span class="wf-bar cut" style="left:58.8%;width:4.6%"></span></span>
+        <span class="wf-val">−$231,71 <span class="pct">4,6 %</span></span>
+      </div>
+      <div class="wf-row">
+        <span class="wf-name"><strong>= Coste real pagado</strong></span>
+        <span class="wf-track"><span class="wf-bar net" style="left:0;width:58.8%"></span></span>
+        <span class="wf-val">$2.973,13 <span class="pct">58,8 %</span></span>
+      </div>
+    </div>
+
+    <aside class="honest acc-b" data-reveal aria-label="Medición honesta del ahorro de Headroom">
+      <h4>Medición honesta</h4>
+      <p>
+        El grueso del ahorro (<strong>$1.852,87</strong>) lo aporta la <strong>caché nativa de Anthropic, no Headroom</strong>.
+        El mérito propio de Headroom es <strong>pequeño pero real</strong> —<strong>$231,71</strong>, ~11 % del ahorro— y su
+        valor clave es <strong>proteger esa caché mientras comprime</strong>, no pisarla.
+      </p>
+    </aside>
+
+    <!-- ===== compressors ===== -->
+    <h3 data-reveal><span class="h-num">3.3</span>Un compresor por tipo de contenido</h3>
+    <div class="table-scroll" data-reveal tabindex="0" role="region" aria-label="Compresor por tipo de contenido (desplazable)">
+      <table class="data-table">
+        <caption class="mono" style="text-align:left;padding:12px 16px 0;font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)">Headroom enruta cada resultado al compresor adecuado</caption>
+        <thead>
+          <tr><th scope="col">Tipo de contenido</th><th scope="col">Compresor</th><th scope="col">Técnica</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>JSON grande</td><td><span class="agent">SmartCrusher</span></td><td>scoring de importancia por campo/fila</td></tr>
+          <tr><td>Código fuente</td><td><span class="agent">CodeCompressor</span></td><td>AST (tree-sitter): conserva firmas e imports</td></tr>
+          <tr><td>Salidas de grep</td><td><span class="agent">SearchCompressor</span></td><td>parseo estructural de coincidencias</td></tr>
+          <tr><td>Logs / builds</td><td><span class="agent">LogCompressor</span></td><td>prioriza ERROR/WARN, elimina líneas repetidas</td></tr>
+          <tr><td>Diffs de git</td><td><span class="agent">DiffCompressor</span></td><td>recorta contexto, nunca toca líneas +/−</td></tr>
+          <tr><td>HTML</td><td><span class="agent">HTMLExtractor</span></td><td>extracción de contenido real, descarta navegación</td></tr>
+          <tr><td>Texto plano</td><td><span class="agent">TextCrusher / Kompress</span></td><td>BM25 extractivo o ModernBERT local (~150M parámetros)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <!-- /BUILD-C:CAPAS -->
+
+  <!-- BUILD-C:RUTINA -->
+  <section id="rutina" class="wrap acc-m" aria-label="Higiene de sesión">
+    <header class="sec-head" data-reveal>
+      <span class="sec-num" aria-hidden="true">04</span>
+      <div>
+        <span class="kicker">Higiene de sesión</span>
+        <h2>La rutina de una sesión fresca</h2>
+      </div>
+    </header>
+
+    <p class="sec-lead" data-reveal>
+      El método rinde cuando la ventana está limpia. Tres hábitos de higiene mantienen el
+      <span class="arrows">contexto = RAM</span> disponible: anclar la ventana rodante al empezar el día, compactar a
+      mano y no dejar que un contexto grande se convierta en la norma.
+    </p>
+
+    <h3 data-reveal><span class="h-num">4.1</span>El ping de las 6am</h3>
+    <p class="layer-lead" data-reveal>
+      Mandar un <strong>ping a las 6:00</strong> ancla la ventana rodante de <strong>5 h</strong> justo al empezar la
+      jornada, así el cupo se resetea con la ventana íntegra cuando de verdad vas a trabajar.
+    </p>
+
+    <div class="tl" data-reveal>
+      <div class="tl-ends">
+        <span>primer mensaje · 6:00</span>
+        <span class="r">se resetea · 11:00</span>
+      </div>
+      <div class="tl-scale" role="img" aria-label="Línea de tiempo de las 6:00 a las 11:00. Un ping a las 6:00 (marca sólida a la izquierda) ancla el inicio de la ventana rodante de 5 horas, representada como una banda que cubre todo el tramo; la ventana se resetea a las 11:00 (marca de la derecha).">
+        <span class="tl-band"><b>ventana rodante · 5 h</b></span>
+        <span class="tl-dot start" aria-hidden="true"></span>
+        <span class="tl-dot end" aria-hidden="true"></span>
+      </div>
+      <div class="tl-ticks" aria-hidden="true">
+        <span>6:00</span><span>7:00</span><span>8:00</span><span>9:00</span><span>10:00</span><span>11:00</span>
+      </div>
+    </div>
+
+    <ul class="caveats" data-reveal aria-label="Salvedades del modelo del ping de las 6am">
+      <li>Es mecánica de <strong>suscripción</strong>, no de la API.</li>
+      <li>Los <strong>topes semanales</strong> van aparte de la ventana de 5 h.</li>
+      <li>Es un <strong>modelo mental</strong> de cómo se comporta, no un número garantizado por el proveedor.</li>
+    </ul>
+
+    <h3 data-reveal><span class="h-num">4.2</span>Tres disciplinas de sesión</h3>
+    <ul class="disc-grid" data-reveal aria-label="Tres disciplinas de higiene de sesión">
+      <li class="disc">
+        <p class="disc-title"><code>/compact</code> con instrucción <span class="badge">plan A</span></p>
+        <p>Compactar a mano, <strong>guiando qué conservar</strong>, es mejor que esperar al <strong>autocompact al 75 %</strong>: ese es el airbag, no el plan A.</p>
+      </li>
+      <li class="disc">
+        <p class="disc-title"><code>opus[1m]</code> <span class="badge">solo si no cabe</span></p>
+        <p>La ventana de <strong>1 M</strong> se usa <strong>solo cuando el contexto no cabe</strong>, no para el trabajo rutinario.</p>
+      </li>
+      <li class="disc">
+        <p class="disc-title">Paralelizar <span class="badge">independientes</span></p>
+        <p>Solo workstreams <strong>independientes</strong>; los subagentes devuelven <strong>rutas y conclusiones</strong>, no vuelcan su contexto entero de vuelta.</p>
+      </li>
+    </ul>
+  </section>
+  <!-- /BUILD-C:RUTINA -->
+
+  <!-- BUILD-D:SINTESIS -->
+  <section id="sintesis" class="wrap" aria-label="Síntesis">
+    <header class="sec-head" data-reveal>
+      <span class="sec-num" aria-hidden="true">05</span>
+      <div>
+        <span class="kicker">Síntesis</span>
+        <h2>Una sola filosofía</h2>
+      </div>
+    </header>
+
+    <p class="sec-lead" data-reveal>
+      Las tres piezas no son tres herramientas sueltas: son una misma idea vista desde tres ángulos.
+      <strong>El método dice qué hacer, Sentinel qué se permite y Headroom cuánto cuesta.</strong>
+    </p>
+
+    <ul class="synth-trio" data-reveal aria-label="Las tres piezas de una misma filosofía">
+      <li class="acc-m">
+        <p class="st-name">método · superpowers</p>
+        <p class="st-role"><strong>Qué hacer.</strong> El operating loop compone las skills en brainstorm → plan → execute → verify.</p>
+      </li>
+      <li class="acc-g">
+        <p class="st-name">Sentinel</p>
+        <p class="st-role"><strong>Qué se permite.</strong> La puerta que bloquea lo catastrófico sin estorbar el flujo.</p>
+      </li>
+      <li class="acc-b">
+        <p class="st-name">Headroom</p>
+        <p class="st-role"><strong>Cuánto cuesta.</strong> La factura en tokens y dólares, medida sin inflarla.</p>
+      </li>
+    </ul>
+
+    <aside class="callout" data-reveal aria-label="La idea que las une">
+      <h4>La idea que las une</h4>
+      <p>
+        <strong>Fail-open donde importa el flujo, medición honesta donde importa la confianza.</strong>
+        Sentinel deja pasar si falla —para no romper el flujo—; Headroom mide su propio mérito sin inflarlo
+        —para no romper la confianza—; y el método verifica con evidencia, no con afirmaciones.
+      </p>
+    </aside>
+
+    <h3 data-reveal><span class="h-num">5.1</span>Mejoras honestas</h3>
+    <p class="sec-lead" style="margin-bottom:0" data-reveal>
+      Un backlog abierto, no una lista de fracasos: lo que aún no está y sé que debería estar.
+    </p>
+    <ul class="backlog" data-reveal aria-label="Backlog abierto de mejoras pendientes">
+      <li><strong>Backup remoto de <code>~/.claude</code></strong> — es el único riesgo catastrófico: máquina de un solo disco; hoy no hay copia off-site.</li>
+      <li><strong>Medir si Headroom rompe el prompt-caching</strong> — justificar el SPOF (un proxy en el camino) con números, o quitarlo.</li>
+      <li><strong>Adelgazar <code>CLAUDE.md</code></strong> — el fichero de instrucciones ha crecido; menos es más.</li>
+      <li><strong>Cerrar los planes SDD abiertos</strong> — Task 3 (decisión de hooks) y el checkpoint R1 de Task 4 siguen pendientes.</li>
+      <li><strong>Formalizar el uso de git worktrees</strong> para el aislamiento de ramas.</li>
+      <li><strong>Higiene de la config de agentes</strong> — revisar el tiering de <code>planner</code> y el uso de <code>subagent_type="Explore"</code>.</li>
+      <li><strong>Rotar la key de Perplexity</strong> — pendiente.</li>
+    </ul>
+  </section>
+  <!-- /BUILD-D:SINTESIS -->
+
+  <!-- BUILD-D:VERIFICALO -->
+  <section id="verificalo" class="wrap" aria-label="Verifícalo tú mismo">
+    <header class="sec-head" data-reveal>
+      <span class="sec-num" aria-hidden="true">06</span>
+      <div>
+        <span class="kicker">Verifícalo</span>
+        <h2>Verifícalo tú mismo</h2>
+      </div>
+    </header>
+
+    <p class="sec-lead" data-reveal>
+      Cada cifra de esta página sale de un comando que puedes ejecutar en esta máquina. Nada de folletos: la fuente es reproducible.
+    </p>
+
+    <aside class="snapshot" data-reveal aria-label="Aviso: cifras congeladas y datos vivos">
+      <h4>Cifras congeladas en el snapshot del 23 jul 2026</h4>
+      <p>
+        El <strong>audit log de Sentinel</strong> y el <strong>proxy de Headroom</strong> son vivos: al ejecutar
+        estos comandos hoy verás valores <strong>iguales o mayores</strong> — esa deriva al alza es, precisamente,
+        la medición honesta.
+      </p>
+    </aside>
+
+    <h3 data-reveal><span class="h-num">6.1</span>Cifra → fuente → comando</h3>
+    <div class="table-scroll" data-reveal tabindex="0" role="region" aria-label="Tabla de cifra, fuente y comando reproducible (desplazable)">
+      <table class="data-table">
+        <caption class="mono" style="text-align:left;padding:12px 16px 0;font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)">Cada cifra, su fuente y el comando exacto que la produce</caption>
+        <thead>
+          <tr><th scope="col">Cifra (snapshot)</th><th scope="col">Fuente</th><th scope="col">Comando</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="cifra">216 eventos</td><td>audit log</td><td><code class="cmd">wc -l ~/.claude/audit-logs/sentinel.jsonl</code></td></tr>
+          <tr><td class="cifra">204 DENY</td><td>audit log</td><td><code class="cmd">grep -c '"deny"' ~/.claude/audit-logs/sentinel.jsonl</code></td></tr>
+          <tr><td class="cifra">207 comandos bloqueados</td><td>log de bloqueos</td><td><code class="cmd">wc -l ~/.claude/audit-logs/blocked-commands.log</code></td></tr>
+          <tr><td class="cifra">57,3&nbsp;M tokens comprimidos</td><td>proxy Headroom</td><td><code class="cmd">jq .lifetime.tokens_saved ~/.headroom/proxy_savings.json</code></td></tr>
+          <tr><td class="cifra">$231,71 propio · $1.852,87 caché</td><td>proxy Headroom</td><td><code class="cmd">headroom_stats</code> · o <code class="cmd">jq .lifetime ~/.headroom/proxy_savings.json</code></td></tr>
+          <tr><td class="cifra">proxy vivo (v0.32.1)</td><td>endpoint de salud</td><td><code class="cmd">curl -s 127.0.0.1:8787/readyz</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <!-- /BUILD-D:VERIFICALO -->
+</main>
+<!-- BUILD-D:FOOTER -->
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid" data-reveal>
+      <div>
+        <h4>Generado</h4>
+        <ul>
+          <li><strong>23 de julio de 2026</strong></li>
+          <li>datos reales de esta máquina</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Fuentes</h4>
+        <ul>
+          <li><code>~/.claude/audit-logs/</code></li>
+          <li><code>~/.headroom/proxy_savings.json</code></li>
+          <li><code>~/.claude/.superpowers/sdd/</code></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Licencias</h4>
+        <ul>
+          <li>Sentinel · <strong>MIT</strong></li>
+          <li>Headroom · <strong>Apache-2.0</strong></li>
+          <li>superpowers (plugin) · <strong>v6.1.1</strong></li>
+        </ul>
+      </div>
+    </div>
+    <p class="foot-signoff" data-reveal>Sin cifras ilustrativas: si algo aquí no lo puedes reproducir con un comando en esta máquina, sobra.</p>
+  </div>
+</footer>
+<!-- /BUILD-D:FOOTER -->
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- theme toggle (functional now) ---------- */
+  var root = document.documentElement;
+  var toggle = document.getElementById("theme-toggle");
+
+  function syncToggle(theme) {
+    var isDark = theme === "dark";
+    toggle.setAttribute("aria-pressed", String(isDark));
+    toggle.setAttribute("aria-label", isDark ? "Activar tema claro" : "Activar tema oscuro");
+  }
+
+  function setTheme(next) {
+    root.dataset.theme = next;
+    try { localStorage.setItem("theme", next); } catch (e) {}
+    syncToggle(next);
+  }
+
+  syncToggle(root.dataset.theme || "light");
+  toggle.addEventListener("click", function () {
+    setTheme(root.dataset.theme === "dark" ? "light" : "dark");
+  });
+
+  /* ============================================================
+     STUBS — Build D owns page interaction. Do NOT implement here.
+     ============================================================ */
+
+  /* ---------- page interaction: reveal, count-up, bars ---------- */
+  var reduceMQ = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
+  var reduce = !!(reduceMQ && reduceMQ.matches);
+
+  var reveals = [].slice.call(document.querySelectorAll("[data-reveal]"));
+  var counts = [].slice.call(document.querySelectorAll("[data-count]"));
+  var waterfalls = [].slice.call(document.querySelectorAll(".waterfall"));
+
+  function fmt(v, dec) {
+    return v.toLocaleString("de-DE", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  }
+  function finalCount(el) {
+    return fmt(parseFloat(el.dataset.count), parseInt(el.dataset.dec || "0", 10)) + (el.dataset.suffix || "");
+  }
+  function runCount(el) {
+    var target = parseFloat(el.dataset.count);
+    var dec = parseInt(el.dataset.dec || "0", 10);
+    var suffix = el.dataset.suffix || "";
+    var finalText = fmt(target, dec) + suffix;
+    var duration = 950, start = 0;
+    function step(ts) {
+      if (!start) start = ts;
+      var p = Math.min((ts - start) / duration, 1);
+      if (p < 1) {
+        el.textContent = fmt(target * (1 - Math.pow(1 - p, 3)), dec) + suffix;
+        requestAnimationFrame(step);
+      } else {
+        el.textContent = finalText; /* exact es/de fallback string */
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  if (reduce) {
+    /* motion off: numbers to final; reveal + bars already visible via CSS */
+    counts.forEach(function (el) { el.textContent = finalCount(el); });
+  } else if (!("IntersectionObserver" in window)) {
+    /* no observer support: show everything, count instantly */
+    reveals.forEach(function (el) { el.classList.add("in"); });
+    counts.forEach(function (el) { el.textContent = finalCount(el); });
+    waterfalls.forEach(function (el) { el.classList.add("bars-in"); });
+  } else {
+    var io = new IntersectionObserver(function (entries, obs) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var el = entry.target;
+        if (el.hasAttribute("data-count")) {
+          runCount(el);
+        } else {
+          el.classList.add("in");
+          if (el.classList.contains("waterfall")) el.classList.add("bars-in");
+        }
+        obs.unobserve(el);
+      });
+    }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
+
+    reveals.forEach(function (el) { io.observe(el); });
+    counts.forEach(function (el) { io.observe(el); });
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Ingeniería de agentes - el mapa antes del código</title>
+<meta name="description" content="Un primer mapa de cómo se construye un agente de IA de producción: el modelo mental de Karpathy y las capas de ingeniería que hay debajo del prompt. El material que enseño antes de mostrar mi propio setup.">
+<meta property="og:title" content="Ingeniería de agentes - el mapa antes del código">
+<meta property="og:description" content="El prompt ya no es el trabajo: el LLM es la CPU, el contexto es la RAM y la ingeniería de verdad está en la máquina que rodea al modelo.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&display=swap">
+<style>
+  /* ============================================================
+     DESIGN TOKENS - Build 1 (deck "agentes-fundamentos")
+     Sibling of setup-claude-code-definitiva.html: same token scheme,
+     same families, same light/dark discipline. Warm off-white light,
+     warm near-black dark (never pure #000).
+     THIS deck's locked accent: --field (amber/ochre = "fundamentos").
+     --set-* tokens mirror the sibling's accents; declared now,
+     used only in the Build-3 bridge (#puente).
+     ============================================================ */
+  :root {
+    color-scheme: light;
+
+    /* surfaces / ink */
+    --bg: #fbfbf9;
+    --surface: #ffffff;
+    --ink: #1c211e;
+    --muted: #5c6560;
+    --faint: #8a938d;
+    --border: #e2e4de;
+    --hairline: #ebede7;
+
+    /* neutral utility surfaces */
+    --wash: #f1f2ec;
+    --wash-2: #f7f8f4;
+
+    /* LOCKED ACCENT - --field (amber/ochre). AA-verified as text:
+       #8f5e00 -> bg 5.38:1 · wash 4.95:1 · surface 5.57:1 */
+    --field: #8f5e00;
+    --field-ink: #875600;      /* deeper, for links/emphasis (bg 6.03:1) */
+    --field-soft: #faf1dc;     /* soft wash (ink #875600 -> 5.56:1) */
+
+    /* SET tokens (Build-3 bridge only; mirror the sibling deck) */
+    --set-method: #5b46c9;     /* violet  - método */
+    --set-method-soft: #ece9fb;
+    --set-sentinel: #15803d;   /* green   - Sentinel */
+    --set-sentinel-soft: #e9f4ec;
+    --set-headroom: #1d4ed8;   /* blue    - Headroom */
+    --set-headroom-soft: #e9eefb;
+
+    /* families */
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --display: "Newsreader", Georgia, "Times New Roman", serif;
+
+    /* radii */
+    --r-xs: 4px;
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 10px;
+    --r-pill: 999px;
+
+    /* spacing */
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+    --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 64px;
+
+    /* shadows */
+    --shadow-sm: 0 2px 10px -6px rgba(28, 33, 30, 0.25);
+    --shadow-md: 0 10px 30px -18px rgba(28, 33, 30, 0.45);
+
+    /* motion (emil craft) */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+
+    --bg: #181a17;
+    --surface: #212320;
+    --ink: #eceee7;
+    --muted: #a7afa4;
+    --faint: #7d857b;
+    --border: #363a33;
+    --hairline: #2a2d27;
+
+    --wash: #24261f;
+    --wash-2: #26291f;
+
+    /* --field (amber/ochre). AA-verified as text:
+       #e6b45c -> bg 9.21:1 · wash 8.05:1 · surface 8.33:1 */
+    --field: #e6b45c;
+    --field-ink: #eec277;      /* brighter emphasis */
+    --field-soft: #2e2612;     /* soft wash (ink #eec277 -> 9.0:1) */
+
+    --set-method: #a99cf5;
+    --set-method-soft: #241f3d;
+    --set-sentinel: #5fd18a;
+    --set-sentinel-soft: #16281c;
+    --set-headroom: #7ea8ff;
+    --set-headroom-soft: #17203a;
+
+    --shadow-sm: 0 2px 12px -6px rgba(0, 0, 0, 0.6);
+    --shadow-md: 0 14px 34px -18px rgba(0, 0, 0, 0.7);
+  }
+
+  /* ============================================================
+     RESET + BASE TYPOGRAPHY
+     ============================================================ */
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: clamp(16px, 0.4vw + 14px, 18px);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition: background-color 220ms var(--ease-out), color 220ms var(--ease-out);
+  }
+
+  a { color: var(--field-ink); text-decoration-color: color-mix(in srgb, var(--field-ink) 35%, transparent); text-underline-offset: 3px; }
+  @media (hover: hover) { a:hover { text-decoration-color: currentColor; } }
+  :focus-visible { outline: 2px solid var(--field); outline-offset: 3px; border-radius: 2px; }
+
+  h1, h2, h3, h4 { line-height: 1.25; margin: 0 0 0.5em; text-wrap: balance; letter-spacing: -0.015em; }
+  p { margin: 0 0 1em; text-wrap: pretty; }
+
+  code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: var(--wash); border: 1px solid var(--hairline); border-radius: var(--r-xs);
+    padding: 0.08em 0.35em;
+  }
+  .mono { font-family: var(--mono); font-size: 0.88em; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  .wrap { max-width: 1400px; margin: 0 auto; padding-inline: clamp(20px, 4vw, 48px); }
+  .prose { max-width: none; line-height: 1.7; }
+  .prose strong { font-weight: 600; }
+  .prose .field { color: var(--field-ink); font-weight: 600; }
+
+  svg.icon {
+    width: 1em; height: 1em; stroke: currentColor; stroke-width: 1.75;
+    fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
+  }
+
+  /* ---------- skip link ---------- */
+  .skip-link {
+    position: absolute; left: 24px; top: -48px; z-index: 100;
+    background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 0 0 6px 6px;
+    font-size: 0.85rem; text-decoration: none; transition: top 120ms var(--ease-out);
+  }
+  .skip-link:focus { top: 0; }
+
+  /* ============================================================
+     TOP BAR
+     ============================================================ */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar-inner { display: flex; align-items: center; gap: 24px; padding-block: 12px; }
+  .topbar .brand {
+    font-family: var(--mono); font-size: 0.82rem; font-weight: 600;
+    color: var(--ink); text-decoration: none; letter-spacing: 0.01em; white-space: nowrap;
+  }
+  .topbar .brand .sep { color: var(--faint); font-weight: 400; }
+  .topbar nav { margin-left: auto; display: flex; gap: 20px; }
+  .topbar nav a {
+    font-size: 0.78rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); text-decoration: none; padding-block: 2px; touch-action: manipulation;
+    transition: color 160ms var(--ease-out);
+  }
+  @media (hover: hover) { .topbar nav a:hover { color: var(--ink); } }
+
+  .theme-toggle {
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; padding: 0;
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    cursor: pointer; touch-action: manipulation;
+    transition: color 160ms var(--ease-out), border-color 160ms var(--ease-out), background-color 160ms var(--ease-out), transform 120ms var(--ease-out);
+  }
+  @media (hover: hover) { .theme-toggle:hover { color: var(--ink); border-color: var(--faint); background: var(--wash-2); } }
+  .theme-toggle:active { transform: scale(0.97); }
+  .theme-toggle .icon { width: 18px; height: 18px; }
+  .theme-toggle .i-moon { display: none; }
+  .theme-toggle .i-sun { display: block; }
+  :root[data-theme="dark"] .theme-toggle .i-moon { display: block; }
+  :root[data-theme="dark"] .theme-toggle .i-sun { display: none; }
+
+  @media (max-width: 700px) {
+    .topbar-inner { flex-wrap: wrap; row-gap: 4px; }
+    .topbar nav { order: 3; margin-left: 0; flex-basis: 100%; gap: 16px; flex-wrap: wrap; }
+    .theme-toggle { margin-left: auto; }
+  }
+
+  /* ============================================================
+     HERO (movimiento 0 - la tesis). Hero discipline: tight, no
+     trust strip, no facts, no version label, one locked accent.
+     ============================================================ */
+  .hero {
+    position: relative; overflow: hidden;
+    padding-block: clamp(3rem, 8vh, 5.5rem) clamp(2.4rem, 5vh, 3.6rem);
+    background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 6%, transparent) 1.1px, transparent 1.6px);
+    background-size: 24px 24px; background-position: -13px -13px;
+  }
+  .hero::after {
+    content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      linear-gradient(180deg, transparent 44%, var(--bg) 94%),
+      radial-gradient(130% 92% at 82% -30%, color-mix(in srgb, var(--field) 12%, transparent), transparent 60%);
+  }
+  .hero > * { position: relative; z-index: 1; }
+
+  .masthead-rule { display: flex; width: 84px; height: 3px; margin-bottom: 1.7em; border-radius: 2px; overflow: hidden; }
+  .masthead-rule span { flex: 1; background: var(--field); }
+  .masthead-rule span:nth-child(2) { opacity: 0.55; }
+  .masthead-rule span:nth-child(3) { opacity: 0.28; }
+
+  .overline {
+    font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 1.5em;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .overline::before { content: ""; width: 28px; height: 1px; background: var(--ink); flex-shrink: 0; }
+
+  .hero h1 {
+    font-family: var(--display);
+    font-size: clamp(2.3rem, 5.4vw, 4rem);
+    font-weight: 600; letter-spacing: -0.012em; line-height: 1.08;
+    margin-bottom: 0.42em; max-width: none;
+  }
+  .hero h1 em { font-style: italic; font-weight: 500; color: var(--field-ink); }
+
+  .hero .subtitle {
+    font-family: var(--display);
+    font-size: clamp(1.14rem, 1.8vw, 1.42rem);
+    font-weight: 500; font-style: italic;
+    color: var(--ink); line-height: 1.45; margin-bottom: 0.9em; max-width: none;
+  }
+  .hero .subtitle .eq { font-family: var(--mono); font-style: normal; font-size: 0.8em; color: var(--field-ink); }
+
+  .hero .lede { font-size: clamp(1.02rem, 1.2vw, 1.16rem); color: var(--muted); line-height: 1.65; max-width: none; margin-bottom: 2rem; }
+  .hero .lede strong { color: var(--ink); font-weight: 600; }
+
+  .hero .thesis {
+    margin: 0; padding-top: 1.5rem; border-top: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  }
+  .hero .thesis q {
+    font-family: var(--display); font-style: italic; font-weight: 600; quotes: none;
+    font-size: clamp(1.25rem, 2.2vw, 1.65rem); letter-spacing: -0.01em; color: var(--field-ink); line-height: 1.3;
+  }
+  .hero .thesis .attr {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint);
+  }
+
+  /* ============================================================
+     SECTION SCAFFOLD (shared shell, inherited from sibling)
+     ============================================================ */
+  main > section { padding-block: clamp(2.6rem, 5.5vh, 4.2rem); scroll-margin-top: 72px; }
+  main > section + section { border-top: 1px solid var(--border); }
+  main > section:empty { padding-block: 0; border-top: none; }
+
+  .sec-head { display: flex; gap: clamp(16px, 3vw, 34px); margin-bottom: 2rem; align-items: flex-start; }
+  .sec-num {
+    font-family: var(--display); font-size: clamp(2.4rem, 5.4vw, 3.6rem); font-weight: 600;
+    line-height: 0.82; letter-spacing: -0.02em; color: var(--hairline);
+    font-variant-numeric: tabular-nums; flex-shrink: 0;
+  }
+  .sec-head > div { padding-top: 0.15em; }
+  .sec-head .kicker {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+    font-weight: 600; display: block; margin-bottom: 0.7em; color: var(--field);
+  }
+  .sec-head .kicker::before {
+    content: ""; display: block; width: 32px; height: 3px; border-radius: 2px;
+    background: currentColor; margin-bottom: 13px;
+  }
+  .sec-head h2 { font-family: var(--display); font-size: clamp(1.6rem, 3.2vw, 2rem); font-weight: 600; letter-spacing: -0.005em; margin-bottom: 0.2em; }
+  .sec-head .sub { color: var(--muted); margin: 0; max-width: none; }
+
+  h3 { font-size: 1.05rem; font-weight: 650; margin-top: 2.6rem; }
+  h3 .h-num { font-family: var(--mono); font-size: 0.78rem; color: var(--faint); font-weight: 500; margin-right: 0.75em; font-variant-numeric: tabular-nums; }
+
+  .sec-lead { font-size: clamp(1.02rem, 1.1vw, 1.12rem); color: var(--ink); max-width: none; margin: 0 0 2rem; line-height: 1.7; }
+  .sec-lead strong { font-weight: 600; }
+  .sec-lead .field { color: var(--field-ink); font-weight: 600; }
+  .sec-lead .arrows { font-family: var(--mono); font-size: 0.9em; color: var(--field-ink); white-space: nowrap; }
+
+  /* ============================================================
+     #cambio - Karpathy mental model
+     Locked accent: --field only. --set-* stay reserved.
+     ============================================================ */
+
+  /* ---- the CPU/RAM analogy diagram (inline SVG, token-driven) ---- */
+  .kd-wrap {
+    margin: 1.6rem 0 0; border: 1px solid var(--border); border-radius: var(--r-lg);
+    background: var(--wash-2); padding: clamp(16px, 2.6vw, 26px);
+  }
+  .kdiagram { width: 100%; height: auto; display: block; }
+  .kd-frame { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+  .kd-block { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+  .kd-cpu { fill: var(--field-soft); stroke: var(--field); stroke-width: 1.75; }
+  .kd-bus { stroke: var(--field); stroke-width: 2.5; fill: none; }
+  .kd-dot { fill: var(--field); }
+  .kd-title { fill: var(--ink); font-family: var(--display); font-weight: 600; }
+  .kd-eq { fill: var(--field-ink); font-family: var(--mono); font-weight: 600; }
+  .kd-eq-n { fill: var(--muted); font-family: var(--mono); font-weight: 600; }
+  .kd-cap { fill: var(--muted); font-family: var(--sans); }
+  .kd-frame-label { fill: var(--field-ink); font-family: var(--mono); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .kd-note { font-family: var(--mono); fill: var(--muted); }
+
+  /* ---- the 4-step progression ladder (CSS) ---- */
+  .ladder {
+    list-style: none; margin: 1.5rem 0 0; padding: 0;
+    display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px;
+  }
+  .rung {
+    flex: 1 1 190px; min-width: 170px;
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    background: var(--surface); padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 4px;
+    transition: border-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
+  }
+  @media (hover: hover) { .rung:hover { border-color: var(--faint); box-shadow: var(--shadow-sm); } }
+  .rung .step { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+  .rung .name { font-family: var(--display); font-size: 1.12rem; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+  .rung .gloss { font-size: 0.82rem; color: var(--muted); line-height: 1.45; margin: 0; }
+  .rung.peak {
+    border-color: color-mix(in srgb, var(--field) 45%, var(--border));
+    background: color-mix(in srgb, var(--field-soft) 60%, var(--surface));
+  }
+  .rung.peak .step { color: var(--field-ink); }
+  .rung.peak .name { color: var(--field-ink); }
+  .ladder-arrow { align-self: center; color: var(--field); font-family: var(--mono); font-weight: 600; flex: 0 0 auto; }
+  @media (max-width: 760px) {
+    .ladder { flex-direction: column; }
+    .ladder-arrow { transform: rotate(90deg); align-self: flex-start; margin-left: 20px; }
+  }
+
+  .ladder-note {
+    margin: 1.2rem 0 0; font-size: 0.92rem; color: var(--muted); line-height: 1.6; max-width: none;
+  }
+  .ladder-note strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- "por qué le importa" callout (locked --field) ---- */
+  .why {
+    margin-top: 2.6rem;
+    border: 1px solid color-mix(in srgb, var(--field) 30%, var(--border));
+    border-left: 3px solid var(--field);
+    background: var(--field-soft);
+    border-radius: 0 var(--r-lg) var(--r-lg) 0;
+    padding: clamp(18px, 2.6vw, 26px);
+  }
+  .why h4 { font-family: var(--display); font-size: 1.16rem; font-weight: 600; margin: 0 0 8px; color: var(--field-ink); }
+  .why p { margin: 0; color: var(--ink); line-height: 1.65; }
+  .why strong { color: var(--field-ink); font-weight: 600; }
+
+  /* ============================================================
+     BUILD 2 - pillar catalog (#motor 1-3, #capacidades 4-6)
+     A reference catalog: consistent unit rhythm, one distinct
+     diagram per pillar. Locked accent: --field only.
+     ============================================================ */
+  .pillars { margin-top: 2rem; }
+  .pillar { padding-block: clamp(1.9rem, 3.4vw, 2.8rem); }
+  .pillar + .pillar { border-top: 1px solid var(--hairline); }
+  .pillar:first-child { padding-top: 0.5rem; }
+
+  .pillar-head { margin-bottom: 1rem; }
+  .pillar-tag {
+    font-family: var(--mono); font-size: 0.7rem; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--field);
+    display: inline-flex; align-items: center; gap: 9px;
+    font-variant-numeric: tabular-nums;
+  }
+  .pillar-tag::before { content: ""; width: 22px; height: 2px; border-radius: 2px; background: currentColor; }
+  .pillar-term {
+    font-family: var(--display); font-size: clamp(1.3rem, 2.7vw, 1.62rem); font-weight: 600;
+    letter-spacing: -0.01em; color: var(--ink); margin: 0.55em 0 0.1em;
+  }
+  .pillar-es { font-family: var(--display); font-style: italic; font-size: 1rem; color: var(--muted); margin: 0; }
+
+  .pillar-what { color: var(--ink); max-width: none; margin: 0 0 1.5rem; line-height: 1.65; }
+  .pillar-what .field { color: var(--field-ink); font-weight: 600; }
+  .pillar-what strong { font-weight: 600; }
+
+  .pillar-grid {
+    display: grid; gap: clamp(20px, 3.4vw, 40px);
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    align-items: start;
+  }
+  @media (max-width: 840px) { .pillar-grid { grid-template-columns: 1fr; } }
+
+  .dk-label {
+    font-family: var(--mono); font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 0.85rem;
+  }
+  .dk { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+  .dk li { position: relative; padding-left: 1.55rem; color: var(--ink); font-size: 0.95rem; line-height: 1.5; }
+  .dk li::before {
+    content: ""; position: absolute; left: 2px; top: 0.55em; width: 8px; height: 8px;
+    border: 1.5px solid var(--field); border-radius: 2px; background: var(--field-soft);
+  }
+  .dk .k { color: var(--muted); }
+  .dk .arrows { font-family: var(--mono); font-size: 0.86em; color: var(--field-ink); white-space: nowrap; }
+
+  .dia {
+    margin: 0; border: 1px solid var(--border); border-radius: var(--r-lg);
+    background: var(--wash-2); padding: clamp(14px, 2.2vw, 22px);
+  }
+  .dia svg { width: 100%; height: auto; display: block; }
+  .dia figcaption {
+    margin-top: 0.75rem; font-family: var(--mono); font-size: 0.68rem; color: var(--muted);
+    text-align: center; line-height: 1.5; letter-spacing: 0.01em;
+  }
+
+  .pillar-why {
+    margin: 1.6rem 0 0; padding: 0.85rem 1.1rem;
+    border-left: 3px solid var(--field);
+    background: var(--field-soft); border-radius: 0 var(--r-md) var(--r-md) 0;
+    color: var(--ink); font-size: 0.95rem; line-height: 1.6;
+  }
+  .pillar-why .lbl {
+    font-family: var(--mono); font-size: 0.64rem; font-weight: 600; letter-spacing: 0.11em;
+    text-transform: uppercase; color: var(--field-ink); display: block; margin-bottom: 0.25rem;
+  }
+  .pillar-why strong { color: var(--field-ink); font-weight: 600; }
+
+  /* ---- shared pillar-diagram SVG palette (token-driven, light+dark) ---- */
+  .pd-frame { fill: none; stroke: var(--field); stroke-width: 1.75; stroke-dasharray: 6 5; }
+  .pd-box { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+  .pd-box-accent { fill: var(--field-soft); stroke: var(--field); stroke-width: 1.75; }
+  .pd-box-dim { fill: var(--wash); stroke: var(--hairline); stroke-width: 1.5; }
+  .pd-chip { fill: var(--wash-2); stroke: var(--border); stroke-width: 1.25; }
+  .pd-flow { fill: none; stroke: var(--field); stroke-width: 2; }
+  .pd-line { fill: none; stroke: var(--border); stroke-width: 1.5; }
+  .pd-head { fill: var(--field); }
+  .pd-dot { fill: var(--field); }
+  .pd-title { fill: var(--ink); font-family: var(--display); font-weight: 600; }
+  .pd-label { fill: var(--ink); font-family: var(--sans); font-weight: 500; }
+  .pd-chip-tx { fill: var(--ink); font-family: var(--sans); font-weight: 500; }
+  .pd-cap { fill: var(--muted); font-family: var(--sans); }
+  .pd-tag { fill: var(--field-ink); font-family: var(--mono); font-weight: 600; letter-spacing: 0.03em; }
+
+  /* ============================================================
+     FOOTER (Build 3 fills content)
+     ============================================================ */
+  .site-footer { border-top: 1px solid var(--border); padding: 40px 0 64px; color: var(--muted); font-size: 0.85rem; }
+  .site-footer:empty { padding: 0; border-top: none; }
+
+  /* ============================================================
+     BUILD 3 - #confianza extras, #puente bridge, footer content.
+     Pillars 7-10 reuse the Build-2 pillar catalog + .pd-* palette;
+     the ONLY new pillar-diagram class is .pd-deny (a muted "blocked"
+     stroke - never an accent). The setup accents (--set-*) appear
+     exclusively in #puente: the deliberate visual hook to deck 2.
+     ============================================================ */
+
+  /* "blocked / denied" stroke for the guardrails diagram (neutral, never accent) */
+  .pd-deny { fill: none; stroke: var(--muted); stroke-width: 2.5; }
+  .pd-deny-dash { fill: none; stroke: var(--muted); stroke-width: 2; stroke-dasharray: 5 5; }
+
+  /* dashed connector inside diagrams (non-blocking / optional) */
+  .pd-flow-dash { fill: none; stroke: var(--field); stroke-width: 2; stroke-dasharray: 6 5; }
+
+  /* ---------- #puente - the bridge to the setup deck ---------- */
+  .bridge-map {
+    margin: 1.8rem 0 0; padding: 0; list-style: none;
+    display: grid; gap: clamp(14px, 2vw, 20px);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  }
+  .bmap-card {
+    --bm-accent: var(--field);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--bm-accent);
+    background: var(--surface);
+    border-radius: 0 var(--r-lg) var(--r-lg) 0;
+    padding: clamp(16px, 2.2vw, 22px);
+    display: flex; flex-direction: column; gap: 0.6rem;
+    transition: border-color 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+  }
+  @media (hover: hover) {
+    .bmap-card:hover {
+      box-shadow: var(--shadow-sm);
+      border-color: color-mix(in srgb, var(--bm-accent) 42%, var(--border));
+    }
+  }
+  .bmap-card--method   { --bm-accent: var(--set-method); }
+  .bmap-card--sentinel { --bm-accent: var(--set-sentinel); }
+  .bmap-card--headroom { --bm-accent: var(--set-headroom); }
+  .bmap-card--neutral  { --bm-accent: var(--faint); }
+
+  .bmap-name {
+    font-family: var(--display); font-weight: 600; font-size: 1.2rem;
+    letter-spacing: -0.01em; color: var(--bm-accent); line-height: 1.2;
+  }
+  .bmap-card--neutral .bmap-name { color: var(--ink); }
+  .bmap-kind {
+    display: block; margin-top: 0.2rem;
+    font-family: var(--mono); font-size: 0.66rem; font-weight: 500;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted);
+  }
+  .bmap-desc { margin: 0; color: var(--muted); font-size: 0.92rem; line-height: 1.55; }
+  .bmap-pillars {
+    list-style: none; margin: auto 0 0; padding: 0.45rem 0 0;
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .bmap-pillars li {
+    font-family: var(--mono); font-size: 0.7rem; font-weight: 500;
+    color: var(--bm-accent); background: var(--surface);
+    border: 1px solid color-mix(in srgb, var(--bm-accent) 38%, var(--border));
+    border-radius: var(--r-pill); padding: 3px 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .bmap-card--neutral .bmap-pillars li { color: var(--muted); }
+
+  .s-method   { color: var(--set-method);   font-weight: 600; }
+  .s-sentinel { color: var(--set-sentinel); font-weight: 600; }
+  .s-headroom { color: var(--set-headroom); font-weight: 600; }
+
+  .bridge-handoff {
+    margin: 2.2rem 0 0; padding-top: 1.5rem; border-top: 1px solid var(--border);
+    font-family: var(--display); font-style: italic; font-weight: 500;
+    font-size: clamp(1.08rem, 1.8vw, 1.34rem); color: var(--ink);
+    line-height: 1.4; max-width: 58ch;
+  }
+
+  /* ---------- footer content ---------- */
+  .footer-inner { display: flex; flex-direction: column; gap: 0.75rem; max-width: 82ch; }
+  .footer-signoff {
+    font-family: var(--display); font-style: italic; font-weight: 500;
+    font-size: 1.06rem; color: var(--ink); line-height: 1.5; margin: 0;
+  }
+  .footer-attr { margin: 0; color: var(--muted); line-height: 1.6; }
+  .footer-meta {
+    margin: 0.2rem 0 0; font-family: var(--mono); font-size: 0.75rem;
+    letter-spacing: 0.04em; color: var(--muted);
+  }
+
+  /* ============================================================
+     SCROLL REVEAL - convention only (JS-gated). Build 4 owns
+     activation: it adds [data-reveal] to elements + the observer
+     that toggles .in. Nothing carries [data-reveal] yet, so all
+     content is visible now with no revealer running.
+     ============================================================ */
+  @media (prefers-reduced-motion: no-preference) {
+    .js [data-reveal] {
+      opacity: 0; transform: translateY(16px);
+      transition: opacity 480ms var(--ease-out), transform 480ms var(--ease-out);
+    }
+    .js [data-reveal].in { opacity: 1; transform: none; }
+  }
+
+  @media print {
+    .topbar { display: none; }
+    main > section { break-inside: avoid-page; }
+    [data-reveal] { opacity: 1 !important; transform: none !important; }
+  }
+</style>
+<script>
+  /* Anti-FOUC: set theme before first paint (localStorage -> matchMedia). */
+  (function () {
+    try {
+      var stored = localStorage.getItem("theme");
+      var theme = stored === "light" || stored === "dark"
+        ? stored
+        : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+    } catch (e) {
+      document.documentElement.dataset.theme = "light";
+    }
+    document.documentElement.classList.add("js");
+  })();
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Saltar al contenido</a>
+
+<!-- SVG icon sprite (toggle icons now; later builds append their own) -->
+<svg aria-hidden="true" style="position:absolute; width:0; height:0; overflow:hidden;">
+  <defs>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="5.1" y1="5.1" x2="6.9" y2="6.9"/><line x1="17.1" y1="17.1" x2="18.9" y2="18.9"/><line x1="5.1" y1="18.9" x2="6.9" y2="17.1"/><line x1="17.1" y1="6.9" x2="18.9" y2="5.1"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5 A8.5 8.5 0 1 1 9.5 4 A6.6 6.6 0 0 0 20 14.5 Z"/></symbol>
+  </defs>
+</svg>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="#main">ingeniería de agentes <span class="sep">·</span> fundamentos</a>
+    <nav aria-label="Secciones">
+      <a href="#cambio">El cambio</a>
+      <a href="#motor">El motor</a>
+      <a href="#capacidades">Capacidades</a>
+      <a href="#confianza">Confianza</a>
+      <a href="#puente">Mi setup</a>
+    </nav>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Activar tema oscuro">
+      <svg class="icon i-sun" aria-hidden="true"><use href="#i-sun"/></svg>
+      <svg class="icon i-moon" aria-hidden="true"><use href="#i-moon"/></svg>
+    </button>
+  </div>
+</header>
+
+<section class="hero wrap">
+  <div class="masthead-rule" aria-hidden="true"><span></span><span></span><span></span></div>
+  <p class="overline">Fundamentos - antes de ver mi setup</p>
+  <h1>El prompt ya no es el <em>trabajo</em>.</h1>
+  <p class="subtitle">
+    El modelo mental de Karpathy: el LLM es la <span class="eq">CPU</span>, el contexto es la <span class="eq">RAM</span>, y la ingeniería de verdad está en la máquina que rodea al modelo.
+  </p>
+  <p class="lede">
+    Construir un agente de producción son <strong>10 capas de ingeniería</strong>; este es el mapa.
+  </p>
+  <p class="thesis">
+    <q>Design the loop, not the prompt.</q>
+    <span class="attr">principio de la disciplina</span>
+  </p>
+</section>
+
+<main id="main">
+
+  <section id="cambio" class="wrap" aria-label="El cambio de mentalidad">
+    <header class="sec-head" data-reveal>
+      <span class="sec-num" aria-hidden="true">01</span>
+      <div>
+        <span class="kicker">El cambio de mentalidad</span>
+        <h2>Del prompt a la máquina</h2>
+        <p class="sub">Por qué la palabra clave dejó de ser «prompt» y pasó a ser «programa».</p>
+      </div>
+    </header>
+
+    <p class="sec-lead">
+      El salto es de mentalidad: dejamos de perseguir <strong>«el prompt perfecto»</strong> y pasamos a
+      <span class="field">diseñar el programa que rodea al modelo</span>. El prompt sigue ahí, pero es una pieza pequeña
+      dentro de un sistema mucho mayor.
+    </p>
+
+    <h3><span class="h-num">1.1</span>La analogía: el modelo es una CPU</h3>
+    <p class="prose">
+      Karpathy lo resume con una imagen de arquitectura de computadores. El <strong>LLM</strong> es la
+      <span class="field">CPU</span>: potente, pero inerte sin un programa que la dirija. El <strong>contexto</strong> es la
+      <span class="field">RAM</span>: finito, se llena, y hay que gestionarlo con cuidado. Y el <strong>agente</strong> es el
+      programa - el <span class="field">harness</span> que orquesta a los dos y decide qué entra, qué sale y qué se hace.
+    </p>
+
+    <figure class="kd-wrap" data-reveal>
+      <svg class="kdiagram" viewBox="0 0 760 300" role="img"
+           aria-labelledby="kd-title kd-desc" preserveAspectRatio="xMidYMid meet">
+        <title id="kd-title">El agente como una máquina: LLM igual a CPU, contexto igual a RAM</title>
+        <desc id="kd-desc">Un marco rotulado «el agente / harness» contiene dos bloques: a la izquierda el LLM, que equivale a la CPU y no hace nada sin un programa; a la derecha el contexto, que equivale a la RAM, es finito y hay que gestionarlo. Un bus conecta ambos bloques.</desc>
+
+        <!-- frame = el harness -->
+        <text class="kd-frame-label" x="26" y="26" font-size="13">el agente · el harness que orquesta</text>
+        <rect class="kd-frame" x="16" y="40" width="728" height="244" rx="14"/>
+
+        <!-- CPU block (LLM) -->
+        <rect class="kd-cpu" x="66" y="92" width="256" height="120" rx="10"/>
+        <text class="kd-title" x="194" y="142" font-size="34" text-anchor="middle">LLM</text>
+        <text class="kd-eq" x="194" y="176" font-size="16" text-anchor="middle">= CPU</text>
+        <text class="kd-cap" x="194" y="242" font-size="13" text-anchor="middle">potente, inerte sin programa</text>
+
+        <!-- bus -->
+        <line class="kd-bus" x1="322" y1="152" x2="438" y2="152"/>
+        <circle class="kd-dot" cx="322" cy="152" r="4.5"/>
+        <circle class="kd-dot" cx="438" cy="152" r="4.5"/>
+        <text class="kd-note" x="380" y="140" font-size="11" text-anchor="middle">lee / escribe</text>
+
+        <!-- RAM block (contexto) -->
+        <rect class="kd-block" x="438" y="92" width="256" height="120" rx="10"/>
+        <text class="kd-title" x="566" y="140" font-size="28" text-anchor="middle">contexto</text>
+        <text class="kd-eq-n" x="566" y="174" font-size="16" text-anchor="middle">= RAM</text>
+        <text class="kd-cap" x="566" y="242" font-size="13" text-anchor="middle">finito, se llena, se gestiona</text>
+      </svg>
+    </figure>
+
+    <h3><span class="h-num">1.2</span>La escalera de la ingeniería</h3>
+    <p class="sec-lead" style="margin-bottom:1rem">
+      El trabajo real sube por una escalera: <span class="arrows">prompt &rarr; contexto &rarr; harness &rarr; loop</span>.
+      Cada peldaño rodea al anterior y pesa más en el resultado.
+    </p>
+    <ol class="ladder" data-reveal aria-label="La escalera de la ingeniería, de prompt a loop">
+      <li class="rung">
+        <span class="step">Peldaño 1</span>
+        <span class="name">Prompt engineering</span>
+        <p class="gloss">Redactar la instrucción concreta.</p>
+      </li>
+      <li class="ladder-arrow" aria-hidden="true">&rarr;</li>
+      <li class="rung">
+        <span class="step">Peldaño 2</span>
+        <span class="name">Context engineering</span>
+        <p class="gloss">Decidir qué información entra en la RAM y cuándo.</p>
+      </li>
+      <li class="ladder-arrow" aria-hidden="true">&rarr;</li>
+      <li class="rung">
+        <span class="step">Peldaño 3</span>
+        <span class="name">Harness engineering</span>
+        <p class="gloss">Las herramientas, los límites y el andamiaje del programa.</p>
+      </li>
+      <li class="ladder-arrow" aria-hidden="true">&rarr;</li>
+      <li class="rung peak">
+        <span class="step">Peldaño 4</span>
+        <span class="name">Loop engineering</span>
+        <p class="gloss">El bucle que planifica, actúa, verifica y corrige.</p>
+      </li>
+    </ol>
+    <p class="ladder-note">
+      Cuanto más arriba subes en la escalera, <strong>más determina el resultado</strong>. El prompt es solo el primer
+      peldaño: útil, pero el que menos margen deja.
+    </p>
+
+    <aside class="why" data-reveal aria-label="Por qué le importa al responsable">
+      <h4>Por qué le importa</h4>
+      <p>
+        Si el equipo solo optimiza prompts, toca techo rápido. El valor real - y la ventaja difícil de copiar -
+        está en las <strong>capas de ingeniería de abajo</strong>: el contexto, el harness y el bucle que rodean al modelo.
+      </p>
+    </aside>
+  </section>
+
+  <!-- BUILD-2:MOTOR -->
+  <section id="motor" class="wrap" aria-label="El motor">
+    <header class="sec-head" data-reveal>
+      <span class="sec-num" aria-hidden="true">02</span>
+      <div>
+        <span class="kicker">Acto 1 · El motor</span>
+        <h2>El motor: la máquina que rodea al modelo</h2>
+        <p class="sub">Tres capas por debajo del prompt: el entorno, el bucle y el contexto.</p>
+      </div>
+    </header>
+
+    <p class="sec-lead">
+      Antes de darle capacidades al agente hay que construir la <span class="field">máquina que lo ejecuta</span> de forma
+      fiable y previsible. Son tres capas: el <strong>entorno</strong> (harness), el <strong>bucle</strong> y el
+      <strong>contexto</strong>.
+    </p>
+
+    <div class="pillars">
+
+      <!-- PILAR 01 -->
+      <article class="pillar" data-reveal aria-labelledby="p1-term">
+        <header class="pillar-head">
+          <span class="pillar-tag">Pilar 01 / 10</span>
+          <h3 class="pillar-term" id="p1-term">Harness engineering</h3>
+          <p class="pillar-es">Ingeniería del entorno</p>
+        </header>
+        <p class="pillar-what">
+          El <span class="field">andamiaje que rodea al modelo</span> para que corra de forma fiable: reintentos,
+          aislamiento y límites. No cambia lo que el modelo dice, cambia si el sistema aguanta en producción.
+        </p>
+        <div class="pillar-grid">
+          <div>
+            <p class="dk-label">Decisiones clave</p>
+            <ul class="dk">
+              <li>Lógica de reintento y fallback <span class="k">cuando una llamada falla</span></li>
+              <li>Entornos de ejecución en sandbox <span class="k">(aislamiento)</span></li>
+              <li>Rate limiting y control de coste</li>
+              <li>Degradación elegante <span class="k">cuando una herramienta se rompe</span></li>
+            </ul>
+          </div>
+          <figure class="dia">
+            <svg viewBox="0 0 500 290" role="img" aria-labelledby="p1t p1d" preserveAspectRatio="xMidYMid meet">
+              <title id="p1t">El entorno envuelve al modelo</title>
+              <desc id="p1d">Un marco discontinuo rotulado «entorno / harness» rodea una caja central «modelo». La aplicación entra por una flecha hacia el modelo atravesando el entorno. Alrededor del modelo se rotulan cuatro aspectos del entorno: reintento, sandbox, límites y degradación.</desc>
+              <text class="pd-tag" x="120" y="34" font-size="13">entorno · el harness</text>
+              <rect class="pd-frame" x="112" y="44" width="374" height="210" rx="14"/>
+              <rect class="pd-box" x="8" y="124" width="76" height="44" rx="8"/>
+              <text class="pd-label" x="46" y="151" font-size="14" text-anchor="middle">app</text>
+              <line class="pd-flow" x1="84" y1="146" x2="232" y2="146"/>
+              <path class="pd-head" d="M238 146 L228 141 L228 151 Z"/>
+              <rect class="pd-box-accent" x="240" y="118" width="140" height="64" rx="10"/>
+              <text class="pd-title" x="310" y="150" font-size="20" text-anchor="middle">modelo</text>
+              <text class="pd-cap" x="310" y="172" font-size="11" text-anchor="middle">el LLM en ejecución</text>
+              <rect class="pd-dot" x="126" y="74" width="8" height="8" rx="2"/>
+              <text class="pd-label" x="140" y="82" font-size="13">reintento</text>
+              <text class="pd-label" x="470" y="82" font-size="13" text-anchor="end">sandbox</text>
+              <rect class="pd-dot" x="474" y="74" width="8" height="8" rx="2"/>
+              <rect class="pd-dot" x="126" y="224" width="8" height="8" rx="2"/>
+              <text class="pd-label" x="140" y="232" font-size="13">límites</text>
+              <text class="pd-label" x="470" y="232" font-size="13" text-anchor="end">degradación</text>
+              <rect class="pd-dot" x="474" y="224" width="8" height="8" rx="2"/>
+            </svg>
+            <figcaption>El entorno envuelve al modelo: reintentos, aislamiento y límites.</figcaption>
+          </figure>
+        </div>
+        <p class="pillar-why">
+          <span class="lbl">Por qué le importa</span>
+          <strong>Fiabilidad en producción y facturas bajo control:</strong> el sistema no se cae cuando una pieza falla.
+        </p>
+      </article>
+
+      <!-- PILAR 02 -->
+      <article class="pillar" data-reveal aria-labelledby="p2-term">
+        <header class="pillar-head">
+          <span class="pillar-tag">Pilar 02 / 10</span>
+          <h3 class="pillar-term" id="p2-term">Loop engineering</h3>
+          <p class="pillar-es">Ingeniería del bucle</p>
+        </header>
+        <p class="pillar-what">
+          El agente no es una respuesta, es un <span class="field">bucle que razona, actúa y observa</span> hasta cumplir el
+          objetivo. De ahí el principio: «design the loop, not the prompt».
+        </p>
+        <div class="pillar-grid">
+          <div>
+            <p class="dk-label">Decisiones clave</p>
+            <ul class="dk">
+              <li>El ciclo <span class="arrows">razonar &rarr; actuar &rarr; observar</span></li>
+              <li>Condiciones de terminación <span class="k">(cuándo parar)</span></li>
+              <li>Presupuesto máximo de iteraciones <span class="k">(evitar bucles infinitos)</span></li>
+              <li>Detectar y salir de bucles atascados</li>
+            </ul>
+          </div>
+          <figure class="dia">
+            <svg viewBox="0 0 500 290" role="img" aria-labelledby="p2t p2d" preserveAspectRatio="xMidYMid meet">
+              <title id="p2t">El bucle del agente</title>
+              <desc id="p2d">Tres pasos en fila: razonar, actuar y observar. Desde observar baja una flecha a una decisión rotulada «¿seguir?». La rama «parar» va a la entrega final; la rama «seguir» vuelve al primer paso pasando por una guarda que marca el presupuesto máximo de iteraciones.</desc>
+              <rect class="pd-box-accent" x="20" y="36" width="124" height="52" rx="10"/>
+              <text class="pd-title" x="82" y="68" font-size="17" text-anchor="middle">Razonar</text>
+              <rect class="pd-box" x="188" y="36" width="124" height="52" rx="10"/>
+              <text class="pd-title" x="250" y="68" font-size="17" text-anchor="middle">Actuar</text>
+              <rect class="pd-box" x="356" y="36" width="124" height="52" rx="10"/>
+              <text class="pd-title" x="418" y="68" font-size="17" text-anchor="middle">Observar</text>
+              <line class="pd-flow" x1="144" y1="62" x2="182" y2="62"/>
+              <path class="pd-head" d="M188 62 L178 57 L178 67 Z"/>
+              <line class="pd-flow" x1="312" y1="62" x2="350" y2="62"/>
+              <path class="pd-head" d="M356 62 L346 57 L346 67 Z"/>
+              <line class="pd-flow" x1="418" y1="88" x2="418" y2="128"/>
+              <path class="pd-head" d="M418 134 L413 124 L423 124 Z"/>
+              <path class="pd-box-accent" d="M418 134 L446 158 L418 182 L390 158 Z"/>
+              <text class="pd-tag" x="418" y="162" font-size="11" text-anchor="middle">¿seguir?</text>
+              <line class="pd-flow" x1="418" y1="182" x2="418" y2="224"/>
+              <path class="pd-head" d="M418 230 L413 220 L423 220 Z"/>
+              <text class="pd-tag" x="430" y="208" font-size="11">parar</text>
+              <rect class="pd-box" x="358" y="230" width="120" height="42" rx="8"/>
+              <text class="pd-label" x="418" y="256" font-size="14" text-anchor="middle">entrega</text>
+              <path class="pd-flow" d="M390 158 H82 V90"/>
+              <path class="pd-head" d="M82 90 L77 100 L87 100 Z"/>
+              <text class="pd-tag" x="90" y="118" font-size="11">seguir</text>
+              <rect class="pd-chip" x="138" y="145" width="204" height="26" rx="13"/>
+              <text class="pd-tag" x="240" y="162" font-size="11" text-anchor="middle">presupuesto: máx. iteraciones</text>
+            </svg>
+            <figcaption>Razonar, actuar, observar; un presupuesto acota las iteraciones.</figcaption>
+          </figure>
+        </div>
+        <p class="pillar-why">
+          <span class="lbl">Por qué le importa</span>
+          <strong>Previsibilidad y coste acotado:</strong> sin bucles infinitos que queman dinero, y sabiendo cuándo termina.
+        </p>
+      </article>
+
+      <!-- PILAR 03 -->
+      <article class="pillar" data-reveal aria-labelledby="p3-term">
+        <header class="pillar-head">
+          <span class="pillar-tag">Pilar 03 / 10</span>
+          <h3 class="pillar-term" id="p3-term">Context engineering</h3>
+          <p class="pillar-es">Ingeniería del contexto</p>
+        </header>
+        <p class="pillar-what">
+          Decidir <span class="field">qué información entra en la ventana</span> del modelo y qué se recupera bajo demanda.
+          La ventana es finita: todo lo que entra compite por el mismo espacio.
+        </p>
+        <div class="pillar-grid">
+          <div>
+            <p class="dk-label">Decisiones clave</p>
+            <ul class="dk">
+              <li>Qué va en la ventana <span class="k">vs qué se recupera</span></li>
+              <li>Compresión y resumen del historial</li>
+              <li>«Context rot»: <span class="k">por qué los contextos largos se degradan</span></li>
+              <li>Priorizar lo reciente <span class="k">vs lo relevante</span></li>
+            </ul>
+          </div>
+          <figure class="dia">
+            <svg viewBox="0 0 500 300" role="img" aria-labelledby="p3t p3d" preserveAspectRatio="xMidYMid meet">
+              <title id="p3t">Qué entra en la ventana del modelo</title>
+              <desc id="p3d">Cuatro fuentes a la izquierda (instrucciones, datos, historial y recuperados) confluyen mediante flechas en una ventana central del modelo, marcada como finita. De la ventana sale una flecha hacia la respuesta.</desc>
+              <rect class="pd-chip" x="10" y="34" width="134" height="42" rx="8"/>
+              <text class="pd-chip-tx" x="77" y="60" font-size="13" text-anchor="middle">instrucciones</text>
+              <rect class="pd-chip" x="10" y="94" width="134" height="42" rx="8"/>
+              <text class="pd-chip-tx" x="77" y="120" font-size="13" text-anchor="middle">datos</text>
+              <rect class="pd-chip" x="10" y="154" width="134" height="42" rx="8"/>
+              <text class="pd-chip-tx" x="77" y="180" font-size="13" text-anchor="middle">historial</text>
+              <rect class="pd-chip" x="10" y="214" width="134" height="42" rx="8"/>
+              <text class="pd-chip-tx" x="77" y="240" font-size="13" text-anchor="middle">recuperados</text>
+              <line class="pd-flow" x1="144" y1="55" x2="208" y2="118"/>
+              <path class="pd-head" d="M214 121 L204 118 L207 111 Z"/>
+              <line class="pd-flow" x1="144" y1="115" x2="208" y2="140"/>
+              <path class="pd-head" d="M214 142 L204 141 L205 133 Z"/>
+              <line class="pd-flow" x1="144" y1="175" x2="208" y2="166"/>
+              <path class="pd-head" d="M214 164 L205 167 L205 159 Z"/>
+              <line class="pd-flow" x1="144" y1="235" x2="208" y2="190"/>
+              <path class="pd-head" d="M214 187 L205 190 L207 197 Z"/>
+              <rect class="pd-box-accent" x="214" y="96" width="150" height="112" rx="10"/>
+              <text class="pd-title" x="289" y="138" font-size="20" text-anchor="middle">ventana</text>
+              <text class="pd-cap" x="289" y="160" font-size="12" text-anchor="middle">del modelo</text>
+              <text class="pd-tag" x="289" y="188" font-size="11" text-anchor="middle">finita · se llena</text>
+              <line class="pd-flow" x1="364" y1="152" x2="408" y2="152"/>
+              <path class="pd-head" d="M414 152 L404 147 L404 157 Z"/>
+              <rect class="pd-box" x="414" y="128" width="80" height="48" rx="8"/>
+              <text class="pd-label" x="454" y="156" font-size="13" text-anchor="middle">respuesta</text>
+            </svg>
+            <figcaption>Cuatro fuentes confluyen en una ventana finita.</figcaption>
+          </figure>
+        </div>
+        <p class="pillar-why">
+          <span class="lbl">Por qué le importa</span>
+          <strong>Calidad de las respuestas y coste por llamada:</strong> y no degradarse en las tareas largas.
+        </p>
+      </article>
+
+    </div>
+  </section>
+  <!-- /BUILD-2:MOTOR -->
+  <!-- BUILD-2:CAPACIDADES -->
+  <section id="capacidades" class="wrap" aria-label="Las capacidades">
+    <header class="sec-head" data-reveal>
+      <span class="sec-num" aria-hidden="true">03</span>
+      <div>
+        <span class="kicker">Acto 2 · Las capacidades</span>
+        <h2>Las capacidades: qué puede hacer el agente</h2>
+        <p class="sub">Las herramientas que usa, la memoria que conserva y cómo se coordina.</p>
+      </div>
+    </header>
+
+    <p class="sec-lead">
+      Con la máquina en pie, se le dan <span class="field">capacidades</span>: las herramientas que usa, la memoria que
+      conserva y cómo se coordina cuando el trabajo es grande.
+    </p>
+
+    <div class="pillars">
+
+      <!-- PILAR 04 -->
+      <article class="pillar" data-reveal aria-labelledby="p4-term">
+        <header class="pillar-head">
+          <span class="pillar-tag">Pilar 04 / 10</span>
+          <h3 class="pillar-term" id="p4-term">Tool design</h3>
+          <p class="pillar-es">Diseño de herramientas</p>
+        </header>
+        <p class="pillar-what">
+          Las <span class="field">herramientas que el modelo puede llamar</span>; su calidad decide si el agente acierta o se
+          pierde. Una buena herramienta se explica sola y falla con mensajes útiles.
+        </p>
+        <div class="pillar-grid">
+          <div>
+            <p class="dk-label">Decisiones clave</p>
+            <ul class="dk">
+              <li>Nombres y descripciones que el modelo entienda</li>
+              <li>Esquemas de entrada estrictos <span class="k">con validación</span></li>
+              <li>Mensajes de error que ayuden al agente a <span class="k">autocorregirse</span></li>
+              <li>Pocas herramientas buenas <span class="k">mejor que muchas que se solapan</span></li>
+            </ul>
+          </div>
+          <figure class="dia">
+            <svg viewBox="0 0 500 300" role="img" aria-labelledby="p4t p4d" preserveAspectRatio="xMidYMid meet">
+              <title id="p4t">La ficha de una herramienta bien diseñada</title>
+              <desc id="p4d">A la izquierda, la ficha de una herramienta con cuatro campos: nombre, descripción, esquema de entrada y mensaje de error. A la derecha, un contraste: arriba dos herramientas pocas y bien separadas; abajo, muchas herramientas solapadas que se pisan.</desc>
+              <rect class="pd-box" x="10" y="40" width="248" height="220" rx="10"/>
+              <text class="pd-tag" x="26" y="66" font-size="12">ficha de herramienta</text>
+              <line class="pd-line" x1="24" y1="78" x2="244" y2="78"/>
+              <rect class="pd-dot" x="26" y="97" width="8" height="8" rx="2"/>
+              <text class="pd-tag" x="44" y="105" font-size="12">nombre</text>
+              <text class="pd-cap" x="44" y="122" font-size="12">claro y único</text>
+              <rect class="pd-dot" x="26" y="139" width="8" height="8" rx="2"/>
+              <text class="pd-tag" x="44" y="147" font-size="12">descripción</text>
+              <text class="pd-cap" x="44" y="164" font-size="12">sin ambigüedad</text>
+              <rect class="pd-dot" x="26" y="181" width="8" height="8" rx="2"/>
+              <text class="pd-tag" x="44" y="189" font-size="12">esquema de entrada</text>
+              <text class="pd-cap" x="44" y="206" font-size="12">estricto + validación</text>
+              <rect class="pd-dot" x="26" y="223" width="8" height="8" rx="2"/>
+              <text class="pd-tag" x="44" y="231" font-size="12">mensaje de error</text>
+              <text class="pd-cap" x="44" y="248" font-size="12">guía la autocorrección</text>
+              <text class="pd-tag" x="300" y="60" font-size="12">pocas y buenas</text>
+              <rect class="pd-box-accent" x="300" y="72" width="84" height="42" rx="8"/>
+              <path class="pd-flow" d="M330 94 l7 8 l12 -17"/>
+              <rect class="pd-box-accent" x="396" y="72" width="84" height="42" rx="8"/>
+              <path class="pd-flow" d="M426 94 l7 8 l12 -17"/>
+              <text class="pd-tag" x="300" y="168" font-size="12">muchas solapadas</text>
+              <rect class="pd-box-dim" x="300" y="184" width="96" height="30" rx="6"/>
+              <rect class="pd-box-dim" x="322" y="196" width="96" height="30" rx="6"/>
+              <rect class="pd-box-dim" x="344" y="208" width="96" height="30" rx="6"/>
+              <rect class="pd-box-dim" x="366" y="220" width="96" height="30" rx="6"/>
+            </svg>
+            <figcaption>Pocas herramientas buenas frente a muchas que se solapan.</figcaption>
+          </figure>
+        </div>
+        <p class="pillar-why">
+          <span class="lbl">Por qué le importa</span>
+          <strong>Menos fallos y menos mantenimiento:</strong> el agente se corrige solo en vez de atascarse.
+        </p>
+      </article>
+
+      <!-- PILAR 05 -->
+      <article class="pillar" data-reveal aria-labelledby="p5-term">
+        <header class="pillar-head">
+          <span class="pillar-tag">Pilar 05 / 10</span>
+          <h3 class="pillar-term" id="p5-term">Memory architecture</h3>
+          <p class="pillar-es">Arquitectura de memoria</p>
+        </header>
+        <p class="pillar-what">
+          Qué recuerda el agente <span class="field">en la sesión</span> (corto plazo) y qué guarda
+          <span class="field">entre sesiones</span> (largo plazo). Lo primero vive en el contexto; lo segundo se almacena.
+        </p>
+        <div class="pillar-grid">
+          <div>
+            <p class="dk-label">Decisiones clave</p>
+            <ul class="dk">
+              <li>Corto plazo <span class="k">(en contexto)</span> vs largo plazo <span class="k">(almacenada)</span></li>
+              <li>Qué persistir entre sesiones y qué no</li>
+              <li>Estrategias de recuperación <span class="k">(búsqueda, embeddings, ficheros)</span></li>
+              <li>Escrituras de memoria: <span class="k">cuándo el agente actualiza sus notas</span></li>
+            </ul>
+          </div>
+          <figure class="dia">
+            <svg viewBox="0 0 500 290" role="img" aria-labelledby="p5t p5d" preserveAspectRatio="xMidYMid meet">
+              <title id="p5t">Memoria de corto y largo plazo</title>
+              <desc id="p5d">Dos bloques. A la izquierda, el corto plazo (working) que vive en el contexto y se descarta al cerrar. A la derecha, el largo plazo almacenado, con tres tipos: episódica, semántica y procedimental. Una flecha doble entre ambos indica persistir y recuperar.</desc>
+              <rect class="pd-box" x="12" y="54" width="210" height="190" rx="10"/>
+              <text class="pd-tag" x="28" y="80" font-size="12">corto plazo · working</text>
+              <line class="pd-line" x1="26" y1="92" x2="208" y2="92"/>
+              <rect class="pd-chip" x="32" y="110" width="170" height="44" rx="8"/>
+              <text class="pd-chip-tx" x="117" y="137" font-size="13" text-anchor="middle">en el contexto</text>
+              <text class="pd-cap" x="117" y="190" font-size="12" text-anchor="middle">se descarta al cerrar</text>
+              <rect class="pd-box-accent" x="278" y="54" width="210" height="190" rx="10"/>
+              <text class="pd-tag" x="294" y="80" font-size="12">largo plazo · almacenada</text>
+              <line class="pd-line" x1="292" y1="92" x2="474" y2="92"/>
+              <rect class="pd-chip" x="294" y="104" width="178" height="38" rx="8"/>
+              <text class="pd-chip-tx" x="383" y="128" font-size="13" text-anchor="middle">episódica</text>
+              <rect class="pd-chip" x="294" y="150" width="178" height="38" rx="8"/>
+              <text class="pd-chip-tx" x="383" y="174" font-size="13" text-anchor="middle">semántica</text>
+              <rect class="pd-chip" x="294" y="196" width="178" height="38" rx="8"/>
+              <text class="pd-chip-tx" x="383" y="220" font-size="13" text-anchor="middle">procedimental</text>
+              <line class="pd-flow" x1="234" y1="150" x2="266" y2="150"/>
+              <path class="pd-head" d="M272 150 L262 145 L262 155 Z"/>
+              <path class="pd-head" d="M228 150 L238 145 L238 155 Z"/>
+            </svg>
+            <figcaption>Corto plazo en el contexto; largo plazo almacenado: episódica, semántica y procedimental.</figcaption>
+          </figure>
+        </div>
+        <p class="pillar-why">
+          <span class="lbl">Por qué le importa</span>
+          <strong>Continuidad y personalización:</strong> y no re-pagar el mismo contexto una y otra vez.
+        </p>
+      </article>
+
+      <!-- PILAR 06 -->
+      <article class="pillar" data-reveal aria-labelledby="p6-term">
+        <header class="pillar-head">
+          <span class="pillar-tag">Pilar 06 / 10</span>
+          <h3 class="pillar-term" id="p6-term">Orchestration patterns</h3>
+          <p class="pillar-es">Patrones de orquestación</p>
+        </header>
+        <p class="pillar-what">
+          Un solo agente o <span class="field">varios coordinados</span>; cómo se reparten y enrutan el trabajo. Más piezas
+          no siempre es mejor: a veces un buen agente basta.
+        </p>
+        <div class="pillar-grid">
+          <div>
+            <p class="dk-label">Decisiones clave</p>
+            <ul class="dk">
+              <li>Un agente <span class="k">vs orquestador-trabajadores</span></li>
+              <li>Handoffs y enrutado entre especialistas</li>
+              <li>Ejecución paralela <span class="k">vs secuencial</span></li>
+              <li>Cuándo un buen agente supera a un sistema multi-agente</li>
+            </ul>
+          </div>
+          <figure class="dia">
+            <svg viewBox="0 0 500 300" role="img" aria-labelledby="p6t p6d" preserveAspectRatio="xMidYMid meet">
+              <title id="p6t">Orquestador y especialistas</title>
+              <desc id="p6d">Un orquestador en la parte superior hace triage y enruta el trabajo con flechas hacia tres especialistas. Cada especialista devuelve su resultado con una flecha hacia una caja «resultado» inferior. Una nota recuerda que a veces un solo agente basta.</desc>
+              <rect class="pd-box-accent" x="180" y="24" width="140" height="52" rx="10"/>
+              <text class="pd-title" x="250" y="48" font-size="16" text-anchor="middle">orquestador</text>
+              <text class="pd-tag" x="250" y="66" font-size="10" text-anchor="middle">triage · enrutado</text>
+              <line class="pd-flow" x1="250" y1="76" x2="92" y2="130"/>
+              <path class="pd-head" d="M90 136 L86 126 L96 127 Z"/>
+              <line class="pd-flow" x1="250" y1="76" x2="250" y2="130"/>
+              <path class="pd-head" d="M250 136 L245 126 L255 126 Z"/>
+              <line class="pd-flow" x1="250" y1="76" x2="408" y2="130"/>
+              <path class="pd-head" d="M410 136 L404 127 L414 126 Z"/>
+              <rect class="pd-box" x="24" y="138" width="132" height="56" rx="10"/>
+              <text class="pd-label" x="90" y="162" font-size="13" text-anchor="middle">Especialista A</text>
+              <text class="pd-cap" x="90" y="180" font-size="11" text-anchor="middle">analizar</text>
+              <rect class="pd-box" x="184" y="138" width="132" height="56" rx="10"/>
+              <text class="pd-label" x="250" y="162" font-size="13" text-anchor="middle">Especialista B</text>
+              <text class="pd-cap" x="250" y="180" font-size="11" text-anchor="middle">ejecutar</text>
+              <rect class="pd-box" x="344" y="138" width="132" height="56" rx="10"/>
+              <text class="pd-label" x="410" y="162" font-size="13" text-anchor="middle">Especialista C</text>
+              <text class="pd-cap" x="410" y="180" font-size="11" text-anchor="middle">redactar</text>
+              <line class="pd-flow" x1="90" y1="194" x2="206" y2="236"/>
+              <path class="pd-head" d="M212 238 L202 238 L205 231 Z"/>
+              <line class="pd-flow" x1="250" y1="194" x2="250" y2="234"/>
+              <path class="pd-head" d="M250 240 L245 230 L255 230 Z"/>
+              <line class="pd-flow" x1="410" y1="194" x2="294" y2="236"/>
+              <path class="pd-head" d="M288 238 L298 238 L295 231 Z"/>
+              <rect class="pd-box" x="180" y="240" width="140" height="48" rx="10"/>
+              <text class="pd-title" x="250" y="269" font-size="15" text-anchor="middle">resultado</text>
+              <text class="pd-tag" x="12" y="292" font-size="11">* a veces un solo agente basta</text>
+            </svg>
+            <figcaption>El orquestador reparte el trabajo y recoge los resultados.</figcaption>
+          </figure>
+        </div>
+        <p class="pillar-why">
+          <span class="lbl">Por qué le importa</span>
+          <strong>Velocidad,</strong> y saber cuándo la complejidad multi-agente compensa frente a mantenerlo simple.
+        </p>
+      </article>
+
+    </div>
+  </section>
+  <!-- /BUILD-2:CAPACIDADES -->
+  <!-- BUILD-3:CONFIANZA -->
+  <section id="confianza" class="wrap" aria-label="La confianza">
+    <header class="sec-head" data-reveal>
+      <span class="sec-num" aria-hidden="true">04</span>
+      <div>
+        <span class="kicker">Acto 3 · La confianza</span>
+        <h2>La confianza: poder soltar el agente</h2>
+        <p class="sub">Las cuatro capas que deciden si te fías del agente en producción.</p>
+      </div>
+    </header>
+
+    <p class="sec-lead">
+      Una vez el agente tiene un <strong>motor</strong> y <strong>capacidades</strong>, queda la pregunta que lo decide
+      todo: <span class="field">¿puedes fiarte de él en producción?</span> Cuatro capas construyen esa confianza: los
+      límites, la evaluación, el humano y la observabilidad.
+    </p>
+
+    <div class="pillars">
+
+      <!-- PILAR 07 -->
+      <article class="pillar" data-reveal aria-labelledby="p7-term">
+        <header class="pillar-head">
+          <span class="pillar-tag">Pilar 07 / 10</span>
+          <h3 class="pillar-term" id="p7-term">Guardrails &amp; permissions</h3>
+          <p class="pillar-es">Barreras y permisos</p>
+        </header>
+        <p class="pillar-what">
+          Una <span class="field">capa determinista entre el agente y el mundo</span> que decide qué puede tocar y qué no.
+          No es el modelo quien se autolimita: son reglas fijas que se cumplen siempre.
+        </p>
+        <div class="pillar-grid">
+          <div>
+            <p class="dk-label">Decisiones clave</p>
+            <ul class="dk">
+              <li>Acotar el acceso a herramientas <span class="k">por tarea</span></li>
+              <li>Permisos de lectura <span class="k">vs escritura vs ejecución</span></li>
+              <li>Filtrado y validación de entrada y salida</li>
+              <li>Radio de impacto <span class="k">(blast radius): limitar cuánto puede dañar un fallo</span></li>
+            </ul>
+          </div>
+          <figure class="dia">
+            <svg viewBox="0 0 500 300" role="img" aria-labelledby="p7t p7d" preserveAspectRatio="xMidYMid meet">
+              <title id="p7t">Una capa de políticas filtra el acceso del agente</title>
+              <desc id="p7d">El agente, a la izquierda, solo alcanza el mundo a través de un motor de políticas determinista en el centro. Desde ese motor salen tres accesos a la derecha: a servidores MCP y a APIs el acceso se permite; a un tercer destino, canales, el acceso queda bloqueado antes de llegar, marcado con una cruz.</desc>
+              <rect class="pd-box" x="8" y="122" width="94" height="56" rx="10"/>
+              <text class="pd-title" x="55" y="148" font-size="15" text-anchor="middle">agente</text>
+              <text class="pd-cap" x="55" y="166" font-size="10" text-anchor="middle">quiere actuar</text>
+              <line class="pd-flow" x1="102" y1="150" x2="146" y2="150"/>
+              <path class="pd-head" d="M152 150 L142 145 L142 155 Z"/>
+              <rect class="pd-box-accent" x="152" y="104" width="140" height="92" rx="12"/>
+              <text class="pd-title" x="222" y="140" font-size="17" text-anchor="middle">políticas</text>
+              <text class="pd-cap" x="222" y="160" font-size="11" text-anchor="middle">capa determinista</text>
+              <text class="pd-tag" x="222" y="182" font-size="10" text-anchor="middle">radio de impacto acotado</text>
+              <!-- allow: MCP -->
+              <line class="pd-flow" x1="292" y1="140" x2="368" y2="64"/>
+              <path class="pd-head" d="M372 60 L362 61 L365 70 Z"/>
+              <rect class="pd-box" x="374" y="40" width="118" height="46" rx="8"/>
+              <text class="pd-label" x="433" y="62" font-size="12" text-anchor="middle">MCP servers</text>
+              <text class="pd-cap" x="433" y="78" font-size="10" text-anchor="middle">permitido</text>
+              <!-- allow: APIs -->
+              <line class="pd-flow" x1="292" y1="150" x2="368" y2="150"/>
+              <path class="pd-head" d="M374 150 L364 145 L364 155 Z"/>
+              <rect class="pd-box" x="374" y="127" width="118" height="46" rx="8"/>
+              <text class="pd-label" x="433" y="149" font-size="12" text-anchor="middle">APIs</text>
+              <text class="pd-cap" x="433" y="165" font-size="10" text-anchor="middle">permitido</text>
+              <!-- deny: canales -->
+              <line class="pd-deny-dash" x1="292" y1="160" x2="336" y2="214"/>
+              <path class="pd-deny" d="M348 224 l16 16 M364 224 l-16 16"/>
+              <rect class="pd-box-dim" x="374" y="214" width="118" height="46" rx="8"/>
+              <text class="pd-cap" x="433" y="236" font-size="12" text-anchor="middle">canales</text>
+              <text class="pd-cap" x="433" y="252" font-size="10" text-anchor="middle">bloqueado</text>
+            </svg>
+            <figcaption>El agente solo llega al mundo a través de una capa de reglas que se cumplen siempre.</figcaption>
+          </figure>
+        </div>
+        <p class="pillar-why">
+          <span class="lbl">Por qué le importa</span>
+          <strong>Seguridad y contención:</strong> un error del agente no se convierte en un desastre.
+        </p>
+      </article>
+
+      <!-- PILAR 08 -->
+      <article class="pillar" data-reveal aria-labelledby="p8-term">
+        <header class="pillar-head">
+          <span class="pillar-tag">Pilar 08 / 10</span>
+          <h3 class="pillar-term" id="p8-term">Evals for agents</h3>
+          <p class="pillar-es">Evaluación de agentes</p>
+        </header>
+        <p class="pillar-what">
+          Medir que el agente <span class="field">hace bien el trabajo</span>, no solo que responde algo. Evaluar un agente
+          no es puntuar una respuesta: es juzgar toda la trayectoria hasta el resultado.
+        </p>
+        <div class="pillar-grid">
+          <div>
+            <p class="dk-label">Decisiones clave</p>
+            <ul class="dk">
+              <li>Evals de trayectoria <span class="k">vs de resultado</span></li>
+              <li>Test sets «golden» <span class="k">construidos a partir de fallos reales</span></li>
+              <li>LLM-as-judge: <span class="k">usos y trampas</span></li>
+              <li>Pruebas de regresión <span class="k">tras cada cambio de prompt</span></li>
+            </ul>
+          </div>
+          <figure class="dia">
+            <svg viewBox="0 0 500 300" role="img" aria-labelledby="p8t p8d" preserveAspectRatio="xMidYMid meet">
+              <title id="p8t">Evaluar un single-turn frente a evaluar un agente</title>
+              <desc id="p8d">Arriba, el caso single-turn: un prompt lleva a una respuesta y esta a una nota. Abajo, el caso del agente: una tarea desemboca en una trayectoria de varios pasos (razonar, actuar, observar) y esa trayectoria completa recibe una nota de resultado.</desc>
+              <!-- single-turn row -->
+              <text class="pd-tag" x="10" y="30" font-size="12">single-turn</text>
+              <rect class="pd-box" x="10" y="42" width="116" height="46" rx="9"/>
+              <text class="pd-label" x="68" y="70" font-size="13" text-anchor="middle">prompt</text>
+              <line class="pd-flow" x1="126" y1="65" x2="176" y2="65"/>
+              <path class="pd-head" d="M182 65 L172 60 L172 70 Z"/>
+              <rect class="pd-box" x="184" y="42" width="116" height="46" rx="9"/>
+              <text class="pd-label" x="242" y="70" font-size="13" text-anchor="middle">respuesta</text>
+              <line class="pd-flow" x1="300" y1="65" x2="350" y2="65"/>
+              <path class="pd-head" d="M356 65 L346 60 L346 70 Z"/>
+              <rect class="pd-box-accent" x="358" y="42" width="128" height="46" rx="9"/>
+              <text class="pd-title" x="422" y="70" font-size="14" text-anchor="middle">nota</text>
+              <line class="pd-line" x1="10" y1="118" x2="490" y2="118"/>
+              <!-- agent row -->
+              <text class="pd-tag" x="10" y="152" font-size="12">agente</text>
+              <rect class="pd-box" x="10" y="196" width="96" height="52" rx="9"/>
+              <text class="pd-label" x="58" y="226" font-size="13" text-anchor="middle">tarea</text>
+              <line class="pd-flow" x1="106" y1="222" x2="140" y2="222"/>
+              <path class="pd-head" d="M146 222 L136 217 L136 227 Z"/>
+              <rect class="pd-box-dim" x="148" y="166" width="176" height="112" rx="10"/>
+              <text class="pd-tag" x="164" y="186" font-size="11">trayectoria</text>
+              <rect class="pd-chip" x="162" y="196" width="148" height="24" rx="12"/>
+              <text class="pd-chip-tx" x="236" y="212" font-size="11" text-anchor="middle">razonar</text>
+              <rect class="pd-chip" x="162" y="224" width="148" height="24" rx="12"/>
+              <text class="pd-chip-tx" x="236" y="240" font-size="11" text-anchor="middle">actuar</text>
+              <rect class="pd-chip" x="162" y="252" width="148" height="20" rx="10"/>
+              <text class="pd-chip-tx" x="236" y="267" font-size="11" text-anchor="middle">observar</text>
+              <line class="pd-flow" x1="324" y1="222" x2="358" y2="222"/>
+              <path class="pd-head" d="M364 222 L354 217 L354 227 Z"/>
+              <rect class="pd-box-accent" x="366" y="196" width="120" height="52" rx="9"/>
+              <text class="pd-title" x="426" y="219" font-size="13" text-anchor="middle">nota de</text>
+              <text class="pd-title" x="426" y="236" font-size="13" text-anchor="middle">resultado</text>
+            </svg>
+            <figcaption>El single-turn puntúa la respuesta; el agente puntúa la trayectoria y su resultado.</figcaption>
+          </figure>
+        </div>
+        <p class="pillar-why">
+          <span class="lbl">Por qué le importa</span>
+          <strong>Saber que funciona y cazar regresiones:</strong> calidad que no se degrada con cada cambio.
+        </p>
+      </article>
+
+      <!-- PILAR 09 -->
+      <article class="pillar" data-reveal aria-labelledby="p9-term">
+        <header class="pillar-head">
+          <span class="pillar-tag">Pilar 09 / 10</span>
+          <h3 class="pillar-term" id="p9-term">Human-in-the-loop</h3>
+          <p class="pillar-es">Humano en el bucle</p>
+        </header>
+        <p class="pillar-what">
+          Decidir <span class="field">dónde entra la persona</span>: dentro, encima o fuera del bucle. La cuestión no es si
+          hay humano, sino cuánto interrumpe sin ahogar la autonomía.
+        </p>
+        <div class="pillar-grid">
+          <div>
+            <p class="dk-label">Decisiones clave</p>
+            <ul class="dk">
+              <li>Puertas de aprobación <span class="k">para acciones irreversibles</span></li>
+              <li>Umbrales de confianza <span class="k">para escalar</span></li>
+              <li>Revisión asíncrona <span class="k">vs bloqueante</span></li>
+              <li>Diseñar interrupciones <span class="k">que no maten la autonomía</span></li>
+            </ul>
+          </div>
+          <figure class="dia">
+            <svg viewBox="0 0 500 300" role="img" aria-labelledby="p9t p9d" preserveAspectRatio="xMidYMid meet">
+              <title id="p9t">Los tres modos del humano en el bucle</title>
+              <desc id="p9d">Tres columnas. En «dentro del bucle», una persona aprueba cada paso del agente mediante un enlace de ida y vuelta. En «encima del bucle», la persona supervisa desde arriba con una conexión discontinua que puede intervenir. En «fuera del bucle», solo queda el agente autónomo, sin persona conectada.</desc>
+              <line class="pd-line" x1="166" y1="30" x2="166" y2="278"/>
+              <line class="pd-line" x1="334" y1="30" x2="334" y2="278"/>
+              <!-- col 1: dentro -->
+              <text class="pd-tag" x="83" y="26" font-size="11" text-anchor="middle">dentro del bucle</text>
+              <rect class="pd-box-accent" x="28" y="52" width="110" height="42" rx="9"/>
+              <text class="pd-title" x="83" y="78" font-size="14" text-anchor="middle">persona</text>
+              <line class="pd-flow" x1="76" y1="94" x2="76" y2="152"/>
+              <path class="pd-head" d="M76 158 L71 148 L81 148 Z"/>
+              <line class="pd-flow" x1="90" y1="152" x2="90" y2="94"/>
+              <path class="pd-head" d="M90 88 L85 98 L95 98 Z"/>
+              <rect class="pd-box" x="28" y="158" width="110" height="42" rx="9"/>
+              <text class="pd-label" x="83" y="184" font-size="13" text-anchor="middle">agente</text>
+              <text class="pd-cap" x="83" y="230" font-size="11" text-anchor="middle">aprueba</text>
+              <text class="pd-cap" x="83" y="246" font-size="11" text-anchor="middle">cada paso</text>
+              <!-- col 2: encima -->
+              <text class="pd-tag" x="250" y="26" font-size="11" text-anchor="middle">encima del bucle</text>
+              <rect class="pd-box-accent" x="195" y="52" width="110" height="42" rx="9"/>
+              <text class="pd-title" x="250" y="78" font-size="14" text-anchor="middle">persona</text>
+              <line class="pd-flow-dash" x1="250" y1="94" x2="250" y2="152"/>
+              <path class="pd-head" d="M250 158 L245 148 L255 148 Z"/>
+              <rect class="pd-box" x="195" y="158" width="110" height="42" rx="9"/>
+              <text class="pd-label" x="250" y="184" font-size="13" text-anchor="middle">agente</text>
+              <path class="pd-flow" d="M300 179 a12 12 0 1 1 -3 -8"/>
+              <path class="pd-head" d="M297 171 L299 161 L306 168 Z"/>
+              <text class="pd-cap" x="250" y="230" font-size="11" text-anchor="middle">supervisa</text>
+              <text class="pd-cap" x="250" y="246" font-size="11" text-anchor="middle">puede intervenir</text>
+              <!-- col 3: fuera -->
+              <text class="pd-tag" x="417" y="26" font-size="11" text-anchor="middle">fuera del bucle</text>
+              <rect class="pd-box-dim" x="362" y="52" width="110" height="42" rx="9"/>
+              <text class="pd-cap" x="417" y="78" font-size="12" text-anchor="middle">sin persona</text>
+              <rect class="pd-box-accent" x="362" y="158" width="110" height="42" rx="9"/>
+              <text class="pd-title" x="417" y="184" font-size="13" text-anchor="middle">agente</text>
+              <path class="pd-flow" d="M467 179 a12 12 0 1 1 -3 -8"/>
+              <path class="pd-head" d="M464 171 L466 161 L473 168 Z"/>
+              <text class="pd-cap" x="417" y="230" font-size="11" text-anchor="middle">autónomo</text>
+            </svg>
+            <figcaption>Tres modos: dentro (aprueba cada paso), encima (supervisa) y fuera (autónomo).</figcaption>
+          </figure>
+        </div>
+        <p class="pillar-why">
+          <span class="lbl">Por qué le importa</span>
+          <strong>Control del riesgo en lo irreversible,</strong> sin ahogar la autonomía del agente.
+        </p>
+      </article>
+
+      <!-- PILAR 10 -->
+      <article class="pillar" data-reveal aria-labelledby="p10-term">
+        <header class="pillar-head">
+          <span class="pillar-tag">Pilar 10 / 10</span>
+          <h3 class="pillar-term" id="p10-term">Observability &amp; tracing</h3>
+          <p class="pillar-es">Observabilidad y trazas</p>
+        </header>
+        <p class="pillar-what">
+          Ver <span class="field">qué hace el agente por dentro</span>: cada paso, cada coste, cada latencia. Sin trazas, un
+          agente es una caja negra que no puedes ni depurar ni mejorar.
+        </p>
+        <div class="pillar-grid">
+          <div>
+            <p class="dk-label">Decisiones clave</p>
+            <ul class="dk">
+              <li>Registrar cada paso, <span class="k">llamada y token</span></li>
+              <li>Visualización de trazas <span class="k">para depurar</span></li>
+              <li>Seguimiento de coste y latencia <span class="k">por ejecución</span></li>
+              <li>Realimentar los fallos de producción <span class="k">en los evals</span></li>
+            </ul>
+          </div>
+          <figure class="dia">
+            <svg viewBox="0 0 500 300" role="img" aria-labelledby="p10t p10d" preserveAspectRatio="xMidYMid meet">
+              <title id="p10t">De las trazas al panel y de vuelta a los evals</title>
+              <desc id="p10d">Los pasos del agente generan logs y trazas, que alimentan un panel de observabilidad. Desde el panel, una realimentación baja y vuelve hacia los evals del pilar ocho. Un enlace discontinuo cierra el ciclo devolviendo la mejora a los pasos del agente.</desc>
+              <rect class="pd-box" x="12" y="52" width="116" height="54" rx="10"/>
+              <text class="pd-label" x="70" y="76" font-size="13" text-anchor="middle">pasos del</text>
+              <text class="pd-label" x="70" y="93" font-size="13" text-anchor="middle">agente</text>
+              <line class="pd-flow" x1="128" y1="79" x2="174" y2="79"/>
+              <path class="pd-head" d="M180 79 L170 74 L170 84 Z"/>
+              <rect class="pd-box" x="182" y="52" width="126" height="54" rx="10"/>
+              <text class="pd-label" x="245" y="83" font-size="13" text-anchor="middle">logs / trazas</text>
+              <line class="pd-flow" x1="308" y1="79" x2="354" y2="79"/>
+              <path class="pd-head" d="M360 79 L350 74 L350 84 Z"/>
+              <rect class="pd-box-accent" x="362" y="52" width="122" height="54" rx="10"/>
+              <text class="pd-title" x="423" y="83" font-size="15" text-anchor="middle">panel</text>
+              <rect class="pd-chip" x="182" y="118" width="126" height="26" rx="13"/>
+              <text class="pd-tag" x="245" y="135" font-size="10" text-anchor="middle">coste · latencia · tokens</text>
+              <!-- feedback: panel -> evals (08) -->
+              <path class="pd-flow" d="M423 106 V214 H306"/>
+              <path class="pd-head" d="M300 214 L310 209 L310 219 Z"/>
+              <text class="pd-tag" x="360" y="204" font-size="10" text-anchor="middle">realimentación</text>
+              <rect class="pd-box" x="182" y="188" width="122" height="52" rx="10"/>
+              <text class="pd-label" x="243" y="212" font-size="13" text-anchor="middle">evals</text>
+              <text class="pd-cap" x="243" y="229" font-size="10" text-anchor="middle">pilar 08</text>
+              <!-- close the loop back to steps -->
+              <path class="pd-flow-dash" d="M182 214 H70 V106"/>
+              <path class="pd-head" d="M70 106 L65 116 L75 116 Z"/>
+              <text class="pd-tag" x="86" y="176" font-size="10">ciclo de mejora</text>
+            </svg>
+            <figcaption>Cada paso deja traza; el panel realimenta los evals del pilar 08 y cierra el ciclo.</figcaption>
+          </figure>
+        </div>
+        <p class="pillar-why">
+          <span class="lbl">Por qué le importa</span>
+          <strong>Depurar rápido y ver el coste real:</strong> un ciclo de mejora continua que se cierra sobre sí mismo.
+        </p>
+      </article>
+
+    </div>
+  </section>
+  <!-- /BUILD-3:CONFIANZA -->
+  <!-- BUILD-3:PUENTE -->
+  <section id="puente" class="wrap" aria-label="Mi setup">
+    <header class="sec-head" data-reveal>
+      <span class="sec-num" aria-hidden="true">05</span>
+      <div>
+        <span class="kicker">El puente</span>
+        <h2>Estos 10 pilares no son teoría</h2>
+        <p class="sub">El mapa de qué implementa qué en mi propia máquina.</p>
+      </div>
+    </header>
+
+    <p class="sec-lead">
+      Cada pilar de este mapa lo tengo implementado en mi máquina, con datos reales. El reparto es claro:
+      <span class="s-method">superpowers</span> pone el método, <span class="s-sentinel">Sentinel</span> pone las barreras
+      y <span class="s-headroom">Headroom</span> cuida el contexto. Aquí solo el mapa de qué cubre qué; el segundo deck
+      lo enseña con las cifras.
+    </p>
+
+    <ul class="bridge-map">
+      <li class="bmap-card bmap-card--method" data-reveal>
+        <div>
+          <span class="bmap-name">superpowers</span>
+          <span class="bmap-kind">el método operativo</span>
+        </div>
+        <p class="bmap-desc">
+          Un operating loop (deep-change), delegación de agentes con tiering y gates de IntentGate y Never-Stop.
+        </p>
+        <ul class="bmap-pillars">
+          <li>02 · bucle</li>
+          <li>06 · orquestación</li>
+          <li>09 · humano en el bucle</li>
+        </ul>
+      </li>
+
+      <li class="bmap-card bmap-card--sentinel" data-reveal>
+        <div>
+          <span class="bmap-name">Sentinel</span>
+          <span class="bmap-kind">el motor de políticas</span>
+        </div>
+        <p class="bmap-desc">
+          Un motor de políticas determinista en cada acción (PreToolUse), con DENY / ASK / WARN / ALLOW y radio de
+          impacto acotado.
+        </p>
+        <ul class="bmap-pillars">
+          <li>07 · barreras y permisos</li>
+        </ul>
+      </li>
+
+      <li class="bmap-card bmap-card--headroom" data-reveal>
+        <div>
+          <span class="bmap-name">Headroom</span>
+          <span class="bmap-kind">la gestión del contexto</span>
+        </div>
+        <p class="bmap-desc">
+          Comprime el contexto para proteger la ventana del modelo en sesiones largas.
+        </p>
+        <ul class="bmap-pillars">
+          <li>03 · ingeniería de contexto</li>
+        </ul>
+      </li>
+
+      <li class="bmap-card" data-reveal>
+        <div>
+          <span class="bmap-name">Verificación + logs</span>
+          <span class="bmap-kind">medición honesta</span>
+        </div>
+        <p class="bmap-desc">
+          Verification-before-completion, audit logs y stats reales: se mide lo que pasa, sin adornos.
+        </p>
+        <ul class="bmap-pillars">
+          <li>08 · evals</li>
+          <li>10 · observabilidad</li>
+        </ul>
+      </li>
+
+      <li class="bmap-card bmap-card--neutral" data-reveal>
+        <div>
+          <span class="bmap-name">El entorno</span>
+          <span class="bmap-kind">los cimientos</span>
+        </div>
+        <p class="bmap-desc">
+          Venv y sandbox, servidores MCP, y handoffs por fichero entre pasos y sesiones.
+        </p>
+        <ul class="bmap-pillars">
+          <li>01 · harness</li>
+          <li>04 · herramientas</li>
+          <li>05 · memoria</li>
+        </ul>
+      </li>
+    </ul>
+
+    <p class="bridge-handoff">
+      El segundo deck lo enseña con las cifras reales de esta máquina.
+    </p>
+  </section>
+  <!-- /BUILD-3:PUENTE -->
+</main>
+<!-- BUILD-3:FOOTER -->
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-inner" data-reveal>
+      <p class="footer-signoff">
+        Esto es el mapa. El territorio, una máquina de verdad con sus cifras, es el segundo deck.
+      </p>
+      <p class="footer-attr">
+        Framework de los 10 pilares de ingeniería de agentes, adaptado de material divulgativo (SwirlAI); modelo mental
+        «el LLM es la CPU / el contexto es la RAM» de Andrej Karpathy.
+      </p>
+      <p class="footer-meta">Generado: 23 de julio de 2026.</p>
+    </div>
+  </div>
+</footer>
+<!-- /BUILD-3:FOOTER -->
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- theme toggle (functional now) ---------- */
+  var root = document.documentElement;
+  var toggle = document.getElementById("theme-toggle");
+
+  function syncToggle(theme) {
+    var isDark = theme === "dark";
+    toggle.setAttribute("aria-pressed", String(isDark));
+    toggle.setAttribute("aria-label", isDark ? "Activar tema claro" : "Activar tema oscuro");
+  }
+
+  function setTheme(next) {
+    root.dataset.theme = next;
+    try { localStorage.setItem("theme", next); } catch (e) {}
+    syncToggle(next);
+  }
+
+  syncToggle(root.dataset.theme || "light");
+  toggle.addEventListener("click", function () {
+    setTheme(root.dataset.theme === "dark" ? "light" : "dark");
+  });
+
+  /* ============================================================
+     reveal-on-scroll (Build 4). Guarded end-to-end: any failure
+     falls through to revealing every [data-reveal], so content can
+     never stay hidden. The hide rule is .js- + no-preference-gated,
+     so reduced-motion and JS-off already show everything.
+     ============================================================ */
+  try {
+    var reduceMQ = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
+    var reduce = !!(reduceMQ && reduceMQ.matches);
+    var reveals = [].slice.call(document.querySelectorAll("[data-reveal]"));
+
+    if (reduce || !("IntersectionObserver" in window)) {
+      reveals.forEach(function (el) { el.classList.add("in"); });
+    } else {
+      /* subtle sibling stagger (emil craft): 50ms per contiguous sibling, capped */
+      reveals.forEach(function (el) {
+        var idx = 0, prev = el.previousElementSibling;
+        while (prev && prev.hasAttribute("data-reveal")) { idx++; prev = prev.previousElementSibling; }
+        var delay = Math.min(idx, 5) * 50;
+        if (delay) el.style.transitionDelay = delay + "ms";
+      });
+      var io = new IntersectionObserver(function (entries, obs) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("in");
+          obs.unobserve(entry.target);
+        });
+      }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
+      reveals.forEach(function (el) { io.observe(el); });
+    }
+  } catch (e) {
+    try {
+      [].forEach.call(document.querySelectorAll("[data-reveal]"), function (el) {
+        el.classList.add("in");
+      });
+    } catch (e2) {}
+  }
+})();
+</script>
+
+</body>
+</html>
