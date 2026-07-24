@@ -7,7 +7,7 @@ Autocontenidas (HTML + CSS + JS inline, solo Google Fonts), tema claro/oscuro. S
 
 | Deck | Fichero | Guion | Duración | Para quién |
 |------|---------|-------|----------|------------|
-| **1. Fundamentos** (el mapa) | [`agentes-fundamentos.html`](agentes-fundamentos.html) | [`agentes-fundamentos-guion.md`](agentes-fundamentos-guion.md) | ~22-25 min | Manager técnico |
+| **1. Fundamentos** (el mapa) | [`agentes-fundamentos.html`](agentes-fundamentos.html) | [`agentes-fundamentos-guion.md`](agentes-fundamentos-guion.md) | ~17-20 min | Manager técnico |
 | **2. Setup** (el territorio) | [`setup-claude-code-definitiva.html`](setup-claude-code-definitiva.html) | [`setup-claude-code-definitiva-guion.md`](setup-claude-code-definitiva-guion.md) | ~20 min | Devs |
 
 El primero es el **mapa conceptual** (los 10 pilares de la ingeniería de agentes, el modelo mental de
