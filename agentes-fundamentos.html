@@ -1281,6 +1281,14 @@
           <span class="lbl">Por qué le importa</span>
           <strong>Seguridad y contención:</strong> un error del agente no se convierte en un desastre.
         </p>
+        <aside class="pillar-source">
+          <span class="src-label">LangChain · Guardrails</span>
+          Los implementan como middleware con dos sabores: reglas (regex, palabras clave: rápidas,
+          baratas, se les escapan matices) y clasificadores LLM (cazan lo sutil, más lentos y caros).
+          Y cuentan una moraleja real: en su asistente Chat LangChain, un guardrail se quedó obsoleto
+          tras un lanzamiento y empezó a bloquear preguntas legítimas, hasta que las trazas lo
+          destaparon. Las barreras también se mantienen.
+        </aside>
       </article>
 
       <!-- PILAR 08 -->
@@ -1348,6 +1356,14 @@
           <span class="lbl">Por qué le importa</span>
           <strong>Saber que funciona y cazar regresiones:</strong> calidad que no se degrada con cada cambio.
         </p>
+        <aside class="pillar-source">
+          <span class="src-label">LangChain · Agent Observability</span>
+          Lo dicen mejor que nadie: «con los agentes, la lógica de tu app está documentada en las
+          trazas, no en el código». Por eso el eval solo funciona como bucle: trazas de producción se
+          vuelven datasets, los datasets se vuelven experimentos, y los experimentos se vuelven
+          decisiones de despliegue. Evaluar en dos momentos: antes de desplegar (comparar versiones) y
+          después (puntuar trazas reales y realimentar).
+        </aside>
       </article>
 
       <!-- PILAR 09 -->
@@ -1418,6 +1434,13 @@
           <span class="lbl">Por qué le importa</span>
           <strong>Control del riesgo en lo irreversible,</strong> sin ahogar la autonomía del agente.
         </p>
+        <aside class="pillar-source">
+          <span class="src-label">LangChain · runtime de producción</span>
+          Un matiz de ingeniería que suele olvidarse: la puerta de aprobación humana se apoya en la
+          ejecución durable, un checkpointing que permite parar, reanudar y reintentar entre procesos.
+          Sin esa base, «pausar para que apruebe un humano» no es fiable. Y hay un segundo papel del
+          humano: calibrar al juez, revisando las muestras donde el eval automático discrepa.
+        </aside>
       </article>
 
       <!-- PILAR 10 -->
@@ -1477,6 +1500,14 @@
           <span class="lbl">Por qué le importa</span>
           <strong>Depurar rápido y ver el coste real:</strong> un ciclo de mejora continua que se cierra sobre sí mismo.
         </p>
+        <aside class="pillar-source">
+          <span class="src-label">LangChain · Agent Observability</span>
+          Su guía cabe en tres principios: instrumenta todo antes de optimizar nada; cierra el bucle
+          de la traza de producción al dataset de regresión; y deja que las evaluaciones automáticas
+          sustituyan a las decisiones por instinto. Detalle que cierra el círculo con el pilar 07: las
+          evaluaciones de producción también hacen de guardrail, atrapando respuestas que violan una
+          política antes de que lleguen al usuario.
+        </aside>
       </article>
 
     </div>
