@@ -1,6 +1,11 @@
-# Capturas de origen (WhatsApp): fondo negro, barras de estado; no profesionales para compartir.
-# Se conservan en local pero fuera del repo. Ver README (sección "Origen de los diagramas").
-data/
+# Capturas de origen (WhatsApp) y binarios/datos: fuera del repo.
+# El kit transferible (data/claude-code-setup/) SÍ se versiona.
+data/*.jpeg
+data/*.jpg
+data/*.png
+data/claude-code-setup/**/*.db
+data/claude-code-setup/**/*.log
+data/claude-code-setup/**/.env
 
 # Sistema operativo
 .DS_Store
