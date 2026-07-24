@@ -1060,6 +1060,13 @@
           <span class="lbl">Por qué le importa</span>
           <strong>Menos fallos y menos mantenimiento:</strong> el agente se corrige solo en vez de atascarse.
         </p>
+        <aside class="pillar-source">
+          <span class="src-label">LangChain · multi-agente, cuándo y cómo</span>
+          Confirman la lección contraintuitiva: «un solo agente con las herramientas y el prompt
+          adecuados consigue mucho de lo que la gente busca del multi-agente». Y avisan del fallo
+          típico: cuando un agente tiene demasiadas herramientas, elige mal cuál usar. Pocas y buenas
+          no es una preferencia estética, es lo que hace que el agente acierte.
+        </aside>
       </article>
 
       <!-- PILAR 05 -->
@@ -1113,6 +1120,13 @@
           <span class="lbl">Por qué le importa</span>
           <strong>Continuidad y personalización:</strong> y no re-pagar el mismo contexto una y otra vez.
         </p>
+        <aside class="pillar-source">
+          <span class="src-label">LangChain · filesystems para contexto</span>
+          Su técnica de memoria coincide con la idea de «escribir contexto»: guardar fuera de la
+          ventana lo que no cabe. En Deep Agents, un filesystem virtual almacena los system prompts,
+          las skills y la memoria de largo plazo, y el agente lo consulta bajo demanda con búsquedas,
+          en vez de arrastrar todo el historial en cada paso.
+        </aside>
       </article>
 
       <!-- PILAR 06 -->
@@ -1175,6 +1189,14 @@
           <span class="lbl">Por qué le importa</span>
           <strong>Velocidad,</strong> y saber cuándo la complejidad multi-agente compensa frente a mantenerlo simple.
         </p>
+        <aside class="pillar-source">
+          <span class="src-label">LangChain · multi-agente, cuándo y cómo</span>
+          Su regla es la misma que enseño: no recurras al multi-agente por defecto. Compensa en tres
+          casos concretos: cuando un agente tiene demasiadas herramientas, cuando hace falta
+          conocimiento especializado con mucho contexto, o cuando hay que imponer un orden
+          (desbloquear pasos solo tras cumplir condiciones). Y rematan con lo importante: «en el centro
+          del diseño multi-agente está la ingeniería de contexto, decidir qué ve cada agente».
+        </aside>
       </article>
 
     </div>
