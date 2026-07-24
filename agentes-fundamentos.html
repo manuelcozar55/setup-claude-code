@@ -838,6 +838,14 @@
           <span class="lbl">Por qué le importa</span>
           <strong>Fiabilidad en producción y facturas bajo control:</strong> el sistema no se cae cuando una pieza falla.
         </p>
+        <aside class="pillar-source">
+          <span class="src-label">LangChain · lo que dice la fuente</span>
+          LangChain separa dos capas que aquí conviene distinguir: el <cite>harness</cite> es
+          «el sistema que construyes alrededor del modelo para que tenga éxito en su dominio»
+          (prompts, herramientas, skills), y el <cite>runtime</cite> es todo lo de debajo:
+          ejecución durable, memoria, observabilidad. Este pilar es el harness; el runtime asoma
+          en los pilares de confianza.
+        </aside>
       </article>
 
       <!-- PILAR 02 -->
@@ -897,6 +905,13 @@
           <span class="lbl">Por qué le importa</span>
           <strong>Previsibilidad y coste acotado:</strong> sin bucles infinitos que queman dinero, y sabiendo cuándo termina.
         </p>
+        <aside class="pillar-source">
+          <span class="src-label">LangChain · The Art of Loop Engineering</span>
+          Su tesis es la misma que la nuestra: «el potencial de los agentes está en los bucles
+          que construyes a su alrededor». Y describen no uno sino cuatro bucles apilados: el del
+          agente, el de verificación, el disparado por eventos y el de mejora («hill climbing»).
+          Lo resumen bien: los tres primeros automatizan el trabajo; el cuarto automatiza la mejora.
+        </aside>
       </article>
 
       <!-- PILAR 03 -->
@@ -956,6 +971,14 @@
           <span class="lbl">Por qué le importa</span>
           <strong>Calidad de las respuestas y coste por llamada:</strong> y no degradarse en las tareas largas.
         </p>
+        <aside class="pillar-source">
+          <span class="src-label">LangChain · Context Engineering</span>
+          Lo definen como «el arte y la ciencia de llenar la ventana de contexto con la información
+          justa en cada paso». Y lo aterrizan en cuatro estrategias concretas: escribir (guardar fuera
+          de la ventana), seleccionar, comprimir y aislar. Dato de ingeniería real: en su harness Deep
+          Agents, un resultado de herramienta que supera los 20.000 tokens se descarga a fichero y se
+          sustituye por una ruta más un preview, en vez de envenenar la ventana.
+        </aside>
       </article>
 
     </div>
