@@ -441,6 +441,33 @@
   }
   .pillar-why strong { color: var(--field-ink); font-weight: 600; }
 
+  /* ---------- fuente citada por pilar (BUILD 5 - enriquecimiento LangChain) ---------- */
+  .pillar-source {
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    border-left: 3px solid var(--field);
+    background: color-mix(in srgb, var(--field-soft) 55%, var(--surface));
+    border-radius: 0 6px 6px 0;
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+  .pillar-source .src-label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--field-ink);
+    margin-bottom: 0.35rem;
+  }
+  .pillar-source cite { font-style: normal; color: var(--field-ink); font-weight: 600; }
+
+  /* ---------- sección Fuentes / para profundizar ---------- */
+  .sources { list-style: none; padding: 0; margin: 1.5rem 0 0; display: grid; gap: 0.9rem; }
+  .sources li { padding-left: 1.1rem; border-left: 2px solid var(--border); }
+  .sources .src-title { font-weight: 600; }
+  .sources .src-note { color: var(--muted); font-size: 0.9rem; }
+
   /* ---- shared pillar-diagram SVG palette (token-driven, light+dark) ---- */
   .pd-frame { fill: none; stroke: var(--field); stroke-width: 1.75; stroke-dasharray: 6 5; }
   .pd-box { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
@@ -688,6 +715,15 @@
         <text class="kd-cap" x="566" y="242" font-size="13" text-anchor="middle">finito, se llena, se gestiona</text>
       </svg>
     </figure>
+
+    <p class="prose">
+      No es una imagen aislada. LangChain, una de las plataformas de referencia para construir agentes,
+      usa <span class="field">exactamente la misma analogía</span>: el LLM como CPU y la ventana de
+      contexto como RAM. Y ha puesto nombre a la disciplina que sale de ahí, la
+      <span class="field">ingeniería de contexto</span>, que define como "la habilidad más importante
+      que un ingeniero de IA puede desarrollar". Cuando dos fuentes independientes llegan al mismo mapa,
+      no es moda: es que el mapa describe el terreno.
+    </p>
 
     <h3><span class="h-num">1.2</span>La escalera de la ingeniería</h3>
     <p class="sec-lead" style="margin-bottom:1rem">
