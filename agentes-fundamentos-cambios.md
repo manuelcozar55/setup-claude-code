@@ -38,6 +38,25 @@ y qué señalar en pantalla. Cada pilar con su encuadre de negocio. Anexos: Q&A 
 sobre-ingeniería?, ¿cuánto cuesta?) y chuleta de una línea por pilar. Cierre que entrega al deck de setup («esto es el
 mapa; ahora te enseño el territorio, con las cifras reales»). 0 em-dash, sin cifras inventadas.
 
+## BUILD 5 — Enriquecimiento con fuentes LangChain + blindaje del repo (24 jul 2026)
+
+Encargo: profundizar el deck con fuentes de máxima calidad (LangChain), sumando solo unos minutos de guion
+citado (sin inflar el total), y dejar el repo listo para compartir con compañeros de forma profesional y segura.
+
+| Cambio | Qué | Cómo verificado |
+|---|-----|-----------------|
+| Beat de validación (01) | LangChain converge con Karpathy y acuña «context engineering»; cita en comillas latinas | Render ambos temas; párrafo en `#cambio` |
+| 10 asides de fuente | Un `.pillar-source` por pilar (harness/runtime, loop, context, tools, memory, orchestration, guardrails, evals, HITL, observability), cada uno citando LangChain con URL canónica | `grep -c 'class="pillar-source"'` = 10 |
+| Anécdota retirada | La anécdota del «guardrail obsoleto» de Chat LangChain no se pudo verificar contra la doc de guardrails, el recurso de observabilidad ni el post de agent-frameworks de LangChain; se quitó del aside del pilar 07 y del Bloque 3 del guion, sustituida por el encuadre verificado de middleware (basado en reglas vs. clasificador LLM, enganchado antes/después del agente y alrededor de llamadas a modelo/herramienta) | `grep -ci 'chat langchain\|moraleja\|obsoleto'` = 0 en HTML y guion |
+| Sección «Para profundizar» | `#fuentes` + footer ampliado | `grep -c 'id="fuentes"'` = 1 |
+| Guion +~615 palabras | Párrafo citado por bloque; ~4-5 min de profundidad honesta y citada, no relleno; cabecera actualizada de 12-15 a 17-20 min, por debajo del techo de 10 min extra | `wc -w` = 2998; 0 em-dash |
+| Repo listo para compartir | README + LICENSE (CC BY 4.0) + `.gitignore` (excluye `data/` y `.superpowers/`) + `git init` en `main`; README enlaza el plan interno en `docs/` | escaneo de secretos sin valores reales (solo objetivos demo/localhost y cifras propias del hermano); `data/` ignorado, no trackeado |
+
+Decisiones: acento `--field` respetado (asides ámbar); cero cifras inventadas; cero em-dash en prosa del deck
+y del guion; hermano de setup intacto; anécdota no verificable retirada en favor del encuadre más cercano que
+sí se pudo confirmar en la fuente. Minor abierto: los pilares 08 y 10 comparten el src-label «LangChain ·
+Agent Observability» (cosmético, las afirmaciones citadas son distintas en cada uno).
+
 ## Fuera de scope / notas
 - No se modificaron `setup-claude-code-definitiva.html` ni su guion (el hermano queda intacto).
 - Minors cosméticos aceptados (hero de 5 bloques como el hermano; toggle antes que el reveal en el mismo IIFE, riesgo
