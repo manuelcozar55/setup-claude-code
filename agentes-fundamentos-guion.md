@@ -8,7 +8,7 @@
 
 ---
 
-## Bloque 0 · El cambio de mentalidad - Hero + Sección 01 [0:00–2:00]
+## Bloque 0 · El cambio de mentalidad - Hero + Sección 01 [0:00–2:30]
 
 **Objetivo:** que tu jefe entienda en dos minutos la tesis: hemos dejado de escribir prompts y hemos pasado a diseñar la máquina que rodea al modelo, y que el valor está en las capas de abajo, no en el prompt.
 
@@ -27,7 +27,7 @@
 
 ---
 
-## Bloque 1 · El motor - Sección 02, pilares 1-3 [2:00–5:30]
+## Bloque 1 · El motor - Sección 02, pilares 1-3 [2:30–7:00]
 
 **Objetivo:** que entienda que, antes de darle capacidades al agente, hay que construir la máquina que lo ejecuta de forma fiable, y que esas tres primeras capas compran fiabilidad, coste acotado y calidad.
 
@@ -46,7 +46,7 @@
 
 ---
 
-## Bloque 2 · Las capacidades - Sección 03, pilares 4-6 [5:30–9:00]
+## Bloque 2 · Las capacidades - Sección 03, pilares 4-6 [7:00–11:00]
 
 **Objetivo:** que entienda que, con la máquina en pie, se le dan capacidades, y que la clave no es tener muchas piezas sino pocas y buenas, con memoria útil y complejidad solo cuando compensa.
 
@@ -65,7 +65,7 @@
 
 ---
 
-## Bloque 3 · La confianza - Sección 04, pilares 7-10 [9:00–12:30]
+## Bloque 3 · La confianza - Sección 04, pilares 7-10 [11:00–15:30]
 
 **Objetivo:** que entienda que estas cuatro capas son las que deciden si puedes fiarte del agente en producción, y que son las que evitan las sorpresas caras.
 
@@ -84,7 +84,7 @@
 
 ---
 
-## Bloque 4 · El puente + cierre - Sección 05 [12:30–15:00]
+## Bloque 4 · El puente + cierre - Sección 05 [15:30–18:30]
 
 **Objetivo:** cerrar dejando claro que estos diez pilares no son teoría, que los tengo implementados, y entregar limpiamente al segundo deck.
 
