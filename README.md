@@ -37,6 +37,12 @@ Los diagramas son SVG/CSS originales, on-brand. Las capturas originales que sirv
 - Framework de los 10 pilares: material divulgativo tipo SwirlAI, adaptado.
 - Profundización por pilar: blog y documentación de LangChain (ver sección "Fuentes" dentro del deck de fundamentos).
 
+## Cómo se construyó
+
+Este repo es también un ejemplo del método: el plan de implementación seguido para enriquecer y
+preparar los decks vive en [`docs/superpowers/plans/`](docs/superpowers/plans/). Documenta las
+decisiones de diseño, el presupuesto de tiempo y las fuentes citadas.
+
 ## Licencia
 
 [CC BY 4.0](LICENSE). Comparte y adapta con atribución.

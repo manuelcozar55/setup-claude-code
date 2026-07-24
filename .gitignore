@@ -16,3 +16,6 @@ desktop.ini
 # Temporales
 *.log
 *.tmp
+
+# Superpowers SDD scratch (task briefs, diffs, progress ledger)
+.superpowers/
