@@ -1,6 +1,6 @@
 # Guion - "Ingeniería de agentes: el mapa antes de mi setup"
 
-**Duración objetivo:** 12-15 minutos (calentamiento; el deck de setup dura 20) · **Registro:** técnico, directo, de tú a tú · **Público:** tu jefe, un manager técnico
+**Duración objetivo:** 17-20 minutos (calentamiento; el deck de setup dura 20) · **Registro:** técnico, directo, de tú a tú · **Público:** tu jefe, un manager técnico
 **Compañero visual:** `agentes-fundamentos.html` (una sección por bloque)
 **Regla que repites al cerrar:** esto es el mapa; ahora te enseño el territorio, con las cifras reales de mi máquina.
 
@@ -18,6 +18,8 @@
 > El modelo mental es de Karpathy y te va a sonar porque es de arquitectura de computadores: el LLM es la CPU, potente pero inerte sin un programa que la dirija; el contexto es la RAM, finito, se llena, y hay que gestionarlo con cuidado; y el agente es el programa, el harness que orquesta a los dos y decide qué entra, qué sale y qué se hace. Sobre esa idea, el trabajo sube por una escalera de cuatro peldaños: prompt, contexto, harness y loop. Y cuanto más arriba subes, más determina el resultado.
 >
 > Por eso el principio de la disciplina es "design the loop, not the prompt": diseña el bucle, no el prompt. Y aquí está lo que a ti te importa: si el equipo solo optimiza prompts, toca techo enseguida. El valor real, y la ventaja difícil de copiar, está en las capas de ingeniería de abajo. En esta charla te enseño esas capas, son diez, y al final te enseño cuáles tengo montadas yo.
+>
+> Y que no te suene a teoría mía: este mismo mapa lo usan las plataformas serias de agentes. LangChain, por ejemplo, describe al modelo con la misma imagen de Karpathy, CPU y RAM, y llama a lo que hay debajo del prompt "ingeniería de contexto", que definen como la habilidad más importante que puede desarrollar un ingeniero de IA. Cuando dos sitios que no se copian llegan al mismo dibujo, es que el dibujo describe algo real.
 
 **Frase-gancho:** "Si solo tocas prompts, tocas techo. El valor está debajo."
 
@@ -35,6 +37,8 @@
 > La segunda capa es el loop, el bucle. Un agente no es una respuesta, es un ciclo que razona, actúa y observa hasta cumplir el objetivo, y vuelve a empezar. La ingeniería aquí está en las condiciones de parada y, sobre todo, en el presupuesto máximo de iteraciones, para que no se dispare. Aquí lo que compras es previsibilidad y coste acotado: sin bucles infinitos que queman dinero, y sabiendo cuándo termina.
 >
 > Y la tercera es el contexto. La ventana del modelo es finita, esa RAM de la que hablábamos, y todo lo que metes compite por el mismo espacio. La decisión es qué entra en la ventana y qué se recupera bajo demanda, cómo se comprime el historial, y cómo evitas el "context rot", que es la degradación de los contextos demasiado largos. Esto es calidad de las respuestas y coste por llamada, y que el agente no se atonte en las tareas largas.
+>
+> Y esto no me lo invento: LangChain, que construye agentes de producción, publica un artículo entero sobre "loop engineering", ingeniería del bucle, con la misma tesis que te acabo de dar: el potencial de un agente está en los bucles que construyes a su alrededor, no en el modelo. Van más lejos incluso: describen cuatro bucles apilados, el del agente, el de verificación, el que disparan los eventos y el de mejora, y lo resumen así, los tres primeros automatizan el trabajo y el cuarto automatiza la mejora. Sobre el contexto, la misma gente lo define como llenar la ventana con la información justa en cada paso, con cuatro jugadas: escribir fuera de la ventana, seleccionar, comprimir y aislar.
 
 **Frase-gancho:** "El motor no cambia lo que el modelo dice; cambia si aguanta en producción."
 
@@ -52,6 +56,8 @@
 > La segunda capacidad es la memoria. Hay que distinguir el corto plazo, lo que el agente recuerda dentro de la sesión y vive en el contexto, del largo plazo, lo que guarda entre sesiones y se almacena fuera. La decisión de ingeniería es qué persistir y qué no, y cómo recuperarlo. Y esto es continuidad y personalización, y no re-pagar el mismo contexto una y otra vez en cada sesión.
 >
 > Y la tercera es la orquestación: un solo agente o varios coordinados. Puedes tener un orquestador que hace triage y reparte el trabajo entre especialistas, en paralelo o en secuencia. Pero más piezas no es siempre mejor: a veces un buen agente basta y montar un sistema multi-agente solo añade complejidad. Lo que te llevas es velocidad cuando hay frentes independientes, y el criterio de saber cuándo esa complejidad compensa y cuándo mantenerlo simple.
+>
+> Y aquí LangChain te da la regla en una frase: un solo agente con las herramientas y el prompt adecuados consigue casi todo lo que la gente cree que necesita del multi-agente. El fallo típico que documentan es justo ese, un agente con demasiadas herramientas que elige mal cuál usar. Por eso, pocas y buenas no es estética, es lo que hace que acierte. Y cuando de verdad montas varios agentes, dicen que en el centro del diseño está la ingeniería de contexto: decidir qué ve cada uno. Sobre la memoria, su técnica es la misma que te conté: lo que no cabe en la ventana se guarda en un fichero y el agente lo consulta bajo demanda.
 
 **Frase-gancho:** "Pocas herramientas buenas, y multi-agente solo cuando de verdad compensa."
 
@@ -69,6 +75,8 @@
 > La segunda es la evaluación, los evals. Medir que el agente hace bien el trabajo, no solo que responde algo. Y evaluar un agente no es puntuar una respuesta: es juzgar toda la trayectoria hasta el resultado. Construyes casos "golden" a partir de fallos reales y pasas pruebas de regresión cada vez que cambias algo. Esto es saber que funciona y cazar regresiones antes de que lleguen al cliente: calidad que no se degrada con cada cambio.
 >
 > La tercera es el humano en el bucle. La cuestión no es si hay humano, es dónde: dentro del bucle aprobando cada paso, encima supervisando, o fuera dejándolo autónomo. La clave es poner puertas de aprobación en lo irreversible sin ahogar la autonomía del agente. Es control del riesgo donde de verdad duele. Y la cuarta es la observabilidad: ver qué hace el agente por dentro, cada paso, cada coste, cada latencia. Sin trazas, un agente es una caja negra que no puedes ni depurar ni mejorar; con trazas, los fallos de producción vuelven a los evals y cierras un ciclo de mejora. Esto es depurar rápido y ver el coste real.
+>
+> Estas cuatro capas también son las que LangChain trata como infraestructura de producción, no como extras. De los guardrails dicen algo que a ti te va a gustar: son middleware, y los hacen de dos formas, con reglas fijas rápidas y baratas, o con un clasificador LLM que caza lo sutil pero cuesta más. Y cuentan un fallo real, un guardrail suyo se quedó obsoleto tras un lanzamiento y bloqueó preguntas legítimas hasta que las trazas lo destaparon. De los evals y la observabilidad tienen la mejor frase de todo esto: con los agentes, la lógica de tu aplicación está en las trazas, no en el código. Por eso evaluar es un bucle, las trazas de producción se vuelven casos de prueba, y los casos deciden si despliegas. Y el humano en el bucle se apoya en algo técnico, la ejecución durable, poder parar, reanudar y reintentar sin perder el hilo.
 
 **Frase-gancho:** "Estas cuatro capas son las que te dejan soltar el agente sin sustos."
 
@@ -118,3 +126,17 @@
 - **Pilar 08 · Evals (evaluación):** medir que hace bien el trabajo, no solo que responde; cazar regresiones.
 - **Pilar 09 · Human-in-the-loop (humano):** puertas de aprobación en lo irreversible, sin ahogar la autonomía.
 - **Pilar 10 · Observability (observabilidad):** ver cada paso, coste y latencia; realimentar los fallos en los evals.
+
+---
+
+# Anexo C · Fuentes y lecturas (si te las piden)
+
+Todo el mapa es verificable en la fuente. Las de más calidad:
+
+- **Andrej Karpathy**: el modelo mental "LLM = CPU, contexto = RAM".
+- **LangChain, The Art of Loop Engineering**: los cuatro bucles apilados; "el potencial está en los bucles que construyes alrededor". `langchain.com/blog/the-art-of-loop-engineering`
+- **LangChain, Context Engineering**: llenar la ventana con lo justo; escribir, seleccionar, comprimir, aislar. `blog.langchain.com/context-engineering-for-agents`
+- **LangChain, How and when to build multi-agent systems**: herramientas y orquestación; multi-agente solo cuando compensa. `langchain.com/blog/how-and-when-to-build-multi-agent-systems`
+- **LangChain, The Runtime Behind Production Deep Agents**: harness frente a runtime; el humano en el bucle sobre ejecución durable. `langchain.com/blog/runtime-behind-production-deep-agents`
+- **LangChain, AI Agent Observability & Evals**: "la lógica está en las trazas, no en el código"; el eval como bucle. `langchain.com/resources/agent-observability`
+- **SwirlAI**: el framework de los 10 pilares aquí adaptado.
