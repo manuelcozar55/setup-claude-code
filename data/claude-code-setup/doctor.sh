@@ -4,6 +4,10 @@
 set -uo pipefail
 KIT="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
+if ! command -v jq >/dev/null 2>&1; then
+  echo "FAIL · jq no instalado (requerido por doctor; ver docs/02-install.md)"
+  exit 1
+fi
 fails=0
 pass(){ echo "PASS · $1"; }
 warn(){ echo "WARN · $1"; }
@@ -26,9 +30,13 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   while IFS= read -r r; do
     [ -z "$r" ] && continue
     path="${r/\$HOME/$HOME}"; path="${path/$HOME\/.claude/$CLAUDE_HOME}"
-    [ -e "$path" ] || { fail "hook/ref no encontrado: $r"; miss=1; }
+    if [ ! -e "$path" ]; then
+      fail "hook/ref no encontrado: $r"; miss=1
+    elif [[ "$path" == *.sh && ! -x "$path" ]]; then
+      fail "hook no ejecutable: $r"; miss=1
+    fi
   done <<< "$refs"
-  [ "$miss" -eq 0 ] && pass "hooks referenciados presentes  (fuente: jq .hooks + test -e)"
+  [ "$miss" -eq 0 ] && pass "hooks referenciados presentes y ejecutables  (fuente: jq .hooks + test -e/-x)"
 fi
 
 # 3. agentes

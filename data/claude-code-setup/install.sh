@@ -4,7 +4,7 @@
 set -euo pipefail
 KIT="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
-STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo backup)"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo backup)-$$-${RANDOM:-0}"
 BK="$CLAUDE_HOME/backups/$STAMP"
 
 echo "==> Instalando en $CLAUDE_HOME"

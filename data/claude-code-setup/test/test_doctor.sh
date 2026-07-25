@@ -15,4 +15,10 @@ rm -f "$CLAUDE_HOME/hooks/branch-guard.sh"
 set +e; bash "$KIT/doctor.sh" >/dev/null 2>&1; rc=$?; set -e
 ck "$rc" "1" "doctor FAIL con hook ausente"
 
+# Hook presente pero NO ejecutable -> FAIL
+bash "$KIT/install.sh" >/dev/null 2>&1
+chmod -x "$CLAUDE_HOME/hooks/branch-guard.sh"
+set +e; bash "$KIT/doctor.sh" >/dev/null 2>&1; rc=$?; set -e
+ck "$rc" "1" "doctor FAIL con hook no ejecutable"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
