@@ -1,0 +1,58 @@
+{
+  "_comment": "Plantilla de ejemplo para activar la capa IOC de Sentinel. Copia este fichero a $HOME/.claude/hooks/iocs.json y sustituye las entradas de ejemplo por tus propios indicadores (dominios/IPs/patrones reales que quieras bloquear). El kit no incluye un iocs.json real para no filtrar indicadores personales. Ver docs/05-security.md.",
+  "sensitive_paths": {
+    "patterns": [
+      "$HOME/.ssh",
+      "$HOME/.aws",
+      "$HOME/.gnupg",
+      "/etc/shadow",
+      "/etc/passwd"
+    ],
+    "regex_patterns": [
+      "id_rsa$",
+      "\\.pem$"
+    ]
+  },
+  "suspicious_network": {
+    "known_malicious_domains": [
+      { "domain": "evil.example.com" },
+      { "domain": "malware.example.net" }
+    ],
+    "suspicious_tlds": [
+      ".zip",
+      ".top"
+    ],
+    "pastebin_style": [
+      "pastebin.com",
+      "transfer.sh"
+    ],
+    "suspicious_patterns": [
+      "https?://(?:\\d{1,3}\\.){3}\\d{1,3}",
+      "203\\.0\\.113\\.\\d{1,3}"
+    ]
+  },
+  "dangerous_commands": {
+    "patterns": [
+      "curl\\s+.*evil\\.example\\.com"
+    ]
+  },
+  "sensitive_env_vars": {
+    "patterns": [
+      "EXAMPLE_API_KEY",
+      "EXAMPLE_SECRET_TOKEN"
+    ],
+    "regex_patterns": [
+      "[A-Z_]+_SECRET$"
+    ]
+  },
+  "prompt_injection_phrases": {
+    "patterns": [
+      "ignore (all|any) previous instructions"
+    ]
+  },
+  "allowlist": {
+    "paths": [],
+    "domains": [],
+    "env_vars": []
+  }
+}

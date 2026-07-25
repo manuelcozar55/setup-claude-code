@@ -2,9 +2,23 @@
 
 La filosofía de esta capa en una frase: **barreras deterministas que acotan el radio de impacto (blast radius) de un fallo.** No es el modelo autolimitándose; son reglas fijas que se ejecutan siempre, antes de que la acción llegue a tocar el mundo.
 
-## Sentinel: la puerta
+## Sentinel: la capa de IOCs (opcional)
 
 Sentinel (`sentinel/sentinel_preflight.py`) es un hook `PreToolUse` con `matcher` **vacío**, lo que significa que se ejecuta antes de cada llamada a **cualquier** tool, no solo `Bash`. Recibe por `stdin` el JSON de la tool call y decide.
+
+### ⚠ Importante: Sentinel necesita `iocs.json`, y el kit no lo trae
+
+Todos los checks de Sentinel (rutas sensibles, red sospechosa, comandos peligrosos, variables de entorno, prompt injection) leen sus patrones de un fichero `iocs.json` que `load_iocs()` busca en `sentinel/iocs.json`, `$HOME/.claude/hooks/iocs.json` o la ruta de la skill `mcp-sentinel`. **El kit no incluye ninguno de esos ficheros** (para no filtrar indicadores propios/personales en el repo), así que en una instalación recién hecha `load_iocs()` devuelve `{}` y **todos los checks de Sentinel son un no-op silencioso**: `decide()` siempre resuelve "allow".
+
+Por defecto, nada más instalar el kit, la protección activa y funcional sin ningún fichero adicional son los **4 guards de Bash** de la siguiente sección (`block-dangerous-commands.sh`, `branch-guard.sh`, `destructive-guard.sh`, `secret-guard.sh`): esos sí llevan sus patrones embebidos en el propio script y funcionan solos.
+
+Para activar la capa de IOCs de Sentinel:
+
+```bash
+cp $HOME/.claude/sentinel/iocs.example.json $HOME/.claude/hooks/iocs.json
+```
+
+y luego personaliza `iocs.json` con tus propios dominios/IPs/patrones (el fichero de ejemplo trae solo entradas genéricas tipo `evil.example.com`). Ver `docs/07-verify.md` para comprobar si esta capa está activa.
 
 En el código, la decisión resultante es siempre una de tres: **allow** (silencioso, exit 0), **warn** (deja pasar la acción pero añade contexto visible: `additionalContext` con el motivo) o **deny** (bloquea con `permissionDecision: "deny"` y una razón). Uno de los guards de Bash de esta misma capa (`block-dangerous-commands.sh`, más abajo) añade una cuarta posibilidad sobre el mismo protocolo de Claude Code: **ask**, para pedir confirmación humana en vez de bloquear o dejar pasar en silencio.
 
@@ -26,7 +40,7 @@ Cada decisión de deny/warn queda registrada en `$HOME/.claude/audit-logs/sentin
 
 ## Los guards de Bash y git
 
-Por debajo de Sentinel, un segundo nivel de hooks `PreToolUse` sobre `Bash` (y, para dos de ellos, específicamente sobre `git`) endurece patrones concretos:
+Junto a Sentinel, un segundo nivel de hooks `PreToolUse` sobre `Bash` (y, para dos de ellos, específicamente sobre `git`) endurece patrones concretos; a diferencia de Sentinel, estos guards llevan sus patrones embebidos y están activos desde el primer momento, sin fichero adicional:
 
 - **`block-dangerous-commands.sh`**: blocklist de comandos que se ejecutan con `Bash`. Bloquea en duro (`deny`) cosas como `rm -rf`, `shred`, `dd` sobre un dispositivo de bloque, `mkfs`/`fdisk`/`wipefs`, `reboot`/`shutdown`/`halt`, `curl`/`wget` seguido de pipe a shell, shells inversas (`/dev/tcp`, `nc -l`), escritura sobre `.ssh`, `git push --force`, exfiltración de variables de entorno o de `.env` a la red, y ejecución de paquetes directamente desde una URL (`npx`, `pnpm dlx`, `deno run`, `bun x`). Para operaciones arriesgadas pero legítimas (`systemctl stop`, `chmod 777`, `ssh-keygen`, `DROP DATABASE`, `docker system prune`, `npm publish`, `pip install` desde URL) responde con **ask**: pide confirmación humana en vez de bloquear.
 - **`branch-guard.sh`**: bloquea `git push` a ramas protegidas (por defecto `main`, `master`, `production`; configurable con `CC_PROTECT_BRANCHES`).
