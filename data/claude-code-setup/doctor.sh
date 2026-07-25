@@ -39,6 +39,13 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   [ "$miss" -eq 0 ] && pass "hooks referenciados presentes y ejecutables  (fuente: jq .hooks + test -e/-x)"
 fi
 
+# 2b. capa de IOCs de Sentinel (opcional -> WARN)
+if [ -f "$CLAUDE_HOME/hooks/iocs.json" ]; then
+  pass "Sentinel IOC layer activa  (fuente: test -f hooks/iocs.json)"
+else
+  warn "Sentinel IOC layer inactiva: falta iocs.json (opcional; ver docs/05-security.md). Los guards de Bash siguen activos."
+fi
+
 # 3. agentes
 n=$(ls "$CLAUDE_HOME"/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
 [ "$n" -ge 1 ] && pass "agentes instalados: $n  (fuente: ls agents/*.md)" || warn "sin agentes"

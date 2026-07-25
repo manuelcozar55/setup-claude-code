@@ -61,6 +61,7 @@ Esperado: cada script imprime `N passed, 0 failed` y termina con código 0.
 | Agentes instalados | conteo de ficheros | `ls "$CLAUDE_HOME"/agents/*.md \| wc -l` | 8 |
 | Venv de tools (opcional) | presencia del binario | `test -x "$HOME/.venvs/tools/bin/python3"` | `PASS` si está, `WARN` si no |
 | Headroom (opcional) | presencia del CLI | `command -v rtk` | `PASS` si está, `WARN` si no |
+| Capa de IOCs de Sentinel (opcional; ver `docs/05-security.md`) | presencia de `iocs.json` | `test -f "$CLAUDE_HOME/hooks/iocs.json"` | `PASS` si está, `WARN` si no (los guards de Bash siguen activos) |
 | Instalación completa sin `FAIL` | agregado de todo lo anterior | `CLAUDE_HOME=... bash doctor.sh` | exit 0, 0 `FAIL` |
 | Idempotencia del instalador | backup timestamped tras reinstalar | `bash install.sh` (segunda vez) | sin error, backup creado, original no pisado |
 | Regresión de cada script | arnés TDD en bash puro | `bash test/test_scan_secrets.sh` / `test_install.sh` / `test_doctor.sh` | `N passed, 0 failed` |
