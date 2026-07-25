@@ -1,5 +1,6 @@
 # CLIs del venv de tools (~/.venvs/tools). Instala con:
 #   python3 -m venv ~/.venvs/tools && ~/.venvs/tools/bin/pip install -r requirements-tools.txt
+# Lista curada de CLIs (no un pip freeze); ajusta a tu máquina.
 markitdown[all]
 ast-grep-cli
 basedpyright
