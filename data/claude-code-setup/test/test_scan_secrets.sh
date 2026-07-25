@@ -28,5 +28,10 @@ mkdir -p "$tmp/mail"; printf 'contact real.person@company.io\n' > "$tmp/mail/lea
 set +e; bash "$SCAN" "$tmp/mail" >/dev/null 2>&1; rc=$?; set -e
 check "$rc" "1" "email real detectado"
 
+# Caso prosa kebab-case (no debe falso-positivar) -> PASS
+mkdir -p "$tmp/kebab"; printf 'Proceso risk-mitigation-and-compliance-review y task-driven-development-workflow.\n' > "$tmp/kebab/ok.txt"
+set +e; bash "$SCAN" "$tmp/kebab" >/dev/null 2>&1; rc=$?; set -e
+check "$rc" "0" "prosa kebab-case no falso-positiva"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]
