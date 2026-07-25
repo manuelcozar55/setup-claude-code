@@ -78,12 +78,18 @@ Arnés bash simple (sin dependencias; usa `bats` si está disponible, si no func
 
 ## Criterios de éxito (100% funcional, verificable)
 
-1. `bash scan-secrets.sh data/claude-code-setup` → PASS (0 hallazgos) — evidencia en salida.
-2. `CLAUDE_HOME=$(mktemp -d) bash install.sh` → instala sin error; `doctor.sh` sobre esa instalación → PASS/WARN, 0 FAIL.
-3. Re-ejecutar `install.sh` → idempotente (sin error, backups intactos).
-4. Todos los `test/*.sh` → verde.
-5. `docs/` cubre las 7 áreas; README renderiza (banner/badges/mermaid).
-6. El repo versiona `data/claude-code-setup/` sin ningún secreto (verificado por el gate + revisión final).
+1. ✅ `bash scan-secrets.sh data/claude-code-setup` → PASS (0 hallazgos) — evidencia en salida.
+   Evidencia: `bash scan-secrets.sh .` → `PASS: sin secretos/PII en .`
+2. ✅ `CLAUDE_HOME=$(mktemp -d) bash install.sh` → instala sin error; `doctor.sh` sobre esa instalación → PASS/WARN, 0 FAIL.
+   Evidencia: `CLAUDE_HOME="$D/dot" bash install.sh && CLAUDE_HOME="$D/dot" bash doctor.sh` → 6× PASS, 1× WARN (Sentinel IOC layer, opcional) → `OK (0 FAIL)`.
+3. ✅ Re-ejecutar `install.sh` → idempotente (sin error, backups intactos).
+   Evidencia: segunda ejecución de `install.sh` sobre el mismo `CLAUDE_HOME` → `reinstall ok` (exit 0, sin sobrescritura sin backup).
+4. ✅ Todos los `test/*.sh` → verde.
+   Evidencia: `test_doctor.sh` 3 passed/0 failed · `test_install.sh` 6 passed/0 failed · `test_scan_secrets.sh` 5 passed/0 failed (14/14 en total).
+5. ✅ `docs/` cubre las 7 áreas; README renderiza (banner/badges/mermaid).
+   Evidencia: `ls docs/` → `01-overview.md` … `07-verify.md` (7 ficheros); `grep -c "mermaid\|for-the-badge\|capsule-render" README.md` → 7 coincidencias.
+6. ✅ El repo versiona `data/claude-code-setup/` sin ningún secreto (verificado por el gate + revisión final).
+   Evidencia: `scan-secrets.sh` sobre el árbol versionado → PASS (mismo run que criterio 1); `git status` sobre `data/claude-code-setup/` limpio antes de la verificación.
 
 ## Fuera de scope
 
