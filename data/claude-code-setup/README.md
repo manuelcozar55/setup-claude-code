@@ -30,7 +30,8 @@ cd setup-claude-code/data/claude-code-setup
 bash install.sh
 
 # 3. Copia las variables de entorno y rellénalas con tus claves
-cp .env.example ~/.claude/.env
+cp .env.example "${CLAUDE_HOME:-$HOME/.claude}"/.env
+# (por defecto CLAUDE_HOME es $HOME/.claude)
 $EDITOR ~/.claude/.env
 
 # 4. Verifica la instalación con evidencia por componente
