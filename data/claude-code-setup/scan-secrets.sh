@@ -8,7 +8,7 @@ SELF="$(basename "$0")"
 
 # Patrones de VALOR (no de nombre). Los nombres de variables (ANTHROPIC_API_KEY) son válidos.
 PATTERNS=(
-  'sk-[A-Za-z0-9_-]{20,}'
+  '\<sk-[A-Za-z0-9_-]{20,}'
   'pplx-[A-Za-z0-9]{20,}'
   'gh[oprsu]_[A-Za-z0-9]{20,}'
   'AKIA[0-9A-Z]{16}'
@@ -26,7 +26,7 @@ while IFS= read -r -d '' f; do
   [ "$base" = "test_scan_secrets.sh" ] && continue
   for p in "${PATTERNS[@]}"; do
     if grep -InE "$p" "$f" >/dev/null 2>&1; then
-      report "patrón /$p/ en $f"; grep -InE "$p" "$f" | head -2
+      report "patrón /$p/ en $f"; grep -InE "$p" "$f" | head -2 || true
     fi
   done
   # Emails que no sean de ejemplo/noreply = PII.
@@ -34,7 +34,7 @@ while IFS= read -r -d '' f; do
        | grep -viE '@example\.(com|org)|noreply@|you@example|manuelcozar55@gmail\.com' >/dev/null 2>&1; then
     report "email real en $f"
     grep -InoE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$f" \
-      | grep -viE '@example\.(com|org)|noreply@|you@example|manuelcozar55@gmail\.com' | head -2
+      | grep -viE '@example\.(com|org)|noreply@|you@example|manuelcozar55@gmail\.com' | head -2 || true
   fi
 done < <(find "$TARGET" -type f -not -path '*/.git/*' -print0)
 
