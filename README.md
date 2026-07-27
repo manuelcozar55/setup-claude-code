@@ -19,7 +19,7 @@
 Tres cosas, de lo conceptual a lo práctico:
 
 1. **Dos charlas** autocontenidas (HTML + guion) que explican cómo se construye hoy un agente de IA de producción y cómo trabajo yo con Claude Code.
-2. **Un kit transferible** (`data/claude-code-setup/`) que instala una versión saneada de mi setup real (config, hooks, agentes, Sentinel) en cualquier máquina, con un instalador y un autodiagnóstico.
+2. **Un kit transferible** (`kit/`) que instala una versión saneada de mi setup real (config, hooks, agentes, Sentinel) en cualquier máquina, con un instalador y un autodiagnóstico.
 3. **Formación recomendada** al final: cursos gratis, cortos y verificados para entender la IA y, sobre todo, Claude Code.
 
 Todo es reproducible: cada charla se abre en el navegador sin instalar nada, y el kit se instala y se verifica con tres comandos.
@@ -28,8 +28,8 @@ Todo es reproducible: cada charla se abre en el navegador sin instalar nada, y e
 
 | Charla | Fichero | Guion | Duración | Para quién |
 |--------|---------|-------|----------|------------|
-| **Fundamentos** · el mapa | [`agentes-fundamentos.html`](agentes-fundamentos.html) | [`agentes-fundamentos-guion.md`](agentes-fundamentos-guion.md) | ~17-20 min | Manager técnico |
-| **Setup** · el territorio | [`setup-claude-code-definitiva.html`](setup-claude-code-definitiva.html) | [`setup-claude-code-definitiva-guion.md`](setup-claude-code-definitiva-guion.md) | ~20 min | Desarrolladores |
+| **Fundamentos** · el mapa | [`agentes-fundamentos.html`](charlas/agentes-fundamentos.html) | [`agentes-fundamentos-guion.md`](charlas/agentes-fundamentos-guion.md) | ~17-20 min | Manager técnico |
+| **Setup** · el territorio | [`setup-claude-code-definitiva.html`](charlas/setup-claude-code-definitiva.html) | [`setup-claude-code-definitiva-guion.md`](charlas/setup-claude-code-definitiva-guion.md) | ~20 min | Desarrolladores |
 
 **El mapa** explica el modelo mental de Karpathy y los diez pilares de ingeniería que hay debajo del prompt. **El territorio** enseña mi máquina de verdad (superpowers, Sentinel, Headroom) con cifras reales. Se dan seguidas, pero cada una funciona sola.
 
@@ -38,7 +38,7 @@ Todo es reproducible: cada charla se abre en el navegador sin instalar nada, y e
 ```bash
 git clone https://github.com/manuelcozar55/setup-claude-code.git
 cd setup-claude-code
-open agentes-fundamentos.html   # macOS · Linux: xdg-open · Windows: start
+open charlas/agentes-fundamentos.html   # macOS · Linux: xdg-open · Windows: start
 ```
 
 ### El mapa: los 10 pilares
@@ -51,37 +51,43 @@ open agentes-fundamentos.html   # macOS · Linux: xdg-open · Windows: start
 
 ```mermaid
 flowchart LR
-    subgraph MAPA["Deck 1 · El mapa (fundamentos)"]
+    subgraph MAPA["🗺️ El mapa · fundamentos"]
         direction TB
-        M["El motor<br/>harness · loop · context"]
-        C["Las capacidades<br/>tools · memory · orchestration"]
-        T["La confianza<br/>guardrails · evals · HITL · observability"]
+        M(["⚙️ El motor<br/>harness · loop · context"])
+        C(["🧰 Las capacidades<br/>tools · memory · orchestration"])
+        T(["🛡️ La confianza<br/>guardrails · evals · HITL · observability"])
+        M --> C --> T
     end
-    subgraph TERR["Deck 2 · El territorio (mi setup)"]
+    subgraph TERR["🧭 El territorio · mi setup"]
         direction TB
-        SP["superpowers<br/>método · loop · orquestación · humano"]
-        SE["Sentinel<br/>barreras deterministas"]
-        HE["Headroom<br/>compresión de contexto"]
+        SP(["🔁 superpowers<br/>método · loop · orquestación"])
+        SE(["🚦 Sentinel<br/>barreras deterministas"])
+        HE(["📉 Headroom<br/>compresión de contexto"])
+        SP --> SE --> HE
     end
-    MAPA -->|"del mapa al territorio"| TERR
-    style MAPA fill:#faf1dc,stroke:#8f5e00,color:#1a1a1a
-    style TERR fill:#eef3ff,stroke:#3b4cca,color:#1a1a1a
+    MAPA ==>|"del mapa al territorio"| TERR
+    classDef mapa fill:#faf1dc,stroke:#8f5e00,stroke-width:2px,color:#3a2a00;
+    classDef terr fill:#eef1ff,stroke:#3b4cca,stroke-width:2px,color:#1a1f4a;
+    class M,C,T mapa
+    class SP,SE,HE terr
+    style MAPA fill:#fffaf0,stroke:#8f5e00,stroke-width:1.5px,color:#8f5e00
+    style TERR fill:#f5f7ff,stroke:#3b4cca,stroke-width:1.5px,color:#3b4cca
 ```
 
 ## 2. El kit transferible
 
-En [`data/claude-code-setup/`](data/claude-code-setup/) tienes una versión **saneada y auto-verificable** de mi setup, lista para instalar en otro ordenador. Config real (CLAUDE.md, settings.json, los 8 agentes, hooks, el motor de políticas Sentinel), un instalador idempotente con backup, un autodiagnóstico y un gate de secretos, todo con TDD. Los terceros (Headroom, plugin superpowers, agent-browser, venv de tools) se documentan, no se redistribuyen.
+En [`kit/`](kit/) tienes una versión **saneada y auto-verificable** de mi setup, lista para instalar en otro ordenador. Config real (CLAUDE.md, settings.json, los 8 agentes, hooks, el motor de políticas Sentinel), un instalador idempotente con backup, un autodiagnóstico y un gate de secretos, todo con TDD. Los terceros (Headroom, plugin superpowers, agent-browser, venv de tools) se documentan, no se redistribuyen.
 
 **Instalar en tres pasos** (Linux/WSL/macOS, bash):
 
 ```bash
-cd data/claude-code-setup
+cd kit
 bash install.sh                                   # instala en $CLAUDE_HOME (default $HOME/.claude), con backup
 cp .env.example "${CLAUDE_HOME:-$HOME/.claude}"/.env   # rellena tus claves
 bash doctor.sh                                    # autodiagnóstico con evidencia (PASS/WARN/FAIL)
 ```
 
-Guía completa en [`data/claude-code-setup/README.md`](data/claude-code-setup/README.md) y [`docs/`](data/claude-code-setup/docs/) (overview, install, headroom, superpowers, security, routine, verify).
+Guía completa en [`kit/README.md`](kit/README.md) y [`docs/`](kit/docs/) (overview, install, headroom, superpowers, security, routine, verify).
 
 **Seguridad:** un gate determinista (`scan-secrets.sh`) verifica que el kit no contiene ninguna clave, token ni ruta personal. Cero secretos: las claves viven en tu `.env` local, nunca en el repo.
 
@@ -89,16 +95,16 @@ Guía completa en [`data/claude-code-setup/README.md`](data/claude-code-setup/RE
 
 ```text
 setup-claude-code/
-├── agentes-fundamentos.html / -guion.md / -cambios.md   # Charla 1: el mapa (10 pilares)
-├── setup-claude-code-definitiva.html / -guion.md        # Charla 2: el territorio (mi setup)
-├── data/claude-code-setup/                              # 2. El kit transferible
+├── charlas/                                             # 1. Las dos charlas
+│   ├── agentes-fundamentos.html / -guion.md             #    Charla 1: el mapa (10 pilares)
+│   └── setup-claude-code-definitiva.html / -guion.md     #    Charla 2: el territorio (mi setup)
+├── kit/                                                  # 2. El kit transferible
 │   ├── install.sh · doctor.sh · scan-secrets.sh         #    instalar · diagnosticar · gate de secretos
 │   ├── .env.example · requirements-tools.txt            #    placeholders · CLIs del venv
 │   ├── claude/                                          #    CLAUDE.md, settings.json, 8 agentes, hooks, allowlist
 │   ├── sentinel/                                        #    motor de políticas + iocs.example.json
 │   ├── test/                                            #    tests TDD (scan/install/doctor)
 │   └── docs/                                            #    01-overview .. 07-verify
-├── docs/superpowers/{specs,plans}/                      # spec + plan (el método, documentado)
 ├── LICENSE                                             # CC BY 4.0
 └── README.md
 ```
@@ -136,12 +142,6 @@ Nada del mapa es opinión. Combina un modelo mental y un cuerpo de ingeniería q
 - **Cifras del deck de setup.** Son una foto ilustrativa de mi máquina en un momento dado, no una garantía ni un dato tuyo: reprodúcelas con tus propios logs (el deck trae la tabla "cifra a fuente a comando"). `~/.ssh`, `id_rsa` o `ANTHROPIC_API_KEY` aparecen solo como objetivos de demostración de la puerta de seguridad; el repo no contiene ninguna clave real.
 - **El kit se verifica a sí mismo.** Instalar, diagnosticar, corregir: un bucle, no un volcado. `doctor.sh` da evidencia por componente y `scan-secrets.sh` bloquea cualquier fuga.
 - **Autocontenido y accesible.** Las charlas llevan CSS/JS inline, contraste AA en claro y oscuro, `prefers-reduced-motion`, print y JS-off muestran todo.
-
-## Roadmap
-
-- [ ] Versión en inglés de ambas charlas y del kit.
-- [ ] Grabación de la charla como referencia.
-- [ ] Automatizar (opcional) el alta del proxy y el ping de rutina en la máquina destino.
 
 ## Autor
 
