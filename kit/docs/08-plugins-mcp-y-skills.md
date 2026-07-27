@@ -29,9 +29,10 @@ Capacidades externas que Claude Code invoca vía el protocolo MCP. Conocidos en 
 
 - **perplexity**: búsqueda web. Requiere `PERPLEXITY_API_KEY` en tu `$HOME/.claude/.env` (ver `02-install.md`, paso 3).
 - **linkedin**: mensajería. Por seguridad, `settings.json` deniega explícitamente `mcp__linkedin__send_message` y `mcp__linkedin__connect_with_person` en `permissions.deny`: el servidor puede estar activo, pero esas dos acciones concretas quedan bloqueadas sin excepción.
-- **headroom** (vía `rtk`, el proxy de contexto): ver `03-headroom.md`.
 
 Cómo se añaden: `claude mcp add ...`. La sintaxis exacta (transporte, comando o URL, variables de entorno que necesite) depende de cada servidor; consulta su propio repositorio antes de darlo de alta. El kit no incluye claves ni configuraciones MCP con secretos: cualquier credencial vive solo en tu `.env` local, nunca en este repo.
+
+**Headroom no es un MCP más.** No se añade con `claude mcp add`: es el proxy de contexto (ver `03-headroom.md`), cableado vía `ANTHROPIC_BASE_URL` y el hook `rtk hook claude`. Además de comprimir el contexto, expone sus propias herramientas MCP (por ejemplo `headroom_stats`) directamente a través de su instalación con `rtk`; viene con Headroom, no se registra aparte.
 
 Verifica los servidores dados de alta con:
 
@@ -58,9 +59,9 @@ Verifica qué tienes instalado con:
 ls $HOME/.claude/skills/
 ```
 
-## Prerrequisitos extra
+## Prerrequisitos
 
-Además de lo que ya pide `02-install.md`, la pila completa necesita:
+Todos estos van en `02-install.md`; recordatorio de la pila que usa el setup completo:
 
 | Herramienta | Para qué | Verifica con |
 |---|---|---|
