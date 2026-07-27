@@ -1,6 +1,6 @@
 # 01 · El mapa: modelo mental y piezas reales
 
-Este documento es el mapa. Los seis siguientes (`02` a `07`) son el territorio: instalación, terceros, seguridad, rutina y verificación de este kit en concreto. Léelo primero: si no entiendes por qué existen Sentinel, Headroom o el tiering de modelos, los pasos de instalación te van a parecer arbitrarios.
+Este documento es el mapa. Los siete siguientes (`02` a `08`) son el territorio: instalación, terceros, seguridad, rutina, verificación, y la pila completa de plugins/MCP/skills de este kit en concreto. Léelo primero: si no entiendes por qué existen Sentinel, Headroom o el tiering de modelos, los pasos de instalación te van a parecer arbitrarios.
 
 ## El modelo mental (Karpathy)
 
