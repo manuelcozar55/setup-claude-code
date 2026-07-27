@@ -80,3 +80,4 @@ flowchart LR
 - **`05-security.md`**: Sentinel, los guards de Bash/git, y el manejo de secretos.
 - **`06-routine.md`**: la rutina diaria (tiering, ping de las 6:00, `/compact`, opus[1m], worktrees).
 - **`07-verify.md`**: cómo comprobar, con evidencia, que todo lo anterior funciona de verdad.
+- **`08-plugins-mcp-y-skills.md`**: el stack completo para replicar el sistema (plugins de Claude Code + marketplaces, servidores MCP, skills propias y prerequisitos).
