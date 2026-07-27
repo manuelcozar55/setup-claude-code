@@ -24,7 +24,7 @@ Cubre el recorrido completo de mi setup diario: desde **Headroom** comprimiendo 
 ```bash
 # 1. Clona y entra en el kit
 git clone https://github.com/manuelcozar55/setup-claude-code.git
-cd setup-claude-code/data/claude-code-setup
+cd setup-claude-code/kit
 
 # 2. Instala la config saneada (idempotente, con backup automático)
 bash install.sh

@@ -15,7 +15,7 @@ La secuencia "cifra → fuente → comando": por cada componente que se verifica
 **1. El kit no tiene secretos:**
 
 ```bash
-cd data/claude-code-setup
+cd kit
 bash scan-secrets.sh .
 ```
 
@@ -45,7 +45,7 @@ Esperado: la segunda ejecución no falla, y aparece un backup con timestamp del 
 **4. La suite de tests, en verde:**
 
 ```bash
-cd data/claude-code-setup
+cd kit
 for t in test/*.sh; do echo "-- $t --"; bash "$t" || exit 1; done
 ```
 
