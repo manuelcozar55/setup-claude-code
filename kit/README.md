@@ -17,7 +17,7 @@
 
 Un kit transferible: la config saneada de `~/.claude` (`CLAUDE.md`, `settings.json`, agentes con tiering, hooks de guardarraíles), Sentinel como puerta determinista, y los scripts que instalan y verifican todo lo anterior con evidencia reproducible. No es una charla ni una demo, es la máquina real, empaquetada para que corra en otra máquina distinta a la mía.
 
-Cubre el recorrido completo de mi setup diario: desde **Headroom** comprimiendo el contexto antes de que llegue al modelo, pasando por **superpowers** y sus ocho agentes con tiering (opus para pensar, sonnet para ejecutar, **haiku** para verificar barato), hasta la **rutina** de cada día (ping de las 6:00, `/compact`, worktrees). Cada pieza tapa un hueco concreto de los diez pilares de ingeniería de agentes; el mapa completo está en [`docs/01-overview.md`](docs/01-overview.md).
+Cubre el recorrido completo de mi setup diario: desde **Headroom** comprimiendo el contexto antes de que llegue al modelo, pasando por **superpowers** y sus ocho agentes con tiering (opus para pensar, sonnet para ejecutar, **haiku** para verificar barato), hasta la **rutina** de cada día (ping de las 6:00, `/compact`, worktrees). Cada pieza tapa un hueco concreto de los diez pilares de ingeniería de agentes; el mapa completo está en [`docs/01-overview.md`](docs/01-overview.md). Esta config es el esqueleto: la pila completa (plugins de Claude Code, servidores MCP, skills adicionales) está documentada en [`docs/08-plugins-mcp-y-skills.md`](docs/08-plugins-mcp-y-skills.md).
 
 ## Quickstart
 
@@ -49,7 +49,7 @@ bash doctor.sh
 | `claude/agents/` | 8 agentes (`orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker`) | orquestación con tiering de modelo por tarea |
 | `sentinel/` | `sentinel_preflight.py` | el motor de políticas `PreToolUse` que decide allow/warn/deny |
 | `install.sh` · `doctor.sh` · `scan-secrets.sh` | scripts de instalación y verificación | instalar sin pisar nada, diagnosticar con evidencia, cerrar la puerta de secretos |
-| `docs/` | 7 documentos, del mapa (`01`) a la verificación (`07`) | el mapa mental y el "cómo" de cada pieza, con enlaces a terceros |
+| `docs/` | 8 documentos, del mapa (`01`) a plugins/MCP/skills (`08`) | el mapa mental y el "cómo" de cada pieza, con enlaces a terceros |
 
 ## Cómo funciona
 
@@ -92,6 +92,7 @@ El kit no redistribuye binarios de terceros, solo los documenta y los cablea con
 | [`docs/05-security.md`](docs/05-security.md) | Sentinel, los guards de Bash/git, manejo de secretos |
 | [`docs/06-routine.md`](docs/06-routine.md) | la rutina diaria: tiering, ping de las 6:00, `/compact`, worktrees |
 | [`docs/07-verify.md`](docs/07-verify.md) | los tres scripts, con evidencia "cifra → fuente → comando" |
+| [`docs/08-plugins-mcp-y-skills.md`](docs/08-plugins-mcp-y-skills.md) | la pila completa: plugins de Claude Code, servidores MCP, skills adicionales, prerrequisitos extra |
 
 ## Notas de experto
 

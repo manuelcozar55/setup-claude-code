@@ -11,6 +11,7 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 | `python3` (≥ 3.10) + `venv` | Sentinel y los hooks Python corren sobre un venv propio, nunca sobre el Python del sistema | `python3 --version` |
 | `gh` (GitHub CLI) | flujo de PRs desde Claude Code | `gh --version` |
 | `jq` | `doctor.sh` y varios hooks parsean JSON con `jq`; sin él, `doctor.sh` falla explícitamente | `jq --version` |
+| `uv` | gestor de paquetes Python que usa el kit vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
 
 Comprueba todo de una vez:
 
@@ -76,6 +77,8 @@ El kit no instala esto por ti; solo lo documenta:
 
 - **Headroom** (proxy local de contexto/coste): ver `docs/03-headroom.md`.
 - **superpowers, los 8 agentes, y agent-browser**: ver `docs/04-superpowers.md`.
+
+Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, servidores MCP, skills adicionales como `graphify` o `deep-change`), ver `docs/08-plugins-mcp-y-skills.md`.
 
 ## Paso 6 · Verificar
 
