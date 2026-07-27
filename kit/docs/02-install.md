@@ -29,7 +29,7 @@ corepack prepare pnpm@latest --activate
 
 ```bash
 git clone <url-del-repo> setup-claude-code
-cd setup-claude-code/data/claude-code-setup
+cd setup-claude-code/kit
 ```
 
 ## Paso 2 · Instalar la config saneada

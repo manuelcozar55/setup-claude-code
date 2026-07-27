@@ -1,11 +1,9 @@
-# Capturas de origen (WhatsApp) y binarios/datos: fuera del repo.
-# El kit transferible (data/claude-code-setup/) SÍ se versiona.
-data/*.jpeg
-data/*.jpg
-data/*.png
-data/claude-code-setup/**/*.db
-data/claude-code-setup/**/*.log
-data/claude-code-setup/**/.env
+# Datos/binarios/logs locales fuera del repo. El kit (kit/) SÍ se versiona,
+# excepto artefactos residuales.
+kit/**/*.db
+kit/**/*.log
+kit/.env
+kit/**/.env
 
 # Sistema operativo
 .DS_Store
