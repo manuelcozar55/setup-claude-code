@@ -3,74 +3,51 @@
 <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,20,24&height=200&section=header&text=setup-claude-code&fontSize=48&fontColor=ffffff&animation=fadeIn&desc=El%20m%C3%A9todo%20detr%C3%A1s%20de%20mi%20trabajo%20con%20Claude%20Code&descAlignY=62&descSize=18" alt="setup-claude-code" />
 
 ![Claude Code](https://img.shields.io/badge/Claude_Code-m%C3%A9todo-D97757?style=for-the-badge&logo=anthropic&logoColor=white)
-![HTML5](https://img.shields.io/badge/HTML5-autocontenido-E34F26?style=for-the-badge&logo=html5&logoColor=white)
-![Markdown](https://img.shields.io/badge/Guiones-Markdown-000000?style=for-the-badge&logo=markdown&logoColor=white)
-![LangChain](https://img.shields.io/badge/Fuentes-LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
+![HTML5](https://img.shields.io/badge/Charlas-HTML_autocontenido-E34F26?style=for-the-badge&logo=html5&logoColor=white)
+![Bash](https://img.shields.io/badge/Kit-Bash_+_TDD-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white)
+![Security](https://img.shields.io/badge/Secretos-cero_(gate)-2E7D32?style=for-the-badge&logo=gnuprivacyguard&logoColor=white)
 ![License](https://img.shields.io/badge/License-CC_BY_4.0-EF9421?style=for-the-badge)
 
-> **No es el modelo, es el método.** Dos charlas hermanas: el mapa conceptual de la ingeniería de agentes de IA, y el territorio real de mi setup con Claude Code.
+> **No es el modelo, es el método.** Dos charlas sobre ingeniería de agentes de IA (el mapa y el territorio) y un kit para replicar mi setup de Claude Code en otra máquina.
 
 </div>
 
 ---
 
-## Qué es esto
+## Qué encontrarás aquí (léelo una vez y lo tienes todo)
 
-Dos presentaciones autocontenidas (HTML + CSS + JS inline, solo Google Fonts, tema claro/oscuro, sin build ni dependencias) y sus guiones hablados. Cuentan la misma historia en dos niveles:
+Tres cosas, de lo conceptual a lo práctico:
 
-- **El mapa** explica *cómo se construye* hoy un agente de IA de producción: el modelo mental de Karpathy y los diez pilares de ingeniería que hay debajo del prompt.
-- **El territorio** enseña *mi máquina de verdad*: superpowers, Sentinel y Headroom, con cifras reales sacadas de logs y comandos.
+1. **Dos charlas** autocontenidas (HTML + guion) que explican cómo se construye hoy un agente de IA de producción y cómo trabajo yo con Claude Code.
+2. **Un kit transferible** (`data/claude-code-setup/`) que instala una versión saneada de mi setup real (config, hooks, agentes, Sentinel) en cualquier máquina, con un instalador y un autodiagnóstico.
+3. **Formación recomendada** al final: cursos gratis, cortos y verificados para entender la IA y, sobre todo, Claude Code.
 
-Están pensadas para darse seguidas (primero el mapa, luego el territorio), pero cada una funciona sola.
+Todo es reproducible: cada charla se abre en el navegador sin instalar nada, y el kit se instala y se verifica con tres comandos.
 
-## Las dos charlas
+## 1. Las dos charlas
 
 | Charla | Fichero | Guion | Duración | Para quién |
 |--------|---------|-------|----------|------------|
-| **1. Fundamentos** · el mapa | [`agentes-fundamentos.html`](agentes-fundamentos.html) | [`agentes-fundamentos-guion.md`](agentes-fundamentos-guion.md) | ~17-20 min | Manager técnico |
-| **2. Setup** · el territorio | [`setup-claude-code-definitiva.html`](setup-claude-code-definitiva.html) | [`setup-claude-code-definitiva-guion.md`](setup-claude-code-definitiva-guion.md) | ~20 min | Desarrolladores |
+| **Fundamentos** · el mapa | [`agentes-fundamentos.html`](agentes-fundamentos.html) | [`agentes-fundamentos-guion.md`](agentes-fundamentos-guion.md) | ~17-20 min | Manager técnico |
+| **Setup** · el territorio | [`setup-claude-code-definitiva.html`](setup-claude-code-definitiva.html) | [`setup-claude-code-definitiva-guion.md`](setup-claude-code-definitiva-guion.md) | ~20 min | Desarrolladores |
 
-## Cómo verlas
+**El mapa** explica el modelo mental de Karpathy y los diez pilares de ingeniería que hay debajo del prompt. **El territorio** enseña mi máquina de verdad (superpowers, Sentinel, Headroom) con cifras reales. Se dan seguidas, pero cada una funciona sola.
 
-No hacen falta ni servidor ni instalación.
-
-### 1. Clona el repositorio
+**Cómo verlas:** no hace falta servidor. Clona, y abre el `.html` en el navegador (doble clic, o `open`/`xdg-open`/`start`). Botón arriba a la derecha para alternar tema claro/oscuro.
 
 ```bash
 git clone https://github.com/manuelcozar55/setup-claude-code.git
 cd setup-claude-code
+open agentes-fundamentos.html   # macOS · Linux: xdg-open · Windows: start
 ```
 
-### 2. Abre la charla en el navegador
-
-```bash
-# macOS
-open agentes-fundamentos.html
-# Linux
-xdg-open agentes-fundamentos.html
-# Windows
-start agentes-fundamentos.html
-```
-
-O simplemente haz doble clic en el fichero `.html`.
-
-### 3. Preséntala
-
-Usa el botón de arriba a la derecha para alternar tema claro/oscuro (elige y prueba el contraste en el proyector real antes de empezar). Haz scroll sección a sección al ritmo del guion.
-
-## El mapa: los 10 pilares
-
-La ingeniería de un agente sube por una escalera (prompt → contexto → harness → loop) y se organiza en tres bloques:
+### El mapa: los 10 pilares
 
 | Bloque | Pilares |
 |--------|---------|
 | **El motor** · la máquina que rodea al modelo | 01 Harness · 02 Loop · 03 Context |
 | **Las capacidades** · qué puede hacer el agente | 04 Tools · 05 Memory · 06 Orchestration |
 | **La confianza** · poder soltarlo en producción | 07 Guardrails · 08 Evals · 09 Human-in-the-loop · 10 Observability |
-
-## Arquitectura
-
-Cada charla mapea a la siguiente. Los diez pilares del mapa se implementan con tres piezas en el territorio.
 
 ```mermaid
 flowchart LR
@@ -91,6 +68,54 @@ flowchart LR
     style TERR fill:#eef3ff,stroke:#3b4cca,color:#1a1a1a
 ```
 
+## 2. El kit transferible
+
+En [`data/claude-code-setup/`](data/claude-code-setup/) tienes una versión **saneada y auto-verificable** de mi setup, lista para instalar en otro ordenador. Config real (CLAUDE.md, settings.json, los 8 agentes, hooks, el motor de políticas Sentinel), un instalador idempotente con backup, un autodiagnóstico y un gate de secretos, todo con TDD. Los terceros (Headroom, plugin superpowers, agent-browser, venv de tools) se documentan, no se redistribuyen.
+
+**Instalar en tres pasos** (Linux/WSL/macOS, bash):
+
+```bash
+cd data/claude-code-setup
+bash install.sh                                   # instala en $CLAUDE_HOME (default $HOME/.claude), con backup
+cp .env.example "${CLAUDE_HOME:-$HOME/.claude}"/.env   # rellena tus claves
+bash doctor.sh                                    # autodiagnóstico con evidencia (PASS/WARN/FAIL)
+```
+
+Guía completa en [`data/claude-code-setup/README.md`](data/claude-code-setup/README.md) y [`docs/`](data/claude-code-setup/docs/) (overview, install, headroom, superpowers, security, routine, verify).
+
+**Seguridad:** un gate determinista (`scan-secrets.sh`) verifica que el kit no contiene ninguna clave, token ni ruta personal. Cero secretos: las claves viven en tu `.env` local, nunca en el repo.
+
+## Estructura del repositorio
+
+```text
+setup-claude-code/
+├── agentes-fundamentos.html / -guion.md / -cambios.md   # Charla 1: el mapa (10 pilares)
+├── setup-claude-code-definitiva.html / -guion.md        # Charla 2: el territorio (mi setup)
+├── data/claude-code-setup/                              # 2. El kit transferible
+│   ├── install.sh · doctor.sh · scan-secrets.sh         #    instalar · diagnosticar · gate de secretos
+│   ├── .env.example · requirements-tools.txt            #    placeholders · CLIs del venv
+│   ├── claude/                                          #    CLAUDE.md, settings.json, 8 agentes, hooks, allowlist
+│   ├── sentinel/                                        #    motor de políticas + iocs.example.json
+│   ├── test/                                            #    tests TDD (scan/install/doctor)
+│   └── docs/                                            #    01-overview .. 07-verify
+├── docs/superpowers/{specs,plans}/                      # spec + plan (el método, documentado)
+├── LICENSE                                             # CC BY 4.0
+└── README.md
+```
+
+## 3. Formación recomendada (gratis, corta, verificada)
+
+Para entender la IA y, sobre todo, Claude Code. Todos gratis y de una a dos horas; contenidos y duración verificados a fecha de este repo (las plataformas pueden cambiar, confírmalo al inscribirte).
+
+| Curso | Plataforma | Duración | Coste | De qué va |
+|-------|------------|----------|-------|-----------|
+| [Claude Code 101](https://www.anthropic.com/learn) | Anthropic Academy | ~1 h | Gratis | Intro oficial: instalación, flujo Explore-Plan-Code-Commit, `CLAUDE.md`, MCP. |
+| [Claude Code in Action](https://anthropic.skilljar.com/claude-code-in-action) | Anthropic Academy | ~1 h · 15 clases | Gratis | Profundiza: operaciones de fichero, contexto, GitHub, hooks, SDK. Certificado. |
+| [Claude Code: A Highly Agentic Coding Assistant](https://www.deeplearning.ai/courses/claude-code-a-highly-agentic-coding-assistant/) | DeepLearning.AI (con Anthropic) | ~2 h · 10 lecciones | Gratis (audit) | Práctica real: RAG chatbot, refactor, Figma a web app, subagentes, git worktrees, hooks, MCP. |
+| [MCP: Build Rich-Context AI Apps with Anthropic](https://www.deeplearning.ai/courses/mcp-build-rich-context-ai-apps-with-anthropic/) | DeepLearning.AI (con Anthropic) | 1 h 58 min | Gratis (audit) | MCP a fondo: FastMCP, Inspector, cliente/servidor, despliegue. |
+
+**Ruta sugerida:** empieza por *Claude Code 101* para el flujo básico, salta a *Claude Code in Action* para el día a día, y haz el curso de DeepLearning.AI cuando quieras práctica guiada sobre proyectos reales. El catálogo completo y gratuito de Anthropic (prompt engineering, AI Fluency, MCP) está en [anthropic.com/learn](https://www.anthropic.com/learn).
+
 ## Fuentes
 
 Nada del mapa es opinión. Combina un modelo mental y un cuerpo de ingeniería que puedes leer en la fuente:
@@ -105,36 +130,18 @@ Nada del mapa es opinión. Combina un modelo mental y un cuerpo de ingeniería q
 | **LangChain** · [Agent Observability & Evals](https://www.langchain.com/resources/agent-observability) | "La lógica de tu app está en las trazas, no en el código"; el eval como bucle. |
 | **SwirlAI** | La estructura de los diez pilares aquí adaptada. |
 
-## Estructura del repositorio
-
-```text
-setup-claude-code/
-├── agentes-fundamentos.html            # Charla 1: el mapa (10 pilares, fuentes citadas)
-├── agentes-fundamentos-guion.md        # Guion hablado (~17-20 min)
-├── agentes-fundamentos-cambios.md      # Change report de la charla 1
-├── setup-claude-code-definitiva.html   # Charla 2: el territorio (mi setup real)
-├── setup-claude-code-definitiva-guion.md
-├── docs/superpowers/plans/             # Plan de implementación (el método, documentado)
-├── LICENSE                             # CC BY 4.0
-└── README.md
-```
-
-## Sobre las cifras del deck de setup
-
-El deck de setup muestra números reales de **mi** máquina en un momento dado (eventos de auditoría, tokens comprimidos, ahorro en dólares). Son una **foto ilustrativa**, no una garantía ni un dato tuyo: reprodúcelos con tus propios logs (el propio deck trae la tabla "cifra → fuente → comando"). Las referencias a `~/.ssh`, `id_rsa` o `ANTHROPIC_API_KEY` aparecen solo como **objetivos de demostración** para enseñar que la puerta de seguridad los bloquea; el repo no contiene ninguna clave ni secreto real.
-
 ## Notas de experto
 
-- **Honestidad de fuentes.** Cada afirmación del deck de fundamentos está citada y verificada contra la fuente original; lo que no se pudo verificar, se cortó. Cero cifras infladas.
-- **Tipografía cuidada.** Comillas angulares (« ») en el HTML, sin em-dash en el cuerpo, acento ámbar propio para los fundamentos y los tres colores del setup reservados solo para el puente.
-- **Autocontenido y accesible.** CSS/JS inline, contraste AA verificado en claro y oscuro, `prefers-reduced-motion`, print y JS-off muestran todo el contenido.
-- **Las capturas de origen** (carpeta `data/`, capturas de WhatsApp) quedan fuera del repo por `.gitignore`: los diagramas son SVG/CSS originales, on-brand.
+- **Honestidad de fuentes.** Cada afirmación de las charlas y del kit está citada y verificada; lo que no se pudo verificar, se cortó. Cero cifras infladas.
+- **Cifras del deck de setup.** Son una foto ilustrativa de mi máquina en un momento dado, no una garantía ni un dato tuyo: reprodúcelas con tus propios logs (el deck trae la tabla "cifra a fuente a comando"). `~/.ssh`, `id_rsa` o `ANTHROPIC_API_KEY` aparecen solo como objetivos de demostración de la puerta de seguridad; el repo no contiene ninguna clave real.
+- **El kit se verifica a sí mismo.** Instalar, diagnosticar, corregir: un bucle, no un volcado. `doctor.sh` da evidencia por componente y `scan-secrets.sh` bloquea cualquier fuga.
+- **Autocontenido y accesible.** Las charlas llevan CSS/JS inline, contraste AA en claro y oscuro, `prefers-reduced-motion`, print y JS-off muestran todo.
 
 ## Roadmap
 
-- [ ] Versión en inglés de ambas charlas.
+- [ ] Versión en inglés de ambas charlas y del kit.
 - [ ] Grabación de la charla como referencia.
-- [ ] Diferenciar la etiqueta de fuente de los pilares 08 (Evals) y 10 (Observability) en un pase de pulido.
+- [ ] Automatizar (opcional) el alta del proxy y el ping de rutina en la máquina destino.
 
 ## Autor
 
