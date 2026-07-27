@@ -87,7 +87,7 @@ cp .env.example "${CLAUDE_HOME:-$HOME/.claude}"/.env   # rellena tus claves
 bash doctor.sh                                    # autodiagnóstico con evidencia (PASS/WARN/FAIL)
 ```
 
-Guía completa en [`kit/README.md`](kit/README.md) y [`docs/`](kit/docs/) (overview, install, headroom, superpowers, security, routine, verify).
+Guía completa en [`kit/README.md`](kit/README.md) y [`docs/`](kit/docs/) (overview, install, headroom, superpowers, security, routine, verify, plugins/MCP/skills).
 
 **Seguridad:** un gate determinista (`scan-secrets.sh`) verifica que el kit no contiene ninguna clave, token ni ruta personal. Cero secretos: las claves viven en tu `.env` local, nunca en el repo.
 
@@ -104,7 +104,7 @@ setup-claude-code/
 │   ├── claude/                                          #    CLAUDE.md, settings.json, 8 agentes, hooks, allowlist
 │   ├── sentinel/                                        #    motor de políticas + iocs.example.json
 │   ├── test/                                            #    tests TDD (scan/install/doctor)
-│   └── docs/                                            #    01-overview .. 07-verify
+│   └── docs/                                            #    01-overview .. 08-plugins-mcp-y-skills
 ├── LICENSE                                             # CC BY 4.0
 └── README.md
 ```
