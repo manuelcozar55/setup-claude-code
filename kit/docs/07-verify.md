@@ -86,7 +86,10 @@ Ver `kit/evals/README.md` para el criterio de admisión de tareas y por qué usa
 | Regresión de cada script | arnés TDD en bash puro | `bash test/test_scan_secrets.sh` / `test_install.sh` / `test_doctor.sh` | `N passed, 0 failed` |
 | Regresión de los guards `PreToolUse` (Capa 1 + Sentinel) | arnés TDD en bash puro | `bash test/test_guards.sh` | `PASS=27 FAIL=0` |
 | Regresión de la Capa 2 (`pre-commit` + `gitleaks`) | repos git temporales reales, `git commit` de verdad | `bash test/test_secret_content_gitleaks.sh` | `PASS=16 FAIL=0` (o `SKIP` si falta `gitleaks`) |
-| La suite de guards es falsable (no una tautología) | guard real vs. guard neutralizado (`exit 0`) | `bash test/test_guards_falsifiability.sh` | un número fijo de casos `BLOCK` cae al neutralizar el guard |
+| La suite de guards es falsable (no una tautología) | guard real vs. guard neutralizado (`exit 0`) | `bash test/test_guards_falsifiability.sh` | exit 0; "neutralizar el guard rompe 10 caso(s) BLOCK que antes pasaban" |
+| Puerta de plataforma de `install.sh` (solo Linux/WSL2) | simula `uname -s` no-Linux, comprueba abort limpio | `bash test/test_install_platform_gate.sh` | `4 passed, 0 failed` |
+| Detección/degradación de `gitleaks` en `install.sh` | `gitleaks` ya presente vs. ausente sin red | `bash test/test_install_gitleaks.sh` | `6 passed, 0 failed` |
+| `install.sh --enable-secrets-layer2` activa la Capa 2 solo en el repo nombrado | repos git temporales reales | `bash test/test_enable_secrets_layer2.sh` | `6 passed, 0 failed` |
 | Eval set (opt-in, cuesta dinero real — no forma parte de lo anterior) | transcript de `claude -p`, gradeado por `grade.py` | `bash kit/evals/run.sh` | `pass`/`fail` por tarea, ver `kit/evals/README.md` |
 
 Si cualquiera de estos comandos no da el resultado esperado en tu máquina, es una `FAIL` real: corrígelo antes de dar la instalación por buena. Ese es el bucle completo del kit: instalar, diagnosticar, corregir, reinstalar.

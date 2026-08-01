@@ -67,13 +67,18 @@ Por eso el kit añade una **Capa 2**, un hook `pre-commit` de git (`claude/hooks
 
 `claude/.gitleaks.toml` extiende las reglas por defecto de gitleaks (`useDefault = true`, no las sustituye) y añade una regla propia acotada por ruta (`.yaml`/`.toml`/`.ini`/`.properties`/`.conf`/`.cfg`/`.json`) para contraseñas de tipo diccionario en ficheros de config — el tipo de credencial que las reglas por defecto (pensadas para tokens de alta entropía tipo `sk-`/`AKIA`) no cubren. El acotado por ruta es intencional: la misma regla sin acotar producía falsos positivos sobre prosa y código que solo menciona `PASSWORD=`/`TOKEN=` como ejemplo; acotada a ficheros de config, no.
 
-**Activación**: a diferencia de la Capa 1 (activa desde el primer `install.sh`), la Capa 2 requiere que el repo donde vayas a commitear apunte su `core.hooksPath` al hook instalado:
+**Activación**: a diferencia de la Capa 1 (activa desde el primer `install.sh`), la Capa 2 requiere que el repo donde vayas a commitear apunte su `core.hooksPath` al hook instalado. Dos formas equivalentes de hacerlo, ambas explícitas y por repositorio:
 
 ```bash
+# opción A: subcommand del propio instalador, corrido DENTRO del repo a proteger
+cd tu-repo
+bash /ruta/al/kit/install.sh --enable-secrets-layer2
+
+# opción B: el one-liner manual, mismo efecto
 git config core.hooksPath "$HOME/.claude/hooks/git"
 ```
 
-`install.sh` no automatiza este paso porque `core.hooksPath` es una config **por repositorio de trabajo**, no de `$HOME/.claude`; instalar el kit no implica saber a qué repos quieres aplicarle esta barrera. Actívalo a mano en cada repo donde quieras la Capa 2.
+`install.sh` (sin flags) no automatiza este paso ni siquiera cuando corre dentro de un repo git, porque `core.hooksPath` es una config **por repositorio de trabajo**, no de `$HOME/.claude`: instalar el kit no implica saber a qué repos quieres aplicarle esta barrera, y activarla en silencio en un repo que el usuario no nombró explícitamente es exactamente el tipo de sorpresa que hace que se desinstale una herramienta. `--enable-secrets-layer2` existe para que la activación siga siendo un acto deliberado (tú decides el repo, corriéndolo desde dentro) sin tener que memorizar el one-liner de git; ambas rutas quedan documentadas porque ninguna sustituye a la otra — la segunda es la vía de escape si por lo que sea no tienes el kit a mano en ese momento.
 
 Las dos suites de test que cubren esta parte: `test/test_guards.sh` (Capa 1 + Sentinel + `smart_approve.py`, con una demostración de falsabilidad en `test/test_guards_falsifiability.sh`: neutraliza `secret-guard.sh` y comprueba que casos `BLOCK` conocidos caen) y `test/test_secret_content_gitleaks.sh` (Capa 2: credencial con nombre inocente, fichero ignorado añadido con `-f`, señuelos `EXAMPLE` junto a una credencial real, la regla propia de contraseñas de diccionario y su allowlist). Detalle de cómo correrlas en `docs/07-verify.md`.
 

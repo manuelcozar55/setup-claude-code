@@ -8,6 +8,29 @@ bajo `[Unreleased]` hasta el primer tag.
 
 ### Added
 
+- Puerta de plataforma en `kit/install.sh`: comprueba `uname -s` y aborta con
+  un mensaje claro (y sin dejar nada a medias) en cualquier plataforma que no
+  sea Linux o WSL2, con detección informativa (no bloqueante) de WSL2. Es lo
+  único que prueba la CI de este repo, así que es lo único que se promete.
+- Instalación automática y opcional de `gitleaks` (versión fijada `8.30.1`)
+  desde `kit/install.sh`: detecta si ya está en el sistema y, si no, ofrece
+  descargar el binario oficial verificando su checksum SHA-256 contra el
+  fichero de checksums publicado (nunca `curl | bash`). Si falla por
+  cualquier motivo (sin red, checksum no coincide, sin permisos), degrada
+  con un aviso claro en vez de romper el resto de la instalación — la Capa 1
+  de secretos funciona igual sin `gitleaks`. `doctor.sh` ya lo reportaba.
+- Subcomando `kit/install.sh --enable-secrets-layer2`: activa
+  `core.hooksPath` de git (Capa 2 de secretos) solo en el repositorio desde
+  el que se invoca explícitamente. `install.sh` sin flags nunca toca esta
+  config por su cuenta, ni siquiera corriendo dentro de un repo git — ver
+  `kit/docs/05-security.md` para el razonamiento. Complementa (no sustituye)
+  el one-liner manual ya documentado.
+- Tres suites de test nuevas: `test_install_platform_gate.sh` (4 casos),
+  `test_install_gitleaks.sh` (6 casos) y `test_enable_secrets_layer2.sh`
+  (6 casos), añadidas a `make test` y a `.github/workflows/ci.yml`.
+- README.md reescrito como landing page de 30 segundos: qué hace el kit por
+  delante de qué es, prerrequisitos explícitos (Linux/WSL2) en el quick
+  start, y solo el badge de CI (sin badges decorativos).
 - Integración continua (`.github/workflows/ci.yml`) con dos jobs: las suites
   de test completas (`kit/test/*.sh`, incluyendo la de falsabilidad de
   guards y `gitleaks dir` sobre el repo) y un smoke test en contenedor Debian

@@ -21,6 +21,8 @@ Cubre el recorrido completo de mi setup diario: desde **Headroom** comprimiendo 
 
 ## Quickstart
 
+Requiere Linux o WSL2 (`install.sh` aborta con un mensaje claro en cualquier otra plataforma; ver [`docs/02-install.md`](docs/02-install.md#prerrequisitos)).
+
 ```bash
 # 1. Clona y entra en el kit
 git clone https://github.com/manuelcozar55/setup-claude-code.git
@@ -79,7 +81,7 @@ bash scan-secrets.sh .
 # PASS: sin secretos/PII en .
 ```
 
-Cero secretos en este repo: `.env.example` trae solo placeholders (`ANTHROPIC_API_KEY=your-anthropic-key`), nunca claves reales, y el propio `.gitignore` mantiene `.env` fuera del control de versiones. `doctor.sh` corre este mismo gate como su último chequeo. La barrera de secretos en sí es de dos capas: `secret-guard.sh` bloquea por nombre de fichero en `git add` (Capa 1), y un `pre-commit` con `gitleaks` escanea el contenido del índice real antes de cada commit (Capa 2, opcional, requiere `gitleaks` instalado). Detalle completo, incluyendo Sentinel, en [`docs/05-security.md`](docs/05-security.md).
+Cero secretos en este repo: `.env.example` trae solo placeholders (`ANTHROPIC_API_KEY=your-anthropic-key`), nunca claves reales, y el propio `.gitignore` mantiene `.env` fuera del control de versiones. `doctor.sh` corre este mismo gate como su último chequeo. La barrera de secretos en sí es de dos capas: `secret-guard.sh` bloquea por nombre de fichero en `git add` (Capa 1), y un `pre-commit` con `gitleaks` escanea el contenido del índice real antes de cada commit (Capa 2, opcional, requiere `gitleaks` instalado — `install.sh` te lo ofrece instalar solo, con checksum verificado, si no lo tienes). La Capa 2 se activa por repositorio con `bash install.sh --enable-secrets-layer2` desde dentro del repo que quieras proteger, o con el one-liner manual equivalente. Detalle completo, incluyendo Sentinel, en [`docs/05-security.md`](docs/05-security.md).
 
 ## Terceros
 
