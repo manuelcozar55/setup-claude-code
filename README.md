@@ -103,7 +103,8 @@ setup-claude-code/
 │   ├── .env.example · requirements-tools.txt            #    placeholders · CLIs del venv
 │   ├── claude/                                          #    CLAUDE.md, settings.json, 8 agentes, hooks, allowlist
 │   ├── sentinel/                                        #    motor de políticas + iocs.example.json
-│   ├── test/                                            #    tests TDD (scan/install/doctor)
+│   ├── test/                                            #    tests TDD (scan/install/doctor/guards/gitleaks)
+│   ├── evals/                                           #    eval set opt-in (6 tareas, no corre en test/)
 │   └── docs/                                            #    01-overview .. 08-plugins-mcp-y-skills
 ├── LICENSE                                             # CC BY 4.0
 └── README.md
