@@ -26,6 +26,14 @@ corepack enable
 corepack prepare pnpm@latest --activate
 ```
 
+**Aviso conocido (pnpm ≥ 11)**: desde la v11, pnpm movió el directorio de binarios globales de `$PNPM_HOME` a `$PNPM_HOME/bin`. Si tu `.bashrc`/`.zshrc` lo generó un `pnpm setup` de una versión anterior, solo tendrás en el `PATH` la ruta vieja, y todo lo que instales después con `pnpm add -g` (incluido `agent-browser`, ver `04-superpowers.md`) quedará invisible para el shell aunque la instalación termine sin ningún error. Comprueba que la ruta activa está en tu `PATH`:
+
+```bash
+echo "$PATH" | tr ':' '\n' | grep -F "$(pnpm config get global-bin-dir)"
+```
+
+Si no aparece nada, añade esa ruta a mano a tu `.bashrc`/`.zshrc`.
+
 ## Paso 1 · Clonar
 
 ```bash
