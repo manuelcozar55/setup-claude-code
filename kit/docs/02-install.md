@@ -4,6 +4,8 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 
 ## Prerrequisitos
 
+**Plataforma**: `install.sh` solo soporta **Linux o WSL2** (comprueba `uname -s` y aborta con un mensaje claro en cualquier otra); es lo único que prueba la CI de este repo. macOS y Windows nativo no están soportados todavía, precisamente porque no hay pipeline real que lo demuestre. Si vienes de Windows, instala WSL2 y corre el instalador dentro de tu distribución Linux, no en PowerShell/cmd.
+
 | Herramienta | Para qué | Verifica con |
 |---|---|---|
 | `git` | clonar el repo, y los guards de `secret-guard.sh`/`branch-guard.sh` operan sobre `git` | `git --version` |
@@ -12,7 +14,7 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 | `gh` (GitHub CLI) | flujo de PRs desde Claude Code | `gh --version` |
 | `jq` | `doctor.sh` y varios hooks parsean JSON con `jq`; sin él, `doctor.sh` falla explícitamente | `jq --version` |
 | `uv` | gestor de paquetes Python que usa el kit vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
-| `gitleaks` (opcional) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Ver `docs/05-security.md` | `gitleaks version` |
+| `gitleaks` (opcional, versión fijada `8.30.1`) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Si no lo tienes, `install.sh` te ofrece instalarlo (release oficial + checksum SHA-256, nunca `curl \| bash`): confirma con `y`, o exporta `GITLEAKS_AUTO_INSTALL=1` para saltarte el prompt en un entorno no interactivo. Ver `docs/05-security.md` | `gitleaks version` |
 
 Comprueba todo de una vez:
 
