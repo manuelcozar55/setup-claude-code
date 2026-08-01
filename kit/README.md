@@ -45,10 +45,12 @@ bash doctor.sh
 | Pieza | Contenido | Qué resuelve |
 |---|---|---|
 | `claude/` | `CLAUDE.md`, `settings.json`, `sentinel-allowlist.json` | la config saneada que `install.sh` copia a `CLAUDE_HOME` |
-| `claude/hooks/` | guards de Bash (`block-dangerous-commands.sh`, `branch-guard.sh`, `destructive-guard.sh`, `secret-guard.sh`) y hooks de sesión | barreras deterministas antes de cada acción |
+| `claude/hooks/` | guards de Bash (`block-dangerous-commands.sh`, `branch-guard.sh`, `destructive-guard.sh`, `secret-guard.sh`), hooks de sesión, y `hooks/git/pre-commit` + `.gitleaks.toml` (Capa 2 de secretos, por contenido) | barreras deterministas antes de cada acción, y sobre el índice real antes de cada commit |
 | `claude/agents/` | 8 agentes (`orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker`) | orquestación con tiering de modelo por tarea |
 | `sentinel/` | `sentinel_preflight.py` | el motor de políticas `PreToolUse` que decide allow/warn/deny |
 | `install.sh` · `doctor.sh` · `scan-secrets.sh` | scripts de instalación y verificación | instalar sin pisar nada, diagnosticar con evidencia, cerrar la puerta de secretos |
+| `test/` | regresión de guards, instalador y Capa 2 de secretos, en bash puro | `test/test_guards.sh`, `test/test_guards_falsifiability.sh`, `test/test_secret_content_gitleaks.sh` y el resto, todos `PASS=N FAIL=0` |
+| `evals/` | 6 tareas reales + harness de grading (opt-in, no corre en `test/`, cuesta llamadas reales a `claude -p`) | medir comportamiento del agente, no solo de los guards — ver [`evals/README.md`](evals/README.md) |
 | `docs/` | 8 documentos, del mapa (`01`) a plugins/MCP/skills (`08`) | el mapa mental y el "cómo" de cada pieza, con enlaces a terceros |
 
 ## Cómo funciona
@@ -77,7 +79,7 @@ bash scan-secrets.sh .
 # PASS: sin secretos/PII en .
 ```
 
-Cero secretos en este repo: `.env.example` trae solo placeholders (`ANTHROPIC_API_KEY=your-anthropic-key`), nunca claves reales, y el propio `.gitignore` mantiene `.env` fuera del control de versiones. `doctor.sh` corre este mismo gate como su último chequeo. Detalle completo, incluyendo Sentinel y los guards de Bash, en [`docs/05-security.md`](docs/05-security.md).
+Cero secretos en este repo: `.env.example` trae solo placeholders (`ANTHROPIC_API_KEY=your-anthropic-key`), nunca claves reales, y el propio `.gitignore` mantiene `.env` fuera del control de versiones. `doctor.sh` corre este mismo gate como su último chequeo. La barrera de secretos en sí es de dos capas: `secret-guard.sh` bloquea por nombre de fichero en `git add` (Capa 1), y un `pre-commit` con `gitleaks` escanea el contenido del índice real antes de cada commit (Capa 2, opcional, requiere `gitleaks` instalado). Detalle completo, incluyendo Sentinel, en [`docs/05-security.md`](docs/05-security.md).
 
 ## Terceros
 

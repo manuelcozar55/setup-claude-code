@@ -49,7 +49,25 @@ cd kit
 for t in test/*.sh; do echo "-- $t --"; bash "$t" || exit 1; done
 ```
 
-Esperado: cada script imprime `N passed, 0 failed` y termina con código 0.
+Esperado: cada script imprime `PASS=N FAIL=0` (o `N passed, 0 failed`, según el script) y termina con código 0. `test/test_secret_content_gitleaks.sh` (Capa 2 de secretos) hace `SKIP` con exit 0 si `gitleaks` no está instalado, en vez de fallar — instálalo (`docs/02-install.md`) para correrlo de verdad.
+
+**5. La suite de guards es falsable, no una tautología:**
+
+```bash
+bash test/test_guards_falsifiability.sh
+```
+
+Esperado: con el guard real, `PASS=27 FAIL=0`; con `secret-guard.sh` sustituido por un stub `exit 0`, un número fijo de casos `BLOCK` cae (`FAIL>0`). Si neutralizar el guard no rompe ningún test, la suite no estaría midiendo nada — este script lo demuestra en cada corrida.
+
+**6. El eval set NO forma parte de lo anterior — opt-in explícito, cuesta dinero real:**
+
+`kit/evals/` no se ejecuta en el bucle del paso 4 (vive fuera de `test/`, y así se queda). Correrlo hace 6 llamadas reales a `claude -p`:
+
+```bash
+bash kit/evals/run.sh
+```
+
+Ver `kit/evals/README.md` para el criterio de admisión de tareas y por qué usa `--permission-mode auto`. Los transcritos que genera (`kit/evals/transcripts/`) y los resultados (`kit/evals/resultados-*.json`) están en `.gitignore`: no se comitean.
 
 ## Tabla de comprobaciones
 
@@ -62,8 +80,13 @@ Esperado: cada script imprime `N passed, 0 failed` y termina con código 0.
 | Venv de tools (opcional) | presencia del binario | `test -x "$HOME/.venvs/tools/bin/python3"` | `PASS` si está, `WARN` si no |
 | Headroom (opcional) | presencia del CLI | `command -v rtk` | `PASS` si está, `WARN` si no |
 | Capa de IOCs de Sentinel (opcional; ver `docs/05-security.md`) | presencia de `iocs.json` | `test -f "$CLAUDE_HOME/hooks/iocs.json"` | `PASS` si está, `WARN` si no (los guards de Bash siguen activos) |
+| `gitleaks` instalado (opcional; requerido para la Capa 2 de secretos) | `command -v gitleaks` | (lo hace `doctor.sh` internamente) | `PASS` si está, `WARN` si no (la Capa 1 sigue activa) |
 | Instalación completa sin `FAIL` | agregado de todo lo anterior | `CLAUDE_HOME=... bash doctor.sh` | exit 0, 0 `FAIL` |
 | Idempotencia del instalador | backup timestamped tras reinstalar | `bash install.sh` (segunda vez) | sin error, backup creado, original no pisado |
 | Regresión de cada script | arnés TDD en bash puro | `bash test/test_scan_secrets.sh` / `test_install.sh` / `test_doctor.sh` | `N passed, 0 failed` |
+| Regresión de los guards `PreToolUse` (Capa 1 + Sentinel) | arnés TDD en bash puro | `bash test/test_guards.sh` | `PASS=27 FAIL=0` |
+| Regresión de la Capa 2 (`pre-commit` + `gitleaks`) | repos git temporales reales, `git commit` de verdad | `bash test/test_secret_content_gitleaks.sh` | `PASS=16 FAIL=0` (o `SKIP` si falta `gitleaks`) |
+| La suite de guards es falsable (no una tautología) | guard real vs. guard neutralizado (`exit 0`) | `bash test/test_guards_falsifiability.sh` | un número fijo de casos `BLOCK` cae al neutralizar el guard |
+| Eval set (opt-in, cuesta dinero real — no forma parte de lo anterior) | transcript de `claude -p`, gradeado por `grade.py` | `bash kit/evals/run.sh` | `pass`/`fail` por tarea, ver `kit/evals/README.md` |
 
 Si cualquiera de estos comandos no da el resultado esperado en tu máquina, es una `FAIL` real: corrígelo antes de dar la instalación por buena. Ese es el bucle completo del kit: instalar, diagnosticar, corregir, reinstalar.

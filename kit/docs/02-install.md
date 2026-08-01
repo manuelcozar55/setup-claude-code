@@ -12,6 +12,7 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 | `gh` (GitHub CLI) | flujo de PRs desde Claude Code | `gh --version` |
 | `jq` | `doctor.sh` y varios hooks parsean JSON con `jq`; sin él, `doctor.sh` falla explícitamente | `jq --version` |
 | `uv` | gestor de paquetes Python que usa el kit vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
+| `gitleaks` (opcional) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Ver `docs/05-security.md` | `gitleaks version` |
 
 Comprueba todo de una vez:
 
