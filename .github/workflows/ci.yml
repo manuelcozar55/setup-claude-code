@@ -1,0 +1,123 @@
+name: CI
+
+# Plataforma declarada: Linux/WSL2 unicamente (ver kit/docs). No se anade una
+# matriz de macOS "por si acaso": no hay una mac disponible para reproducir
+# fallos, asi que no se promete lo que esta CI no prueba.
+#
+# IMPORTANTE: el eval set (kit/evals/) NUNCA se ejecuta aqui. Cuesta dinero
+# real (6 llamadas a `claude -p` contra la API de Anthropic por corrida). Es
+# opt-in, solo a mano: `bash kit/evals/run.sh` o `make evals-paid`. Si vas a
+# anadir un job nuevo a este workflow, no lo invoques ni directa ni
+# indirectamente (nada de `make test` recursivo hacia evals, nada de correr
+# run.sh "de paso").
+
+on:
+  push:
+    branches: [main, v2-autonomous]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256_LINUX_X64: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
+jobs:
+  test-suites:
+    name: Suites de test (kit/test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Instalar gitleaks (version fijada + checksum)
+        run: |
+          set -euo pipefail
+          curl -sSL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256_LINUX_X64}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          rm -f gitleaks.tar.gz gitleaks
+          gitleaks version
+
+      - name: test_guards.sh (Capa 1, por nombre de fichero)
+        run: bash kit/test/test_guards.sh
+
+      - name: test_guards_falsifiability.sh (la suite anterior es falsable)
+        run: bash kit/test/test_guards_falsifiability.sh
+
+      - name: test_secret_content_gitleaks.sh (Capa 2, por contenido)
+        run: bash kit/test/test_secret_content_gitleaks.sh
+
+      - name: test_scan_secrets.sh
+        run: bash kit/test/test_scan_secrets.sh
+
+      - name: test_install.sh (instala + idempotencia con backup)
+        run: bash kit/test/test_install.sh
+
+      - name: test_doctor.sh
+        run: bash kit/test/test_doctor.sh
+
+      - name: gitleaks dir sobre el repo completo
+        run: gitleaks dir --no-banner .
+
+  smoke-install-nonroot:
+    name: Smoke test — install.sh en Debian limpio, usuario no root
+    runs-on: ubuntu-latest
+    container:
+      image: debian:12-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Dependencias del sistema
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends bash git jq python3 ca-certificates sudo
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Crear usuario no root
+        run: |
+          set -euo pipefail
+          useradd -m -s /bin/bash ciuser
+          chown -R ciuser:ciuser "$GITHUB_WORKSPACE"
+
+      - name: install.sh como usuario no root (1a pasada)
+        run: su - ciuser -c "cd '$GITHUB_WORKSPACE' && bash kit/install.sh"
+
+      - name: Post-condiciones tras la 1a instalacion
+        run: |
+          su - ciuser -c "cd '$GITHUB_WORKSPACE' && bash .github/scripts/assert-install.sh /home/ciuser/.claude"
+
+      - name: doctor.sh como usuario no root
+        run: su - ciuser -c "cd '$GITHUB_WORKSPACE' && CLAUDE_HOME=/home/ciuser/.claude bash kit/doctor.sh"
+
+      - name: Huella de ficheros tras la 1a pasada (para comparar idempotencia)
+        run: |
+          su - ciuser -c "find /home/ciuser/.claude -type f -not -path '*/backups/*' -exec sha256sum {} +" \
+            | sort -k2 > /tmp/install-pass1.sha256
+
+      - name: install.sh de nuevo, sin tocar nada (2a pasada, idempotencia)
+        run: su - ciuser -c "cd '$GITHUB_WORKSPACE' && bash kit/install.sh"
+
+      - name: Post-condiciones tras la 2a instalacion
+        run: |
+          su - ciuser -c "cd '$GITHUB_WORKSPACE' && bash .github/scripts/assert-install.sh /home/ciuser/.claude"
+
+      - name: Idempotencia -- mismo arbol de ficheros, sin backups nuevos
+        run: |
+          set -euo pipefail
+          su - ciuser -c "find /home/ciuser/.claude -type f -not -path '*/backups/*' -exec sha256sum {} +" \
+            | sort -k2 > /tmp/install-pass2.sha256
+          diff /tmp/install-pass1.sha256 /tmp/install-pass2.sha256
+          echo "OK: arbol de ficheros identico entre la 1a y la 2a pasada"
+          nbackups=$(su - ciuser -c "find /home/ciuser/.claude/backups -mindepth 1 -maxdepth 1 2>/dev/null | wc -l")
+          [ "$nbackups" -eq 0 ]
+          echo "OK: la 2a pasada no genero backups (nada habia cambiado)"
+
+      - name: doctor.sh sigue en verde tras la 2a pasada
+        run: su - ciuser -c "cd '$GITHUB_WORKSPACE' && CLAUDE_HOME=/home/ciuser/.claude bash kit/doctor.sh"
