@@ -23,10 +23,13 @@ install_file() {  # src dst
 install_file "$KIT/claude/CLAUDE.md"            "$CLAUDE_HOME/CLAUDE.md"
 install_file "$KIT/claude/settings.json"        "$CLAUDE_HOME/settings.json"
 install_file "$KIT/claude/sentinel-allowlist.json" "$CLAUDE_HOME/sentinel-allowlist.json"
+install_file "$KIT/claude/.gitleaks.toml"       "$CLAUDE_HOME/.gitleaks.toml"
 for f in "$KIT"/claude/agents/*; do [ -e "$f" ] && install_file "$f" "$CLAUDE_HOME/agents/$(basename "$f")"; done
-for f in "$KIT"/claude/hooks/*;  do [ -e "$f" ] && install_file "$f" "$CLAUDE_HOME/hooks/$(basename "$f")"; done
+for f in "$KIT"/claude/hooks/*;  do [ -f "$f" ] && install_file "$f" "$CLAUDE_HOME/hooks/$(basename "$f")"; done
 for f in "$KIT"/sentinel/*;      do [ -e "$f" ] && install_file "$f" "$CLAUDE_HOME/sentinel/$(basename "$f")"; done
-chmod +x "$CLAUDE_HOME"/hooks/*.sh 2>/dev/null || true
+mkdir -p "$CLAUDE_HOME/hooks/git"
+install_file "$KIT/claude/hooks/git/pre-commit" "$CLAUDE_HOME/hooks/git/pre-commit"
+chmod +x "$CLAUDE_HOME"/hooks/*.sh "$CLAUDE_HOME"/hooks/git/pre-commit 2>/dev/null || true
 
 echo "==> Config instalada. Terceros (ver docs/): superpowers, Headroom, agent-browser, venv de tools."
 echo "==> Rellena tus claves:  cp $KIT/.env.example \$HOME/.claude/.env  &&  editar"

@@ -1,0 +1,54 @@
+#!/bin/bash
+# pre-commit — bloquea el commit si el INDICE (lo que realmente se va a
+# comitear) contiene secretos, segun gitleaks.
+#
+# Capa 2 de la arquitectura de dos capas descrita en docs/05-security.md. La
+# capa 1 (../secret-guard.sh, PreToolUse) es un filtro barato por nombre de
+# fichero, sabido incompleto. Esta capa ve el indice real via
+# `gitleaks git --staged`, no el texto del comando ni el arbol de trabajo:
+# cubre `git add` en cualquier forma (cd, subshells, alias, xargs) y
+# `git commit -am`, porque en todos los casos lo que llega aqui es el mismo
+# indice.
+#
+# Se activa via `git config core.hooksPath claude/hooks/git` (relativo a
+# CLAUDE_HOME una vez instalado) — un hook en .git/hooks/ no se versiona y
+# podria perderse en silencio sin que ningun test lo notara. Ver
+# kit/test/test_secret_content_gitleaks.sh para la regresion.
+#
+# Dependencia: gitleaks (Go, MIT) — ver docs/02-install.md para instalarlo.
+# doctor.sh avisa (WARN) si no esta presente en PATH.
+
+GITLEAKS="$(command -v gitleaks || true)"
+[ -z "$GITLEAKS" ] && [ -x "$HOME/.local/bin/gitleaks" ] && GITLEAKS="$HOME/.local/bin/gitleaks"
+
+if [ -z "$GITLEAKS" ]; then
+  echo "BLOCKED: gitleaks no encontrado (ni en PATH ni en ~/.local/bin/gitleaks)." >&2
+  echo "Instala gitleaks o el commit no puede verificarse en busca de secretos." >&2
+  exit 1
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# --ignore-gitleaks-allow: sin este flag, un comentario "# gitleaks:allow" en
+# el propio contenido commiteado silencia el hallazgo sin dejar rastro
+# auditable (peor que --no-verify, que al menos es un acto explicito fuera
+# del contenido). env -u GITLEAKS_CONFIG: evita que una variable de entorno
+# apuntando a una config permisiva sustituya la config por defecto sin aviso.
+#
+# -c "$REPO_ROOT/.gitleaks.toml": el fichero de config anade una regla propia
+# (contraseñas tipo diccionario en ficheros de config, ver ese fichero) que
+# EXTIENDE las reglas por defecto (useDefault = true). Se pasa explicito
+# porque, aun cuando gitleaks a veces recoge un .gitleaks.toml en el path
+# destino por su cuenta, no hay que depender de esa autodeteccion (varia con
+# el cwd y con la version): -c fija sin ambiguedad que config se usa, y
+# convive con el -u GITLEAKS_CONFIG de arriba (uno fija la config, el otro
+# impide que una variable de entorno la sustituya; no se pisan).
+env -u GITLEAKS_CONFIG "$GITLEAKS" git --staged --no-banner --redact --ignore-gitleaks-allow -c "$REPO_ROOT/.gitleaks.toml" "$REPO_ROOT"
+STATUS=$?
+
+if [ "$STATUS" -ne 0 ]; then
+  echo "BLOCKED: gitleaks encontro posibles secretos en los ficheros staged." >&2
+  echo "Revisa el detalle arriba. Si es un falso positivo REAL (verificado contra gitleaks, no solo molesto), anadelo a .gitleaksignore con su fingerprint exacta -- queda en el diff del commit que lo añade, es auditable. No lo silencies con un comentario gitleaks:allow en el contenido: este hook lo ignora a proposito (--ignore-gitleaks-allow)." >&2
+fi
+
+exit "$STATUS"

@@ -56,6 +56,14 @@ if [ -x "$HOME/.venvs/tools/bin/python3" ]; then pass "venv tools presente"; els
 # 5. Headroom (opcional -> WARN)
 if command -v rtk >/dev/null 2>&1; then pass "Headroom rtk presente"; else warn "Headroom no instalado (opcional; ver docs/03-headroom.md)"; fi
 
+# 5b. gitleaks (opcional -> WARN): requerido solo para activar la Capa 2 de
+# secretos (hooks/git/pre-commit); la Capa 1 (secret-guard.sh) funciona sin él.
+if command -v gitleaks >/dev/null 2>&1 || [ -x "$HOME/.local/bin/gitleaks" ]; then
+  pass "gitleaks presente  (fuente: command -v gitleaks)"
+else
+  warn "gitleaks no instalado: la Capa 2 de secretos (pre-commit) no puede activarse (ver docs/05-security.md)"
+fi
+
 # 6. gate de secretos sobre el kit
 if bash "$KIT/scan-secrets.sh" "$KIT" >/dev/null 2>&1; then pass "kit sin secretos  (fuente: scan-secrets.sh)"; else fail "scan-secrets detectó material sensible en el kit"; fi
 
