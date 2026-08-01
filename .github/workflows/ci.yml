@@ -61,6 +61,15 @@ jobs:
       - name: test_doctor.sh
         run: bash kit/test/test_doctor.sh
 
+      - name: test_install_platform_gate.sh (puerta de plataforma Linux/WSL2)
+        run: bash kit/test/test_install_platform_gate.sh
+
+      - name: test_install_gitleaks.sh (deteccion + degradacion sin gitleaks)
+        run: bash kit/test/test_install_gitleaks.sh
+
+      - name: test_enable_secrets_layer2.sh (activacion opt-in por repo)
+        run: bash kit/test/test_enable_secrets_layer2.sh
+
       - name: gitleaks dir sobre el repo completo
         run: gitleaks dir --no-banner .
 

@@ -34,6 +34,12 @@ Todo vive bajo `kit/test/`:
   `gitleaks` en `pre-commit`). Se salta sola (SKIP, no FAIL) si no encuentra
   el binario `gitleaks` en el sistema.
 - `test_install.sh`, `test_doctor.sh`, `test_scan_secrets.sh`.
+- `test_install_platform_gate.sh` — la puerta de plataforma de `install.sh`
+  (solo Linux/WSL2) aborta en cualquier otra y no deja nada a medias.
+- `test_install_gitleaks.sh` — deteccion de `gitleaks` y degradacion con
+  aviso (no rotura) cuando no esta instalado.
+- `test_enable_secrets_layer2.sh` — `install.sh --enable-secrets-layer2`
+  activa la Capa 2 solo en el repo desde el que se invoca explicitamente.
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`.
 
