@@ -2,6 +2,7 @@
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,20,24&height=200&section=header&text=setup-claude-code&fontSize=48&fontColor=ffffff&animation=fadeIn&desc=El%20m%C3%A9todo%20detr%C3%A1s%20de%20mi%20trabajo%20con%20Claude%20Code&descAlignY=62&descSize=18" alt="setup-claude-code" />
 
+[![CI](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml/badge.svg?branch=v2-autonomous)](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-m%C3%A9todo-D97757?style=for-the-badge&logo=anthropic&logoColor=white)
 ![HTML5](https://img.shields.io/badge/Charlas-HTML_autocontenido-E34F26?style=for-the-badge&logo=html5&logoColor=white)
 ![Bash](https://img.shields.io/badge/Kit-Bash_+_TDD-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white)
