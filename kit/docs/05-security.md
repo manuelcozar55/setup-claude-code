@@ -50,6 +50,10 @@ Junto a Sentinel, un segundo nivel de hooks `PreToolUse` sobre `Bash` (y, para d
 
 Todos siguen el mismo patrón de diseño que Sentinel: reglas deterministas, protocolo JSON o `exit 2` para bloquear, y en el caso de `smart_approve.py`, fail-open explícito ante un crash propio.
 
+**Límite conocido de `secret-guard.sh`**: el chequeo de `git add -A`/`git add .` funciona sobre el texto del comando, no sobre el índice real de git. Adivinar con certeza el efecto de una cadena de shell arbitraria (alias, subshells, pathspecs) exigiría, en el límite, un tokenizador de shell y un resolvedor de pathspecs completos; un hook `PreToolUse` no lo es, y este no pretende serlo. Si necesitas una garantía más fuerte que la heurística por nombre, la vía robusta es un `pre-commit` de git que escanee el índice ya staged (por ejemplo con un escáner de secretos por contenido tipo `gitleaks`) en vez de adivinar desde el comando: eso no interpreta shell, ve exactamente lo que se va a commitear.
+
+**Coste de la cadena, no solo su cobertura**: con la config que instala este kit, una llamada a `Bash` pasa por 7 hooks `PreToolUse` en serie (`rtk hook claude`, Sentinel, y los 4 guards, más `smart_approve.py`). No es gratis: en pruebas sobre esta misma cadena se midió un overhead perceptible por llamada (varios cientos de ms; cada invocación de `jq` dentro de un hook añade lo suyo), que variará con tu máquina pero da el orden de magnitud. Merece la pena pagarlo por las barreras que compra, pero tenlo en cuenta antes de añadir un hook más encima.
+
 ## Manejo de secretos
 
 Los secretos reales (`ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`, `LANGSMITH_API_KEY`) viven únicamente en `$HOME/.claude/.env`, que **nunca** se sube al repo. Lo que sí se versiona es `.env.example`, con los nombres de variable y valores placeholder, nunca un valor real. `secret-guard.sh` es la barrera en el momento de `git add`; si algo se cuela más allá de eso, el siguiente punto lo atrapa.

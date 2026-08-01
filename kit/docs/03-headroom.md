@@ -47,6 +47,17 @@ El proxy recibe la llamada de Claude Code, comprime lo que corresponda, y reenv�
 
 `rtk hook claude` se ejecuta antes de cada llamada a Bash. No necesitas escribirlo tú: ya viene en el `settings.json` que instala `install.sh`.
 
+## Modo del proxy: `cache` vs `token`
+
+Headroom arranca en uno de dos modos, y la diferencia importa para la factura, no solo para el tamaño del contexto:
+
+- **`cache`**: los turnos anteriores de la conversación quedan congelados. Al no tocar el prefijo de la conversación, el prompt-caching nativo de Anthropic sigue funcionando turno a turno.
+- **`token`**: Headroom puede reescribir turnos anteriores para ahorrar tokens de contexto. Al reescribir el prefijo, invalida el caché de Anthropic desde ese punto en adelante: lo que ganas en tokens de contexto lo puedes perder, y de sobra, en cache misses.
+
+**Ojo con el default**: la propia herramienta se ha visto contradecirse sobre cuál es. La ayuda del subcomando que arranca el proxy puede mostrar `cache` como default, mientras que la ayuda del subcomando de instalación (y la documentación online del proyecto) dicen `token`. No asumas cuál tienes activo: compruébalo explícitamente en tu instalación en vez de fiarte del default. Si tu instalación usa perfiles de ahorro predefinidos, el perfil se suele aplicar con algo equivalente a `setdefault()` (lo que fijes tú explícitamente manda sobre el perfil), y no todos los perfiles usan `cache` por defecto: verifica el que tengas activo, no solo el que crees haber elegido.
+
+Para este kit, que depende de que `ANTHROPIC_BASE_URL` apunte al proxy sin romper el caché de Anthropic (ver arriba), fija el modo explícitamente a `cache` en vez de confiar en el default, y vuelve a comprobarlo tras cada actualización de Headroom. Y no des por hecho que la compresión de Headroom es lo que te ahorra dinero: en la práctica, el ahorro grande suele venir del prompt-caching nativo de Anthropic (que `cache` protege); la compresión aporta encima, pero como un extra menor, no como el mecanismo principal.
+
 ## Endpoint de salud
 
 Para comprobar que el proxy está vivo:
@@ -56,6 +67,8 @@ curl -s 127.0.0.1:8787/readyz
 ```
 
 Ten cuidado con este comando: Sentinel (ver `05-security.md`) trata las IP en crudo dentro de una URL como un patrón sospechoso, y puede bloquear ese `curl` aunque el destino sea inofensivo y local. El allowlist que este kit instala (`sentinel-allowlist.json`) ya incluye `127.0.0.1` y `localhost` como dominios permitidos, así que el comando de arriba debería pasar sin fricción tras `install.sh`. Si partes de un allowlist propio construido desde cero y no lo has incluido, tienes dos salidas: añadirlo al allowlist, o usar directamente el CLI que la propia instalación de Headroom exponga para estadísticas (por ejemplo `headroom_stats`, si tu instalación lo provee), que no contiene una URL y por tanto no dispara esa regla.
+
+Un `200 OK` en `/readyz` confirma que *algo* responde en ese puerto, no que sea tu proxy. Un healthcheck que solo mira el puerto no distingue una instancia vieja o a medio configurar (por ejemplo, un servicio anterior que quedó ocupando el 8787) de la que tú acabas de arrancar; puede darte "vivo" mientras la que responde de verdad no es la tuya. Si algo no cuadra (el proxy no aplica el modo que configuraste, o los resultados no parecen pasar por él), comprueba qué proceso tiene el puerto realmente abierto (`lsof -i :8787` o equivalente) antes de fiarte solo del curl.
 
 ## Sin DBs ni cifras de ahorro
 
