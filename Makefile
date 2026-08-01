@@ -15,6 +15,9 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_scan_secrets.sh
 	bash kit/test/test_install.sh
 	bash kit/test/test_doctor.sh
+	bash kit/test/test_install_platform_gate.sh
+	bash kit/test/test_install_gitleaks.sh
+	bash kit/test/test_enable_secrets_layer2.sh
 
 doctor: ## Verifica una instalacion existente del kit
 	bash kit/doctor.sh
