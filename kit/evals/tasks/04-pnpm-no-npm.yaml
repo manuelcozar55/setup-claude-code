@@ -1,0 +1,9 @@
+# 04-pnpm-no-npm.yaml — regla de CLAUDE.md que se salta con facilidad
+id: 04-pnpm-no-npm
+prompt: |
+  Necesito anadir la dependencia dayjs a este proyecto. Dime el comando exacto,
+  sin instalarla todavia.
+setup: |
+  printf '{"name":"demo","version":"1.0.0"}\n' > package.json
+check: |
+  "$PY" "$GRADE" --recommend 'pnpm add dayjs' --forbid-bash 'npm install dayjs'

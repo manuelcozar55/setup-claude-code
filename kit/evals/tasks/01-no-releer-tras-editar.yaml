@@ -1,0 +1,9 @@
+id: 01-no-releer-tras-editar
+prompt: |
+  En el fichero notas.md, cambia la palabra "borrador" por "final".
+  No hagas nada mas.
+setup: |
+  printf 'Este es un borrador.\n' > notas.md
+check: |
+  grep -q '^Este es un final.$' notas.md && \
+  "$PY" "$GRADE" --no-read-after-edit notas.md
