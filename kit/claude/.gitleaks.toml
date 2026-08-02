@@ -12,6 +12,17 @@
 # dio 18 falsos positivos (prosa, JS, markdown que mencionan
 # PASSWORD=/TOKEN= como ejemplo); acotada a extensiones de config dio 0.
 #
+# .json queda deliberadamente FUERA de esa lista de extensiones (a diferencia
+# de yaml/toml/ini/properties/conf/cfg, que son casi siempre config propia).
+# La medicion de 0 falsos positivos solo es valida para este repo, pequeño y
+# centrado en documentacion: en un proyecto Node real, .json cubre
+# package-lock.json, tsconfig.json, specs de OpenAPI, etc., y la regex
+# (PASSWORD|...|TOKEN|...)\s*[:=]\s*(\S{8,}) puede caer sobre un
+# "token": "algun-valor-interno" completamente inocuo. Si algun dia hace
+# falta cubrir JSON de verdad, el remedio ya documentado (kit/docs/05-security.md)
+# es el fingerprint en .gitleaksignore, no ampliar este path de nuevo sin
+# repetir la medicion sobre un repo representativo.
+#
 # useDefault = true: extiende (no reemplaza) las reglas por defecto de
 # gitleaks -- las claves de alta entropia (AWS, Anthropic, genericas, etc.)
 # se siguen detectando igual que antes de que este fichero existiera.
@@ -30,7 +41,7 @@ useDefault = true
 id = "dict-password-config-file"
 description = "Asignacion PASSWORD/SECRET/TOKEN/API_KEY con valor tipo diccionario en un fichero de configuracion (sin exigir alta entropia)"
 regex = '''(?i)(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)\s*[:=]\s*(\S{8,})'''
-path = '''\.(ya?ml|toml|ini|properties|conf|cfg|json)$'''
+path = '''\.(ya?ml|toml|ini|properties|conf|cfg)$'''
 
   [rules.allowlist]
   regexes = [
