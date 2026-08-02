@@ -140,6 +140,8 @@ printf 'PASSWORD=changeme\n' > "$D/config.yaml"
 expect_commit "$D" "PASSWORD=changeme en .yaml permitido (allowlist)" ALLOW
 
 D="$BASE/allowlist-var"; newrepo "$D"
+# shellcheck disable=SC2016 # ${DB_PASS} literal a proposito: el fixture prueba
+# una referencia a variable sin expandir (patron comun de config), no un valor real.
 printf 'PASSWORD=${DB_PASS}\n' > "$D/config.yaml"
 (cd "$D" && git add config.yaml)
 expect_commit "$D" "PASSWORD=\${VAR} en .yaml permitido (allowlist)" ALLOW
@@ -162,7 +164,18 @@ printf 'const pw = "DB_PASSWORD=hunter2superSecret"\n' > "$D/app.js"
 (cd "$D" && git add app.js)
 expect_commit "$D" "misma contraseña en .js permitida (fuera de ambito de path)" ALLOW
 
-# 17) control: una clave de alta entropia en .yaml sigue bloqueando -- la
+# 17) .json esta deliberadamente fuera del path de esta regla (ver
+# kit/claude/.gitleaks.toml): en un proyecto Node real, package-lock.json,
+# tsconfig.json, etc. usan a menudo una clave "token" con un valor interno
+# inocuo de mas de 8 caracteres -- exactamente el patron que dispararia la
+# regla si .json siguiera en el path. Se documenta con un fixture realista
+# en vez de solo mencionarlo en un comentario.
+D="$BASE/out-of-scope-json"; newrepo "$D"
+printf '{\n  "name": "demo",\n  "config": {\n    "token": "internal-build-marker"\n  }\n}\n' > "$D/package.json"
+(cd "$D" && git add package.json)
+expect_commit "$D" "token interno en package.json permitido (.json fuera de ambito de path)" ALLOW
+
+# 18) control: una clave de alta entropia en .yaml sigue bloqueando -- la
 # regla propia no debilito las reglas por defecto de gitleaks (useDefault = true)
 D="$BASE/high-entropy-still-blocks"; newrepo "$D"
 HIGHENT="aB3xK9mQ7zP2w$(printf '%s' R5tY8uJ)"
