@@ -8,6 +8,12 @@
 # hardcodeada que se desincronice.
 #
 # Uso: assert-install.sh CLAUDE_HOME
+#
+# shellcheck disable=SC2016 # las cadenas '...$CLAUDE_HOME...' pasadas a check()
+# son literales a proposito: se expanden dentro de eval "$2" (ver check()),
+# no en el momento de escribirlas aqui arriba.
+# shellcheck disable=SC2034 # CLAUDE_HOME si se usa: dentro de esas cadenas,
+# via el eval de check(); shellcheck no seva el uso indirecto.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 KIT="$HERE/../../kit"

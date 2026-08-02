@@ -8,7 +8,7 @@
 # -- pasaria igual con o sin guard. El numero exacto de caidas se fija mas
 # abajo (ver STUB_BLOCK_CASES) y se compara con el resultado real.
 set -u
-HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
+HERE="$(cd "$(dirname "$0")" && pwd)"
 
 STUB=$(mktemp)
 printf '#!/bin/bash\nexit 0\n' > "$STUB"

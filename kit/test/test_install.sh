@@ -15,7 +15,7 @@ ck "$([ -f "$CLAUDE_HOME/sentinel/sentinel_preflight.py" ] && echo y)" "y" "inst
 # Idempotencia + backup: modifica un fichero, reinstala, debe backupear y no romper
 echo "MOD" >> "$CLAUDE_HOME/CLAUDE.md"
 set +e; bash "$KIT/install.sh" >/dev/null 2>&1; rrc=$?; set -e
-ck "$(ls "$CLAUDE_HOME"/backups/*/CLAUDE.md 2>/dev/null | wc -l | tr -d ' ')" "1" "backup creado al reinstalar"
+ck "$(find "$CLAUDE_HOME/backups" -mindepth 2 -maxdepth 2 -name CLAUDE.md 2>/dev/null | wc -l | tr -d ' ')" "1" "backup creado al reinstalar"
 ck "$rrc" "0" "reinstalar no falla"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
