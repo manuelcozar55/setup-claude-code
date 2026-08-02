@@ -8,6 +8,31 @@ bajo `[Unreleased]` hasta el primer tag.
 
 ### Added
 
+- Hash SHA-256 de `gitleaks` (x64 y arm64) fijado como constante dentro de
+  `kit/install.sh`, verificado por el propio mantenedor contra la release
+  oficial `v8.30.1` — ya no se confía en el `checksums.txt` servido por el
+  mismo host que el tarball, que solo protegía contra corrupción en
+  tránsito, no contra una release comprometida. Procedimiento de
+  actualización documentado en `CONTRIBUTING.md` ("Actualizar gitleaks").
+- Si el checksum de `gitleaks` no coincide con el fijado, la instalación ya
+  no lo trata igual que "sin red": deja una marca persistente en
+  `$CLAUDE_HOME/.gitleaks-checksum-mismatch` (con versión, arquitectura y
+  hash esperado) que `doctor.sh` reporta como `FAIL` en instalaciones
+  posteriores — sin romper el resto de la instalación (la Capa 1 de
+  secretos sigue activa). Cubierto por
+  `kit/test/test_install_gitleaks_checksum.sh` (9 casos).
+- `.gitattributes` en la raíz: fuerza LF (`eol=lf`) en todo lo que se
+  ejecuta o parsea (`*.sh`, `*.py`, `*.yml`/`*.yaml`, `*.toml`, `*.json`,
+  `Makefile`, el hook sin extensión `kit/claude/hooks/git/pre-commit`,
+  etc.). Protege a quien clona desde Windows/WSL2 con
+  `core.autocrlf=true` (default de Git) de que un clon normal convierta LF
+  a CRLF y rompa cada script (`bad interpreter: .../bash^M`). Cubierto por
+  `kit/test/test_gitattributes.sh` (4 casos, con auto-falsación).
+- `shellcheck` en un job nuevo de CI sobre los 20 scripts del kit (`kit/*.sh`,
+  hooks, `kit/test/*.sh`, `.github/scripts/*.sh`).
+- `doctor.sh` reporta ahora el estado de la Capa 2 de secretos: versión de
+  `gitleaks` instalada, si `core.hooksPath` está configurado en el repo
+  actual, y si quedó una marca de checksum-mismatch pendiente de revisar.
 - Puerta de plataforma en `kit/install.sh`: comprueba `uname -s` y aborta con
   un mensaje claro (y sin dejar nada a medias) en cualquier plataforma que no
   sea Linux o WSL2, con detección informativa (no bloqueante) de WSL2. Es lo
@@ -54,6 +79,18 @@ bajo `[Unreleased]` hasta el primer tag.
 - Suite `test_guards_falsifiability.sh`: prueba que la suite de guards mide
   comportamiento real neutralizando un guard y comprobando que eso rompe
   casos BLOCK conocidos.
+
+### Changed
+
+- La regla propia de `kit/claude/.gitleaks.toml` (contraseñas de tipo
+  diccionario en ficheros de config) ya no incluye `.json` en su path: la
+  medición de 0 falsos positivos solo era válida para este repo pequeño y
+  centrado en documentación, y en un proyecto Node real `.json` cubre
+  `package-lock.json`/`tsconfig.json`/specs de OpenAPI, donde un
+  `"token": "valor-interno"` inocuo dispararía la regla. Documentado con un
+  fixture nuevo en `test_secret_content_gitleaks.sh` (caso 17).
+- El badge de CI en `README.md` ya no apunta a `?branch=v2-autonomous`:
+  refleja la rama por defecto una vez fusionada.
 
 ### Fixed
 

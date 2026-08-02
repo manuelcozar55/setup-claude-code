@@ -38,8 +38,13 @@ Todo vive bajo `kit/test/`:
   (solo Linux/WSL2) aborta en cualquier otra y no deja nada a medias.
 - `test_install_gitleaks.sh` — deteccion de `gitleaks` y degradacion con
   aviso (no rotura) cuando no esta instalado.
+- `test_install_gitleaks_checksum.sh` — un checksum de `gitleaks` que no
+  coincide con el fijado en `install.sh` no rompe la instalacion, pero deja
+  una marca persistente en `CLAUDE_HOME` que `doctor.sh` reporta despues.
 - `test_enable_secrets_layer2.sh` — `install.sh --enable-secrets-layer2`
   activa la Capa 2 solo en el repo desde el que se invoca explicitamente.
+- `test_gitattributes.sh` — ningun script/hook versionado tiene CRLF en el
+  arbol de trabajo (ver ".gitattributes y CRLF" mas abajo).
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`.
 
@@ -47,6 +52,50 @@ Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`.
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
 kit/evals/run.sh` o `make evals-paid` (pide confirmación). Nunca lo invoques
 desde un test, un hook o un job de CI.
+
+## Actualizar gitleaks
+
+`kit/install.sh` fija la version (`GITLEAKS_VERSION`) y el hash SHA-256
+esperado por arquitectura (`GITLEAKS_SHA256_LINUX_X64`,
+`GITLEAKS_SHA256_LINUX_ARM64`) como constantes al principio del propio
+script — no se descarga ningun `checksums.txt` de la release para verificar
+contra el. La razon: ese fichero lo publica el mismo host que el tarball, asi
+que protege contra corrupcion en transito pero no contra una release
+comprometida; fijar el hash aqui, versionado y revisable en un PR, es lo que
+de verdad ancla la confianza fuera de lo que la red sirva ese dia.
+
+Para subir de version:
+
+1. En la [pagina de releases de gitleaks](https://github.com/gitleaks/gitleaks/releases),
+   descarga `gitleaks_<version>_checksums.txt` de la release nueva.
+2. Verifica ese fichero de checksums contra los tarballs `linux_x64` y
+   `linux_arm64` que realmente vas a fijar (descargalos tu mismo y corre
+   `sha256sum -c`, no confies solo en copiar el texto del fichero).
+3. Actualiza `GITLEAKS_VERSION` y los dos `GITLEAKS_SHA256_LINUX_*` en
+   `kit/install.sh` con los valores verificados.
+4. Actualiza tambien `GITLEAKS_VERSION`/`GITLEAKS_SHA256_LINUX_X64` en
+   `.github/workflows/ci.yml` (instalacion de gitleaks para la propia CI;
+   es una ruta de instalacion distinta a la de `install.sh`, con su propio
+   pin).
+5. Corre `make test` completo (en especial `test_install_gitleaks.sh` y
+   `test_install_gitleaks_checksum.sh`) antes de abrir el PR. Un hash
+   equivocado rompe la instalacion de `gitleaks` para todo el mundo — con
+   degradacion elegante (Capa 1 sigue activa), pero rompe igual la Capa 2.
+
+Nunca inventes ni copies un hash de una fuente que no sea la release oficial
+de gitleaks verificada por ti mismo.
+
+## `.gitattributes` y CRLF
+
+El repo fuerza LF (`eol=lf`) en todo lo que se ejecuta o parsea (`*.sh`,
+`*.py`, `*.yml`/`*.yaml`, `*.toml`, `*.json`, `Makefile`, el hook sin
+extension `kit/claude/hooks/git/pre-commit`, etc.) via `.gitattributes` en la
+raiz. Publico objetivo incluye WSL2 clonando desde Windows, donde
+`core.autocrlf=true` es el default de Git: sin esto, un clon normal convierte
+LF a CRLF y rompe cada script con `bad interpreter: /usr/bin/env bash^M`.
+`test_gitattributes.sh` comprueba que ningun fichero versionado de esa lista
+tiene CRLF en el arbol de trabajo, y se auto-falsea fabricando un CRLF a
+proposito para demostrar que la comprobacion si dispara.
 
 ## Qué se espera de un PR
 
