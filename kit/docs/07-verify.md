@@ -80,16 +80,20 @@ Ver `kit/evals/README.md` para el criterio de admisión de tareas y por qué usa
 | Venv de tools (opcional) | presencia del binario | `test -x "$HOME/.venvs/tools/bin/python3"` | `PASS` si está, `WARN` si no |
 | Headroom (opcional) | presencia del CLI | `command -v rtk` | `PASS` si está, `WARN` si no |
 | Capa de IOCs de Sentinel (opcional; ver `docs/05-security.md`) | presencia de `iocs.json` | `test -f "$CLAUDE_HOME/hooks/iocs.json"` | `PASS` si está, `WARN` si no (los guards de Bash siguen activos) |
-| `gitleaks` instalado (opcional; requerido para la Capa 2 de secretos) | `command -v gitleaks` | (lo hace `doctor.sh` internamente) | `PASS` si está, `WARN` si no (la Capa 1 sigue activa) |
+| `gitleaks` instalado (opcional; requerido para la Capa 2 de secretos), con versión | `command -v gitleaks` + `gitleaks version` | (lo hace `doctor.sh` internamente) | `PASS` si está (con versión), `WARN` si no (la Capa 1 sigue activa) |
+| Checksum de `gitleaks` no coincidió en una instalación anterior | marca `$CLAUDE_HOME/.gitleaks-checksum-mismatch` | (lo hace `doctor.sh` internamente) | `FAIL` si la marca existe (posible ataque a la cadena de suministro); nada si no |
+| Capa 2 (`core.hooksPath`) activa en el repo actual | `git config --get core.hooksPath` | (lo hace `doctor.sh` internamente) | `PASS` si está configurado, `WARN` si no |
 | Instalación completa sin `FAIL` | agregado de todo lo anterior | `CLAUDE_HOME=... bash doctor.sh` | exit 0, 0 `FAIL` |
 | Idempotencia del instalador | backup timestamped tras reinstalar | `bash install.sh` (segunda vez) | sin error, backup creado, original no pisado |
 | Regresión de cada script | arnés TDD en bash puro | `bash test/test_scan_secrets.sh` / `test_install.sh` / `test_doctor.sh` | `N passed, 0 failed` |
 | Regresión de los guards `PreToolUse` (Capa 1 + Sentinel) | arnés TDD en bash puro | `bash test/test_guards.sh` | `PASS=27 FAIL=0` |
-| Regresión de la Capa 2 (`pre-commit` + `gitleaks`) | repos git temporales reales, `git commit` de verdad | `bash test/test_secret_content_gitleaks.sh` | `PASS=16 FAIL=0` (o `SKIP` si falta `gitleaks`) |
+| Regresión de la Capa 2 (`pre-commit` + `gitleaks`) | repos git temporales reales, `git commit` de verdad | `bash test/test_secret_content_gitleaks.sh` | `PASS=17 FAIL=0` (o `SKIP` si falta `gitleaks`) |
 | La suite de guards es falsable (no una tautología) | guard real vs. guard neutralizado (`exit 0`) | `bash test/test_guards_falsifiability.sh` | exit 0; "neutralizar el guard rompe 10 caso(s) BLOCK que antes pasaban" |
 | Puerta de plataforma de `install.sh` (solo Linux/WSL2) | simula `uname -s` no-Linux, comprueba abort limpio | `bash test/test_install_platform_gate.sh` | `4 passed, 0 failed` |
 | Detección/degradación de `gitleaks` en `install.sh` | `gitleaks` ya presente vs. ausente sin red | `bash test/test_install_gitleaks.sh` | `6 passed, 0 failed` |
+| Checksum de `gitleaks` fijado en el repo: un mismatch no rompe la instalación, deja marca persistente | tarball simulado con checksum incorrecto; `doctor.sh` sobre esa marca | `bash test/test_install_gitleaks_checksum.sh` | `9 passed, 0 failed` |
 | `install.sh --enable-secrets-layer2` activa la Capa 2 solo en el repo nombrado | repos git temporales reales | `bash test/test_enable_secrets_layer2.sh` | `6 passed, 0 failed` |
+| Sin CRLF en scripts/hooks versionados (`.gitattributes`) | `git ls-files` + detección de `\r`, auto-falseado con un CRLF fabricado | `bash test/test_gitattributes.sh` | `4 passed, 0 failed` |
 | Eval set (opt-in, cuesta dinero real — no forma parte de lo anterior) | transcript de `claude -p`, gradeado por `grade.py` | `bash kit/evals/run.sh` | `pass`/`fail` por tarea, ver `kit/evals/README.md` |
 
 Si cualquiera de estos comandos no da el resultado esperado en tu máquina, es una `FAIL` real: corrígelo antes de dar la instalación por buena. Ese es el bucle completo del kit: instalar, diagnosticar, corregir, reinstalar.
