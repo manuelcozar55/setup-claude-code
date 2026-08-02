@@ -25,6 +25,26 @@ env:
   GITLEAKS_SHA256_LINUX_X64: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
 
 jobs:
+  shellcheck:
+    name: shellcheck (kit/*.sh, hooks, tests, scripts de CI)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: shellcheck
+        run: |
+          set -euo pipefail
+          command -v shellcheck >/dev/null 2>&1 || sudo apt-get install -y shellcheck
+          shellcheck -x \
+            .github/scripts/assert-install.sh \
+            kit/claude/hooks/*.sh \
+            kit/claude/hooks/git/pre-commit \
+            kit/doctor.sh \
+            kit/install.sh \
+            kit/scan-secrets.sh \
+            kit/test/*.sh
+
   test-suites:
     name: Suites de test (kit/test)
     runs-on: ubuntu-latest
@@ -67,8 +87,14 @@ jobs:
       - name: test_install_gitleaks.sh (deteccion + degradacion sin gitleaks)
         run: bash kit/test/test_install_gitleaks.sh
 
+      - name: "test_install_gitleaks_checksum.sh (mismatch de checksum: marca persistente, no rotura)"
+        run: bash kit/test/test_install_gitleaks_checksum.sh
+
       - name: test_enable_secrets_layer2.sh (activacion opt-in por repo)
         run: bash kit/test/test_enable_secrets_layer2.sh
+
+      - name: test_gitattributes.sh (sin CRLF en scripts/hooks versionados)
+        run: bash kit/test/test_gitattributes.sh
 
       - name: gitleaks dir sobre el repo completo
         run: gitleaks dir --no-banner .
