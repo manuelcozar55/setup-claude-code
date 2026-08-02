@@ -18,7 +18,7 @@ run_smart()    { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1
 expect() { # $1 desc, $2 salida, $3 BLOCK|ALLOW
   if [ "$3" = BLOCK ]; then echo "$2" | grep -qiE 'deny|blocked' && r=OK || r=FAIL
   else echo "$2" | grep -qiE 'deny|blocked' && r=FAIL || r=OK; fi
-  [ $r = OK ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: $1"; }
+  if [ "$r" = OK ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: $1"; fi
 }
 # Calibracion: sentinel_preflight.py no cubre "rm -rf /" (iocs.json dangerous_commands
 # no tiene patron rm-rf; eso lo cubren permissions.deny via smart_approve, y los 2

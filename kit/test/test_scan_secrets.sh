@@ -8,6 +8,8 @@ check() { if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "
 
 # Caso limpio -> PASS (exit 0)
 mkdir -p "$tmp/clean"
+# shellcheck disable=SC2016 # '$HOME' literal a proposito: el fixture prueba
+# que un "$HOME" sin expandir en texto no dispara el scanner de secretos.
 printf 'ANTHROPIC_API_KEY=your-key-here\nhome=%s/.claude\nmail: you@example.com\n' '$HOME' > "$tmp/clean/ok.txt"
 set +e; bash "$SCAN" "$tmp/clean" >/dev/null 2>&1; rc=$?; set -e
 check "$rc" "0" "kit limpio pasa"
