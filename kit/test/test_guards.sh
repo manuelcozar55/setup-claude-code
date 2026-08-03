@@ -13,8 +13,20 @@ PY="${PYTHON3:-python3}"
 SG="${SECRET_GUARD_BIN:-$KIT/claude/hooks/secret-guard.sh}"
 pass=0; fail=0
 
+# smart_approve.py decide BLOCK/ALLOW leyendo permissions.deny de
+# $HOME/.claude/settings.json (ver kit/claude/hooks/smart_approve.py). Sin
+# ese fichero (p.ej. un runner de CI con HOME limpio) devuelve ALLOW siempre
+# y los casos BLOCK de mas abajo (rm -rf /, force push) caen en falso -- la
+# suite mediria el HOME de quien la ejecuta, no el repo. Se fabrica un HOME
+# de prueba con las mismas reglas deny que distribuye el kit, para que el
+# resultado sea el mismo en cualquier maquina.
+GUARDS_TEST_HOME=$(mktemp -d)
+mkdir -p "$GUARDS_TEST_HOME/.claude"
+jq '{permissions: {deny: (.permissions.deny // [])}}' "$KIT/claude/settings.json" \
+  > "$GUARDS_TEST_HOME/.claude/settings.json"
+
 run_sentinel() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1; }
-run_smart()    { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | "$PY" "$KIT/claude/hooks/smart_approve.py" 2>&1; }
+run_smart()    { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$GUARDS_TEST_HOME" "$PY" "$KIT/claude/hooks/smart_approve.py" 2>&1; }
 expect() { # $1 desc, $2 salida, $3 BLOCK|ALLOW
   if [ "$3" = BLOCK ]; then echo "$2" | grep -qiE 'deny|blocked' && r=OK || r=FAIL
   else echo "$2" | grep -qiE 'deny|blocked' && r=FAIL || r=OK; fi
@@ -42,6 +54,20 @@ expect "credentials ($([ "$IOCS_WANT" = BLOCK ] && echo con || echo sin) iocs.js
 expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK
 expect "force push compuesto denegado" "$(run_smart 'echo ok && git push -f origin main')"   BLOCK
 expect "comando normal en smart"       "$(run_smart 'git status')"                           ALLOW
+
+# Hallazgo de seguridad documentado (no un bug de esta suite): smart_approve.py
+# falla ABIERTO si $HOME/.claude/settings.json no existe o no tiene
+# permissions.deny -- sin ese fichero, deny_rules queda vacio y todo se
+# permite, incluido 'rm -rf /'. Ocurre en una instalacion a medias (kit
+# instalado pero settings.json aun no colocado) o si el fichero se borra o
+# corrompe. Se fija aqui en vez de esconderlo: este test se ROMPE (deja de
+# dar ALLOW) el dia que alguien cierre ese fallo-abierto, y es la senal de
+# que hay que venir a actualizarlo, no relajarlo antes de tiempo.
+NO_SETTINGS_HOME=$(mktemp -d)
+run_smart_no_settings() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$NO_SETTINGS_HOME" "$PY" "$KIT/claude/hooks/smart_approve.py" 2>&1; }
+expect "smart_approve.py sin settings.json falla ABIERTO (permite rm -rf /; ver comentario)" \
+  "$(run_smart_no_settings 'rm -rf /')" ALLOW
+rm -rf "$NO_SETTINGS_HOME"
 
 # --- secret-guard.sh: guard simple por NOMBRE (Capa 1). El escaneo de
 # CONTENIDO vive en la Capa 2 (hooks/git/pre-commit + gitleaks), cubierta en
@@ -147,4 +173,5 @@ else
 fi
 
 rm -rf "$SG_DIR"
+rm -rf "$GUARDS_TEST_HOME"
 echo "PASS=$pass FAIL=$fail"; [ $fail -eq 0 ]
