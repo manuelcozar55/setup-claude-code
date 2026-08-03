@@ -96,6 +96,12 @@ bajo `[Unreleased]` hasta el primer tag.
 
 - Ancla del patrón `sk-` en la capa de nombre de secretos para evitar falsos
   positivos sobre texto kebab-case legítimo.
+- `smoke-install-nonroot` fallaba en el primer step (`Illegal option -o
+  pipefail`): dentro de un `container:`, Actions ejecuta `run:` con `sh -e
+  {0}` sin importar el shell por defecto del runner, y el `sh` de
+  `debian:12-slim` es `dash`, que no soporta `pipefail`. Fix: `defaults: run:
+  shell: bash` a nivel de job (verificado que `debian:12-slim` trae bash de
+  fabrica).
 
 ### Documentation
 

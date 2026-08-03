@@ -104,6 +104,16 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: debian:12-slim
+    # Dentro de un `container:`, Actions ejecuta cada `run:` con `sh -e {0}`
+    # sin importar el shell por defecto del runner (a diferencia de un job
+    # sin container, que ya usa bash). El `sh` de debian:12-slim es dash, que
+    # no soporta `set -o pipefail` -> "Illegal option -o pipefail" en el
+    # primer step. debian:12-slim SI trae bash instalado de fabrica (esta
+    # imagen no es la variante "distroless"), asi que forzar bash aqui no
+    # depende de la instalacion de bash del propio primer step.
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
