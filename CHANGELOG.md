@@ -114,6 +114,19 @@ bajo `[Unreleased]` hasta el primer tag.
   hay `settings.json`: no hay allowlist que cargar, así que no hay nada que
   bloquear. El resto de suites de `kit/test/` no tenían esta dependencia de
   `$HOME` (comprobado corriendo las 11 con `HOME` limpio).
+- 8 ficheros invocados directamente por nombre (los hooks de
+  `kit/claude/hooks/*.sh`, `kit/claude/hooks/git/pre-commit`) estaban
+  commiteados con modo `100644` en vez de `100755` — git ignora en
+  silencio, sin ningún error, un hook no ejecutable, así que cualquiera
+  que clonase el repo y activase la Capa 2 de secretos (`core.hooksPath`)
+  tendría el hook muerto. Invisible en local porque este repo vive en un
+  montaje `/mnt/c` (9P) que reporta `rwx` para todo con
+  `core.fileMode=false`, así que ninguna observación del bit de ejecución
+  en el filesystem es fiable aquí; el único fix real es sobre el modo que
+  git tiene REGISTRADO (`git update-index --chmod=+x`, no `chmod`).
+  Nueva suite `kit/test/test_exec_modes.sh` (con auto-falsación) que
+  comprueba estos modos vía `git ls-files -s`, añadida a `make test` y a
+  `.github/workflows/ci.yml`.
 
 ### Documentation
 
