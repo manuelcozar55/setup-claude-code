@@ -96,6 +96,9 @@ jobs:
       - name: test_gitattributes.sh (sin CRLF en scripts/hooks versionados)
         run: bash kit/test/test_gitattributes.sh
 
+      - name: test_exec_modes.sh (hooks commiteados como 100755, no solo en el filesystem)
+        run: bash kit/test/test_exec_modes.sh
+
       - name: gitleaks dir sobre el repo completo
         run: gitleaks dir --no-banner .
 
