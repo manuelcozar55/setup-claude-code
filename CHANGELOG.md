@@ -102,6 +102,18 @@ bajo `[Unreleased]` hasta el primer tag.
   `debian:12-slim` es `dash`, que no soporta `pipefail`. Fix: `defaults: run:
   shell: bash` a nivel de job (verificado que `debian:12-slim` trae bash de
   fabrica).
+- `test_guards.sh` no era hermético: 3 casos (`rm -rf` en raíz, force push
+  directo/compuesto) dependían de las reglas `permissions.deny` que
+  `smart_approve.py` lee de `$HOME/.claude/settings.json` — con un `HOME`
+  limpio pasaban 24/27, con el `HOME` real de esta máquina pasaban 27/27,
+  sin que la suite lo detectara. Fix: la suite ahora construye su propio
+  `$HOME` temporal con las reglas de `kit/claude/settings.json` antes de
+  correr, y da el mismo resultado (28/0) con cualquier `HOME`. De paso,
+  se añade un caso explícito que documenta como hallazgo de seguridad —no
+  se oculta— que `smart_approve.py` falla abierto (permite todo) cuando no
+  hay `settings.json`: no hay allowlist que cargar, así que no hay nada que
+  bloquear. El resto de suites de `kit/test/` no tenían esta dependencia de
+  `$HOME` (comprobado corriendo las 11 con `HOME` limpio).
 
 ### Documentation
 
