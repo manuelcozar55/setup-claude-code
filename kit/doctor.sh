@@ -58,8 +58,21 @@ fi
 # 4. venv de tools (opcional -> WARN)
 if [ -x "$HOME/.venvs/tools/bin/python3" ]; then pass "venv tools presente"; else warn "venv tools ausente (opcional; ver docs/02-install.md)"; fi
 
-# 5. Headroom (opcional -> WARN)
-if command -v rtk >/dev/null 2>&1; then pass "Headroom rtk presente"; else warn "Headroom no instalado (opcional; ver docs/03-headroom.md)"; fi
+# 5. Headroom (opcional -> WARN). `headroom` y `rtk` son DOS proyectos distintos
+# (ver docs/03-headroom.md): el proxy HTTP en :8787 y el filtro de salida de CLI
+# que ejecuta el hook `rtk hook claude`. Se comprueban por separado a propósito:
+# con un solo `command -v rtk`, una instalación con rtk pero sin el proxy daba
+# "Headroom presente" siendo falso, y al revés.
+if command -v headroom >/dev/null 2>&1; then
+  pass "Headroom (proxy) presente  (fuente: command -v headroom)"
+else
+  warn "Headroom (proxy) no instalado (opcional; ver docs/03-headroom.md)"
+fi
+if command -v rtk >/dev/null 2>&1; then
+  pass "rtk (filtro de salida de CLI) presente  (fuente: command -v rtk)"
+else
+  warn "rtk no instalado: el hook 'rtk hook claude' de settings.json no hará nada (opcional; ver docs/03-headroom.md)"
+fi
 
 # 5b. gitleaks (opcional -> WARN): requerido solo para activar la Capa 2 de
 # secretos (hooks/git/pre-commit); la Capa 1 (secret-guard.sh) funciona sin él.

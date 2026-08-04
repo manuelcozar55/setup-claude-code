@@ -6,8 +6,66 @@ bajo `[Unreleased]` hasta el primer tag.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`headroom` y `rtk` se documentaban como una sola herramienta, y son dos
+  proyectos independientes.** `kit/docs/03-headroom.md` titulaba "Instalar
+  Headroom (`rtk`)" y verificaba el proxy con `rtk --version`; `doctor.sh`
+  hacía `command -v rtk` y reportaba "Headroom presente". Son
+  [headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom)
+  (proxy HTTP en `127.0.0.1:8787`, Python, se cablea con `ANTHROPIC_BASE_URL`) y
+  [rtk-ai/rtk](https://github.com/rtk-ai/rtk) (binario Rust que filtra la
+  salida de los comandos de shell, se cablea con el hook `rtk hook claude`).
+  Ninguna necesita a la otra. Con la comprobación anterior, tener `rtk` sin el
+  proxy daba un `PASS` falso, y al revés. `doctor.sh` ahora las comprueba por
+  separado, y se corrige también en `07-verify.md` y
+  `08-plugins-mcp-y-skills.md`, con una tabla comparativa al principio de
+  `03-headroom.md`.
+
 ### Added
 
+- **Aviso de WSL2 al principio del `README.md`.** El requisito estaba, pero
+  enterrado dentro de "Quick start". Ahora abre el documento, con el `wsl` que
+  hay que ejecutar primero y dos avisos concretos para quien viene de Windows:
+  clonar **dentro** de WSL y no en `/mnt/c/` (el `9p` es mucho más lento y
+  complica el bit de ejecución), y el `.gitattributes` que ya evita que
+  `core.autocrlf=true` convierta los scripts a CRLF.
+- `kit/docs/03-headroom.md`, sección nueva: **lo que Claude Code desactiva por
+  su cuenta cuando `ANTHROPIC_BASE_URL` apunta a un endpoint custom.** Son tres
+  cosas y dos tienen arreglo: la **ventana de contexto de 1M** (topa en 200k;
+  la selección del picker `/model` no sobrevive al endpoint custom, se recupera
+  con `ANTHROPIC_MODEL=<modelo>[1m]`), la **carga de herramientas on-demand**
+  (carga todos los schemas de golpe; se recupera con `ENABLE_TOOL_SEARCH=true`)
+  y **Remote Control** (`/rc`, sin arreglo posible: es un gate del cliente). El
+  primero es el que muerde en silencio: con `"model": "opus[1m]"` en
+  `settings.json` nada indica que te han recortado el contexto. El kit no fija
+  `ANTHROPIC_MODEL` a propósito — pinchar un modelo en la config de otra
+  persona sería peor que el problema.
+- `kit/docs/03-headroom.md`: **`ANTHROPIC_BASE_URL` tiene que ir en
+  `settings.json`, no en el `.bashrc`/`.profile`.** Claude Code lee su entorno
+  una sola vez al arrancar y las sesiones heredan un snapshot del shell: si el
+  proxy no estaba arriba en ese instante, la sesión entera se queda sin enrutar,
+  sin recuperación y sin avisar (`headroom doctor` → `savings: no tokens saved
+  yet`). La disponibilidad se resuelve con `Restart=always` en systemd, no con
+  un export condicional.
+- `kit/docs/03-headroom.md`: **el motor de compresión puede estar apagado sin
+  que nada lo diga** (`kompress` con `backend: null` en `/health`) y el proxy
+  sigue sirviendo tráfico igual. Dos causas: el modelo ONNX (~260 MB) no
+  descargado —el preload de arranque usa solo caché local a propósito, para no
+  bloquear el bind del puerto—, o una unidad de systemd endurecida en la que
+  `~/.cache/huggingface` no es escribible, que lo deja inutilizable para
+  siempre.
+- `kit/docs/03-headroom.md`: **cómo medir el ahorro sin engañarse.** `/stats`
+  son contadores del proceso y se reinician con el servicio; `/stats-history`
+  es el histórico durable. Y la única cifra que juzga si el modo `cache` hace
+  su trabajo es `lifetime.cache_read_tokens / lifetime.total_input_tokens`, la
+  proporción servida desde el prompt-caching de Anthropic.
+- `kit/docs/03-headroom.md`: instalar con el extra **`[proxy]`, no `[all]`**
+  (`[all]` arrastra `torch` y ~6 GB que el motor no usa: su backend es ONNX
+  Runtime, ya incluido en `[proxy]`; el aviso `PyTorch was not found` es
+  inocuo). Y `StartLimitIntervalSec` va en la sección **`[Unit]`**: en
+  `[Service]` systemd lo ignora en silencio y deja el default de 5 arranques en
+  10 s.
 - Hash SHA-256 de `gitleaks` (x64 y arm64) fijado como constante dentro de
   `kit/install.sh`, verificado por el propio mantenedor contra la release
   oficial `v8.30.1` — ya no se confía en el `checksums.txt` servido por el

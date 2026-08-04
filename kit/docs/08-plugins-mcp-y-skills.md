@@ -32,7 +32,9 @@ Capacidades externas que Claude Code invoca vía el protocolo MCP. Conocidos en 
 
 Cómo se añaden: `claude mcp add ...`. La sintaxis exacta (transporte, comando o URL, variables de entorno que necesite) depende de cada servidor; consulta su propio repositorio antes de darlo de alta. El kit no incluye claves ni configuraciones MCP con secretos: cualquier credencial vive solo en tu `.env` local, nunca en este repo.
 
-**Headroom no es un MCP más.** No se añade con `claude mcp add`: es el proxy de contexto (ver `03-headroom.md`), cableado vía `ANTHROPIC_BASE_URL` y el hook `rtk hook claude`. Además de comprimir el contexto, expone sus propias herramientas MCP (por ejemplo `headroom_stats`) directamente a través de su instalación con `rtk`; viene con Headroom, no se registra aparte.
+**Headroom no es un MCP más.** No se añade con `claude mcp add`: es el proxy de contexto (ver `03-headroom.md`), cableado vía `ANTHROPIC_BASE_URL`. Además de comprimir el contexto, expone su propio servidor MCP (`headroom mcp serve`), que sí se registra como cualquier otro y da acceso a sus estadísticas y a recuperar contenido comprimido.
+
+Y ojo, porque son dos cosas distintas que este documento confundía: el hook `rtk hook claude` del `settings.json` **no es de Headroom**, es de [`rtk`](https://github.com/rtk-ai/rtk), otro proyecto que filtra la salida de los comandos de shell. Puedes tener uno sin el otro. Ver la tabla comparativa al principio de `03-headroom.md`.
 
 Verifica los servidores dados de alta con:
 
@@ -67,7 +69,8 @@ Todos estos van en `02-install.md`; recordatorio de la pila que usa el setup com
 |---|---|---|
 | `uv` | gestor de paquetes Python; el kit lo usa vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
 | venv de tools (`$HOME/.venvs/tools`) | ejecuta Sentinel y `smart_approve.py` con un Python propio, no el del sistema (ver `02-install.md`, paso 4) | `test -x $HOME/.venvs/tools/bin/python3` |
-| `rtk` (Headroom) | el proxy de contexto que da soporte al servidor MCP `headroom` (ver `03-headroom.md`) | `rtk --version` |
+| `headroom` | el proxy de contexto en `127.0.0.1:8787`, y el servidor MCP `headroom mcp serve` (ver `03-headroom.md`) | `headroom --version` · `headroom doctor` |
+| `rtk` | filtra la salida de los comandos de shell antes de que entre en contexto; es lo que ejecuta el hook `rtk hook claude`. **Proyecto distinto de Headroom** | `rtk --version` |
 | `pnpm` | instala `agent-browser` y otros paquetes globales de Node | `pnpm --version` |
 
 ## Verificación rápida
