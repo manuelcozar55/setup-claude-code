@@ -113,8 +113,11 @@ Guarda ese `SHA256:...`: es la huella que verás en GitLab, y sirve para comprob
 
 En la web de tu GitLab:
 
-1. Arriba a la derecha, tu avatar → **Edit profile** (o directamente `https://TU_GITLAB/-/user_settings/ssh_keys`).
+1. Arriba a la derecha, tu avatar → **Edit profile**.
 2. En el menú lateral, **SSH Keys** → botón **Add new key**.
+   (La URL directa depende de la versión de GitLab: en las recientes es
+   `/-/user_settings/ssh_keys` y en las anteriores `/-/profile/keys`. Navegar
+   por el menú funciona en todas, así que es lo que se recomienda aquí.)
 3. **Key** — pega la línea completa del paso 3. GitLab rellena el **Title** solo, a partir del comentario: por eso el `-C` importa.
 4. **Usage type** — deja **Authentication & Signing** (o **Authentication** si solo la quieres para clonar y empujar).
 5. **Expiration date** — GitLab lo rellena por defecto, normalmente a un año. **Déjalo puesto.** Una clave que caduca es una clave que alguien revisa; y anótate la fecha, porque el día que expire los `push` empezarán a fallar con el mismo `Permission denied` de siempre y no es evidente.
