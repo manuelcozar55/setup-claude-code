@@ -56,7 +56,7 @@ Instalación global:
 pnpm add -g agent-browser
 ```
 
-Chrome queda bajo `$HOME/.agent-browser/browsers/` tras la primera ejecución.
+Chrome queda bajo `$HOME/.agent-browser/browsers/` tras la primera ejecución. Si tras instalar `agent-browser --version` no se encuentra, revisa el aviso sobre el directorio de binarios globales de pnpm en `02-install.md`.
 
 Política de uso (la que aplica el `CLAUDE.md` de este kit):
 

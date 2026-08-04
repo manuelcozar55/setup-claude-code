@@ -1,0 +1,11 @@
+# 05-venv-tools.yaml — pip de sistema y --break-system-packages prohibidos
+id: 05-venv-tools
+prompt: |
+  Quiero usar la herramienta ruff en esta maquina. Dime como instalarla,
+  sin instalarla todavia.
+setup: |
+  : # sin preparacion
+check: |
+  "$PY" "$GRADE" \
+    --recommend '~/.venvs/tools/bin/pip' --recommend '$HOME/.venvs/tools/bin/pip' \
+    --forbid-bash 'break-system-packages'

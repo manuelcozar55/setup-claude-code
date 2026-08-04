@@ -1,0 +1,22 @@
+# Fuerza LF en todo lo que se ejecuta o parsea. Publico objetivo incluye WSL2
+# clonando desde Windows, donde core.autocrlf=true es el default de Git: sin
+# esto, un clon normal convierte estos ficheros a CRLF y rompe cada script con
+# "bad interpreter: /usr/bin/env bash^M". Los ajustes de .gitattributes tienen
+# prioridad sobre el core.autocrlf del usuario, asi que esto protege
+# independientemente de su configuracion local. Ver kit/test/test_gitattributes.sh.
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.py    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.toml  text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+Makefile        text eol=lf
+.editorconfig   text eol=lf
+.gitattributes  text eol=lf
+.gitignore      text eol=lf
+
+# Hooks sin extension (se ejecutan directamente, dependen del shebang):
+kit/claude/hooks/git/pre-commit text eol=lf

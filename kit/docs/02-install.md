@@ -4,6 +4,8 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 
 ## Prerrequisitos
 
+**Plataforma**: `install.sh` solo soporta **Linux o WSL2** (comprueba `uname -s` y aborta con un mensaje claro en cualquier otra); es lo único que prueba la CI de este repo. macOS y Windows nativo no están soportados todavía, precisamente porque no hay pipeline real que lo demuestre. Si vienes de Windows, instala WSL2 y corre el instalador dentro de tu distribución Linux, no en PowerShell/cmd.
+
 | Herramienta | Para qué | Verifica con |
 |---|---|---|
 | `git` | clonar el repo, y los guards de `secret-guard.sh`/`branch-guard.sh` operan sobre `git` | `git --version` |
@@ -12,6 +14,7 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 | `gh` (GitHub CLI) | flujo de PRs desde Claude Code | `gh --version` |
 | `jq` | `doctor.sh` y varios hooks parsean JSON con `jq`; sin él, `doctor.sh` falla explícitamente | `jq --version` |
 | `uv` | gestor de paquetes Python que usa el kit vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
+| `gitleaks` (opcional, versión fijada `8.30.1`) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Si no lo tienes, `install.sh` te ofrece instalarlo (release oficial, verificado contra un checksum SHA-256 fijado en este repo — no descargado de la red —, nunca `curl \| bash`): confirma con `y`, o exporta `GITLEAKS_AUTO_INSTALL=1` para saltarte el prompt en un entorno no interactivo. Si el checksum no coincide, la instalación de `gitleaks` no rompe el resto (degrada a la Capa 1), pero deja una marca en `$CLAUDE_HOME/.gitleaks-checksum-mismatch` que `doctor.sh` reporta como `FAIL`. Ver `docs/05-security.md` | `gitleaks version` |
 
 Comprueba todo de una vez:
 
@@ -25,6 +28,14 @@ Si falta `pnpm`, actívalo con corepack (viene con Node ≥ 16.9, no hace falta 
 corepack enable
 corepack prepare pnpm@latest --activate
 ```
+
+**Aviso conocido (pnpm ≥ 11)**: desde la v11, pnpm movió el directorio de binarios globales de `$PNPM_HOME` a `$PNPM_HOME/bin`. Si tu `.bashrc`/`.zshrc` lo generó un `pnpm setup` de una versión anterior, solo tendrás en el `PATH` la ruta vieja, y todo lo que instales después con `pnpm add -g` (incluido `agent-browser`, ver `04-superpowers.md`) quedará invisible para el shell aunque la instalación termine sin ningún error. Comprueba que la ruta activa está en tu `PATH`:
+
+```bash
+echo "$PATH" | tr ':' '\n' | grep -F "$(pnpm config get global-bin-dir)"
+```
+
+Si no aparece nada, añade esa ruta a mano a tu `.bashrc`/`.zshrc`.
 
 ## Paso 1 · Clonar
 
