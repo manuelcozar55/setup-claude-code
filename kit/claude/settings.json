@@ -3,7 +3,6 @@
     "MAX_THINKING_TOKENS": "32000",
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "75",
     "ANTHROPIC_DISABLE_TELEMETRY": "1",
-    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8787",
     "TRACE_TO_LANGSMITH": "false",
     "CC_LANGSMITH_PROJECT": "MyCC"
   },
@@ -37,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "rtk hook claude",
+            "command": "$HOME/.claude/hooks/optional-hook.sh rtk hook claude",
             "timeout": 10
           }
         ]
@@ -47,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.venvs/tools/bin/python3 $HOME/.claude/sentinel/sentinel_preflight.py",
+            "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/sentinel/sentinel_preflight.py",
             "timeout": 10
           }
         ]
@@ -97,7 +96,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.venvs/tools/bin/python3 $HOME/.claude/hooks/smart_approve.py",
+            "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/smart_approve.py",
             "timeout": 10
           }
         ]
