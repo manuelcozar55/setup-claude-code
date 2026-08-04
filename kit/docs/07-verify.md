@@ -78,7 +78,9 @@ Ver `kit/evals/README.md` para el criterio de admisión de tareas y por qué usa
 | Hooks referenciados existen y son ejecutables | `jq` sobre `.hooks` de `settings.json` + `test -e`/`-x` | (lo hace `doctor.sh` internamente) | `PASS · hooks referenciados presentes y ejecutables` |
 | Agentes instalados | conteo de ficheros | `ls "$CLAUDE_HOME"/agents/*.md \| wc -l` | 8 |
 | Venv de tools (opcional) | presencia del binario | `test -x "$HOME/.venvs/tools/bin/python3"` | `PASS` si está, `WARN` si no |
-| Headroom (opcional) | presencia del CLI | `command -v rtk` | `PASS` si está, `WARN` si no |
+| Headroom, el proxy (opcional) | presencia del CLI | `command -v headroom` | `PASS` si está, `WARN` si no |
+| `rtk`, el filtro de salida de CLI (opcional) | presencia del CLI | `command -v rtk` | `PASS` si está, `WARN` si no |
+| Headroom enrutado de verdad (opcional) | informe de la propia herramienta | `headroom doctor` | 0 `failure`; ojo si dice `savings: no tokens saved yet` (proxy vivo, cliente sin enrutar) |
 | Capa de IOCs de Sentinel (opcional; ver `docs/05-security.md`) | presencia de `iocs.json` | `test -f "$CLAUDE_HOME/hooks/iocs.json"` | `PASS` si está, `WARN` si no (los guards de Bash siguen activos) |
 | `gitleaks` instalado (opcional; requerido para la Capa 2 de secretos), con versión | `command -v gitleaks` + `gitleaks version` | (lo hace `doctor.sh` internamente) | `PASS` si está (con versión), `WARN` si no (la Capa 1 sigue activa) |
 | Checksum de `gitleaks` no coincidió en una instalación anterior | marca `$CLAUDE_HOME/.gitleaks-checksum-mismatch` | (lo hace `doctor.sh` internamente) | `FAIL` si la marca existe (posible ataque a la cadena de suministro); nada si no |

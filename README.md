@@ -8,6 +8,18 @@
 
 ---
 
+> ### ⚠️ Esto se usa desde WSL2 (o Linux). No desde Windows.
+>
+> Si estás en Windows, **abre primero tu distribución de WSL2** y trabaja dentro de ella: clona el repo en el sistema de ficheros de Linux (`~/`, no `/mnt/c/`) y ejecuta todo desde ahí. `install.sh`, `doctor.sh`, los guards y la suite de test son bash y asumen rutas POSIX; desde PowerShell o `cmd` no funcionan.
+>
+> ```powershell
+> wsl                     # entra en tu distro por defecto
+> ```
+>
+> **Por qué es un requisito y no una recomendación:** Linux y WSL2 son lo único que prueba la CI de este repo, así que no se promete un soporte que no se puede demostrar con un pipeline real. macOS y Windows nativo (PowerShell/cmd) **no están soportados todavía**, precisamente por eso: no hay una mac ni un pipeline de Windows nativo en CI para reproducir un fallo ahí. De hecho, `install.sh` aborta con exit 1 si detecta una plataforma que no sea Linux, en vez de dejarte una instalación a medias.
+>
+> Dos avisos concretos si vienes de Windows: clona **dentro** de WSL y no en `/mnt/c/` (el sistema de ficheros `9p` sobre el disco de Windows es mucho más lento y complica el bit de ejecución), y el `.gitattributes` de este repo ya fuerza `eol=lf` para que un clon con `core.autocrlf=true` no te convierta los scripts a CRLF y te los rompa con `bad interpreter: /bin/bash^M`.
+
 ## Qué hace esto
 
 Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 8 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y es el único kit de este tipo que **demuestra** que sus guards funcionan con una suite de test falsable, no solo lo afirma: `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **10 casos `BLOCK` conocidos**. Si neutralizarlo no rompiera nada, la suite no estaría midiendo nada — puedes reproducir esa caída tú mismo, ver el paso 5 más abajo.
@@ -16,7 +28,7 @@ No son garantías absolutas: son defensa en profundidad, con sus límites docume
 
 ## Quick start
 
-**Prerrequisitos** — el kit solo soporta **Linux o WSL2** (Windows Subsystem for Linux); es lo único que prueba la CI de este repo, así que no se promete un soporte que no se puede demostrar con un pipeline real. macOS y Windows nativo (PowerShell/cmd) **no están soportados todavía**, precisamente por eso: no hay una mac ni un pipeline de Windows nativo en CI para reproducir un fallo ahí.
+**Prerrequisitos** — el kit solo soporta **Linux o WSL2** (ver el aviso de arriba: en Windows, entra en WSL antes de nada y clona dentro de `~`, no en `/mnt/c/`).
 
 Además necesitas: `bash`, `git`, `python3` ≥ 3.10, `jq`. `gitleaks` (para la Capa 2 de secretos) es opcional — si no lo tienes, `install.sh` te ofrece instalarlo solo (binario oficial, verificado contra un checksum SHA-256 fijado en este repo, no descargado de la red; sin `curl | bash`), o puedes seguir sin él: la Capa 1 funciona igual. Lista completa y cómo comprobar cada una en [`kit/docs/02-install.md`](kit/docs/02-install.md).
 
