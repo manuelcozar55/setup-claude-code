@@ -32,9 +32,9 @@ Capacidades externas que Claude Code invoca vía el protocolo MCP. Conocidos en 
 
 Cómo se añaden: `claude mcp add ...`. La sintaxis exacta (transporte, comando o URL, variables de entorno que necesite) depende de cada servidor; consulta su propio repositorio antes de darlo de alta. El kit no incluye claves ni configuraciones MCP con secretos: cualquier credencial vive solo en tu `.env` local, nunca en este repo.
 
-**Headroom no es un MCP más.** No se añade con `claude mcp add`: es el proxy de contexto (ver `03-headroom.md`), cableado vía `ANTHROPIC_BASE_URL`. Además de comprimir el contexto, expone su propio servidor MCP (`headroom mcp serve`), que sí se registra como cualquier otro y da acceso a sus estadísticas y a recuperar contenido comprimido.
+**Headroom son dos piezas, y solo una es un MCP.** El **proxy** de contexto (ver `03-headroom.md`) no se añade con `claude mcp add`: se cablea vía `ANTHROPIC_BASE_URL` y actúa sobre las peticiones a la API, por debajo del protocolo MCP. Aparte de eso, Headroom trae **también** un servidor MCP (`headroom mcp serve`) que sí se registra como cualquier otro y da acceso a sus estadísticas y a recuperar contenido que el proxy comprimió. Puedes usar el proxy sin registrar ese MCP; lo que no tiene sentido es lo contrario.
 
-Y ojo, porque son dos cosas distintas que este documento confundía: el hook `rtk hook claude` del `settings.json` **no es de Headroom**, es de [`rtk`](https://github.com/rtk-ai/rtk), otro proyecto que filtra la salida de los comandos de shell. Puedes tener uno sin el otro. Ver la tabla comparativa al principio de `03-headroom.md`.
+Y ojo con una confusión que este documento arrastraba: el hook `rtk hook claude` del `settings.json` **no es de Headroom**, es de [`rtk`](https://github.com/rtk-ai/rtk), otro proyecto que filtra la salida de los comandos de shell. Puedes tener uno sin el otro. Ver la tabla comparativa al principio de `03-headroom.md`.
 
 Verifica los servidores dados de alta con:
 

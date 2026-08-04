@@ -4,7 +4,7 @@ Headroom es de terceros: este kit **no** lo redistribuye. No hay binario, no hay
 
 ## Antes de nada: `headroom` y `rtk` son DOS herramientas distintas
 
-Versiones anteriores de este documento las trataban como una sola (titulaban "Instalar Headroom (`rtk`)" y verificaban Headroom con `rtk --version`). **Es un error**: son dos proyectos independientes, de autores distintos, que este kit usa a la vez porque se complementan.
+Versiones anteriores de este documento las trataban como una sola (titulaban "Instalar Headroom (`rtk`)" y verificaban Headroom con `rtk --version`). **Es un error**: son dos proyectos independientes, en repos distintos, con instaladores distintos y que actúan en capas distintas. Este kit los usa a la vez porque se complementan, no porque sean lo mismo.
 
 | | `headroom` | `rtk` |
 |---|---|---|
@@ -35,7 +35,7 @@ python3 -m venv ~/.venvs/tools                  # o el venv que ya uses
 headroom --version
 ```
 
-**No instales `[all]` "por si acaso".** Arrastra el extra `[ml]`, que son `torch` + `huggingface-hub` y unos 6 GB. El motor de compresión de Headroom usa **ONNX Runtime**, que ya viene en `[proxy]`: verás un aviso `PyTorch was not found` en el log y es inocuo. Con solo `[proxy]` el venv se queda en ~900 MB y la compresión funciona igual.
+**No instales `[all]` "por si acaso".** `[all]` expande a trece extras, y entre ellos está `[ml]`, que es `torch` + `huggingface-hub`. En una medición real sobre el mismo venv, la diferencia fue de **~900 MB con `[proxy]` frente a 7,2 GB con `[all]`**. Y no compra nada para esto: el motor de compresión de Headroom usa **ONNX Runtime**, que ya viene en `[proxy]`. Verás un aviso `PyTorch was not found` en el log y es inocuo — la compresión funciona igual.
 
 Sin el extra `[proxy]` el proxy no arranca y falla con `No module named 'httpx'`.
 
@@ -57,7 +57,8 @@ Como servicio de usuario de systemd es más cómodo (sobrevive a reinicios). Tre
 StartLimitIntervalSec=0
 
 [Service]
-ExecStart=%h/.local/bin/headroom proxy --port 8787 --mode cache --no-telemetry
+# Ruta absoluta al binario del venv donde lo instalaste (systemd no hereda tu PATH).
+ExecStart=%h/.venvs/tools/bin/headroom proxy --port 8787 --mode cache --no-telemetry
 # Si ANTHROPIC_BASE_URL apunta aquí (y con este kit apunta), el proxy es una
 # dependencia dura del cliente: que reintente indefinidamente.
 Restart=always
@@ -108,9 +109,9 @@ Esto es lo menos conocido de todo el documento y lo que más caro sale. En cuant
 | **Carga de herramientas on-demand** ([#746](https://github.com/headroomlabs-ai/headroom/issues/746)) | carga **todos** los schemas de tools de golpe e infla el contexto local | `ENABLE_TOOL_SEARCH=true` |
 | **Remote Control** (`/rc`) | el comando desaparece | no se puede: es un gate del cliente |
 
-El de la ventana de 1M es el que muerde en silencio. Del propio código de Headroom:
+El de la ventana de 1M es el que muerde en silencio. Lo explica el comentario del propio código de Headroom que implementa el arreglo (`headroom/cli/wrap.py`, textual):
 
-> *Claude Code solo manda la cabecera beta `context-1m` cuando el id de modelo lleva el sufijo `[1m]`. Detrás de un `ANTHROPIC_BASE_URL` personalizado **su selección del picker `/model` no sobrevive**.*
+> Claude Code only sends the `context-1m` beta header — unlocking the 1M window for entitled subscription users — when the model id carries the `[1m]` suffix. Behind a custom `ANTHROPIC_BASE_URL` (the proxy) its `/model` picker selection does not survive, so `--1m` forces the suffix via `ANTHROPIC_MODEL` on the launched process.
 
 Es decir: si tienes `"model": "opus[1m]"` en `settings.json` y crees que estás con 1M de contexto, **detrás del proxy no lo estás**. La selección del picker no llega, y como el modelo sigue apareciendo como el correcto, no hay ninguna señal de que te han recortado a 200k. La forma de recuperarlo es forzar el sufijo por entorno:
 
