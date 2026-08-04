@@ -24,6 +24,48 @@ bajo `[Unreleased]` hasta el primer tag.
 
 ### Added
 
+- **`kit/docs/09-ssh-y-gitlab-privado.md`: guía completa de clave SSH y alta en
+  un GitLab autoalojado, desde WSL2.** Ocho pasos con los comandos, pensada para
+  que alguien de un equipo la siga de principio a fin sin saber de SSH: generar
+  la clave (`ssh-keygen -t ed25519` con `-C`, `-f` y `-N ""`, cada flag
+  explicado y con la contrapartida real de no poner passphrase en una tabla),
+  permisos, copiar la `.pub`, darla de alta en la web de GitLab, el bloque de
+  `~/.ssh/config`, `ssh-agent`, y probar con `ssh -T`. Todo genérico: el host va
+  en una variable `GITLAB_HOST` y los ejemplos usan `@example.com`.
+
+  Tres cosas que la hacen útil más allá de un copia-pega:
+
+  - **El paso que casi nadie documenta.** Una clave con nombre no estándar
+    (`-f id_ed25519_algo`) **no se usa** hasta configurarla, porque `ssh` solo
+    prueba los nombres por defecto. Va con la salida real de `ssh -v`
+    enseñándolo (`Trying private key: ~/.ssh/id_rsa`, `id_ecdsa`,
+    `id_ed25519`… y la tuya no aparece). Es la causa nº 1 de
+    `Permission denied (publickey)` con la clave perfectamente dada de alta.
+  - **Diagnóstico por `Offering public key`.** Casi todos los fallos dan el
+    mismo mensaje, así que el mensaje no informa: la guía enseña a distinguir
+    "no se ofreció la clave" de "se ofreció y el servidor la rechazó" mirando
+    esa línea de `ssh -v`, y una tabla con los ocho errores restantes.
+  - **`IdentitiesOnly yes` explicado**, no copiado: sin él `ssh` ofrece todas
+    las claves y el servidor corta por `MaxAuthTries`, con un
+    `Too many authentication failures` que parece del servidor y es tuyo.
+
+  Solo se citan mensajes de error **reproducidos**. En particular **no** se
+  promete el clásico `UNPROTECTED PRIVATE KEY FILE`: se probó la clave privada
+  en `640`, `644`, `660`, `666` y `777` y OpenSSH 10.2 no avisó en ningún caso,
+  así que la guía dice que no te fíes de eso como red de seguridad.
+
+- **La guía avisa de que los guards de este kit bloquean sus propios comandos.**
+  Sentinel trata `~/.ssh/` como ruta sensible, así que bloquea incluso un `cat`
+  de la clave **pública** (`SENTINEL BLOCKED [Bash]: [CRITICAL] sensitive path:
+  ~/.ssh/`). No es un fallo: el guard no distingue `.pub` de la privada, y esa
+  imprecisión es deliberada. La salida correcta es hacer este alta —tarea humana
+  y de una sola vez— en una terminal normal, **no** añadir `~/.ssh/` al
+  `sentinel-allowlist.json`, que abriría el acceso a las claves privadas de
+  forma permanente para ahorrarse abrir una pestaña.
+- `08-plugins-mcp-y-skills.md` explica ahora que un marketplace de plugins
+  privado se da de alta por URL SSH y por tanto depende de esa guía y de la VPN,
+  y que si la VPN está caída solo falla ese marketplace: el resto de Claude Code
+  sigue igual.
 - **Aviso de WSL2 al principio del `README.md`.** El requisito estaba, pero
   enterrado dentro de "Quick start". Ahora abre el documento, con el `wsl` que
   hay que ejecutar primero y dos avisos concretos para quien viene de Windows:
