@@ -2,114 +2,81 @@
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,20,24&height=200&section=header&text=setup-claude-code&fontSize=48&fontColor=ffffff&animation=fadeIn&desc=El%20m%C3%A9todo%20detr%C3%A1s%20de%20mi%20trabajo%20con%20Claude%20Code&descAlignY=62&descSize=18" alt="setup-claude-code" />
 
-![Claude Code](https://img.shields.io/badge/Claude_Code-m%C3%A9todo-D97757?style=for-the-badge&logo=anthropic&logoColor=white)
-![HTML5](https://img.shields.io/badge/Charlas-HTML_autocontenido-E34F26?style=for-the-badge&logo=html5&logoColor=white)
-![Bash](https://img.shields.io/badge/Kit-Bash_+_TDD-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white)
-![Security](https://img.shields.io/badge/Secretos-cero_(gate)-2E7D32?style=for-the-badge&logo=gnuprivacyguard&logoColor=white)
-![License](https://img.shields.io/badge/License-CC_BY_4.0-EF9421?style=for-the-badge)
-
-> **No es el modelo, es el método.** Dos charlas sobre ingeniería de agentes de IA (el mapa y el territorio) y un kit para replicar mi setup de Claude Code en otra máquina.
+[![CI](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml/badge.svg)](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml)
 
 </div>
 
 ---
 
-## Qué encontrarás aquí (léelo una vez y lo tienes todo)
+## Qué hace esto
 
-Tres cosas, de lo conceptual a lo práctico:
+Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 8 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y es el único kit de este tipo que **demuestra** que sus guards funcionan con una suite de test falsable, no solo lo afirma: `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **10 casos `BLOCK` conocidos**. Si neutralizarlo no rompiera nada, la suite no estaría midiendo nada — puedes reproducir esa caída tú mismo, ver el paso 5 más abajo.
 
-1. **Dos charlas** autocontenidas (HTML + guion) que explican cómo se construye hoy un agente de IA de producción y cómo trabajo yo con Claude Code.
-2. **Un kit transferible** (`kit/`) que instala una versión saneada de mi setup real (config, hooks, agentes, Sentinel) en cualquier máquina, con un instalador y un autodiagnóstico.
-3. **Formación recomendada** al final: cursos gratis, cortos y verificados para entender la IA y, sobre todo, Claude Code.
+No son garantías absolutas: son defensa en profundidad, con sus límites documentados en [`SECURITY.md`](SECURITY.md), no escondidos.
 
-Todo es reproducible: cada charla se abre en el navegador sin instalar nada, y el kit se instala y se verifica con tres comandos.
+## Quick start
 
-## 1. Las dos charlas
+**Prerrequisitos** — el kit solo soporta **Linux o WSL2** (Windows Subsystem for Linux); es lo único que prueba la CI de este repo, así que no se promete un soporte que no se puede demostrar con un pipeline real. macOS y Windows nativo (PowerShell/cmd) **no están soportados todavía**, precisamente por eso: no hay una mac ni un pipeline de Windows nativo en CI para reproducir un fallo ahí.
 
-| Charla | Fichero | Guion | Duración | Para quién |
-|--------|---------|-------|----------|------------|
-| **Fundamentos** · el mapa | [`agentes-fundamentos.html`](charlas/agentes-fundamentos.html) | [`agentes-fundamentos-guion.md`](charlas/agentes-fundamentos-guion.md) | ~17-20 min | Manager técnico |
-| **Setup** · el territorio | [`setup-claude-code-definitiva.html`](charlas/setup-claude-code-definitiva.html) | [`setup-claude-code-definitiva-guion.md`](charlas/setup-claude-code-definitiva-guion.md) | ~20 min | Desarrolladores |
-
-**El mapa** explica el modelo mental de Karpathy y los diez pilares de ingeniería que hay debajo del prompt. **El territorio** enseña mi máquina de verdad (superpowers, Sentinel, Headroom) con cifras reales. Se dan seguidas, pero cada una funciona sola.
-
-**Cómo verlas:** no hace falta servidor. Clona, y abre el `.html` en el navegador (doble clic, o `open`/`xdg-open`/`start`). Botón arriba a la derecha para alternar tema claro/oscuro.
+Además necesitas: `bash`, `git`, `python3` ≥ 3.10, `jq`. `gitleaks` (para la Capa 2 de secretos) es opcional — si no lo tienes, `install.sh` te ofrece instalarlo solo (binario oficial, verificado contra un checksum SHA-256 fijado en este repo, no descargado de la red; sin `curl | bash`), o puedes seguir sin él: la Capa 1 funciona igual. Lista completa y cómo comprobar cada una en [`kit/docs/02-install.md`](kit/docs/02-install.md).
 
 ```bash
 git clone https://github.com/manuelcozar55/setup-claude-code.git
-cd setup-claude-code
-open charlas/agentes-fundamentos.html   # macOS · Linux: xdg-open · Windows: start
+cd setup-claude-code/kit
+bash install.sh                                        # instala en $CLAUDE_HOME (default $HOME/.claude), con backup
+cp .env.example "${CLAUDE_HOME:-$HOME/.claude}"/.env    # rellena tus claves
+bash doctor.sh                                          # autodiagnóstico con evidencia (PASS/WARN/FAIL)
 ```
 
-### El mapa: los 10 pilares
+`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, el venv de tools, `gitleaks`): el setup base funciona sin ellos. Guía completa en [`kit/README.md`](kit/README.md).
 
-| Bloque | Pilares |
-|--------|---------|
-| **El motor** · la máquina que rodea al modelo | 01 Harness · 02 Loop · 03 Context |
-| **Las capacidades** · qué puede hacer el agente | 04 Tools · 05 Memory · 06 Orchestration |
-| **La confianza** · poder soltarlo en producción | 07 Guardrails · 08 Evals · 09 Human-in-the-loop · 10 Observability |
+## Qué incluye
 
-```mermaid
-flowchart LR
-    subgraph MAPA["🗺️ El mapa · fundamentos"]
-        direction TB
-        M(["⚙️ El motor<br/>harness · loop · context"])
-        C(["🧰 Las capacidades<br/>tools · memory · orchestration"])
-        T(["🛡️ La confianza<br/>guardrails · evals · HITL · observability"])
-        M --> C --> T
-    end
-    subgraph TERR["🧭 El territorio · mi setup"]
-        direction TB
-        SP(["🔁 superpowers<br/>método · loop · orquestación"])
-        SE(["🚦 Sentinel<br/>barreras deterministas"])
-        HE(["📉 Headroom<br/>compresión de contexto"])
-        SP --> SE --> HE
-    end
-    MAPA ==>|"del mapa al territorio"| TERR
-    classDef mapa fill:#faf1dc,stroke:#8f5e00,stroke-width:2px,color:#3a2a00;
-    classDef terr fill:#eef1ff,stroke:#3b4cca,stroke-width:2px,color:#1a1f4a;
-    class M,C,T mapa
-    class SP,SE,HE terr
-    style MAPA fill:#fffaf0,stroke:#8f5e00,stroke-width:1.5px,color:#8f5e00
-    style TERR fill:#f5f7ff,stroke:#3b4cca,stroke-width:1.5px,color:#3b4cca
-```
+| Pieza | Qué es | Dónde |
+|---|---|---|
+| Guards de Bash/git | bloquean en duro `rm -rf`, `git push --force` a ramas protegidas, fugas de `.env`/claves por nombre de fichero, exfiltración por red, y más | [`kit/claude/hooks/`](kit/claude/hooks/) |
+| Sentinel | motor de políticas `PreToolUse` (IOCs), opcional, capa adicional sobre cualquier tool | [`kit/sentinel/`](kit/sentinel/) |
+| 8 agentes con tiering | `orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker` | [`kit/claude/agents/`](kit/claude/agents/) |
+| Dos capas de secretos | Capa 1 (`secret-guard.sh`, por nombre de fichero, activa desde el primer `install.sh`) + Capa 2 (`gitleaks` en `pre-commit`, por contenido real, opt-in por repo) | [`kit/docs/05-security.md`](kit/docs/05-security.md) |
+| Eval set | 6 tareas reales + harness de grading; opt-in, cuesta llamadas reales a `claude -p`, nunca corre en CI | [`kit/evals/`](kit/evals/) |
+| Suite de test falsable | `test_guards_falsifiability.sh`: neutraliza un guard real y comprueba que caen casos `BLOCK` conocidos | [`kit/test/`](kit/test/) |
 
-## 2. El kit transferible
+## Por qué existe
 
-En [`kit/`](kit/) tienes una versión **saneada y auto-verificable** de mi setup, lista para instalar en otro ordenador. Config real (CLAUDE.md, settings.json, los 8 agentes, hooks, el motor de políticas Sentinel), un instalador idempotente con backup, un autodiagnóstico y un gate de secretos, todo con TDD. Los terceros (Headroom, plugin superpowers, agent-browser, venv de tools) se documentan, no se redistribuyen.
+No es una config que se copia y ya: es un bucle que se instala, se diagnostica y se corrige a sí mismo (`install.sh` → `doctor.sh` → editar/reinstalar), con TDD detrás de cada pieza en vez de "funciona en mi máquina". El porqué completo, con el modelo mental y los diez pilares de ingeniería detrás, está en las dos charlas de este repo (ver más abajo) y en [`kit/docs/01-overview.md`](kit/docs/01-overview.md).
 
-**Instalar en tres pasos** (Linux/WSL/macOS, bash):
+## Configuración
 
-```bash
-cd kit
-bash install.sh                                   # instala en $CLAUDE_HOME (default $HOME/.claude), con backup
-cp .env.example "${CLAUDE_HOME:-$HOME/.claude}"/.env   # rellena tus claves
-bash doctor.sh                                    # autodiagnóstico con evidencia (PASS/WARN/FAIL)
-```
+Tras `install.sh`, personaliza en `$CLAUDE_HOME` (`$HOME/.claude` por defecto):
 
-Guía completa en [`kit/README.md`](kit/README.md) y [`docs/`](kit/docs/) (overview, install, headroom, superpowers, security, routine, verify, plugins/MCP/skills).
+- **`.env`** — tus claves reales (`ANTHROPIC_API_KEY` y, si las usas, `PERPLEXITY_API_KEY`/`LANGSMITH_API_KEY`). Nunca se sube al repo.
+- **Capa 2 de secretos** (opt-in, por repositorio de trabajo — `install.sh` nunca la activa por su cuenta en un repo que no hayas nombrado):
+  ```bash
+  cd tu-repo && bash /ruta/al/kit/install.sh --enable-secrets-layer2
+  ```
+- **`sentinel-allowlist.json`** — para falsos positivos de los guards, en vez de desactivarlos.
 
-**Seguridad:** un gate determinista (`scan-secrets.sh`) verifica que el kit no contiene ninguna clave, token ni ruta personal. Cero secretos: las claves viven en tu `.env` local, nunca en el repo.
+Detalle de cada opción en [`kit/docs/02-install.md`](kit/docs/02-install.md) y [`kit/docs/05-security.md`](kit/docs/05-security.md).
 
-## Estructura del repositorio
+## Las dos charlas
 
-```text
-setup-claude-code/
-├── charlas/                                             # 1. Las dos charlas
-│   ├── agentes-fundamentos.html / -guion.md             #    Charla 1: el mapa (10 pilares)
-│   └── setup-claude-code-definitiva.html / -guion.md     #    Charla 2: el territorio (mi setup)
-├── kit/                                                  # 2. El kit transferible
-│   ├── install.sh · doctor.sh · scan-secrets.sh         #    instalar · diagnosticar · gate de secretos
-│   ├── .env.example · requirements-tools.txt            #    placeholders · CLIs del venv
-│   ├── claude/                                          #    CLAUDE.md, settings.json, 8 agentes, hooks, allowlist
-│   ├── sentinel/                                        #    motor de políticas + iocs.example.json
-│   ├── test/                                            #    tests TDD (scan/install/doctor)
-│   └── docs/                                            #    01-overview .. 08-plugins-mcp-y-skills
-├── LICENSE                                             # CC BY 4.0
-└── README.md
-```
+Además del kit, este repo trae dos charlas autocontenidas (HTML + guion, sin instalar nada) que explican el método detrás: **el mapa** (modelo mental de Karpathy y los diez pilares de ingeniería de agentes) y **el territorio** (esta misma máquina, con cifras reales).
 
-## 3. Formación recomendada (gratis, corta, verificada)
+| Charla | Fichero | Guion | Para quién |
+|--------|---------|-------|------------|
+| **Fundamentos** · el mapa | [`agentes-fundamentos.html`](charlas/agentes-fundamentos.html) | [`agentes-fundamentos-guion.md`](charlas/agentes-fundamentos-guion.md) | Manager técnico |
+| **Setup** · el territorio | [`setup-claude-code-definitiva.html`](charlas/setup-claude-code-definitiva.html) | [`setup-claude-code-definitiva-guion.md`](charlas/setup-claude-code-definitiva-guion.md) | Desarrolladores |
+
+Ábrelas directamente en el navegador (doble clic, o `xdg-open`/`open`/`start`), no hace falta servidor.
+
+## Más allá del quick start
+
+- [`kit/README.md`](kit/README.md) — guía completa del kit.
+- [`kit/docs/`](kit/docs/) — overview, install, Headroom, superpowers, seguridad, rutina, verificación, plugins/MCP/skills.
+- [`SECURITY.md`](SECURITY.md) — qué protegen los guards y qué no (defensa en profundidad, no un límite duro), y cómo reportar una vulnerabilidad.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — cómo correr los tests y qué se espera de un PR.
+
+## Formación recomendada (gratis, corta, verificada)
 
 Para entender la IA y, sobre todo, Claude Code. Todos gratis y de una a dos horas; contenidos y duración verificados a fecha de este repo (las plataformas pueden cambiar, confírmalo al inscribirte).
 

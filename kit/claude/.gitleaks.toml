@@ -1,0 +1,51 @@
+# .gitleaks.toml — config de gitleaks para la capa 2 (hooks/git/pre-commit).
+#
+# Cierra un hueco de gitleaks con su config por defecto: la regla
+# generic-api-key exige entropia >= 3.5, asi que contraseñas tipo diccionario
+# (DB_PASSWORD=hunter2superSecret, entropia ~3.26) pasan sin detectar. Subir
+# el umbral global reintroduce falsos positivos (PASSWORD= bloqueando en
+# ficheros de prosa/código reales que solo mencionan la palabra).
+#
+# La solucion es una regla propia SIN umbral de entropia, acotada por
+# extension de fichero de config (path) en vez de por contenido: medida sobre
+# los ficheros trackeados de un repo real, la misma regex sin acotar por path
+# dio 18 falsos positivos (prosa, JS, markdown que mencionan
+# PASSWORD=/TOKEN= como ejemplo); acotada a extensiones de config dio 0.
+#
+# .json queda deliberadamente FUERA de esa lista de extensiones (a diferencia
+# de yaml/toml/ini/properties/conf/cfg, que son casi siempre config propia).
+# La medicion de 0 falsos positivos solo es valida para este repo, pequeño y
+# centrado en documentacion: en un proyecto Node real, .json cubre
+# package-lock.json, tsconfig.json, specs de OpenAPI, etc., y la regex
+# (PASSWORD|...|TOKEN|...)\s*[:=]\s*(\S{8,}) puede caer sobre un
+# "token": "algun-valor-interno" completamente inocuo. Si algun dia hace
+# falta cubrir JSON de verdad, el remedio ya documentado (kit/docs/05-security.md)
+# es el fingerprint en .gitleaksignore, no ampliar este path de nuevo sin
+# repetir la medicion sobre un repo representativo.
+#
+# useDefault = true: extiende (no reemplaza) las reglas por defecto de
+# gitleaks -- las claves de alta entropia (AWS, Anthropic, genericas, etc.)
+# se siguen detectando igual que antes de que este fichero existiera.
+#
+# Nota de invocacion: este fichero se pasa con -c explicito en
+# hooks/git/pre-commit, no se depende de la autodeteccion
+# "(target path)/.gitleaks.toml" de gitleaks -- ver ese hook para el detalle
+# de por que se prefiere explicito.
+
+title = "claude-config-secrets"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "dict-password-config-file"
+description = "Asignacion PASSWORD/SECRET/TOKEN/API_KEY con valor tipo diccionario en un fichero de configuracion (sin exigir alta entropia)"
+regex = '''(?i)(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)\s*[:=]\s*(\S{8,})'''
+path = '''\.(ya?ml|toml|ini|properties|conf|cfg)$'''
+
+  [rules.allowlist]
+  regexes = [
+    '''(?i)^(changeme|example|placeholder|dummy|fake|test)''',
+    '''^\$\{''',
+    '''^<.*>$''',
+  ]

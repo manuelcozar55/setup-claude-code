@@ -5,6 +5,11 @@ kit/**/*.log
 kit/.env
 kit/**/.env
 
+# Eval set: transcritos y resultados son corridas locales, nunca material a
+# comitear (pueden contener rutas/datos de la maquina donde se ejecutaron).
+kit/evals/transcripts/
+kit/evals/resultados-*.json
+
 # Sistema operativo
 .DS_Store
 Thumbs.db

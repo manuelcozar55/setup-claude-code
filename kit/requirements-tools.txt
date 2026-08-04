@@ -5,3 +5,4 @@ markitdown[all]
 ast-grep-cli
 basedpyright
 ruff
+pyyaml  # kit/evals/run.sh (parseo de tasks/*.yaml); opt-in, no requerido para el resto del kit
