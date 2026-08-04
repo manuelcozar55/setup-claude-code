@@ -65,6 +65,173 @@ if [ "${1:-}" = "--enable-secrets-layer2" ]; then
   exit 0
 fi
 
+# --- Subcomando: instalar Headroom y cablearlo (opt-in) ---------------------
+# Headroom es de terceros y el kit NO lo redistribuye: se instala desde PyPI
+# (paquete headroom-ai) en el venv del usuario.
+#
+# El orden de los pasos es la parte importante, y es lo que arregla el fallo que
+# tenia este kit: primero instalar, luego arrancar, luego COMPROBAR que responde,
+# y solo entonces escribir ANTHROPIC_BASE_URL en settings.json. Hacerlo al reves
+# --distribuir la variable y esperar que el proxy aparezca-- dejaba a quien
+# instalaba el kit en limpio con Claude Code apuntando a un puerto muerto.
+# Contrato probado en kit/test/test_with_headroom.sh.
+if [ "${1:-}" = "--with-headroom" ]; then
+  HR_PORT="${HEADROOM_PORT:-8787}"
+  VENV="${TOOLS_VENV:-$HOME/.venvs/tools}"
+  UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+  DRY="${HEADROOM_DRY_RUN:-0}"
+
+  if [ ! -f "$CLAUDE_HOME/settings.json" ]; then
+    echo "==> Instala primero el kit:  bash $KIT/install.sh" >&2
+    exit 1
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "==> jq es necesario para cablear settings.json sin romperlo." >&2
+    exit 1
+  fi
+
+  # 1. Paquete en el venv de tools (nunca pip del sistema).
+  if [ "$DRY" != "1" ]; then
+    if [ ! -x "$VENV/bin/python3" ]; then
+      echo "==> Creando venv de tools en $VENV"
+      python3 -m venv "$VENV" || { echo "==> No se pudo crear el venv." >&2; exit 1; }
+    fi
+    echo "==> Instalando headroom-ai en $VENV (sin el extra [all]: ver docs/03-headroom.md)"
+    "$VENV/bin/pip" install -q --upgrade headroom-ai || {
+      echo "==> Fallo la instalacion de headroom-ai (sin red o paquete inaccesible)." >&2
+      echo "    No se ha tocado settings.json." >&2
+      exit 1
+    }
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$VENV/bin/headroom" "$HOME/.local/bin/headroom"
+  fi
+
+  # 2. Helper del output-shaper. Reduce tokens de SALIDA, que no se cachean, asi
+  # que es la unica palanca de ahorro que no arriesga el prefijo cacheado. Los
+  # toggles no se propagan por Environment= ni por el manifest: el unico canal
+  # es un POST en vivo, y por eso hay que repetirlo en cada arranque.
+  # HEADROOM_OUTPUT_HOLDOUT=0.1 deja un 10 % del trafico sin moldear a proposito,
+  # para que el ahorro siga siendo medible en vez de una cifra que hay que creerse.
+  SHAPER="$CLAUDE_HOME/headroom-apply-shaper.sh"
+  cat > "$SHAPER" <<SHAPEREOF
+#!/usr/bin/env bash
+# Generado por install.sh --with-headroom. Aplica los toggles de runtime.
+# NUNCA falla el arranque del servicio: si fallara, systemd marcaria la unidad
+# como failed y con Restart entraria en bucle de reinicios.
+set -uo pipefail
+URL=http://127.0.0.1:${HR_PORT}
+PAYLOAD='{"HEADROOM_OUTPUT_SHAPER":"1","HEADROOM_OUTPUT_HOLDOUT":"0.1"}'
+if ! curl -sf --retry 60 --retry-delay 1 --retry-connrefused -m 3 "\$URL/readyz" >/dev/null 2>&1; then
+  echo "headroom shaper: /readyz no respondio; no se aplico nada"; exit 0
+fi
+resp=\$(curl -sf -m 5 -X POST "\$URL/admin/runtime-env" \\
+         -H 'content-type: application/json' -d "\$PAYLOAD" 2>&1)
+if [[ "\$resp" == *'"HEADROOM_OUTPUT_SHAPER":"1"'* ]]; then
+  echo "headroom shaper: aplicado OK (output-shaper=1, holdout=0.1)"
+else
+  echo "headroom shaper: NO aplicado. respuesta: \$resp"
+fi
+exit 0
+SHAPEREOF
+  chmod +x "$SHAPER"
+
+  # 3. Unidad de usuario. Una sola, a proposito: ver docs/03-headroom.md sobre
+  # las dos unidades peleando por el puerto.
+  mkdir -p "$UNIT_DIR"
+  cat > "$UNIT_DIR/headroom-proxy.service" <<UNITEOF
+[Unit]
+Description=Headroom LLM context compression proxy
+Documentation=https://github.com/headroomlabs-ai/headroom
+After=network.target
+# Sin limite de intentos, y va en [Unit]: en [Service] systemd lo ignora en
+# silencio y la unidad muere en 'failed' tras 5 arranques en 10 s.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Modo cache EXPLICITO. De los perfiles de ahorro, solo 'coding' usa modo cache;
+# los demas usan 'token', que reescribe los turnos anteriores e invalida el
+# prefijo cacheado de Anthropic -- que es de donde sale casi todo el ahorro.
+# No se confia en el default porque la propia herramienta se contradice sobre
+# cual es (ver kit/docs/03-headroom.md).
+ExecStart=%h/.local/bin/headroom proxy --port ${HR_PORT} --mode cache --no-telemetry
+Environment=HEADROOM_SAVINGS_PROFILE=coding
+Environment=PATH=%h/.local/bin:%h/.venvs/tools/bin:/usr/local/bin:/usr/bin:/bin
+# El '-' es deliberado: si el shaper falla, la unidad NO debe quedar en failed.
+ExecStartPost=-${SHAPER}
+Restart=always
+RestartSec=3
+
+# Endurecimiento: escribible solo lo imprescindible.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.headroom %h/.cache/huggingface
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=default.target
+UNITEOF
+  echo "==> Unidad escrita: $UNIT_DIR/headroom-proxy.service"
+
+  # 4. Arrancar.
+  if [ "$DRY" != "1" ]; then
+    if ! command -v systemctl >/dev/null 2>&1; then
+      echo "==> Sin systemd: arranca el proxy a mano y vuelve a lanzar esto." >&2
+      echo "    \$HOME/.local/bin/headroom proxy --port $HR_PORT --mode cache" >&2
+      exit 1
+    fi
+    mkdir -p "$HOME/.headroom" "$HOME/.cache/huggingface"
+    systemctl --user daemon-reload
+    systemctl --user enable --now headroom-proxy.service || true
+    # linger: que el proxy arranque con la maquina y no al primer login.
+    loginctl enable-linger "${USER:-$(id -un)}" >/dev/null 2>&1 || true
+  fi
+
+  # 5. Readiness. /readyz y no /health: /health es agregado y se pone en rojo si
+  # cualquier subcomprobacion falla (p.ej. el backend semantico que no se instala).
+  ready=0
+  if [ -n "${HEADROOM_FAKE_READY:-}" ]; then
+    [ "$HEADROOM_FAKE_READY" = "1" ] && ready=1
+  else
+    for _ in $(seq 1 30); do
+      if curl -fsS -m 1 -o /dev/null "http://127.0.0.1:$HR_PORT/readyz" 2>/dev/null; then ready=1; break; fi
+      sleep 1
+    done
+  fi
+
+  if [ "$ready" -ne 1 ]; then
+    echo "==> El proxy no responde en 127.0.0.1:$HR_PORT/readyz tras 30 s." >&2
+    echo "    settings.json NO se ha tocado: es deliberado. Cablear la API a un" >&2
+    echo "    proxy que no contesta deja Claude Code sin poder conectar." >&2
+    echo "    Diagnostico:  systemctl --user status headroom-proxy" >&2
+    echo "                  journalctl --user -u headroom-proxy -n 50" >&2
+    exit 1
+  fi
+
+  # 6. Y solo ahora, cablear.
+  tmp_s="$(mktemp)"
+  if jq --arg u "http://127.0.0.1:$HR_PORT" '.env.ANTHROPIC_BASE_URL = $u' \
+       "$CLAUDE_HOME/settings.json" > "$tmp_s" && jq empty "$tmp_s" 2>/dev/null; then
+    mv "$tmp_s" "$CLAUDE_HOME/settings.json"
+  else
+    rm -f "$tmp_s"
+    echo "==> No se pudo actualizar settings.json; se deja intacto." >&2
+    exit 1
+  fi
+
+  echo "==> Headroom cableado: ANTHROPIC_BASE_URL=http://127.0.0.1:$HR_PORT"
+  echo "==> NO ejecutes 'headroom install': crearia una segunda unidad peleando"
+  echo "    por el puerto $HR_PORT. Esta unidad es la unica fuente de verdad."
+  echo "==> Verifica:  bash $KIT/doctor.sh"
+  exit 0
+fi
+
 STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo backup)-$$-${RANDOM:-0}"
 BK="$CLAUDE_HOME/backups/$STAMP"
 
