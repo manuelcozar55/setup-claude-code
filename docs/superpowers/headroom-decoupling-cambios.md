@@ -1,9 +1,44 @@
 # Informe de cambios — desacoplar Headroom del kit
 
-Rama: `harden/headroom-decoupling` (desde `v2-autonomous`).
+Rama: `harden/headroom-decoupling`, rebasada sobre `origin/main`.
 Copia aislada: `~/work/cc-setup-b`. **Nada aplicado a `~/.claude` de esta máquina.**
 
 Una entrada por modificación: qué / por qué / cómo se verificó.
+
+## Nota de rebase (antes del PR)
+
+La rama se creó sobre `v2-autonomous` @ `44a1662`, pero esa rama **ya se había
+mergeado y borrado en el remoto**: el ref local era obsoleto. `main` estaba en
+`7696e49`, cuatro commits por delante, y **dos de ellos pisaban este trabajo**:
+
+- `cd1b87d docs: separar headroom de rtk, y WSL2 al principio del README`
+- `a6360f6 docs: correcciones de la autorrevisión antes del merge`
+
+Cómo se resolvió, y por qué así:
+
+1. **La separación `headroom`/`rtk` de `main` gana; la mía se descarta.** La de
+   `main` es mejor: enlaza los dos repos, distingue el proxy HTTP del filtro de
+   salida de CLI, y explica que el check anterior daba un `PASS` falso en ambos
+   sentidos. Igual en `doctor.sh`: se conserva su bloque y solo se le añaden
+   encima mis dos checks nuevos (intérprete y enrutado).
+2. **`main` corrigió un error real de mi `install.sh`.** Documenta que el extra
+   necesario es `headroom-ai[proxy]`, no el paquete pelado: sin él el proxy no
+   arranca y falla con `No module named 'httpx'`. Mi `--with-headroom` instalaba
+   `headroom-ai` a secas, así que **nunca habría llegado a arrancar** — habría
+   fallado de forma segura (sin cablear nada, gracias al readiness check) pero
+   inservible. Corregido, con el porqué de no usar `[all]` (~900 MB frente a
+   7,2 GB; ONNX ya viene en `[proxy]`).
+3. **Un commit mío se volvió redundante** (`0de6b83`: nombre del test y
+   numeración duplicada): ambos arreglos se aplicaron al resolver el conflicto de
+   `doctor.sh`, así que `rebase --skip`.
+4. **`03-headroom.md` de `main` decía que el kit instala `ANTHROPIC_BASE_URL`**,
+   que es justo lo que este PR deja de hacer. Actualizado conservando su
+   argumento —bueno y medido— de que la variable debe ir en `settings.json` y no
+   en el shell, porque un export condicional deja la sesión sin proxy en
+   silencio. Mi cambio es compatible: `--with-headroom` la escribe **en
+   `settings.json`**; lo único que cambia es *cuándo*.
+
+Resultado: 5 commits limpios sobre `main`, 16 suites en verde tras el rebase.
 
 ## Punto de partida (hallazgos que motivan la rama)
 
