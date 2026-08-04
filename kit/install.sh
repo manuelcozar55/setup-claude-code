@@ -96,9 +96,14 @@ if [ "${1:-}" = "--with-headroom" ]; then
       echo "==> Creando venv de tools en $VENV"
       python3 -m venv "$VENV" || { echo "==> No se pudo crear el venv." >&2; exit 1; }
     fi
-    echo "==> Instalando headroom-ai en $VENV (sin el extra [all]: ver docs/03-headroom.md)"
-    "$VENV/bin/pip" install -q --upgrade headroom-ai || {
-      echo "==> Fallo la instalacion de headroom-ai (sin red o paquete inaccesible)." >&2
+    # El extra es [proxy], y no es opcional: sin el, el proxy no arranca y falla
+    # con "No module named 'httpx'". Y NO se usa [all]: expande a trece extras,
+    # entre ellos [ml] (torch + huggingface-hub), que mide ~900 MB frente a
+    # 7,2 GB sin comprar nada aqui -- el motor de compresion usa ONNX Runtime,
+    # que ya viene en [proxy]. Ver kit/docs/03-headroom.md.
+    echo "==> Instalando 'headroom-ai[proxy]' en $VENV (no [all]: ver docs/03-headroom.md)"
+    "$VENV/bin/pip" install -q --upgrade 'headroom-ai[proxy]' || {
+      echo "==> Fallo la instalacion de headroom-ai[proxy] (sin red o paquete inaccesible)." >&2
       echo "    No se ha tocado settings.json." >&2
       exit 1
     }

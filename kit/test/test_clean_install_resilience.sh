@@ -16,6 +16,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 pass=0; fail=0
 ok(){ pass=$((pass+1)); }
 ko(){ fail=$((fail+1)); echo "FAIL: $1"; }
+# `cond && ok || ko msg` no es if-then-else (shellcheck SC2015). want() lo hace
+# explicito: want "mensaje" <comando>.
+want(){ local msg="$1"; shift; if "$@"; then ok; else ko "$msg"; fi; }
 
 command -v jq >/dev/null 2>&1 || { echo "FAIL: jq requerido"; echo "PASS=0 FAIL=1"; exit 1; }
 
@@ -48,24 +51,24 @@ while IFS= read -r c; do
     *.venvs/tools/bin/python3*) bare_venv=1 ;;
   esac
 done <<< "$cmds"
-[ "$bare_rtk" -eq 0 ] && ok || ko "rtk se invoca sin optional-hook.sh (exit 127 si no esta instalado)"
-[ "$bare_venv" -eq 0 ] && ok || ko "el python3 del venv se invoca sin optional-hook.sh (exit 127 si no existe)"
+if [ "$bare_rtk" -eq 0 ]; then ok; else ko "rtk se invoca sin optional-hook.sh (exit 127 si no esta instalado)"; fi
+if [ "$bare_venv" -eq 0 ]; then ok; else ko "el python3 del venv se invoca sin optional-hook.sh (exit 127 si no existe)"; fi
 
 # --- 3. no se ha perdido ninguna salvaguarda por el camino -----------------
 # Blindaje contra el arreglo perezoso: si alguien "simplifica" settings.json y se
 # lleva por delante las denegaciones, el kit deja de proteger.
 n_deny="$(jq -r '.permissions.deny | length' "$S")"
 n_allow="$(jq -r '.permissions.allow | length' "$S")"
-[ "$n_deny" -ge 8 ] && ok || ko "esperaba >=8 denegaciones, hay $n_deny"
-[ "$n_allow" -ge 8 ] && ok || ko "esperaba >=8 permisos, hay $n_allow"
-jq -e '.permissions.deny | index("Bash(rm -rf /*)")' "$S" >/dev/null 2>&1 && ok || ko "falta la denegacion de rm -rf /*"
-jq -e '.permissions.deny | index("Bash(git push --force *)")' "$S" >/dev/null 2>&1 && ok || ko "falta la denegacion de git push --force"
+want "esperaba >=8 denegaciones, hay $n_deny" [ "$n_deny" -ge 8 ]
+want "esperaba >=8 permisos, hay $n_allow" [ "$n_allow" -ge 8 ]
+if jq -e '.permissions.deny | index("Bash(rm -rf /*)")' "$S" >/dev/null 2>&1; then ok; else ko "falta la denegacion de borrado de raiz"; fi
+if jq -e '.permissions.deny | index("Bash(git push --force *)")' "$S" >/dev/null 2>&1; then ok; else ko "falta la denegacion de git push --force"; fi
 
 # --- 4. instalacion limpia en un CLAUDE_HOME temporal ----------------------
 TMP_HOME="$(mktemp -d)"
 export CLAUDE_HOME="$TMP_HOME/.claude"
 if GITLEAKS_AUTO_INSTALL=n bash "$KIT/install.sh" >/dev/null 2>&1; then ok; else ko "install.sh fallo en un CLAUDE_HOME limpio"; fi
-[ -x "$CLAUDE_HOME/hooks/optional-hook.sh" ] && ok || ko "optional-hook.sh no quedo instalado y ejecutable"
+want "optional-hook.sh no quedo instalado y ejecutable" [ -x "$CLAUDE_HOME/hooks/optional-hook.sh" ]
 
 # --- 5. la prueba funcional: la cadena PreToolUse en una maquina pelada ----
 # Se ejecuta cada comando de hook configurado, con $HOME reescrito al temporal,

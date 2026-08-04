@@ -97,6 +97,8 @@ Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, serv
 bash doctor.sh
 ```
 
-`doctor.sh` imprime un informe por componente: `PASS`, `WARN` o `FAIL`, y el "cómo se obtuvo" de cada línea. Sale con código 0 solo si no hay ningún `FAIL`. Los `WARN` son aceptables cuando corresponden a un componente opcional que aún no has instalado (el venv de tools, Headroom): el setup base funciona sin ellos, degradando con elegancia en vez de romperse.
+`doctor.sh` imprime un informe por componente: `PASS`, `WARN` o `FAIL`, y el "cómo se obtuvo" de cada línea. Sale con código 0 solo si no hay ningún `FAIL`. Los `WARN` son aceptables cuando corresponden a un componente opcional que aún no has instalado (el venv de tools, Headroom, `rtk`): el setup base funciona sin ellos, degradando con elegancia en vez de romperse.
+
+Un caso **no** degrada con elegancia y por eso es `FAIL`: que `ANTHROPIC_BASE_URL` enrute la API a un proxy que no contesta. Ahí Claude Code se queda sin poder hablar con la API, y el síntoma no se parece a un problema de configuración. El `settings.json` que distribuye el kit no fija esa variable; la escribe `install.sh --with-headroom` y solo tras comprobar que el proxy responde (ver `03-headroom.md`).
 
 Detalle completo del significado de cada línea y de cómo reproducirla en `07-verify.md`.
