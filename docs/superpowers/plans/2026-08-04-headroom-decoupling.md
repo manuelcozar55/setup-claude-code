@@ -146,3 +146,12 @@ contesta, es FAIL, no WARN.
   no pude verificar cómo falla en una cuenta sin acceso a Opus); no se toca `~/.claude` de esta máquina.
 </content>
 </invoke>
+
+---
+
+## Estado: completado (2026-08-04)
+
+Las 7 tasks ejecutadas y verificadas. Evidencia por task en
+`docs/superpowers/headroom-decoupling-cambios.md`. Resumen: 16 suites en verde,
+40 asserts nuevos, `shellcheck` de la CI sin hallazgos, instalación real con
+`doctor.sh` en `OK (0 FAIL)`. Nada aplicado a `~/.claude`; sin `push`.

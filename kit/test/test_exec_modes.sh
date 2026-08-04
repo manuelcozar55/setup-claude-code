@@ -36,6 +36,7 @@ REQUIRED_EXEC=(
   kit/claude/hooks/block-dangerous-commands.sh
   kit/claude/hooks/branch-guard.sh
   kit/claude/hooks/destructive-guard.sh
+  kit/claude/hooks/optional-hook.sh
   kit/claude/hooks/pre-compact.sh
   kit/claude/hooks/secret-guard.sh
   kit/claude/hooks/session-start.sh

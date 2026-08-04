@@ -32,10 +32,12 @@ set_base_url() { # $1 CLAUDE_HOME, $2 url
   jq --arg u "$2" '.env.ANTHROPIC_BASE_URL = $u' "$1/settings.json" > "$tmp" && mv "$tmp" "$1/settings.json"
 }
 
-# doctor.sh se ejecuta con un HOME propio para que sus checks de venv/gitleaks no
-# dependan de la maquina del que corre el test; solo nos interesa el check nuevo.
+# El check nuevo mira settings.json y, si ahi no hay nada, la variable de entorno.
+# Se limpia ANTHROPIC_BASE_URL del entorno a proposito: si no, la maquina del que
+# corre el test (que puede tener un proxy vivo, como la del autor) decidiria el
+# resultado y el caso "sin enrutar" pasaria por el motivo equivocado.
 run_doctor() { # $1 CLAUDE_HOME -> imprime salida completa
-  CLAUDE_HOME="$1" bash "$KIT/doctor.sh" 2>&1
+  env -u ANTHROPIC_BASE_URL CLAUDE_HOME="$1" bash "$KIT/doctor.sh" 2>&1
 }
 
 # --- caso A: enrutado a un puerto muerto -> FAIL ----------------------------
@@ -46,14 +48,18 @@ out_a="$(run_doctor "$CH_A")"; rc_a=$?
 if echo "$out_a" | grep -qE '^FAIL .*(BASE_URL|proxy|8787|no responde|no contesta)'; then ok; else
   ko "con ANTHROPIC_BASE_URL a un puerto muerto, doctor no reporta FAIL. Salida: $(echo "$out_a" | tail -3 | tr '\n' ' ')"
 fi
-[ "$rc_a" -ne 0 ] && ok || ko "doctor debe salir con codigo != 0 si el base URL esta muerto"
+if [ "$rc_a" -ne 0 ]; then ok; else ko "doctor debe salir con codigo != 0 si el base URL esta muerto"; fi
 
 # --- caso B: sin ANTHROPIC_BASE_URL -> no debe fallar por este motivo -------
 CH_B="$(install_clean)"
 out_b="$(run_doctor "$CH_B")"
 if echo "$out_b" | grep -qE '^FAIL .*(BASE_URL|proxy)'; then
-  ko "sin ANTHROPIC_BASE_URL no deberia haber FAIL de enrutado (es la config por defecto)"
+  ko "sin ANTHROPIC_BASE_URL no deberia haber FAIL de enrutado (es la config por defecto del kit)"
 else ok; fi
+# Y debe decirlo de forma positiva: es una configuracion valida, no una carencia.
+if echo "$out_b" | grep -qE '^PASS .*(directa|sin proxy)'; then ok; else
+  ko "sin proxy, doctor deberia reportar PASS de API directa (salida: $(echo "$out_b" | grep -iE 'api|proxy' | tr '\n' ' '))"
+fi
 
 # --- caso C: enrutado a un endpoint vivo -> PASS ---------------------------
 CH_C="$(install_clean)"

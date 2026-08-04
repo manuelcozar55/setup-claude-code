@@ -13,6 +13,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 pass=0; fail=0
 ok(){ pass=$((pass+1)); }
 ko(){ fail=$((fail+1)); echo "FAIL: $1"; }
+# `cond && ok || ko msg` no es if-then-else (shellcheck SC2015): si `ok` fallara,
+# correria `ko` igualmente. want() lo hace explicito: want "mensaje" <comando>.
+want(){ local msg="$1"; shift; if "$@"; then ok; else ko "$msg"; fi; }
 
 command -v jq >/dev/null 2>&1 || { echo "FAIL: jq requerido"; echo "PASS=0 FAIL=1"; exit 1; }
 
@@ -37,36 +40,39 @@ out_a="$(run_wh "$ROOT_A" 0)"; rc_a=$?
 if jq -e '.env.ANTHROPIC_BASE_URL' "$ROOT_A/.claude/settings.json" >/dev/null 2>&1; then
   ko "con el proxy sin responder, settings.json NO debe ganar ANTHROPIC_BASE_URL"
 else ok; fi
-[ "$rc_a" -ne 0 ] && ok || ko "si el proxy no responde, --with-headroom debe salir != 0"
-echo "$out_a" | grep -qiE 'no responde|no contesta|readyz|no arranc' && ok || ko "debe explicar por que no cableo (salida: $(echo "$out_a" | tail -2 | tr '\n' ' '))"
+want "si el proxy no responde, --with-headroom debe salir != 0" [ "$rc_a" -ne 0 ]
+if printf '%s' "$out_a" | grep -qiE 'no responde|no contesta|readyz|no arranc'; then ok; else
+  ko "debe explicar por que no cableo (salida: $(printf '%s' "$out_a" | tail -2 | tr '\n' ' '))"
+fi
 
 # --- caso B: el proxy responde -> se cablea --------------------------------
 ROOT_B="$(setup)"
 out_b="$(run_wh "$ROOT_B" 1)"; rc_b=$?
-[ "$rc_b" -eq 0 ] && ok || ko "con el proxy vivo, --with-headroom debe salir 0 (salida: $(echo "$out_b" | tail -2 | tr '\n' ' '))"
+want "con el proxy vivo, --with-headroom debe salir 0 (salida: $(printf '%s' "$out_b" | tail -2 | tr '\n' ' '))" [ "$rc_b" -eq 0 ]
 got="$(jq -r '.env.ANTHROPIC_BASE_URL // empty' "$ROOT_B/.claude/settings.json")"
-[ -n "$got" ] && ok || ko "con el proxy vivo, settings.json debe ganar ANTHROPIC_BASE_URL"
+want "con el proxy vivo, settings.json debe ganar ANTHROPIC_BASE_URL" [ -n "$got" ]
 case "$got" in *8787*) ok ;; *) ko "el base URL deberia apuntar al puerto configurado (fue: $got)" ;; esac
-jq empty "$ROOT_B/.claude/settings.json" 2>/dev/null && ok || ko "settings.json quedo invalido tras cablear"
+want "settings.json quedo invalido tras cablear" jq empty "$ROOT_B/.claude/settings.json"
 
 # --- caso C: la unidad systemd lleva las decisiones que protegen el ahorro --
 UNIT="$ROOT_B/.config/systemd/user/headroom-proxy.service"
-[ -f "$UNIT" ] && ok || ko "no se escribio la unidad en $UNIT"
+want "no se escribio la unidad en $UNIT" [ -f "$UNIT" ]
 if [ -f "$UNIT" ]; then
-  grep -q -- '--mode cache' "$UNIT" && ok || ko "la unidad debe fijar --mode cache explicitamente (el modo token invalida el prompt caching)"
+  want "la unidad debe fijar --mode cache explicitamente (el modo token invalida el prompt caching)" \
+    grep -q -- '--mode cache' "$UNIT"
   # StartLimitIntervalSec debe ir en [Unit]: en [Service] systemd lo ignora en
   # silencio y la unidad muere tras 5 arranques en 10 s.
   if awk '/^\[Unit\]/{u=1;next} /^\[/{u=0} u&&/StartLimitIntervalSec=0/{found=1} END{exit !found}' "$UNIT"; then ok; else
     ko "StartLimitIntervalSec=0 debe estar en la seccion [Unit], no en [Service]"
   fi
-  grep -q 'Restart=always' "$UNIT" && ok || ko "la unidad debe reintentar (Restart=always)"
+  want "la unidad debe reintentar (Restart=always)" grep -q 'Restart=always' "$UNIT"
 fi
 
 # --- caso D: idempotente ---------------------------------------------------
 run_wh "$ROOT_B" 1 >/dev/null 2>&1
-jq empty "$ROOT_B/.claude/settings.json" 2>/dev/null && ok || ko "reejecutar rompio settings.json"
+want "reejecutar rompio settings.json" jq empty "$ROOT_B/.claude/settings.json"
 n="$(jq -r '.env | keys | map(select(. == "ANTHROPIC_BASE_URL")) | length' "$ROOT_B/.claude/settings.json")"
-[ "$n" = "1" ] && ok || ko "ANTHROPIC_BASE_URL duplicada tras reejecutar ($n)"
+want "ANTHROPIC_BASE_URL duplicada tras reejecutar ($n)" [ "$n" = "1" ]
 
 rm -rf "$ROOT_A" "$ROOT_B"
 echo "PASS=$pass FAIL=$fail"

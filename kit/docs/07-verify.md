@@ -78,6 +78,8 @@ Ver `kit/evals/README.md` para el criterio de admisión de tareas y por qué usa
 | Hooks referenciados existen y son ejecutables | `jq` sobre `.hooks` de `settings.json` + `test -e`/`-x` | (lo hace `doctor.sh` internamente) | `PASS · hooks referenciados presentes y ejecutables` |
 | Agentes instalados | conteo de ficheros | `ls "$CLAUDE_HOME"/agents/*.md \| wc -l` | 8 |
 | Venv de tools (opcional) | presencia del binario | `test -x "$HOME/.venvs/tools/bin/python3"` | `PASS` si está, `WARN` si no |
+| Intérprete para los hooks Python (opcional) | venv o `python3` del sistema | `command -v python3` | `PASS` si hay alguno; `WARN` si no (quedan en no-op, los guards de bash siguen) |
+| **Enrutado de la API** | si algo enruta a un proxy, ese proxy debe contestar | `jq -r '.env.ANTHROPIC_BASE_URL' settings.json` + `GET /readyz` | `PASS` sin proxy o con proxy vivo; **`FAIL` si está enrutado y no contesta** |
 | Headroom, el proxy (opcional) | presencia del CLI | `command -v headroom` | `PASS` si está, `WARN` si no |
 | `rtk`, el filtro de salida de CLI (opcional) | presencia del CLI | `command -v rtk` | `PASS` si está, `WARN` si no |
 | Headroom enrutado de verdad (opcional) | informe de la propia herramienta | `headroom doctor` | 0 `failure`; ojo si dice `savings: no tokens saved yet` (proxy vivo, cliente sin enrutar) |

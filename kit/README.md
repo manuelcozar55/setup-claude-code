@@ -40,7 +40,9 @@ $EDITOR ~/.claude/.env
 bash doctor.sh
 ```
 
-`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable cuando es un componente opcional que aún no instalaste (el venv de tools, Headroom): el setup base funciona sin ellos. Detalle completo en [`docs/02-install.md`](docs/02-install.md) y [`docs/07-verify.md`](docs/07-verify.md).
+`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable cuando es un componente opcional que aún no instalaste (el venv de tools, Headroom, `rtk`): el setup base funciona sin ellos, porque nada del kit los da por supuestos.
+
+La excepción, y es un `FAIL`: si tu `settings.json` enruta la API a un proxy (`ANTHROPIC_BASE_URL`) y ahí no contesta nadie, Claude Code no puede conectar. Eso no es una degradación elegante, así que `doctor.sh` no lo deja pasar como `WARN`. Detalle completo en [`docs/02-install.md`](docs/02-install.md) y [`docs/07-verify.md`](docs/07-verify.md).
 
 ## Qué incluye
 
