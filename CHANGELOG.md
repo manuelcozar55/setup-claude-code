@@ -8,6 +8,29 @@ bajo `[Unreleased]` hasta el primer tag.
 
 ### Fixed
 
+- **Una instalación limpia ya no puede quedarse sin API.** `kit/claude/settings.json`
+  distribuía `ANTHROPIC_BASE_URL=http://127.0.0.1:8787` mientras `install.sh`
+  declaraba Headroom como componente de terceros que el kit no instala: quien
+  clonaba en limpio se quedaba con Claude Code enrutado a un puerto donde no
+  escuchaba nadie, sin poder hablar con la API y con un síntoma que no parecía
+  de configuración. La variable sale del `settings.json` distribuido; ahora la
+  escribe `install.sh --with-headroom` y solo después de comprobar `/readyz`.
+  **Cambio de config con impacto:** si dependías de que el kit enrutara al
+  proxy, recupéralo con ese flag (o añade la variable a mano). Sigue yendo en
+  `settings.json` y no en el shell, por el motivo que explica `03-headroom.md`.
+  Cubierto por `kit/test/test_clean_install_resilience.sh`.
+- **`doctor.sh` ya no aprueba una instalación inservible.** No comprobaba nunca
+  el endpoint, así que salía con código 0 en una máquina cuyo Claude Code no
+  podía conectar. Ahora, si algo enruta la API, ese endpoint tiene que contestar
+  o es `FAIL`. Se consulta `/readyz` y no `/health`, que es agregado y se pone
+  en rojo por subcomprobaciones que es legítimo no tener.
+  Cubierto por `kit/test/test_doctor_base_url.sh`.
+- **Los hooks ya no fallan por dependencias que el kit no instala.**
+  `rtk hook claude` y los dos hooks Python del venv daban exit 127 en una
+  máquina limpia — el preflight de Sentinel, con `matcher ""`, en *todas* las
+  llamadas a tool. Ahora pasan por `optional-hook.sh`. Lo que el wrapper no hace
+  es tragarse un bloqueo: si el guard está instalado y sale con código 2, ese 2
+  se propaga, porque es así como se deniega una acción.
 - **`headroom` y `rtk` se documentaban como una sola herramienta, y son dos
   proyectos independientes.** `kit/docs/03-headroom.md` titulaba "Instalar
   Headroom (`rtk`)" y verificaba el proxy con `rtk --version`; `doctor.sh`
@@ -24,6 +47,24 @@ bajo `[Unreleased]` hasta el primer tag.
 
 ### Added
 
+- **`kit/claude/hooks/optional-hook.sh`**: ejecuta un hook solo si su dependencia
+  existe. No-op silencioso si falta; `exec` con propagación literal del código de
+  salida si está, incluido el 2 que bloquea. Modo `--python` que resuelve el
+  intérprete (venv → `python3` del sistema), lo que además mejora la cobertura:
+  en una máquina con Python pero sin venv, `smart_approve.py` y el preflight de
+  Sentinel ahora sí corren, cuando antes daban 127.
+  Contrato en `kit/test/test_optional_hook.sh` (9 asserts).
+- **`install.sh --with-headroom`**: instala `headroom-ai[proxy]` en el venv,
+  escribe la unidad de systemd de usuario con `--mode cache` explícito,
+  `StartLimitIntervalSec=0` en `[Unit]` y el output-shaper por `ExecStartPost`,
+  arranca, espera `/readyz` y **solo entonces** enruta la API. Si el proxy no
+  arranca, sale con error y deja la config intacta.
+  Cubierto por `kit/test/test_with_headroom.sh` (13 asserts, sin red ni systemd).
+- **`kit/test/test_clean_install_resilience.sh`** (12 asserts): monta el kit en
+  una máquina simulada sin ninguno de los componentes de terceros y exige las dos
+  mitades del contrato — que ningún hook falle, y que un comando destructivo siga
+  saliendo con el código que bloquea. Impide "arreglar" la primera mitad a base
+  de `|| true`, que rompería la segunda en silencio.
 - **`kit/docs/09-ssh-y-gitlab-privado.md`: guía completa de clave SSH y alta en
   un GitLab autoalojado, desde WSL2.** Ocho pasos con los comandos, pensada para
   que alguien de un equipo la siga de principio a fin sin saber de SSH: generar
