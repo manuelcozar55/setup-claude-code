@@ -45,8 +45,23 @@ Todo vive bajo `kit/test/`:
   activa la Capa 2 solo en el repo desde el que se invoca explicitamente.
 - `test_gitattributes.sh` — ningun script/hook versionado tiene CRLF en el
   arbol de trabajo (ver ".gitattributes y CRLF" mas abajo).
+- `test_exec_modes.sh` — los scripts versionados que se invocan como
+  ejecutable (`./script.sh`) tienen el bit de ejecucion y un shebang correcto.
+- `test_optional_hook.sh` — `optional-hook.sh` degrada con aviso (no rotura)
+  cuando la dependencia que envuelve (`rtk`, venv) no esta instalada, y
+  propaga el exit code si el guard subyacente si esta instalado y bloquea.
+- `test_clean_install_resilience.sh` — el kit instalado en una maquina
+  simulada sin ningun componente de terceros (sin proxy, sin `rtk`, sin venv,
+  sin `gitleaks`) no rompe ningun hook y sigue bloqueando comandos
+  destructivos: las dos mitades a la vez.
+- `test_doctor_base_url.sh` — `doctor.sh` consulta `/readyz` (no `/health`) y
+  marca `FAIL` si algo enruta la API a un endpoint que no contesta.
+- `test_with_headroom.sh` — `install.sh --with-headroom` instala el proxy, lo
+  arranca, comprueba `/readyz` y solo entonces escribe la variable de
+  enrutado en `settings.json`.
 
-Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`.
+Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
+(las 16 suites listadas arriba).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -136,13 +151,21 @@ El orden importa: **verificar primero, etiquetar después.** Un tag es inmutable
 en la práctica (alguien puede haberlo clonado), así que no se corta una versión
 sobre algo sin comprobar.
 
+El CHANGELOG se edita **en una rama, vía PR**, igual que cualquier otro cambio
+de este repo — nunca directo sobre `main`. No es solo por consistencia con el
+resto de este documento: `kit/claude/hooks/branch-guard.sh` **bloquea**
+`git push origin main`, así que un `git push` directo a `main` con el
+CHANGELOG movido ni siquiera llega al remoto. Etiquetar es distinto: la regex
+de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
+`git push origin vX.Y.Z` sí pasa sin tocar esa protección.
+
 ```bash
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
 # 2. las 16 suites y el escaner de secretos
 make test                    # exit 0
-bash kit/scan-secrets.sh .   # PASS
+bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 
 # 3. la prueba que de verdad importa: instalacion limpia en un CLAUDE_HOME virgen
 T=$(mktemp -d)
@@ -150,11 +173,22 @@ CLAUDE_HOME="$T/h" bash kit/install.sh
 CLAUDE_HOME="$T/h" bash kit/doctor.sh   # exit 0, 0 FAIL
 rm -r "$T"
 
-# 4. mover el CHANGELOG: [Unreleased] -> [X.Y.Z] - AAAA-MM-DD, dejar
+# 4. rama para el CHANGELOG: mover [Unreleased] -> [X.Y.Z] - AAAA-MM-DD, dejar
 #    [Unreleased] vacio, y añadir los dos enlaces de comparacion del final
-
-# 5. etiquetar y publicar
 V=X.Y.Z
+git checkout -b "release/v$V"
+# ... editar CHANGELOG.md ...
+git status --porcelain   # solo CHANGELOG.md
+git add CHANGELOG.md
+git commit -m "docs: preparar CHANGELOG para v$V"
+git push -u origin "release/v$V"
+gh pr create --title "docs: preparar CHANGELOG para v$V" --body "Release v$V."
+
+# 5. mergear el PR y esperar CI en verde sobre main antes de seguir
+gh pr merge --squash --delete-branch
+git checkout main && git pull --ff-only
+
+# 6. etiquetar y publicar (ahora si sobre el commit que ya tiene el CHANGELOG)
 git tag -a "v$V" -m "v$V"
 git push origin "v$V"
 
@@ -165,6 +199,15 @@ awk -v v="## [$V]" 'index($0,v)==1{f=1;next} f && (/^## \[/ || /^\[[^]]+\]: http
     CHANGELOG.md > /tmp/notas-$V.md
 gh release create "v$V" --title "v$V" --notes-file /tmp/notas-$V.md
 ```
+
+Nota sobre el paso 2: `scan-secrets.sh` recorre también ficheros no
+versionados y gitignorados **a propósito** — así un `.env` real que aún no
+has commiteado no pasa inadvertido. Eso significa que un venv, unos logs o
+cualquier scratch de proceso que tengas colgando en el árbol pueden dar
+`FAIL` sin que haya una fuga real. Lo que de verdad bloquea una release es un
+hallazgo en material **versionado**, y eso se comprueba sin ambigüedad en un
+clon limpio (`git clone` a un directorio nuevo y `bash kit/scan-secrets.sh .`
+ahí).
 
 Nota sobre el paso 3: los dos `WARN` de `doctor.sh` en una instalación limpia
 (IOCs de Sentinel y Capa 2 de secretos) son correctos — son capas opt-in, y
