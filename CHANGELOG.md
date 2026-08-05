@@ -1,10 +1,16 @@
 # Changelog
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
-Este proyecto aún no publica versiones etiquetadas; las entradas se agrupan
-bajo `[Unreleased]` hasta el primer tag.
+Este proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
+`[Unreleased]` recoge lo que ya está en `main` y aún no se ha etiquetado.
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-08-05
+
+Primera versión etiquetada. Recoge el kit completo: guards deterministas con
+suite de test falsable, 8 agentes con tiering, dos capas de secretos, eval set
+opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
 
 ### Fixed
 
@@ -274,3 +280,6 @@ bajo `[Unreleased]` hasta el primer tag.
 - Documentado el modelo de dos capas de secretos (por nombre + por
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
+
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/manuelcozar55/setup-claude-code/releases/tag/v1.0.0
