@@ -71,8 +71,9 @@ StartLimitIntervalSec=0
 [Service]
 # Ruta absoluta al binario del venv donde lo instalaste (systemd no hereda tu PATH).
 ExecStart=%h/.venvs/tools/bin/headroom proxy --port 8787 --mode cache --no-telemetry
-# Si ANTHROPIC_BASE_URL apunta aquí (y con este kit apunta), el proxy es una
-# dependencia dura del cliente: que reintente indefinidamente.
+# En cuanto ANTHROPIC_BASE_URL apunte aquí, el proxy pasa a ser dependencia dura
+# del cliente: que reintente indefinidamente. (El kit ya NO distribuye esa
+# variable; se escribe solo con --with-headroom y tras comprobar /readyz.)
 Restart=always
 RestartSec=3
 
@@ -150,7 +151,7 @@ Headroom arranca en uno de dos modos, y la diferencia importa para la factura, n
 
 **Ojo con el default**: la propia herramienta se ha visto contradecirse sobre cuál es. La ayuda del subcomando que arranca el proxy puede mostrar `cache` como default, mientras que la ayuda del subcomando de instalación (y la documentación online del proyecto) dicen `token`. No asumas cuál tienes activo: compruébalo explícitamente en tu instalación en vez de fiarte del default. Si tu instalación usa perfiles de ahorro predefinidos, el perfil se suele aplicar con algo equivalente a `setdefault()` (lo que fijes tú explícitamente manda sobre el perfil), y no todos los perfiles usan `cache` por defecto: verifica el que tengas activo, no solo el que crees haber elegido.
 
-Para este kit, que depende de que `ANTHROPIC_BASE_URL` apunte al proxy sin romper el caché de Anthropic (ver arriba), fija el modo explícitamente a `cache` en vez de confiar en el default, y vuelve a comprobarlo tras cada actualización de Headroom. Y no des por hecho que la compresión de Headroom es lo que te ahorra dinero: en la práctica, el ahorro grande suele venir del prompt-caching nativo de Anthropic (que `cache` protege); la compresión aporta encima, pero como un extra menor, no como el mecanismo principal.
+Si decides enrutar la API por el proxy (`install.sh --with-headroom`, o a mano), fija el modo explícitamente a `cache` en vez de confiar en el default, y vuelve a comprobarlo tras cada actualización de Headroom: es lo que evita que el proxy te rompa el caché de Anthropic. Y no des por hecho que la compresión de Headroom es lo que te ahorra dinero: en la práctica, el ahorro grande suele venir del prompt-caching nativo de Anthropic (que `cache` protege); la compresión aporta encima, pero como un extra menor, no como el mecanismo principal.
 
 ## Endpoint de salud
 
