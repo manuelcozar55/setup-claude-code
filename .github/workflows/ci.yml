@@ -99,6 +99,18 @@ jobs:
       - name: test_exec_modes.sh (hooks commiteados como 100755, no solo en el filesystem)
         run: bash kit/test/test_exec_modes.sh
 
+      - name: test_optional_hook.sh (dep ausente = no-op; exit 2 se propaga)
+        run: bash kit/test/test_optional_hook.sh
+
+      - name: "test_clean_install_resilience.sh (maquina pelada: no falla Y sigue bloqueando)"
+        run: bash kit/test/test_clean_install_resilience.sh
+
+      - name: test_doctor_base_url.sh (un proxy enrutado y muerto es FAIL)
+        run: bash kit/test/test_doctor_base_url.sh
+
+      - name: test_with_headroom.sh (solo cablea despues de comprobar /readyz)
+        run: bash kit/test/test_with_headroom.sh
+
       - name: gitleaks dir sobre el repo completo
         run: gitleaks dir --no-banner .
 

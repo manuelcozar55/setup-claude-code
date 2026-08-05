@@ -58,7 +58,60 @@ fi
 # 4. venv de tools (opcional -> WARN)
 if [ -x "$HOME/.venvs/tools/bin/python3" ]; then pass "venv tools presente"; else warn "venv tools ausente (opcional; ver docs/02-install.md)"; fi
 
-# 5. Headroom (opcional -> WARN). `headroom` y `rtk` son DOS proyectos distintos
+# 4b. interprete para los hooks Python (smart_approve, sentinel_preflight).
+# No es FAIL: optional-hook.sh los convierte en no-op si no hay interprete, y el
+# resto de la cadena (los guards de bash) sigue protegiendo. Pero conviene
+# saberlo, porque son dos capas menos.
+if [ -x "$HOME/.venvs/tools/bin/python3" ] || command -v python3 >/dev/null 2>&1; then
+  pass "interprete para hooks Python disponible  (fuente: venv o python3 del sistema)"
+else
+  warn "sin python3: smart_approve y el preflight de Sentinel quedan en no-op (los guards de bash siguen activos)"
+fi
+
+# 5. Enrutado de la API: si algo enruta a un proxy, ese proxy TIENE que contestar.
+#
+# Esto es un FAIL y no un WARN por una razon medida: este kit distribuia
+# ANTHROPIC_BASE_URL=127.0.0.1:8787 en settings.json mientras declaraba Headroom
+# como componente opcional de terceros. En una instalacion limpia el puerto
+# estaba muerto, Claude Code no podia hablar con la API, y este doctor salia
+# "OK (0 FAIL)" porque solo miraba si el binario existia. Un doctor que aprueba
+# una instalacion inservible retira la sospecha justo donde hacia falta.
+# Cubierto por kit/test/test_doctor_base_url.sh.
+#
+# Se consulta /readyz y no /health: /health es agregado y se pone en rojo si
+# CUALQUIER subcomprobacion falla -- por ejemplo el backend semantico de
+# compresion, que es legitimo no instalar (ver docs/03-headroom.md). /readyz
+# responde a lo unico que decide aqui: puede atender trafico o no.
+base_url="$(jq -r '.env.ANTHROPIC_BASE_URL // empty' "$CLAUDE_HOME/settings.json" 2>/dev/null)"
+[ -z "$base_url" ] && base_url="${ANTHROPIC_BASE_URL:-}"
+probe_url() { # $1 url -> 0 si algo contesta HTTP
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS -m 2 -o /dev/null "$1" 2>/dev/null && return 0
+    # Un 4xx/5xx tambien prueba que hay un servidor escuchando.
+    curl -sS -m 2 -o /dev/null -w '%{http_code}' "$1" 2>/dev/null | grep -qE '^[1-5][0-9][0-9]$' && return 0
+    return 1
+  fi
+  python3 - "$1" <<'EOF' >/dev/null 2>&1
+import sys, urllib.request, urllib.error
+try:
+    urllib.request.urlopen(sys.argv[1], timeout=2)
+except urllib.error.HTTPError:
+    pass
+except Exception:
+    sys.exit(1)
+EOF
+}
+if [ -n "$base_url" ]; then
+  if probe_url "${base_url%/}/readyz" || probe_url "${base_url%/}/health" || probe_url "$base_url"; then
+    pass "API enrutada a $base_url y el proxy responde  (fuente: GET /readyz)"
+  else
+    fail "API enrutada a $base_url pero ahi no contesta nadie: Claude Code no podra conectar. Arranca el proxy (docs/03-headroom.md) o quita ANTHROPIC_BASE_URL de settings.json"
+  fi
+else
+  pass "API directa a Anthropic: sin proxy en medio  (fuente: sin ANTHROPIC_BASE_URL)"
+fi
+
+# 5a. Headroom (opcional -> WARN). `headroom` y `rtk` son DOS proyectos distintos
 # (ver docs/03-headroom.md): el proxy HTTP en :8787 y el filtro de salida de CLI
 # que ejecuta el hook `rtk hook claude`. Se comprueban por separado a propósito:
 # con un solo `command -v rtk`, una instalación con rtk pero sin el proxy daba
@@ -71,7 +124,7 @@ fi
 if command -v rtk >/dev/null 2>&1; then
   pass "rtk (filtro de salida de CLI) presente  (fuente: command -v rtk)"
 else
-  warn "rtk no instalado: el hook 'rtk hook claude' de settings.json no hará nada (opcional; ver docs/03-headroom.md)"
+  warn "rtk no instalado: el hook 'rtk hook claude' de settings.json queda en no-op via optional-hook.sh (opcional; ver docs/03-headroom.md)"
 fi
 
 # 5b. gitleaks (opcional -> WARN): requerido solo para activar la Capa 2 de

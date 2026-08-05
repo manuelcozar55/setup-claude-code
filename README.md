@@ -24,6 +24,8 @@
 
 Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 8 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y es el único kit de este tipo que **demuestra** que sus guards funcionan con una suite de test falsable, no solo lo afirma: `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **10 casos `BLOCK` conocidos**. Si neutralizarlo no rompiera nada, la suite no estaría midiendo nada — puedes reproducir esa caída tú mismo, ver el paso 5 más abajo.
 
+Y hay una segunda cosa que se demuestra en vez de prometerse: **que instalarlo en limpio no te rompe nada.** `test_clean_install_resilience.sh` monta el kit en una máquina simulada sin ninguno de los componentes de terceros (sin proxy, sin `rtk`, sin venv, sin `gitleaks`) y exige las dos mitades a la vez: que ningún hook falle, y que un comando destructivo siga bloqueado. Las dos mitades importan, porque la forma perezosa de arreglar la primera —envolver todo en `|| true`— rompe la segunda en silencio y te deja un kit de seguridad decorativo.
+
 No son garantías absolutas: son defensa en profundidad, con sus límites documentados en [`SECURITY.md`](SECURITY.md), no escondidos.
 
 ## Quick start
@@ -40,7 +42,13 @@ cp .env.example "${CLAUDE_HOME:-$HOME/.claude}"/.env    # rellena tus claves
 bash doctor.sh                                          # autodiagnóstico con evidencia (PASS/WARN/FAIL)
 ```
 
-`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, el venv de tools, `gitleaks`): el setup base funciona sin ellos. Guía completa en [`kit/README.md`](kit/README.md).
+`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, `rtk`, el venv de tools, `gitleaks`): **nada del kit los da por supuestos**, y hay un test que lo demuestra en una máquina pelada (`test_clean_install_resilience.sh`). Guía completa en [`kit/README.md`](kit/README.md).
+
+Si quieres el proxy de contexto, es un flag — y se cablea solo si arranca de verdad:
+
+```bash
+bash install.sh --with-headroom    # instala, arranca, verifica /readyz, y solo entonces enruta
+```
 
 ## Qué incluye
 
@@ -52,6 +60,8 @@ bash doctor.sh                                          # autodiagnóstico con e
 | Dos capas de secretos | Capa 1 (`secret-guard.sh`, por nombre de fichero, activa desde el primer `install.sh`) + Capa 2 (`gitleaks` en `pre-commit`, por contenido real, opt-in por repo) | [`kit/docs/05-security.md`](kit/docs/05-security.md) |
 | Eval set | 6 tareas reales + harness de grading; opt-in, cuesta llamadas reales a `claude -p`, nunca corre en CI | [`kit/evals/`](kit/evals/) |
 | Suite de test falsable | `test_guards_falsifiability.sh`: neutraliza un guard real y comprueba que caen casos `BLOCK` conocidos | [`kit/test/`](kit/test/) |
+| Garantía de instalación limpia | `test_clean_install_resilience.sh`: monta el kit sin ningún componente de terceros y exige que no falle **y** que siga bloqueando | [`kit/test/`](kit/test/) |
+| Headroom opt-in | `install.sh --with-headroom`: instala el proxy, lo arranca, comprueba `/readyz` y solo entonces enruta la API | [`kit/docs/03-headroom.md`](kit/docs/03-headroom.md) |
 
 ## Por qué existe
 

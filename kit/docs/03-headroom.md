@@ -39,6 +39,18 @@ headroom --version
 
 Sin el extra `[proxy]` el proxy no arranca y falla con `No module named 'httpx'`.
 
+### O con un flag, si prefieres que lo haga el kit
+
+Todo lo de este documento —el extra `[proxy]`, la unidad de systemd con sus tres detalles, el modo `cache`, el output-shaper y el cableado— lo automatiza:
+
+```bash
+bash install.sh --with-headroom
+```
+
+El orden en que lo hace es deliberado: instala, escribe la unidad, arranca, **espera a que `/readyz` conteste**, y solo entonces escribe `ANTHROPIC_BASE_URL` en tu `settings.json`. Si el proxy no llega a responder, sale con error y **no toca tu config** — porque cablear la API a un proxy que no contesta es peor que no cablearla. Con `HEADROOM_PORT=9999` usas otro puerto.
+
+Para deshacerlo: `systemctl --user disable --now headroom-proxy` y quita `ANTHROPIC_BASE_URL` de `settings.json`, en ese orden.
+
 ## Arrancar el proxy local
 
 Arranca el proxy hasta que escuche en `127.0.0.1:8787`. Ese puerto no es arbitrario: es el que ya espera la config de este kit.
@@ -59,8 +71,9 @@ StartLimitIntervalSec=0
 [Service]
 # Ruta absoluta al binario del venv donde lo instalaste (systemd no hereda tu PATH).
 ExecStart=%h/.venvs/tools/bin/headroom proxy --port 8787 --mode cache --no-telemetry
-# Si ANTHROPIC_BASE_URL apunta aquí (y con este kit apunta), el proxy es una
-# dependencia dura del cliente: que reintente indefinidamente.
+# En cuanto ANTHROPIC_BASE_URL apunte aquí, el proxy pasa a ser dependencia dura
+# del cliente: que reintente indefinidamente. (El kit ya NO distribuye esa
+# variable; se escribe solo con --with-headroom y tras comprobar /readyz.)
 Restart=always
 RestartSec=3
 
@@ -74,7 +87,7 @@ Y una advertencia si tu instalación trae un subcomando tipo `install`/`deploy` 
 
 ## Cómo se cablea en `settings.json`
 
-El kit instala (`claude/settings.json`) dos piezas ya conectadas a Headroom, ninguna de las cuales necesitas tocar si el proxy está arriba en el puerto por defecto:
+Dos piezas conectan el kit con Headroom. La segunda viene siempre; la primera **ya no**, y el motivo es el fallo que corrigió este cambio: el kit distribuía `ANTHROPIC_BASE_URL` apuntando al proxy mientras Headroom seguía siendo un tercero que el kit no instala, así que quien clonaba en limpio se quedaba con Claude Code enrutado a un puerto donde no escuchaba nadie — sin API, y con un síntoma que no se parecía a un problema de configuración. Ahora la escribe `install.sh --with-headroom` tras comprobar `/readyz`, o la pones tú a mano.
 
 1. **La variable de entorno** que redirige el cliente de Anthropic al proxy en vez de a la API real:
 
@@ -93,11 +106,13 @@ El proxy recibe la llamada de Claude Code, comprime lo que corresponda, y reenv�
 ```json
 {
   "matcher": "Bash",
-  "hooks": [{ "type": "command", "command": "rtk hook claude", "timeout": 10 }]
+  "hooks": [{ "type": "command", "command": "$HOME/.claude/hooks/optional-hook.sh rtk hook claude", "timeout": 10 }]
 }
 ```
 
-`rtk hook claude` se ejecuta antes de cada llamada a Bash. No necesitas escribirlo tú: ya viene en el `settings.json` que instala `install.sh`. Recuerda que esta pieza es de `rtk`, no del proxy: si no tienes `rtk`, el hook falla y el proxy sigue funcionando igual (y al revés).
+`rtk hook claude` se ejecuta antes de cada llamada a Bash. No necesitas escribirlo tú: ya viene en el `settings.json` que instala `install.sh`. Recuerda que esta pieza es de `rtk`, no del proxy: son independientes, y tener una sin la otra es normal.
+
+La envoltura en `optional-hook.sh` es lo que hace que eso no duela: si no tienes `rtk`, el hook **no falla, no hace nada** (exit 0 y sin ruido). Antes se invocaba `rtk` a pelo y una máquina sin `rtk` se comía un exit 127 en cada llamada a Bash. Lo que el wrapper **no** hace es tragarse un bloqueo: si el programa envuelto sale con código 2, ese 2 se propaga tal cual, porque es así como un guard le dice a Claude Code "no ejecutes esto". Contrato en `kit/test/test_optional_hook.sh`.
 
 ## El precio oculto de `ANTHROPIC_BASE_URL`: lo que Claude Code apaga al ver un endpoint custom
 
@@ -136,7 +151,7 @@ Headroom arranca en uno de dos modos, y la diferencia importa para la factura, n
 
 **Ojo con el default**: la propia herramienta se ha visto contradecirse sobre cuál es. La ayuda del subcomando que arranca el proxy puede mostrar `cache` como default, mientras que la ayuda del subcomando de instalación (y la documentación online del proyecto) dicen `token`. No asumas cuál tienes activo: compruébalo explícitamente en tu instalación en vez de fiarte del default. Si tu instalación usa perfiles de ahorro predefinidos, el perfil se suele aplicar con algo equivalente a `setdefault()` (lo que fijes tú explícitamente manda sobre el perfil), y no todos los perfiles usan `cache` por defecto: verifica el que tengas activo, no solo el que crees haber elegido.
 
-Para este kit, que depende de que `ANTHROPIC_BASE_URL` apunte al proxy sin romper el caché de Anthropic (ver arriba), fija el modo explícitamente a `cache` en vez de confiar en el default, y vuelve a comprobarlo tras cada actualización de Headroom. Y no des por hecho que la compresión de Headroom es lo que te ahorra dinero: en la práctica, el ahorro grande suele venir del prompt-caching nativo de Anthropic (que `cache` protege); la compresión aporta encima, pero como un extra menor, no como el mecanismo principal.
+Si decides enrutar la API por el proxy (`install.sh --with-headroom`, o a mano), fija el modo explícitamente a `cache` en vez de confiar en el default, y vuelve a comprobarlo tras cada actualización de Headroom: es lo que evita que el proxy te rompa el caché de Anthropic. Y no des por hecho que la compresión de Headroom es lo que te ahorra dinero: en la práctica, el ahorro grande suele venir del prompt-caching nativo de Anthropic (que `cache` protege); la compresión aporta encima, pero como un extra menor, no como el mecanismo principal.
 
 ## Endpoint de salud
 
