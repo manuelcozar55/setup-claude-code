@@ -119,3 +119,46 @@ proposito para demostrar que la comprobacion si dispara.
 
 Ver [SECURITY.md](SECURITY.md) — no abras un issue público para
 vulnerabilidades.
+
+## Cortar una release
+
+El versionado es [SemVer](https://semver.org/lang/es/). Como este repo es un kit
+de configuración y no una librería, la regla práctica es:
+
+- **MAJOR** — un cambio que rompe una instalación existente: `install.sh` deja de
+  ser idempotente sobre la versión anterior, un guard cambia de contrato, o
+  `settings.json` deja de ser compatible.
+- **MINOR** — piezas nuevas que no rompen nada: un guard más, una suite de test,
+  un documento, un flag de `install.sh`.
+- **PATCH** — arreglos y documentación.
+
+El orden importa: **verificar primero, etiquetar después.** Un tag es inmutable
+en la práctica (alguien puede haberlo clonado), así que no se corta una versión
+sobre algo sin comprobar.
+
+```bash
+# 1. main al dia y limpio
+git checkout main && git pull --ff-only && git status --porcelain   # sin salida
+
+# 2. las 16 suites y el escaner de secretos
+make test                    # exit 0
+bash kit/scan-secrets.sh .   # PASS
+
+# 3. la prueba que de verdad importa: instalacion limpia en un CLAUDE_HOME virgen
+T=$(mktemp -d)
+CLAUDE_HOME="$T/h" bash kit/install.sh
+CLAUDE_HOME="$T/h" bash kit/doctor.sh   # exit 0, 0 FAIL
+rm -r "$T"
+
+# 4. mover el CHANGELOG: [Unreleased] -> [X.Y.Z] - AAAA-MM-DD, dejar
+#    [Unreleased] vacio, y añadir los dos enlaces de comparacion del final
+
+# 5. etiquetar y publicar
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
+gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <(sed -n '/^## \[X.Y.Z\]/,/^## \[/p' CHANGELOG.md)
+```
+
+Nota sobre el paso 3: los dos `WARN` de `doctor.sh` en una instalación limpia
+(IOCs de Sentinel y Capa 2 de secretos) son correctos — son capas opt-in, y
+`doctor.sh` sale con 0 igualmente. Lo que bloquea una release es un `FAIL`.
