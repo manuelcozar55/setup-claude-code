@@ -154,9 +154,16 @@ rm -r "$T"
 #    [Unreleased] vacio, y añadir los dos enlaces de comparacion del final
 
 # 5. etiquetar y publicar
-git tag -a vX.Y.Z -m "vX.Y.Z"
-git push origin vX.Y.Z
-gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <(sed -n '/^## \[X.Y.Z\]/,/^## \[/p' CHANGELOG.md)
+V=X.Y.Z
+git tag -a "v$V" -m "v$V"
+git push origin "v$V"
+
+# las notas salen de la seccion de esa version del CHANGELOG. El rango de sed
+# seria inclusivo por los dos extremos y arrastraria la cabecera siguiente y las
+# lineas de enlaces del final; awk corta antes de cualquiera de las dos.
+awk -v v="## [$V]" 'index($0,v)==1{f=1;next} f && (/^## \[/ || /^\[[^]]+\]: http/){exit} f' \
+    CHANGELOG.md > /tmp/notas-$V.md
+gh release create "v$V" --title "v$V" --notes-file /tmp/notas-$V.md
 ```
 
 Nota sobre el paso 3: los dos `WARN` de `doctor.sh` en una instalación limpia
