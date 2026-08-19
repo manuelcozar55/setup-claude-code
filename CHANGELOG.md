@@ -6,7 +6,36 @@ Este proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **El software del kit no tenía licencia, y el README daba a entender que sí.**
+  El `LICENSE` de CC BY 4.0 acota su alcance, en su propio preámbulo, a los decks
+  y sus guiones originales: nunca cubrió `kit/`. Pero el README decía
+  *"CC BY 4.0. Comparte y adapta con atribución"* sin distinguir, así que quien
+  clonaba el repo creía tener un permiso que legalmente no existía — por defecto,
+  ausencia de licencia es reserva de todos los derechos. Se añade
+  **`LICENSE-CODE`** con licencia **MIT** para todo lo de `kit/` y los scripts de
+  `.github/`; se acota explícitamente el `LICENSE` de CC BY a las charlas; y la
+  sección de licencia del README pasa a declarar el reparto en una tabla. MIT es
+  elección deliberada: es la misma licencia del material del que derivan tres
+  guards, así que no hay fricción de compatibilidad.
+
 ### Added
+
+- **`THIRD-PARTY.md`** con los avisos de terceros, que faltaban. Reproduce íntegro
+  el aviso MIT de `yurukusa/claude-code-hooks` (`Copyright (c) 2026 yurukusa`,
+  verificado contra el `LICENSE` del repositorio de origen), del que derivan
+  `branch-guard.sh`, `destructive-guard.sh` y `secret-guard.sh`: la MIT exige que
+  ese aviso viaje con las copias y hasta ahora solo había una línea `# Source:`.
+  Distingue código derivado de dependencias externas no redistribuidas —gitleaks
+  (MIT), Headroom (Apache-2.0) y rtk (Apache-2.0), las tres comprobadas contra la
+  API de GitHub—, porque mezclarlas desdibuja qué hay que cumplir de verdad.
+- **Queda documentado un punto de procedencia sin resolver.**
+  `block-dangerous-commands.sh` declara en su cabecera derivar de
+  `randomdreft/claude-code-security-hook` *"(public domain)"*, pero ese
+  repositorio **no tiene fichero de licencia** (`license: null` en la API de
+  GitHub) y el dominio público no se presume. No se corrige inventando otra
+  afirmación: se registra el hecho verificable y las tres vías para cerrarlo.
 
 - **`03-headroom.md` explica ahora que `headroom wrap` pone `ENABLE_TOOL_SEARCH`
   por su cuenta.** La doc recomendaba la variable en `settings.json` pero no decía

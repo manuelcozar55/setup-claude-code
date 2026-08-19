@@ -9,6 +9,10 @@ Creative Commons Attribution 4.0 International.
 Eres libre de compartir y adaptar el material, incluso con fines comerciales,
 siempre que des el crédito adecuado. Texto legal completo a continuación.
 
+El SOFTWARE de este repositorio (todo lo que vive bajo `kit/` y los scripts de
+`.github/`) NO se rige por esta licencia, sino por la licencia MIT de
+`LICENSE-CODE`. Los avisos de terceros están en `THIRD-PARTY.md`.
+
 --------------------------------------------------------------------------------
 
 Attribution 4.0 International

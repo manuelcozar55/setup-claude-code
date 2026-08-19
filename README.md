@@ -151,7 +151,23 @@ Nada del mapa es opinión. Combina un modelo mental y un cuerpo de ingeniería q
 
 ## Licencia
 
-[CC BY 4.0](LICENSE). Comparte y adapta con atribución.
+Este repositorio tiene dos tipos de contenido y cada uno lleva su licencia:
+
+| Qué | Licencia | Fichero |
+|---|---|---|
+| **El software**: todo lo de `kit/` (scripts, hooks, guards, tests, evals, plantillas de config) y los scripts de `.github/` | **MIT** | [`LICENSE-CODE`](LICENSE-CODE) |
+| **Las charlas**: los decks "agentes-fundamentos" y "setup-claude-code-definitiva", sus guiones y diagramas originales | **CC BY 4.0** | [`LICENSE`](LICENSE) |
+
+Se separan porque no son la misma cosa: CC BY 4.0 está pensada para obra creativa,
+no para código —no concede permisos de patente ni cubre bien la garantía y la
+responsabilidad—, y usarla como licencia de software deja a quien instala el kit en
+una posición ambigua. MIT es la elección deliberada para el código: es la misma
+licencia del material del que derivan tres de los guards, así que no hay fricción de
+compatibilidad.
+
+Parte del software deriva de proyectos de terceros. Sus avisos de copyright, y un
+punto de procedencia que sigue sin resolver, están en
+[`THIRD-PARTY.md`](THIRD-PARTY.md).
 
 <div align="center">
 
