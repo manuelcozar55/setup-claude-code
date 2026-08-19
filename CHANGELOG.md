@@ -6,6 +6,32 @@ Este proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+
+- **`03-headroom.md` explica ahora que `headroom wrap` pone `ENABLE_TOOL_SEARCH`
+  por su cuenta.** La doc recomendaba la variable en `settings.json` pero no decía
+  que el wrapper ya la escribe, con lo que quitarla de la config no la desactiva:
+  se repone en cada arranque. Se documenta la precedencia real que implementa
+  `headroom/cli/wrap.py` (flag explícito → valor preexistente en el entorno →
+  default `true` de `headroom/providers/claude/runtime.py`) y el hecho de que el
+  `env` de `settings.json` se aplica **después** del arranque y pisa al wrapper —
+  que es por lo que un `"false"` olvidado ahí anula el deferral en silencio. Se
+  añade también que en Vertex AI el deferral viene desactivado por defecto.
+- **Aviso sobre el hook que deja `headroom init` y que puede levantar un segundo
+  proxy.** `init` escribe un `.claude/settings.local.json` de ámbito proyecto que
+  engancha `headroom init hook ensure` a `SessionStart` **y** a
+  `PreToolUse(Bash)`. Con `supervisor_kind: "none"` en el manifiesto del perfil,
+  ese hook cae en `start_detached_agent()` si `/readyz` no contesta en 1 s, y
+  arranca un proxy fuera del supervisor. Con el proxy ya corriendo como unidad
+  systemd con `Restart=always`, el resultado son **dos instancias peleando por el
+  puerto 8787** y respuestas **HTTP 200 vacías** que Claude Code reporta como
+  fallo de la API. Se documenta cómo evitarlo y que `hook ensure` no reescribe
+  ficheros de configuración, así que neutralizar ese settings es estable.
+- **`.github/dependabot.yml`** para el ecosistema `github-actions`. El CI ancla
+  las Actions por SHA, que es lo correcto, pero un pin no se actualiza solo: sin
+  esto se quedan clavadas en la versión anclada, incluidas las vulnerabilidades
+  que se les descubran después.
+
 ## [1.0.0] - 2026-08-05
 
 Primera versión etiquetada. Recoge el kit completo: guards deterministas con
