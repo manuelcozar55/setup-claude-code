@@ -1,0 +1,21 @@
+# Mantiene al dia las GitHub Actions ancladas por SHA en .github/workflows/.
+#
+# Por que hace falta: anclar por SHA es lo correcto en seguridad —una etiqueta
+# movil como @v4 es un vector de supply chain, porque quien controla el tag puede
+# cambiar el codigo bajo tus pies—, pero un pin no se actualiza solo. Sin esto,
+# las Actions se quedan clavadas para siempre en la version que se anclo, incluida
+# cualquier vulnerabilidad que se le descubra despues. Dependabot abre el PR con
+# el SHA nuevo y su nota de version, y el pin sigue siendo un pin.
+#
+# Solo se declara el ecosistema github-actions: este repo no distribuye
+# dependencias de lenguaje (es bash mas documentacion), asi que no hay nada mas
+# que vigilar aqui.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"

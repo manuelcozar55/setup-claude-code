@@ -142,6 +142,61 @@ Es decir: si tienes `"model": "opus[1m]"` en `settings.json` y crees que estás 
 
 Este kit **no** fija `ANTHROPIC_MODEL` en el `settings.json` que instala, a propósito: pinchar un modelo concreto en la config de otra persona sería peor que el problema que resuelve. Si usas el proxy con un modelo `[1m]`, añádelo tú.
 
+### `ENABLE_TOOL_SEARCH` ya la pone `headroom wrap`: no la dupliques a ciegas
+
+La fila de la tabla de arriba es correcta pero incompleta en un punto que sale caro
+averiguar por tu cuenta: si lanzas Claude con `headroom wrap`, **la variable ya se
+pone sola**. En `headroom/cli/wrap.py` el valor se resuelve con esta precedencia:
+
+1. el flag explícito `--tool-search`, si lo pasas;
+2. un valor **preexistente en el entorno**, que se respeta y no se toca;
+3. y si no hay ninguno, el default incorporado, que es `true`
+   (`headroom/providers/claude/runtime.py`).
+
+De ahí salen dos consecuencias que conviene tener claras antes de tocar nada:
+
+- **Quitarla de `settings.json` no la desactiva** cuando lanzas con el wrapper: se
+  repone en cada arranque. Para apagarla de verdad hay que preponerla al comando
+  (`ENABLE_TOOL_SEARCH=false headroom wrap claude`) o pasar el flag.
+- El `env` de `settings.json` se aplica **después** de arrancar el proceso, así que un
+  valor ahí **pisa** el del wrapper. Es el canal fiable si quieres fijarla, y es
+  también por lo que un `"false"` olvidado ahí anula el deferral en silencio aunque
+  uses el proxy.
+
+Dato relacionado, del changelog de Claude Code: en **Vertex AI** el deferral viene
+**desactivado** por defecto —la cabecera beta no está soportada ahí— y hay que optar
+por él con esta misma variable.
+
+## Cuidado con `headroom init`: el hook que puede levantar un segundo proxy
+
+`headroom init` deja, en el directorio donde lo ejecutas, un
+`.claude/settings.local.json` de ámbito proyecto que engancha
+`headroom init hook ensure` a **dos** eventos: `SessionStart` y `PreToolUse(Bash)`.
+Ese hook es best-effort: llama a `_ensure_profile_running()`, que consulta `/readyz`
+con **1 segundo** de timeout y, si no contesta, arranca el runtime.
+
+El problema no es que arranque, es **cómo**. Si el manifiesto del perfil
+(`~/.headroom/deploy/<perfil>/manifest.json`) tiene `supervisor_kind: "none"` —que es
+lo que deja `init` cuando no instala un servicio—, la rama que se ejecuta en
+`headroom/cli/init.py` es `start_detached_agent()`: un proxy **suelto, fuera del
+supervisor**. Si además tienes el proxy como unidad systemd con `Restart=always`,
+acabas con **dos instancias peleando por el puerto 8787**, y el síntoma es el peor
+posible de diagnosticar: respuestas **HTTP 200 vacías**, que Claude Code reporta como
+*"API returned an empty or malformed response"*. Parece un fallo de la API, y no lo es.
+
+Cómo evitarlo:
+
+- Si gestionas el proxy con systemd, **no dejes ese hook activo**: borra o renombra el
+  `.claude/settings.local.json` que `init` dejó en ese directorio. Solo afecta a
+  sesiones cuyo directorio de trabajo sea ese, así que puede pasar desapercibido
+  durante semanas y aparecer justo cuando trabajas ahí.
+- Reinicia **siempre** por el supervisor (`systemctl --user restart <unidad>`).
+  Terminar el proceso a mano y relanzarlo deja que el supervisor levante el suyo, y
+  vuelves a tener dos.
+- `headroom init hook ensure` **no** reescribe ficheros de configuración —solo arranca
+  el runtime—, así que neutralizar ese `settings.local.json` no se deshace por sí solo
+  en el siguiente arranque.
+
 ## Modo del proxy: `cache` vs `token`
 
 Headroom arranca en uno de dos modos, y la diferencia importa para la factura, no solo para el tamaño del contexto:
