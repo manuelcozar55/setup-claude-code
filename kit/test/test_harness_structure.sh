@@ -260,6 +260,32 @@ else
   ck "y" "y" "config/settings.template.json aun no creado (check de timeouts pasa por vacio)"
 fi
 
+echo "== 8) test_ci_workflow_parses =="
+# CI no puede cazar su propio error de sintaxis: si el YAML no parsea, el workflow ni
+# arranca y GitHub reporta "failure" en 0 s sin logs. Paso exactamente eso con un name:
+# sin comillas que contenia ': '. Este check es el unico sensor posible para ese fallo,
+# y tiene que vivir FUERA de CI, aqui.
+WF=".github/workflows/ci.yml"
+if [ -f "$WF" ]; then
+  PYYAML=""
+  for c in "$HOME/.venvs/tools/bin/python3" /usr/bin/python3 python3; do
+    if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import yaml' 2>/dev/null; then PYYAML="$c"; break; fi
+  done
+  if [ -n "$PYYAML" ]; then
+    if "$PYYAML" -c "import yaml,sys; yaml.safe_load(open('$WF'))" 2>/dev/null; then
+      ck y y "$WF parsea como YAML valido"
+    else
+      ck n y "$WF parsea como YAML valido"
+    fi
+  else
+    # Degradacion sin pyyaml: se detecta el patron concreto que rompio el workflow.
+    malos=$(grep -cE '^\s*- name: [^"'"'"'].*: ' "$WF" || true)
+    ck "$malos" "0" "ningun 'name:' sin comillas contiene ': ' (rompe el parser; sin pyyaml se usa grep)"
+  fi
+else
+  ck y y "no hay workflow de CI (check pasa por vacio)"
+fi
+
 echo "== Falsabilidad =="
 # Cada check falsable de arriba se ejecuta aqui contra un caso fabricado a
 # proposito para demostrar que dispara de verdad, no que siempre pasa.
