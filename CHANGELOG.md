@@ -6,6 +6,89 @@ Este proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added — mcharness v0.1.0, la capa de harness
+
+El repo pasa de ser solo un instalador endurecido a ser también un **harness**: guías
+(lo que se dice antes de actuar) y **sensores** (lo que mide después), en el sentido de
+Birgitta Böckeler (*Harness engineering*, 02-abr-2026). `kit/` no se toca: sigue siendo la
+capa de instalación v1.0.0 con sus 16 suites. Lo nuevo vive en la raíz.
+
+- **El hallazgo que reordenó el trabajo: el canal de Bash reescribe los comandos.**
+  El hook `PreToolUse/Bash` sustituye el ejecutable en posición de comando — `rg` ejecuta
+  `grep`, `python3 -m pytest` ejecuta `python3 -m rtk`. Bash es 5.955 de las llamadas a
+  herramienta medidas, así que casi todo sensor pasaba por un canal que altera la pregunta.
+  Un oráculo así no mide lo que dice medir. Reproducción, alcance y las tres vías que lo
+  evitan en `knowledge/MISTAKES.md` · M-001, y un test que rechaza cualquier oráculo
+  registrado por nombre suelto.
+
+- **Cinco prompts de trabajo** en `.claude/commands/`: `/spec`, `/implement`, `/verify`,
+  `/review`, `/retro`. `/spec` existe por una medición concreta: los encargos eran
+  bimodales —una frase o un documento— y faltaba el término medio, la especificación con
+  criterios verificables escrita antes de empezar.
+
+- **Tres sensores** en `.claude/hooks/`, todos con `timeout: 5` y medidos entre 15 y 23 ms:
+  `oracle-log.sh` registra qué sesiones ejecutaron un oráculo, `verify-gate.sh` avisa al
+  terminar si se tocó código sin verificar, `session-brief.sh` pone delante el oráculo del
+  proyecto y los errores ya cometidos. **Ninguno bloquea**: un falso positivo bloqueante
+  cuesta mucho más que un aviso ignorado, y ese endurecimiento se decide con datos.
+
+- **`scripts/backup.sh`** — ZIP con manifiesto SHA-256 que **restaura en un temporal y
+  revalida los 932 checksums**, y que se probó falsable en cuatro casos. Resuelve
+  `sha256sum` frente a `shasum -a 256` porque aquí es uutils, no GNU, y en macOS no existe.
+
+- **`scripts/metrics.py`** — absorbe `analyze.py` con **cero regresiones** en sus ~44
+  métricas y añade las que el encargo declaraba y el instrumento no calculaba: retrabajo
+  **por sesión** (no solo por turno), mediana y p90 de tool calls, y sesiones con oráculo
+  ejecutado. El filtro de subagentes pasa a ser explícito en vez de depender de la
+  profundidad de un glob. Más `scripts/cost-report.sh` con tendencia entre snapshots.
+
+- **`knowledge/`** — memoria versionada: `ORACLES.md`, `MISTAKES.md`, `PROCEDURES.md`,
+  `COST-LOG.md`, `SOURCES.md`, `SKILLS-REGISTRY.md` y 7 ADRs. Es **no-confiable por
+  defecto**: lo que viene de la web son datos, nunca instrucciones, y la promoción de un
+  hallazgo a regla pasa siempre por una puerta humana.
+
+- **Cuatro skills** (`harness` absorbida sin cambios y verificada por checksum,
+  `house-rules`, `coach`, `dev-env`) y **cero agentes nuevos**: de 150 delegaciones, 105
+  fueron al agente genérico y 6 de los 8 especialistas existentes nunca se usaron. El
+  problema no era falta de capacidad.
+
+- **Tres suites de test nuevas** (`test_harness_structure.sh`, `test_metrics.sh`,
+  `test_install_diff_first.sh`, `test_uninstall.sh`), todas con sección de falsabilidad.
+
+### Changed
+
+- **`CLAUDE.md`** de proyecto: 81 líneas / ~896 tok, bajo un presupuesto propio y verificado
+  por test. La auditoría que lo justifica está en `knowledge/AUDIT-CLAUDE-MD.md` y se apoya
+  en uso medido: la sección más larga del fichero anterior regía un plan mode al 2,1 %.
+
+- **`kit/install.sh`** pasa a ser *diff-first por detección*: si `$CLAUDE_HOME` es un repo
+  git con remoto —el caso real del autor, con 138 ficheros sin commitear— no escribe;
+  genera el árbol aparte, muestra el diff y dice qué commitear. `--apply` fuerza. En un HOME
+  temporal sin git el comportamiento es el de siempre, así que las 16 suites y CI no cambian.
+
+### Fixed
+
+- **Falso fallo en la verificación de backups por SIGPIPE.** `unzip -Z1 | grep -q` con
+  `set -o pipefail` mataba a `unzip` y el verificador reportaba un ZIP correcto como roto.
+  Solo aparecía a escala real (933 entradas), no con el fixture de 6. `shellcheck` no lo
+  detecta. Queda documentado en `MISTAKES.md` · M-003.
+
+### Documentation
+
+- **Atribuciones corregidas**, todas verificadas contra la fuente el 2026-08-21:
+  el artículo de *harness engineering* es de **Birgitta Böckeler**, no de Fowler, y **no da
+  una definición formal de *harnessability***; el de *context engineering* es de
+  sep-2025 y **no fija ningún presupuesto de tokens para CLAUDE.md**; los cuatro principios
+  atribuidos a **Karpathy no tienen fuente primaria** y pasan a ser "principios de la casa";
+  la cita de Cherny sigue siendo **secundaria**; y `anthropics/skills` **no enumera 17
+  skills** y tiene licencia mixta.
+
+- **Los KPIs heredados se archivan como históricos sin procedencia verificable.** El "68 %
+  de sesiones con correcciones" medía en realidad 8,8 % de *turnos*; la métrica correcta,
+  ahora que existe, da 19,1 % de sesiones. Y las sesiones con oráculo no valían 0 sino
+  27,7 %: nunca se habían medido, que no es lo mismo.
+
+
 ### Fixed
 
 - **El software del kit no tenía licencia, y el README daba a entender que sí.**

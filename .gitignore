@@ -27,3 +27,10 @@ desktop.ini
 
 # Superpowers SDD scratch (task briefs, diffs, progress ledger)
 .superpowers/
+
+# mcharness
+config/profile.yaml
+.mcharness-out/
+
+# Serena: cache e indice de simbolos, local a cada maquina
+.serena/

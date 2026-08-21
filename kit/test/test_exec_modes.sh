@@ -44,6 +44,7 @@ REQUIRED_EXEC=(
   kit/doctor.sh
   kit/install.sh
   kit/scan-secrets.sh
+  uninstall.sh
 )
 
 # mode_of_line: extrae el modo (100755/100644) de una linea de `git ls-files -s`.

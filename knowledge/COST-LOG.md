@@ -4,24 +4,31 @@ Registro de los KPIs del harness. **Regla de oro: toda cifra lleva fecha y coman
 Una métrica sin procedencia verificable es una predicción, no un dato.
 
 Instrumento: `scripts/metrics.py` (absorbido de `~/ai-mastery/bucle/analyze.py`).
-Filtro declarado para contar sesiones: `-not -path "*/subagents/*"`.
-Sin él el denominador se infla ×4 (189 de 236 transcripts son de subagente).
+Filtro declarado para contar sesiones: se excluye toda ruta que contenga `/subagents/`.
+Sin él el denominador se infla ~×5 (189 de 236 transcripts son de subagente).
 
 ---
 
 ## Baseline v0.1.0 — 2026-08-21T15:45:30Z
 
-Comando: `python3 ~/ai-mastery/bucle/analyze.py`
-Fuente: `~/ai-mastery/bucle/data/latest.json`
+Comando: `/usr/bin/python3 scripts/metrics.py`  (ruta absoluta: ver MISTAKES.md · M-001)
+Fuente: `$METRICS_OUT_DIR/latest.json` (def. `~/ai-mastery/bucle/data/`)
+Informe legible con tendencia: `scripts/cost-report.sh`
 
 | # | KPI | Valor | Dirección | Nota |
 |---|---|---|---|---|
-| 1 | **Retrabajo** (`rework_turns`/`user_turns`) | **9,0 %** (12 / 134) | ↓ | KPI principal. **No es el "68 % de sesiones" del encargo**: ver abajo. |
+| 1a | Retrabajo **por turno** (`rework_turns`/`user_turns`) | **8,8 %** (12 / 136) | ↓ | Lo que medía el instrumento viejo. |
+| 1b | **Retrabajo por sesión** (`rework_sessions_pct`) | **19,1 %** (9 / 47) | ↓ | **KPI principal.** Métrica nueva: es la pregunta que el encargo quería hacer. Sigue lejos del 68 % declarado. |
 | 2 | Interrupciones | **0** (0,0 %) | ↓ | Cero en la ventana medida. |
 | 3 | Coste equivalente-API | 1.934,41 $ · subagentes 31,8 % | ↓ a igual resultado | Equivalente API, no cuota real de suscripción. |
-| 4 | Tool calls | 3.424 · 25,6 por turno humano | contexto | Mediana y p90 **no se calculan** (pendiente). |
-| 5 | **Sesiones con oráculo ejecutado** | **0** — la métrica no existe | ↑ | El que más importa. Hay que construirlo. |
+| 4 | Tool calls por sesión | total 3.424 · **mediana 2 · p90 254** | contexto | Métrica nueva. La mediana de 2 refleja el 66 % de sesiones one-shot. |
+| 5 | **Sesiones con oráculo ejecutado** | **27,7 %** (13 / 47) | ↑ | **Corrección importante: no era 0.** Nunca se había medido, que no es lo mismo que valer cero. |
 | 6 | Contexto fijo | **~2.240 tok** (8.961 chars) | dato único | CLAUDE.md 1.999 + RTK.md 241. Sobre 2,25 B de entrada: 0,0001 %. |
+
+**Filtro declarado en la salida del instrumento** (`filter_applied`): sesiones = `*.jsonl`
+bajo `CLAUDE_PROJECTS_DIR` **excluyendo toda ruta que contenga `/subagents/`**; los
+transcripts de subagente se contabilizan aparte. Antes esa separación dependía de la
+profundidad de dos globs, no de un filtro explícito: frágil y no auditable.
 
 ### Adopción (`adoption_pct`)
 
@@ -81,9 +88,9 @@ Se archivan como **históricos sin procedencia verificable** (contrato §0.2).
 
 | KPI declarado en el encargo | Instrumento hoy | Diagnóstico |
 |---|---|---|
-| Correcciones **68 % de sesiones** (48 sesiones) | 9,0 % de **turnos** (47 sesiones) | Denominador distinto: `analyze.py` divide por `user_turns`, no por sesiones. El 68 % no sale de este instrumento. |
+| Correcciones **68 % de sesiones** (48 sesiones) | **19,1 % de sesiones** / 8,8 % de turnos (47 sesiones) | Ya medimos la métrica correcta, y aun así no da 68 %. El instrumento viejo solo emitía la de turnos, lo que explica de dónde salía la confusión, pero no de dónde salía el 68. |
 | Interrupciones 14 % (17 en 6) | 0 | No reproducible. |
-| Tool calls mediana 109 / p90 460 | no se calculan | Métrica ausente del instrumento. |
+| Tool calls mediana 109 / p90 460 | **mediana 2 / p90 254** | Ya se calculan. No coinciden. |
 | Encargos: mediana 520 ch / p90 19.363 | **142** / **798** | Un orden de magnitud de diferencia. |
 | Contexto fijo ~2.200 tok sobre 2,09 B | ~2.240 tok sobre 2,25 B | ✅ el único que cuadra. |
 
@@ -100,4 +107,4 @@ fecha | sesión | modelo | turnos | correcciones | tool calls | oráculo ejecuta
 
 | fecha | sesión | modelo | turnos | corr. | tools | oráculo | técnica |
 |---|---|---|---|---|---|---|---|
-| 2026-08-21 | mcharness FASE 0 | opus-5 | — | — | — | pendiente (FASE 0.5) | backup falsable, baseline sellada |
+| 2026-08-21 | mcharness v0.1.0 | opus-5 | — | 1 (rechazo de ejecutar la suite ajena) | — | **sí** · `make test` → exit 0, 22 s | backup falsable, baseline sellada, canal de sensado caracterizado |

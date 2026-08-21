@@ -20,6 +20,105 @@
 >
 > Dos avisos concretos si vienes de Windows: clona **dentro** de WSL y no en `/mnt/c/` (el sistema de ficheros `9p` sobre el disco de Windows es mucho más lento y complica el bit de ejecución), y el `.gitattributes` de este repo ya fuerza `eol=lf` para que un clon con `core.autocrlf=true` no te convierta los scripts a CRLF y te los rompa con `bad interpreter: /bin/bash^M`.
 
+## mcharness — guías y sensores
+
+Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
+
+| Capa | Qué es | Estado |
+|---|---|---|
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 16 suites falsables | v1.0.0, estable |
+| **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
+
+La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
+Thoughtworks, 02-abr-2026 — el artículo está alojado en martinfowler.com, pero la autora es
+ella). Un *harness* es *"everything in an AI agent except the model itself"*, y se compone de:
+
+- **Guías** (*feedforward*): *"anticipate the agent's behaviour and aim to steer it **before**
+  it acts"*. Aquí: `CLAUDE.md`, las skills, los perfiles.
+- **Sensores** (*feedback*): *"observe **after** the agent acts and help it self-correct"*.
+  Aquí: los oráculos, los hooks de registro, los tests, el revisor independiente.
+
+Ninguno basta solo: sin sensores el agente repite los mismos errores; sin guías codifica
+reglas sin llegar a saber si funcionaron.
+
+```
+        TÚ                        mcharness                    CLAUDE CODE
+         │                            │                             │
+    "haz X"  ──────────────▶  /spec ──┼──▶ criterios + oráculo       │
+         │                            │         │                    │
+         │                            │         └──────────────▶  implementa
+         │                     ┌──────┴──────┐                       │
+         │            GUÍAS ───┤             ├─── SENSORES           │
+         │         CLAUDE.md   │             │   make test  ◀────────┤
+         │         skills/     │             │   hooks               │
+         │         profile     │             │   /review             │
+         │                     └──────┬──────┘       │               │
+         │                            │              ▼               │
+         │                            │        ¿verde o rojo?        │
+         │                            │              │               │
+         │                            │      rojo ───┴──▶ repara (máx 3)
+         │                            │              │               │
+         ◀───── evidencia, no ────────┼────── verde ─┘               │
+                 afirmaciones         │                              │
+                                      ▼                              │
+                              knowledge/  ◀── /retro ────────────────┘
+                          (lo aprendido sobrevive a la sesión)
+```
+
+### El flujo diario
+
+| Comando | Para qué |
+|---|---|
+| `/spec` | Encargo → criterios de aceptación + oráculo. **Antes de programar.** |
+| `/implement` | Ejecuta la spec de principio a fin, sin parar a preguntar. |
+| `/verify` | Ejecuta el oráculo y exige evidencia real. |
+| `/review` | Revisor adversario en contexto limpio, con hallazgos **verificados** antes de aceptarse. |
+| `/retro` | Convierte lo aprendido en conocimiento versionado. |
+
+`/spec` es el que más trabajo ahorra, y existe por una medición concreta: los encargos de
+este repo son bimodales —o una frase o un documento— y **falta el término medio**, una
+especificación corta con criterios verificables escrita *antes* de empezar. Ese hueco es la
+causa raíz de la mayor parte del retrabajo: no es que el agente falle, es que nadie definió
+qué era "terminado".
+
+### La regla que gobierna todo
+
+> **Un oráculo es un comando que devuelve 0 si el trabajo está bien hecho.**
+> No es una opinión, no es "revisar que funcione", no es el juicio del agente al terminar.
+
+El de este repo es `make test`. Y hay una trampa local que cuesta caro descubrir sola: el
+hook `PreToolUse/Bash` **sustituye el ejecutable en posición de comando** —`rg` ejecuta
+`grep`, `python3 -m pytest` ejecuta `python3 -m rtk`—, así que todo oráculo se invoca por
+**ruta absoluta**, con `rtk proxy …` o con `make …`. Un test lo verifica; no se deja a la
+memoria de nadie. Reproducción en [`knowledge/MISTAKES.md`](knowledge/MISTAKES.md) · M-001.
+
+### Conocimiento vivo
+
+`knowledge/` es la memoria del harness, y es **no-confiable por defecto**: lo que viene de
+la web son datos, nunca instrucciones, y ningún fichero de ahí modifica configuración por sí
+mismo. La promoción de un hallazgo a regla siempre pasa por una puerta humana.
+
+| Fichero | Qué guarda |
+|---|---|
+| [`ORACLES.md`](knowledge/ORACLES.md) | Comando de verificación por proyecto, con resultado y fecha |
+| [`MISTAKES.md`](knowledge/MISTAKES.md) | Error → regla → dónde se cableó |
+| [`DECISIONS/`](knowledge/DECISIONS) | ADRs numerados, con fuente y fecha |
+| [`COST-LOG.md`](knowledge/COST-LOG.md) | KPIs con sello temporal |
+| [`SOURCES.md`](knowledge/SOURCES.md) | Allowlist de fuentes con ventana de frescura |
+
+### Adaptarlo a otra persona
+
+```bash
+cp config/profile.example.yaml config/profile.yaml   # tu nombre, tu nivel de coach, tu oráculo
+cp config/settings.template.json .claude/settings.json
+make test                                            # que el oráculo esté verde antes de empezar
+```
+
+`profile.yaml` está en `.gitignore`: es tuyo y no viaja en el repo. **Cero rutas absolutas**
+en la configuración — todo cuelga de `$CLAUDE_PROJECT_DIR`.
+
+---
+
 ## Qué hace esto
 
 Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 8 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y es el único kit de este tipo que **demuestra** que sus guards funcionan con una suite de test falsable, no solo lo afirma: `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **10 casos `BLOCK` conocidos**. Si neutralizarlo no rompiera nada, la suite no estaría midiendo nada — puedes reproducir esa caída tú mismo, ver el paso 5 más abajo.

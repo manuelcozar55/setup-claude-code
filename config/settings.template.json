@@ -1,0 +1,84 @@
+{
+  "$comment": [
+    "mcharness — plantilla de settings de PROYECTO (.claude/settings.json).",
+    "Los 3 hooks de aqui son la capa de sensores de mcharness. La capa de guards heredada",
+    "vive en kit/claude/settings.json y se instala aparte: son cosas distintas y no se mezclan.",
+    "Cero rutas absolutas: todo cuelga de $CLAUDE_PROJECT_DIR para que sea transferible.",
+    "Todos los timeouts <= 5 s, medidos entre 15 y 23 ms. Ningun hook lanza procesos de",
+    "fondo, mata procesos ni impone presupuestos: eso ya provoco un incidente."
+  ],
+
+  "permissions": {
+    "allow": [
+      "Bash(make test)",
+      "Bash(make help)",
+      "Bash(shellcheck *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Read(//tmp/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~/*)",
+      "Bash(rm -rf /)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push * --force)",
+      "Bash(git push * -f)",
+      "Bash(curl * | bash)",
+      "Bash(curl * | sh)",
+      "Bash(wget * | bash)",
+      "Bash(wget * | sh)",
+      "Bash(chmod -R 777 *)",
+      "Read(//home/*/.ssh/**)",
+      "Read(//home/*/.aws/**)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/secrets.*)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh release *)",
+      "Write(**/settings.json)"
+    ]
+  },
+
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-brief.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/oracle-log.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/verify-gate.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

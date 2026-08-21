@@ -43,7 +43,8 @@ jobs:
             kit/doctor.sh \
             kit/install.sh \
             kit/scan-secrets.sh \
-            kit/test/*.sh
+            kit/test/*.sh \
+            uninstall.sh
 
   test-suites:
     name: Suites de test (kit/test)
@@ -110,6 +111,18 @@ jobs:
 
       - name: test_with_headroom.sh (solo cablea despues de comprobar /readyz)
         run: bash kit/test/test_with_headroom.sh
+
+      - name: test_metrics.sh (scripts/metrics.py sobre transcripts sinteticos)
+        run: bash kit/test/test_metrics.sh
+
+      - name: test_harness_structure.sh (presupuesto de complejidad, oraculos, secretos, timeouts de mcharness)
+        run: bash kit/test/test_harness_structure.sh
+
+      - name: "test_install_diff_first.sh (CLAUDE_HOME repo git con remoto: diff-first, nunca escribe sin --apply)"
+        run: bash kit/test/test_install_diff_first.sh
+
+      - name: test_uninstall.sh (restaura el backup mas reciente: interno o ZIP, dry-run por defecto)
+        run: bash kit/test/test_uninstall.sh
 
       - name: gitleaks dir sobre el repo completo
         run: gitleaks dir --no-banner .
