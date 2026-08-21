@@ -42,6 +42,7 @@ declarar cuándo estará hecho. En preguntas calla. No hay que invocar nada.
 
 | Comando | Para qué |
 |---|---|
+| **`/work`** | **Entrada principal.** Explica el trabajo una vez; el sistema entrevista, especifica, ejecuta, verifica y revisa. Activa el modo autónomo: el turno no termina con el oráculo en rojo (ADR 010). |
 | `/spec` | Encargo → criterios de aceptación + oráculo. **Antes de programar.** |
 | `/implement` | Ejecuta la spec sin parar a preguntar. |
 | `/verify` | Ejecuta el oráculo y exige evidencia. |

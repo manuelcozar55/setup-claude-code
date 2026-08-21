@@ -99,10 +99,43 @@ ninguno, lo dice en vez de inventárselo.
 Los comandos siguen ahí para cuando quieras el flujo completo, pero **ya no dependes de
 recordarlos**.
 
+### Explica el trabajo una vez y apártate
+
+`/work` es la entrada principal. Entras **una sola vez** —una tanda de preguntas agrupada y
+la aprobación de la especificación— y a partir de ahí el sistema conduce:
+
+```
+/work migra el módulo de auth a la nueva API
+        │
+        ├─ explora el código y detecta el oráculo del proyecto
+        ├─ UNA tanda de preguntas, solo lo que cambia el entregable
+        ├─ enseña la spec: alcance, criterios, oráculo, supuestos     ◀── entras aquí
+        │
+        ▼   (te vas)
+   aísla en rama · implementa · ejecuta el oráculo · repara (máx 3)
+   revisión adversaria · verifica los hallazgos · reverifica
+        │
+        ▼
+   informe único: qué se hizo, salida literal del oráculo, supuestos,
+   qué NO cubre el oráculo
+```
+
+Mientras el run está activo, **el turno no puede terminar con el oráculo en rojo**: el Stop
+hook lo bloquea con la salida real del comando. Es lo que permite irse de la silla, y es un
+cambio deliberado sobre el diseño anterior — un aviso no sirve de nada si no hay nadie
+mirando ([ADR 010](knowledge/DECISIONS/010-modo-autonomo.md)).
+
+Cuatro salvaguardas para que eso sea seguro en vez de un secuestro de la sesión: presupuesto
+de **3 reparaciones**, cierre automático en verde, respeto del cap de 8 bloqueos de Claude
+Code, y **prohibición explícita de tocar el sensor** en el mensaje que recibe el modelo.
+Además, `autonomy.sh` rechaza cualquier oráculo invocado por nombre suelto: un run
+desatendido que verifica con el comando equivocado es peor que uno que no verifica.
+
 ### El flujo diario
 
 | Comando | Para qué |
 |---|---|
+| **`/work`** | **Explica el trabajo una vez y el sistema lo lleva hasta el final.** |
 | `/spec` | Encargo → criterios de aceptación + oráculo. **Antes de programar.** |
 | `/implement` | Ejecuta la spec de principio a fin, sin parar a preguntar. |
 | `/verify` | Ejecuta el oráculo y exige evidencia real. |

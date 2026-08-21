@@ -115,6 +115,8 @@ jobs:
       - name: test_metrics.sh (scripts/metrics.py sobre transcripts sinteticos)
         run: bash kit/test/test_metrics.sh
 
+      - name: test_autonomy
+        run: bash kit/test/test_autonomy.sh
       - name: test_detect_oracle
         run: bash kit/test/test_detect_oracle.sh
       - name: test_auto_spec
