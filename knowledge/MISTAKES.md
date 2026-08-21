@@ -97,6 +97,18 @@ sensor en decoración.
 
 Guía en `CLAUDE.md`. No se cablea: el guard ya es el sensor.
 
+### Recuento de ocurrencias
+
+Tres en una sola sesión: al escribir `scripts/backup.sh`, al probarlo, y al editar
+`CLAUDE.md` para **eliminar** una frase que contenía el patrón. **No se promueve a pesar de
+las tres**, y esa decisión es deliberada: el control ya existe y funciona: el guard está
+haciendo exactamente su trabajo. Lo que se repite no es un fallo del sistema, sino su
+coste de operación. La regla correcta —reformular, nunca ampliar la allowlist— se aplicó
+las tres veces sin incidente.
+
+Promover esto sería confundir *fricción esperada* con *defecto*. Un harness que elimina toda
+fricción de sus propios guards se queda sin guards.
+
 ---
 
 ## M-003 · `set -o pipefail` + `grep -q` = falso fallo por SIGPIPE
@@ -130,3 +142,38 @@ el fixture. **Los fixtures pequeños no ejercitan las condiciones de carrera.**
 
 Corregido en `scripts/backup.sh`. `shellcheck -x` **no detecta este caso** — se anota aquí
 porque el linter no es sensor suficiente para él.
+
+### ⚠️ SEGUNDA OCURRENCIA — 2026-08-21, misma tarde
+
+Volvió a morder en `kit/test/test_detect_oracle.sh`:
+
+```bash
+"$DET" --why "$d" 2>&1 | grep -q "no hay sensor"    # el check fallaba con el mensaje presente
+```
+
+`$DET` sale con 1 —correctamente, porque no hay oráculo— y `pipefail` propaga ese 1 aunque
+`grep` acierte. El síntoma es distinto del primero (allí era SIGPIPE, aquí es un exit code
+legítimo aguas arriba), pero **la causa es la misma**: encadenar en una tubería un comando
+cuyo estado de salida no es el que se quiere evaluar.
+
+**Aplicando el steering loop, la segunda ocurrencia no se anota: se promueve.**
+
+| Ocurrencia | Qué se hizo |
+|---|---|
+| 1ª (`backup.sh`) | Ficha en `MISTAKES.md` |
+| 2ª (`test_detect_oracle.sh`) | **Promoción: regla en la skill `house-rules` y patrón documentado aquí** |
+
+**Regla promovida:**
+
+> Con `set -o pipefail`, no evalúes por tubería la salida de un comando cuyo *exit code* no
+> es el que te interesa. Captura primero en una variable, filtra después:
+>
+> ```bash
+> salida="$(comando 2>&1)"
+> printf '%s' "$salida" | grep -q patron
+> ```
+
+**Por qué no se cableó como test:** `shellcheck` no lo detecta y escribir un linter propio
+para este patrón cuesta más de lo que ahorra con dos ocurrencias. Si aparece una tercera,
+la promoción actual habrá fallado y **entonces** toca herramienta —y habrá que explicar por
+qué la regla escrita no bastó, en vez de repetirla más alto.

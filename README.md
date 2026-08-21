@@ -65,6 +65,40 @@ reglas sin llegar a saber si funcionaron.
                           (lo aprendido sobrevive a la sesión)
 ```
 
+### El harness entra solo
+
+Lo primero que hay que saber es que **no hay que acordarse de nada**. Un hook
+`UserPromptSubmit` mira cada encargo y actúa solo cuando aporta:
+
+```
+tú escribes:  "arregla el bug del login"
+                        │
+                        ▼
+        ¿es un encargo?  ─── no ──▶  silencio total
+                        │
+                       sí
+                        │
+        ¿trae criterio de verificación? ─── sí ──▶  solo recuerda el oráculo
+                        │
+                        no
+                        ▼
+   inyecta: "declara qué será cierto al terminar y qué comando lo demuestra.
+             Oráculo de este proyecto (detectado): make test.
+             Ejecútalo EN FRÍO: si ya pasa, no mide lo que vas a cambiar."
+```
+
+Existe porque la evidencia era concluyente: había una regla de 227 tokens exigiendo plan
+mode y el plan mode valía **2,1 %**. Cuatro reglas advisorias, cuatro incumplimientos.
+**Pedir disciplina no la produce.** Lo dice también la documentación oficial: si una regla
+se ignora pese a estar escrita, *"delete it or convert it to a hook"*.
+
+El oráculo no se pregunta, **se detecta** (`scripts/detect-oracle.sh`): Makefile, pytest con
+el venv del proyecto, el gestor de paquetes según el lockfile, cargo, go. Y si no hay
+ninguno, lo dice en vez de inventárselo.
+
+Los comandos siguen ahí para cuando quieras el flujo completo, pero **ya no dependes de
+recordarlos**.
+
 ### El flujo diario
 
 | Comando | Para qué |

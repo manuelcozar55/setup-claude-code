@@ -83,4 +83,5 @@ Ante un diff, en este orden:
 | Arreglar un typo en una función que no tocabas | Deriva de alcance | Menciónalo, no lo toques |
 | Escribir `try/except` sin saber qué falla | Defensa ritual | Deja que falle ruidosamente |
 | Decir "debería funcionar" | No has verificado | Ejecuta el oráculo |
+| Encadenar `cmd \| grep -q` con `pipefail` | El exit de `cmd` contamina el del pipeline | Captura en variable y filtra después (MISTAKES M-003) |
 | Reescribir un fichero para "dejarlo limpio" | Refactor no pedido | Edición incremental |

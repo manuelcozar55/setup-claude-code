@@ -26,6 +26,8 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_doctor_base_url.sh
 	bash kit/test/test_with_headroom.sh
 	bash kit/test/test_metrics.sh
+	bash kit/test/test_detect_oracle.sh
+	bash kit/test/test_auto_spec.sh
 	bash kit/test/test_harness_structure.sh
 	bash kit/test/test_install_diff_first.sh
 	bash kit/test/test_uninstall.sh
