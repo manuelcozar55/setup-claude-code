@@ -69,14 +69,14 @@ Rellena `ANTHROPIC_API_KEY` y, si los usas, `PERPLEXITY_API_KEY` y `LANGSMITH_AP
 
 ## Paso 4 · Venv de herramientas
 
-Los hooks del kit (Sentinel, `smart_approve.py`) se ejecutan con el Python de un venv dedicado, no con el del sistema:
+Los hooks del kit (Sentinel, `smart_approve.py`) se ejecutan preferentemente con el Python de un venv dedicado:
 
 ```bash
 python3 -m venv $HOME/.venvs/tools
 $HOME/.venvs/tools/bin/pip install -r requirements-tools.txt
 ```
 
-Este paso no es opcional para que los hooks funcionen: `settings.json` invoca literalmente `$HOME/.venvs/tools/bin/python3` para correr `sentinel_preflight.py` y `smart_approve.py`. Si prefieres exponer los CLIs instalados en tu `PATH` general:
+Este paso es opcional. `settings.json` no invoca el venv directamente: llama a `hooks/optional-hook.sh --python`, que prefiere `$HOME/.venvs/tools/bin/python3`, cae al `python3` del sistema si no existe, y solo si no hay ninguno de los dos deja el hook en no-op silencioso. Como `sentinel_preflight.py` y `smart_approve.py` usan solo la librería estándar, con el `python3` del sistema siguen funcionando. Lo que se pierde sin el venv son los CLIs de `requirements-tools.txt` (`markitdown`, `ast-grep-cli`, `basedpyright`, `ruff`) y `pyyaml`, que es lo que `kit/evals/run.sh` necesita para leer las tareas. `doctor.sh` lo refleja: el venv ausente es `WARN`, no `FAIL`. Si prefieres exponer los CLIs instalados en tu `PATH` general:
 
 ```bash
 ln -sf $HOME/.venvs/tools/bin/ruff $HOME/.local/bin/ruff

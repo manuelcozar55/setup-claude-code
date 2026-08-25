@@ -19,10 +19,13 @@ superpowers se activa como plugin de Claude Code desde un marketplace. En la con
 
 ## Las skills y las 4 leyes de hierro
 
-superpowers agrupa alrededor de 14 skills. El número exacto y sus nombres concretos pueden variar entre versiones del plugin; la forma de comprobarlo en tu propia máquina, una vez instalado, es:
+superpowers agrupa 14 skills (medido sobre la versión 6.3.0 del plugin). El número exacto y sus nombres concretos pueden variar entre versiones; la forma de comprobarlo en tu propia máquina es mirar la caché del plugin, no `$HOME/.claude/skills/` — ese directorio es para tus skills propias, no para las que trae un plugin:
 
 ```bash
-ls $HOME/.claude/skills/
+ls ~/.claude/plugins/cache/claude-plugins-official/superpowers/*/skills/
+# y el recuento, deduplicando si tienes más de una versión en caché:
+ls -d ~/.claude/plugins/cache/claude-plugins-official/superpowers/*/skills/*/ \
+  | xargs -n1 basename | sort -u | wc -l
 ```
 
 De esas skills, cuatro son leyes de hierro: invariantes que el bucle operativo nunca se salta, con independencia de la tarea.

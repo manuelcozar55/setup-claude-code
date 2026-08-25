@@ -2,7 +2,8 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 Este proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
-`[Unreleased]` recoge lo que ya está en `main` y aún no se ha etiquetado.
+`[Unreleased]` recoge lo que está en `main`, o en camino a él por PR, y aún no se ha
+etiquetado.
 
 ## [Unreleased]
 
@@ -10,14 +11,16 @@ El repo pasa de ser solo un instalador endurecido a ser también un **harness**:
 (lo que se dice antes de actuar) y **sensores** (lo que mide después), en el sentido de
 Birgitta Böckeler (*Harness engineering*, 02-abr-2026). `kit/` conserva intacta la
 capa de instalación v1.0.0; lo nuevo vive en la raíz y solo le añade suites, que pasan
-de 16 a 23.
+de 16 a 24.
 
 ### Added
 
 - **El hallazgo que reordenó el trabajo: el canal de Bash reescribe los comandos.**
   El hook `PreToolUse/Bash` sustituye el ejecutable en posición de comando — `rg` ejecuta
-  `grep`, `python3 -m pytest` ejecuta `python3 -m rtk`. Bash es 5.955 de las llamadas a
-  herramienta medidas, así que casi todo sensor pasaba por un canal que altera la pregunta.
+  `grep`, `python3 -m pytest` ejecuta `python3 -m rtk`. Bash acumula **6.093 llamadas a
+  herramienta** en el snapshot del 2026-08-21 (2.410 en la sesión principal + 3.683 en
+  subagentes, `tools_top.Bash` de cada mitad),
+  así que casi todo sensor pasaba por un canal que altera la pregunta.
   Un oráculo así no mide lo que dice medir. Reproducción, alcance y las tres vías que lo
   evitan en `knowledge/MISTAKES.md` · M-001, y un test que rechaza cualquier oráculo
   registrado por nombre suelto.
@@ -27,11 +30,13 @@ de 16 a 23.
   bimodales —una frase o un documento— y faltaba el término medio, la especificación con
   criterios verificables escrita antes de empezar.
 
-- **Tres sensores** en `.claude/hooks/`, todos con `timeout: 5` y medidos entre 15 y 23 ms:
-  `oracle-log.sh` registra qué sesiones ejecutaron un oráculo, `verify-gate.sh` avisa al
-  terminar si se tocó código sin verificar, `session-brief.sh` pone delante el oráculo del
-  proyecto y los errores ya cometidos. **Ninguno bloquea**: un falso positivo bloqueante
-  cuesta mucho más que un aviso ignorado, y ese endurecimiento se decide con datos.
+- **Tres sensores** en `.claude/hooks/`, medidos entre 15 y 23 ms: `oracle-log.sh` registra
+  qué sesiones ejecutaron un oráculo, `verify-gate.sh` avisa al terminar si se tocó código
+  sin verificar, y `auto-spec.sh` pone delante el oráculo del proyecto en el primer encargo
+  (detalle más abajo; sustituye a `session-brief.sh`). **En modo normal ninguno bloquea**:
+  un falso positivo bloqueante cuesta mucho más que un aviso ignorado, y ese endurecimiento
+  se decide con datos. La única excepción llegó después y con ADR propio: con un run
+  autónomo activo, `verify-gate.sh` sí bloquea el cierre de turno (ADR 010).
 
 - **`scripts/backup.sh`** — ZIP con manifiesto SHA-256 que **restaura en un temporal y
   revalida los 932 checksums**, y que se probó falsable en cuatro casos. Resuelve
@@ -44,7 +49,7 @@ de 16 a 23.
   profundidad de un glob. Más `scripts/cost-report.sh` con tendencia entre snapshots.
 
 - **`knowledge/`** — memoria versionada: `ORACLES.md`, `MISTAKES.md`, `PROCEDURES.md`,
-  `COST-LOG.md`, `SOURCES.md`, `SKILLS-REGISTRY.md` y 7 ADRs. Es **no-confiable por
+  `COST-LOG.md`, `SOURCES.md`, `SKILLS-REGISTRY.md` y 10 ADRs. Es **no-confiable por
   defecto**: lo que viene de la web son datos, nunca instrucciones, y la promoción de un
   hallazgo a regla pasa siempre por una puerta humana.
 
@@ -53,8 +58,10 @@ de 16 a 23.
   fueron al agente genérico y 6 de los 8 especialistas existentes nunca se usaron. El
   problema no era falta de capacidad.
 
-- **Cuatro suites de test nuevas** (`test_harness_structure.sh`, `test_metrics.sh`,
-  `test_install_diff_first.sh`, `test_uninstall.sh`), todas con sección de falsabilidad.
+- **Ocho suites de test nuevas** (`test_harness_structure.sh`, `test_metrics.sh`,
+  `test_install_diff_first.sh`, `test_uninstall.sh`, `test_detect_oracle.sh`,
+  `test_auto_spec.sh`, `test_autonomy.sh`, `test_doc_claims.sh`), todas con sección de
+  falsabilidad. El total pasa de 16 a 24.
 
 - **El harness entra solo: `auto-spec.sh`, un hook `UserPromptSubmit`** (ADR 009). Cuatro
   reglas advisorias de `CLAUDE.md` tenían adherencia medida —`IntentGate` 2,1 %,
@@ -107,14 +114,31 @@ de 16 a 23.
   TLD sospechoso, IP cruda), así que `linkedin.com` las pasaría igual estando o no en la
   lista. Lo que se gana es que la config deje de describir un servidor que ya no existe.
 
-- **`CLAUDE.md`** de proyecto: 81 líneas / ~896 tok, bajo un presupuesto propio y verificado
-  por test. La auditoría que lo justifica está en `knowledge/AUDIT-CLAUDE-MD.md` y se apoya
+- **`CLAUDE.md`** de proyecto: 76 líneas / ~895 aprox-tokens, bajo el presupuesto que
+  verifica `test_harness_structure.sh` (<100 líneas, <900 aprox-tokens). La auditoría que lo justifica está en `knowledge/AUDIT-CLAUDE-MD.md` y se apoya
   en uso medido: la sección más larga del fichero anterior regía un plan mode al 2,1 %.
 
 - **`kit/install.sh`** pasa a ser *diff-first por detección*: si `$CLAUDE_HOME` es un repo
   git con remoto —el caso real del autor, con 138 ficheros sin commitear— no escribe;
   genera el árbol aparte, muestra el diff y dice qué commitear. `--apply` fuerza. En un HOME
-  temporal sin git el comportamiento es el de siempre, así que las 16 suites y CI no cambian.
+  temporal sin git el comportamiento es el de siempre, así que ni las suites ni CI cambian.
+
+- **El presupuesto de `timeout` de los hooks deja de ser un número plano.** Los 5 s protegen
+  el **camino caliente** (`UserPromptSubmit` en cada prompt, `PostToolUse` en cada llamada a
+  herramienta), donde cada milisegundo se paga cientos de veces. El `Stop` no está en ese
+  camino y en modo autónomo su trabajo *es* ejecutar el oráculo: declararlo a 5 s no lo hacía
+  barato, lo hacía **inútil**, porque Claude Code mataba el hook antes de que el oráculo
+  terminara (`make test` tarda ~30 s) y el gate fallaba **en abierto**, dejando cerrar el
+  turno con el oráculo en rojo. Ahora se declara a 600 s y `test_harness_structure.sh` exige
+  la regla de verdad: un `Stop` nunca puede declarar menos que el `timeout` que se aplica a
+  sí mismo por dentro, con su propio check de falsabilidad.
+
+- **El estado del modo autónomo se indexa por directorio de proyecto, no por `session_id`.**
+  Quien arranca el run es el modelo desde Bash, y ahí el `session_id` no existe: solo aparece
+  dentro del payload del hook. Con la clave anterior, `autonomy.sh start` escribía en un
+  fichero y el Stop hook leía otro, así que el gate no encontraba run y caía a modo normal.
+  **Fallaba en abierto y en silencio**, que es la peor forma de fallar en un mecanismo de
+  seguridad.
 
 ### Removed
 
@@ -125,6 +149,39 @@ de 16 a 23.
 
 ### Fixed
 
+- **El guard de force-push no veía los flags cortos agrupados.** `git push -uf origin main`
+  fuerza de verdad, pero no contiene `-f` como token suelto, así que el patrón anterior
+  (`-f\b`) lo dejaba pasar — justo la protección que el kit anuncia como dura. Pasaba en las
+  **dos** capas: el hook `block-dangerous-commands.sh` y los globs de `permissions.deny` en
+  `settings.json`, que `smart_approve.py` evalúa. Ahora se acepta cualquier grupo de flags
+  cortos que contenga una `f` (en `git push` la única opción corta con `f` es `--force`), y
+  `--follow-tags` sigue pasando porque tras el guion viene otro guion, no letras. Cinco casos
+  de regresión nuevos en `test_guards.sh`, que pasa de 28 a 33 checks.
+- **La Capa 2 de secretos bloqueaba *todos* los commits de cualquier repo protegido que no
+  tuviera `.gitleaks.toml` propio.** El hook `pre-commit` pasaba a ciegas
+  `-c "$REPO_ROOT/.gitleaks.toml"`; si el fichero no estaba, gitleaks abortaba con
+  `unable to load gitleaks config` y el commit moría — un fallo cerrado que parece un
+  hallazgo de secreto. Ahora resuelve la config en orden (repo → `$CLAUDE_HOME`) y, si no
+  hay ninguna, avisa por stderr y sigue con las reglas por defecto de gitleaks en vez de
+  abortar. **El fixture del test tapaba el bug**: copiaba la config a la raíz del repo de
+  prueba, un escenario que un usuario real no tiene. Ya no la copia, y hay tres casos nuevos
+  (`test_secret_content_gitleaks.sh`, 20 checks) incluido el que importa: sin config en
+  ninguna parte, un commit limpio pasa y una credencial AWS real sigue bloqueada.
+- **`make test` desde `kit/` devolvía exit 0 sin ejecutar un solo test.** El Quick start deja
+  al lector dentro de `kit/`, donde no había `Makefile`: make encontraba el *directorio*
+  `kit/test`, lo tomaba por un target ya construido y respondía "Nothing to be done for
+  'test'". Un oráculo que devuelve 0 sin medir nada, en el repo cuya tesis es lo contrario.
+  `kit/Makefile` delega ahora en la raíz.
+- **`test_autonomy.sh` seguía probando un contrato que ya no existía.** El estado del modo
+  autónomo pasó a indexarse por directorio de proyecto y no por `session_id` (quien lanza el
+  run desde Bash no conoce el `session_id`), y la suite seguía arrancando los runs con
+  `--session`. Reescritos los ocho bloques del gate: el run se arranca como lo arranca el
+  modelo, y cada payload lleva a propósito un UUID distinto, de forma que una regresión al
+  indexado por sesión se caería en rojo en vez de dejar cerrar el turno con el oráculo rojo.
+- **`test_guards_falsifiability.sh` comprobaba `> 0` caídas y citaba una constante que no
+  existía.** Una regresión que bajase de 10 casos `BLOCK` a 1 pasaba en verde, y el 10 que
+  el README publica como hecho medido no estaba anclado en ninguna parte. Ahora
+  `STUB_BLOCK_CASES=10` es explícito y la suite exige esa cifra exacta.
 - **El sensor de frescura de `SOURCES.md` leía el número de fila como si fueran días,
   y tumbaba `make test` entero.** En `source_field` el patrón de la ventana llevaba el
   sufijo de unidad como opcional — `(d|dias|días)?` — así que casaba con la primera
@@ -223,6 +280,29 @@ de 16 a 23.
   puerto 8787** y respuestas **HTTP 200 vacías** que Claude Code reporta como
   fallo de la API. Se documenta cómo evitarlo y que `hook ensure` no reescribe
   ficheros de configuración, así que neutralizar ese settings es estable.
+
+- **Las cifras que la documentación afirma sobre el repo pasan a tener sensor.** `README.md`
+  decía 16 suites con 23 en el `Makefile`, `kit/README.md` "8 documentos" con 9, y tres
+  documentos seguían citando `session-brief.sh` meses después de borrarlo. Nada se ponía en
+  rojo porque nadie medía el texto. `test_doc_claims.sh` cuenta el árbol real (suites,
+  agentes, comandos, ADRs, documentos), lo compara con lo que dicen los documentos que hablan
+  **en presente** —en dígito y en letra, porque "cinco comandos" era justo la forma que se
+  quedaba sin actualizar— y comprueba que ningún `.sh` citado en la documentación haya
+  dejado de existir. `CHANGELOG.md`, `knowledge/DECISIONS/`, `knowledge/PRE-MORTEM.md` y
+  `docs/superpowers/plans/` quedan **fuera a propósito**: son registros fechados, y una cifra
+  de agosto ahí es correcta aunque hoy sea otra. Trae su propio check de falsabilidad.
+
+### Security
+
+- **Tres rutas con el nombre real de personas salían publicadas en `HEAD`**, en
+  `knowledge/ORACLES.md` y en `.claude/skills/harness/referencias/oraculos.md`: rutas
+  absolutas de proyectos de cliente con el nombre de usuario y, en un caso, el nombre civil
+  completo dentro de una ruta de Windows. Redactadas conservando la lección que las hacía
+  útiles (el oráculo se invoca por **ruta absoluta**, M-001).
+- **Un `.pyc` estaba versionado** (`scripts/__pycache__/metrics.cpython-314.pyc`). El
+  bytecode lleva dentro la ruta absoluta de compilación en `co_filename`, así que publicaba
+  el árbol de directorios de la máquina del autor. Se saca del índice y `__pycache__/` entra
+  en `.gitignore`.
 
 ## [1.0.0] - 2026-08-05
 

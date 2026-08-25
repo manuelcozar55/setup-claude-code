@@ -26,7 +26,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 16 suites falsables | v1.0.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 24 suites falsables | v1.0.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -175,6 +175,8 @@ mismo. La promoción de un hallazgo a regla siempre pasa por una puerta humana.
 
 ### Adaptarlo a otra persona
 
+Con el repo ya clonado (el `git clone` está en el [Quick start](#quick-start)), desde su raíz:
+
 ```bash
 cp config/profile.example.yaml config/profile.yaml   # tu nombre, tu nivel de coach, tu oráculo
 cp config/settings.template.json .claude/settings.json
@@ -188,7 +190,7 @@ en la configuración — todo cuelga de `$CLAUDE_PROJECT_DIR`.
 
 ## Qué hace esto
 
-Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 8 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y es el único kit de este tipo que **demuestra** que sus guards funcionan con una suite de test falsable, no solo lo afirma: `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **10 casos `BLOCK` conocidos**. Si neutralizarlo no rompiera nada, la suite no estaría midiendo nada — puedes reproducir esa caída tú mismo, ver el paso 5 más abajo.
+Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 8 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y no se limita a afirmar que los guards funcionan: lo **demuestra** con una suite falsable. `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **exactamente 10 casos `BLOCK` conocidos** — si neutralizarlo no rompiera nada, la suite no estaría midiendo nada. Reprodúcelo tú mismo en 5 segundos: `bash kit/test/test_guards_falsifiability.sh`.
 
 Y hay una segunda cosa que se demuestra en vez de prometerse: **que instalarlo en limpio no te rompe nada.** `test_clean_install_resilience.sh` monta el kit en una máquina simulada sin ninguno de los componentes de terceros (sin proxy, sin `rtk`, sin venv, sin `gitleaks`) y exige las dos mitades a la vez: que ningún hook falle, y que un comando destructivo siga bloqueado. Las dos mitades importan, porque la forma perezosa de arreglar la primera —envolver todo en `|| true`— rompe la segunda en silencio y te deja un kit de seguridad decorativo.
 
@@ -198,7 +200,7 @@ No son garantías absolutas: son defensa en profundidad, con sus límites docume
 
 **Prerrequisitos** — el kit solo soporta **Linux o WSL2** (ver el aviso de arriba: en Windows, entra en WSL antes de nada y clona dentro de `~`, no en `/mnt/c/`).
 
-Además necesitas: `bash`, `git`, `python3` ≥ 3.10, `jq`. `gitleaks` (para la Capa 2 de secretos) es opcional — si no lo tienes, `install.sh` te ofrece instalarlo solo (binario oficial, verificado contra un checksum SHA-256 fijado en este repo, no descargado de la red; sin `curl | bash`), o puedes seguir sin él: la Capa 1 funciona igual. Lista completa y cómo comprobar cada una en [`kit/docs/02-install.md`](kit/docs/02-install.md).
+Además necesitas: `bash`, `git`, `make`, `python3` ≥ 3.10, `jq`. `gitleaks` (para la Capa 2 de secretos) es opcional — si no lo tienes, `install.sh` te ofrece instalarlo solo (binario oficial, verificado contra un checksum SHA-256 fijado en este repo, no descargado de la red; sin `curl | bash`), o puedes seguir sin él: la Capa 1 funciona igual. Lista completa y cómo comprobar cada una en [`kit/docs/02-install.md`](kit/docs/02-install.md).
 
 ```bash
 git clone https://github.com/manuelcozar55/setup-claude-code.git
@@ -207,6 +209,11 @@ bash install.sh                                        # instala en $CLAUDE_HOME
 cp .env.example "${CLAUDE_HOME:-$HOME/.claude}"/.env    # rellena tus claves
 bash doctor.sh                                          # autodiagnóstico con evidencia (PASS/WARN/FAIL)
 ```
+
+**Y para deshacerlo**: `bash uninstall.sh` (desde la raíz del repo) restaura el backup más
+reciente que dejó `install.sh`. Por defecto es un *dry-run* que solo enseña qué haría; hace
+falta `--apply` para escribir, y antes de escribir se hace a su vez un backup del estado
+actual. `bash uninstall.sh --list` enumera los backups disponibles.
 
 `doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, `rtk`, el venv de tools, `gitleaks`): **nada del kit los da por supuestos**, y hay un test que lo demuestra en una máquina pelada (`test_clean_install_resilience.sh`). Guía completa en [`kit/README.md`](kit/README.md).
 
@@ -268,7 +275,7 @@ Además del kit, este repo trae dos charlas autocontenidas (HTML + guion, sin in
 
 ## Formación recomendada (gratis, corta, verificada)
 
-Para entender la IA y, sobre todo, Claude Code. Todos gratis y de una a dos horas; contenidos y duración verificados a fecha de este repo (las plataformas pueden cambiar, confírmalo al inscribirte).
+Para entender la IA y, sobre todo, Claude Code. Todos gratis y de una a dos horas; contenidos y duración **verificados el 2026-08-25** (las plataformas cambian sin avisar: confírmalo al inscribirte).
 
 | Curso | Plataforma | Duración | Coste | De qué va |
 |-------|------------|----------|-------|-----------|
@@ -303,10 +310,10 @@ Nada del mapa es opinión. Combina un modelo mental y un cuerpo de ingeniería q
 
 ## Notas de experto
 
-- **Honestidad de fuentes.** Cada afirmación de las charlas y del kit está citada y verificada; lo que no se pudo verificar, se cortó. Cero cifras infladas.
+- **Honestidad de fuentes.** Cada afirmación de las charlas y del kit está citada y verificada; lo que no se pudo verificar, se cortó. Las cifras que el repo afirma sobre sí mismo (suites, agentes, comandos, ADRs, documentos) las comprueba un test contra el propio árbol: `kit/test/test_doc_claims.sh`. Si el README miente, `make test` se pone rojo.
 - **Cifras del deck de setup.** Son una foto ilustrativa de mi máquina en un momento dado, no una garantía ni un dato tuyo: reprodúcelas con tus propios logs (el deck trae la tabla "cifra a fuente a comando"). `~/.ssh`, `id_rsa` o `ANTHROPIC_API_KEY` aparecen solo como objetivos de demostración de la puerta de seguridad; el repo no contiene ninguna clave real.
-- **El kit se verifica a sí mismo.** Instalar, diagnosticar, corregir: un bucle, no un volcado. `doctor.sh` da evidencia por componente y `scan-secrets.sh` bloquea cualquier fuga.
-- **Autocontenido y accesible.** Las charlas llevan CSS/JS inline, contraste AA en claro y oscuro, `prefers-reduced-motion`, print y JS-off muestran todo.
+- **El kit se verifica a sí mismo.** Instalar, diagnosticar, corregir: un bucle, no un volcado. `doctor.sh` da evidencia por componente y `scan-secrets.sh` corta las fugas que sabe reconocer — sus límites están en [`SECURITY.md`](SECURITY.md), no escondidos.
+- **Casi autocontenido, y accesible.** Las charlas llevan CSS/JS inline, contraste AA en claro y oscuro, `prefers-reduced-motion`, y sin JS o al imprimir se ve todo. La única dependencia externa es la tipografía de Google Fonts: sin red, el navegador cae a la fuente del sistema y la charla se ve igual de bien.
 
 ## Autor
 

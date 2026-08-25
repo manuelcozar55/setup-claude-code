@@ -1,16 +1,16 @@
 # mcharness
 
-Harness personal para Claude Code: **guías** (lo que se dice antes de actuar) y
-**sensores** (lo que mide después). El repo tiene dos capas:
+Harness personal para Claude Code: **guías** (antes de actuar) y **sensores** (miden
+después). Dos capas:
 
 - `kit/` — **capa de instalación**, v1.0.0, estable. Guards, hooks, Sentinel, `install.sh`,
-  16 suites de test. No se toca sin ejecutar `make test`.
+  24 suites de test. No se toca sin ejecutar `make test`.
 - raíz — **capa de harness**: `.claude/`, `knowledge/`, `scripts/`. Lo nuevo va aquí.
 
 ## Oráculo de este repo
 
 ```
-make test          # 16+ suites bash, ~17 s, sin red. exit 0 o el trabajo no está hecho.
+make test          # 24 suites bash, ~30 s, sin red. exit 0 o el trabajo no está hecho.
 ```
 
 No declares nada terminado sin esa salida delante. `/verify` lo hace bien.
@@ -18,9 +18,9 @@ No declares nada terminado sin esa salida delante. `/verify` lo hace bien.
 ## Gotchas de este entorno (medidos, no supuestos)
 
 **El hook `PreToolUse/Bash` sustituye el ejecutable en posición de comando.** `rg` ejecuta
-`grep`; `python3 -m pytest` ejecuta `python3 -m rtk`. Los argumentos no se tocan.
+`grep`; `python3 -m pytest` ejecuta `python3 -m rtk`.
 → **Invoca todo oráculo por ruta absoluta, con `rtk proxy …` o con `make …`.**
-Detalle y reproducción: `knowledge/MISTAKES.md` · M-001.
+Detalle: `knowledge/MISTAKES.md` · M-001.
 
 **Los guards bloquean por el literal del comando, no por la acción**: nombrar un fichero de
 credenciales, aunque sea para excluirlo, dispara Sentinel. → Reformula. **Nunca amplíes la
@@ -31,18 +31,18 @@ allowlist** para esquivarlo.
 **Python**: el `python3` de sistema (3.14.4) no tiene pytest. Las herramientas viven en
 `~/.venvs/tools/bin/`. Nunca `pip install --break-system-packages`.
 
-**`/mnt/c` es ~3,7× más lento** que ext4 por latencia de metadatos (`du` de 1.000 ficheros:
-4,4 s). Los guards no lo pagan porque no ejecutan `git status`.
+**`/mnt/c` es ~3,7× más lento** que ext4 (`du` de 1.000 ficheros: 4,4 s). Los guards no lo
+pagan: no ejecutan `git status`.
 
 ## Flujo de trabajo
 
 **El harness entra solo.** El hook `UserPromptSubmit` (`.claude/hooks/auto-spec.sh`) detecta
-un encargo sin criterio de verificación e inyecta el oráculo del proyecto y la petición de
-declarar cuándo estará hecho. En preguntas calla. No hay que invocar nada.
+un encargo sin criterio de verificación e inyecta el oráculo y la petición de declarar
+cuándo estará hecho. En preguntas calla.
 
 | Comando | Para qué |
 |---|---|
-| **`/work`** | **Entrada principal.** Explica el trabajo una vez; el sistema entrevista, especifica, ejecuta, verifica y revisa. Activa el modo autónomo: el turno no termina con el oráculo en rojo (ADR 010). |
+| **`/work`** | **Entrada principal.** Explica el trabajo una vez: el sistema entrevista, especifica, ejecuta, verifica y revisa. Modo autónomo: el turno no termina con el oráculo en rojo (ADR 010). |
 | `/spec` | Encargo → criterios de aceptación + oráculo. **Antes de programar.** |
 | `/implement` | Ejecuta la spec sin parar a preguntar. |
 | `/verify` | Ejecuta el oráculo y exige evidencia. |
@@ -65,8 +65,10 @@ dejaron huérfano, no el código muerto preexistente. Detalle en `.claude/skills
 
 ## Presupuesto de complejidad
 
-Sobre lo **nuevo**: ≤6 agentes, ≤6 skills, ≤3 hooks (`timeout ≤ 5 s`). La línea base de
-`kit/` queda fuera del cómputo (ADR 005). `make test` lo verifica.
+Sobre lo **nuevo**: ≤6 agentes, ≤6 skills, ≤3 hooks. `timeout ≤ 5 s` en el camino caliente
+(`UserPromptSubmit`, `PostToolUse`, que corren en cada prompt). El `Stop` corre el oráculo:
+su timeout declarado debe ser ≥ el que el script se aplica por dentro, o Claude Code lo mata
+y el gate falla **en abierto**. `kit/` no computa (ADR 005). `make test` lo verifica.
 
 ## Antes de commitear
 
