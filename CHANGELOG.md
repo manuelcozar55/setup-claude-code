@@ -57,6 +57,12 @@ capa de instalación v1.0.0 con sus 16 suites. Lo nuevo vive en la raíz.
 
 ### Changed
 
+- **`sentinel-allowlist.json`: fuera los tres dominios de LinkedIn**, que quedaron muertos al
+  retirar ese MCP. Es **higiene, no endurecimiento**, y conviene no venderlo como otra cosa:
+  la allowlist de Sentinel solo hace que una URL *salte* las heurísticas de red (pastebin,
+  TLD sospechoso, IP cruda), así que `linkedin.com` las pasaría igual estando o no en la
+  lista. Lo que se gana es que la config deje de describir un servidor que ya no existe.
+
 - **`CLAUDE.md`** de proyecto: 81 líneas / ~896 tok, bajo un presupuesto propio y verificado
   por test. La auditoría que lo justifica está en `knowledge/AUDIT-CLAUDE-MD.md` y se apoya
   en uso medido: la sección más larga del fichero anterior regía un plan mode al 2,1 %.
@@ -67,6 +73,26 @@ capa de instalación v1.0.0 con sus 16 suites. Lo nuevo vive en la raíz.
   temporal sin git el comportamiento es el de siempre, así que las 16 suites y CI no cambian.
 
 ### Fixed
+- **El sensor de frescura de `SOURCES.md` leía el número de fila como si fueran días,
+  y tumbaba `make test` entero.** En `source_field` el patrón de la ventana llevaba el
+  sufijo de unidad como opcional — `(d|dias|días)?` — así que casaba con la primera
+  columna numérica de la fila, que es el `#` de orden. Las filas 1 a 4 salían
+  "vencidas sin marcar `[STALE]`" por su posición en la tabla, no por su fecha:
+  `| … | 2026-08-21 | 365 d |` se leía como una ventana de 4 días. Como
+  `test_harness_structure.sh` es la antepenúltima suite del `Makefile` y make aborta en el
+  primer fallo, **las dos últimas suites (`test_install_diff_first`, `test_uninstall`)
+  llevaban tiempo sin ejecutarse**: 21 de 23. Con la unidad obligatoria, las 23 corren y
+  `make test` vuelve a exit 0.
+- **El check de falsabilidad de ese sensor pasaba sin cubrir el bug que tenía delante.**
+  Su fila fabricada era `| url | primaria | fecha | 30 |`: sin columna `#` y sin unidad,
+  es decir, con una forma que la tabla real nunca tiene. Un caso fabricado que no imita
+  la forma de los datos de producción demuestra menos de lo que aparenta. Ahora la fila
+  fabricada tiene las siete columnas reales.
+- **`session-start.sh` metía `MEMORY.md` dos veces en el contexto de cada sesión.** El
+  hook volcaba el índice con `head -20` y la auto-memoria de Claude Code ya lo inyecta
+  por su cuenta: ~985 tokens duplicados en cada arranque. Ahora imprime el recuento de
+  entradas y el aviso de tamaño — la señal de vida que la auto-memoria no da — pero no
+  el cuerpo.
 
 - **Falso fallo en la verificación de backups por SIGPIPE.** `unzip -Z1 | grep -q` con
   `set -o pipefail` mataba a `unzip` y el verificador reportaba un ZIP correcto como roto.
@@ -74,6 +100,27 @@ capa de instalación v1.0.0 con sus 16 suites. Lo nuevo vive en la raíz.
   detecta. Queda documentado en `MISTAKES.md` · M-003.
 
 ### Documentation
+
+- **`08-plugins-mcp-y-skills.md`: la sección de MCP decía cosas que ya no eran verdad, y
+  callaba la que más cuesta.** Listaba `perplexity` como si estuviera operativa (dada de
+  baja el 2026-08-17) y no mencionaba `headroom`, `firecrawl` ni `serena`. Se reescribe con
+  el estado real y se añade **"Un MCP en ámbito global es un impuesto fijo, y casi nunca se
+  mide"**: por qué `--scope user` lo arranca también en `/tmp` y en repos ajenos, el script
+  para contar el uso *efectivo* en tus propias transcripciones (bloques `tool_use`, no
+  menciones: el nombre del servidor sale en el prompt de cada sesión e infla cualquier
+  `grep` ingenuo), y el caso medido que lo motiva — Serena en global durante semanas, 1 de
+  55 sesiones con llamadas reales y sus 12 últimos arranques sin proyecto activo. Incluye
+  el detalle que hace que quitarlo no funcione a la primera: `headroom wrap claude`
+  re-registra Serena en cada lanzamiento salvo con `--code-memory none`. Incluye el
+  contraejemplo que evita leer mal la regla: `firecrawl` tiene el **mismo** uso medido que
+  Serena — 4 llamadas en 1 de esas 55 sesiones — y se queda, porque es `type: http` en ámbito de
+  proyecto y no levanta proceso local. Se retira por **coste de arranque x ubicuidad**, no
+  por recuento de llamadas.
+- **`03-headroom.md`: el sufijo `[1m]` viaja pegado al modelo y rompe el cambio de modelo.**
+  `--1m` reescribe `ANTHROPIC_MODEL` del proceso hijo, y se lo aplica a *cualquier* modelo que
+  le pases. Con Haiku, que no tiene la beta de contexto largo, la sesión muere con
+  `400 The long context beta is not yet available for this subscription` — un error que se
+  confunde con un problema de cuota o de credenciales. Documentado con la traza medida.
 
 - **Atribuciones corregidas**, todas verificadas contra la fuente el 2026-08-21:
   el artículo de *harness engineering* es de **Birgitta Böckeler**, no de Fowler, y **no da

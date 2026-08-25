@@ -94,7 +94,14 @@ source_field() {   # source_field <fila> <url|tipo|fecha|ventana>
     url)     printf '%s' "$line" | grep -oE 'https?://[^ |]+' | head -1 ;;
     tipo)    printf '%s' "$line" | grep -oiE '\b(primaria|secundaria)\b' | head -1 | tr '[:upper:]' '[:lower:]' ;;
     fecha)   printf '%s' "$line" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1 ;;
-    ventana) printf '%s' "$line" | grep -oE '\| *[0-9]+ *(d|dias|días)? *\|' | grep -oE '[0-9]+' | head -1 ;;
+    # El sufijo de unidad es OBLIGATORIO a proposito. Cuando era opcional, este
+    # patron casaba con la PRIMERA columna numerica de la fila -- que es el '#'
+    # de orden -- y el sensor leia "365 d" como "4 dias": las filas 1..4 salian
+    # vencidas por su numero de orden y tumbaban `make test` entero (2026-08-25).
+    # Una fila sin unidad ya no cuela como ventana: cae en validate_source_row
+    # como fila invalida, que es un fallo ruidoso en vez de una lectura silenciosa
+    # y equivocada.
+    ventana) printf '%s' "$line" | grep -oE '\| *[0-9]+ *(d|dias|días) *\|' | grep -oE '[0-9]+' | head -1 ;;
   esac
 }
 
@@ -331,7 +338,11 @@ else
 fi
 
 old_date="$(date -d '-9999 days' +%Y-%m-%d)"
-bad_source_row="| http://example.com/fabricado | primaria | $old_date | 30 |"
+# La fila fabricada tiene que tener la MISMA FORMA que las de SOURCES.md: columna
+# '#' delante y unidad en la ventana. Sin la columna '#' este caso no ejercitaba
+# la ambiguedad que hacia que source_field leyera el indice de fila como ventana,
+# asi que el check pasaba sin cubrir el bug que tenia delante (2026-08-25).
+bad_source_row="| 9 | http://example.com/fabricado | Autor Fabricado | primaria | $old_date | 30 d | vigente |"
 if validate_source_row "$bad_source_row" && is_stale "$old_date" "30"; then
   ck "y" "y" "test_sources_freshness SI detecta una entrada vencida fabricada"
   falsified=$((falsified + 1))

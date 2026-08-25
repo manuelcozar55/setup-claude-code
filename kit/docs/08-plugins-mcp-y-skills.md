@@ -27,8 +27,50 @@ Los cinco primeros se activan (o reinstalan si hiciera falta) con el comando int
 
 Capacidades externas que Claude Code invoca vía el protocolo MCP. Conocidos en este setup:
 
-- **perplexity**: búsqueda web. Requiere `PERPLEXITY_API_KEY` en tu `$HOME/.claude/.env` (ver `02-install.md`, paso 3).
-- **linkedin**: mensajería. Por seguridad, `settings.json` deniega explícitamente `mcp__linkedin__send_message` y `mcp__linkedin__connect_with_person` en `permissions.deny`: el servidor puede estar activo, pero esas dos acciones concretas quedan bloqueadas sin excepción.
+- **headroom**: el MCP del proxy de contexto (ver `03-headroom.md`). Es el único que este setup deja registrado en ámbito global.
+- **firecrawl**: scraping y búsqueda web. Requiere su propia clave en `$HOME/.claude/.env`.
+- **perplexity**: búsqueda web. Dado de baja en este setup el 2026-08-17 (llegó sin `PERPLEXITY_API_KEY` tras una migración de máquina y nunca se repuso). Se documenta porque el `.env.example` todavía la nombra: si no la usas, no la des de alta.
+- **linkedin**: mensajería. Retirado del ámbito global el 2026-08-25 por coste de arranque (`uvx …@latest` consulta PyPI en **cada** lanzamiento: 1,43 s medidos, más que Serena y Headroom juntos). Si lo repones, píneale la versión y **no toques** las dos denegaciones que `settings.json` mantiene en `permissions.deny` — `mcp__linkedin__send_message` y `mcp__linkedin__connect_with_person` —: siguen ahí a propósito, para que reinstalarlo no reabra en silencio la puerta a escribir a terceros.
+- **serena**: navegación por símbolos vía LSP. **Por proyecto, nunca en global** (ver abajo).
+
+### Un MCP en ámbito global es un impuesto fijo, y casi nunca se mide
+
+Registrar un servidor con `--scope user` lo arranca en **todas** las sesiones: en repos ajenos, en `/tmp`, en `$HOME`. Pagas su arranque, su RAM y sus nombres de herramienta en el contexto, uses o no uses el servidor.
+
+Serena es el caso de estudio de este setup. Se registró en global durante semanas. La auditoría del 2026-08-25 recorrió las 55 transcripciones que existían ese día y dio: **1 sesión con llamadas efectivas y 4 llamadas en total**, y los **12 últimos arranques** registrando `No project root found` en su propio log — arrancaba sin proyecto activo, publicando 24 herramientas inertes. No es que Serena sea mala: es que estaba enrutada a donde no había código.
+
+Antes de dejar un MCP en global, mide su uso real en tus propias transcripciones (cuenta bloques `tool_use`, no menciones — el nombre del servidor aparece en el prompt de cada sesión y eso infla cualquier `grep` ingenuo):
+
+```bash
+python3 - <<'EOF'
+import json, glob, collections, os
+calls = collections.Counter(); sesiones = 0; con_uso = set()
+for f in glob.glob(os.path.expanduser('~/.claude/projects/*/*.jsonl')):
+    sesiones += 1
+    for linea in open(f, errors='ignore'):
+        if 'mcp__' not in linea: continue
+        try: d = json.loads(linea)
+        except ValueError: continue
+        for b in (d.get('message') or {}).get('content') or []:
+            if isinstance(b, dict) and b.get('type') == 'tool_use' and str(b.get('name','')).startswith('mcp__'):
+                calls[b['name'].split('__')[1]] += 1; con_uso.add(f)
+print(f'{sesiones} sesiones, {len(con_uso)} con llamadas MCP reales')
+for k, v in calls.most_common(): print(f'  {v:5d}  {k}')
+EOF
+```
+
+**Poco uso no basta para retirar nada: lo que decide es coste de arranque x ubicuidad.** En la
+misma auditoría, `firecrawl` salió con exactamente el mismo uso que Serena — 4 llamadas en 1 de
+esas 55 sesiones — y **se queda**. Es un MCP `type: http` contra un endpoint remoto: no levanta
+proceso local, no compila nada, no toca la red en el arranque, y además está registrado en
+ámbito de **proyecto**, no global. Su coste real es un puñado de nombres de herramienta
+diferidos. Serena costaba un proceso Python más un servidor de lenguaje en cada sesión;
+`linkedin` costaba una consulta a PyPI en cada lanzamiento. Mide el uso, sí, pero **retira por
+el coste**, no por el recuento.
+
+La regla que sale de ahí: **global solo para lo que usas en cada sesión** (aquí: `headroom`). Todo lo demás, `claude mcp add --scope project` en el repo donde compensa, o un alias dedicado.
+
+Ojo con los wrappers: `headroom wrap claude` registra Serena **por defecto** y vuelve a escribirla en `~/.claude.json` en cada lanzamiento, así que borrarla con `claude mcp remove` no basta — hay que lanzarlo con `--code-memory none`. Y su `--serena-instructions` reescribe tu `CLAUDE.md` en cada arranque con un prompt que ordena cargar las 24 herramientas de golpe, justo lo contrario de lo que consigue `--1m`. Quitar un MCP del arranque es tres sitios, no uno: el registro, el flag del wrapper y el fichero de instrucciones que dejó atrás.
 
 Cómo se añaden: `claude mcp add ...`. La sintaxis exacta (transporte, comando o URL, variables de entorno que necesite) depende de cada servidor; consulta su propio repositorio antes de darlo de alta. El kit no incluye claves ni configuraciones MCP con secretos: cualquier credencial vive solo en tu `.env` local, nunca en este repo.
 
