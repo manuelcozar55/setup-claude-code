@@ -6,12 +6,13 @@ Este proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
-### Added — mcharness v0.1.0, la capa de harness
-
 El repo pasa de ser solo un instalador endurecido a ser también un **harness**: guías
 (lo que se dice antes de actuar) y **sensores** (lo que mide después), en el sentido de
-Birgitta Böckeler (*Harness engineering*, 02-abr-2026). `kit/` no se toca: sigue siendo la
-capa de instalación v1.0.0 con sus 16 suites. Lo nuevo vive en la raíz.
+Birgitta Böckeler (*Harness engineering*, 02-abr-2026). `kit/` conserva intacta la
+capa de instalación v1.0.0; lo nuevo vive en la raíz y solo le añade suites, que pasan
+de 16 a 23.
+
+### Added
 
 - **El hallazgo que reordenó el trabajo: el canal de Bash reescribe los comandos.**
   El hook `PreToolUse/Bash` sustituye el ejecutable en posición de comando — `rg` ejecuta
@@ -52,8 +53,51 @@ capa de instalación v1.0.0 con sus 16 suites. Lo nuevo vive en la raíz.
   fueron al agente genérico y 6 de los 8 especialistas existentes nunca se usaron. El
   problema no era falta de capacidad.
 
-- **Tres suites de test nuevas** (`test_harness_structure.sh`, `test_metrics.sh`,
+- **Cuatro suites de test nuevas** (`test_harness_structure.sh`, `test_metrics.sh`,
   `test_install_diff_first.sh`, `test_uninstall.sh`), todas con sección de falsabilidad.
+
+- **El harness entra solo: `auto-spec.sh`, un hook `UserPromptSubmit`** (ADR 009). Cuatro
+  reglas advisorias de `CLAUDE.md` tenían adherencia medida —`IntentGate` 2,1 %,
+  `Parallel-First` 0 invocaciones, la tabla de delegación 70 % al agente genérico, "verifica
+  tu trabajo" 27,7 % de sesiones con oráculo—: pedir disciplina no la produce. El hook
+  clasifica el prompt y **solo** si es un encargo sin criterio de verificación inyecta la
+  petición de declarar qué será cierto al terminar, el oráculo del proyecto detectado por
+  `scripts/detect-oracle.sh` y el recordatorio de ejecutarlo en frío; si el criterio ya viene
+  escrito, se calla. Emite **stdout plano**, que es lo único que la documentación especifica
+  para este evento, y **nunca `exit 2`**, que borraría el prompt recién escrito. Verificado en
+  `test_auto_spec.sh` con 16 checks —incluido el de falsabilidad: un encargo y una pregunta
+  tienen que producir salidas distintas— y 23 ms de latencia medida.
+- **Modo autónomo: `/work` y `scripts/autonomy.sh`** (ADR 010). Un sexto prompt de trabajo en
+  el que el usuario entra **una sola vez** (una tanda de preguntas agrupada más la aprobación
+  de la spec); a partir de ahí, cada pregunta es un fallo de diseño. No aparece un hook nuevo:
+  `verify-gate.sh` gana un segundo modo, y con un run activo un oráculo en rojo **bloquea**
+  (`decision: block`) con un presupuesto de 3 reparaciones. El ADR 004 decidió que nada
+  bloquea porque un aviso le llega a un humano que reacciona, y esa es justo la premisa que
+  desaparece en un run desatendido. El motivo devuelto al modelo prohíbe explícitamente tocar
+  el sensor, y `autonomy.sh start` rechaza oráculos que no sean ruta absoluta, `rtk proxy …` o
+  `make …`, porque el canal de Bash sustituye el ejecutable (M-001) y verificar con el comando
+  equivocado es peor que no verificar: parece que sí. Los cuatro estados —rojo, verde,
+  presupuesto agotado y `stop_hook_active`— están cubiertos en `test_autonomy.sh`.
+
+- **`THIRD-PARTY.md`** con los avisos de terceros, que faltaban. Reproduce íntegro
+  el aviso MIT de `yurukusa/claude-code-hooks` (`Copyright (c) 2026 yurukusa`,
+  verificado contra el `LICENSE` del repositorio de origen), del que derivan
+  `branch-guard.sh`, `destructive-guard.sh` y `secret-guard.sh`: la MIT exige que
+  ese aviso viaje con las copias y hasta ahora solo había una línea `# Source:`.
+  Distingue código derivado de dependencias externas no redistribuidas —gitleaks
+  (MIT), Headroom (Apache-2.0) y rtk (Apache-2.0), las tres comprobadas contra la
+  API de GitHub—, porque mezclarlas desdibuja qué hay que cumplir de verdad.
+- **Queda documentado un punto de procedencia sin resolver.**
+  `block-dangerous-commands.sh` declara en su cabecera derivar de
+  `randomdreft/claude-code-security-hook` *"(public domain)"*, pero ese
+  repositorio **no tiene fichero de licencia** (`license: null` en la API de
+  GitHub) y el dominio público no se presume. No se corrige inventando otra
+  afirmación: se registra el hecho verificable y las tres vías para cerrarlo.
+
+- **`.github/dependabot.yml`** para el ecosistema `github-actions`. El CI ancla
+  las Actions por SHA, que es lo correcto, pero un pin no se actualiza solo: sin
+  esto se quedan clavadas en la versión anclada, incluidas las vulnerabilidades
+  que se les descubran después.
 
 ### Changed
 
@@ -72,7 +116,15 @@ capa de instalación v1.0.0 con sus 16 suites. Lo nuevo vive en la raíz.
   genera el árbol aparte, muestra el diff y dice qué commitear. `--apply` fuerza. En un HOME
   temporal sin git el comportamiento es el de siempre, así que las 16 suites y CI no cambian.
 
+### Removed
+
+- **`session-brief.sh`**, sustituido por `auto-spec.sh` (ADR 009). Su función —poner delante
+  el oráculo del proyecto y los errores ya cometidos— se hace ahora en el primer *encargo* y
+  no en el arranque, donde se diluía y no sobrevivía a un `/clear`. **El presupuesto se
+  mantiene en 3 hooks**: se sustituye, no se suma.
+
 ### Fixed
+
 - **El sensor de frescura de `SOURCES.md` leía el número de fila como si fueran días,
   y tumbaba `make test` entero.** En `source_field` el patrón de la ventana llevaba el
   sufijo de unidad como opcional — `(d|dias|días)?` — así que casaba con la primera
@@ -98,6 +150,23 @@ capa de instalación v1.0.0 con sus 16 suites. Lo nuevo vive en la raíz.
   `set -o pipefail` mataba a `unzip` y el verificador reportaba un ZIP correcto como roto.
   Solo aparecía a escala real (933 entradas), no con el fixture de 6. `shellcheck` no lo
   detecta. Queda documentado en `MISTAKES.md` · M-003.
+
+- **El software del kit no tenía licencia, y el README daba a entender que sí.**
+  El `LICENSE` de CC BY 4.0 acota su alcance, en su propio preámbulo, a los decks
+  y sus guiones originales: nunca cubrió `kit/`. Pero el README decía
+  *"CC BY 4.0. Comparte y adapta con atribución"* sin distinguir, así que quien
+  clonaba el repo creía tener un permiso que legalmente no existía — por defecto,
+  ausencia de licencia es reserva de todos los derechos. Se añade
+  **`LICENSE-CODE`** con licencia **MIT** para todo lo de `kit/` y los scripts de
+  `.github/`; se acota explícitamente el `LICENSE` de CC BY a las charlas; y la
+  sección de licencia del README pasa a declarar el reparto en una tabla. MIT es
+  elección deliberada: es la misma licencia del material del que derivan tres
+  guards, así que no hay fricción de compatibilidad.
+
+- **El workflow de CI no parseaba, así que su último job no llegaba a ejecutarse.** Un
+  `name:` sin comillas con dos puntos dentro —`test_uninstall.sh (restaura el backup mas
+  reciente: interno o ZIP…)`— es YAML inválido. Se entrecomilla y se añade a
+  `test_harness_structure.sh` el sensor que lo habría cazado antes de subirlo.
 
 ### Documentation
 
@@ -135,38 +204,6 @@ capa de instalación v1.0.0 con sus 16 suites. Lo nuevo vive en la raíz.
   ahora que existe, da 19,1 % de sesiones. Y las sesiones con oráculo no valían 0 sino
   27,7 %: nunca se habían medido, que no es lo mismo.
 
-
-### Fixed
-
-- **El software del kit no tenía licencia, y el README daba a entender que sí.**
-  El `LICENSE` de CC BY 4.0 acota su alcance, en su propio preámbulo, a los decks
-  y sus guiones originales: nunca cubrió `kit/`. Pero el README decía
-  *"CC BY 4.0. Comparte y adapta con atribución"* sin distinguir, así que quien
-  clonaba el repo creía tener un permiso que legalmente no existía — por defecto,
-  ausencia de licencia es reserva de todos los derechos. Se añade
-  **`LICENSE-CODE`** con licencia **MIT** para todo lo de `kit/` y los scripts de
-  `.github/`; se acota explícitamente el `LICENSE` de CC BY a las charlas; y la
-  sección de licencia del README pasa a declarar el reparto en una tabla. MIT es
-  elección deliberada: es la misma licencia del material del que derivan tres
-  guards, así que no hay fricción de compatibilidad.
-
-### Added
-
-- **`THIRD-PARTY.md`** con los avisos de terceros, que faltaban. Reproduce íntegro
-  el aviso MIT de `yurukusa/claude-code-hooks` (`Copyright (c) 2026 yurukusa`,
-  verificado contra el `LICENSE` del repositorio de origen), del que derivan
-  `branch-guard.sh`, `destructive-guard.sh` y `secret-guard.sh`: la MIT exige que
-  ese aviso viaje con las copias y hasta ahora solo había una línea `# Source:`.
-  Distingue código derivado de dependencias externas no redistribuidas —gitleaks
-  (MIT), Headroom (Apache-2.0) y rtk (Apache-2.0), las tres comprobadas contra la
-  API de GitHub—, porque mezclarlas desdibuja qué hay que cumplir de verdad.
-- **Queda documentado un punto de procedencia sin resolver.**
-  `block-dangerous-commands.sh` declara en su cabecera derivar de
-  `randomdreft/claude-code-security-hook` *"(public domain)"*, pero ese
-  repositorio **no tiene fichero de licencia** (`license: null` en la API de
-  GitHub) y el dominio público no se presume. No se corrige inventando otra
-  afirmación: se registra el hecho verificable y las tres vías para cerrarlo.
-
 - **`03-headroom.md` explica ahora que `headroom wrap` pone `ENABLE_TOOL_SEARCH`
   por su cuenta.** La doc recomendaba la variable en `settings.json` pero no decía
   que el wrapper ya la escribe, con lo que quitarla de la config no la desactiva:
@@ -186,10 +223,6 @@ capa de instalación v1.0.0 con sus 16 suites. Lo nuevo vive en la raíz.
   puerto 8787** y respuestas **HTTP 200 vacías** que Claude Code reporta como
   fallo de la API. Se documenta cómo evitarlo y que `hook ensure` no reescribe
   ficheros de configuración, así que neutralizar ese settings es estable.
-- **`.github/dependabot.yml`** para el ecosistema `github-actions`. El CI ancla
-  las Actions por SHA, que es lo correcto, pero un pin no se actualiza solo: sin
-  esto se quedan clavadas en la versión anclada, incluidas las vulnerabilidades
-  que se les descubran después.
 
 ## [1.0.0] - 2026-08-05
 
