@@ -212,4 +212,3 @@ había quedado en `100644` y el test no lo cubría porque su lista está a mano.
   commit` cuyo *mensaje* menciona un borrado recursivo de raíz. Me pasó al
   commitear esta misma rama. No lo toqué (cambiar un guard merece su propia
   decisión), pero está documentado aquí como hallazgo.
-</content>
