@@ -55,6 +55,18 @@ expect "force push directo denegado"   "$(run_smart 'git push --force origin mai
 expect "force push compuesto denegado" "$(run_smart 'echo ok && git push -f origin main')"   BLOCK
 expect "comando normal en smart"       "$(run_smart 'git status')"                           ALLOW
 
+# Flags cortos AGRUPADOS. `git push -uf origin main` fuerza igual que `--force`, pero no
+# contiene "-f" como token suelto: la regex del guard ('-f\b') y los globs deny lo dejaban
+# pasar los dos. El agujero estaba justo en la proteccion que el kit anuncia como dura, y
+# ninguno de los dos casos de arriba lo tocaba. Se cubren las dos capas por separado
+# porque fallaban por separado.
+run_blockdc() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1; }
+expect "guard: -uf agrupado denegado"     "$(run_blockdc 'git push -uf origin main')"        BLOCK
+expect "guard: -fu agrupado denegado"     "$(run_blockdc 'git push -fu origin main')"        BLOCK
+expect "guard: --follow-tags NO denegado" "$(run_blockdc 'git push --follow-tags origin v1')" ALLOW
+expect "deny-list: -uf agrupado denegado" "$(run_smart 'git push -uf origin main')"          BLOCK
+expect "deny-list: -fu agrupado denegado" "$(run_smart 'git push -fu origin main')"          BLOCK
+
 # Hallazgo de seguridad documentado (no un bug de esta suite): smart_approve.py
 # falla ABIERTO si $HOME/.claude/settings.json no existe o no tiene
 # permissions.deny -- sin ese fichero, deny_rules queda vacio y todo se

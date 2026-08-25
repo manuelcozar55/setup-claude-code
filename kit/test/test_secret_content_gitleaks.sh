@@ -19,16 +19,16 @@ newrepo() {
   (cd "$d" && git init -q && git config user.email t@example.com && git config user.name t)
   cp "$HOOK_SRC" "$d/.git/hooks/pre-commit"
   chmod +x "$d/.git/hooks/pre-commit"
-  # el hook pasa -c "$REPO_ROOT/.gitleaks.toml" explicito: sin este fichero en
-  # la raiz del repo de prueba, gitleaks falla la carga de config (FTL, exit=1)
-  # y todos los commits quedarian BLOCK por el motivo equivocado -- copiarlo
-  # replica la raiz real de una instalacion (claude/.gitleaks.toml -> $CLAUDE_HOME/.gitleaks.toml).
-  cp "$CONFIG_SRC" "$d/.gitleaks.toml"
+  # La config NO se copia a la raiz del repo: eso era el fixture que tapaba el bug.
+  # install.sh deja .gitleaks.toml en $CLAUDE_HOME, no en el repo protegido, asi que
+  # sembrarlo aqui simulaba una instalacion que no existe y ocultaba que el hook
+  # bloqueaba todos los commits de cualquier repo ajeno. Se replica la instalacion
+  # de verdad: la config vive en $CLAUDE_HOME/.gitleaks.toml (ver FAKE_CLAUDE_HOME).
 }
 
-expect_commit() { # $1 dir, $2 desc, $3 BLOCK|ALLOW
-  local d="$1" desc="$2" want="$3"
-  (cd "$d" && git commit -q -m test >/dev/null 2>&1)
+expect_commit() { # $1 dir, $2 desc, $3 BLOCK|ALLOW [, $4 CLAUDE_HOME a usar]
+  local d="$1" desc="$2" want="$3" home="${4:-$FAKE_CLAUDE_HOME}"
+  (cd "$d" && CLAUDE_HOME="$home" git commit -q -m test >/dev/null 2>&1)
   local st=$?
   if { [ "$want" = BLOCK ] && [ $st -ne 0 ]; } || { [ "$want" = ALLOW ] && [ $st -eq 0 ]; }; then
     pass=$((pass+1))
@@ -43,6 +43,14 @@ if ! command -v gitleaks >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/gitleaks" ]
 fi
 
 BASE=$(mktemp -d)
+
+# Instalacion simulada: la config donde de verdad la deja install.sh.
+FAKE_CLAUDE_HOME="$BASE/claude-home"
+mkdir -p "$FAKE_CLAUDE_HOME"
+cp "$CONFIG_SRC" "$FAKE_CLAUDE_HOME/.gitleaks.toml"
+# Y una instalacion SIN config, para el caso que el fixture anterior tapaba.
+SIN_CONFIG="$BASE/claude-home-vacio"
+mkdir -p "$SIN_CONFIG"
 
 # 1/3) credencial real con nombre de fichero inocente, incl. via comando
 #      multilinea (la posicion de "git add" en el comando es irrelevante:
@@ -182,6 +190,32 @@ HIGHENT="aB3xK9mQ7zP2w$(printf '%s' R5tY8uJ)"
 printf 'API_KEY=%s\n' "$HIGHENT" > "$D/config.yaml"
 (cd "$D" && git add config.yaml)
 expect_commit "$D" "clave de alta entropia en .yaml sigue bloqueando (reglas por defecto intactas)" BLOCK
+
+# --- 19/20/21) resolucion de la config: el defecto que el fixture tapaba -------
+# El hook pasaba a ciegas -c "$REPO_ROOT/.gitleaks.toml". Como install.sh deja ese
+# fichero en $CLAUDE_HOME y no en el repo protegido, cualquier compañero que activase
+# la Capa 2 siguiendo docs/05-security.md se quedaba sin poder comitear NADA, con un
+# mensaje que decia "posibles secretos" cuando lo que faltaba era un fichero. Estos
+# tres casos son la linea que separa "no encuentra la config" de "no hay secretos".
+
+# 19) instalacion normal (config solo en CLAUDE_HOME): un fichero inocente pasa
+D="$BASE/config-en-claude-home"; newrepo "$D"
+printf 'hola mundo\n' > "$D/README.md"
+(cd "$D" && git add README.md)
+expect_commit "$D" "config en CLAUDE_HOME: fichero inocente comitea" ALLOW
+
+# 20) sin config en ninguna parte: se degrada a las reglas por defecto, NO se bloquea
+D="$BASE/sin-config"; newrepo "$D"
+printf 'hola mundo\n' > "$D/README.md"
+(cd "$D" && git add README.md)
+expect_commit "$D" "sin .gitleaks.toml en ningun sitio: NO bloquea un commit limpio" ALLOW "$SIN_CONFIG"
+
+# 21) ...y degradarse no es rendirse: la credencial real sigue bloqueando
+D="$BASE/sin-config-con-secreto"; newrepo "$D"
+AKIA6="AKIA$(printf '%s' L2K5J8H3G6F9D4S7)"
+printf 'KEY=%s\n' "$AKIA6" > "$D/creds.txt"
+(cd "$D" && git add creds.txt)
+expect_commit "$D" "sin config, credencial real sigue bloqueando (reglas por defecto)" BLOCK "$SIN_CONFIG"
 
 rm -rf "$BASE"
 echo "PASS=$pass FAIL=$fail"

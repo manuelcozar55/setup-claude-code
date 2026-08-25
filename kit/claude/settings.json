@@ -21,9 +21,10 @@
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~/*)",
       "Bash(git push --force *)",
-      "Bash(git push -f *)",
+      "Bash(git push -*f *)",
+      "Bash(git push -f* *)",
       "Bash(git push * --force)",
-      "Bash(git push * -f)",
+      "Bash(git push * -*f)",
       "mcp__linkedin__send_message",
       "mcp__linkedin__connect_with_person"
     ]
