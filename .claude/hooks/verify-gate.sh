@@ -35,23 +35,29 @@ fi
 
 AUT="$cwd/scripts/autonomy.sh"
 
+# Se invoca SIEMPRE desde $cwd y SIN --session: la clave del estado es el directorio del
+# proyecto. Pasar aqui el session_id del payload era el fallo original -- quien arranca el
+# run (el modelo, por Bash) no conoce ese UUID, asi que escribia en otro fichero, el gate
+# no encontraba nada y caia a modo normal sin bloquear. Fallaba en abierto y en silencio.
+aut() { (cd "$cwd" && "$AUT" "$@"); }
+
 # ─────────────────────────── MODO AUTONOMO ───────────────────────────
-if [ -x "$AUT" ] && oracle=$("$AUT" oracle --session "$sid" 2>/dev/null) && [ -n "$oracle" ]; then
+if [ -x "$AUT" ] && oracle=$(aut oracle 2>/dev/null) && [ -n "$oracle" ]; then
   out=$(cd "$cwd" && timeout 600 sh -c "$oracle" 2>&1)
   rc=$?
   if [ "$rc" -eq 0 ]; then
-    "$AUT" stop --session "$sid" >/dev/null 2>&1
+    aut stop >/dev/null 2>&1
     printf '%s\n' "$out" | tail -5 >&2
     echo "── mcharness: oraculo VERDE, run autonomo cerrado ──" >&2
     exit 0
   fi
 
-  n=$("$AUT" attempt --session "$sid" 2>/dev/null); arc=$?
+  n=$(aut attempt 2>/dev/null); arc=$?
   tail_out=$(printf '%s' "$out" | tail -25)
 
   if [ "$arc" -ne 0 ]; then
     # Presupuesto agotado: se deja terminar y se devuelve el control con el fallo delante.
-    "$AUT" stop --session "$sid" >/dev/null 2>&1
+    aut stop >/dev/null 2>&1
     {
       echo "── mcharness: presupuesto de reparaciones agotado ($n) ──"
       echo "El oraculo sigue en rojo. NO se ha aflojado el sensor: se para y se te devuelve."

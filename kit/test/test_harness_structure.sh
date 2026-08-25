@@ -251,18 +251,40 @@ fi
 echo "== 7) test_hook_timeouts =="
 echo "  nota: linea base heredada kit/claude/settings.json usa timeout=10s en sus $n_base_hooks hooks y queda FUERA de este presupuesto."
 if [ -f config/settings.template.json ]; then
-  mapfile -t hook_lines < <(jq -r '[.hooks[][]?.hooks[]?] | .[] | (.command // "SIN_COMANDO") + "|" + (if has("timeout") then (.timeout|tostring) else "SIN_TIMEOUT" end)' config/settings.template.json)
+  # El presupuesto de 5 s protege el CAMINO CALIENTE: UserPromptSubmit corre en cada prompt
+  # y PostToolUse en cada llamada a herramienta, asi que ahi cada milisegundo se paga cientos
+  # de veces. El Stop hook no esta en ese camino -- corre una vez al final del turno -- y en
+  # modo autonomo su trabajo ES ejecutar el oraculo. Declararlo a 5 s no lo hacia barato: lo
+  # hacia INUTIL, porque Claude Code mata el hook antes de que el oraculo termine (el
+  # `make test` de este mismo repo tarda ~30 s) y el gate falla EN ABIERTO, dejando cerrar el
+  # turno con el oraculo en rojo. El presupuesto de un Stop hook no es un numero fijo: es
+  # coherencia con el `timeout` que el propio script se aplica por dentro.
+  mapfile -t hook_lines < <(jq -r '.hooks | to_entries[] | .key as $ev | .value[]? | .hooks[]? | $ev + "|" + (.command // "SIN_COMANDO") + "|" + (if has("timeout") then (.timeout|tostring) else "SIN_TIMEOUT" end)' config/settings.template.json)
   bad=0
   for h in "${hook_lines[@]}"; do
-    cmd="${h%|*}"; to="${h##*|}"
-    if [ "$to" = "SIN_TIMEOUT" ]; then
-      bad=$((bad + 1)); echo "  NOT ok - hook sin timeout declarado: $cmd"
-    elif ! [[ "$to" =~ ^[0-9]+$ ]] || [ "$to" -gt 5 ]; then
-      bad=$((bad + 1)); echo "  NOT ok - hook con timeout > 5s: $cmd (timeout=$to)"
+    ev="${h%%|*}"; rest="${h#*|}"; cmd="${rest%|*}"; to="${rest##*|}"
+    if [ "$to" = "SIN_TIMEOUT" ] || ! [[ "$to" =~ ^[0-9]+$ ]]; then
+      bad=$((bad + 1)); echo "  NOT ok - hook sin timeout numerico declarado: $ev $cmd"
+      continue
+    fi
+    if [ "$ev" = "Stop" ]; then
+      script=".claude/hooks/$(basename "$cmd")"
+      interno=$(grep -oE '\btimeout [0-9]+' "$script" 2>/dev/null | grep -oE '[0-9]+' | sort -rn | head -1)
+      if [ -n "$interno" ] && [ "$to" -lt "$interno" ]; then
+        bad=$((bad + 1))
+        echo "  NOT ok - el Stop hook se mata antes de acabar su propio trabajo: $cmd declara timeout=$to pero ejecuta con 'timeout $interno'"
+      fi
+    elif [ "$to" -gt 5 ]; then
+      bad=$((bad + 1)); echo "  NOT ok - hook de camino caliente con timeout > 5s: $ev $cmd (timeout=$to)"
     fi
   done
   ck "$([ "${#hook_lines[@]}" -ge 1 ] && echo y || echo n)" "y" "hay hooks declarados en config/settings.template.json (${#hook_lines[@]})"
-  ck "$([ "$bad" -eq 0 ] && echo y || echo n)" "y" "todo hook de config/settings.template.json tiene timeout explicito <= 5 (invalidos: $bad)"
+  ck "$([ "$bad" -eq 0 ] && echo y || echo n)" "y" "timeouts coherentes: camino caliente <= 5s, Stop >= su timeout interno (invalidos: $bad)"
+
+  # Falsabilidad: con el timeout=5 que traia originalmente el Stop hook, el check tiene que
+  # saltar. Sin esto, todo lo anterior podria estar pasando por no mirar donde debe.
+  f_int=$(grep -oE '\btimeout [0-9]+' .claude/hooks/verify-gate.sh 2>/dev/null | grep -oE '[0-9]+' | sort -rn | head -1)
+  ck "$([ -n "$f_int" ] && [ 5 -lt "$f_int" ] && echo y || echo n)" "y" "falsabilidad: un Stop hook a 5s con 'timeout $f_int' dentro se detecta como incoherente"
 else
   ck "y" "y" "config/settings.template.json aun no creado (check de timeouts pasa por vacio)"
 fi

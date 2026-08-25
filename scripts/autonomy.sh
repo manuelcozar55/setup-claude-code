@@ -11,6 +11,10 @@
 #
 # Uso:
 #   autonomy.sh start --oracle CMD --goal TEXTO [--max-repairs N] [--session ID]
+#
+#   Sin --session la clave es el directorio actual: un run activo por proyecto. El Stop
+#   hook lee ese mismo estado situandose en el cwd del payload, asi que ambos lados
+#   coinciden sin que nadie tenga que conocer el session_id.
 #   autonomy.sh status [--session ID]      estado legible; exit 0 activo, 1 inactivo
 #   autonomy.sh attempt [--session ID]     consume un intento; exit 1 si se agotaron
 #   autonomy.sh stop [--session ID]        cierra el run
@@ -23,16 +27,25 @@ mkdir -p "$STATE_DIR"
 die() { printf 'autonomy: %s\n' "$*" >&2; exit 1; }
 
 cmd="${1:-}"; shift || true
-SESSION="default"; ORACLE=""; GOAL=""; MAXREP=3
+SESSION=""; ORACLE=""; GOAL=""; MAXREP=3
 while [ $# -gt 0 ]; do
   case "$1" in
     --oracle)      ORACLE="${2:-}"; shift 2 ;;
     --goal)        GOAL="${2:-}"; shift 2 ;;
     --max-repairs) MAXREP="${2:-3}"; shift 2 ;;
-    --session)     SESSION="${2:-default}"; shift 2 ;;
+    --session)     SESSION="${2:-}"; shift 2 ;;
     *) die "opcion desconocida: $1" ;;
   esac
 done
+
+# La clave del estado es el DIRECTORIO del proyecto, no el session_id de Claude Code.
+# El session_id solo lo conoce el Stop hook, porque le llega en su payload; quien arranca
+# el run es el modelo, desde Bash, y ahi no esta expuesto. Con el session_id como clave,
+# `start` escribia un fichero que el gate nunca buscaba: el gate no encontraba run, caia a
+# modo normal y dejaba terminar el turno con el oraculo en rojo -- exactamente el fallo que
+# este modo existe para impedir, y en silencio. Un run por proyecto es ademas el modelo
+# real de uso. `--session` se conserva como override explicito para los tests.
+[ -n "$SESSION" ] || SESSION="$(basename "$PWD")-$(printf '%s' "$PWD" | cksum | cut -d' ' -f1)"
 F="$STATE_DIR/run-$SESSION.env"
 
 case "$cmd" in

@@ -33,6 +33,17 @@ P="$T/proj"
 pl() { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"Stop","stop_hook_active":%s}' \
        "$1" "$P" "${2:-false}"; }
 
+# El run se arranca COMO LO ARRANCA EL MODELO: desde el directorio del proyecto y sin
+# --session, porque el session_id solo existe dentro del payload del hook y quien lanza
+# el run (Bash) no lo conoce. La clave del estado es por eso el directorio. Los payloads
+# de abajo llevan a proposito un UUID distinto en cada llamada: si el gate volviera a
+# leer el estado por session_id, no encontraria run, caeria a modo normal y dejaria
+# cerrar el turno con el oraculo en ROJO -- en silencio, que es como se colo la primera vez.
+runp() { (cd "$P" && ./scripts/autonomy.sh "$@"); }
+uuid() { printf '%s-%s-4%s-a%s-%s' "$(openssl rand -hex 4 2>/dev/null || echo deadbeef)" \
+         "$(openssl rand -hex 2 2>/dev/null || echo cafe)" "$(openssl rand -hex 1 2>/dev/null || echo 1f)ab" \
+         "$(openssl rand -hex 1 2>/dev/null || echo 2c)3d" "$(openssl rand -hex 6 2>/dev/null || echo 0123456789ab)"; }
+
 # --- 1. El oraculo debe ser inmune a la reescritura de comandos (M-001) -----
 "$AUT" start --session g0 --oracle "pytest -q" --goal "x" >/dev/null 2>&1
 ck "$?" "1" "rechaza un oraculo por nombre suelto (seria reescrito: MISTAKES M-001)"
@@ -50,9 +61,9 @@ ck "$?" "0" "acepta una ruta absoluta"
 "$AUT" stop --session g1 >/dev/null
 
 # --- 3. Gate con oraculo ROJO: bloquea -------------------------------------
-"$AUT" start --session s1 --oracle "/bin/false" --goal "que pase" --max-repairs 3 >/dev/null
-out=$(pl s1 | "$GATE" 2>/dev/null)
-ck "$(decision "$out")" "block" "oraculo rojo -> {\"decision\":\"block\"}"
+runp start --oracle "/bin/false" --goal "que pase" --max-repairs 3 >/dev/null
+out=$(pl "$(uuid)" | "$GATE" 2>/dev/null)
+ck "$(decision "$out")" "block" "oraculo rojo -> {\"decision\":\"block\"} (run arrancado sin --session)"
 reason=$(printf '%s' "$out" | jq -r '.reason // ""' 2>/dev/null)
 ckhas "$reason" "ROJO"   y "el motivo dice que el oraculo esta en rojo"
 ckhas "$reason" "sensor" y "el motivo PROHIBE explicitamente aflojar el sensor"
@@ -60,34 +71,34 @@ ckhas "$reason" "sensor" y "el motivo PROHIBE explicitamente aflojar el sensor"
 # --- 4. Cap de Claude Code: el hook se aparta ------------------------------
 # Si esto falla, el hook secuestra la sesion pese al mecanismo de seguridad del propio
 # Claude Code. Es el fallo mas grave posible en un Stop hook.
-r=$(pl s1 true | "$GATE" 2>/dev/null)
+r=$(pl "$(uuid)" true | "$GATE" 2>/dev/null)
 ck "$(printf '%s' "$r" | grep -c . || true)" "0" "stop_hook_active=true -> NO bloquea (respeta el cap de 8)"
 
 # --- 5. Presupuesto agotado: libera en vez de insistir ---------------------
-for _ in 1 2 3 4 5; do pl s1 | "$GATE" >/dev/null 2>&1; done
-r=$(pl s1 | "$GATE" 2>/dev/null)
+for _ in 1 2 3 4 5; do pl "$(uuid)" | "$GATE" >/dev/null 2>&1; done
+r=$(pl "$(uuid)" | "$GATE" 2>/dev/null)
 ck "$(printf '%s' "$r" | grep -c . || true)" "0" "agotado el presupuesto -> deja terminar (no insiste indefinidamente)"
-"$AUT" status --session s1 >/dev/null 2>&1
+runp status >/dev/null 2>&1
 ck "$?" "1" "y cierra el run autonomo al agotarlo"
 
 # --- 6. Gate con oraculo VERDE: libera y cierra ----------------------------
-"$AUT" start --session s2 --oracle "/bin/true" --goal "trivial" >/dev/null
-r=$(pl s2 | "$GATE" 2>/dev/null)
+runp start --oracle "/bin/true" --goal "trivial" >/dev/null
+r=$(pl "$(uuid)" | "$GATE" 2>/dev/null)
 ck "$(printf '%s' "$r" | grep -c . || true)" "0" "oraculo verde -> no bloquea"
-"$AUT" status --session s2 >/dev/null 2>&1
+runp status >/dev/null 2>&1
 ck "$?" "1" "oraculo verde -> cierra el run automaticamente"
 
 # --- 7. Sin run activo: modo normal, nunca bloquea -------------------------
-r=$(pl sin-run | "$GATE" 2>/dev/null)
+r=$(pl "$(uuid)" | "$GATE" 2>/dev/null)
 ck "$(printf '%s' "$r" | grep -c . || true)" "0" "sin run autonomo -> modo normal, no emite bloqueo"
 
 # --- 8. Falsabilidad: el gate DISCRIMINA entre rojo y verde ----------------
 # Sin esto, todo lo anterior podria estar pasando con un gate que nunca bloquea.
-"$AUT" start --session f1 --oracle "/bin/false" --goal "x" >/dev/null
-rojo=$(decision "$(pl f1 | "$GATE" 2>/dev/null)")
-"$AUT" stop --session f1 >/dev/null
-"$AUT" start --session f2 --oracle "/bin/true" --goal "x" >/dev/null
-verde=$(decision "$(pl f2 | "$GATE" 2>/dev/null)")
+runp start --oracle "/bin/false" --goal "x" >/dev/null
+rojo=$(decision "$(pl "$(uuid)" | "$GATE" 2>/dev/null)")
+runp stop >/dev/null
+runp start --oracle "/bin/true" --goal "x" >/dev/null
+verde=$(decision "$(pl "$(uuid)" | "$GATE" 2>/dev/null)")
 if [ "$rojo" = "block" ] && [ "$verde" = "ninguna" ]; then
   echo "ok - falsabilidad: rojo bloquea y verde no ('$rojo' vs '$verde')"; pass=$((pass+1))
 else
