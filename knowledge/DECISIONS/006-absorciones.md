@@ -57,8 +57,8 @@ Dos cambios estructurales, justificados:
    globs (`projects/*/*.jsonl` vs `projects/*/*/subagents/*.jsonl`), no por un filtro. Eso
    es frágil y no auditable: una sesión anidada un nivel más abajo desaparecería del
    denominador sin que nadie lo notara. Ahora se excluye `/subagents/` por nombre y se
-   declara en la salida. **Verificado que el conjunto resultante es idéntico** (47 / 192)
-   antes de aceptar el cambio.
+   declara en la salida. **Verificado que el conjunto resultante es idéntico** (47 sesiones /
+   192 transcripts de subagente, no una fracción) antes de aceptar el cambio.
 
 ## Alternativas descartadas
 

@@ -67,3 +67,11 @@ El orden de trabajo es **canal → sensores → guías**:
 
 - Böckeler, *Harness engineering*, 02-abr-2026 — primaria, verificada 2026-08-21.
 - Reproducción del fallo del canal: `knowledge/MISTAKES.md` · M-001.
+
+---
+
+**Actualización (2026-08-25).** El diagnóstico de partida sigue en pie, pero la cifra que lo
+acompaña no: el número de sesiones con oráculo ejecutado **no era 0**, era **27,7 %** (13 de
+47). El 0 era lo que se sabía antes de tener instrumento, y `scripts/metrics.py` lo corrigió
+el mismo día — ver `knowledge/COST-LOG.md`, KPI 5. No se reescribe el texto de arriba porque
+es el registro de la decisión; se anota aquí que la cifra de referencia es la del COST-LOG.

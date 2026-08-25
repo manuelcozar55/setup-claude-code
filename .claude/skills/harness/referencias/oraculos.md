@@ -108,6 +108,6 @@ que se equivoca ahí no se revierte, se pierde. Por eso el harness no ejecuta ta
 destructivas en este proyecto mientras no exista un repositorio.
 
 ```bash
-cd /mnt/c/Users/ManuelCozarBaranguan/Downloads/ofertadora
+cd /mnt/c/Users/…/Downloads/ofertadora
 git init && git add -A && git commit -m "línea base antes de automatizar"
 ```

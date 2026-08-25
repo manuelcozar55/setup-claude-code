@@ -10,7 +10,7 @@ Formato: **qué pasó** (con reproducción literal) · **por qué importa** ·
 
 ## M-001 · El canal de Bash reescribe el comando antes de ejecutarlo
 
-**Fecha:** 2026-08-21 · **Severidad:** crítica · **Estado:** mitigado por convención, pendiente de cablear
+**Fecha:** 2026-08-21 · **Severidad:** crítica · **Estado:** cableado (2026-08-25) — lo cubren `test_oracle_registry`, dentro de `kit/test/test_harness_structure.sh`, y `kit/test/test_autonomy.sh`
 
 ### Qué pasó
 
@@ -57,7 +57,9 @@ el diseño y por eso se repara antes de construir ningún control nuevo.
 ### Dónde vive
 
 - **Sensor determinista:** `test_oracle_registry` rechaza toda entrada de `ORACLES.md`
-  cuyo comando no empiece por `/` o por `rtk proxy`. *(FASE 4)*
+  cuyo comando no empiece por `/`, por `rtk proxy` o por `make`. Y `scripts/autonomy.sh`
+  rechaza arrancar un run autónomo con un oráculo por nombre suelto; `kit/test/test_autonomy.sh`
+  lo prueba con un caso rechazado y dos aceptados.
 - **Guía:** una línea en `CLAUDE.md`, no un párrafo. El test es quien manda.
 
 ### Contra-argumento buscado

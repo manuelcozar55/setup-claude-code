@@ -73,3 +73,11 @@ eliminar y redirigir, no añadir.
 Conviven dos vocabularios (`kit` y `mcharness`). Se mitiga documentando la frontera en el
 primer bloque de `CLAUDE.md` y en el README. **Es deuda declarada**, no accidental: si
 alguna vez se corta una v2.0.0 con breaking changes, ese es el momento de unificar.
+
+---
+
+**Actualización (2026-08-25).** Hoy son **24 suites** (`ls kit/test/*.sh | wc -l`) y
+`kit/install.sh` tiene **448 líneas** (`wc -l kit/install.sh`); las cifras de 2026-08-21 que
+cita este ADR se dejan como estaban porque son el registro de aquel día. La frontera que
+fija el ADR sigue vigente: el presupuesto se sigue aplicando solo a la capa nueva y la línea
+base de `kit/` sigue fuera del cómputo.

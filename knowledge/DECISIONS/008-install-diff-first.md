@@ -84,3 +84,12 @@ del estado actual. Nunca se destruye sin red.
   resulta molesta, se extiende el gate.
 - La detección requiere `git` en el PATH. Sin él se cae a la rama de siempre — se prefiere
   fallar hacia el comportamiento conocido.
+
+---
+
+**Actualización (2026-08-25).** Las "4 suites" que cita este ADR se quedan cortas y ya lo
+estaban cuando se escribió: las suites de `kit/test/` que ejecutan `kit/install.sh` son
+**11**, medido con `grep -lE '(bash |sh |")[^ ]*install\.sh' kit/test/*.sh | wc -l` tanto
+sobre el árbol de hoy como sobre el commit del ADR. El razonamiento no depende del número
+—prohibir la escritura rompía las suites que la prueban, sean 4 u 11—, así que la decisión
+queda como está y solo se corrige la cifra.

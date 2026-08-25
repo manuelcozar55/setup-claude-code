@@ -10,7 +10,7 @@ delataría, y qué hace hoy el diseño al respecto — incluyendo dónde **no** 
 
 ## 1 · El harness exigía disciplina en vez de cablearla · **probabilidad alta**
 
-**Cómo pasó.** Los cinco comandos son excelentes y nadie los escribió. `/spec` requiere
+**Cómo pasó.** Los seis comandos son excelentes y nadie los escribió. `/spec` requiere
 teclear `/spec` antes de pedir algo, y en un martes con prisa se teclea la petición a secas.
 A los dos meses el flujo es el de siempre y `.claude/commands/` es un museo.
 
@@ -21,8 +21,11 @@ funcionó entonces y no hay razón para que funcione ahora.
 **Señal temprana.** `sessions_with_oracle_pct` estancado en ~28 % a los dos meses. Y
 `slash_commands` en `metrics.py` sin ninguna entrada de `/spec` o `/verify`.
 
-**Qué hace el diseño.** Parcialmente: `session-brief.sh` pone el oráculo delante al arrancar
-y `verify-gate.sh` avisa al terminar. Ninguno de los dos **obliga**.
+**Qué hace el diseño.** Parcialmente: `auto-spec.sh` (`UserPromptSubmit`) detecta un encargo
+sin criterio de verificación e inyecta el oráculo del proyecto en ese mismo prompt, y
+`verify-gate.sh` (Stop) avisa al terminar si se tocó código sin verificar —y en modo autónomo
+**impide cerrar el turno** con el oráculo en rojo (ADR 010). Ninguno de los dos depende de
+que alguien se acuerde de teclear un comando; ninguno **obliga** en sesión interactiva.
 
 **Qué NO hace, y hay que decirlo.** Nada fuerza a usar `/spec`. Es la debilidad central de
 esta versión y es deliberada (ADR 004): un gate bloqueante con falsos positivos se desactiva
@@ -97,7 +100,7 @@ duplicaba contenido existente.
 ## Lo que este pre-mortem no cubre
 
 Que el harness **sí se use y aun así no mejore nada**. Es un desenlace posible y distinto
-del fracaso por abandono: los 21 tests verifican que el harness está **bien formado**, no
-que mejore resultados. Eso solo lo dirán los KPIs con el tiempo — y por eso la causa 2 es la
-más grave de la lista, aunque no lo parezca: sin segundo punto de medida, este documento
-nunca se puede resolver.
+del fracaso por abandono: los 23 checks de `test_harness_structure.sh` verifican que el
+harness está **bien formado**, no que mejore resultados. Eso solo lo dirán los KPIs con el
+tiempo — y por eso la causa 2 es la más grave de la lista, aunque no lo parezca: sin segundo
+punto de medida, este documento nunca se puede resolver.

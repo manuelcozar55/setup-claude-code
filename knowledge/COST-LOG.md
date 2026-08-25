@@ -5,7 +5,8 @@ Una métrica sin procedencia verificable es una predicción, no un dato.
 
 Instrumento: `scripts/metrics.py` (absorbido de `~/ai-mastery/bucle/analyze.py`).
 Filtro declarado para contar sesiones: se excluye toda ruta que contenga `/subagents/`.
-Sin él el denominador se infla ~×5 (189 de 236 transcripts son de subagente).
+Sin él el denominador se infla ~×5 (192 de 239 transcripts son de subagente, según
+`subagents.transcripts` del propio snapshot).
 
 ---
 

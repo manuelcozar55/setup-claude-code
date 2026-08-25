@@ -83,6 +83,12 @@ uno que no verifica: parece que sí.**
 - **Un oráculo lento cuesta caro**: se ejecuta al final de cada turno. Hay `timeout 600`,
   pero un oráculo de varios minutos hace el modo inusable. La regla de la skill `harness`
   aplica: el presupuesto real es `duración × 5`.
+- **El `timeout` declarado del hook queda exento del presupuesto de 5 s**, que protege el
+  camino caliente (`UserPromptSubmit`, `PostToolUse`). El `Stop` corre una vez por turno y
+  su trabajo *es* ejecutar el oráculo: si se declarase por debajo del `timeout 600` que el
+  script se aplica por dentro, Claude Code lo mataría a mitad y el gate fallaría **en
+  abierto** — permitiría cerrar el turno justo cuando el oráculo tarda. Por eso
+  `settings.json` declara `"timeout": 600` para `verify-gate.sh`.
 - **El modo autónomo no sustituye al criterio.** Verifica que el oráculo pasa, no que se
   haya construido lo correcto. Por eso `/work` acaba con una revisión adversaria y un
   informe que declara qué **no** cubre el oráculo.

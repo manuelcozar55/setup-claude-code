@@ -77,3 +77,17 @@ Ver `.claude/skills/coach/SKILL.md`.
 La primera comparación útil de tendencia no existe hasta el segundo snapshot. Un harness que
 se juzga a sí mismo necesita dos puntos, y hoy solo hay uno. **Este ADR no demuestra
 mejora: establece desde dónde se mide.**
+
+---
+
+**Actualización (2026-08-25).** Dos cifras de este ADR quedaron por debajo de la línea base
+que se selló ese mismo día, y la de referencia es la de `knowledge/COST-LOG.md`:
+
+- El retrabajo por turno no es **9,0 % (12/134)** sino **8,8 % (12/136)**. Son dos pasadas
+  del instrumento de la misma tarde; la que vale es la del snapshot conservado
+  (`metrics-2026-08-21.json`: `user_turns` 136, `rework_turns` 12, `rework_rate_pct` 8,8).
+- El KPI 5 no arranca en **0**: el snapshot ya dio **27,7 %** (13 / 47). El 0 era la
+  ausencia de medición, no una medida.
+
+El texto de arriba se deja intacto: es el registro fechado de la decisión, y la decisión
+—archivar las cifras heredadas y medir contra una línea base propia— no cambia.

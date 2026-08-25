@@ -63,3 +63,15 @@ El harness **puede ser ignorado**. Es deliberado: un harness que no se puede ign
 desinstalado. La contrapartida es que su eficacia depende de que los avisos sean pocos y
 pertinentes — por eso `verify-gate` solo habla si hay ficheros modificados en un repo git,
 y calla en sesiones de lectura.
+
+---
+
+**Actualización (2026-08-25).** `session-brief.sh` ya no existe: su función la hace
+`.claude/hooks/auto-spec.sh` (`UserPromptSubmit`), que entra en el primer encargo en vez de
+en el arranque (ADR 009). Y esta decisión está modificada en parte por los ADR 009 y 010: el
+harness entra solo, sin comando que teclear, y en **modo autónomo** `verify-gate.sh` sí
+bloquea el cierre de turno mientras el oráculo esté en rojo, porque la premisa de este ADR
+—que hay un humano delante que reacciona al aviso— no se cumple ahí. En sesión interactiva
+lo que dice este ADR sigue vigente. La otra afirmación que ha caducado es la de las
+alternativas descartadas: el KPI de sesiones con oráculo **no valía 0**, valía **27,7 %**
+(`knowledge/COST-LOG.md`, KPI 5); nunca se había medido, que no es lo mismo.

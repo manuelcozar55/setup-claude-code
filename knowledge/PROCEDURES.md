@@ -35,8 +35,9 @@ resuelve las dos variantes o no es portable.
 
 **Validado:** 2026-08-21 · **Comando:** `/usr/bin/python3 scripts/metrics.py`
 
-`find ~/.claude/projects -name "*.jsonl"` devuelve **236 ficheros**, de los que solo **47 son
-sesiones reales**: 189 están bajo `*/subagents/*` y son transcripts de subagente. Contarlos
+`find ~/.claude/projects -name "*.jsonl"` devolvía **239 ficheros** el día de la validación,
+de los que solo **47 eran sesiones reales**: 192 estaban bajo `*/subagents/*` y eran
+transcripts de subagente (cifras del snapshot `metrics-2026-08-21.json`). Contarlos
 infla el denominador ~×5 y deforma todas las medias.
 
 **Filtra siempre `-not -path "*/subagents/*"` y declara el filtro** en la salida, no solo en
@@ -71,16 +72,20 @@ es la firma del problema.
 **Validado:** 2026-08-21
 
 ```bash
-make test                                              # oráculo, ~22 s, exit 0 o no está hecho
-shellcheck -x scripts/*.sh .claude/hooks/*.sh          # lint, cero hallazgos
+make test                                              # oráculo, ~30 s, exit 0 o no está hecho
+/usr/bin/shellcheck -x scripts/*.sh .claude/hooks/*.sh # lint, cero hallazgos
 bash kit/scan-secrets.sh .                             # secretos, capa 1
-gitleaks dir --no-banner -c kit/claude/.gitleaks.toml .  # secretos, capa 2
+~/.local/bin/gitleaks dir --no-banner -c kit/claude/.gitleaks.toml .  # secretos, capa 2
 git diff --name-only                                   # ¿tocaste el sensor?
 ```
 
 Ese último es el que se olvida y el que más importa: si en el diff aparece un fichero de
 test, un `conftest.py` o el propio comando del oráculo, **has aflojado el sensor** y el
 verde no significa nada.
+
+`shellcheck` y `gitleaks` van por ruta absoluta por lo mismo que los oráculos (M-001, P-003):
+por nombre suelto el hook `PreToolUse/Bash` sustituiría el ejecutable y el verde sería el de
+otro programa.
 
 Después: rama + PR, nunca commit directo a `main`. Los cambios en `knowledge/` van en
 commits aparte con prefijo `knowledge:`.

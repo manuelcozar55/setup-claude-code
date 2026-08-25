@@ -22,10 +22,10 @@ No es una opinión, no es "revisar que funcione", no es el juicio del agente al 
 
 | Proyecto | Comando | Resultado | Fecha | Duración | Fiabilidad |
 |---|---|---|---|---|---|
-| **mcharness** (este repo) | `make test` | ✅ **exit 0** · 16 suites, 0 failed | 2026-08-21 | 17 s | **Alta.** Determinista, sin red, sin LLM. Es el oráculo de referencia del harness. |
+| **mcharness** (este repo) | `make test` | ✅ **exit 0** · 24 suites, 0 failed | 2026-08-25 | ~30 s | **Alta.** Determinista, sin red, sin LLM. Es el oráculo de referencia del harness. |
 | **mcharness** (lint) | `/usr/bin/shellcheck -x scripts/*.sh kit/**/*.sh` | ✅ limpio | 2026-08-21 | <2 s | Alta. Computacional. |
-| **mcharness** (secretos) | `/home/manuelcozarbaranguan/.local/bin/gitleaks dir --no-banner .` | ✅ `no leaks found` | 2026-08-21 | 124 ms | Alta. |
-| `sistema-riego` | `/home/manuelcozarbaranguan/.venvs/riego/bin/pytest tests/unit -q` | ⏸️ **NO EJECUTADO** | 2026-08-21 | — | **Desconocida.** Ejecución no autorizada por el propietario. Ver nota. |
+| **mcharness** (secretos) | `/home/…/.local/bin/gitleaks dir --no-banner .` | ✅ `no leaks found` | 2026-08-21 | 124 ms | Alta. |
+| `sistema-riego` | `/home/…/.venvs/riego/bin/pytest tests/unit -q` | ⏸️ **NO EJECUTADO** | 2026-08-21 | — | **Desconocida.** Ejecución no autorizada por el propietario. Ver nota. |
 
 ### Nota sobre `sistema-riego`
 
