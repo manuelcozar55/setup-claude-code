@@ -99,6 +99,39 @@ abstenerse, pedir confirmación, o respetar un límite de alcance). Optimizar so
 dirección (todo "debe hacer X") produce un harness que aprende a ser más permisivo sin
 que se note en el eval set.
 
+## LangSmith (local o nube)
+
+```bash
+python3 kit/evals/langsmith_push.py --dry-run    # ver el payload, sin enviar nada
+LANGSMITH_ENDPOINT=http://localhost:1984 LANGSMITH_API_KEY=... \
+  python3 kit/evals/langsmith_push.py            # instancia propia
+```
+
+Sube una traza **padre por (sesión, brazo)** y un **hijo por tarea**, colgado del
+padre vía `dotted_order`. Así el árbol se lee por brazo: comparar `on` con `off`
+es el objetivo, y mezclarlos bajo un mismo padre lo haría ilegible.
+
+Sin dependencias (`urllib` de la stdlib). El SDK `langsmith` vive en
+`~/.venvs/tools`, pero el eval corre con el `python3` del sistema; exigir el SDK
+aquí haría que el emisor fuese el único componente incapaz de ejecutarse donde se
+ejecuta lo que mide.
+
+Tres decisiones deliberadas:
+
+- **Sin clave no es un error**: avisa y sale 0. Un eval que se cae porque el
+  observatorio no está levantado convierte la telemetría en punto único de fallo
+  de la medición, que es justo al revés.
+- **El resultado viaja como texto**, no como 0/1: un `error` no es un 0.
+- **Al fallar no imprime traceback**, que arrastraría la cabecera `x-api-key`.
+
+`kit/test/test_evals.sh` comprueba las tres, más que `LANGSMITH_ENDPOINT` se
+respeta de verdad — si se ignorara, el emisor seguiría funcionando contra la nube
+y nadie lo notaría hasta ver los datos en el sitio equivocado.
+
+**Estado en este equipo:** no hay instancia local (sin demonio Docker) ni clave, y
+`~/.claude/settings.json` tiene `TRACE_TO_LANGSMITH: "false"`. El emisor está
+escrito y probado en seco; falta levantar el servidor y darle una clave.
+
 ## Por qué `--permission-mode auto`
 
 `run.sh` invoca `claude -p` con `--permission-mode auto`. Opciones descartadas:

@@ -199,5 +199,45 @@ case "$rep2" in
   *) echo "NOT ok - report.py no calcula el lift con dos brazos: $(echo "$rep2" | tr '\n' ' ')"; fail=$((fail+1));;
 esac
 
+# --- 7. El emisor a LangSmith -----------------------------------------------
+# Tres cosas, y la tercera es la que importa para "LangSmith LOCAL": si el
+# emisor ignorara LANGSMITH_ENDPOINT, seguiria funcionando contra la nube y
+# nadie lo notaria hasta que los datos aparecieran en el sitio equivocado.
+P="$E/langsmith_push.py"
+pay=$("$PY" "$P" --store "$S" --dry-run 2>/dev/null)
+shape=$(printf '%s' "$pay" | "$PY" -c "
+import json,sys
+p=json.load(sys.stdin)['post']
+par=[r for r in p if 'parent_run_id' not in r]
+chi=[r for r in p if 'parent_run_id' in r]
+ok=bool(par) and bool(chi) and all(
+    c['dotted_order'].startswith(next(x['dotted_order'] for x in par if x['id']==c['parent_run_id'])+'.')
+    for c in chi)
+print('anidado' if ok else 'suelto')
+" 2>/dev/null)
+ck "$shape" "anidado" "langsmith_push: cada tarea cuelga de la traza de su brazo"
+
+# Sin clave no puede ser un error: el eval ya midio, esto solo publica. Si
+# reventara, el observatorio caido tumbaria la medicion entera.
+env -u LANGSMITH_API_KEY -u CC_LANGSMITH_API_KEY \
+  "$PY" "$P" --store "$S" >/dev/null 2>&1
+ck "$?" 0 "langsmith_push: sin clave sale 0, no tumba el eval"
+
+# Endpoint local inalcanzable: tiene que intentarlo AHI (no en la nube), fallar
+# limpio y no escupir un traceback, que llevaria la cabecera x-api-key a stdout.
+out=$(LANGSMITH_ENDPOINT=http://127.0.0.1:1 LANGSMITH_API_KEY=clave-de-mentira \
+  "$PY" "$P" --store "$S" 2>&1); rc=$?
+case "$out" in
+  *Traceback*|*clave-de-mentira*)
+    echo "NOT ok - langsmith_push filtra traceback o la clave al fallar"; fail=$((fail+1));;
+  *127.0.0.1:1*)
+    if [ "$rc" -eq 1 ]; then
+      echo "ok - langsmith_push respeta LANGSMITH_ENDPOINT y falla limpio"; pass=$((pass+1))
+    else
+      echo "NOT ok - langsmith_push no senala fallo de subida (rc=$rc)"; fail=$((fail+1))
+    fi;;
+  *) echo "NOT ok - langsmith_push ignora LANGSMITH_ENDPOINT: $out"; fail=$((fail+1));;
+esac
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
