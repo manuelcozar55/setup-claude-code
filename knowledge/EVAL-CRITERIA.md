@@ -55,10 +55,11 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 + `test_evals.sh` §10: ningún check aprueba el estado inicial, y no hacer nada da `fail`, no `error` | ✅ |
 | E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan | ⚠️ **humano, sin cadencia fijada** |
-| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 18/18 mutantes; los 10 últimos versionados en `make mutantes`; los §9–§15 nacieron ya en rojo |
+| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 20/20 mutantes; los 12 últimos versionados en `make mutantes`; los §9–§16 nacieron ya en rojo |
 | E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **implementado, sin correr con API** |
 | E23 | Un brazo cuyo flag desapareció mide el harness completo con etiqueta falsa | hallazgo propio | `test_evals.sh` §13: los 4 flags tienen que seguir en `claude --help` | ✅ · sensor mutado |
 | E24 | No restar dos brazos que corrieron modelos distintos | hallazgo propio (E14 llevado al informe) | `report.py:comparables()` dice `NO COMPARABLE` en vez de dar un lift | ✅ · sensor mutado |
+| E25 | Un emisor de trazas probado **en seco** no es telemetría verificada | hallazgo propio | `langsmith_local.py` recibe de verdad + `test_evals.sh` §16: el payload viaja por red y se comprueba el árbol al otro lado | ✅ · sensor mutado |
 
 ## Las tres preguntas
 
@@ -293,6 +294,32 @@ Lo que sí se lleva de la cantera, y está sin implementar:
   ajustar el harness contra su propio eval, que es exactamente lo que el encargo pide
   ("ir mejorándolo con el uso").
 
+### «Medible en LangSmith local» era una afirmación sin sensor
+
+Lo era literalmente: el emisor existía, el bloque §7 comprobaba la **forma** del payload
+en seco, y nunca se había enviado una traza a nada. La razón no era pereza — **LangSmith
+autoalojado es de pago**: los contenedores no arrancan sin `LANGSMITH_LICENSE_KEY`, que se
+pide a ventas. Y en esta máquina hay una segunda puerta antes de esa: `docker` resuelve al
+binario de Docker Desktop de Windows y contesta *"The command 'docker' could not be found
+in this WSL 2 distro"*. **Son dos acciones del usuario, no una**, y ninguna está en manos
+de este repo.
+
+Lo que sí estaba en sus manos: `kit/evals/langsmith_local.py`, un receptor de la stdlib
+que habla el trozo del ingest que usa el emisor (`POST /runs/batch`) y guarda lo que
+recibe. No es LangSmith y el fichero lo dice en la primera línea: no hay interfaz, ni
+búsqueda, ni comparación entre tiradas. Lo que da es lo que faltaba — que el payload
+**viaje por red**, con cabeceras reales, y que se pueda mirar lo que queda al otro lado.
+
+Con eso, §16 comprueba cuatro cosas que en seco no se podían comprobar: que el emisor sube
+(202), que al otro lado queda un **árbol** y no una lista de runs sueltos, que cada traza
+llega **etiquetada con su brazo** —comparar `on` con `off` es el objetivo entero— y que sin
+clave **no llega nada**, que es más fuerte que el viejo "sale 0" (podía salir 0 y haber
+subido igual). Dos mutantes lo vigilan: quitarle la cabecera `x-api-key` al emisor y
+desenganchar los hijos de su padre.
+
+Pasar a LangSmith de verdad —nube, o autoalojado con licencia— es cambiar
+`LANGSMITH_ENDPOINT`. Que ese cambio baste es justo lo que §16 demuestra.
+
 ## Lo que falta, por orden de daño
 
 1. **Nada de los cinco brazos está corrido con API.** Es el hueco número uno desde que
@@ -304,11 +331,14 @@ Lo que sí se lleva de la cantera, y está sin implementar:
 2. **`RUNS=1` y `n` pequeño.** Con 20 tareas ya se puede, pero mientras no haya
    repeticiones los intervalos seguirán solapándose y casi todo caerá en `NEUTRO`.
    Es el techo real que queda, y multiplica el coste de arriba.
-3. **LangSmith local no está levantado.** No hay demonio Docker ni podman en esta
-   máquina, ni clave de la nube. El emisor y su sensor (`LANGSMITH_ENDPOINT`) están
-   escritos; falta la decisión de instalar el motor de Docker en WSL o dar una clave.
-   Hasta entonces, "medible en LangSmith" es una afirmación sin sensor.
-4. **Solo 10 de los 18 mutantes son reproducibles.** `make mutantes` versiona M9–M18 y
+3. **LangSmith *el producto* sigue sin levantar** — pero ya no es una afirmación sin
+   sensor: el emisor está probado de punta a punta contra un receptor local (arriba). Lo
+   que falta es la capa de consulta, y depende de **dos decisiones del usuario**, no de
+   código: activar la integración WSL en Docker Desktop, y conseguir una
+   `LANGSMITH_LICENSE_KEY` de empresa. Tres salidas, y ninguna sale gratis del todo: clave
+   de la **nube** (deja de ser local), **Langfuse** autoalojado (libre y local, pero sigue
+   necesitando Docker), o quedarse con el receptor local (sin interfaz).
+4. **Solo 12 de los 20 mutantes son reproducibles.** `make mutantes` versiona M9–M20 y
    falla si un ancla desaparece del fuente (un mutante que no se aplica deja de vigilar
    **en silencio**). M1–M8 se corrieron con scripts de usar y tirar: de esos ocho queda
    la palabra, no la evidencia, y queda dicho.
