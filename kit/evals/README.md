@@ -218,6 +218,33 @@ Tres decisiones deliberadas:
 respeta de verdad — si se ignorara, el emisor seguiría funcionando contra la nube
 y nadie lo notaría hasta ver los datos en el sitio equivocado.
 
+## Interfaz local de verdad: Phoenix
+
+```bash
+make phoenix        # http://localhost:6006  (terminal aparte)
+make phoenix-push   # sube runs.jsonl: un padre por brazo, un hijo por tarea
+```
+
+**LangSmith local no existe como opción gratuita** — el autoalojado es exclusivo del
+plan Enterprise y sus contenedores no arrancan sin `LANGSMITH_LICENSE_KEY`; el tramo
+gratuito es solo nube. Phoenix (Arize, OSS) da lo que aquí hacía falta: interfaz web,
+árbol por brazo y atributos por tarea, **sin Docker y sin licencia**.
+
+`phoenix_push.py` es **la única pieza del repo que necesita un SDK**
+(`opentelemetry`, en `~/.venvs/tools`), y por eso corre con el python de ese venv y
+no con el del sistema. No está en el camino caliente: `run.sh` no lo llama y el eval
+no depende de él — si dependiera, el observatorio sería punto único de fallo de la
+medición.
+
+Su `--dry-run` sí es dependency-free, y es donde `test_evals.sh` §17 comprueba lo que
+puede romperse en silencio: que hay **un padre por brazo** y cada tarea lleva la
+etiqueta del suyo, que las tareas salen **ordenadas** (sin eso el árbol se lee
+distinto en cada tirada y comparar dos ejecuciones deja de ser posible), y que un
+`error` viaja como `error` y no como suspenso. Dos mutantes lo vigilan.
+
+Comprobado contra un Phoenix real: 14 spans, 2 padres (`eval on`, `eval off`), 12
+hijos con su `parent_id`, en el proyecto `mcharness-evals`.
+
 ## Receptor local: probar la telemetría sin Docker y sin licencia
 
 ```bash

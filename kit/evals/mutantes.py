@@ -98,6 +98,18 @@ MUTANTES = [
      '            "parent_run_id": pid,',
      '            "parent_run_id": None,',
      "no una lista suelta"),
+
+    ("M21 el puente a Phoenix deja de ordenar las tareas",
+     "kit/evals/phoenix_push.py",
+     '        for r in sorted(rs, key=lambda x: x.get("task") or ""):',
+     "        for r in rs:",
+     "al azar del diccionario"),
+
+    ("M22 los hijos pierden la etiqueta de brazo",
+     "kit/evals/phoenix_push.py",
+     '                    "eval.arm": arm,\n                    "eval.result"',
+     '                    "eval.arm": "",\n                    "eval.result"',
+     "etiquetada con el suyo"),
 ]
 
 

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install test doctor mutantes langsmith-local langsmith-arbol evals-paid evals-ablacion-paid
+.PHONY: help install test doctor mutantes langsmith-local langsmith-arbol phoenix phoenix-push evals-paid evals-ablacion-paid
 
 help: ## Lista los targets disponibles
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*##"}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -46,6 +46,12 @@ langsmith-local: ## Levanta el receptor local de trazas en :1984 (gratis, sin Do
 
 langsmith-arbol: ## Imprime el arbol de trazas que ya ha recibido el receptor local
 	python3 kit/evals/langsmith_local.py --tree
+
+phoenix: ## Levanta Phoenix en local (interfaz web en :6006). Sin Docker y sin licencia.
+	~/.venvs/tools/bin/phoenix serve
+
+phoenix-push: ## Sube runs.jsonl al Phoenix local (necesita 'make phoenix' en otra terminal)
+	~/.venvs/tools/bin/python kit/evals/phoenix_push.py
 
 evals-paid: ## Eval set, LOS DOS BRAZOS: llamadas REALES a la API. CUESTA DINERO. Pide confirmacion.
 	@read -p "Esto corre los dos brazos sobre 20 tareas: 40 llamadas reales a la API, del orden de 12 USD. Continuar? [y/N] " ans; \\

@@ -661,5 +661,62 @@ else
 fi
 rm -rf "$L"
 
+# --- 17. El puente a Phoenix (interfaz local de verdad) ---------------------
+# Phoenix es la unica via a "medible en local" con interfaz: LangSmith autoalojado
+# es de pago y no tiene tramo gratuito. El emisor necesita SDK y vive en el venv de
+# herramientas, pero su --dry-run no necesita nada, y es ahi donde se comprueba lo
+# que puede romperse en silencio: la forma del arbol y las etiquetas.
+F=$(mktemp -d) || exit 1
+"$PY" - "$F/mix.jsonl" <<'PYEOF'
+import json, sys
+def r(task, arm, res):
+    return {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": "positiva",
+            "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
+            "duration_api_ms": 5, "input_tokens": 1}
+# A proposito en orden NO alfabetico: si el emisor no ordena, el arbol se lee
+# distinto en cada tirada y comparar dos ejecuciones deja de ser posible.
+rows = [r("03-c", "on", "pass"), r("01-a", "on", "pass"), r("02-b", "on", "fail"),
+        r("01-a", "off", "error")]
+open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+PYEOF
+"$PY" "$E/phoenix_push.py" --store "$F/mix.jsonl" --dry-run > "$F/arbol.json" 2>/dev/null
+
+etiq=$("$PY" - "$F/arbol.json" <<'PYEOF'
+import json, sys
+t = json.load(open(sys.argv[1]))
+# Un padre por brazo, y cada hijo etiquetado con el brazo de SU padre: sin eso
+# no se puede filtrar por brazo, que es la comparacion entera.
+ok = (len(t) == 2
+      and sorted(p["attrs"]["eval.arm"] for p in t) == ["off", "on"]
+      and all(h["attrs"]["eval.arm"] == p["attrs"]["eval.arm"]
+              for p in t for h in p["hijos"]))
+print("etiquetado" if ok else "suelto")
+PYEOF
+)
+ck "$etiq" "etiquetado" "phoenix: un padre por brazo y cada tarea etiquetada con el suyo"
+
+orden=$("$PY" - "$F/arbol.json" <<'PYEOF'
+import json, sys
+t = json.load(open(sys.argv[1]))
+on = [p for p in t if p["attrs"]["eval.arm"] == "on"][0]
+n = [h["nombre"] for h in on["hijos"]]
+print("ordenado" if n == sorted(n) else "azar:" + ",".join(n))
+PYEOF
+)
+ck "$orden" "ordenado" "phoenix: las tareas salen ordenadas, no al azar del diccionario"
+
+# Cuarta vez que el repo defiende lo mismo: 'error' no es un cero. Si el puente lo
+# coercionara, la interfaz ensenaria un suspenso donde no se pudo medir.
+err=$("$PY" - "$F/arbol.json" <<'PYEOF'
+import json, sys
+t = json.load(open(sys.argv[1]))
+off = [p for p in t if p["attrs"]["eval.arm"] == "off"][0]
+h = off["hijos"][0]
+print(h["attrs"]["eval.result"] + "/" + str(json.loads(h["attrs"]["output.value"])["result"]))
+PYEOF
+)
+ck "$err" "error/error" "phoenix: un 'error' viaja como error, no como suspenso"
+rm -rf "$F"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
