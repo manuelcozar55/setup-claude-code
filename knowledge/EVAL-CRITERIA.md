@@ -50,12 +50,12 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E13 | Deltas < 3 puntos son sospechosos hasta documentar la config | Anthropic *infra noise* | bandas ±0,05 / −0,10, por encima de ese suelo | ✅ por diseño |
 | E14 | La infraestructura es variable experimental de primera clase | Anthropic *infra noise* | `record.py` guarda modelo, sha, coste, turnos | ⚠️ **no** guarda CPU/RAM/carga |
 | E15 | Histórico, o no hay regresión detectable | interpretación propia | `runs.jsonl` append-only | ✅ |
-| E16 | Un pass rate que tiende a 100 % dejó de informar | Hamel | — | ⚠️ **sin sensor** |
+| E16 | Un pass rate que tiende a 100 % dejó de informar | Hamel | bloque *poder discriminante* en `report.py`: cuenta tareas **mudas** y declara `SATURADO` | ✅ · sensor mutado |
 | E17 | Más evals ≠ mejor harness; la suite tiene coste | LangChain | presupuesto de complejidad en `CLAUDE.md` (no cubre evals) | ⚠️ parcial |
 | E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 + `test_evals.sh` §10: ningún check aprueba el estado inicial, y no hacer nada da `fail`, no `error` | ✅ |
 | E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan | ⚠️ **humano, sin cadencia fijada** |
-| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 12/12 mutantes; los 4 últimos versionados en `make mutantes`; los §9–§13 nacieron ya en rojo |
+| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 15/15 mutantes; los 7 últimos versionados en `make mutantes`; los §9–§14 nacieron ya en rojo |
 | E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **implementado, sin correr con API** |
 | E23 | Un brazo cuyo flag desapareció mide el harness completo con etiqueta falsa | hallazgo propio | `test_evals.sh` §13: los 4 flags tienen que seguir en `claude --help` | ✅ · sensor mutado |
 | E24 | No restar dos brazos que corrieron modelos distintos | hallazgo propio (E14 llevado al informe) | `report.py:comparables()` dice `NO COMPARABLE` en vez de dar un lift | ✅ · sensor mutado |
@@ -159,6 +159,22 @@ Arreglado: enunciado, setup, check y transcript viven en un `mktemp -d` **sin
 parentesco** con el del agente, así que ni `../` los descubre. El sensor (§9) es
 de comportamiento: corre `run.sh` con un `claude` de mentira cuya única función es
 listar su directorio de trabajo. Mutante M8 (`m="$d"`) → rojo. Confirmado.
+
+### El conjunto ya estaba saturado, y no se sabía
+
+E16 (Hamel: *una tasa que tiende a 100 % dejó de informar*) estaba declarado sin sensor.
+Ahora `report.py` mide algo más fino que un umbral sobre el total: cuenta las tareas
+**mudas** — las que dan el mismo resultado en los dos brazos y en todas sus repeticiones.
+Una tarea muda no puede mover el lift; es peso muerto, y se paga igual.
+
+Aplicado a la tirada real que ya estaba guardada: **5 de 6 tareas son mudas**. El conjunto
+que decide era de **una** tarea. Eso es exactamente lo que dice la prosa de arriba — "el
+lift entero sale de una sola tarea, la 05" — pero ahora lo dice el informe, sin que nadie
+tenga que leer la tabla tarea por tarea. Y cuando cuatro de cada cinco tareas son mudas,
+el informe escribe `SATURADO`: la tasa seguirá subiendo sin que el harness mejore.
+
+Con un solo brazo el bloque dice `NO MEDIBLE` en vez de "0 mudas". Sin control no hay
+forma de saber cuál es muda, y un cero sería mentir por omisión (mutante M15).
 
 ## De 6 a 20 tareas, y por qué la mitad son negativas
 
@@ -274,13 +290,14 @@ Lo que sí se lleva de la cantera, y está sin implementar:
    máquina, ni clave de la nube. El emisor y su sensor (`LANGSMITH_ENDPOINT`) están
    escritos; falta la decisión de instalar el motor de Docker en WSL o dar una clave.
    Hasta entonces, "medible en LangSmith" es una afirmación sin sensor.
-4. **E16 · sin sensor.** Contable: tasa de aprobado tendiendo a 1 deja de informar.
-5. **E14 · CPU/RAM/carga sin registrar.** En WSL2, y con el proxy Headroom compitiendo,
-   es un confusor real, no teórico. E24 tapa solo la parte del modelo.
-6. **Solo 4 de los 12 mutantes son reproducibles.** `make mutantes` versiona M9–M12 y
+4. **Solo 7 de los 15 mutantes son reproducibles.** `make mutantes` versiona M9–M15 y
    falla si un ancla desaparece del fuente (un mutante que no se aplica deja de vigilar
    **en silencio**). M1–M8 se corrieron con scripts de usar y tirar: de esos ocho queda
    la palabra, no la evidencia, y queda dicho.
+5. **E14 · CPU/RAM/carga sin registrar.** En WSL2, y con el proxy Headroom compitiendo,
+   es un confusor real, no teórico. E24 tapa solo la parte del modelo.
+6. **18 de las 20 tareas nunca se han corrido en los dos brazos**, así que el recuento de
+   mudas de arriba sólo se conoce para las 6 antiguas. Depende del hueco número uno.
 
 ## Desacuerdo abierto
 
