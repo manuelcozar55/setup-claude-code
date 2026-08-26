@@ -50,6 +50,24 @@ MUTANTES = [
      "for flag in --setting-sources --disable-slash-commands --strict-mcp-config --model; do",
      "for flag in --setting-sources --flag-que-no-existe-jamas; do",
      "ya no existe"),
+
+    ("M13 las tareas mudas dejan de contarse",
+     "kit/evals/report.py",
+     '        if len(res) == 1 and res <= {"pass", "fail"}:',
+     '        if False:',
+     "se satura en silencio"),
+
+    ("M14 el aviso de conjunto saturado retirado",
+     "kit/evals/report.py",
+     "    if comunes and utiles <= max(1, len(comunes) // 5):",
+     "    if comunes and utiles < 0:",
+     "saturado sin aviso"),
+
+    ("M15 el informe opina sobre mudez sin brazo de control",
+     "kit/evals/report.py",
+     'if "on" not in by_arm or "off" not in by_arm:\n    print("  NO MEDIBLE: hace falta el brazo de control para saber que tareas son mudas.")',
+     'if False:\n    print("  NO MEDIBLE: hace falta el brazo de control para saber que tareas son mudas.")',
+     "sin brazo de control"),
 ]
 
 

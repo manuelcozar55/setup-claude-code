@@ -484,5 +484,54 @@ ck "$(printf '%s' "$abl" | grep -c 'sin-mcp.*NO COMPARABLE')" "1" \
 ck "$("$PY" "$E/report.py" --store "$S" 2>&1 | grep -c 'ablacion por componente')" "1" \
    "el informe declara el hueco de ablacion cuando no hay brazos que comparar"
 
+# --- 14. Un conjunto saturado tiene que decirlo (E16) ----------------------
+# Hamel: una tasa que tiende a 100 % dejo de informar. El caso construido es el
+# peor: casi todas las tareas dan el mismo resultado en los DOS brazos, asi que
+# son peso muerto y el informe seguiria presumiendo de "n tareas" mientras las
+# que deciden son una.
+W=$(mktemp -d) || exit 1
+"$PY" - "$W/saturado.jsonl" <<'PYEOF'
+import json, sys
+def r(task, arm, res):
+    return {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": "positiva",
+            "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
+            "duration_api_ms": 1, "input_tokens": 1}
+rows = []
+for i in range(5):
+    rows += [r("t%d" % i, "on", "pass"), r("t%d" % i, "off", "pass")]
+# La sexta si discrimina: sin ella no se distingue "saturado" de "vacio".
+rows += [r("t5", "on", "pass"), r("t5", "off", "fail")]
+open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+PYEOF
+sat=$("$PY" "$E/report.py" --store "$W/saturado.jsonl" 2>&1)
+rm -rf "$W"
+if printf '%s' "$sat" | grep -q 'mudas: 5/6'; then
+  echo "ok - el informe cuenta las tareas que no distinguen los brazos"; pass=$((pass+1))
+else
+  echo "NOT ok - las tareas mudas no se cuentan: el conjunto se satura en silencio"; fail=$((fail+1))
+fi
+if printf '%s' "$sat" | grep -q 'SATURADO'; then
+  echo "ok - un conjunto sin poder discriminante se declara SATURADO"; pass=$((pass+1))
+else
+  echo "NOT ok - conjunto saturado sin aviso: la tasa subira sin que el harness mejore"; fail=$((fail+1))
+fi
+# Y con un solo brazo no puede inventarse la respuesta: sin control no hay forma
+# de saber cual es muda, y decir "0 mudas" seria mentir por omision.
+Y=$(mktemp -d) || exit 1
+"$PY" - "$Y/unbrazo.jsonl" <<'PYEOF'
+import json, sys
+r = {"ts": "2026-01-01T00:00:00Z", "task": "t1", "arm": "on", "tipo": "positiva",
+     "attempt": 1, "result": "pass", "model": "m", "cost_usd": 0.1,
+     "duration_api_ms": 1, "input_tokens": 1}
+open(sys.argv[1], "w").write(json.dumps(r) + "\n")
+PYEOF
+uno=$("$PY" "$E/report.py" --store "$Y/unbrazo.jsonl" 2>&1)
+rm -rf "$Y"
+if printf '%s' "$uno" | grep -q 'para saber que tareas son mudas'; then
+  echo "ok - sin brazo de control, el poder discriminante se declara no medible"; pass=$((pass+1))
+else
+  echo "NOT ok - el informe se pronuncia sobre tareas mudas sin brazo de control"; fail=$((fail+1))
+fi
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1

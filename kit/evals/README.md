@@ -128,6 +128,28 @@ Los tres guardas se verifican rompiéndolos: `make mutantes` (gratis, ~12 s) mut
 y exige que `test_evals.sh` se ponga roja. Falla también si un ancla ya no existe en el
 fuente — un mutante que no se aplica deja de vigilar en silencio.
 
+## Tareas mudas: cuándo el conjunto dejó de informar
+
+Una tasa de acierto que tiende al 100 % ya no distingue nada, y el informe seguiría
+presumiendo del número de tareas. `report.py` lo mide más fino que con un umbral sobre el
+total: cuenta las **tareas mudas**, las que dan el mismo resultado en los **dos brazos** y
+en todas sus repeticiones. Una tarea muda no puede mover el lift — es peso muerto, y se
+paga igual que las demás.
+
+```
+== poder discriminante del conjunto ==
+  mudas: 5/6 tareas dieron el mismo resultado en los dos brazos y en todas
+         sus repeticiones. No pueden mover el lift: el conjunto que decide
+         es de 1 tarea(s), no de 6.
+```
+
+Eso es salida real sobre la primera tirada: de seis tareas, el lift entero venía de una.
+Cuando cuatro de cada cinco son mudas, el informe añade `SATURADO` y remite a la sección
+de abajo — no basta con añadir tareas, hay que **retirar las mudas** y subir el suelo.
+
+Con un solo brazo dice `NO MEDIBLE`, no "0 mudas": sin control no hay forma de saber cuál
+es muda, y un cero sería mentir por omisión.
+
 ## Cómo crecer hasta 20-30 tareas
 
 La mina son los logs que ya genera el harness:

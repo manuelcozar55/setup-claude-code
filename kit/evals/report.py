@@ -157,6 +157,42 @@ else:
     print("  NO MEDIBLE: hace falta el brazo de control. Sin el, esto mide el modelo,")
     print("  no el harness. Ver README.md, seccion 'El brazo de control'.")
 
+# --- 2c: poder discriminante del conjunto (E16) -----------------------------
+# Hamel: una tasa de acierto que tiende a 100 % dejo de informar. Aqui se mide
+# mas fino que con un umbral sobre el total: una tarea que da el MISMO resultado
+# en los dos brazos, en todas sus repeticiones, no puede mover el lift. Es peso
+# muerto, se pague o no. Sin esto, el conjunto se satura poco a poco y el informe
+# sigue diciendo "20 tareas" cuando las que deciden son cuatro.
+print("\n== poder discriminante del conjunto ==")
+if "on" not in by_arm or "off" not in by_arm:
+    print("  NO MEDIBLE: hace falta el brazo de control para saber que tareas son mudas.")
+else:
+    def por_tarea(arm):
+        d = collections.defaultdict(list)
+        for r in by_arm[arm]:
+            d[r["task"]].append(r)
+        return d
+    t_on, t_off = por_tarea("on"), por_tarea("off")
+    comunes = sorted(set(t_on) & set(t_off))
+    mudas = []
+    for t in comunes:
+        res = {r.get("result") for r in t_on[t]} | {r.get("result") for r in t_off[t]}
+        # Un unico resultado en los dos brazos y en todas las repeticiones: la
+        # tarea no discrimina nada. 'error' no cuenta como mudez, es una averia.
+        if len(res) == 1 and res <= {"pass", "fail"}:
+            mudas.append(t)
+    utiles = len(comunes) - len(mudas)
+    print("  mudas: %d/%d tareas dieron el mismo resultado en los dos brazos y en todas"
+          % (len(mudas), len(comunes)))
+    print("         sus repeticiones. No pueden mover el lift: el conjunto que decide")
+    print("         es de %d tarea(s), no de %d." % (utiles, len(comunes)))
+    if mudas:
+        print("         %s" % ", ".join(mudas))
+    if comunes and utiles <= max(1, len(comunes) // 5):
+        print("  SATURADO: cuatro de cada cinco tareas ya no distinguen nada. El numero de")
+        print("  arriba seguira subiendo sin que el harness mejore. Toca subir el suelo:")
+        print("  retirar las mudas y minar fallos nuevos (README.md, 'Como crecer').")
+
 # --- 2b: ablacion por componente -------------------------------------------
 # El lift de arriba dice si el harness sirve; esto dice QUE PIEZA sirve, que es
 # otra pregunta. Anthropic lo propone como metodo y ninguna de las dos fuentes de
