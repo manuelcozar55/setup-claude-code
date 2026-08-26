@@ -55,11 +55,12 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 + `test_evals.sh` §10: ningún check aprueba el estado inicial, y no hacer nada da `fail`, no `error` | ✅ |
 | E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan | ⚠️ **humano, sin cadencia fijada** |
-| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 20/20 mutantes; los 12 últimos versionados en `make mutantes`; los §9–§16 nacieron ya en rojo |
+| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 22/22 mutantes; los 14 últimos versionados en `make mutantes`; los §9–§17 nacieron ya en rojo |
 | E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **implementado, sin correr con API** |
 | E23 | Un brazo cuyo flag desapareció mide el harness completo con etiqueta falsa | hallazgo propio | `test_evals.sh` §13: los 4 flags tienen que seguir en `claude --help` | ✅ · sensor mutado |
 | E24 | No restar dos brazos que corrieron modelos distintos | hallazgo propio (E14 llevado al informe) | `report.py:comparables()` dice `NO COMPARABLE` en vez de dar un lift | ✅ · sensor mutado |
 | E25 | Un emisor de trazas probado **en seco** no es telemetría verificada | hallazgo propio | `langsmith_local.py` recibe de verdad + `test_evals.sh` §16: el payload viaja por red y se comprueba el árbol al otro lado | ✅ · sensor mutado |
+| E26 | El observatorio no puede meter dependencias en lo observado | interpretación propia (E6 + "sin SDK" de `langsmith_push.py`) | `phoenix_push.py` es la única pieza con SDK, corre en otro venv, `run.sh` no lo llama, y su sensor (§17) usa `--dry-run` sin dependencias | ✅ · sensor mutado |
 
 ## Las tres preguntas
 
@@ -320,6 +321,29 @@ desenganchar los hijos de su padre.
 Pasar a LangSmith de verdad —nube, o autoalojado con licencia— es cambiar
 `LANGSMITH_ENDPOINT`. Que ese cambio baste es justo lo que §16 demuestra.
 
+### Y la interfaz local, que era lo que se pedía de verdad
+
+Verificado dos veces y con fuente: **no hay LangSmith autoalojado gratuito**, ni
+siquiera para desarrollo. Es exclusivo del plan Enterprise y el despliegue no arranca
+sin `LANGSMITH_LICENSE_KEY`; el tramo gratuito (5 000 trazas/mes) es **solo nube**. Así
+que "medible en LangSmith **local**" no tiene salida por LangSmith, y eso no es una
+limitación de este repo.
+
+Lo que sí tiene salida es el objetivo detrás de la frase: **ver el eval en una interfaz
+local**. `phoenix_push.py` sube las mismas trazas a un Phoenix (Arize, OSS) en
+`localhost:6006` — sin Docker, sin licencia, `pip install` y listo. Comprobado contra
+un Phoenix real: 14 spans, 2 padres (`eval on`, `eval off`), 12 hijos colgando de su
+`parent_id`, proyecto `mcharness-evals`.
+
+Dos decisiones que evitan que esto contamine el eval:
+
+- **El SDK no entra en el camino caliente.** `phoenix_push.py` es la única pieza que
+  necesita `opentelemetry`, corre con el python de `~/.venvs/tools` y `run.sh` no lo
+  llama. El eval sigue ejecutándose donde se ejecuta lo que mide.
+- **El sensor no depende del SDK.** `--dry-run` construye el árbol sin red ni
+  dependencias, y ahí es donde §17 lo comprueba con el python del sistema — así el
+  check corre también en CI, en vez de ser un sensor que nunca dispara.
+
 ## Lo que falta, por orden de daño
 
 1. **Nada de los cinco brazos está corrido con API.** Es el hueco número uno desde que
@@ -331,14 +355,12 @@ Pasar a LangSmith de verdad —nube, o autoalojado con licencia— es cambiar
 2. **`RUNS=1` y `n` pequeño.** Con 20 tareas ya se puede, pero mientras no haya
    repeticiones los intervalos seguirán solapándose y casi todo caerá en `NEUTRO`.
    Es el techo real que queda, y multiplica el coste de arriba.
-3. **LangSmith *el producto* sigue sin levantar** — pero ya no es una afirmación sin
-   sensor: el emisor está probado de punta a punta contra un receptor local (arriba). Lo
-   que falta es la capa de consulta, y depende de **dos decisiones del usuario**, no de
-   código: activar la integración WSL en Docker Desktop, y conseguir una
-   `LANGSMITH_LICENSE_KEY` de empresa. Tres salidas, y ninguna sale gratis del todo: clave
-   de la **nube** (deja de ser local), **Langfuse** autoalojado (libre y local, pero sigue
-   necesitando Docker), o quedarse con el receptor local (sin interfaz).
-4. **Solo 12 de los 20 mutantes son reproducibles.** `make mutantes` versiona M9–M20 y
+3. **LangSmith *el producto* sigue sin levantar, y no por falta de trabajo:** no existe
+   autoalojado gratuito. La interfaz local ya está cubierta por Phoenix (arriba), y el
+   emisor de LangSmith está probado de punta a punta, así que lo que queda es una decisión
+   de compra, no de código — clave de la **nube** (gratis hasta 5 000 trazas, pero deja de
+   ser local) o licencia Enterprise.
+4. **Solo 14 de los 22 mutantes son reproducibles.** `make mutantes` versiona M9–M22 y
    falla si un ancla desaparece del fuente (un mutante que no se aplica deja de vigilar
    **en silencio**). M1–M8 se corrieron con scripts de usar y tirar: de esos ocho queda
    la palabra, no la evidencia, y queda dicho.
