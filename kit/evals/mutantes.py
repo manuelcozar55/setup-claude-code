@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Mutacion de los sensores del eval: rompe UNA afirmacion y exige que la suite
+se ponga roja. Un sensor que sigue verde con la afirmacion rota no es un sensor.
+
+    python3 kit/evals/mutantes.py     # ~12 s, sin red, sin coste
+
+Salida 0 solo si TODOS los mutantes mueren y los ficheros quedan byte a byte
+como estaban. Si un ancla ya no existe en el fuente, es FALLO, no aviso: un
+mutante que no se aplica deja de vigilar en silencio, que es el modo de fallo
+que este fichero existe para evitar.
+
+Historico: los mutantes M1-M8 (brazos, grader, polaridad, oraculo visible) se
+corrieron con scripts de usar y tirar y no estan aqui. Solo M9-M12 son
+reproducibles; EVAL-CRITERIA.md lo dice asi.
+"""
+import hashlib
+import io
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SUITE = ["bash", "kit/test/test_evals.sh"]
+
+# (nombre, fichero, ancla, mutacion, aguja que debe aparecer en el NOT ok)
+MUTANTES = [
+    ("M9  guardia de ARM desconocido retirado",
+     "kit/evals/run.sh",
+     """  *) echo "run.sh: ARM desconocido '$ARM'. Validos: on off sin-ajustes sin-skills sin-mcp" >&2
+     exit 2 ;;""",
+     "  *) ;;",
+     "no se rechaza"),
+
+    ("M10 lectura de la ablacion invertida",
+     "kit/evals/report.py",
+     'lect = ("la pieza APORTA" if d <= -0.05 else',
+     'lect = ("la pieza APORTA" if d <= -99 else',
+     "la pieza aporta"),
+
+    ("M11 guardia de modelos distintos retirado",
+     "kit/evals/report.py",
+     "    return (not ma or not mb or ma == mb), ma, mb",
+     "    return True, ma, mb",
+     "no se restan"),
+
+    ("M12 el sensor de flags vigila un flag que no existe",
+     "kit/test/test_evals.sh",
+     "for flag in --setting-sources --disable-slash-commands --strict-mcp-config --model; do",
+     "for flag in --setting-sources --flag-que-no-existe-jamas; do",
+     "ya no existe"),
+]
+
+
+def corre():
+    r = subprocess.run(SUITE, capture_output=True, text=True, timeout=600)
+    return r.returncode, r.stdout
+
+
+def md5(f):
+    return hashlib.md5(io.open(f, "rb").read()).hexdigest()
+
+
+def main():
+    os.chdir(REPO)
+    antes = {f: md5(f) for _, f, _, _, _ in MUTANTES}
+
+    rc, out = corre()
+    print("BASE: rc=%d - %s" % (rc, out.strip().splitlines()[-1]))
+    if rc != 0:
+        print("la suite ya esta roja sin mutar; no se puede medir nada")
+        return 1
+
+    vivos = []
+    for nombre, fich, ancla, mut, aguja in MUTANTES:
+        orig = io.open(fich, encoding="utf-8").read()
+        if ancla not in orig:
+            print("  ANCLA PERDIDA %s: ya no esta en %s" % (nombre, fich))
+            vivos.append(nombre)
+            continue
+        respaldo = tempfile.mkstemp()[1]
+        shutil.copy2(fich, respaldo)
+        try:
+            io.open(fich, "w", encoding="utf-8").write(orig.replace(ancla, mut, 1))
+            rc, out = corre()
+            motivo = [l for l in out.splitlines()
+                      if l.startswith("NOT ok") and aguja.lower() in l.lower()]
+            if rc != 0 and motivo:
+                print("  CAZADO  %s\n          -> %s" % (nombre, motivo[0].strip()))
+            elif rc != 0:
+                # Rojo por otra cosa no vale: el sensor que se esta probando no
+                # es el que disparo, y quedaria dado por bueno sin serlo.
+                print("  ROJO POR OTRA COSA  %s" % nombre)
+                vivos.append(nombre)
+            else:
+                print("  ESCAPA  %s  <-- el sensor no sirve" % nombre)
+                vivos.append(nombre)
+        finally:
+            shutil.copy2(respaldo, fich)
+            os.unlink(respaldo)
+
+    sucios = [f for f, h in antes.items() if md5(f) != h]
+    rc, out = corre()
+    print("\nRESTAURADO: rc=%d - %s" % (rc, out.strip().splitlines()[-1]))
+    print("muertos %d/%d" % (len(MUTANTES) - len(vivos), len(MUTANTES)))
+    if sucios:
+        print("AVISO: estos ficheros NO volvieron a su estado original: %s" % ", ".join(sucios))
+    return 1 if (vivos or sucios or rc != 0) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

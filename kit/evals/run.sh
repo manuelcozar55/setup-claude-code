@@ -13,6 +13,9 @@
 #   ARM=x    brazo experimental. 'on' (por defecto) corre con el harness puesto;
 #            'off' es el control y anade --safe-mode. Sin los dos brazos, el
 #            numero mide el MODELO, no el harness, y report.py lo dice.
+#            Ademas hay tres brazos de ABLACION, que quitan UNA pieza y dejan
+#            el resto puesta: sin-ajustes, sin-skills, sin-mcp. El lift on/off
+#            dice si el harness sirve; solo la ablacion dice QUE pieza sirve.
 set -u
 E="$(cd "$(dirname "$0")" && pwd)"
 # Exportados los dos: `bash _check.sh` es otro proceso y no hereda lo que no se exporta.
@@ -22,13 +25,39 @@ export PY="${PYTHON3:-python3}"
 export GRADE="$E/grade.py"
 RUNS="${RUNS:-1}"
 ARM="${ARM:-on}"
-# El control. --safe-mode apaga CLAUDE.md, skills, hooks, plugins, MCP, comandos
+# Los brazos. --safe-mode apaga CLAUDE.md, skills, hooks, plugins, MCP, comandos
 # y agentes propios, y a diferencia de --bare SIGUE autenticando con la sesion
 # normal (--bare exige ANTHROPIC_API_KEY, que una cuenta de suscripcion no tiene).
 # Medido en este equipo: agentes 24->4, comandos 99->47, servidores MCP 12->0.
 # Ojo: al no haber hooks, el brazo 'off' corre SIN los guards. Es aceptable solo
 # porque cada tarea vive en un mktemp -d y el prompt lo pone el repo, no la red.
-ARMFLAGS=(); [ "$ARM" = off ] && ARMFLAGS=(--safe-mode)
+#
+# Los tres de ablacion quitan una pieza cada uno. No hay un cuarto para CLAUDE.md
+# porque el CLI no tiene interruptor propio para el: solo --safe-mode, que lo
+# apaga todo, y --bare, que exige API key. Queda dicho en vez de simulado.
+#   sin-ajustes  al correr en un mktemp -d no hay ajustes de proyecto ni locales,
+#                asi que esto deja la sesion sin settings.json de usuario: se van
+#                los hooks, los permisos y el env de golpe. Son tres cosas, no
+#                una, porque el CLI no las separa; report.py lo etiqueta asi.
+#   sin-skills   --disable-slash-commands ("Disable all skills" en el propio --help).
+#   sin-mcp      --strict-mcp-config sin ningun --mcp-config: 12 servidores -> 0.
+case "$ARM" in
+  on)          ARMFLAGS=() ;;
+  off)         ARMFLAGS=(--safe-mode) ;;
+  sin-ajustes) ARMFLAGS=(--setting-sources "project,local") ;;
+  sin-skills)  ARMFLAGS=(--disable-slash-commands) ;;
+  sin-mcp)     ARMFLAGS=(--strict-mcp-config) ;;
+  # Sin esto, un ARM mal escrito corria con el harness PUESTO y se guardaba con
+  # la etiqueta del typo. `ARM=Off` (con mayuscula) habria producido un brazo de
+  # control que en realidad no controlaba nada, y el informe se lo habria creido.
+  *) echo "run.sh: ARM desconocido '$ARM'. Validos: on off sin-ajustes sin-skills sin-mcp" >&2
+     exit 2 ;;
+esac
+# El modelo no puede cambiar entre brazos o el lift mide dos cosas a la vez. Es
+# un riesgo real aqui: 'sin-ajustes' tira el settings.json que fija el modelo.
+# Se pasa explicito si EVAL_MODEL esta puesto, y report.py se niega a comparar
+# brazos que corrieron con modelos distintos (lo sabe por lo que graba record.py).
+[ -n "${EVAL_MODEL:-}" ] && ARMFLAGS+=(--model "$EVAL_MODEL")
 STORE="$E/runs.jsonl"
 EVAL_TS="$(date -u +%FT%TZ)"; export EVAL_TS
 EVAL_SHA="$(git -C "$E" rev-parse --short HEAD 2>/dev/null || echo desconocido)"; export EVAL_SHA

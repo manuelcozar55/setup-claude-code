@@ -10,6 +10,8 @@ kit/**/.env
 kit/evals/transcripts/
 kit/evals/resultados-*.json
 kit/evals/runs.jsonl
+kit/evals/runs-abortados.jsonl
+kit/evals/.resultados.parcial
 
 # Sistema operativo
 .DS_Store

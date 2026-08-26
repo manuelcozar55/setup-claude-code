@@ -80,6 +80,54 @@ el brazo `off` pasaría a ser una copia del `on`, el *lift* saldría 0,00 y el e
 concluiría en silencio que el harness no sirve. Es el fallo más caro posible aquí,
 porque **parece un resultado en vez de una avería**.
 
+## Los cinco brazos y la ablación por componente
+
+El *lift* de arriba responde *"¿sirve el harness?"*. No responde *"¿sirve esta pieza?"*.
+Para eso hay tres brazos más, cada uno con una pieza menos:
+
+| `ARM` | Qué quita | Flags |
+|---|---|---|
+| `on` | nada | — |
+| `off` | todo (control) | `--safe-mode` |
+| `sin-ajustes` | hooks, permisos y env | `--setting-sources "project,local"` |
+| `sin-skills` | skills y comandos | `--disable-slash-commands` |
+| `sin-mcp` | los 12 servidores MCP | `--strict-mcp-config` (sin ningún `--mcp-config`) |
+
+```bash
+make evals-paid             # on + off + informe
+make evals-ablacion-paid    # los tres de ablación + informe
+```
+
+`sin-ajustes` funciona porque cada tarea corre en un `mktemp -d`: al limitar las fuentes
+de ajustes a `project,local` no queda ninguna, así que la sesión pierde el
+`settings.json` de usuario. Se lleva **hooks, permisos y env de golpe** — el CLI no los
+separa, y `report.py` etiqueta el brazo con ese nombre largo para que nadie lea "hooks"
+donde hay tres cosas.
+
+**No hay brazo para `CLAUDE.md`.** El CLI no tiene interruptor propio: solo `--safe-mode`
+(apaga todo) y `--bare` (exige API key). Queda dicho en vez de simulado.
+
+Cómo se lee: quitar una pieza y **bajar** (Δ ≤ −0,05 frente a `on`) es la señal de que
+la pieza aportaba. Subir no es "mejor sin ella": con `n` pequeño lo normal es ruido, y el
+informe lo dice así.
+
+Tres cosas que pueden convertir un brazo de ablación en una mentira, y sus guardas:
+
+- **`ARM` mal escrito.** `ARM=Off` caía en el caso por defecto: corría el harness
+  **completo** y se guardaba con la etiqueta del typo. Ahora `run.sh` sale con rc=2 ante
+  cualquier valor desconocido, y lo hace **antes** de invocar al agente.
+- **Un flag que desaparece en una versión futura de Claude Code.** El brazo mediría el
+  harness entero bajo la etiqueta de la pieza ablacionada, y el informe diría "no aporta"
+  de todas ellas. `test_evals.sh` comprueba, gratis, que los cuatro flags siguen en
+  `claude --help`.
+- **Deriva de modelo.** `sin-ajustes` tira el `settings.json` que fija el modelo, así que
+  puede caer a otro sin avisar. `report.py` se niega a restar dos brazos con modelos
+  distintos: escribe `NO COMPARABLE`. Para forzarlo, `EVAL_MODEL=claude-opus-5`.
+
+Los tres guardas se verifican rompiéndolos: `make mutantes` (gratis, ~12 s) muta cada uno
+y exige que `test_evals.sh` se ponga roja. Falla también si un ancla ya no existe en el
+fuente — un mutante que no se aplica deja de vigilar en silencio.
+
 ## Cómo crecer hasta 20-30 tareas
 
 La mina son los logs que ya genera el harness:

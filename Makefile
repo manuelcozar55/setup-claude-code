@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install test doctor evals-paid
+.PHONY: help install test doctor mutantes evals-paid evals-ablacion-paid
 
 help: ## Lista los targets disponibles
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*##"}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -38,9 +38,20 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 doctor: ## Verifica una instalacion existente del kit
 	bash kit/doctor.sh
 
+mutantes: ## Rompe cada sensor del eval a proposito y exige que la suite se ponga roja (gratis, ~12 s)
+	python3 kit/evals/mutantes.py
+
 evals-paid: ## Eval set, LOS DOS BRAZOS: llamadas REALES a la API. CUESTA DINERO. Pide confirmacion.
 	@read -p "Esto corre los dos brazos sobre 20 tareas: 40 llamadas reales a la API, del orden de 12 USD. Continuar? [y/N] " ans; \\
 	[ "$$ans" = "y" ] || [ "$$ans" = "Y" ] || { echo "Cancelado."; exit 1; }
 	bash kit/evals/run.sh
 	ARM=off bash kit/evals/run.sh
+	@echo; python3 kit/evals/report.py
+
+evals-ablacion-paid: ## Los 3 brazos de ablacion (E22): quita una pieza cada vez. MAS llamadas reales, sobre las de arriba.
+	@read -p "Esto corre 3 brazos mas sobre 20 tareas: 60 llamadas reales a la API. Necesita un ARM=on previo con el MISMO modelo. Continuar? [y/N] " ans; \
+	[ "$$ans" = "y" ] || [ "$$ans" = "Y" ] || { echo "Cancelado."; exit 1; }
+	ARM=sin-ajustes bash kit/evals/run.sh
+	ARM=sin-skills  bash kit/evals/run.sh
+	ARM=sin-mcp     bash kit/evals/run.sh
 	@echo; python3 kit/evals/report.py

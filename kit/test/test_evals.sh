@@ -395,5 +395,94 @@ for l in open(sys.argv[1]):
     if r.get('attempt')==9: print(r.get('tipo')); break
 " "$S" 2>/dev/null)" "positiva" "record.py saca la polaridad del yaml de la tarea"
 
+# --- 13. Los brazos de ablacion tienen que seguir siendo brazos -------------
+# Un brazo de ablacion cuyo flag ya no existe no da error: corre con el harness
+# COMPLETO y se guarda con la etiqueta de la pieza retirada. El informe leeria
+# "no se distingue del ruido" para las tres piezas y la conclusion seria que
+# ninguna aporta. Este sensor mira el --help del CLI instalado, gratis.
+if command -v claude >/dev/null 2>&1; then
+  H=$(claude --help 2>&1)
+  for flag in --setting-sources --disable-slash-commands --strict-mcp-config --model; do
+    if printf '%s' "$H" | grep -q -- "$flag"; then
+      echo "ok - el CLI sigue teniendo $flag (un brazo de ablacion depende de el)"; pass=$((pass+1))
+    else
+      echo "NOT ok - $flag ya no existe: el brazo que lo usa mide el harness completo"; fail=$((fail+1))
+    fi
+  done
+else
+  echo "ok - claude no instalado: comprobacion de flags omitida"; pass=$((pass+1))
+fi
+
+# Un ARM mal escrito corria con el harness puesto y se guardaba con el typo por
+# etiqueta. `ARM=Off` es el caso peligroso: un control que no controla nada.
+#
+# Este bloque llamaba a run.sh a pelo y con ARM="" en la lista. Escribiendolo se
+# gastaron 4 llamadas reales y 1,32 USD: `ARM="${ARM:-on}"` convierte la cadena
+# vacia en 'on', asi que el caso "invalido" era en realidad el brazo completo y
+# arranco el eval de pago dentro de la suite gratuita. De ahi las dos medidas:
+# ARM="" fuera de la lista, y un `claude` de pega en el PATH para que ni un error
+# futuro en este sensor pueda volver a llegar a la API.
+FAKE=$(mktemp -d) || exit 1
+export PROBE="$FAKE/invocado"
+cat > "$FAKE/claude" <<'STUB'
+#!/usr/bin/env bash
+touch "$PROBE"
+STUB
+chmod +x "$FAKE/claude"
+# Sobre una COPIA, como el §9, y con una sola tarea: si el guardia se rompiera,
+# este sensor no puede escribir en el runs.jsonl de verdad ni tardar 80 tirones.
+# Un sensor que ensucia el almacen que vigila deja de ser un sensor.
+cp -R "$E" "$FAKE/evals"
+rm -f "$FAKE"/evals/tasks/*.yaml "$FAKE"/evals/runs.jsonl "$FAKE"/evals/resultados-*.json
+printf 'id: sonda\ntipo: positiva\nprompt: |\n  nada\nsetup: |\n  :\ncheck: |\n  true\n' \
+  > "$FAKE/evals/tasks/sonda.yaml"
+for malo in basura Off ON on-; do
+  out=$(PATH="$FAKE:$PATH" ARM="$malo" RUNS=1 bash "$FAKE/evals/run.sh" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'ARM desconocido'; then
+    echo "ok - ARM='$malo' se rechaza antes de gastar una llamada"; pass=$((pass+1))
+  else
+    echo "NOT ok - ARM='$malo' no se rechaza (rc=$rc): brazo sin sentido con etiqueta creible"; fail=$((fail+1))
+  fi
+done
+# Y el rechazo tiene que ocurrir ANTES de invocar al agente, no despues: si el
+# `claude` de pega se llego a ejecutar, el guardia esta puesto demasiado tarde.
+if [ -e "$PROBE" ]; then
+  echo "NOT ok - un ARM invalido llego a invocar al agente: el guardia va demasiado tarde"; fail=$((fail+1))
+else
+  echo "ok - ningun ARM invalido invoco al agente"; pass=$((pass+1))
+fi
+
+# El informe de ablacion, con las tres lecturas: la pieza aporta, la pieza es
+# indistinguible del ruido, y los brazos no son comparables porque el modelo
+# cambio (riesgo real: 'sin-ajustes' tira el settings.json que fija el modelo).
+A=$(mktemp -d) || exit 1
+"$PY" - "$A/abl.jsonl" <<'PYEOF2'
+import json, sys
+def r(task, arm, res, model="m1"):
+    return {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": "positiva",
+            "attempt": 1, "result": res, "model": model, "cost_usd": 0.1,
+            "duration_api_ms": 1, "input_tokens": 1}
+rows = []
+for i in range(10):
+    rows += [r("t%d" % i, "on", "pass"),
+             r("t%d" % i, "sin-ajustes", "fail" if i < 6 else "pass"),
+             r("t%d" % i, "sin-skills", "pass"),
+             r("t%d" % i, "sin-mcp", "pass", model="m2")]
+open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+PYEOF2
+abl=$("$PY" "$E/report.py" --store "$A/abl.jsonl" 2>&1)
+rm -rf "$A"
+ck "$(printf '%s' "$abl" | grep -c 'sin-ajustes.*la pieza APORTA')" "1" \
+   "quitar una pieza y bajar el acierto se lee como que la pieza aporta"
+ck "$(printf '%s' "$abl" | grep -c 'sin-skills.*no se distingue del ruido')" "1" \
+   "una pieza cuya retirada no cambia nada no se vende como hallazgo"
+ck "$(printf '%s' "$abl" | grep -c 'sin-mcp.*NO COMPARABLE')" "1" \
+   "dos brazos con modelos distintos no se restan: mediria el modelo"
+
+# Y sin brazos de ablacion, el informe tiene que decir que falta, no callarse:
+# un hueco silencioso se lee como que la pregunta ya esta contestada.
+ck "$("$PY" "$E/report.py" --store "$S" 2>&1 | grep -c 'ablacion por componente')" "1" \
+   "el informe declara el hueco de ablacion cuando no hay brazos que comparar"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
