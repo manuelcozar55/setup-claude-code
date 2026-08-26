@@ -38,7 +38,9 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 doctor: ## Verifica una instalacion existente del kit
 	bash kit/doctor.sh
 
-evals-paid: ## Eval set: 6 llamadas REALES a la API de Claude. CUESTA DINERO. Pide confirmacion.
-	@read -p "Esto hace 6 llamadas reales a la API de Claude y cuesta dinero real. Continuar? [y/N] " ans; \\
+evals-paid: ## Eval set, LOS DOS BRAZOS: llamadas REALES a la API. CUESTA DINERO. Pide confirmacion.
+	@read -p "Esto corre el eval con harness (ARM=on) y sin el (ARM=off): 2 llamadas reales por tarea, dinero real. Continuar? [y/N] " ans; \\
 	[ "$$ans" = "y" ] || [ "$$ans" = "Y" ] || { echo "Cancelado."; exit 1; }
 	bash kit/evals/run.sh
+	ARM=off bash kit/evals/run.sh
+	@echo; python3 kit/evals/report.py
