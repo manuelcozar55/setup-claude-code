@@ -8,7 +8,22 @@ hay filas en rojo — un criterio sin cumplir y declarado vale más que uno cump
 ## Procedencia de las fuentes
 
 Verificado por mí contra la fuente primaria: Harness-Bench (arXiv:2605.27922),
-McAteer en Latent Space, Anthropic *Demystifying evals* e *Infrastructure noise*.
+McAteer en Latent Space, Anthropic *Demystifying evals* e *Infrastructure noise*,
+y las tres fuentes que pedía el encargo:
+
+- **AVO** — *Agentic Variation Operators for Autonomous Evolutionary Search*,
+  arXiv:2603.24517, 25-mar-2026, 23 autores (NVIDIA). El agente **es** el operador de
+  variación; política de commit monótona (corrección **y** puntuación ≥ la mejor
+  anterior); ~500 direcciones internas → ~40 commits de linaje. Bate a cuDNN hasta un
+  3,5 % y a FlashAttention-4 hasta un 10,5 % en MHA tras 7 días autónomos.
+- **NVIDIA SkillEvaluator** (blog de developer). Cinco dimensiones —
+  *Correctness, Discoverability, Effectiveness, Efficiency, Security*. Cita literal:
+  *"Skill Lift is the with-skill score minus the without-skill score"* y
+  *"tracks token usage separately from Efficiency"*. Admite que **no publica intervalos
+  de confianza** y que el 85 % de sus pruebas corrió **un solo intento**.
+- **NVIDIA-NeMo/labs-OO-Agents** (existe; el `nvidia-nemo/…` del encargo redirige).
+  Framework NOOA, Python, 1 902 ★. **No documenta grading, agregación ni ablación.**
+
 El resto viene de investigación con subagentes y **no está verificado en origen**:
 Böckeler, Hamel Husain, Shreya Shankar, LangChain, Cognition, Willison. Trátalo como
 pista, no como cita, hasta comprobarlo.
@@ -40,8 +55,10 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 + `test_evals.sh` §10: ningún check aprueba el estado inicial, y no hacer nada da `fail`, no `error` | ✅ |
 | E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan | ⚠️ **humano, sin cadencia fijada** |
-| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 8/8 mutantes; los §9–§12 nacieron ya en rojo |
-| E22 | Poda: borrar lo que el modelo ya absorbió | McAteer; Anthropic *harness design* | — | ❌ **sin ablación por componente** |
+| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 12/12 mutantes; los 4 últimos versionados en `make mutantes`; los §9–§13 nacieron ya en rojo |
+| E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **implementado, sin correr con API** |
+| E23 | Un brazo cuyo flag desapareció mide el harness completo con etiqueta falsa | hallazgo propio | `test_evals.sh` §13: los 4 flags tienen que seguir en `claude --help` | ✅ · sensor mutado |
+| E24 | No restar dos brazos que corrieron modelos distintos | hallazgo propio (E14 llevado al informe) | `report.py:comparables()` dice `NO COMPARABLE` en vez de dar un lift | ✅ · sensor mutado |
 
 ## Las tres preguntas
 
@@ -61,6 +78,54 @@ detección inadecuada?* La respuesta que aplicamos es **mutación**: se rompe a 
 cada afirmación y se exige que el sensor se ponga rojo. Ya pagó su coste — un sensor
 buscaba `"0.50"` en el informe y casaba con la columna de coste, no con la tasa: habría
 seguido verde con el fallo dentro. Lo cazó su mutante, no la lectura del código.
+
+## Ablación por componente (E22), que era el hueco número uno
+
+`lift` responde *"¿sirve el harness?"*. No responde *"¿sirve esta pieza?"*. Un conjunto
+puede salir positivo con la mitad de sus piezas estorbando. La ablación es quitar una
+cada vez y volver a medir.
+
+**Ninguna de las dos fuentes de NVIDIA hace esto**, y se comprobó en origen antes de
+escribirlo: SkillEvaluator es un interruptor binario de la skill entera (con/sin), y
+labs-OO-Agents no documenta ablación ninguna. No es una carencia de este repo copiada
+de nadie; es trabajo que aquí se hace y allí no.
+
+Cinco brazos, no dos:
+
+| `ARM` | Qué quita | Cómo |
+|---|---|---|
+| `on` | nada | el harness completo |
+| `off` | todo | `--safe-mode` (control; **sigue autenticando** con la sesión normal, a diferencia de `--bare`) |
+| `sin-ajustes` | hooks, permisos y env | `--setting-sources "project,local"` — al correr en un `mktemp -d` no hay ajustes de proyecto ni locales, así que la sesión se queda sin `settings.json` de usuario |
+| `sin-skills` | skills y comandos | `--disable-slash-commands` |
+| `sin-mcp` | 12 servidores MCP → 0 | `--strict-mcp-config` sin ningún `--mcp-config` |
+
+**No hay un sexto brazo para `CLAUDE.md`**, y queda dicho en vez de simulado: el CLI no
+tiene interruptor propio para él. Solo `--safe-mode`, que lo apaga todo, y `--bare`, que
+exige API key. `sin-ajustes` tampoco es limpio — se lleva hooks, permisos y env **de
+golpe**, porque el CLI no los separa; `report.py` lo etiqueta con ese nombre largo justo
+para que nadie lea "hooks" donde pone tres cosas.
+
+**Lectura.** Quitar una pieza y **bajar** (Δ ≤ −0,05) es la señal de que la pieza aporta.
+Subir no es "mejor sin ella" a la ligera: con `n` pequeño lo normal es ruido, y así lo
+dice el informe.
+
+### Los tres sensores que trajo, y por qué cada uno
+
+- **Un brazo mal escrito era un brazo que mentía.** `ARM=Off` (con mayúscula) caía en el
+  `ARMFLAGS=()` por defecto: corría el harness **completo** y se guardaba con la etiqueta
+  del typo. Ahora `run.sh` sale con rc=2 ante cualquier `ARM` desconocido, y el sensor
+  exige que el rechazo ocurra **antes** de invocar al agente — rechazar después de pagar
+  la llamada no sirve de nada.
+- **Un brazo cuyo flag ya no existe mide el harness entero con la etiqueta de la pieza
+  ablacionada**, y el informe diría "no aporta" de todas ellas. Por eso §13 comprueba,
+  gratis, que los cuatro flags siguen en `claude --help`.
+- **La deriva de modelo es un confusor real aquí, no teórico**: `sin-ajustes` tira el
+  `settings.json` que fija el modelo. `report.py` se niega a restar dos brazos que
+  corrieron modelos distintos y escribe `NO COMPARABLE`.
+
+Los tres nacieron en rojo (mutantes M9–M12, reproducibles con `make mutantes`). Lo que
+**no** está hecho es correrlo con API: `make evals-ablacion-paid`, ~20 llamadas por brazo.
 
 ## Lo que encontró la primera tirada real
 
@@ -165,20 +230,57 @@ Candidatos pendientes, con su cita, para cuando haya más evidencia:
 No se añaden como tareas todavía: con una sola cita cada una, inventar el enunciado
 sería exactamente el *eval-driven development* que este repo dice no seguir.
 
+## ¿Partir de otra base? Dos repos revisados a ciegas
+
+Se encargaron **dos revisiones independientes**, cada agente sin ver la del otro ni saber
+que existía una segunda, para que la comparación no naciera sesgada.
+
+| Repo | Qué es | Tests | Tareas / brazos / grader / CI / ablación | Veredicto |
+|---|---|---|---|---|
+| `HKUDS/OpenHarness` (MIT, Python, 15 539 ★) | reimplementación en Python del *runtime* del agente de Claude Code + el agente personal "ohmo" | 114 unit/integración (`uv run pytest -q`) | no / no / no / no / no | **DESCARTAR como base** |
+| `deepseek-ai/deepseek-harness` (MIT, TypeScript, ~197 k ★) | monorepo pnpm sobre Cordis vendorizado; *"Everything is a Plugin"* | vitest + gate de cobertura 100 % por fichero + e2e con API real que se auto-salta sin claves | no / no / no / no / no | **CANTERA de ideas** |
+
+**El hallazgo convergente, y es el que decide:** ninguno de los dos es un harness de
+**evaluación**. Los dos son *runtimes* de agente. Comparten la palabra "harness" y
+responden a otra pregunta — *cómo ejecutar un agente*, no *cómo medir si el andamiaje
+sirve*. Por eso ninguno puede ser la base: no hay nada que heredar en la parte que aquí
+es el producto (tareas, brazos, grader, intervalos, ablación). El `BENCHMARK.md` de
+deepseek-harness ocupa **231 bytes**.
+
+Lo que sí se lleva de la cantera, y está sin implementar:
+
+- **"Saltado por falta de clave" es un tercer estado, no un fallo.** Los e2e de deepseek
+  se auto-saltan sin API key. Aquí encaja con E4 (`error` ≠ `fail`) y con el hueco de
+  LangSmith.
+- **Gate de cobertura por fichero**, no global — un promedio esconde un fichero a cero.
+- De AVO, la idea estructural: **conjunto reservado (*held-out*)**. AVO avisa de su
+  propio agujero — el mismo harness evoluciona y puntúa, sin conjunto reservado, así que
+  nada garantiza que no se esté auto-aprobando. Aplica en cuanto este repo empiece a
+  ajustar el harness contra su propio eval, que es exactamente lo que el encargo pide
+  ("ir mejorándolo con el uso").
+
 ## Lo que falta, por orden de daño
 
-1. **E22 · ablación por componente.** Método de Anthropic: quitar una pieza cada vez y
-   medir. Es lo único que convierte "el harness sirve" en "esta pieza sirve".
+1. **Nada de los cinco brazos está corrido con API.** Es el hueco número uno desde que
+   E22 se implementó: el código está, los sensores están en verde, y el número no existe.
+   20 tareas × 5 brazos ≈ 100 llamadas; los dos brazos principales solos son ~12 $. El
+   único número real que hay más abajo es el de las **6 tareas antiguas**; las 14 nuevas
+   están validadas en seco (ninguna aprueba el estado inicial, ninguna confunde `fail`
+   con `error`), no medidas.
 2. **`RUNS=1` y `n` pequeño.** Con 20 tareas ya se puede, pero mientras no haya
    repeticiones los intervalos seguirán solapándose y casi todo caerá en `NEUTRO`.
-   Es el techo real que queda, y cuesta dinero: 20 tareas × 2 brazos ≈ 20 llamadas
-   por brazo y unos 12 $ por tirada completa.
-3. **E16 · sin sensor.** Contable: tasa de aprobado tendiendo a 1 deja de informar.
-4. **E14 · CPU/RAM/carga sin registrar.** En WSL2, y con el proxy Headroom compitiendo,
-   es un confusor real, no teórico.
-5. **Las 20 tareas están sin correr con API.** El número real que hay abajo es el de
-   las 6 antiguas. Las 14 nuevas están validadas en seco (ninguna aprueba el estado
-   inicial, ninguna confunde `fail` con `error`), no medidas.
+   Es el techo real que queda, y multiplica el coste de arriba.
+3. **LangSmith local no está levantado.** No hay demonio Docker ni podman en esta
+   máquina, ni clave de la nube. El emisor y su sensor (`LANGSMITH_ENDPOINT`) están
+   escritos; falta la decisión de instalar el motor de Docker en WSL o dar una clave.
+   Hasta entonces, "medible en LangSmith" es una afirmación sin sensor.
+4. **E16 · sin sensor.** Contable: tasa de aprobado tendiendo a 1 deja de informar.
+5. **E14 · CPU/RAM/carga sin registrar.** En WSL2, y con el proxy Headroom compitiendo,
+   es un confusor real, no teórico. E24 tapa solo la parte del modelo.
+6. **Solo 4 de los 12 mutantes son reproducibles.** `make mutantes` versiona M9–M12 y
+   falla si un ancla desaparece del fuente (un mutante que no se aplica deja de vigilar
+   **en silencio**). M1–M8 se corrieron con scripts de usar y tirar: de esos ocho queda
+   la palabra, no la evidencia, y queda dicho.
 
 ## Desacuerdo abierto
 

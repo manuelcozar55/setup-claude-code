@@ -113,6 +113,52 @@ fricción de sus propios guards se queda sin guards.
 
 ---
 
+## M-004 · Un test gratuito arrancó el eval de pago: `${VAR:-def}` no distingue vacío de ausente
+
+**Fecha:** 2026-08-26 · **Severidad:** media (gasto no autorizado) · **Estado:** corregido y sensorizado
+
+### Qué pasó
+
+Escribiendo el sensor de brazos inválidos (§13 de `test_evals.sh`) se puso `""` en la lista
+de valores de `ARM` que `run.sh` debe rechazar. Pero `run.sh` hace
+`ARM="${ARM:-on}"`, y `:-` sustituye **también la cadena vacía**, no solo la variable
+ausente. Así que `ARM=""` no era un brazo inválido: era `on`, el brazo completo. La suite
+que existe precisamente para medir el eval **sin gastar dinero** lanzó el eval de pago.
+
+Se gastaron **4 llamadas reales y 1,32 USD** antes de cortarlo. Los 4 registros quedaron en
+`runs.jsonl` como un brazo `on` parcial sobre las tareas 01–04, con un `ts` propio; se han
+movido a `runs-abortados.jsonl` en vez de borrarlos, porque un brazo incompleto **contamina
+el agregado** (duplica cuatro tareas) pero la evidencia del incidente no se tira.
+
+### Por qué importa
+
+Dos lecciones, y la segunda es la que duele:
+
+1. `${VAR:-def}` frente a `${VAR-def}` es la diferencia entre "vacío cuenta como ausente" y
+   "vacío es un valor". Un test que enumera entradas inválidas tiene que comprobar contra el
+   parser real, no contra lo que uno cree que el parser hace.
+2. **El sensor tenía autoridad para gastar dinero y nadie se lo había quitado.** La suite
+   gratuita invocaba `run.sh` directamente, con el `PATH` de verdad y el `runs.jsonl` de
+   verdad. El fallo no fue solo el `""`: fue que un error en un test *pudiera* llegar a la
+   API. La corrección real no es quitar el `""`, es que ya no haya camino.
+
+### Regla
+
+> Un test de la suite gratuita nunca invoca `run.sh` con el `PATH` real. Se corre sobre una
+> copia (`cp -R`) y con un `claude` de pega en el `PATH`, como el §9. Si el guardia que se
+> está probando se rompe, el test debe seguir siendo incapaz de gastar un céntimo o de
+> escribir en el almacén que vigila.
+
+### Dónde vive
+
+`kit/test/test_evals.sh` §13: corre sobre una copia en `mktemp -d`, con una sola tarea
+sonda, un `claude` falso que solo hace `touch "$PROBE"`, y una comprobación explícita de que
+**el agente no se invocó** (`[ -e "$PROBE" ]`) — porque rechazar el brazo *después* de llamar
+al modelo no sirve de nada. `ARM=""` ya no está en la lista; los casos son `basura`, `Off`,
+`ON` y `on-`. El mutante M9 (retirar el `*)` de `run.sh`) confirma que el sensor se pone rojo.
+
+---
+
 ## M-003 · `set -o pipefail` + `grep -q` = falso fallo por SIGPIPE
 
 **Fecha:** 2026-08-21 · **Severidad:** media · **Estado:** corregido
