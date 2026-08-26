@@ -231,7 +231,7 @@ bash install.sh --with-headroom    # instala, arranca, verifica /readyz, y solo 
 | Sentinel | motor de políticas `PreToolUse` (IOCs), opcional, capa adicional sobre cualquier tool | [`kit/sentinel/`](kit/sentinel/) |
 | 8 agentes con tiering | `orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker` | [`kit/claude/agents/`](kit/claude/agents/) |
 | Dos capas de secretos | Capa 1 (`secret-guard.sh`, por nombre de fichero, activa desde el primer `install.sh`) + Capa 2 (`gitleaks` en `pre-commit`, por contenido real, opt-in por repo) | [`kit/docs/05-security.md`](kit/docs/05-security.md) |
-| Eval set | 6 tareas reales, dos brazos (con harness y sin el) y agregado con intervalo de confianza; opt-in, cuesta llamadas reales a `claude -p`, nunca corre en CI | [`kit/evals/`](kit/evals/) |
+| Eval set | 20 tareas reales (mitad negativas: miden lo que cuesta un falso positivo), dos brazos (con harness y sin el) y agregado con intervalo de confianza; opt-in, cuesta llamadas reales a `claude -p`, nunca corre en CI | [`kit/evals/`](kit/evals/) |
 | Suite de test falsable | `test_guards_falsifiability.sh`: neutraliza un guard real y comprueba que caen casos `BLOCK` conocidos | [`kit/test/`](kit/test/) |
 | Garantía de instalación limpia | `test_clean_install_resilience.sh`: monta el kit sin ningún componente de terceros y exige que no falle **y** que siga bloqueando | [`kit/test/`](kit/test/) |
 | Headroom opt-in | `install.sh --with-headroom`: instala el proxy, lo arranca, comprueba `/readyz` y solo entonces enruta la API | [`kit/docs/03-headroom.md`](kit/docs/03-headroom.md) |

@@ -1,11 +1,13 @@
 # Eval set mínimo
 
-Seis tareas en `tasks/*.yaml`, sacadas de fallos reales (no inventadas). Corre con
+**20 tareas** en `tasks/*.yaml`, sacadas de fallos reales (no inventadas):
+10 **positivas** (el harness debe actuar) y 10 **negativas** (debe apartarse).
+Cada tarea lo declara en su campo `tipo:`. Corre con
 `bash run.sh`; grader de transcript en `grade.py`; agregado en `report.py`.
 
 **Opt-in, no automático.** Esto NO se ejecuta via `make test`, `doctor.sh` ni CI.
-Correrlo cuesta dinero real: `run.sh` hace 6 llamadas reales a `claude -p` (una
-API call por tarea). Ejecútalo a mano solo cuando quieras medir el comportamiento
+Correrlo cuesta dinero real: `run.sh` hace 20 llamadas reales a `claude -p` (una
+API call por tarea) **por brazo**, así que una tirada completa son 40. Ejecútalo a mano solo cuando quieras medir el comportamiento
 del agente en esta instalación:
 
 ```bash

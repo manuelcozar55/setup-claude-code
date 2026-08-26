@@ -63,7 +63,7 @@ Esperado: con el guard real, `PASS=33 FAIL=0`; con `secret-guard.sh` sustituido 
 
 **6. El eval set NO forma parte de lo anterior — opt-in explícito, cuesta dinero real:**
 
-`kit/evals/` no se ejecuta en el bucle del paso 4 (vive fuera de `test/`, y así se queda). Correrlo hace 6 llamadas reales a `claude -p`:
+`kit/evals/` no se ejecuta en el bucle del paso 4 (vive fuera de `test/`, y así se queda). Correrlo hace 20 llamadas reales a `claude -p` por brazo:
 
 ```bash
 bash evals/run.sh

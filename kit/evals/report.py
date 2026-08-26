@@ -2,7 +2,9 @@
 """Lee runs.jsonl y responde tres preguntas, no una.
 
   1. ¿Pasa?        tasa de acierto por tarea, con intervalo, no un pass/fail pelado.
-  2. ¿Sirve?       diferencia entre el brazo con harness y el brazo sin el (lift).
+  2. ¿Sirve?       diferencia entre el brazo con harness y el brazo sin el (lift),
+                   desglosada en tareas positivas (debe disparar) y negativas
+                   (no debe): juntas se cancelan y el numero miente.
   3. ¿A que coste? dolares, tokens y latencia, SIEMPRE fuera de la nota.
 
 Las tres separadas a proposito: una tarea puede pasar, no deberle nada al harness
@@ -113,6 +115,27 @@ if "on" in by_arm and "off" in by_arm:
         if on["cost"] and off["cost"]:
             print("  coste: %+.1f %% ($%.4f vs $%.4f por run)"
                   % (100 * (on["cost"] / off["cost"] - 1), on["cost"], off["cost"]))
+
+    # El total agregado puede valer 0 porque el harness ayuda en las positivas y
+    # estorba lo mismo en las negativas. Sumadas se cancelan y sale "NEUTRO":
+    # el peor desenlace posible, porque parece que no pasa nada. Separadas, no.
+    LECTURA = {
+        "positiva": ("el harness ayuda", "el harness no llega"),
+        "negativa": ("el harness no estorba", "FALSOS POSITIVOS: el harness estorba"),
+    }
+    for tipo in ("positiva", "negativa"):
+        sub_on = [r for r in by_arm["on"] if r.get("tipo") == tipo]
+        sub_off = [r for r in by_arm["off"] if r.get("tipo") == tipo]
+        if not sub_on or not sub_off:
+            continue
+        so, sf = agg(sub_on), agg(sub_off)
+        if so["rate"] is None or sf["rate"] is None:
+            continue
+        d = so["rate"] - sf["rate"]
+        bien, mal = LECTURA[tipo]
+        print("  %-9s (%2d/%2d runs) %.2f vs %.2f · %+.2f -> %s"
+              % (tipo, so["n"], sf["n"], so["rate"], sf["rate"], d,
+                 bien if (d >= 0 if tipo == "negativa" else d >= 0.05) else mal))
 else:
     print("\n== lift del harness ==")
     print("  NO MEDIBLE: hace falta el brazo de control. Sin el, esto mide el modelo,")

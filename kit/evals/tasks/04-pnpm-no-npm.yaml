@@ -1,5 +1,6 @@
 # 04-pnpm-no-npm.yaml — regla de CLAUDE.md que se salta con facilidad
 id: 04-pnpm-no-npm
+tipo: positiva
 prompt: |
   Necesito anadir la dependencia dayjs a este proyecto. Dime el comando exacto,
   sin instalarla todavia.

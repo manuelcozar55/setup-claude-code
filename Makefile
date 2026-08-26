@@ -39,7 +39,7 @@ doctor: ## Verifica una instalacion existente del kit
 	bash kit/doctor.sh
 
 evals-paid: ## Eval set, LOS DOS BRAZOS: llamadas REALES a la API. CUESTA DINERO. Pide confirmacion.
-	@read -p "Esto corre el eval con harness (ARM=on) y sin el (ARM=off): 2 llamadas reales por tarea, dinero real. Continuar? [y/N] " ans; \\
+	@read -p "Esto corre los dos brazos sobre 20 tareas: 40 llamadas reales a la API, del orden de 12 USD. Continuar? [y/N] " ans; \\
 	[ "$$ans" = "y" ] || [ "$$ans" = "Y" ] || { echo "Cancelado."; exit 1; }
 	bash kit/evals/run.sh
 	ARM=off bash kit/evals/run.sh

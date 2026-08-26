@@ -294,5 +294,106 @@ else
 fi
 rm -rf "$W"
 
+# --- 10. Ningun check puede aprobar el estado inicial ----------------------
+# Con el setup hecho y SIN agente, todo check tiene que dar exactamente 1.
+# Un 0 seria un check que aprueba sin que nadie haya hecho nada. Un 2 tambien
+# es defecto: run.sh lo traduce a 'error' y la tarea sale del denominador, asi
+# que un agente que no hace nada dejaria de contar como suspenso. Aqui se
+# colaron cuatro: `grep` sobre un fichero inexistente devuelve 2, no 1.
+V=$(mktemp -d) || exit 1
+# Transcript no vacio pero inutil: el agente dice que lo hizo y no toca nada.
+# Vacio daria 2 (no medible) y taparia justo lo que se quiere distinguir.
+printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hecho."}]}}' > "$V/inutil.jsonl"
+malos=""; sospechosos=""
+for f in "$E"/tasks/*.yaml; do
+  tid=$(basename "$f" .yaml)
+  vd=$(mktemp -d); vm=$(mktemp -d)
+  "$PY" -c "
+import os, sys, yaml
+t = yaml.safe_load(open(sys.argv[1])); m = sys.argv[2]
+open(os.path.join(m,'_setup.sh'),'w').write(t.get('setup') or ':\n')
+open(os.path.join(m,'_check.sh'),'w').write(t['check'])
+" "$f" "$vm"
+  cp "$V/inutil.jsonl" "$vm/_run.jsonl"
+  ( cd "$vd" && bash "$vm/_setup.sh" >/dev/null 2>&1
+    PY="$PY" GRADE="$E/grade.py" RUN_JSONL="$vm/_run.jsonl" bash "$vm/_check.sh" >/dev/null 2>&1 )
+  case $? in
+    0) malos="$malos $tid";;
+    2) sospechosos="$sospechosos $tid";;
+  esac
+  rm -rf "$vd" "$vm"
+done
+rm -rf "$V"
+if [ -n "$malos" ]; then
+  echo "NOT ok - checks que aprueban sin agente:$malos"; fail=$((fail+1))
+else
+  echo "ok - ningun check aprueba el estado inicial"; pass=$((pass+1))
+fi
+if [ -n "$sospechosos" ]; then
+  echo "NOT ok - checks que dan 'error' (2) donde deberian dar 'fail' (1):$sospechosos"; fail=$((fail+1))
+else
+  echo "ok - no hacer nada cuenta como fallo, no como averia del instrumento"; pass=$((pass+1))
+fi
+
+# --- 11. Mitad debe-disparar, mitad no-debe-disparar (E11) ----------------
+# Sin tareas negativas el eval solo puede premiar un harness mas ruidoso: nada
+# mide lo que cuesta un falso positivo. La proporcion se declara por tarea en
+# `tipo:` y se cuenta aqui; se admite un desvio de una tarea para numeros impares.
+pos=$(grep -l '^tipo: positiva' "$E"/tasks/*.yaml 2>/dev/null | wc -l)
+neg=$(grep -l '^tipo: negativa' "$E"/tasks/*.yaml 2>/dev/null | wc -l)
+sin=$(grep -L '^tipo: \(positiva\|negativa\)' "$E"/tasks/*.yaml 2>/dev/null | tr '\n' ' ')
+if [ -n "$sin" ]; then
+  echo "NOT ok - tareas sin 'tipo: positiva|negativa': $sin"; fail=$((fail+1))
+else
+  echo "ok - toda tarea declara si el harness debe disparar o no"; pass=$((pass+1))
+fi
+d=$((pos - neg)); [ "$d" -lt 0 ] && d=$((-d))
+if [ "$d" -le 1 ]; then
+  echo "ok - mezcla equilibrada: $pos positivas / $neg negativas"; pass=$((pass+1))
+else
+  echo "NOT ok - mezcla desequilibrada: $pos positivas / $neg negativas (desvio $d)"; fail=$((fail+1))
+fi
+
+# --- 12. El lift agregado no puede tapar una cancelacion ------------------
+# Caso construido: el harness acierta TODAS las positivas y suspende TODAS las
+# negativas. Sumado da lift 0,00 y report.py lo llama "NEUTRO (ruido)", que es
+# el peor desenlace posible porque parece que no pasa nada. El desglose por
+# polaridad tiene que enseñar el +1,00 y el -1,00 por separado.
+Z=$(mktemp -d) || exit 1
+"$PY" - "$Z/cancela.jsonl" <<'PYEOF'
+import json, sys
+def r(task, arm, res, tipo):
+    return {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": tipo,
+            "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
+            "duration_api_ms": 1, "input_tokens": 1}
+rows = []
+for i in range(4):
+    rows += [r("p%d" % i, "on", "pass", "positiva"), r("p%d" % i, "off", "fail", "positiva"),
+             r("n%d" % i, "on", "fail", "negativa"), r("n%d" % i, "off", "pass", "negativa")]
+open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+PYEOF
+canc=$("$PY" "$E/report.py" --store "$Z/cancela.jsonl" 2>&1)
+rm -rf "$Z"
+if printf '%s' "$canc" | grep -q 'NEUTRO'; then
+  if printf '%s' "$canc" | grep -q 'FALSOS POSITIVOS'; then
+    echo "ok - el desglose por polaridad destapa la cancelacion que el total esconde"; pass=$((pass+1))
+  else
+    echo "NOT ok - el total dice NEUTRO y nada avisa de los falsos positivos"; fail=$((fail+1))
+  fi
+else
+  echo "NOT ok - el caso de cancelacion ya no produce un total neutro: sensor obsoleto"; fail=$((fail+1))
+fi
+
+# El campo del que vive todo lo anterior. Si record.py dejara de escribirlo, el
+# desglose desapareceria en silencio y el informe volveria a un solo numero.
+EVAL_TS=2026-01-01T00:00:00Z EVAL_SHA=deadbee \
+  "$PY" "$E/record.py" 01-no-releer-tras-editar on 9 pass "$T/conresult.jsonl" "$S" 2>/dev/null
+ck "$("$PY" -c "
+import json,sys
+for l in open(sys.argv[1]):
+    r=json.loads(l)
+    if r.get('attempt')==9: print(r.get('tipo')); break
+" "$S" 2>/dev/null)" "positiva" "record.py saca la polaridad del yaml de la tarea"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1

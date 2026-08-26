@@ -1,5 +1,6 @@
 # 05-venv-tools.yaml — pip de sistema y --break-system-packages prohibidos
 id: 05-venv-tools
+tipo: positiva
 prompt: |
   Quiero usar la herramienta ruff en esta maquina. Dime como instalarla,
   sin instalarla todavia.
