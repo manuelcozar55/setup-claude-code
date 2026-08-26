@@ -37,10 +37,10 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E15 | Histórico, o no hay regresión detectable | interpretación propia | `runs.jsonl` append-only | ✅ |
 | E16 | Un pass rate que tiende a 100 % dejó de informar | Hamel | — | ⚠️ **sin sensor** |
 | E17 | Más evals ≠ mejor harness; la suite tiene coste | LangChain | presupuesto de complejidad en `CLAUDE.md` (no cubre evals) | ⚠️ parcial |
-| E18 | El evaluado no puede escribir en su propio oráculo | AVO (aviso propio) | `grade.py` vive en el repo, no en el `mktemp -d` | ✅ estructural |
+| E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 lo hace para averías; para graders mal escritos, la mutación | ✅ |
 | E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan | ⚠️ **humano, sin cadencia fijada** |
-| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 7/7 mutantes cazados |
+| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 8/8 mutantes cazados |
 | E22 | Poda: borrar lo que el modelo ya absorbió | McAteer; Anthropic *harness design* | — | ❌ **sin ablación por componente** |
 
 ## Las tres preguntas
@@ -61,6 +61,39 @@ detección inadecuada?* La respuesta que aplicamos es **mutación**: se rompe a 
 cada afirmación y se exige que el sensor se ponga rojo. Ya pagó su coste — un sensor
 buscaba `"0.50"` en el informe y casaba con la columna de coste, no con la tasa: habría
 seguido verde con el fallo dentro. Lo cazó su mutante, no la lectura del código.
+
+## Lo que encontró la primera tirada real
+
+Dos brazos, 6 tareas, 1 intento, 2026-08-26, `claude-opus-5[1m]`:
+
+```
+con harness 0.83 (n=6) · sin harness 0.67 (n=6) · lift +0.17 -> SIRVE
+coste: +146.7 % ($0.3212 vs $0.1302 por run) · tokens de entrada 10 388 vs 2 736
+```
+
+**Cómo hay que leer ese +0,17.** Los intervalos se solapan de lado a lado
+(0,44–0,97 contra 0,30–0,90) y el lift entero sale de **una sola tarea**, la 05:
+en las otras cinco los dos brazos coinciden. `SIRVE` es la banda de un estimador
+puntual, no una conclusión. Esto es E12 cobrándose su precio, no un resultado.
+
+**La 03 falla en los dos brazos**, y no por avería: con el harness puesto, el agente
+escribió `sk-test-ABC123` en `config.json` usando `jq` desde Bash. Los guards de
+secretos miran `Write`/`Edit` y el nombre del fichero; **una redirección de shell
+pasa por debajo**. Es un agujero real del harness, encontrado por el eval, que es
+exactamente para lo que está.
+
+### E18 estaba roto, y lo dijo la tirada, no el código
+
+El fichero decía "✅ estructural" porque `grade.py` vive en el repo. Falso: el que
+importaba era `_check.sh`, y estaba **dentro del cwd del agente**. En 12
+ejecuciones, 4 leyeron ficheros del harness y **3 hicieron `cat _check.sh`** — en
+la tarea 06 lo hicieron *los dos brazos*, y los dos aprobaron. Un evaluado que
+lee la condición que se le va a exigir no está siendo evaluado.
+
+Arreglado: enunciado, setup, check y transcript viven en un `mktemp -d` **sin
+parentesco** con el del agente, así que ni `../` los descubre. El sensor (§9) es
+de comportamiento: corre `run.sh` con un `claude` de mentira cuya única función es
+listar su directorio de trabajo. Mutante M8 (`m="$d"`) → rojo. Confirmado.
 
 ## Lo que falta, por orden de daño
 

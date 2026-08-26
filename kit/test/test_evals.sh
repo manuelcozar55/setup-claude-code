@@ -250,5 +250,49 @@ if [ -f "$DOC" ]; then
   ck "${dicho:-ninguno}" "$real" "EVAL-CRITERIA.md declara el numero real de tareas"
 fi
 
+# --- 9. El evaluado no puede ver su propio oraculo -------------------------
+# En la primera tirada real con API, 3 de 12 ejecuciones hicieron `cat _check.sh`
+# desde su propio cwd, y en la tarea 06 lo hicieron LOS DOS BRAZOS antes de
+# aprobar: el agente podia leer la condicion exacta que se le iba a exigir. El
+# sensor es de comportamiento, no un grep: se corre run.sh entero con un `claude`
+# de mentira que lo unico que hace es listar su directorio de trabajo.
+W=$(mktemp -d) || exit 1
+cp -R "$E" "$W/evals"
+rm -f "$W"/evals/tasks/*.yaml "$W"/evals/runs.jsonl "$W"/evals/resultados-*.json
+printf 'id: sonda\nprompt: |\n  no hagas nada\nsetup: |\n  : > archivo.txt\ncheck: |\n  true\n' \
+  > "$W/evals/tasks/sonda.yaml"
+
+mkdir -p "$W/bin"
+cat > "$W/bin/claude" <<'STUB'
+#!/usr/bin/env bash
+ls -A > "$PROBE"
+printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}\n'
+STUB
+chmod +x "$W/bin/claude"
+
+PROBE="$W/visto.txt" PATH="$W/bin:$PATH" bash "$W/evals/run.sh" >/dev/null 2>&1
+visto=$(cat "$W/visto.txt" 2>/dev/null)
+if [ -z "$visto" ]; then
+  echo "NOT ok - la sonda no llego a ejecutarse: el sensor de fuga no midio nada"; fail=$((fail+1))
+else
+  fugas=""
+  for n in _check.sh _prompt.txt _setup.sh _run.jsonl; do
+    printf '%s\n' "$visto" | grep -qx -- "$n" && fugas="$fugas $n"
+  done
+  if [ -z "$fugas" ]; then
+    echo "ok - el cwd del agente no contiene el check, el enunciado ni el transcript"; pass=$((pass+1))
+  else
+    echo "NOT ok - el agente ve su propio oraculo en el cwd:$fugas"; fail=$((fail+1))
+  fi
+  # Contraprueba: si la sonda no viera NADA de la tarea, el listado estaria vacio
+  # por una averia y el check de arriba pasaria en falso.
+  if printf '%s\n' "$visto" | grep -qx -- 'archivo.txt'; then
+    echo "ok - la sonda si ve los ficheros de la tarea (el listado no esta vacio)"; pass=$((pass+1))
+  else
+    echo "NOT ok - la sonda no ve ni los ficheros del setup: listado sospechoso"; fail=$((fail+1))
+  fi
+fi
+rm -rf "$W"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1

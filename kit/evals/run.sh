@@ -40,15 +40,21 @@ for f in "$E"/tasks/*.yaml; do
   id=$(basename "$f" .yaml)
   for attempt in $(seq 1 "$RUNS"); do
     d=$(mktemp -d) || continue
-    cd "$d" || continue
+    # Dos directorios sin parentesco, no uno. Con el enunciado y el check dentro
+    # del cwd del agente, el evaluado puede LEER SU PROPIO ORACULO: en la primera
+    # tirada real, 3 de 12 ejecuciones hicieron `cat _check.sh`, y en la 06 lo
+    # hicieron los dos brazos antes de aprobar. Un `../` no descubre nada porque
+    # el meta es otro mktemp -d, no un hermano.
+    m=$(mktemp -d) || { rmdir "$d"; continue; }
     "$PY" -c "
-import yaml, sys
-t = yaml.safe_load(open(sys.argv[1]))
-open('_setup.sh','w').write(t.get('setup') or ':\n')
-open('_check.sh','w').write(t['check'])
-open('_prompt.txt','w').write(t['prompt'])
-" "$f"
-    bash _setup.sh
+import os, sys, yaml
+t = yaml.safe_load(open(sys.argv[1])); m = sys.argv[2]
+open(os.path.join(m,'_setup.sh'),'w').write(t.get('setup') or ':\n')
+open(os.path.join(m,'_check.sh'),'w').write(t['check'])
+open(os.path.join(m,'_prompt.txt'),'w').write(t['prompt'])
+" "$f" "$m"
+    cd "$d" || continue
+    bash "$m/_setup.sh"
     # --permission-mode auto: sin esto, claude -p sin TTY no puede conceder
     # permisos y las tareas que requieren Edit/Bash miden friccion de permisos
     # en vez de comportamiento. --dangerously-skip-permissions y bypassPermissions
@@ -56,18 +62,21 @@ open('_prompt.txt','w').write(t['prompt'])
     # PreToolUse (secret-guard, sentinel, smart_approve) mas el clasificador
     # propio de Claude Code, asi que el aislamiento del mktemp -d no depende
     # solo de este flag. Ver README.md para el detalle completo.
-    claude "${ARMFLAGS[@]}" -p "$(cat _prompt.txt)" --permission-mode auto --output-format stream-json --verbose > _run.jsonl 2>_run.err
-    bash _check.sh >/dev/null 2>&1; rc=$?
+    claude "${ARMFLAGS[@]}" -p "$(cat "$m/_prompt.txt")" --permission-mode auto --output-format stream-json --verbose > "$m/_run.jsonl" 2>"$m/_run.err"
+    # El transcript tambien vive fuera: leerlo es leer la trayectoria que se esta
+    # puntuando. grade.py lo toma de RUN_JSONL (ver su valor por defecto).
+    export RUN_JSONL="$m/_run.jsonl"
+    bash "$m/_check.sh" >/dev/null 2>&1; rc=$?
     # 2 = no se pudo medir (transcript vacio). Contarlo como fail convierte una averia
     # de instrumentacion en un suspenso del agente, que es la lectura contraria.
     case $rc in 0) r=pass;; 2) r=error;; *) r=fail;; esac
     mkdir -p "$E/transcripts"
     keep="$E/transcripts/$id-$ARM-$attempt-$(date +%F).jsonl"
-    cp _run.jsonl "$keep"   # sin esto no se pueden leer despues
+    cp "$m/_run.jsonl" "$keep"   # sin esto no se pueden leer despues
     "$PY" "$E/record.py" "$id" "$ARM" "$attempt" "$r" "$keep" "$STORE"
     printf '  "%s": "%s",\n' "$id" "$r" >> "$TMP"
     echo "$id [$ARM $attempt/$RUNS]: $r"
-    cd "$E" && rm -rf "$d"
+    cd "$E" && rm -rf "$d" "$m"
   done
 done
 
