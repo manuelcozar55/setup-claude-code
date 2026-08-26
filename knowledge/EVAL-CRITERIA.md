@@ -48,14 +48,14 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E11 | Mitad debe-disparar / mitad no-debe-disparar | Anthropic ("balanced problem sets") | campo `tipo:` por tarea + `test_evals.sh` §11 | ✅ 10 / 10 |
 | E12 | 20–50 tareas sacadas de fallos reales | Anthropic; LangChain | `test_evals.sh` §8 cuadra el número con el doc | ✅ **hay 20**, en el suelo de la banda |
 | E13 | Deltas < 3 puntos son sospechosos hasta documentar la config | Anthropic *infra noise* | bandas ±0,05 / −0,10, por encima de ese suelo | ✅ por diseño |
-| E14 | La infraestructura es variable experimental de primera clase | Anthropic *infra noise* | `record.py` guarda modelo, sha, coste, turnos | ⚠️ **no** guarda CPU/RAM/carga |
+| E14 | La infraestructura es variable experimental de primera clase | Anthropic *infra noise* | `record.py` guarda modelo, sha, coste, turnos, **carga, CPUs y memoria libre**; `report.py` avisa si los brazos corrieron con la máquina distinta de ocupada | ✅ · sensor mutado |
 | E15 | Histórico, o no hay regresión detectable | interpretación propia | `runs.jsonl` append-only | ✅ |
 | E16 | Un pass rate que tiende a 100 % dejó de informar | Hamel | bloque *poder discriminante* en `report.py`: cuenta tareas **mudas** y declara `SATURADO` | ✅ · sensor mutado |
 | E17 | Más evals ≠ mejor harness; la suite tiene coste | LangChain | presupuesto de complejidad en `CLAUDE.md` (no cubre evals) | ⚠️ parcial |
 | E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 + `test_evals.sh` §10: ningún check aprueba el estado inicial, y no hacer nada da `fail`, no `error` | ✅ |
 | E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan | ⚠️ **humano, sin cadencia fijada** |
-| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 15/15 mutantes; los 7 últimos versionados en `make mutantes`; los §9–§14 nacieron ya en rojo |
+| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 18/18 mutantes; los 10 últimos versionados en `make mutantes`; los §9–§15 nacieron ya en rojo |
 | E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **implementado, sin correr con API** |
 | E23 | Un brazo cuyo flag desapareció mide el harness completo con etiqueta falsa | hallazgo propio | `test_evals.sh` §13: los 4 flags tienen que seguir en `claude --help` | ✅ · sensor mutado |
 | E24 | No restar dos brazos que corrieron modelos distintos | hallazgo propio (E14 llevado al informe) | `report.py:comparables()` dice `NO COMPARABLE` en vez de dar un lift | ✅ · sensor mutado |
@@ -159,6 +159,24 @@ Arreglado: enunciado, setup, check y transcript viven en un `mktemp -d` **sin
 parentesco** con el del agente, así que ni `../` los descubre. El sensor (§9) es
 de comportamiento: corre `run.sh` con un `claude` de mentira cuya única función es
 listar su directorio de trabajo. Mutante M8 (`m="$d"`) → rojo. Confirmado.
+
+### La máquina es una variable, no un decorado
+
+E14 estaba a medias: `record.py` guardaba modelo, sha y coste, pero no en qué estado
+estaba la máquina. Aquí eso no es teórico — esto corre en **WSL2 con el proxy Headroom
+compitiendo por CPU**, y sin el dato una latencia que empeora no se distingue de una
+máquina ocupada.
+
+Ahora cada run guarda `load1`, `cpus` y `mem_free_mb`, leídos de `/proc` y con `None` si
+no se pueden leer: un eval que se cae porque no pudo medir la carga convierte la
+telemetría en punto único de fallo de la medición. Y el dato **sirve para algo**, que es
+la otra mitad del criterio: si los dos brazos corrieron con la máquina distinta de
+ocupada (diferencia > 1 punto de carga o > CPUs/4), `report.py` avisa de que la nota
+aguanta —el grader es determinista— pero **la latencia y el coste no son comparables**.
+
+Dos mutantes vigilan el umbral por los dos lados: uno lo sube hasta que el aviso nunca
+salta (M17) y otro lo baja hasta que salta siempre (M18). Un aviso permanente informa lo
+mismo que ninguno.
 
 ### El conjunto ya estaba saturado, y no se sabía
 
@@ -290,14 +308,15 @@ Lo que sí se lleva de la cantera, y está sin implementar:
    máquina, ni clave de la nube. El emisor y su sensor (`LANGSMITH_ENDPOINT`) están
    escritos; falta la decisión de instalar el motor de Docker en WSL o dar una clave.
    Hasta entonces, "medible en LangSmith" es una afirmación sin sensor.
-4. **Solo 7 de los 15 mutantes son reproducibles.** `make mutantes` versiona M9–M15 y
+4. **Solo 10 de los 18 mutantes son reproducibles.** `make mutantes` versiona M9–M18 y
    falla si un ancla desaparece del fuente (un mutante que no se aplica deja de vigilar
    **en silencio**). M1–M8 se corrieron con scripts de usar y tirar: de esos ocho queda
    la palabra, no la evidencia, y queda dicho.
-5. **E14 · CPU/RAM/carga sin registrar.** En WSL2, y con el proxy Headroom compitiendo,
-   es un confusor real, no teórico. E24 tapa solo la parte del modelo.
-6. **18 de las 20 tareas nunca se han corrido en los dos brazos**, así que el recuento de
-   mudas de arriba sólo se conoce para las 6 antiguas. Depende del hueco número uno.
+5. **18 de las 20 tareas nunca se han corrido en los dos brazos**, así que el recuento de
+   mudas sólo se conoce para las 6 antiguas. Depende del hueco número uno.
+6. **Las 12 líneas de `runs.jsonl` que ya existen no llevan carga.** Se registró después,
+   así que el aviso de cargas dispares no puede aplicarse retroactivamente a la única
+   tirada real que hay: para esas 12, la parte de "a qué coste" sigue sin coartada.
 
 ## Desacuerdo abierto
 
