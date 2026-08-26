@@ -53,7 +53,7 @@ La excepción, y es un `FAIL`: si tu `settings.json` enruta la API a un proxy (`
 | `claude/agents/` | 8 agentes (`orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker`) | orquestación con tiering de modelo por tarea |
 | `sentinel/` | `sentinel_preflight.py` | el motor de políticas `PreToolUse` que decide allow/warn/deny |
 | `install.sh` · `doctor.sh` · `scan-secrets.sh` | scripts de instalación y verificación | instalar sin pisar nada, diagnosticar con evidencia, cerrar la puerta de secretos |
-| `test/` | regresión de guards, instalador y Capa 2 de secretos, en bash puro | `test/test_guards.sh`, `test/test_guards_falsifiability.sh`, `test/test_secret_content_gitleaks.sh` y el resto: 24 suites, todas en `make test` |
+| `test/` | regresión de guards, instalador y Capa 2 de secretos, en bash puro | `test/test_guards.sh`, `test/test_guards_falsifiability.sh`, `test/test_secret_content_gitleaks.sh` y el resto: 25 suites, todas en `make test` |
 | `evals/` | 6 tareas reales + harness de grading (opt-in, no corre en `test/`, cuesta llamadas reales a `claude -p`) | medir comportamiento del agente, no solo de los guards — ver [`evals/README.md`](evals/README.md) |
 | `docs/` | 9 documentos, del mapa (`01`) a SSH y GitLab privado (`09`) | el mapa mental y el "cómo" de cada pieza, con enlaces a terceros |
 

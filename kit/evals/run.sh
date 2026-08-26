@@ -7,7 +7,10 @@
 # de tareas y el porque de --permission-mode auto.
 set -u
 E="$(cd "$(dirname "$0")" && pwd)"
-PY="${PYTHON3:-python3}"
+# Exportados los dos: `bash _check.sh` es otro proceso y no hereda lo que no se exporta.
+# Sin `export PY`, el check de 01/03/04/05 corria como "" grade.py -> "command not
+# found" -> fail. Cuatro de seis tareas daban rojo sin mirar al agente.
+export PY="${PYTHON3:-python3}"
 export GRADE="$E/grade.py"
 OUT="$E/resultados-$(date +%F).json"
 TMP="$E/.resultados.parcial"
@@ -33,7 +36,10 @@ open('_prompt.txt','w').write(t['prompt'])
   # propio de Claude Code, asi que el aislamiento del mktemp -d no depende
   # solo de este flag. Ver README.md para el detalle completo.
   claude -p "$(cat _prompt.txt)" --permission-mode auto --output-format stream-json --verbose > _run.jsonl 2>_run.err
-  if bash _check.sh >/dev/null 2>&1; then r=pass; else r=fail; fi
+  bash _check.sh >/dev/null 2>&1; rc=$?
+  # 2 = no se pudo medir (transcript vacio). Contarlo como fail convierte una averia
+  # de instrumentacion en un suspenso del agente, que es la lectura contraria.
+  case $rc in 0) r=pass;; 2) r=error;; *) r=fail;; esac
   mkdir -p "$E/transcripts"
   cp _run.jsonl "$E/transcripts/$id-$(date +%F).jsonl"   # sin esto no se pueden leer despues
   printf '  "%s": "%s",\n' "$id" "$r" >> "$TMP"
