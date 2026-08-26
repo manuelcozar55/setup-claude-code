@@ -533,5 +533,55 @@ else
   echo "NOT ok - el informe se pronuncia sobre tareas mudas sin brazo de control"; fail=$((fail+1))
 fi
 
+# --- 15. La infraestructura es variable experimental (E14) ------------------
+# Esto corre en WSL2 con el proxy Headroom compitiendo por CPU. Sin registrar la
+# carga, una latencia que empeora no se distingue de una maquina ocupada, y el
+# "a que coste" del informe compara dos brazos medidos en condiciones distintas.
+V=$(mktemp -d) || exit 1
+EVAL_TS=2026-01-01T00:00:00Z EVAL_SHA=deadbee \
+  "$PY" "$E/record.py" t1 on 1 pass "$T/conresult.jsonl" "$V/maq.jsonl" 2>/dev/null
+ck "$("$PY" -c "
+import json,sys
+r=json.loads(open(sys.argv[1]).readline())
+print(all(r.get(k) is not None for k in ('load1','cpus','mem_free_mb')))
+" "$V/maq.jsonl" 2>/dev/null)" "True" "record.py registra carga, CPUs y memoria libre"
+
+# Y el dato tiene que servir para algo: dos brazos con la maquina distinta de
+# ocupada no tienen comparable el coste ni la latencia, y hay que decirlo.
+"$PY" - "$V/carga.jsonl" <<'PYEOF'
+import json, sys
+def r(arm, res, load):
+    return {"ts": "2026-01-01T00:00:00Z", "task": "t1", "arm": arm, "tipo": "positiva",
+            "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
+            "duration_api_ms": 1, "input_tokens": 1, "load1": load, "cpus": 8,
+            "mem_free_mb": 100}
+rows = [r("on", "pass", 0.1), r("off", "fail", 20.0)]
+open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+PYEOF
+carga=$("$PY" "$E/report.py" --store "$V/carga.jsonl" 2>&1)
+if printf '%s' "$carga" | grep -q 'AVISO: los dos brazos corrieron con la maquina distinta'; then
+  echo "ok - dos brazos con cargas dispares avisan de que el coste no es comparable"; pass=$((pass+1))
+else
+  echo "NOT ok - carga 0.1 contra 20.0 en 8 CPUs y ni un aviso: el coste se lee como si nada"; fail=$((fail+1))
+fi
+# Un aviso que sale siempre es tan inutil como no tenerlo.
+"$PY" - "$V/tranquila.jsonl" <<'PYEOF'
+import json, sys
+def r(arm, res, load):
+    return {"ts": "2026-01-01T00:00:00Z", "task": "t1", "arm": arm, "tipo": "positiva",
+            "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
+            "duration_api_ms": 1, "input_tokens": 1, "load1": load, "cpus": 8,
+            "mem_free_mb": 100}
+rows = [r("on", "pass", 0.4), r("off", "fail", 0.5)]
+open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+PYEOF
+tranq=$("$PY" "$E/report.py" --store "$V/tranquila.jsonl" 2>&1)
+rm -rf "$V"
+if printf '%s' "$tranq" | grep -q 'AVISO: los dos brazos corrieron'; then
+  echo "NOT ok - el aviso de carga salta con 0.4 contra 0.5: sale siempre y no informa"; fail=$((fail+1))
+else
+  echo "ok - con la maquina igual de tranquila en los dos brazos no hay aviso"; pass=$((pass+1))
+fi
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1

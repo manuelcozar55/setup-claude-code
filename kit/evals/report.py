@@ -62,6 +62,8 @@ def agg(rs):
             "rate": (k / n) if n else None, "ci": wilson(k, n) if n else None,
             "cost": mean(nums("cost_usd")), "ms": mean(nums("duration_api_ms")),
             "tok_in": mean(nums("input_tokens")),
+            "load1": mean(nums("load1")),
+            "cpus": max(nums("cpus")) if nums("cpus") else None,
             "modelos": sorted({r["model"] for r in rs if r.get("model")})}
 
 
@@ -131,6 +133,18 @@ if "on" in by_arm and "off" in by_arm:
         if on["cost"] and off["cost"]:
             print("  coste: %+.1f %% ($%.4f vs $%.4f por run)"
                   % (100 * (on["cost"] / off["cost"] - 1), on["cost"], off["cost"]))
+        # La carga de la maquina no toca la NOTA (el grader es determinista), pero
+        # si el coste y la latencia. Aqui corre en WSL2 con el proxy compitiendo,
+        # asi que dos brazos medidos con maquinas distintas de ocupadas no tienen
+        # comparable la parte de "a que coste".
+        if on["load1"] is not None and off["load1"] is not None:
+            cpus = on["cpus"] or off["cpus"] or 4
+            print("  carga media al correr: %.2f vs %.2f (de %d CPUs)"
+                  % (on["load1"], off["load1"], cpus))
+            if abs(on["load1"] - off["load1"]) > max(1.0, cpus / 4.0):
+                print("  AVISO: los dos brazos corrieron con la maquina distinta de ocupada.")
+                print("  La nota aguanta (el grader es determinista), pero la latencia y el")
+                print("  coste de arriba no son comparables. Repetir con la maquina en reposo.")
 
     # El total agregado puede valer 0 porque el harness ayuda en las positivas y
     # estorba lo mismo en las negativas. Sumadas se cancelan y sale "NEUTRO":

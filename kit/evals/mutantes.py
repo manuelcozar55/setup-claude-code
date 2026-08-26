@@ -68,6 +68,24 @@ MUTANTES = [
      'if "on" not in by_arm or "off" not in by_arm:\n    print("  NO MEDIBLE: hace falta el brazo de control para saber que tareas son mudas.")',
      'if False:\n    print("  NO MEDIBLE: hace falta el brazo de control para saber que tareas son mudas.")',
      "sin brazo de control"),
+
+    ("M16 record.py deja de registrar la carga de la maquina",
+     "kit/evals/record.py",
+     "rec.update(maquina())",
+     "rec.update({})",
+     "carga, CPUs y memoria"),
+
+    ("M17 el aviso de cargas dispares nunca salta",
+     "kit/evals/report.py",
+     "            if abs(on[\"load1\"] - off[\"load1\"]) > max(1.0, cpus / 4.0):",
+     "            if abs(on[\"load1\"] - off[\"load1\"]) > 1e9:",
+     "ni un aviso"),
+
+    ("M18 el aviso de cargas dispares salta siempre",
+     "kit/evals/report.py",
+     "            if abs(on[\"load1\"] - off[\"load1\"]) > max(1.0, cpus / 4.0):",
+     "            if True:",
+     "sale siempre"),
 ]
 
 

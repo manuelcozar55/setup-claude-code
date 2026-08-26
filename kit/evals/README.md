@@ -150,6 +150,24 @@ de abajo — no basta con añadir tareas, hay que **retirar las mudas** y subir 
 Con un solo brazo dice `NO MEDIBLE`, no "0 mudas": sin control no hay forma de saber cuál
 es muda, y un cero sería mentir por omisión.
 
+## La carga de la máquina se registra, y se usa
+
+Cada run guarda `load1`, `cpus` y `mem_free_mb` (de `/proc`, `None` si no se pueden leer).
+No entra en la nota — el grader es determinista — pero sí en el "a qué coste": esto corre
+en WSL2 con el proxy Headroom compitiendo, así que dos brazos medidos con la máquina
+distinta de ocupada no tienen comparable ni la latencia ni el precio.
+
+```
+  carga media al correr: 0.40 vs 6.80 (de 32 CPUs)
+  AVISO: los dos brazos corrieron con la maquina distinta de ocupada.
+```
+
+El umbral es 1 punto de carga o CPUs/4, el que sea mayor. `make mutantes` lo vigila por
+los dos lados: un aviso que nunca salta y uno que salta siempre son igual de inútiles.
+
+Las líneas de `runs.jsonl` grabadas antes de esto no llevan los campos, y el informe
+simplemente no imprime la línea. No se inventa un cero.
+
 ## Cómo crecer hasta 20-30 tareas
 
 La mina son los logs que ya genera el harness:

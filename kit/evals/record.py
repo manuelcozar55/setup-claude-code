@@ -21,6 +21,34 @@ def polaridad(tid):
         return None
     return m.group(1) if m else None
 
+def maquina():
+    """Carga y memoria en el momento del run. Anthropic trata la infraestructura
+    como variable experimental de primera clase, y aqui no es teorico: esto corre
+    en WSL2 con el proxy Headroom compitiendo por CPU. Sin este dato, una latencia
+    que empeora no se distingue de una maquina ocupada.
+
+    Se lee de /proc y nunca revienta el run: si no esta, el campo va a None. Un
+    eval que se cae porque no pudo leer la carga convierte la telemetria en punto
+    unico de fallo de la medicion, que es justo al reves."""
+    d = {"load1": None, "cpus": None, "mem_free_mb": None}
+    try:
+        d["load1"] = float(open("/proc/loadavg").read().split()[0])
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        d["cpus"] = os.cpu_count()
+    except OSError:
+        pass
+    try:
+        for l in open("/proc/meminfo"):
+            if l.startswith("MemAvailable:"):
+                d["mem_free_mb"] = int(l.split()[1]) // 1024
+                break
+    except (OSError, ValueError, IndexError):
+        pass
+    return d
+
+
 usage = {}
 for line in open(transcript, errors="replace"):
     try:
@@ -54,5 +82,6 @@ rec = {
     "permission_denials": len(usage.get("permission_denials") or []),
     "transcript": transcript,
 }
+rec.update(maquina())
 with open(store, "a") as f:
     f.write(json.dumps(rec, ensure_ascii=False) + "\n")
