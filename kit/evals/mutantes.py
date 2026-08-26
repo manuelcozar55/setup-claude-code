@@ -86,6 +86,18 @@ MUTANTES = [
      "            if abs(on[\"load1\"] - off[\"load1\"]) > max(1.0, cpus / 4.0):",
      "            if True:",
      "sale siempre"),
+
+    ("M19 el emisor deja de autenticarse contra el receptor",
+     "kit/evals/langsmith_push.py",
+     '"Content-Type": "application/json", "x-api-key": api_key',
+     '"Content-Type": "application/json", "x-api-key": ""',
+     "un receptor local que escucha"),
+
+    ("M20 las tareas dejan de colgar de la traza de su brazo",
+     "kit/evals/langsmith_push.py",
+     '            "parent_run_id": pid,',
+     '            "parent_run_id": None,',
+     "no una lista suelta"),
 ]
 
 

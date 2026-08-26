@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install test doctor mutantes evals-paid evals-ablacion-paid
+.PHONY: help install test doctor mutantes langsmith-local langsmith-arbol evals-paid evals-ablacion-paid
 
 help: ## Lista los targets disponibles
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*##"}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -40,6 +40,12 @@ doctor: ## Verifica una instalacion existente del kit
 
 mutantes: ## Rompe cada sensor del eval a proposito y exige que la suite se ponga roja (gratis, ~12 s)
 	python3 kit/evals/mutantes.py
+
+langsmith-local: ## Levanta el receptor local de trazas en :1984 (gratis, sin Docker ni licencia)
+	python3 kit/evals/langsmith_local.py
+
+langsmith-arbol: ## Imprime el arbol de trazas que ya ha recibido el receptor local
+	python3 kit/evals/langsmith_local.py --tree
 
 evals-paid: ## Eval set, LOS DOS BRAZOS: llamadas REALES a la API. CUESTA DINERO. Pide confirmacion.
 	@read -p "Esto corre los dos brazos sobre 20 tareas: 40 llamadas reales a la API, del orden de 12 USD. Continuar? [y/N] " ans; \\

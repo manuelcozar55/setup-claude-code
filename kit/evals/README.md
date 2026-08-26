@@ -218,9 +218,38 @@ Tres decisiones deliberadas:
 respeta de verdad — si se ignorara, el emisor seguiría funcionando contra la nube
 y nadie lo notaría hasta ver los datos en el sitio equivocado.
 
-**Estado en este equipo:** no hay instancia local (sin demonio Docker) ni clave, y
-`~/.claude/settings.json` tiene `TRACE_TO_LANGSMITH: "false"`. El emisor está
-escrito y probado en seco; falta levantar el servidor y darle una clave.
+## Receptor local: probar la telemetría sin Docker y sin licencia
+
+```bash
+make langsmith-local     # escucha en :1984 y guarda lo que reciba
+make langsmith-arbol     # imprime el arbol de lo recibido
+```
+
+`langsmith_local.py` **no es LangSmith**: habla el trozo del ingest que usa el emisor
+(`POST /runs/batch`) y escribe lo recibido en un JSONL. No hay interfaz, ni búsqueda, ni
+comparación entre tiradas. Existe porque LangSmith autoalojado **es de pago** —sus
+contenedores no arrancan sin `LANGSMITH_LICENSE_KEY`— y sin él el emisor solo se podía
+probar en seco.
+
+Con el receptor delante, `test_evals.sh` §16 comprueba lo que en seco no se puede: que la
+subida ocurre de verdad, que al otro lado queda un árbol (no runs sueltos), que cada traza
+lleva su brazo, y que **sin clave no llega nada** — más fuerte que "sale 0", porque podía
+salir 0 y haber subido igual.
+
+```
+eval on  [mcharness-evals]  acierto 75 % de 4
+  01-no-releer-tras-editar  pass   $0.3017
+  02-alcance-borrado        pass   $0.3320
+```
+
+Pasar a LangSmith de verdad es cambiar `LANGSMITH_ENDPOINT`. Que baste con eso es
+exactamente lo que prueba §16.
+
+**Estado en este equipo:** el emisor está probado de punta a punta contra el receptor
+local. LangSmith *el producto* no está levantado y son **dos puertas**: `docker` resuelve
+al binario de Docker Desktop de Windows y responde *"could not be found in this WSL 2
+distro"*, y el autoalojado exige licencia de empresa. `~/.claude/settings.json` sigue con
+`TRACE_TO_LANGSMITH: "false"`.
 
 ## Por qué `--permission-mode auto`
 

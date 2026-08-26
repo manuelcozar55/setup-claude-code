@@ -583,5 +583,83 @@ else
   echo "ok - con la maquina igual de tranquila en los dos brazos no hay aviso"; pass=$((pass+1))
 fi
 
+# --- 16. LangSmith local de verdad: el emisor contra algo que escucha -------
+# El bloque 7 comprueba la FORMA del payload en seco. Aqui el payload viaja por
+# red hasta un receptor que habla el ingest de LangSmith, y se mira lo que queda
+# guardado al otro lado. Sin esto, "medible en LangSmith local" era una
+# afirmacion sin sensor: LangSmith autoalojado exige licencia de pago, asi que
+# nunca se habia enviado una traza a nada y el emisor solo se probaba en seco.
+L=$(mktemp -d) || exit 1
+
+espera_puerto() {  # $1 = log del receptor -> imprime el puerto, vacio si no arranco
+  for _ in $(seq 1 60); do
+    p=$(sed -n 's#.*127\.0\.0\.1:\([0-9]*\).*#\1#p' "$1" 2>/dev/null | head -1)
+    [ -n "$p" ] && { printf '%s' "$p"; return 0; }
+    sleep 0.2
+  done
+  return 1
+}
+
+"$PY" "$E/langsmith_local.py" --port 0 --store "$L/rx.jsonl" --max-requests 1 \
+  > "$L/srv.log" 2>&1 &
+srv=$!
+if ! port=$(espera_puerto "$L/srv.log"); then
+  echo "NOT ok - el receptor local no llego a escuchar; los 3 checks de red no corren"
+  fail=$((fail+1)); kill "$srv" 2>/dev/null
+else
+  LANGSMITH_ENDPOINT="http://127.0.0.1:$port" LANGSMITH_API_KEY=local \
+    CC_LANGSMITH_PROJECT=prueba "$PY" "$P" --store "$S" >/dev/null 2>&1
+  ck "$?" 0 "langsmith: el emisor sube de verdad contra un receptor local que escucha"
+  wait "$srv" 2>/dev/null
+
+  # Lo que importa no es que llegue, es que llegue ARBOL. Una lista plana de
+  # runs sueltos se sube igual de bien y no se puede leer por brazo.
+  forma=$("$PY" - "$L/rx.jsonl" <<'PYEOF'
+import json, sys
+runs = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+par = [r for r in runs if not r.get("parent_run_id")]
+chi = [r for r in runs if r.get("parent_run_id")]
+byid = {r["id"]: r for r in par}
+ok = (len(par) >= 1 and len(chi) >= 1
+      and all(c["parent_run_id"] in byid for c in chi)
+      and all(c["dotted_order"].startswith(byid[c["parent_run_id"]]["dotted_order"] + ".")
+              for c in chi)
+      and all(r.get("session_name") == "prueba" for r in runs))
+print("arbol" if ok else "roto")
+PYEOF
+)
+  ck "$forma" "arbol" "langsmith: al otro lado queda un arbol por brazo, no una lista suelta"
+
+  # Y cada traza tiene que decir de que brazo viene: comparar on con off es el
+  # objetivo entero. Trazas sin brazo son bonitas y no responden a nada.
+  brazos=$("$PY" - "$L/rx.jsonl" <<'PYEOF'
+import json, sys
+runs = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+print(",".join(sorted({((r.get("extra") or {}).get("metadata") or {}).get("arm") or "?"
+                       for r in runs})))
+PYEOF
+)
+  ck "$brazos" "off,on" "langsmith: cada traza llega etiquetada con su brazo"
+fi
+
+# "Sin clave sale 0" no basta: podria salir 0 y haber subido igual. Con un
+# receptor delante se comprueba lo unico que importa, que no llego nada.
+"$PY" "$E/langsmith_local.py" --port 0 --store "$L/vacio.jsonl" --max-requests 1 \
+  > "$L/srv2.log" 2>&1 &
+srv2=$!
+if port2=$(espera_puerto "$L/srv2.log"); then
+  env -u LANGSMITH_API_KEY -u CC_LANGSMITH_API_KEY \
+    LANGSMITH_ENDPOINT="http://127.0.0.1:$port2" \
+    "$PY" "$P" --store "$S" >/dev/null 2>&1
+fi
+kill "$srv2" 2>/dev/null; wait "$srv2" 2>/dev/null
+if [ -s "$L/vacio.jsonl" ]; then
+  echo "NOT ok - sin clave el emisor subio igual: la traza salio a un sitio sin autenticar"
+  fail=$((fail+1))
+else
+  echo "ok - sin clave no llega nada al receptor, no solo 'sale 0'"; pass=$((pass+1))
+fi
+rm -rf "$L"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1

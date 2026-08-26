@@ -12,6 +12,7 @@ kit/evals/resultados-*.json
 kit/evals/runs.jsonl
 kit/evals/runs-abortados.jsonl
 kit/evals/.resultados.parcial
+kit/evals/langsmith-local.jsonl
 
 # Sistema operativo
 .DS_Store
