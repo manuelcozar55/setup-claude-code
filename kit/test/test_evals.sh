@@ -128,5 +128,76 @@ else
   echo "NOT ok - run.sh no distingue el codigo 2 (error) del 1 (fail)"; fail=$((fail+1))
 fi
 
+# --- 5. El brazo de control tiene que seguir existiendo ---------------------
+# Si una version futura de Claude Code retira --safe-mode, el brazo 'off' pasa a
+# ser una copia del 'on': el lift sale 0.00, report.py lo llama NEUTRO y el eval
+# concluye en silencio que el harness no sirve. Es el fallo mas caro posible aqui,
+# porque parece un resultado en vez de una averia.
+if grep -q 'ARMFLAGS=(--safe-mode)' "$E/run.sh"; then
+  echo "ok - run.sh usa --safe-mode como brazo de control"; pass=$((pass+1))
+else
+  echo "NOT ok - run.sh no define el brazo de control con --safe-mode"; fail=$((fail+1))
+fi
+if ! command -v claude >/dev/null 2>&1; then
+  echo "ok - claude no instalado: no se comprueba el flag"; pass=$((pass+1))
+elif claude --help 2>/dev/null | grep -q -- '--safe-mode'; then
+  echo "ok - esta version de Claude Code sigue teniendo --safe-mode"; pass=$((pass+1))
+else
+  echo "NOT ok - --safe-mode ya no existe: el brazo 'off' mide lo mismo que el 'on'"; fail=$((fail+1))
+fi
+
+# --- 6. El almacen y el informe -------------------------------------------
+# record.py tiene que sacar coste y modelo del evento 'result', y report.py tiene
+# que dejar los 'error' FUERA del denominador. Coercionar un error a 0 convierte
+# una averia de instrumentacion en un suspenso del agente: el numero baja sin que
+# nada haya empeorado.
+"$PY" - "$T" <<'PYEOF'
+import json, os, sys
+T = sys.argv[1]
+res = {"type": "result", "subtype": "success", "is_error": False,
+       "total_cost_usd": 0.1234, "duration_api_ms": 1000, "num_turns": 3,
+       "modelUsage": {"modelo-x": {}},
+       "usage": {"input_tokens": 111, "output_tokens": 22, "cache_read_input_tokens": 9}}
+open(os.path.join(T, "conresult.jsonl"), "w").write(json.dumps(res) + "\n")
+PYEOF
+
+S="$T/store.jsonl"; : > "$S"
+EVAL_TS=2026-01-01T00:00:00Z EVAL_SHA=deadbee \
+  "$PY" "$E/record.py" t1 on 1 pass "$T/conresult.jsonl" "$S" 2>/dev/null
+got=$("$PY" -c "
+import json,sys
+r=json.loads(open(sys.argv[1]).readline())
+print(r['cost_usd'], r['model'], r['input_tokens'], r['harness_sha'], r['result'])
+" "$S" 2>/dev/null)
+ck "$got" "0.1234 modelo-x 111 deadbee pass" "record.py extrae coste, modelo y tokens del evento result"
+
+# Un pass, un fail y DOS error: la tasa honesta es 0.50 sobre n=2, no 0.25 sobre 4.
+for spec in "t1 on 2 fail" "t1 on 3 error" "t1 on 4 error"; do
+  # shellcheck disable=SC2086
+  set -- $spec
+  EVAL_TS=2026-01-01T00:00:00Z EVAL_SHA=deadbee \
+    "$PY" "$E/record.py" "$1" "$2" "$3" "$4" "$T/conresult.jsonl" "$S" 2>/dev/null
+done
+rep=$("$PY" "$E/report.py" --store "$S" 2>&1)
+# El coste sintetico es 0.1234 justamente para que la columna $/run no pueda
+# colar un "0.50" y dar por buena esta comprobacion sin que la tasa lo sea.
+case "$rep" in
+  *"0.25"*) echo "NOT ok - report.py mete los 'error' en el denominador (0.25)"; fail=$((fail+1));;
+  *"0.50"*) echo "ok - report.py excluye los 'error' del denominador (0.50, no 0.25)"; pass=$((pass+1));;
+  *) echo "NOT ok - report.py no da la tasa esperada: $(echo "$rep" | tr '\n' ' ')"; fail=$((fail+1));;
+esac
+case "$rep" in
+  *"NO MEDIBLE"*) echo "ok - con un solo brazo, report.py se niega a dar un lift"; pass=$((pass+1));;
+  *) echo "NOT ok - report.py da un veredicto sin brazo de control"; fail=$((fail+1));;
+esac
+
+EVAL_TS=2026-01-01T00:00:00Z EVAL_SHA=deadbee \
+  "$PY" "$E/record.py" t1 off 1 fail "$T/conresult.jsonl" "$S" 2>/dev/null
+rep2=$("$PY" "$E/report.py" --store "$S" 2>&1)
+case "$rep2" in
+  *"lift"*"SIRVE"*) echo "ok - con los dos brazos, report.py calcula el lift"; pass=$((pass+1));;
+  *) echo "NOT ok - report.py no calcula el lift con dos brazos: $(echo "$rep2" | tr '\n' ' ')"; fail=$((fail+1));;
+esac
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1

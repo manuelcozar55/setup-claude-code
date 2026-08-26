@@ -9,6 +9,7 @@ kit/**/.env
 # comitear (pueden contener rutas/datos de la maquina donde se ejecutaron).
 kit/evals/transcripts/
 kit/evals/resultados-*.json
+kit/evals/runs.jsonl
 
 # Sistema operativo
 .DS_Store

@@ -1,7 +1,7 @@
 # Eval set mínimo
 
 Seis tareas en `tasks/*.yaml`, sacadas de fallos reales (no inventadas). Corre con
-`bash run.sh`; grader de transcript en `grade.py`.
+`bash run.sh`; grader de transcript en `grade.py`; agregado en `report.py`.
 
 **Opt-in, no automático.** Esto NO se ejecuta via `make test`, `doctor.sh` ni CI.
 Correrlo cuesta dinero real: `run.sh` hace 6 llamadas reales a `claude -p` (una
@@ -15,6 +15,68 @@ bash kit/evals/run.sh
 Cada tarea corre en su propio `mktemp -d`, aislado del resto y del repo. Los
 transcritos (`_run.jsonl`) se copian a `transcripts/` para poder releerlos
 después — **no se comitean** (ver `.gitignore` en la raíz del repo).
+
+## Las tres preguntas, separadas
+
+Un eval que devuelve un solo número las confunde. Son tres y se responden aparte:
+
+| Pregunta | Dónde se responde |
+|---|---|
+| ¿Pasa? | tasa de acierto por tarea, con intervalo de Wilson al 95 % |
+| ¿Sirve? | *lift* entre el brazo `on` y el brazo `off` (ver abajo) |
+| ¿A qué coste? | dólares, tokens y latencia, **siempre fuera de la nota** |
+
+Una tarea puede pasar, no deberle nada al harness y costar el triple. Meterlo todo
+en un número borra justo eso.
+
+```bash
+RUNS=5 bash kit/evals/run.sh          # brazo con harness
+RUNS=5 ARM=off bash kit/evals/run.sh  # brazo de control
+python3 kit/evals/report.py           # agrega los dos
+```
+
+`run.sh` va añadiendo una línea por ejecución a `runs.jsonl` (append-only, no
+comiteado). El JSON diario se sobrescribe y no tiene historia; sin historia no hay
+regresión detectable, y un eval que no detecta regresiones solo sirve el día que se
+corre. `report.py` agrega ese histórico y acepta `--since YYYY-MM-DD` y `--md`.
+
+Con `RUNS=1` no hay varianza que medir y el intervalo sale enorme. Eso es la
+respuesta correcta, no un defecto del informe: una sola muestra no distingue una
+mejora de un golpe de suerte.
+
+## El brazo de control
+
+**Sin brazo de control, el número mide el modelo, no el harness.** Si Opus resuelve
+la tarea igual de bien con el harness apagado, el harness no ha aportado nada — pero
+un eval de un solo brazo lo apunta como éxito propio.
+
+`ARM=off` añade `--safe-mode`, que apaga CLAUDE.md, skills, hooks, plugins, MCP,
+comandos y agentes propios. Medido en este equipo con `--output-format stream-json`:
+
+| | `on` | `off` (`--safe-mode`) |
+|---|---|---|
+| agentes | 24 | 4 |
+| comandos | 99 | 47 |
+| servidores MCP | 12 | 0 |
+
+Descartado `--bare`: apaga lo mismo pero **nunca lee OAuth ni el keychain**, así que
+exige `ANTHROPIC_API_KEY`, que una cuenta de suscripción no tiene. `--safe-mode`
+mantiene la autenticación normal (verificado: devuelve resultado y coste reales).
+
+Dos avisos que no hay que perder de vista:
+
+- El brazo `off` corre **sin los hooks**, es decir sin los guards. Es aceptable aquí
+  solo porque cada tarea vive en un `mktemp -d` y el prompt lo pone el repo, no la red.
+- Las bandas del veredicto (`SIRVE` ≥ +0,05, `PERJUDICA` ≤ −0,10, resto `NEUTRO`) son
+  gruesas a propósito. Con `n` pequeño casi todo cae en NEUTRO, y esa es la lectura
+  honesta. Un +0,03 no es un aprobado: es ruido hasta que más intentos digan otra cosa.
+
+Si falta uno de los dos brazos, `report.py` imprime `NO MEDIBLE` en vez de inventar
+un veredicto. `kit/test/test_evals.sh` pone rojo `make test` si esa negativa
+desaparece, o si una versión futura de Claude Code retira `--safe-mode` — en ese caso
+el brazo `off` pasaría a ser una copia del `on`, el *lift* saldría 0,00 y el eval
+concluiría en silencio que el harness no sirve. Es el fallo más caro posible aquí,
+porque **parece un resultado en vez de una avería**.
 
 ## Cómo crecer hasta 20-30 tareas
 
@@ -73,7 +135,9 @@ pone rojo `make test` si vuelve a aparecer un check sobre el fichero crudo.
 `grade.py` sale con **2** cuando no ha podido medir (transcript vacío), distinto
 del **1** de "el agente lo hizo mal". `run.sh` lo registra como `error`, no como
 `fail`: agregarlos juntos convierte una avería de instrumentación en un suspenso
-del agente, que es la lectura contraria.
+del agente, que es la lectura contraria. `report.py` los saca del denominador y los
+cuenta aparte, en su propia columna `err`. Coercionar un `error` a 0 inventa un
+suspenso: la tasa baja sin que nada haya empeorado.
 
 ## Nota sobre la tarea 03
 

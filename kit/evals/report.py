@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Lee runs.jsonl y responde tres preguntas, no una.
+
+  1. ¿Pasa?        tasa de acierto por tarea, con intervalo, no un pass/fail pelado.
+  2. ¿Sirve?       diferencia entre el brazo con harness y el brazo sin el (lift).
+  3. ¿A que coste? dolares, tokens y latencia, SIEMPRE fuera de la nota.
+
+Las tres separadas a proposito: una tarea puede pasar, no deberle nada al harness
+y costar el triple. Meterlo todo en un numero borra justo eso.
+
+Uso:  python3 report.py [--store runs.jsonl] [--since YYYY-MM-DD] [--md]
+"""
+import argparse, collections, json, math, os, sys
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--store", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs.jsonl"))
+ap.add_argument("--since", help="ignora runs anteriores a esta fecha (ISO)")
+ap.add_argument("--md", action="store_true", help="tabla markdown en vez de texto plano")
+a = ap.parse_args()
+
+if not os.path.exists(a.store):
+    print("no hay almacen de runs todavia:", a.store); sys.exit(1)
+
+runs = []
+for line in open(a.store, errors="replace"):
+    try:
+        r = json.loads(line)
+    except ValueError:
+        continue
+    if a.since and (r.get("ts") or "") < a.since:
+        continue
+    runs.append(r)
+
+if not runs:
+    print("el almacen no tiene runs en el rango pedido"); sys.exit(1)
+
+
+def wilson(k, n, z=1.96):
+    """Intervalo de Wilson al 95 %. Con n=1 sale enorme, y eso es la respuesta
+    correcta: una sola muestra no distingue una mejora de un golpe de suerte."""
+    if n == 0:
+        return (0.0, 1.0)
+    p = k / n
+    d = 1 + z * z / n
+    c = p + z * z / (2 * n)
+    s = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    return ((c - s) / d, (c + s) / d)
+
+
+def agg(rs):
+    # Los 'error' (no se pudo medir) NO cuentan como fallo del agente: salen del
+    # denominador y se reportan aparte. Coercionarlos a 0 inventa un suspenso.
+    scored = [r for r in rs if r.get("result") in ("pass", "fail")]
+    errors = [r for r in rs if r.get("result") == "error"]
+    k = sum(1 for r in scored if r["result"] == "pass")
+    n = len(scored)
+    nums = lambda key: [r[key] for r in rs if isinstance(r.get(key), (int, float))]
+    mean = lambda v: sum(v) / len(v) if v else None
+    return {"k": k, "n": n, "errors": len(errors),
+            "rate": (k / n) if n else None, "ci": wilson(k, n) if n else None,
+            "cost": mean(nums("cost_usd")), "ms": mean(nums("duration_api_ms")),
+            "tok_in": mean(nums("input_tokens"))}
+
+
+def fmt(x, nd=3):
+    return "—" if x is None else ("%.*f" % (nd, x))
+
+
+by_arm = collections.defaultdict(list)
+for r in runs:
+    by_arm[r.get("arm") or "on"].append(r)
+
+sep = " | " if a.md else "  "
+bar = "|" if a.md else " "
+
+
+def row(cells):
+    print((bar + sep if a.md else "") + sep.join(cells) + (sep + bar if a.md else ""))
+
+
+# --- 1 y 3: por tarea, dentro de cada brazo ---------------------------------
+for arm in sorted(by_arm):
+    rs = by_arm[arm]
+    print("\n== brazo '%s' — %d runs, %d tareas ==" % (arm, len(rs), len({r["task"] for r in rs})))
+    row(["tarea".ljust(32), "n", "pass", "IC95", "err", "$/run", "ms", "tok_in"])
+    if a.md:
+        row(["---"] * 8)
+    by_task = collections.defaultdict(list)
+    for r in rs:
+        by_task[r["task"]].append(r)
+    for t in sorted(by_task):
+        s = agg(by_task[t])
+        ci = "—" if not s["ci"] else "%.2f-%.2f" % s["ci"]
+        row([t.ljust(32), str(s["n"]), fmt(s["rate"], 2), ci, str(s["errors"]),
+             fmt(s["cost"], 4), fmt(s["ms"], 0), fmt(s["tok_in"], 0)])
+    tot = agg(rs)
+    row(["TOTAL".ljust(32), str(tot["n"]), fmt(tot["rate"], 2),
+         "%.2f-%.2f" % tot["ci"] if tot["ci"] else "—", str(tot["errors"]),
+         fmt(tot["cost"], 4), fmt(tot["ms"], 0), fmt(tot["tok_in"], 0)])
+
+# --- 2: lift, solo si hay con que comparar ----------------------------------
+if "on" in by_arm and "off" in by_arm:
+    on, off = agg(by_arm["on"]), agg(by_arm["off"])
+    if on["rate"] is not None and off["rate"] is not None:
+        lift = on["rate"] - off["rate"]
+        # Bandas adaptadas de las de SkillEvaluator para 'skill lift'. Alli se
+        # aplican a dimensiones 0-1; aqui a una tasa de acierto. Con n pequeno
+        # casi todo cae en NEUTRO, y esa es la lectura honesta, no un defecto.
+        band = "SIRVE" if lift >= 0.05 else ("PERJUDICA" if lift <= -0.10 else "NEUTRO (ruido)")
+        print("\n== lift del harness ==")
+        print("  con harness %.2f (n=%d) · sin harness %.2f (n=%d) · lift %+.2f -> %s"
+              % (on["rate"], on["n"], off["rate"], off["n"], lift, band))
+        if on["cost"] and off["cost"]:
+            print("  coste: %+.1f %% ($%.4f vs $%.4f por run)"
+                  % (100 * (on["cost"] / off["cost"] - 1), on["cost"], off["cost"]))
+else:
+    print("\n== lift del harness ==")
+    print("  NO MEDIBLE: hace falta el brazo de control. Sin el, esto mide el modelo,")
+    print("  no el harness. Ver README.md, seccion 'El brazo de control'.")
