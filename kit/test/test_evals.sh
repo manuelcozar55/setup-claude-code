@@ -239,5 +239,16 @@ case "$out" in
   *) echo "NOT ok - langsmith_push ignora LANGSMITH_ENDPOINT: $out"; fail=$((fail+1));;
 esac
 
+# --- 8. EVAL-CRITERIA.md no puede mentir sobre el numero de tareas ----------
+# E12 (20-50 tareas) es el criterio incumplido que mas limita al resto. Si el doc
+# dice "hay 6" cuando ya hay 20, el hueco declarado desaparece de la vista sin que
+# nadie lo haya cerrado.
+DOC="$PWD/knowledge/EVAL-CRITERIA.md"
+if [ -f "$DOC" ]; then
+  dicho=$(grep -o '\*\*hay [0-9]\+\*\*' "$DOC" | grep -o '[0-9]\+' | head -1)
+  real=$(find "$E/tasks" -name '*.yaml' 2>/dev/null | wc -l)
+  ck "${dicho:-ninguno}" "$real" "EVAL-CRITERIA.md declara el numero real de tareas"
+fi
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
