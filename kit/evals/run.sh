@@ -63,7 +63,6 @@ EVAL_TS="$(date -u +%FT%TZ)"; export EVAL_TS
 EVAL_SHA="$(git -C "$E" rev-parse --short HEAD 2>/dev/null || echo desconocido)"; export EVAL_SHA
 OUT="$E/resultados-$(date +%F).json"
 TMP="$E/.resultados.parcial"
-: > "$TMP"
 
 # Sin argumentos, todas. Con argumentos, solo esas, y un nombre que no existe
 # es error: correr el conjunto entero "por si acaso" es justo lo que se paga.
@@ -88,8 +87,16 @@ costes = []
 try:
     for linea in open(store):
         try:
-            c = (json.loads(linea) or {}).get("cost_usd")
+            d = json.loads(linea)
         except ValueError:
+            continue
+        # Una linea escalar valida ('42') pasa el json.loads y revienta en .get;
+        # un cost_usd de texto revienta despues en sum(). Una linea mala se salta:
+        # el numero de llamadas es exacto aunque no quede ni un coste utilizable.
+        if not isinstance(d, dict):
+            continue
+        c = d.get("cost_usd")
+        if isinstance(c, bool) or not isinstance(c, (int, float)):
             continue
         if c:
             costes.append(c)
@@ -100,16 +107,21 @@ tarea_s = "tarea" if n == 1 else "tareas"
 print("ENSAYO (DRYRUN=1): brazo '%s', %d %s x %d repeticion(es) = %d llamadas"
       % (arm, n, tarea_s, runs, llamadas))
 if costes:
+    # Media de TODO el historico: mezcla brazos y modelos, asi que con ARM=off
+    # estima con costes de 'on'. Es orden de magnitud, no la factura del brazo.
     medio = sum(costes) / len(costes)
-    print("coste estimado: %.2f USD (media de %d runs ya guardados: %.4f USD)"
+    print("coste estimado: %.2f USD (media de %d runs ya guardados, todos los brazos: %.4f USD)"
           % (medio * llamadas, len(costes), medio))
 else:
     # Sin historico no hay estimacion. Inventar una seria peor que no darla.
     print("coste estimado: desconocido, no hay runs guardados de los que sacar la media")
 PYEOF
-  exit 0
+  # Sin set -e, un estimador muerto caia al exit 0 de abajo: el ensayo decia que
+  # todo fue bien justo cuando se habia quedado sin la unica cifra que da.
+  exit $?
 fi
 
+: > "$TMP"
 for f in "${TAREAS[@]}"; do
   id=$(basename "$f" .yaml)
   for attempt in $(seq 1 "$RUNS"); do

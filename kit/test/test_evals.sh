@@ -847,13 +847,68 @@ fi
 # existe tiene que doler: si se ignora en silencio, una errata en el nombre
 # convierte "he medido la 12" en "he medido las 20 y ninguna era la 12".
 salida=$(PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$E/run.sh" 12-alcance-quirurgico 2>&1)
-if printf '%s' "$salida" | grep -q '1 tarea'; then
+UNA_TAREA=', 1 tarea x'
+if printf '%s' "$salida" | grep -qF "$UNA_TAREA"; then
   echo "ok - run.sh filtra por nombre de tarea"; pass=$((pass+1))
 else
   echo "NOT ok - run.sh ignora los nombres de tarea que se le pasan"; fail=$((fail+1))
 fi
+# '21 tareas' contiene '1 tarea': sin anclar, el patron de arriba aprobaria
+# contando mal el dia que el conjunto pase de 20 tareas, que es el dia en que
+# nadie estara mirando este test.
+if printf "ENSAYO (DRYRUN=1): brazo 'on', 21 tareas x 1 repeticion(es) = 21 llamadas" \
+   | grep -qF "$UNA_TAREA"; then
+  echo "NOT ok - el patron de una tarea casa tambien con '21 tareas'"; fail=$((fail+1))
+else
+  echo "ok - el patron de una tarea no casa con un numero mayor"; pass=$((pass+1))
+fi
+salida=$(PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$E/run.sh" 12-alcance-quirurgico 18-commitear-solo-lo-pedido 2>&1)
+if printf '%s' "$salida" | grep -qF '2 tareas' && ! printf '%s' "$salida" | grep -qF "$UNA_TAREA"; then
+  echo "ok - con dos nombres el ensayo cuenta dos tareas"; pass=$((pass+1))
+else
+  echo "NOT ok - con dos nombres el ensayo no cuenta dos tareas: $salida"; fail=$((fail+1))
+fi
 PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$E/run.sh" tarea-que-no-existe >/dev/null 2>&1
 ck "$?" 2 "una tarea inexistente sale con 2, no corre las 20"
+
+# Un historico corrupto no puede dejar sin cifra a la herramienta cuya unica
+# razon de ser es saber lo que vas a pagar ANTES de pagarlo. Copia del arbol:
+# el runs.jsonl de verdad no se toca.
+CORR=$(mktemp -d) || exit 1
+cp "$E/run.sh" "$CORR/run.sh"
+mkdir -p "$CORR/tasks"
+cp "$E"/tasks/*.yaml "$CORR/tasks/"
+{ echo '42'
+  echo '{"cost_usd": "gratis"}'
+  echo '{"cost_usd": 0.5}'
+} > "$CORR/runs.jsonl"
+salida=$(PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$CORR/run.sh" 2>&1); rc=$?
+ck "$rc" 0 "con historico corrupto el ensayo sale con 0"
+if printf '%s' "$salida" | grep -qF 'llamadas'; then
+  echo "ok - con historico corrupto el ensayo sigue diciendo cuantas llamadas haria"
+  pass=$((pass+1))
+else
+  echo "NOT ok - un historico corrupto deja al ensayo sin la cifra de llamadas: $salida"
+  fail=$((fail+1))
+fi
+if [ -e "$PROBE" ]; then
+  echo "NOT ok - con historico corrupto el ensayo invoco a claude"; fail=$((fail+1))
+else
+  echo "ok - con historico corrupto el ensayo sigue sin invocar a claude"; pass=$((pass+1))
+fi
+# Un exit 0 que tapa un estimador muerto es peor que no tener estimador.
+PATH="$FAKEBIN:$PATH" PYTHON3=false DRYRUN=1 bash "$CORR/run.sh" >/dev/null 2>&1
+ck "$?" 1 "si el estimador muere, el ensayo no sale con 0"
+# Un ensayo que promete no hacer nada no puede pisar un fichero del arbol.
+printf 'contenido-previo\n' > "$CORR/.resultados.parcial"
+PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$CORR/run.sh" >/dev/null 2>&1
+if [ "$(cat "$CORR/.resultados.parcial")" = "contenido-previo" ]; then
+  echo "ok - DRYRUN=1 no toca .resultados.parcial"; pass=$((pass+1))
+else
+  echo "NOT ok - DRYRUN=1 trunco .resultados.parcial, que es un fichero del arbol"
+  fail=$((fail+1))
+fi
+rm -rf "$CORR"
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
