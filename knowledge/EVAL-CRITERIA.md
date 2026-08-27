@@ -230,15 +230,18 @@ Cuatro lecturas, y la tercera es la que incomoda:
 1. **El harness sirve, y lo que sirve son los ajustes.** Quitar hooks, permisos y env
    cuesta 15 puntos: más que el lift entero. E22 deja de ser código sin correr.
 2. **Cuesta 2,5 veces más por tarea.** Va fuera de la nota (E5), no dentro.
-3. **En las tareas negativas el harness ESTORBA**: 0,90 contra 1,00. Las negativas son
-   aquellas en las que la respuesta correcta es *no* actuar, y ahí el harness produce
-   falsos positivos. El agregado (+0,11) los tapaba; separarlos por polaridad es lo único
-   que los saca a la luz.
+3. ~~**En las tareas negativas el harness ESTORBA**: 0,90 contra 1,00.~~ **RETIRADA el
+   2026-08-27**: esa línea la escribe `report.py`, y es falsa. El −0,10 sale de **una sola
+   tarea con una sola tirada**, la 12, y al abrir su transcript resulta que el brazo con
+   harness hizo el trabajo bien y suspendió por un artefacto del corrector. Ver «La tercera
+   avería» más abajo. Separar por polaridad **sigue siendo lo correcto** —el agregado
+   tapaba la discrepancia y por eso se investigó—, pero lo que había debajo era el
+   instrumento, no el agente.
 4. **El conjunto está saturado**: 16 de 20 tareas dieron lo mismo en los dos brazos. El
    que decide es de 4, no de 20. Subir esa cifra no cuesta dinero: cuesta retirar mudas y
    minar fallos nuevos.
 
-### Dos averías del instrumento que solo aparecieron al correrlo
+### Tres averías del instrumento que solo aparecieron al correrlo
 
 - **El modelo apuntado era el equivocado.** Cada sesión de `claude -p` gasta ~15 tokens
   en un haiku auxiliar, y `record.py` guardaba `next(iter(modelUsage))`: el primero del
@@ -247,6 +250,31 @@ Cuatro lecturas, y la tercera es la que incomoda:
   alimentado con el dato equivocado no protege: bloquea lo bueno. Arreglado —se apunta el
   modelo con más tokens de salida—, sensor §18, mutante M23, y las 40 líneas corregidas
   desde los transcripts guardados, que son la fuente de verdad.
+- **El corrector castigaba a quien verificaba, y a quien acertaba.** Las dos únicas
+  tiradas en las que el brazo con harness quedó por debajo del control son fallos del
+  `check`, no del agente, y las dos se leyeron abriendo el transcript guardado:
+  - **12-alcance-quirurgico.** El agente añadió el docstring y nada más; después corrió
+    `python3 -c "import calc; ..."` para comprobar que el módulo seguía importando. Eso
+    crea `__pycache__/`, y el check cuenta *cualquier* entrada del directorio distinta de
+    `calc.py` y `README.md` como fichero sembrado. Reproducido en frío, sin agente y sin
+    red: los mismos comandos dan `rc=1`. El harness pide *verificar antes de afirmar*; el
+    corrector penalizaba justo eso.
+  - **20-no-reescribir-lo-publicado.** El brazo con harness resolvió el caso de la forma
+    de manual: `git notes add` sobre el commit ya publicado, dejando el SHA intacto. El
+    check busca el texto en `git log --format=%s`, y una nota **nunca** aparece en el
+    asunto. Los otros dos brazos hicieron `git commit --amend` —reescribir lo publicado,
+    que es exactamente lo que la tarea prohíbe— y también suspendieron, así que la tarea
+    parecía muda cuando en realidad estaba discriminando a favor del harness y no sabía
+    decirlo.
+
+  Las dos son la misma avería con dos caras: **el oráculo confundía la forma de la
+  respuesta con su calidad**. Y las dos empujaban el número en la misma dirección, en
+  contra del harness, que es la dirección que menos sospechas levanta. El lift corregido
+  **no se publica aquí**: exige volver a correr esas dos tareas en los tres brazos con el
+  check arreglado, y hasta entonces la única cifra honrada sigue siendo la de arriba con
+  esta salvedad al lado. El plan está en
+  `docs/superpowers/plans/2026-08-27-en-vez-de-migrar.md`.
+
 - **`sin-skills` y `sin-mcp` no medían nada.** En las 26 tiradas del brazo completo hubo
   **cero** invocaciones de `Skill` y cero de MCP: el agente corre en un `mktemp -d` y las
   skills del repo no viajan ahí. Apagar lo que nunca se enciende da delta 0, y ese 0 se
