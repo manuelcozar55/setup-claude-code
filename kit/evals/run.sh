@@ -65,7 +65,52 @@ OUT="$E/resultados-$(date +%F).json"
 TMP="$E/.resultados.parcial"
 : > "$TMP"
 
-for f in "$E"/tasks/*.yaml; do
+# Sin argumentos, todas. Con argumentos, solo esas, y un nombre que no existe
+# es error: correr el conjunto entero "por si acaso" es justo lo que se paga.
+TAREAS=()
+if [ "$#" -eq 0 ]; then
+  for f in "$E"/tasks/*.yaml; do TAREAS+=("$f"); done
+else
+  for a in "$@"; do
+    f="$E/tasks/$a.yaml"
+    [ -f "$f" ] || { echo "run.sh: no existe la tarea '$a'" >&2; exit 2; }
+    TAREAS+=("$f")
+  done
+fi
+
+# Coste estimado a partir de lo ya gastado, no de un numero escrito a mano.
+if [ "${DRYRUN:-0}" = "1" ]; then
+  n=${#TAREAS[@]}
+  "$PY" - "$STORE" "$n" "$RUNS" "$ARM" <<'PYEOF'
+import json, sys
+store, n, runs, arm = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
+costes = []
+try:
+    for linea in open(store):
+        try:
+            c = (json.loads(linea) or {}).get("cost_usd")
+        except ValueError:
+            continue
+        if c:
+            costes.append(c)
+except IOError:
+    pass
+llamadas = n * runs
+tarea_s = "tarea" if n == 1 else "tareas"
+print("ENSAYO (DRYRUN=1): brazo '%s', %d %s x %d repeticion(es) = %d llamadas"
+      % (arm, n, tarea_s, runs, llamadas))
+if costes:
+    medio = sum(costes) / len(costes)
+    print("coste estimado: %.2f USD (media de %d runs ya guardados: %.4f USD)"
+          % (medio * llamadas, len(costes), medio))
+else:
+    # Sin historico no hay estimacion. Inventar una seria peor que no darla.
+    print("coste estimado: desconocido, no hay runs guardados de los que sacar la media")
+PYEOF
+  exit 0
+fi
+
+for f in "${TAREAS[@]}"; do
   id=$(basename "$f" .yaml)
   for attempt in $(seq 1 "$RUNS"); do
     d=$(mktemp -d) || continue

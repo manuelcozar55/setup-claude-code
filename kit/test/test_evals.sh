@@ -824,5 +824,36 @@ else
   fail=$((fail+1))
 fi
 
+# --- 21. Se puede saber lo que cuesta una tirada sin pagarla (E29) ----------
+# El Makefile declaraba "40 llamadas / ~12 USD" escrito a mano. Una cifra sin
+# sensor se pudre igual que una afirmacion sin sensor.
+FAKEBIN=$(mktemp -d) || exit 1
+PROBE="$FAKEBIN/invocado"
+printf '#!/usr/bin/env bash\ntouch "%s"\nexit 0\n' "$PROBE" > "$FAKEBIN/claude"
+chmod +x "$FAKEBIN/claude"
+salida=$(PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$E/run.sh" 2>&1); rc=$?
+ck "$rc" 0 "DRYRUN=1 sale con 0"
+if [ -e "$PROBE" ]; then
+  echo "NOT ok - DRYRUN=1 invoco a claude: no es un ensayo, es la tirada"; fail=$((fail+1))
+else
+  echo "ok - DRYRUN=1 no invoca a claude ni una vez"; pass=$((pass+1))
+fi
+if printf '%s' "$salida" | grep -q 'llamadas'; then
+  echo "ok - DRYRUN=1 dice cuantas llamadas haria"; pass=$((pass+1))
+else
+  echo "NOT ok - DRYRUN=1 no dice cuantas llamadas haria"; fail=$((fail+1))
+fi
+# Correr dos tareas no puede costar lo que cuestan veinte, y pedir una que no
+# existe tiene que doler: si se ignora en silencio, una errata en el nombre
+# convierte "he medido la 12" en "he medido las 20 y ninguna era la 12".
+salida=$(PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$E/run.sh" 12-alcance-quirurgico 2>&1)
+if printf '%s' "$salida" | grep -q '1 tarea'; then
+  echo "ok - run.sh filtra por nombre de tarea"; pass=$((pass+1))
+else
+  echo "NOT ok - run.sh ignora los nombres de tarea que se le pasan"; fail=$((fail+1))
+fi
+PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$E/run.sh" tarea-que-no-existe >/dev/null 2>&1
+ck "$?" 2 "una tarea inexistente sale con 2, no corre las 20"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
