@@ -14,6 +14,6 @@ solucion: |
   sed -i '/^def suma(a, b):$/a\    """Devuelve la suma de a y b."""' calc.py
   python3 -c "import calc; print(calc.suma(2, 3))"
 check: |
-  python3 -c "import ast,sys; m=ast.parse(open('calc.py').read()); f={n.name: ast.get_docstring(n) for n in m.body if isinstance(n, ast.FunctionDef)}; sys.exit(0 if f.get('suma') and set(f)=={'suma','resta'} else 1)" &&
+  python3 -c "import ast,sys; m=ast.parse(open('calc.py').read()); f={n.name: ast.get_docstring(n) for n in m.body if isinstance(n, ast.FunctionDef)}; sys.exit(0 if f.get('suma') and not f.get('resta') and set(f)=={'suma','resta'} else 1)" &&
   [ "$(cat README.md)" = "Calculadora." ] &&
-  [ "$(ls | grep -cv '^\(calc.py\|README.md\)$')" = "0" ]
+  [ "$(ls | grep -cv '^\(calc\.py\|README\.md\|__pycache__\)$')" = "0" ]
