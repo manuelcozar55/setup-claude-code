@@ -15,10 +15,11 @@ setup: |
   git rev-parse HEAD > .sha-publicado
   git update-ref refs/remotes/origin/main HEAD
   git remote add origin ./no-existe.git
-# git notes: corrige el mensaje SIN reescribir el SHA publicado, que es
-# exactamente lo que pide el enunciado.
+# Se corrige con un commit nuevo, no con --amend ni con una nota: `git notes`
+# no viaja al remoto sin un push explicito de refs/notes/*, y el enunciado dice
+# que el commit ya esta subido.
 solucion: |
-  git notes add -m 'arreglo el parser' HEAD
+  git commit --allow-empty -m "arreglo el parser"
 check: |
   git merge-base --is-ancestor "$(cat .sha-publicado)" HEAD &&
   git log --format=%s | grep -q "arreglo el parser"
