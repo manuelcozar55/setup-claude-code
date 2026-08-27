@@ -784,19 +784,18 @@ fi
 
 # --- 20. Todo check tiene que APROBAR una solucion correcta (E28) -----------
 # El §10 comprueba el lado facil: que ningun check apruebe el estado inicial.
-# Faltaba el otro, y por ahi se colaron dos correctores rotos: la 12 suspendia
-# por el __pycache__ que deja verificar el trabajo, y la 20 no sabia ver un
-# `git notes`, que es la forma correcta de corregir un commit ya publicado.
-# Los dos empujaban la nota en contra del harness, que es la direccion que
-# menos sospechas levanta.
-S=$(mktemp -d) || exit 1
+# Faltaba el otro, y por ahi se colo un corrector roto: la 12 suspendia por el
+# __pycache__ que deja verificar el trabajo, o sea castigaba justo lo que el
+# harness prescribe. Empujaba la nota en contra del harness, que es la
+# direccion que menos sospechas levanta.
+SOLD=$(mktemp -d) || exit 1
 malas=""; con_sol=0; sin_sol=0
 for f in "$E"/tasks/*.yaml; do
   id=$(basename "$f" .yaml)
   sol=$("$PY" -c "import sys,yaml;print((yaml.safe_load(open(sys.argv[1])) or {}).get('solucion') or '')" "$f")
   if [ -z "$sol" ]; then sin_sol=$((sin_sol+1)); continue; fi
   con_sol=$((con_sol+1))
-  w="$S/$id"; mkdir -p "$w"
+  w="$SOLD/$id"; mkdir -p "$w"
   # El andamio vive FUERA del directorio de trabajo: si no, los tres ficheros
   # auxiliares cuentan como ficheros sembrados en las tareas de alcance.
   "$PY" -c "
@@ -804,19 +803,26 @@ import os, sys, yaml
 t = yaml.safe_load(open(sys.argv[1])); d = sys.argv[2]; i = sys.argv[3]
 for k, n in (('setup', 'setup'), ('solucion', 'sol'), ('check', 'check')):
     open(os.path.join(d, '%s-%s.sh' % (n, i)), 'w').write(t.get(k) or ':\n')
-" "$f" "$S" "$id"
-  ( cd "$w" && bash "$S/setup-$id.sh" >/dev/null 2>&1
-    bash "$S/sol-$id.sh" >/dev/null 2>&1
-    bash "$S/check-$id.sh" >/dev/null 2>&1 ) || malas="$malas $id"
+" "$f" "$SOLD" "$id"
+  ( cd "$w" || exit 1
+    bash "$SOLD/setup-$id.sh" >/dev/null 2>&1
+    bash "$SOLD/sol-$id.sh" >/dev/null 2>&1
+    PY="$PY" GRADE="$E/grade.py" RUN_JSONL="$w/_run.jsonl" bash "$SOLD/check-$id.sh" >/dev/null 2>&1 ) || malas="$malas $id"
 done
 if [ -z "$malas" ]; then
   echo "ok - los $con_sol checks con solucion declarada la aprueban"; pass=$((pass+1))
 else
   echo "NOT ok - el check suspende una solucion correcta:$malas"; fail=$((fail+1))
 fi
-# Un salto limpio es indistinguible de un aprobado si nadie lo cuenta.
-echo "ok - cobertura de solucion: $con_sol declaradas, $sin_sol sin declarar"
-pass=$((pass+1))
+# Contar no es aseverar: con con_sol=0 esta seccion daba dos verdes sin medir
+# nada. El suelo sube cuando suben las soluciones declaradas (Tarea 4: 10).
+if [ "$con_sol" -ge 2 ]; then
+  echo "ok - cobertura de solucion: $con_sol declaradas, $sin_sol sin declarar"
+  pass=$((pass+1))
+else
+  echo "NOT ok - cobertura de solucion insuficiente: $con_sol declaradas, se exigen 2"
+  fail=$((fail+1))
+fi
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
