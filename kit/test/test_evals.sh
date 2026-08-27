@@ -718,5 +718,69 @@ PYEOF
 ck "$err" "error/error" "phoenix: un 'error' viaja como error, no como suspenso"
 rm -rf "$F"
 
+# --- 18. El modelo que se apunta es el que hizo el trabajo (E24) ------------
+# Cada sesion de `claude -p` gasta ~15 tokens en un haiku auxiliar, y ese aparece
+# el primero en modelUsage. Apuntando el primero, 40 tiradas de opus quedaron
+# etiquetadas como haiku y el guardia de E24 se nego a comparar dos brazos que
+# habian corrido con el MISMO modelo. Un guardia alimentado con el dato
+# equivocado no protege: bloquea lo bueno y deja pasar lo malo.
+G=$(mktemp -d) || exit 1
+"$PY" - "$G/t.jsonl" <<'PYEOF'
+import json, sys
+# El auxiliar va primero A PROPOSITO: es el orden real de un transcript.
+open(sys.argv[1], "w").write(json.dumps({
+    "type": "result", "total_cost_usd": 0.1, "duration_api_ms": 1, "num_turns": 1,
+    "usage": {"input_tokens": 1},
+    "modelUsage": {"aux-mini": {"outputTokens": 15},
+                   "el-que-trabaja": {"outputTokens": 900}}}) + "\n")
+PYEOF
+EVAL_TS=2026-01-01T00:00:00Z EVAL_SHA=deadbee \
+  "$PY" "$E/record.py" t1 on 1 pass "$G/t.jsonl" "$G/r.jsonl" 2>/dev/null
+ck "$("$PY" -c "
+import json,sys
+print(json.loads(open(sys.argv[1]).readline())['model'])
+" "$G/r.jsonl" 2>/dev/null)" "el-que-trabaja" "se apunta el modelo que hizo el trabajo, no el auxiliar de 15 tokens"
+
+# --- 19. Ablar una pieza que nunca se encendio no mide nada (E27) -----------
+# Medido en las 26 tiradas reales del brazo completo: CERO invocaciones de Skill,
+# porque el agente corre en un mktemp -d y las skills del repo no viajan ahi. Sin
+# este guardia, ARM=sin-skills daria delta 0 y el informe lo leeria como "la pieza
+# no aporta", que es una conclusion falsa con aspecto de resultado.
+H=$(mktemp -d) || exit 1
+"$PY" - "$H" <<'PYEOF'
+import json, os, sys
+H = sys.argv[1]
+def r(arm, res, skills):
+    return {"ts": "2026-01-01T00:00:00Z", "task": "t1", "arm": arm, "tipo": "positiva",
+            "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
+            "duration_api_ms": 1, "input_tokens": 1, "skill_calls": skills,
+            "mcp_calls": 0}
+for nombre, n in (("apagada.jsonl", 0), ("encendida.jsonl", 3)):
+    filas = [r("on", "pass", n), r("sin-skills", "fail", 0)]
+    open(os.path.join(H, nombre), "w").write(
+        "\n".join(json.dumps(x) for x in filas) + "\n")
+PYEOF
+apagada=$("$PY" "$E/report.py" --store "$H/apagada.jsonl" 2>&1)
+encendida=$("$PY" "$E/report.py" --store "$H/encendida.jsonl" 2>&1)
+if printf '%s' "$apagada" | grep -q 'sin-skills *NO MEDIBLE'; then
+  echo "ok - ablar skills que no se activaron ni una vez sale como NO MEDIBLE"; pass=$((pass+1))
+else
+  echo "NOT ok - cero activaciones y aun asi opina sobre la pieza: un 0 que parece hallazgo"; fail=$((fail+1))
+fi
+# El brazo que NO se ha corrido tambien tiene que decirlo, y decir si merece la
+# pena: son 20 llamadas de API cada uno.
+if printf '%s' "$apagada" | grep -q 'sin-mcp .*no mediria nada'; then
+  echo "ok - el brazo de ablacion sin correr avisa de que correrlo no mediria nada"; pass=$((pass+1))
+else
+  echo "NOT ok - calla sobre el brazo que falta: 20 llamadas para no medir nada"; fail=$((fail+1))
+fi
+# Y con la pieza encendida tiene que volver a medir: un guardia que calla siempre
+# informa lo mismo que ninguno.
+if printf '%s' "$encendida" | grep -q 'sin-skills *NO MEDIBLE'; then
+  echo "NOT ok - con 3 activaciones sigue diciendo NO MEDIBLE: el guardia no mide, tapa"; fail=$((fail+1))
+else
+  echo "ok - con la pieza activada la ablacion se mide"; pass=$((pass+1))
+fi
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1

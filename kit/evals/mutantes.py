@@ -110,6 +110,30 @@ MUTANTES = [
      '                    "eval.arm": arm,\n                    "eval.result"',
      '                    "eval.arm": "",\n                    "eval.result"',
      "etiquetada con el suyo"),
+
+    ("M23 se apunta el primer modelo del diccionario, no el que trabajo",
+     "kit/evals/record.py",
+     'model = max(mu, key=lambda k: (mu[k] or {}).get("outputTokens") or 0) if mu else None',
+     "model = next(iter(mu), None)",
+     "no el auxiliar"),
+
+    ("M24 el informe opina sobre una pieza que nunca se encendio",
+     "kit/evals/report.py",
+     "            if vistos and not sum(x.get(campo[0]) or 0 for x in vistos):",
+     "            if False:",
+     "parece hallazgo"),
+
+    ("M25 el guardia de pieza apagada tapa tambien las encendidas",
+     "kit/evals/report.py",
+     "            if vistos and not sum(x.get(campo[0]) or 0 for x in vistos):",
+     "            if vistos:",
+     "el guardia no mide, tapa"),
+
+    ("M26 el brazo de ablacion que falta no dice si merece la pena correrlo",
+     "kit/evals/report.py",
+     "        if campo and vistos and not sum(x.get(campo[0]) or 0 for x in vistos):",
+     "        if False:",
+     "para no medir nada"),
 ]
 
 

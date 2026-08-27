@@ -227,7 +227,21 @@ elif "on" not in by_arm:
     print("  contra el que restar. Correr ARM=on.")
 else:
     todo = agg(by_arm["on"])
+    # Ablar una pieza que el agente no llego a usar no mide la pieza: mide nada,
+    # y con pinta de resultado. Medido: en las 26 tiradas del brazo completo hubo
+    # CERO invocaciones de Skill, porque el agente corre en un mktemp -d y las
+    # skills del repo no estan ahi. Ver EVAL-CRITERIA.md, E27.
+    USO = {"sin-skills": ("skill_calls", "skills"), "sin-mcp": ("mcp_calls", "servidores MCP")}
     for arm in presentes:
+        campo = USO.get(arm)
+        if campo:
+            vistos = [x for x in by_arm["on"] if x.get(campo[0]) is not None]
+            if vistos and not sum(x.get(campo[0]) or 0 for x in vistos):
+                print("  %-12s NO MEDIBLE: %s no se activaron ni una vez en el brazo"
+                      % (arm, campo[1]))
+                print("               completo (%d tiradas). Apagar lo que nunca se"
+                      " enciende no mueve nada." % len(vistos))
+                continue
         ok, ma, mb = comparables(by_arm[arm], by_arm["on"])
         if not ok:
             print("  %-12s NO COMPARABLE: modelos distintos (%s vs %s)"
@@ -245,3 +259,14 @@ else:
         ci = "%.2f-%.2f" % s["ci"] if s["ci"] else "—"
         print("  %-12s (%-22s) %.2f [%s] vs %.2f con todo · %+.2f -> %s"
               % (arm, ABL[arm], s["rate"], ci, todo["rate"], d, lect))
+    # Los brazos que faltan, dichos por su nombre: y si la pieza no se activo
+    # nunca, tambien que correrlos no mediria nada. Son 20 llamadas de API cada
+    # uno; callarlo sale caro.
+    for arm in [x for x in ABL if x not in presentes]:
+        campo = USO.get(arm)
+        vistos = [x for x in by_arm["on"] if campo and x.get(campo[0]) is not None]
+        if campo and vistos and not sum(x.get(campo[0]) or 0 for x in vistos):
+            print("  %-12s SIN DATOS, y correrlo no mediria nada: %s no se activaron"
+                  " ni una vez" % (arm, campo[1]))
+        else:
+            print("  %-12s SIN DATOS: correr ARM=%s" % (arm, arm))

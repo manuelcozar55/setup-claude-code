@@ -50,6 +50,10 @@ def maquina():
 
 
 usage = {}
+# Cuantas veces se USO cada pieza. Sin esto, el brazo 'sin-skills' puede dar
+# delta 0 y leerse como "las skills no aportan" cuando lo que pasa es que no se
+# activaron ni una vez: apagar algo que nunca se enciende no puede mover nada.
+usos = {"skill_calls": 0, "mcp_calls": 0}
 for line in open(transcript, errors="replace"):
     try:
         d = json.loads(line)
@@ -57,9 +61,24 @@ for line in open(transcript, errors="replace"):
         continue
     if d.get("type") == "result":
         usage = d
+    cont = ((d.get("message") or {}).get("content")) or []
+    for blk in cont if isinstance(cont, list) else []:
+        if not isinstance(blk, dict) or blk.get("type") != "tool_use":
+            continue
+        nombre = blk.get("name") or ""
+        if nombre == "Skill":
+            usos["skill_calls"] += 1
+        elif nombre.startswith("mcp__"):
+            usos["mcp_calls"] += 1
 
 u = usage.get("usage") or {}
-model = next(iter(usage.get("modelUsage") or {}), None)
+# El que hizo el trabajo, no el primero del diccionario. Cada sesion de
+# `claude -p` gasta ~15 tokens de salida en un haiku auxiliar, y ese suele
+# salir primero: con `next(iter(...))` TODAS las tiradas quedaban etiquetadas
+# como haiku, incluidas las que corrieron con --model opus. El guardia de
+# modelos distintos rechazaba comparar brazos identicos por ese dato.
+mu = usage.get("modelUsage") or {}
+model = max(mu, key=lambda k: (mu[k] or {}).get("outputTokens") or 0) if mu else None
 
 rec = {
     "ts": os.environ.get("EVAL_TS"),
@@ -82,6 +101,7 @@ rec = {
     "permission_denials": len(usage.get("permission_denials") or []),
     "transcript": transcript,
 }
+rec.update(usos)
 rec.update(maquina())
 with open(store, "a") as f:
     f.write(json.dumps(rec, ensure_ascii=False) + "\n")
