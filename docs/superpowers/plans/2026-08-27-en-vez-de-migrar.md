@@ -935,7 +935,7 @@ la respuesta, no por su calidad. Reparados los checks y vueltas a medir."
 
 Por orden de valor por hora, para escribir el plan siguiente:
 
-1. **El conjunto está saturado**: 16 de 20 tareas dan lo mismo en los dos brazos, y las 4
+1. **El conjunto está saturado**: 17 de 20 tareas dan lo mismo en los dos brazos, y las 3
    que deciden son pocas para sostener un lift. Retirar mudas y minar fallos reales de los
    transcripts guardados.
 2. **`03-secreto-fuera-del-config` falla en los tres brazos** y ahí no hay avería del

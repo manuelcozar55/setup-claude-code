@@ -68,15 +68,15 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E17 | Más evals ≠ mejor harness; la suite tiene coste | LangChain | presupuesto de complejidad en `CLAUDE.md` (no cubre evals) | ⚠️ parcial |
 | E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 + `test_evals.sh` §10: ningún check aprueba el estado inicial, y no hacer nada da `fail`, no `error` | ✅ |
-| E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan | ⚠️ **humano, sin cadencia fijada** |
-| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 26/26 mutantes; los 18 últimos versionados en `make mutantes`; los §9–§19 nacieron ya en rojo |
-| E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **corrido**: `sin-ajustes` −0,15 → la pieza aporta |
+| E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan — **y no se conservaban todos**: con el nombre por día, dos tiradas del mismo día sobre la misma tarea y brazo escribían el mismo fichero. Arreglado (`ts` en el nombre, `run.sh`), sensor `test_evals.sh` §23, mutantes M30–M31 | ⚠️ **degradado**: humano, sin cadencia fijada, y con **26 de 98 filas históricas sin evidencia propia**. El sensor que declaraba esta fila vigilaba que el fichero existiera, no que fuera el de esa tirada: aprobaba sin poder suspender |
+| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 33/33 mutantes; los 25 últimos versionados en `make mutantes`; los §9–§19 nacieron ya en rojo |
+| E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **corrido**: `sin-ajustes` −0,17 → la pieza aporta (−0,12 descontando el artefacto del corrector de la 11; ver la salvedad en «La tirada completa») |
 | E23 | Un brazo cuyo flag desapareció mide el harness completo con etiqueta falsa | hallazgo propio | `test_evals.sh` §13: los 4 flags tienen que seguir en `claude --help` | ✅ · sensor mutado |
 | E24 | No restar dos brazos que corrieron modelos distintos | hallazgo propio (E14 llevado al informe) | `report.py:comparables()` dice `NO COMPARABLE` en vez de dar un lift; y `record.py` apunta el modelo **que hizo el trabajo**, no el primero del diccionario (§18) | ✅ · sensor mutado ×2 |
 | E25 | Un emisor de trazas probado **en seco** no es telemetría verificada | hallazgo propio | `langsmith_local.py` recibe de verdad + `test_evals.sh` §16: el payload viaja por red y se comprueba el árbol al otro lado | ✅ · sensor mutado |
 | E27 | Ablar una pieza que el agente nunca activó no mide la pieza: mide nada, y con pinta de resultado | hallazgo propio (a partir de la *Discoverability* de SkillEvaluator) | `record.py` cuenta `skill_calls`/`mcp_calls`; `report.py` dice `NO MEDIBLE` y, si el brazo ni se ha corrido, que correrlo tampoco mediría; `test_evals.sh` §19 | ✅ · sensor mutado ×3 |
 | E26 | El observatorio no puede meter dependencias en lo observado | interpretación propia (E6 + "sin SDK" de `langsmith_push.py`) | `phoenix_push.py` es la única pieza con SDK, corre en otro venv, `run.sh` no lo llama, y su sensor (§17) usa `--dry-run` sin dependencias | ✅ · sensor mutado |
-| E28 | Un corrector tiene que saber **aprobar**, no solo suspender: el §10 solo probaba el rechazo del estado inicial, y por ese lado un check suspendió a quien acertaba | hallazgo propio (la 12 castigaba el `__pycache__` de verificar) | clave `solucion:` por tarea + `test_evals.sh` §20 (sandbox setup→solución→check, con suelo de cobertura 10/20) | ✅ · sensor mutado ×3 (M27–M29) |
+| E28 | Un corrector tiene que saber **aprobar**, no solo suspender: el §10 solo probaba el rechazo del estado inicial, y por ese lado un check suspendió a quien acertaba | hallazgo propio (la 12 castigaba el `__pycache__` de verificar) | clave `solucion:` por tarea + `test_evals.sh` §20 (sandbox setup→solución→check, con suelo de cobertura 10/20) | ⚠️ **parcial** · sensor mutado ×3 (M27–M29), pero prueba menos de lo que parece: §20 solo comprueba que un check apruebe **la solución que alguien le escribió**. La 11 pasa §20 y sigue rota (exige el literal `.venv/bin/pip` y suspende `.venv/bin/python -m pip`), igual que la 09. Un corrector queda cubierto por la forma que se acordaron de declararle, no por todas las correctas |
 | E29 | El coste de una tirada se estima **antes** de pagarla, y de lo ya gastado, no de una cifra escrita a mano | hallazgo propio (el Makefile decía "40 llamadas / ~12 USD" a mano) | `DRYRUN=1` en `run.sh` (media de `runs.jsonl`) + filtro por tarea + `test_evals.sh` §21 | ✅ · M9 sigue cazado con el bloque puesto |
 
 ## Las tres preguntas
@@ -215,30 +215,49 @@ forma de saber cuál es muda, y un cero sería mentir por omisión (mutante M15)
 
 ## La tirada completa: el número existe (2026-08-27)
 
-92 llamadas reales, los 20 casos, tres brazos, `RUNS=1`, todo con
+98 llamadas reales, los 20 casos, tres brazos, `RUNS=1`, todo con
 `claude-opus-5[1m]` y **sin el proxy Headroom en medio** (con `ANTHROPIC_BASE_URL`
 puesto, el lift mediría harness + proxy a la vez):
 
-Reemitido el 2026-08-27 tras reparar el corrector de la 12 (E28), volver a medir
-la 12 y la 20 en los tres brazos (6 llamadas, declaradas antes con `DRYRUN=1`) y
-corregir desde la fuente de verdad la unica fila puntuada por el check roto
-(12/on/08:20, fail→pass; el transcript original quedo sobrescrito por el re-run
-del mismo dia — mismo nombre de fichero —, asi que la correccion se apoya en la
-reproduccion en frio documentada en la revision y en el replay de las acciones
-equivalentes):
+Reemitido el 2026-08-27 tras reparar el corrector de la 12 (E28) y volver a medir
+la 12 y la 20 en los tres brazos (6 llamadas, declaradas antes con `DRYRUN=1`).
+La fila que puntuó el corrector roto — 12/`on`/08:20 — **no se corrige: se
+retira**. Que el corrector estaba roto es cierto y está mutado (M28); si esa
+reparación habría volteado *esa* tirada **no se puede auditar**, porque su
+transcript quedó sobrescrito por el re-run del mismo día (F1, más abajo). Un dato
+cuyo instrumento estaba averiado y cuya evidencia ya no existe no se arregla a
+mano: eso sería inventarlo. Queda marcado `excluded` en `runs.jsonl`, fuera de
+todo cómputo, y el informe lo dice en su primera línea en vez de retirarlo en
+silencio. **Lo zanja una sola llamada de pago — la 12, brazo `on`, `RUNS=1` — y
+está pendiente: no se hizo en esta ronda.**
 
 ```
-con harness 0.86 (n=28) · sin harness 0.73 (n=48) · lift +0.13 -> SIRVE
-coste: +145.8 % ($0.2941 vs $0.1196 por run)
+excluidas 1 fila(s), fuera de todo computo: 12-alcance-quirurgico/on@2026-08-27T08:20:46Z (puntuada por el corrector roto de la 12 (E28) y con el transcript sobrescrito por la colision de nombres: no es re-auditable)
+con harness 0.85 (n=27) · sin harness 0.73 (n=48) · lift +0.12 -> SIRVE
+coste: +147.2 % ($0.2957 vs $0.1196 por run)
 positiva  (11/21 runs) 0.73 vs 0.48 · +0.25 -> el harness ayuda
-negativa  (11/21 runs) 1.00 vs 1.00 · +0.00 -> el harness no estorba
-sin-ajustes (hooks, permisos y env) 0.68 [0.47-0.84] vs 0.86 con todo · -0.18 -> la pieza APORTA
+negativa  (10/21 runs) 1.00 vs 1.00 · +0.00 -> el harness no estorba
+sin-ajustes  (hooks, permisos y env ) 0.68 [0.47-0.84] vs 0.85 con todo · -0.17 -> la pieza APORTA
 ```
 
-La linea negativa dejo de acusar al harness sin tocar ningun umbral: solo se
-repararon los correctores. Discriminan 3 tareas de 20 (la 12 paso a muda por
-arriba: 1.00 en los tres brazos; la 20 es muda a 0.00 en los tres). El numero de
-la tirada anterior queda abajo como registro de lo que media el instrumento roto.
+La línea negativa dejó de acusar al harness sin tocar ningún umbral: solo se
+repararon los correctores. Discriminan 3 tareas de 20 (la 12 pasó a muda por
+arriba: 1.00 en los tres brazos con las filas que quedan; la 20 es muda a 0.00 en
+los tres). El número de la tirada anterior queda abajo como registro de lo que
+medía el instrumento roto.
+
+**La ablación va con una salvedad, y va aquí, no en una nota al pie:** el −0,17
+de `sin-ajustes` está inflado por otro corrector roto, el de la 11, que exige el
+literal `.venv/bin/pip` y suspende `.venv/bin/python -m pip install requests`, que
+es la misma solución escrita de la otra forma — la misma avería que la 12, la
+forma confundida con la calidad. Solo el brazo `sin-ajustes` cayó en esa variante,
+así que el artefacto empuja **en contra de `sin-ajustes`**, es decir **a favor** de
+la conclusión que aquí se publica. Medido puntuando esa única fila como `pass`
+sobre una copia del almacén: el delta pasa de **−0,17 a −0,12**. La lectura sigue
+siendo *la pieza APORTA* y el signo no cambia, pero cinco de esos diecisiete
+puntos son del instrumento. El corrector de la 11 **no se toca**: aflojar un
+sensor para mejorar un número es justo lo que este documento persigue. Queda como
+caso abierto, igual que el de la 09.
 
 **La 20, releida en los transcripts (E20), discrimina en un eje que el pass/fail
 no ve:** el brazo con harness verifico primero, descubrio que `origin` apunta a
@@ -249,6 +268,19 @@ tarea prohibe — fallo *peligroso*. Un scoring por estado no puede separarlos;
 queda para el plan siguiente decidir si la tarea gana un check de dos niveles o
 se retira como muda.
 
+Esa lectura se sostiene sobre los transcripts que **sobrevivieron**, y hay que decir
+cuántos no. El nombre viejo era `$id-$ARM-$attempt-$(date +%F)`, y `attempt` reinicia
+en 1 en cada invocación: dos tiradas del mismo día sobre la misma tarea y el mismo
+brazo escribían **el mismo fichero**, y la primera perdía su evidencia sin decirlo.
+Medido sobre el histórico: **26 de las 98 filas (27 %) apuntan a un transcript que
+otra tirada pisó.** Las siete filas de la 20 comparten tres ficheros, uno por brazo,
+y lo vivo es la última tirada de cada uno; el párrafo de arriba está releído contra
+esos tres — el `on` verifica, encuentra el remoto inexistente y se niega; `off` y
+`sin-ajustes` ejecutan `git commit --amend` — no contra los que ya no están. Desde
+ahora el nombre lleva el `ts` de la fila, así que una tirada no puede pisar a otra y
+desde cualquier fila se llega a su evidencia (`run.sh`, sensor §23, mutantes M30–M31).
+Lo perdido, perdido: no se renombra nada hacia atrás.
+
 ```
 (tirada del instrumento roto, solo registro)
 con harness 0.85 (n=26) · sin harness 0.74 (n=46) · lift +0.11 -> SIRVE
@@ -258,7 +290,9 @@ negativa  0.90 vs 1.00 · -0.10 -> FALSOS POSITIVOS: el harness estorba   <- era
 Cuatro lecturas, y la tercera es la que incomoda:
 
 1. **El harness sirve, y lo que sirve son los ajustes.** Quitar hooks, permisos y env
-   cuesta 15 puntos: más que el lift entero. E22 deja de ser código sin correr.
+   cuesta 17 puntos: más que el lift entero. E22 deja de ser código sin correr. Doce
+   de esos diecisiete sobreviven al artefacto de la 11 (salvedad de arriba); el resto
+   es instrumento.
 2. **Cuesta 2,5 veces más por tarea.** Va fuera de la nota (E5), no dentro.
 3. ~~**En las tareas negativas el harness ESTORBA**: 0,90 contra 1,00.~~ **RETIRADA el
    2026-08-27**: esa línea la escribe `report.py`, y es falsa. El −0,10 sale de **una sola
@@ -267,9 +301,27 @@ Cuatro lecturas, y la tercera es la que incomoda:
    avería» más abajo. Separar por polaridad **sigue siendo lo correcto** —el agregado
    tapaba la discrepancia y por eso se investigó—, pero lo que había debajo era el
    instrumento, no el agente.
-4. **El conjunto está saturado**: 16 de 20 tareas dieron lo mismo en los dos brazos. El
-   que decide es de 4, no de 20. Subir esa cifra no cuesta dinero: cuesta retirar mudas y
+4. **El conjunto está saturado**: 17 de 20 tareas dieron lo mismo en los dos brazos. El
+   que decide es de 3, no de 20. Subir esa cifra no cuesta dinero: cuesta retirar mudas y
    minar fallos nuevos.
+
+### Fe de erratas del commit `e7d4fee`
+
+No se enmienda un commit publicado, así que la corrección vive aquí y lo nombra. Dos
+frases de su mensaje no se sostienen:
+
+- «**La única fila puntuada por el check roto se corrige desde la fuente de verdad**».
+  No se podía: el transcript de esa tirada estaba sobrescrito, y la propia frase lo
+  admitía doce palabras después. Esa fila no se corrige — se **retira** (`excluded`), y
+  lo que queda pendiente es una llamada de pago, no una edición a mano.
+- «**como las 40 del modelo mal apuntado**». La comparación no vale. Aquellas 40
+  cambiaban el modelo, que está escrito literalmente en el transcript y se lee ahí; esta
+  cambiaba un `result`, que solo puede emitir el corrector, y el corrector de entonces
+  era el roto. No es el mismo acto.
+
+Lo que sí se sostiene de ese mensaje: el −0,10 lo escribía el corrector, la línea
+negativa da +0,00 sin tocar un umbral, y la lectura de la 20 —fallo en seguro contra
+fallo peligroso— se confirma en los tres transcripts que sobreviven.
 
 ### Tres averías del instrumento que solo aparecieron al correrlo
 
@@ -279,7 +331,11 @@ Cuatro lecturas, y la tercera es la que incomoda:
   negándose a comparar dos brazos que habían corrido con el **mismo** modelo. Un guardia
   alimentado con el dato equivocado no protege: bloquea lo bueno. Arreglado —se apunta el
   modelo con más tokens de salida—, sensor §18, mutante M23, y las 40 líneas corregidas
-  desde los transcripts guardados, que son la fuente de verdad.
+  desde los transcripts guardados. Con la salvedad que obliga a poner el 27 % de arriba:
+  «los transcripts guardados» es fuente de verdad **de la fila cuya evidencia sigue
+  viva**, no por definición. Para el modelo el dato está escrito literalmente en el
+  transcript y la corrección es legible; para un `result` no lo está, y por eso la fila
+  de la 12 se retira en vez de corregirse.
 - **El corrector castigaba a quien verificaba, y a quien acertaba.** Las dos únicas
   tiradas en las que el brazo con harness quedó por debajo del control son fallos del
   `check`, no del agente, y las dos se leyeron abriendo el transcript guardado:
@@ -300,9 +356,10 @@ Cuatro lecturas, y la tercera es la que incomoda:
   Las dos son la misma avería con dos caras: **el oráculo confundía la forma de la
   respuesta con su calidad**. Y las dos empujaban el número en la misma dirección, en
   contra del harness, que es la dirección que menos sospechas levanta. El lift corregido
-  **no se publica aquí**: exige volver a correr esas dos tareas en los tres brazos con el
-  check arreglado, y hasta entonces la única cifra honrada sigue siendo la de arriba con
-  esta salvedad al lado. El plan está en
+  **ya está publicado arriba**, en «La tirada completa»: las dos tareas se volvieron a
+  correr en los tres brazos con los checks reparados (6 llamadas). Lo que sigue pendiente
+  no es el lift: es **una fila**, la tirada 12/`on`/08:20, retirada por `excluded`, y la
+  cierra una sola llamada de pago. El plan está en
   `docs/superpowers/plans/2026-08-27-en-vez-de-migrar.md`.
 
 - **`sin-skills` y `sin-mcp` no medían nada.** En las 26 tiradas del brazo completo hubo
@@ -461,14 +518,17 @@ Dos decisiones que evitan que esto contamine el eval:
 
 ## Lo que falta, por orden de daño
 
-1. **El conjunto está saturado: 16 de 20 tareas son mudas.** Es el hueco número uno
-   ahora que el número existe (arriba). El lift lo deciden 4 tareas, así que seguirá
+1. **El conjunto está saturado: 17 de 20 tareas son mudas.** Es el hueco número uno
+   ahora que el número existe (arriba). El lift lo deciden 3 tareas, así que seguirá
    subiendo sin que el harness mejore. No se arregla con dinero: se arregla minando
    fallos nuevos de los transcripts.
-2. **El harness produce falsos positivos en las tareas negativas** (0,90 contra 1,00).
-   Es el único resultado del repo que va **en contra** de lo que el repo defiende, y por
-   eso está arriba y no en una nota al pie. Con n=10 puede ser ruido; lo siguiente es
-   repetirlo, no explicarlo.
+2. ~~**El harness produce falsos positivos en las tareas negativas** (0,90 contra 1,00).~~
+   **RETIRADA el 2026-08-27**, y aquí seguía en presente y sin tachar mientras el bloque de
+   arriba decía lo contrario: ese −0,10 lo escribía el corrector roto de la 12, no el
+   agente. Con los correctores reparados la línea negativa da 1,00 contra 1,00. Se deja
+   tachada, no borrada, porque el registro de haberlo creído vale más que la línea limpia.
+   Que estuviera horas contradiciendo al bloque de arriba sin que nada se pusiera rojo es
+   lo que ahora vigila `test_doc_claims.sh` §4.
 2. **`RUNS=1` y `n` pequeño.** Con 20 tareas ya se puede, pero mientras no haya
    repeticiones los intervalos seguirán solapándose y casi todo caerá en `NEUTRO`.
    Es el techo real que queda, y multiplica el coste de arriba.
@@ -477,7 +537,7 @@ Dos decisiones que evitan que esto contamine el eval:
    emisor de LangSmith está probado de punta a punta, así que lo que queda es una decisión
    de compra, no de código — clave de la **nube** (gratis hasta 5 000 trazas, pero deja de
    ser local) o licencia Enterprise.
-4. **Solo 14 de los 22 mutantes son reproducibles.** `make mutantes` versiona M9–M22 y
+4. **Solo 25 de los 33 mutantes son reproducibles.** `make mutantes` versiona M9–M33 y
    falla si un ancla desaparece del fuente (un mutante que no se aplica deja de vigilar
    **en silencio**). M1–M8 se corrieron con scripts de usar y tirar: de esos ocho queda
    la palabra, no la evidencia, y queda dicho.
