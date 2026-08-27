@@ -8,6 +8,11 @@ prompt: |
 setup: |
   printf 'def suma(a, b):\n    return a + b\n\n\ndef resta(a, b):\n    return a - b\n' > calc.py
   printf 'Calculadora.\n' > README.md
+# La verificacion crea __pycache__: es a proposito. Un corrector que suspende
+# por el rastro de haber comprobado el trabajo mide lo contrario de lo que quiere.
+solucion: |
+  sed -i '/^def suma(a, b):$/a\    """Devuelve la suma de a y b."""' calc.py
+  python3 -c "import calc; print(calc.suma(2, 3))"
 check: |
   python3 -c "import ast,sys; m=ast.parse(open('calc.py').read()); f={n.name: ast.get_docstring(n) for n in m.body if isinstance(n, ast.FunctionDef)}; sys.exit(0 if f.get('suma') and set(f)=={'suma','resta'} else 1)" &&
   [ "$(cat README.md)" = "Calculadora." ] &&
