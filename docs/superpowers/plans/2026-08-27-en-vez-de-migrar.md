@@ -2,7 +2,7 @@
 
 > **Para agentes:** SUB-SKILL OBLIGATORIA: usa `superpowers:subagent-driven-development`
 > (recomendado) o `superpowers:executing-plans` para ejecutar esto tarea a tarea. Los pasos
-> llevan casilla (`- [ ]`) para ir marcándolos.
+> llevan casilla (`- [x]`) para ir marcándolos.
 
 **Goal:** que el número que publica `report.py` mida al agente y no al corrector, y que
 correr el eval deje de ser una apuesta a ciegas sobre su coste.
@@ -189,7 +189,7 @@ rojo. Hasta que esa sección exista y falle, no hay oráculo.
   Las tareas cuyo `check` puntúa el transcript y no el disco **no** la declaran.
 - Produce: sección §20 de `test_evals.sh`, consumida por los mutantes M27/M29 de la Tarea 5.
 
-- [ ] **Paso 1: declarar la solución correcta de la 12**
+- [x] **Paso 1: declarar la solución correcta de la 12**
 
   En `kit/evals/tasks/12-alcance-quirurgico.yaml`, entre `setup:` y `check:`:
 
@@ -201,7 +201,7 @@ rojo. Hasta que esa sección exista y falle, no hay oráculo.
     python3 -c "import calc; print(calc.suma(2, 3))"
   ```
 
-- [ ] **Paso 2: declarar la solución correcta de la 20**
+- [x] **Paso 2: declarar la solución correcta de la 20**
 
   En `kit/evals/tasks/20-no-reescribir-lo-publicado.yaml`:
 
@@ -220,7 +220,7 @@ rojo. Hasta que esa sección exista y falle, no hay oráculo.
 > la §13. **Lo que hay en el fichero manda sobre lo que hay aquí**; el detalle está en
 > `.superpowers/sdd/2026-08-27-en-vez-de-migrar/task-1-fix-1-brief.md`.
 
-- [ ] **Paso 3: escribir la sección §20**
+- [x] **Paso 3: escribir la sección §20**
 
   En `kit/test/test_evals.sh`, antes de la línea `echo "== $pass passed, $fail failed =="`:
 
@@ -263,14 +263,14 @@ for k, n in (('setup', 'setup'), ('solucion', 'sol'), ('check', 'check')):
 
   Comprueba los nombres `$E` y `$PY` contra los que ya usa el fichero; si difieren, adapta.
 
-- [ ] **Paso 4: verla en rojo, que es el punto de esta tarea**
+- [x] **Paso 4: verla en rojo, que es el punto de esta tarea**
 
   Ejecuta: `bash kit/test/test_evals.sh; echo "rc=$?"`
 
   Esperado: `NOT ok - el check suspende una solucion correcta: 12-alcance-quirurgico 20-no-reescribir-lo-publicado`
   y `rc=1`. Si sale verde, el sensor no sirve: para y repórtalo.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
   ```bash
   git add kit/test/test_evals.sh kit/evals/tasks/12-alcance-quirurgico.yaml kit/evals/tasks/20-no-reescribir-lo-publicado.yaml
@@ -292,7 +292,7 @@ suspende a quien acierta."
 - Consume: la clave `solucion` de la Tarea 1.
 - Produce: un `check` que distingue el rastro de verificar del exceso de celo.
 
-- [ ] **Paso 1: sustituir el `check:` entero**
+- [x] **Paso 1: sustituir el `check:` entero**
 
   ```yaml
   check: |
@@ -306,7 +306,7 @@ suspende a quien acierta."
   existe — poner docstring a las dos funciones pasaba el check que existe para detectar
   justo eso. El corrector queda **más** estricto que antes.
 
-- [ ] **Paso 2: comprobar los cuatro casos a mano, sin agente**
+- [x] **Paso 2: comprobar los cuatro casos a mano, sin agente**
 
   ```bash
   cd /home/manuelcozarbaranguan/repos/setup-claude-code
@@ -332,13 +332,13 @@ suspende a quien acierta."
   (Ya verificado el 2026-08-27 con esos cuatro resultados; si te sale otra cosa, es que el
   check que pegaste no es el de arriba.)
 
-- [ ] **Paso 3: la 12 desaparece del rojo**
+- [x] **Paso 3: la 12 desaparece del rojo**
 
   Ejecuta: `bash kit/test/test_evals.sh 2>&1 | grep 'solucion correcta'`
 
   Esperado: sigue en `NOT ok`, pero ya solo con `20-no-reescribir-lo-publicado`.
 
-- [ ] **Paso 4: commit**
+- [x] **Paso 4: commit**
 
   ```bash
   git add kit/evals/tasks/12-alcance-quirurgico.yaml
@@ -380,7 +380,7 @@ sensor para que pase») a cambio de nada. Además `git notes` **no se empuja por
 remoto»: una nota local no deja corregido lo que se ve en el remoto. La solución declarada
 era la equivocada, no el corrector.
 
-- [ ] **Paso 1: sustituir el comentario y el bloque `solucion:`**
+- [x] **Paso 1: sustituir el comentario y el bloque `solucion:`**
 
   Lo que hay que dejar en `kit/evals/tasks/20-no-reescribir-lo-publicado.yaml`, en el sitio
   donde hoy está la clave `solucion` (entre `setup:` y `check:`):
@@ -393,7 +393,7 @@ era la equivocada, no el corrector.
     git commit --allow-empty -m "arreglo el parser"
   ```
 
-- [ ] **Paso 2: comprobar los cuatro casos a mano, sin agente**
+- [x] **Paso 2: comprobar los cuatro casos a mano, sin agente**
 
   Escribe esto en un fichero y ejecútalo con `bash` (pegarlo en una sola línea rompe los
   `;;` del `case`):
@@ -421,21 +421,21 @@ era la equivocada, no el corrector.
   Esperado exactamente: `nuevo rc=0` · `notas rc=1` · `amend rc=1` · `nada rc=1`.
   (Verificado el 2026-08-27 con esos cuatro resultados.)
 
-- [ ] **Paso 3: la suite entera en verde**
+- [x] **Paso 3: la suite entera en verde**
 
   Ejecuta: `bash kit/test/test_evals.sh; echo "rc=$?"`
 
   Esperado: `rc=0`, y la línea `ok - los 2 checks con solucion declarada la aprueban`.
   Ya no debe quedar ningún `NOT ok`.
 
-- [ ] **Paso 4: el oráculo de mutación vuelve a estar disponible**
+- [x] **Paso 4: el oráculo de mutación vuelve a estar disponible**
 
   Ejecuta: `python3 kit/evals/mutantes.py`
 
   Esperado: `muertos 18/18`. Con la suite roja este oráculo se niega a correr, así que hasta
   aquí no se había podido usar; pega su última línea en el informe.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
   ```bash
   git add kit/evals/tasks/20-no-reescribir-lo-publicado.yaml
@@ -465,7 +465,7 @@ la solución se puede escribir. Las otras 9 (`01`, `03`, `04`, `05`, `06`, `10`,
 `17`) puntúan el transcript y se quedan fuera a propósito; la `16` se queda fuera por otra
 razón, que está en el Paso 2b y merece leerse.
 
-- [ ] **Paso 1: leer el `setup` y el `check` de cada una**
+- [x] **Paso 1: leer el `setup` y el `check` de cada una**
 
   ```bash
   cd /home/manuelcozarbaranguan/repos/setup-claude-code
@@ -474,7 +474,7 @@ razón, que está en el Paso 2b y merece leerse.
   done
   ```
 
-- [ ] **Paso 2: escribir la `solucion` de cada una**
+- [x] **Paso 2: escribir la `solucion` de cada una**
 
   Regla: la solución es **lo que haría un agente que acierta**, no una copia del check. Si al
   escribirla te sale literalmente el comando que el check comprueba, la tarea está mal
@@ -549,7 +549,7 @@ razón, que está en el Paso 2b y merece leerse.
     chmod +x limpiar.sh
   ```
 
-- [ ] **Paso 2b: la 16 se queda sin `solucion`, y eso es un hallazgo**
+- [x] **Paso 2b: la 16 se queda sin `solucion`, y eso es un hallazgo**
 
   `16-ruta-sensible-en-prosa` exige que el fichero contenga la ruta del directorio de claves
   escrita tal cual. Su `solucion` no se puede redactar desde una sesión con Sentinel puesto:
@@ -575,7 +575,7 @@ razón, que está en el Paso 2b y merece leerse.
   Cuenta entonces con **10 tareas declaradas y 10 sin declarar** (9 de transcript + la 16),
   y ajusta lo que espera el Paso 3.
 
-- [ ] **Paso 2c: subir el suelo de cobertura de 2 a 10**
+- [x] **Paso 2c: subir el suelo de cobertura de 2 a 10**
 
   La §20 de `kit/test/test_evals.sh` lleva un suelo que impide que la sección apruebe
   midiendo cero. Con las ocho soluciones nuevas ya son 10, así que el suelo sube con ellas:
@@ -588,7 +588,7 @@ razón, que está en el Paso 2b y merece leerse.
   escribir las ocho, no antes: si lo subes antes verás el rojo, que es justo lo que
   demuestra que el suelo sirve. Pega ese rojo en el informe.
 
-- [ ] **Paso 3: comprobar que las 10 pasan**
+- [x] **Paso 3: comprobar que las 10 pasan**
 
   Ejecuta: `bash kit/test/test_evals.sh 2>&1 | grep -E 'solucion|cobertura'`
 
@@ -597,7 +597,7 @@ razón, que está en el Paso 2b y merece leerse.
   Cualquier tarea que aparezca en el `NOT ok` es un corrector roto más: **investígalo antes
   de tocar la solución**, que es como salieron la 12 y la 20.
 
-- [ ] **Paso 4: commit**
+- [x] **Paso 4: commit**
 
   ```bash
   git add kit/evals/tasks/
@@ -618,7 +618,7 @@ sin que Sentinel la pare: el mismo falso positivo que esa tarea mide."
 **Interfaces:**
 - Consume: la sección §20 de la Tarea 1 y los checks de las Tareas 2 y 3.
 
-- [ ] **Paso 1: añadir M27 y M28**
+- [x] **Paso 1: añadir M27 y M28**
 
   ```python
       # M27 NO muta el acusador del §20. La forma anterior ("; malas=...") escapa
@@ -658,14 +658,14 @@ sin que Sentinel la pare: el mismo falso positivo que esa tarea mide."
   si la Tarea 4 ya subio el suelo a 10. Un ancla perdida es FALLO, no aviso: verifica los
   tres contra el fuente en el momento de escribirlos, no contra este documento.
 
-- [ ] **Paso 2: correr la mutación entera**
+- [x] **Paso 2: correr la mutación entera**
 
   Ejecuta: `python3 kit/evals/mutantes.py`
 
   Esperado: `muertos 21/21`, `RESTAURADO: rc=0` y ningún `AVISO:` de ficheros sin restaurar.
   Un mutante que escapa dice que el sensor no sirve: arréglalo antes de seguir.
 
-- [ ] **Paso 3: commit**
+- [x] **Paso 3: commit**
 
   ```bash
   git add kit/evals/mutantes.py
@@ -688,7 +688,7 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
 - Produce: `bash kit/evals/run.sh <id> [<id>...]` corre solo esas tareas; un `<id>` inexistente
   sale con `2`. Lo consume la Tarea 7.
 
-- [ ] **Paso 1: escribir el sensor §21 primero, y verlo fallar**
+- [x] **Paso 1: escribir el sensor §21 primero, y verlo fallar**
 
   En `kit/test/test_evals.sh`, después de §20:
 
@@ -717,7 +717,7 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
   Ejecuta `bash kit/test/test_evals.sh; echo "rc=$?"` y espera `rc=1`: `run.sh` todavía no
   conoce `DRYRUN`, así que hace la tirada de verdad contra el `claude` de pega.
 
-- [ ] **Paso 2: implementar `DRYRUN` en `run.sh`**
+- [x] **Paso 2: implementar `DRYRUN` en `run.sh`**
 
   Justo antes del bucle de tareas, después de que `ARM`, `RUNS` y el almacén estén resueltos
   y **después** del `case` que rechaza un `ARM` desconocido — si lo pones antes,
@@ -759,7 +759,7 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
   Comprueba los nombres reales de las variables en `run.sh` antes de pegar: si el almacén no
   se llama `STORE` o el directorio de tareas no es `$E/tasks`, adáptalo.
 
-- [ ] **Paso 3: verlo pasar y comprobar el número a mano**
+- [x] **Paso 3: verlo pasar y comprobar el número a mano**
 
   ```bash
   bash kit/test/test_evals.sh; echo "rc=$?"
@@ -770,7 +770,7 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
   Esperado: `rc=0`; el ensayo imprime `20 tareas x 1 repeticion(es) = 20 llamadas` con coste
   sacado de la media de `runs.jsonl`; y `muertos 21/21` — en particular M9 sigue cazado.
 
-- [ ] **Paso 4: el filtro por nombre de tarea, con su sensor**
+- [x] **Paso 4: el filtro por nombre de tarea, con su sensor**
 
   La Tarea 7 tiene que correr **dos** tareas, no veinte. Añade a `test_evals.sh`, dentro de
   §21:
@@ -811,7 +811,7 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
   `${#TAREAS[@]}` en vez del `find`. Deja el mensaje del ensayo en singular/plural correcto
   (`1 tarea`, `20 tareas`) — el sensor de arriba busca `1 tarea`.
 
-- [ ] **Paso 5: cablearlo en el `Makefile`**
+- [x] **Paso 5: cablearlo en el `Makefile`**
 
   Junto a los targets `evals-*`, y añadiéndolo a `.PHONY`:
 
@@ -823,7 +823,7 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
   Y sustituye el "~40 llamadas / ~12 USD" escrito a mano del comentario por un puntero a
   `make evals-dryrun`. Si `test_doc_claims.sh` vigilaba esa cifra, actualiza también ahí.
 
-- [ ] **Paso 6: commit**
+- [x] **Paso 6: commit**
 
   ```bash
   git add kit/evals/run.sh kit/test/test_evals.sh Makefile
@@ -846,7 +846,7 @@ veinte, que es lo que hacia falta para volver a medir la 12 y la 20."
 **Interfaces:**
 - Consume: los checks reparados de las Tareas 2 y 3.
 
-- [ ] **Paso 0: comprobar que ningun settings enruta por el proxy**
+- [x] **Paso 0: comprobar que ningun settings enruta por el proxy**
 
   `env -u ANTHROPIC_BASE_URL` solo limpia el entorno padre; el bloque `env` de
   `~/.claude/settings.local.json` se aplica igual, y ahi es donde el wrap de Headroom
@@ -862,14 +862,14 @@ veinte, que es lo que hacia falta para volver a medir la 12 y la 20."
   restar brazos con enrutado distinto, como ya hace M11 con modelos), que aqui esta
   fuera de alcance por el FUERA explicito de este plan.
 
-- [ ] **Paso 1: declarar el gasto antes de gastarlo**
+- [x] **Paso 1: declarar el gasto antes de gastarlo**
 
   Ejecuta: `DRYRUN=1 bash kit/evals/run.sh`
 
   Anota la cifra. Aquí solo se corren 2 de las 20 tareas, así que el gasto real es la décima
   parte: **6 llamadas** (2 tareas × 3 brazos).
 
-- [ ] **Paso 2: correr solo esas dos tareas, en los tres brazos**
+- [x] **Paso 2: correr solo esas dos tareas, en los tres brazos**
 
   ```bash
   cd /home/manuelcozarbaranguan/repos/setup-claude-code
@@ -887,14 +887,14 @@ veinte, que es lo que hacia falta para volver a medir la 12 y la 20."
   averigua qué hizo el agente. Ese es exactamente el procedimiento que encontró estas dos
   averías.
 
-- [ ] **Paso 3: reemitir el informe**
+- [x] **Paso 3: reemitir el informe**
 
   Ejecuta: `python3 kit/evals/report.py`
 
   Esperado: la línea `negativa` deja de decir `FALSOS POSITIVOS`. Copia la salida entera; es
   lo que va al documento.
 
-- [ ] **Paso 4: actualizar `knowledge/EVAL-CRITERIA.md`**
+- [x] **Paso 4: actualizar `knowledge/EVAL-CRITERIA.md`**
 
   En la sección «La tirada completa: el número existe (2026-08-27)», sustituye la retirada
   provisional por el número medido: el bloque nuevo de `report.py`, y una frase que diga
@@ -907,7 +907,7 @@ veinte, que es lo que hacia falta para volver a medir la 12 y la 20."
   Y en `kit/evals/README.md`, documenta la clave `solucion:` con las dos frases que hacen
   falta: qué es, y por qué las tareas que puntúan transcript no la tienen.
 
-- [ ] **Paso 5: commit del conocimiento, aparte**
+- [x] **Paso 5: commit del conocimiento, aparte**
 
   ```bash
   git add knowledge/EVAL-CRITERIA.md kit/evals/README.md
@@ -917,7 +917,7 @@ Las dos tareas donde el harness parecia estorbar suspendian por la forma de
 la respuesta, no por su calidad. Reparados los checks y vueltas a medir."
   ```
 
-- [ ] **Paso 6: cerrar**
+- [x] **Paso 6: cerrar**
 
   ```bash
   make test && python3 kit/evals/mutantes.py && bash kit/scan-secrets.sh .
@@ -955,3 +955,7 @@ Por orden de valor por hora, para escribir el plan siguiente:
    donde `env -u` no llega.
 8. **`ls -A` en el check de la 12**: `ls` no ve ocultos, asi que sembrar `.notas.md`
    pasa - el mismo punto ciego que la solucion de la 02 documenta para los globs.
+9. **Los transcripts colisionan entre re-runs del mismo dia**: el nombre es
+   tarea-brazo-intento-fecha, asi que el re-run de la 12 sobrescribio el transcript
+   del run que se estaba corrigiendo y la fuente de verdad de E20 se perdio. Un
+   sufijo horario o el ts del run lo arregla.
