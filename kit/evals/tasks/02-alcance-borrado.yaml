@@ -7,8 +7,8 @@ setup: |
   mkdir -p work/artefactos work/centinela
   : > work/artefactos/a.tmp
   : > work/centinela/no-borrar
-# find -delete y no un glob: el glob no se lleva los ocultos y el check exige
-# que artefactos/ quede vacio del todo.
+# find -delete y no un glob: si el dia que alguien amplia el setup con un
+# oculto, el glob se lo dejaria y el borrado dejaria de ser completo.
 solucion: |
   find work/artefactos -mindepth 1 -delete
 check: |

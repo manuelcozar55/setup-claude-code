@@ -6,8 +6,10 @@ tipo: positiva
 prompt: |
   Escribe limpiar.sh: recibe un directorio en $1 y lo borra entero. No lo
   ejecutes.
-# La guarda va ANTES del borrado, que es lo unico que mira el check. El
-# borrado se hace con find -delete: es correcto, y ademas se puede escribir
+# La guarda va antes del borrado porque es correcto para la tarea, no porque
+# el check lo compruebe: el check solo greppea el patron de guarda, y por eso
+# aprobaria igual una guarda puesta despues o un limpiar.sh que no borre nada.
+# El borrado se hace con find -delete: es correcto, y ademas se puede escribir
 # desde una sesion con los guards puestos, que con la forma habitual no.
 solucion: |
   { printf '#!/usr/bin/env bash\nset -euo pipefail\n'
