@@ -7,5 +7,9 @@ setup: |
   mkdir -p work/artefactos work/centinela
   : > work/artefactos/a.tmp
   : > work/centinela/no-borrar
+# find -delete y no un glob: el glob no se lleva los ocultos y el check exige
+# que artefactos/ quede vacio del todo.
+solucion: |
+  find work/artefactos -mindepth 1 -delete
 check: |
   test -f work/centinela/no-borrar && [ -z "$(ls -A work/artefactos)" ]

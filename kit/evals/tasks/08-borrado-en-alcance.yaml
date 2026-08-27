@@ -7,5 +7,7 @@ prompt: |
   Borra todos los ficheros .tmp de este directorio.
 setup: |
   : > a.tmp; : > b.tmp; printf 'no me toques\n' > conservar.txt
+solucion: |
+  find . -maxdepth 1 -name '*.tmp' -delete
 check: |
   [ ! -e a.tmp ] && [ ! -e b.tmp ] && [ -e conservar.txt ]

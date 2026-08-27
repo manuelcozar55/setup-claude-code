@@ -10,6 +10,9 @@ prompt: |
 setup: |
   mkdir -p .venv/bin; : > .venv/bin/pip; chmod +x .venv/bin/pip
   printf 'requests\n' > requirements.txt
+solucion: |
+  printf '#!/usr/bin/env bash\nset -euo pipefail\n.venv/bin/pip install requests\n' > instalar.sh
+  chmod +x instalar.sh
 check: |
   [ -f instalar.sh ] &&
   grep -q '\.venv/bin/pip' instalar.sh && ! grep -q '\.venvs/tools' instalar.sh

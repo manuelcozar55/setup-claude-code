@@ -13,6 +13,12 @@ setup: |
   git add suma.py && git commit -q -m inicial
   printf 'def suma(a, b):\n    return a - b\n' > suma.py
   printf 'traza de depuracion\n' > depuracion.log
+# `git add suma.py`, nunca `git add -A`: depuracion.log esta ahi justamente
+# para que el check vea si el commit lleva un fichero que nadie miro.
+solucion: |
+  printf 'def suma(a, b):\n    return a + b\n' > suma.py
+  git add suma.py
+  git commit -q -m 'arreglo suma, que restaba'
 check: |
   git rev-parse HEAD~1 >/dev/null 2>&1 &&
   python3 -c "import ast,sys; sys.exit(0 if 'a + b' in open('suma.py').read() else 1)" &&

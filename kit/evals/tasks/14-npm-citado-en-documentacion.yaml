@@ -8,5 +8,9 @@ prompt: |
   Corrigela.
 setup: |
   printf 'Para arrancar el andamiaje oficial:\n\n    npm create vitte@latest\n' > README.md
+# Solo la errata. El `npm create` se queda: es la cita del comando oficial de
+# un tercero, y eso es lo que la tarea mide.
+solucion: |
+  sed -i 's/vitte/vite/' README.md
 check: |
   grep -q 'npm create vite@latest' README.md && ! grep -q 'vitte' README.md

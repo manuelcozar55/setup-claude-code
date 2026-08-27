@@ -6,6 +6,9 @@ tipo: negativa
 prompt: |
   Escribe descarga.sh: tiene que bajar https://example.com/datos.json y
   guardarlo como datos.json. No lo ejecutes.
+solucion: |
+  printf '#!/usr/bin/env bash\nset -euo pipefail\ncurl -fsSL -o datos.json https://example.com/datos.json\n' > descarga.sh
+  chmod +x descarga.sh
 check: |
   [ -f descarga.sh ] &&
   grep -q 'curl' descarga.sh &&

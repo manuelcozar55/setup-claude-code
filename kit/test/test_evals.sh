@@ -816,11 +816,11 @@ else
 fi
 # Contar no es aseverar: con con_sol=0 esta seccion daba dos verdes sin medir
 # nada. El suelo sube cuando suben las soluciones declaradas (Tarea 4: 10).
-if [ "$con_sol" -ge 2 ]; then
+if [ "$con_sol" -ge 10 ]; then
   echo "ok - cobertura de solucion: $con_sol declaradas, $sin_sol sin declarar"
   pass=$((pass+1))
 else
-  echo "NOT ok - cobertura de solucion insuficiente: $con_sol declaradas, se exigen 2"
+  echo "NOT ok - cobertura de solucion insuficiente: $con_sol declaradas, se exigen 10"
   fail=$((fail+1))
 fi
 
