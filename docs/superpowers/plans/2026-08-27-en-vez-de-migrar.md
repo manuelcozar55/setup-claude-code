@@ -75,7 +75,8 @@ Segundo problema, menor pero de la misma familia: el `Makefile` declara "40 llam
   puestos (Tarea 4). Las 9 que puntúan sobre el transcript quedan fuera y el sensor **dice
   cuántas son**, no las esconde.
 - Dos mutantes nuevos que maten el sensor nuevo.
-- `DRYRUN=1` en `kit/evals/run.sh`.
+- `DRYRUN=1` en `kit/evals/run.sh`, y un filtro por nombre de tarea en el mismo fichero
+  (lo necesita la última tarea para no pagar 60 llamadas por medir dos).
 - Volver a correr **solo** las tareas 12 y 20 en los tres brazos (6 llamadas) y reemitir el
   informe.
 
@@ -93,7 +94,8 @@ Segundo problema, menor pero de la misma familia: el `Makefile` declara "40 llam
 
 ### Criterios de aceptación
 
-1. [ ] `bash kit/test/test_evals.sh` termina en `0` y con **al menos 65** comprobaciones.
+1. [ ] `bash kit/test/test_evals.sh` termina en `0` y con **al menos 67** comprobaciones
+       (hoy 60; §20 añade 2 y §21 añade 5).
 2. [ ] La sección nueva imprime, en una línea, cuántas tareas declaran `solucion` y cuántas
        no. Un salto silencioso no cuenta como aprobado.
 3. [ ] Antes de arreglar los checks, esa sección **falla** señalando la 12 y la 20 por su
@@ -104,8 +106,10 @@ Segundo problema, menor pero de la misma familia: el `Makefile` declara "40 llam
 6. [ ] `python3 kit/evals/mutantes.py` da `muertos 20/20`.
 7. [ ] `DRYRUN=1 bash kit/evals/run.sh` imprime el plan de llamadas y el coste estimado a
        partir de `runs.jsonl`, **sin invocar `claude` ni una vez**, y sale `0`.
-8. [ ] `knowledge/EVAL-CRITERIA.md` no afirma un lift corregido que no se haya medido.
-9. [ ] `bash kit/test/test_doc_claims.sh` y `make test` siguen en verde.
+8. [ ] `run.sh` acepta nombres de tarea como argumentos y corre **solo** esos; con un nombre
+       que no existe sale con `2` y lo dice, en vez de correr las 20 en silencio.
+9. [ ] `knowledge/EVAL-CRITERIA.md` no afirma un lift corregido que no se haya medido.
+10. [ ] `bash kit/test/test_doc_claims.sh` y `make test` siguen en verde.
 
 ### Oráculo
 
@@ -153,6 +157,13 @@ rojo. Hasta que esa sección exista y falle, no hay oráculo.
 - **Los directorios temporales de la suite no se borran**, igual que en las secciones que ya
   existen (`test_evals.sh:259`, `:425`): los guards del repo bloquean el borrado recursivo
   por el literal del comando, y ampliar la allowlist para esquivarlo está prohibido.
+- **Barra de calidad, por tarea y sin excepciones:** ninguna tarea se da por hecha sin
+  (a) un sensor nuevo o modificado que **se ha visto en rojo antes** de escribir el arreglo,
+  (b) la salida literal del oráculo pegada en el informe —no "pasa", sino el `== N passed`—,
+  y (c) `python3 kit/evals/mutantes.py` en `muertos N/N`. Un test que pasa igual con el
+  código roto no es un test: si no puedes enseñar el rojo, no has medido nada.
+- **Prohibido aflojar un sensor para que pase.** Si un check suspende a una solución correcta,
+  el defecto está en el check y hay que probarlo abriendo el caso, no relajando el umbral.
 - Rama `feat/evals-medibles` (PR #16). Nunca directo a `main`.
 
 ---
@@ -585,7 +596,7 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
 
 ---
 
-## Task 6: `DRYRUN=1`, para saber lo que vas a gastar antes de gastarlo
+## Task 6: `DRYRUN=1` y filtro por tarea, para no pagar a ciegas
 
 **Files:**
 - Modify: `kit/test/test_evals.sh` (§21)
@@ -594,6 +605,8 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
 
 **Interfaces:**
 - Produce: `DRYRUN=1 bash kit/evals/run.sh` imprime el plan y sale `0` sin invocar `claude`.
+- Produce: `bash kit/evals/run.sh <id> [<id>...]` corre solo esas tareas; un `<id>` inexistente
+  sale con `2`. Lo consume la Tarea 7.
 
 - [ ] **Paso 1: escribir el sensor §21 primero, y verlo fallar**
 
@@ -633,7 +646,7 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
   ```bash
   # Coste estimado a partir de lo ya gastado, no de un numero escrito a mano.
   if [ "${DRYRUN:-0}" = "1" ]; then
-    n=$(find "$E/tasks" -name '*.yaml' | wc -l)
+    n=${#TAREAS[@]}
     "$PY" - "$STORE" "$n" "$RUNS" "$ARM" <<'PYEOF'
   import json, sys
   store, n, runs, arm = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
@@ -677,7 +690,48 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
   Esperado: `rc=0`; el ensayo imprime `20 tareas x 1 repeticion(es) = 20 llamadas` con coste
   sacado de la media de `runs.jsonl`; y `muertos 20/20` — en particular M9 sigue cazado.
 
-- [ ] **Paso 4: cablearlo en el `Makefile`**
+- [ ] **Paso 4: el filtro por nombre de tarea, con su sensor**
+
+  La Tarea 7 tiene que correr **dos** tareas, no veinte. Añade a `test_evals.sh`, dentro de
+  §21:
+
+  ```bash
+  # Correr dos tareas no puede costar lo que cuestan veinte, y pedir una que no
+  # existe tiene que doler: si se ignora en silencio, una errata en el nombre
+  # convierte "he medido la 12" en "he medido las 20 y ninguna era la 12".
+  salida=$(PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$E/run.sh" 12-alcance-quirurgico 2>&1)
+  if printf '%s' "$salida" | grep -q '1 tarea'; then
+    echo "ok - run.sh filtra por nombre de tarea"; pass=$((pass+1))
+  else
+    echo "NOT ok - run.sh ignora los nombres de tarea que se le pasan"; fail=$((fail+1))
+  fi
+  PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$E/run.sh" tarea-que-no-existe >/dev/null 2>&1
+  ck "$?" 2 "una tarea inexistente sale con 2, no corre las 20"
+  ```
+
+  Y en `run.sh`, resolviendo la lista **antes** del bloque `DRYRUN` para que el ensayo cuente
+  lo mismo que correría de verdad:
+
+  ```bash
+  # Sin argumentos, todas. Con argumentos, solo esas, y un nombre que no existe
+  # es error: correr el conjunto entero "por si acaso" es justo lo que se paga.
+  TAREAS=()
+  if [ "$#" -eq 0 ]; then
+    for f in "$E"/tasks/*.yaml; do TAREAS+=("$f"); done
+  else
+    for a in "$@"; do
+      f="$E/tasks/$a.yaml"
+      [ -f "$f" ] || { echo "run.sh: no existe la tarea '$a'" >&2; exit 2; }
+      TAREAS+=("$f")
+    done
+  fi
+  ```
+
+  El bucle de tareas pasa a recorrer `"${TAREAS[@]}"`, y el conteo del ensayo usa
+  `${#TAREAS[@]}` en vez del `find`. Deja el mensaje del ensayo en singular/plural correcto
+  (`1 tarea`, `20 tareas`) — el sensor de arriba busca `1 tarea`.
+
+- [ ] **Paso 5: cablearlo en el `Makefile`**
 
   Junto a los targets `evals-*`, y añadiéndolo a `.PHONY`:
 
@@ -689,14 +743,15 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
   Y sustituye el "~40 llamadas / ~12 USD" escrito a mano del comentario por un puntero a
   `make evals-dryrun`. Si `test_doc_claims.sh` vigilaba esa cifra, actualiza también ahí.
 
-- [ ] **Paso 5: commit**
+- [ ] **Paso 6: commit**
 
   ```bash
   git add kit/evals/run.sh kit/test/test_evals.sh Makefile
-  git commit -m "feat(evals): DRYRUN=1 dice lo que vas a gastar antes de gastarlo
+  git commit -m "feat(evals): DRYRUN=1 y filtro por tarea
 
-El coste de una tirada estaba escrito a mano en el Makefile. Ahora sale de
-la media de lo ya guardado, y el sensor comprueba que el ensayo no llama."
+El coste de una tirada estaba escrito a mano en el Makefile; ahora sale de
+la media de lo ya guardado. Y correr dos tareas ya no cuesta lo que cuestan
+veinte, que es lo que hacia falta para volver a medir la 12 y la 20."
   ```
 
 ---
@@ -728,11 +783,8 @@ la media de lo ya guardado, y el sensor comprueba que el ensayo no llama."
   done
   ```
 
-  Si `run.sh` no acepta nombres de tarea como argumentos, **añádeselo** (es un filtro de una
-  línea sobre el glob de `tasks/`) y ponle su comprobación en §21; mover ficheros de tarea
-  fuera del directorio para conseguir el mismo efecto es más frágil y deja el repo sucio si
-  algo falla a mitad. El proxy va fuera (`env -u ANTHROPIC_BASE_URL`): con él en medio, el
-  lift mediría harness + proxy.
+  El filtro por nombre de tarea lo dejó puesto la Tarea 6, con sensor. El proxy va fuera
+  (`env -u ANTHROPIC_BASE_URL`): con él en medio, el lift mediría harness + proxy.
 
   Esperado: `12-alcance-quirurgico [on 1/1]: pass` y `20-no-reescribir-lo-publicado [on 1/1]: pass`.
   Si el brazo `on` vuelve a suspender, **no toques el check**: abre el transcript guardado y
