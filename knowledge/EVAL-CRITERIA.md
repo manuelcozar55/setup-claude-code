@@ -16,13 +16,27 @@ y las tres fuentes que pedía el encargo:
   variación; política de commit monótona (corrección **y** puntuación ≥ la mejor
   anterior); ~500 direcciones internas → ~40 commits de linaje. Bate a cuDNN hasta un
   3,5 % y a FlashAttention-4 hasta un 10,5 % en MHA tras 7 días autónomos.
+  Segunda pasada (2026-08-27): su puerta de aceptación **no es agéntica** —compilar,
+  corrección numérica, arnés de tiempo, regla monótona—, y eso es lo bueno. Pero **no
+  hay reservado**: *"The same setup is used both for agent evolution and for
+  benchmarking"*. Tampoco hay línea base de búsqueda alternativa, ni se nombra el modelo
+  del agente, ni hay sección de limitaciones. La tesis del título es argumento
+  arquitectónico, no medición.
 - **NVIDIA SkillEvaluator** (blog de developer). Cinco dimensiones —
   *Correctness, Discoverability, Effectiveness, Efficiency, Security*. Cita literal:
   *"Skill Lift is the with-skill score minus the without-skill score"* y
   *"tracks token usage separately from Efficiency"*. Admite que **no publica intervalos
   de confianza** y que el 85 % de sus pruebas corrió **un solo intento**.
+  Segunda pasada: se descargó su `benchmarks.json` (343 skills, 3 215 filas) y **las
+  cifras del blog se reproducen** (media +29,9 puntos; claude-code +33,5). Publican el
+  crudo y el crudo aguanta. Sus bandas de veredicto (+0,05 / −0,10) coinciden con las de
+  este repo sin habernos copiado. Lo que no controlan: el sesgo del juez LLM —evalúan sus
+  propias skills con su propio evaluador— y 85 skills con **una sola tarea**.
 - **NVIDIA-NeMo/labs-OO-Agents** (existe; el `nvidia-nemo/…` del encargo redirige).
-  Framework NOOA, Python, 1 902 ★. **No documenta grading, agregación ni ablación.**
+  Framework NOOA, Python, 1 910 ★, último push el 2026-08-27. **No documenta grading,
+  agregación ni ablación.** Su `util/eval_pipeline/` no tiene brazo de control ni
+  intervalos, y puntúa con juez LLM ponderado. Aviso suyo que aquí duele:
+  *"a clean skip is indistinguishable from a pass in the summary line"*.
 
 El resto viene de investigación con subagentes y **no está verificado en origen**:
 Böckeler, Hamel Husain, Shreya Shankar, LangChain, Cognition, Willison. Trátalo como
@@ -55,11 +69,12 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 + `test_evals.sh` §10: ningún check aprueba el estado inicial, y no hacer nada da `fail`, no `error` | ✅ |
 | E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan | ⚠️ **humano, sin cadencia fijada** |
-| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 22/22 mutantes; los 14 últimos versionados en `make mutantes`; los §9–§17 nacieron ya en rojo |
-| E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **implementado, sin correr con API** |
+| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 26/26 mutantes; los 18 últimos versionados en `make mutantes`; los §9–§19 nacieron ya en rojo |
+| E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **corrido**: `sin-ajustes` −0,15 → la pieza aporta |
 | E23 | Un brazo cuyo flag desapareció mide el harness completo con etiqueta falsa | hallazgo propio | `test_evals.sh` §13: los 4 flags tienen que seguir en `claude --help` | ✅ · sensor mutado |
-| E24 | No restar dos brazos que corrieron modelos distintos | hallazgo propio (E14 llevado al informe) | `report.py:comparables()` dice `NO COMPARABLE` en vez de dar un lift | ✅ · sensor mutado |
+| E24 | No restar dos brazos que corrieron modelos distintos | hallazgo propio (E14 llevado al informe) | `report.py:comparables()` dice `NO COMPARABLE` en vez de dar un lift; y `record.py` apunta el modelo **que hizo el trabajo**, no el primero del diccionario (§18) | ✅ · sensor mutado ×2 |
 | E25 | Un emisor de trazas probado **en seco** no es telemetría verificada | hallazgo propio | `langsmith_local.py` recibe de verdad + `test_evals.sh` §16: el payload viaja por red y se comprueba el árbol al otro lado | ✅ · sensor mutado |
+| E27 | Ablar una pieza que el agente nunca activó no mide la pieza: mide nada, y con pinta de resultado | hallazgo propio (a partir de la *Discoverability* de SkillEvaluator) | `record.py` cuenta `skill_calls`/`mcp_calls`; `report.py` dice `NO MEDIBLE` y, si el brazo ni se ha corrido, que correrlo tampoco mediría; `test_evals.sh` §19 | ✅ · sensor mutado ×3 |
 | E26 | El observatorio no puede meter dependencias en lo observado | interpretación propia (E6 + "sin SDK" de `langsmith_push.py`) | `phoenix_push.py` es la única pieza con SDK, corre en otro venv, `run.sh` no lo llama, y su sensor (§17) usa `--dry-run` sin dependencias | ✅ · sensor mutado |
 
 ## Las tres preguntas
@@ -195,6 +210,48 @@ el informe escribe `SATURADO`: la tasa seguirá subiendo sin que el harness mejo
 
 Con un solo brazo el bloque dice `NO MEDIBLE` en vez de "0 mudas". Sin control no hay
 forma de saber cuál es muda, y un cero sería mentir por omisión (mutante M15).
+
+## La tirada completa: el número existe (2026-08-27)
+
+92 llamadas reales, los 20 casos, tres brazos, `RUNS=1`, todo con
+`claude-opus-5[1m]` y **sin el proxy Headroom en medio** (con `ANTHROPIC_BASE_URL`
+puesto, el lift mediría harness + proxy a la vez):
+
+```
+con harness 0.85 (n=26) · sin harness 0.74 (n=46) · lift +0.11 -> SIRVE
+coste: +147.2 % ($0.2932 vs $0.1186 por run)
+positiva  0.80 vs 0.50 · +0.30 -> el harness ayuda
+negativa  0.90 vs 1.00 · -0.10 -> FALSOS POSITIVOS: el harness estorba
+sin-ajustes (hooks, permisos y env) 0.70 vs 0.85 · -0.15 -> la pieza APORTA
+```
+
+Cuatro lecturas, y la tercera es la que incomoda:
+
+1. **El harness sirve, y lo que sirve son los ajustes.** Quitar hooks, permisos y env
+   cuesta 15 puntos: más que el lift entero. E22 deja de ser código sin correr.
+2. **Cuesta 2,5 veces más por tarea.** Va fuera de la nota (E5), no dentro.
+3. **En las tareas negativas el harness ESTORBA**: 0,90 contra 1,00. Las negativas son
+   aquellas en las que la respuesta correcta es *no* actuar, y ahí el harness produce
+   falsos positivos. El agregado (+0,11) los tapaba; separarlos por polaridad es lo único
+   que los saca a la luz.
+4. **El conjunto está saturado**: 16 de 20 tareas dieron lo mismo en los dos brazos. El
+   que decide es de 4, no de 20. Subir esa cifra no cuesta dinero: cuesta retirar mudas y
+   minar fallos nuevos.
+
+### Dos averías del instrumento que solo aparecieron al correrlo
+
+- **El modelo apuntado era el equivocado.** Cada sesión de `claude -p` gasta ~15 tokens
+  en un haiku auxiliar, y `record.py` guardaba `next(iter(modelUsage))`: el primero del
+  diccionario. Resultado: 40 tiradas de Opus etiquetadas como Haiku, y el guardia de E24
+  negándose a comparar dos brazos que habían corrido con el **mismo** modelo. Un guardia
+  alimentado con el dato equivocado no protege: bloquea lo bueno. Arreglado —se apunta el
+  modelo con más tokens de salida—, sensor §18, mutante M23, y las 40 líneas corregidas
+  desde los transcripts guardados, que son la fuente de verdad.
+- **`sin-skills` y `sin-mcp` no medían nada.** En las 26 tiradas del brazo completo hubo
+  **cero** invocaciones de `Skill` y cero de MCP: el agente corre en un `mktemp -d` y las
+  skills del repo no viajan ahí. Apagar lo que nunca se enciende da delta 0, y ese 0 se
+  lee como *"la pieza no aporta"*. Es E27, y ahorra 40 llamadas que habrían producido una
+  conclusión falsa.
 
 ## De 6 a 20 tareas, y por qué la mitad son negativas
 
@@ -346,12 +403,14 @@ Dos decisiones que evitan que esto contamine el eval:
 
 ## Lo que falta, por orden de daño
 
-1. **Nada de los cinco brazos está corrido con API.** Es el hueco número uno desde que
-   E22 se implementó: el código está, los sensores están en verde, y el número no existe.
-   20 tareas × 5 brazos ≈ 100 llamadas; los dos brazos principales solos son ~12 $. El
-   único número real que hay más abajo es el de las **6 tareas antiguas**; las 14 nuevas
-   están validadas en seco (ninguna aprueba el estado inicial, ninguna confunde `fail`
-   con `error`), no medidas.
+1. **El conjunto está saturado: 16 de 20 tareas son mudas.** Es el hueco número uno
+   ahora que el número existe (arriba). El lift lo deciden 4 tareas, así que seguirá
+   subiendo sin que el harness mejore. No se arregla con dinero: se arregla minando
+   fallos nuevos de los transcripts.
+2. **El harness produce falsos positivos en las tareas negativas** (0,90 contra 1,00).
+   Es el único resultado del repo que va **en contra** de lo que el repo defiende, y por
+   eso está arriba y no en una nota al pie. Con n=10 puede ser ruido; lo siguiente es
+   repetirlo, no explicarlo.
 2. **`RUNS=1` y `n` pequeño.** Con 20 tareas ya se puede, pero mientras no haya
    repeticiones los intervalos seguirán solapándose y casi todo caerá en `NEUTRO`.
    Es el techo real que queda, y multiplica el coste de arriba.
