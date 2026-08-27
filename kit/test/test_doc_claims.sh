@@ -10,7 +10,7 @@
 # fechados, y una cifra de 2026-08 ahi es correcta aunque hoy sea otra.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
-pass=0; fail=0
+pass=0; fail=0; skipped=0
 
 # knowledge/PRE-MORTEM.md tampoco entra: es el mismo genero que los ADR, una foto fechada.
 DOCS=(README.md CLAUDE.md CONTRIBUTING.md kit/README.md knowledge/ORACLES.md
@@ -103,5 +103,165 @@ else
   echo "NOT ok - el comprobador no detecto cifras deliberadamente falsas (tautologia)"
 fi
 
-echo "== $pass passed, $fail failed =="
+# --- 4. Las cifras de knowledge/EVAL-CRITERIA.md salen del almacen de tiradas ---
+# Ese documento no entra en DOCS a proposito. `claim` juzga cifras de inventario
+# (suites, ADRs, agentes, comandos) contra lo que hay en el arbol, y NINGUNA de las
+# cifras que se pudren ahi es de esa forma: son el n de cada brazo, tasas, un lift y
+# el recuento de tareas mudas, que solo existen en kit/evals/runs.jsonl. Medido:
+# meterlo en DOCS deja la suite en verde sin mirar una sola de ellas.
+EVALDOC=knowledge/EVAL-CRITERIA.md
+STORE=kit/evals/runs.jsonl
+PY3="${PYTHON3:-python3}"
+
+# cifras_eval <doc> <almacen>: un renglon por discrepancia, nada si todo cuadra.
+# Sale 2 sin imprimir cuando no hay almacen. runs.jsonl esta en .gitignore, asi que
+# en un clon limpio NO existe, y contestar "ok" sin haber comparado una sola cifra
+# seria justo el sensor que aprueba sin medir. Se dice 'skip' y se ve en el resumen.
+cifras_eval() {
+  local doc="$1" store="$2" rep rc
+  [ -f "$store" ] || return 2
+  rep=$(mktemp)
+  "$PY3" kit/evals/report.py --store "$store" > "$rep" 2>/dev/null
+  "$PY3" - "$doc" "$store" "$rep" <<'PYEOF'
+import json, re, sys
+
+doc = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+filas = [l for l in open(sys.argv[2], errors="replace") if l.strip()]
+rep = open(sys.argv[3], encoding="utf-8", errors="replace").read()
+
+
+def norm(s):
+    return " ".join(s.split())
+
+
+emitidas = set(norm(l) for l in rep.splitlines() if l.strip())
+# Solo se juzga la seccion de la tirada vigente. Mas arriba el documento cita a
+# proposito la tirada de 6 tareas y la del instrumento roto: son lecturas fechadas
+# y corregirlas seria falsificar el registro, no arreglar una cifra podrida.
+i = doc.find("## La tirada completa")
+tramo = doc[i:] if i >= 0 else doc
+p = []
+
+# (a) Llamadas pagadas. Una fila del almacen es una llamada que se pago, entre o no
+#     despues en el computo: retirar una fila no devuelve el dinero.
+dichas = re.findall(r"(\d+) llamadas reales", tramo)
+if not dichas:
+    p.append("el doc ya no dice cuantas llamadas reales costo la tirada")
+for d in dichas:
+    if int(d) != len(filas):
+        p.append("el doc dice %s llamadas reales y el almacen tiene %d filas" % (d, len(filas)))
+
+# (b) El n de cada brazo, contado del almacen SIN pasar por report.py: si el
+#     documento y el informe se equivocasen igual, esto los pilla a los dos.
+n = {}
+for l in filas:
+    try:
+        r = json.loads(l)
+    except ValueError:
+        continue
+    if not isinstance(r, dict) or str(r.get("excluded") or "").strip():
+        continue
+    n[r.get("arm")] = n.get(r.get("arm"), 0) + 1
+m = re.search(r"con harness [0-9.]+ \(n=(\d+)\).*?sin harness [0-9.]+ \(n=(\d+)\)", tramo)
+if not m:
+    p.append("el doc ya no publica el n de los dos brazos")
+else:
+    for etiqueta, dicho, brazo in (("con harness", m.group(1), "on"),
+                                   ("sin harness", m.group(2), "off")):
+        if int(dicho) != n.get(brazo, -1):
+            p.append("el doc da n=%s en '%s' y el almacen tiene %d filas de '%s'"
+                     % (dicho, etiqueta, n.get(brazo, -1), brazo))
+
+# (c) Cuantas tareas deciden. Es la cifra que mas caro sale de puntualizar y la que
+#     mas se pudre: cambia sola en cuanto entra una tirada mas.
+m = re.search(r"mudas: (\d+)/(\d+) tareas", rep)
+if not m:
+    p.append("el informe ya no publica el recuento de tareas mudas")
+else:
+    mudas, total = int(m.group(1)), int(m.group(2))
+    # Solo las frases que hablan del conjunto de HOY. "5 de 6 tareas son mudas" es la
+    # lectura fechada de la tirada de 6 y sigue siendo cierta: no se juzga aqui.
+    hoy = [x for x in re.finditer(r"(\d+) de (\d+) tareas", tramo) if int(x.group(2)) == total]
+    if not hoy:
+        p.append("el doc no dice cuantas de las %d tareas del conjunto son mudas" % total)
+    for x in hoy:
+        if int(x.group(1)) != mudas:
+            p.append("el doc dice '%s' y son %d de %d" % (x.group(0), mudas, total))
+    deciden = (re.findall(r"[Dd]iscriminan (\d+) tareas de %d" % total, tramo)
+               + re.findall(r"decide es de (\d+), no de %d" % total, tramo)
+               + re.findall(r"[Dd]eciden (\d+) tareas", tramo))
+    if not deciden:
+        p.append("el doc no dice cuantas tareas deciden el lift")
+    for d in deciden:
+        if int(d) != total - mudas:
+            p.append("el doc dice que deciden %s tareas y son %d" % (d, total - mudas))
+
+# (d) El bloque publicado tiene que salir TAL CUAL del informe. Esto cubre de una vez
+#     tasas, lift, coste, polaridad y ablacion: no hay que enumerarlas. Se comparan
+#     los espacios colapsados porque report.py alinea en columnas y el doc no.
+b = re.search(r"```\n(.*?)```", tramo, re.S) if i >= 0 else None
+if b is None:
+    p.append("no se encuentra el bloque de cifras bajo 'La tirada completa'")
+else:
+    lineas = [norm(x) for x in b.group(1).splitlines() if x.strip()]
+    if not lineas:
+        p.append("el bloque de cifras publicado esta vacio")
+    for x in lineas:
+        if x not in emitidas:
+            p.append("el informe no emite esta linea publicada: %s" % x)
+
+print("\n".join("  " + x for x in p))
+PYEOF
+  rc=$?
+  rm -f "$rep"
+  return $rc
+}
+
+problemas=$(cifras_eval "$EVALDOC" "$STORE"); rc=$?
+if [ "$rc" -eq 2 ]; then
+  echo "skip - $EVALDOC: no hay $STORE (esta en .gitignore); sus cifras NO se han comprobado"
+  skipped=$((skipped+1))
+elif [ -z "$problemas" ]; then
+  echo "ok - las cifras de $EVALDOC cuadran con $STORE"; pass=$((pass+1))
+else
+  echo "NOT ok - $EVALDOC no cuadra con el almacen:"; echo "$problemas"; fail=$((fail+1))
+fi
+
+# Falsabilidad, los dos lados. Sin esto, un regex que dejara de encajar daria verde
+# para siempre, que es el modo de fallo que este fichero existe para evitar.
+TMPD=$(mktemp -d)
+if [ -f "$STORE" ]; then
+  # Ninguna cifra verdadera esta escrita aqui: se deforma la que haya.
+  sed -E 's/\(n=[0-9]+\)/(n=99999)/g' "$EVALDOC" > "$TMPD/n.md"
+  sed -E 's/[0-9]+ llamadas reales/424242 llamadas reales/g' "$EVALDOC" > "$TMPD/ll.md"
+  malos=0
+  [ -n "$(cifras_eval "$TMPD/n.md" "$STORE")" ] || malos=$((malos+1))
+  [ -n "$(cifras_eval "$TMPD/ll.md" "$STORE")" ] || malos=$((malos+1))
+  if [ "$malos" -eq 0 ]; then
+    echo "ok - falsabilidad: acusa un n y un recuento de llamadas deliberadamente falsos"
+    pass=$((pass+1))
+  else
+    echo "NOT ok - $malos de 2 cifras falsas pasaron el comprobador (tautologia)"
+    fail=$((fail+1))
+  fi
+else
+  echo "skip - falsabilidad de las cifras: hace falta $STORE para deformarlo"
+  skipped=$((skipped+1))
+fi
+# Y el otro lado del skip: sin almacen tiene que salir 2, no 0. Un 0 aqui es un 'ok'
+# emitido sin datos, que es peor que un rojo porque nadie vuelve a mirarlo.
+cifras_eval "$EVALDOC" "$TMPD/no-existe.jsonl" >/dev/null 2>&1
+if [ "$?" -eq 2 ]; then
+  echo "ok - falsabilidad: sin almacen el comprobador dice skip, no ok"; pass=$((pass+1))
+else
+  echo "NOT ok - sin almacen el comprobador no se declara skip: aprobaria sin medir"
+  fail=$((fail+1))
+fi
+rm -f "$TMPD"/*.md; rmdir "$TMPD"
+
+if [ "$skipped" -gt 0 ]; then
+  echo "== $pass passed, $fail failed, $skipped skipped =="
+else
+  echo "== $pass passed, $fail failed =="
+fi
 [ "$fail" -eq 0 ] || exit 1
