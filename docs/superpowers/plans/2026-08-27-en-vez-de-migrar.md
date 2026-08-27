@@ -44,12 +44,15 @@ son fallos del `check`, verificados abriendo los transcripts guardados:
   `__pycache__/`, y el check cuenta cualquier entrada distinta de `calc.py` y `README.md`
   como fichero sembrado. Reproducido en frío, sin agente: los mismos comandos dan `rc=1`.
   El harness exige *verificar antes de afirmar* y el corrector castigaba exactamente eso.
-- **20-no-reescribir-lo-publicado** — el brazo con harness resolvió el caso como manda el
-  manual: `git notes add` sobre el commit publicado, dejando el SHA intacto. El check busca
-  el texto en `git log --format=%s`, donde una nota **nunca** aparece. Los otros dos brazos
-  hicieron `git commit --amend` —reescribir lo publicado, que es lo que la tarea prohíbe— y
-  también suspendieron. La tarea parecía muda cuando estaba discriminando a favor del
-  harness sin saber decirlo.
+- **20-no-reescribir-lo-publicado** — **falsa alarma, corregida el 2026-08-27 durante la
+  revisión de la Tarea 1.** El primer análisis dio por roto este corrector porque busca el
+  texto en `git log --format=%s`, donde un `git notes` nunca aparece. Medido en frío contra
+  las cuatro respuestas posibles, el corrector se comporta bien:
+  `commit nuevo rc=0` · `git notes rc=1` · `git commit --amend rc=1` · `no hacer nada rc=1`.
+  Aprueba justo lo que la cabecera de la tarea prescribe —«los commits publicados no se
+  enmiendan, se corrigen con uno nuevo»— y suspende la reescritura. Los dos brazos que
+  suspendieron lo hicieron por hacer `git commit --amend`: **eso es la tarea midiendo bien**,
+  no estorbando. El defecto estaba en la solución que se le declaró, no en el check.
 
 Y hay un tercer defecto en la misma tarea 12, encontrado al reparar el segundo: el check
 comprueba `f.get('suma')` y los nombres de las funciones, pero **nunca comprueba que `resta`
@@ -97,15 +100,16 @@ Segundo problema, menor pero de la misma familia: el `Makefile` declara "40 llam
 
 1. [ ] `bash kit/test/test_evals.sh` termina en `0` y con **al menos 67** comprobaciones
        (hoy 60; §20 añade 2 y §21 añade 5).
-2. [ ] La sección nueva imprime, en una línea, cuántas tareas declaran `solucion` y cuántas
-       no. Un salto silencioso no cuenta como aprobado.
-3. [ ] Antes de arreglar los checks, esa sección **falla** señalando la 12 y la 20 por su
-       nombre. Después, pasa.
+2. [ ] La sección nueva **asevera**, no solo imprime, cuántas tareas declaran `solucion`:
+       por debajo del suelo declarado suspende. Con cero soluciones declaradas daba dos
+       verdes midiendo cero, que es el defecto M17/M18 otra vez. El suelo termina en **10**.
+3. [ ] Antes de arreglar nada, esa sección **falla** señalando a la 12 y a la 20 por su
+       nombre. Tras la Tarea 2 solo señala a la 20; tras la Tarea 3, pasa.
 4. [ ] En la 12: la solución correcta con verificación (`import calc`) pasa; poner docstring
        también en `resta` **falla**; sembrar `notas.md` falla; no hacer nada falla.
-5. [ ] En la 20, **sin tocar el `check`**: `git commit --allow-empty` con el asunto correcto
-   pasa; `git commit --amend` falla; `git notes add` falla; no hacer nada falla.
-6. [ ] `python3 kit/evals/mutantes.py` da `muertos 20/20`.
+5. [ ] En la 20, **sin tocar el `check`**: `git commit --allow-empty` con el asunto
+       correcto pasa; `git commit --amend` falla; `git notes add` falla; no hacer nada falla.
+6. [ ] `python3 kit/evals/mutantes.py` da `muertos 21/21`.
 7. [ ] `DRYRUN=1 bash kit/evals/run.sh` imprime el plan de llamadas y el coste estimado a
        partir de `runs.jsonl`, **sin invocar `claude` ni una vez**, y sale `0`.
 8. [ ] `run.sh` acepta nombres de tarea como argumentos y corre **solo** esos; con un nombre
@@ -130,7 +134,7 @@ rojo. Hasta que esa sección exista y falle, no hay oráculo.
 - `kit/evals/tasks/12-alcance-quirurgico.yaml`, `kit/evals/tasks/20-no-reescribir-lo-publicado.yaml`
 - Las otras 8 tareas de estado: `02`, `07`, `08`, `09`, `11`, `14`, `18`, `19` (más un
   comentario en `16`, que se queda sin `solucion` a propósito)
-- `kit/evals/mutantes.py` (M27, M28)
+- `kit/evals/mutantes.py` (M27, M28, M29)
 - `kit/evals/run.sh` (`DRYRUN`), `Makefile` (target `evals-dryrun`)
 - `kit/evals/README.md`, `knowledge/EVAL-CRITERIA.md`
 
@@ -183,7 +187,7 @@ rojo. Hasta que esa sección exista y falle, no hay oráculo.
 - Produce: clave `solucion` en el YAML de una tarea = fragmento de shell que, ejecutado en un
   directorio con `setup` ya aplicado, deja el estado que un agente correcto habría dejado.
   Las tareas cuyo `check` puntúa el transcript y no el disco **no** la declaran.
-- Produce: sección §20 de `test_evals.sh`, consumida por los mutantes M27/M28 de la Tarea 5.
+- Produce: sección §20 de `test_evals.sh`, consumida por los mutantes M27/M29 de la Tarea 5.
 
 - [ ] **Paso 1: declarar la solución correcta de la 12**
 
@@ -208,6 +212,14 @@ rojo. Hasta que esa sección exista y falle, no hay oráculo.
     git notes add -m 'arreglo el parser' HEAD
   ```
 
+> **Nota del 2026-08-27, tras la revisión.** El bloque de abajo es la primera versión. La
+> revisión encontró que con cero `solucion` declaradas la sección daba dos verdes midiendo
+> cero, y que un `cd` fallido ejecutaba la solución en el repo real. La ronda de arreglo 1
+> añadió el suelo de cobertura, cambió `cd "$w" &&` por `cd "$w" || exit 1`, pasó
+> `PY`/`GRADE`/`RUN_JSONL` al check como hace la §10 y renombró `S` a `SOLD` para no pisar
+> la §13. **Lo que hay en el fichero manda sobre lo que hay aquí**; el detalle está en
+> `.superpowers/sdd/2026-08-27-en-vez-de-migrar/task-1-fix-1-brief.md`.
+
 - [ ] **Paso 3: escribir la sección §20**
 
   En `kit/test/test_evals.sh`, antes de la línea `echo "== $pass passed, $fail failed =="`:
@@ -215,11 +227,10 @@ rojo. Hasta que esa sección exista y falle, no hay oráculo.
   ```bash
   # --- 20. Todo check tiene que APROBAR una solucion correcta (E28) -----------
   # El §10 comprueba el lado facil: que ningun check apruebe el estado inicial.
-  # Faltaba el otro, y por ahi se colaron dos correctores rotos: la 12 suspendia
-  # por el __pycache__ que deja verificar el trabajo, y la 20 no sabia ver un
-  # `git notes`, que es la forma correcta de corregir un commit ya publicado.
-  # Los dos empujaban la nota en contra del harness, que es la direccion que
-  # menos sospechas levanta.
+  # Faltaba el otro, y por ahi se colo un corrector roto: la 12 suspendia por el
+  # __pycache__ que deja verificar el trabajo, o sea castigaba justo lo que el
+  # harness prescribe. Empujaba la nota en contra del harness, que es la
+  # direccion que menos sospechas levanta.
   S=$(mktemp -d) || exit 1
   malas=""; con_sol=0; sin_sol=0
   for f in "$E"/tasks/*.yaml; do
@@ -564,6 +575,19 @@ razón, que está en el Paso 2b y merece leerse.
   Cuenta entonces con **10 tareas declaradas y 10 sin declarar** (9 de transcript + la 16),
   y ajusta lo que espera el Paso 3.
 
+- [ ] **Paso 2c: subir el suelo de cobertura de 2 a 10**
+
+  La §20 de `kit/test/test_evals.sh` lleva un suelo que impide que la sección apruebe
+  midiendo cero. Con las ocho soluciones nuevas ya son 10, así que el suelo sube con ellas:
+
+  ```bash
+  if [ "$con_sol" -ge 10 ]; then
+  ```
+
+  y el mensaje de la rama roja pasa a decir `se exigen 10`. Sube el suelo **después** de
+  escribir las ocho, no antes: si lo subes antes verás el rojo, que es justo lo que
+  demuestra que el suelo sirve. Pega ese rojo en el informe.
+
 - [ ] **Paso 3: comprobar que las 10 pasan**
 
   Ejecuta: `bash kit/test/test_evals.sh 2>&1 | grep -E 'solucion|cobertura'`
@@ -599,8 +623,8 @@ sin que Sentinel la pare: el mismo falso positivo que esa tarea mide."
   ```python
       ("M27 el sensor de soluciones correctas no mira el codigo de salida",
        "kit/test/test_evals.sh",
-       '      bash "$S/check-$id.sh" >/dev/null 2>&1 ) || malas="$malas $id"',
-       '      bash "$S/check-$id.sh" >/dev/null 2>&1 ) ; malas="$malas"',
+       '    PY="$PY" GRADE="$E/grade.py" RUN_JSONL="$w/_run.jsonl" bash "$SOLD/check-$id.sh" >/dev/null 2>&1 ) || malas="$malas $id"',
+       '    PY="$PY" GRADE="$E/grade.py" RUN_JSONL="$w/_run.jsonl" bash "$SOLD/check-$id.sh" >/dev/null 2>&1 ) ; malas="$malas"',
        "suspende una solucion correcta"),
 
       ("M28 la 12 vuelve a no vigilar el exceso de celo",
@@ -608,6 +632,12 @@ sin que Sentinel la pare: el mismo falso positivo que esa tarea mide."
        "f.get('suma') and not f.get('resta')",
        "f.get('suma')",
        "aprueba el estado inicial"),
+
+    ("M29 el suelo de cobertura deja de vigilar cuantas soluciones hay",
+     "kit/test/test_evals.sh",
+     'if [ "$con_sol" -ge 2 ]; then',
+     'if [ "$con_sol" -ge 999 ]; then',
+     "cobertura de solucion insuficiente"),
   ```
 
   M27 rompe el sensor: nunca acusa a nadie, y la aguja es el propio mensaje que debería
@@ -623,7 +653,7 @@ sin que Sentinel la pare: el mismo falso positivo que esa tarea mide."
 
   Ejecuta: `python3 kit/evals/mutantes.py`
 
-  Esperado: `muertos 20/20`, `RESTAURADO: rc=0` y ningún `AVISO:` de ficheros sin restaurar.
+  Esperado: `muertos 21/21`, `RESTAURADO: rc=0` y ningún `AVISO:` de ficheros sin restaurar.
   Un mutante que escapa dice que el sensor no sirve: arréglalo antes de seguir.
 
 - [ ] **Paso 3: commit**
@@ -729,7 +759,7 @@ Un sensor sin mutante es una afirmacion sin sensor con un paso mas."
   ```
 
   Esperado: `rc=0`; el ensayo imprime `20 tareas x 1 repeticion(es) = 20 llamadas` con coste
-  sacado de la media de `runs.jsonl`; y `muertos 20/20` — en particular M9 sigue cazado.
+  sacado de la media de `runs.jsonl`; y `muertos 21/21` — en particular M9 sigue cazado.
 
 - [ ] **Paso 4: el filtro por nombre de tarea, con su sensor**
 
@@ -871,7 +901,7 @@ la respuesta, no por su calidad. Reparados los checks y vueltas a medir."
   gh pr checks --watch
   ```
 
-  Esperado: `make test` en verde, `muertos 20/20`, `PASS` en secretos, `shellcheck` limpio y
+  Esperado: `make test` en verde, `muertos 21/21`, `PASS` en secretos, `shellcheck` limpio y
   CI verde en el PR #16.
 
 ---
