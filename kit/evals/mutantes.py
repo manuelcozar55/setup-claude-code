@@ -174,6 +174,17 @@ MUTANTES = [
      'keep="$E/transcripts/$id-$ARM-$attempt-$RANDOM$RANDOM.jsonl"',
      "funcion de la fila"),
 
+    ("M32 las filas retiradas vuelven a entrar en el computo",
+     "kit/evals/report.py",
+     '    if str(r.get("excluded") or "").strip():',
+     "    if False:",
+     "no entra en el computo"),
+
+    ("M33 el informe retira filas en silencio",
+     "kit/evals/report.py",
+     'if excluidas:\n    print("excluidas',
+     'if False:\n    print("excluidas',
+     "en silencio"),
 
 ]
 

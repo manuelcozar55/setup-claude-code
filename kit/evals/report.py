@@ -24,14 +24,29 @@ if not os.path.exists(a.store):
     print("no hay almacen de runs todavia:", a.store); sys.exit(1)
 
 runs = []
+# Una fila con "excluded" no vacio queda FUERA de todo computo. Es para el dato
+# cuyo instrumento estaba averiado y cuya evidencia ya no existe: ni se corrige a
+# mano (seria inventarlo) ni se deja dentro (seria publicarlo sabiendolo roto).
+# Retirarlo en silencio seria el mismo pecado, asi que el informe lo dice.
+excluidas = []
 for line in open(a.store, errors="replace"):
     try:
         r = json.loads(line)
     except ValueError:
         continue
+    if not isinstance(r, dict):
+        continue
     if a.since and (r.get("ts") or "") < a.since:
         continue
+    if str(r.get("excluded") or "").strip():
+        excluidas.append(r)
+        continue
     runs.append(r)
+
+if excluidas:
+    print("excluidas %d fila(s), fuera de todo computo: %s" % (len(excluidas), " · ".join(
+        "%s/%s@%s (%s)" % (r.get("task"), r.get("arm"), r.get("ts"), str(r.get("excluded")).strip())
+        for r in excluidas)))
 
 if not runs:
     print("el almacen no tiene runs en el rango pedido"); sys.exit(1)

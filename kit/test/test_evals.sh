@@ -988,5 +988,56 @@ ck "$(find "$COL/transcripts" -name 't-colision-on-1-20260827T082046Z.jsonl' 2>/
    "el nombre del transcript es funcion de la fila, no del azar"
 rm -rf "$COL"
 
+# --- 24. Una fila retirada del computo no puede irse en silencio -----------
+# Un dato cuyo instrumento estaba averiado y cuya evidencia ya no existe no se
+# corrige a mano (seria inventarlo) ni se deja dentro (seria publicarlo sabiendo
+# que esta roto): se retira con "excluded". Y retirarlo callando seria el mismo
+# pecado que editarlo callando, asi que el informe tiene que nombrarlo.
+#
+# Cuatro aserciones y ninguna vale sola. La primera (la fila excluida no mueve
+# el numero) la aprobaria tambien un report.py que no excluyera nada, si la fila
+# resultara irrelevante: por eso la segunda exige que ESA MISMA fila SI mueva el
+# numero cuando no se excluye. La cuarta cierra el lado contrario: un "excluded"
+# vacio no puede hacer desaparecer una fila.
+EXC=$(mktemp -d) || exit 1
+MOTIVO="instrumento averiado, evidencia perdida"
+"$PY" - "$EXC" "$MOTIVO" <<'PYEOF'
+import json, os, sys
+d, motivo = sys.argv[1], sys.argv[2]
+def f(task, arm, res, excluded=None):
+    r = {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": "positiva",
+         "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1}
+    if excluded is not None:
+        r["excluded"] = excluded
+    return json.dumps(r, ensure_ascii=False)
+base = [f("t1", "on", "pass"), f("t2", "on", "fail"),
+        f("t1", "off", "fail"), f("t2", "off", "fail")]
+for nombre, disputada in (("dentro", f("t3", "on", "fail")),
+                          ("fuera", f("t3", "on", "fail", motivo)),
+                          ("vacio", f("t3", "on", "fail", "   "))):
+    open(os.path.join(d, nombre + ".jsonl"), "w").write("\n".join(base + [disputada]) + "\n")
+PYEOF
+tasa() { printf '%s' "$1" | grep -o 'con harness [0-9.]* (n=[0-9]*)'; }
+rep_dentro=$("$PY" "$E/report.py" --store "$EXC/dentro.jsonl" 2>&1)
+rep_fuera=$("$PY" "$E/report.py" --store "$EXC/fuera.jsonl" 2>&1)
+rep_vacio=$("$PY" "$E/report.py" --store "$EXC/vacio.jsonl" 2>&1)
+ck "$(tasa "$rep_fuera")" "con harness 0.50 (n=2)" \
+   "una fila 'excluded' no entra en el computo"
+ck "$(tasa "$rep_dentro")" "con harness 0.33 (n=3)" \
+   "esa misma fila SI mueve el numero si no se excluye (la asercion de arriba mide algo)"
+case "$rep_fuera" in
+  *"excluidas 1 fila"*"$MOTIVO"*)
+    echo "ok - el informe dice cuantas filas excluyo y por que"; pass=$((pass+1));;
+  *) echo "NOT ok - el informe excluye una fila en silencio"; fail=$((fail+1));;
+esac
+if [ "$(tasa "$rep_vacio")" = "con harness 0.33 (n=3)" ] \
+   && ! printf '%s' "$rep_dentro$rep_vacio" | grep -q excluidas; then
+  echo "ok - sin exclusiones el informe no habla de exclusiones, y 'excluded' vacio no retira nada"
+  pass=$((pass+1))
+else
+  echo "NOT ok - 'excluded' vacio retira la fila o el informe inventa exclusiones"; fail=$((fail+1))
+fi
+rm -rf "$EXC"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
