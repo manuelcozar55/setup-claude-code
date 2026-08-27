@@ -910,5 +910,17 @@ else
 fi
 rm -rf "$CORR"
 
+# --- 22. Ninguna receta del Makefile puede terminar en dos barras -----------
+# En un Makefile '\\' es una barra literal, no una continuacion de linea: las
+# lineas siguientes de la receta corren en shells distintas y la variable que
+# define la primera llega vacia a la segunda. Asi estaba 'evals-paid', que por
+# eso decia "Cancelado." y salia 1 sin llegar nunca a las llamadas de pago.
+recetas_malas=$(grep -nP '^\t.*\\\\$' Makefile)
+if [ -z "$recetas_malas" ]; then
+  echo "ok - ninguna receta del Makefile termina en dos barras"; pass=$((pass+1))
+else
+  echo "NOT ok - receta del Makefile con continuacion rota: $recetas_malas"; fail=$((fail+1))
+fi
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1

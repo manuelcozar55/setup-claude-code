@@ -57,7 +57,7 @@ evals-dryrun: ## Ensayo: cuantas llamadas y cuanto costaria, sin gastar nada
 	DRYRUN=1 bash kit/evals/run.sh
 
 evals-paid: ## Eval set, LOS DOS BRAZOS: llamadas REALES a la API. CUESTA DINERO. Pide confirmacion.
-	@read -p "Esto corre los dos brazos sobre 20 tareas: llamadas reales a la API (cuantas y a que coste: 'make evals-dryrun'). Continuar? [y/N] " ans; \\
+	@read -p "Esto corre los dos brazos sobre 20 tareas: llamadas reales a la API (cuantas y a que coste: 'make evals-dryrun'). Continuar? [y/N] " ans; \
 	[ "$$ans" = "y" ] || [ "$$ans" = "Y" ] || { echo "Cancelado."; exit 1; }
 	bash kit/evals/run.sh
 	ARM=off bash kit/evals/run.sh
