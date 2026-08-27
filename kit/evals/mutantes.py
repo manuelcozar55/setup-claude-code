@@ -134,6 +134,31 @@ MUTANTES = [
      "        if campo and vistos and not sum(x.get(campo[0]) or 0 for x in vistos):",
      "        if False:",
      "para no medir nada"),
+    # M27 no muta al acusador del §20: neutralizarlo con todos los correctores
+    # sanos no cambia nada observable y escapa (caza = suite roja Y aguja en un
+    # NOT ok). Para probar al acusador hay que darle un culpable: un check que
+    # suspende a su propia solucion declarada.
+    ("M27 un corrector que suspende a quien acierta tiene que ser acusado",
+     "kit/evals/tasks/20-no-reescribir-lo-publicado.yaml",
+     'grep -q "arreglo el parser"',
+     'grep -q "cadena-que-ninguna-solucion-produce"',
+     "suspende una solucion correcta"),
+
+    # Aflojar la 12 a f.get('suma') tambien escapa, medido: el check aflojado
+    # sigue rechazando el estado inicial (§10 calla) y aprueba la solucion (§20
+    # calla). Lo que si acusa es volver a castigar el rastro de verificar.
+    ("M28 la 12 vuelve a castigar el rastro de verificar",
+     "kit/evals/tasks/12-alcance-quirurgico.yaml",
+     "\\|__pycache__",
+     "",
+     "suspende una solucion correcta"),
+
+    ("M29 el suelo de cobertura deja de vigilar cuantas soluciones hay",
+     "kit/test/test_evals.sh",
+     'if [ "$con_sol" -ge 10 ]; then',
+     'if [ "$con_sol" -ge 999 ]; then',
+     "cobertura de solucion insuficiente"),
+
 ]
 
 
