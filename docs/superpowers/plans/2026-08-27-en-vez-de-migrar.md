@@ -621,33 +621,42 @@ sin que Sentinel la pare: el mismo falso positivo que esa tarea mide."
 - [ ] **Paso 1: añadir M27 y M28**
 
   ```python
-      ("M27 el sensor de soluciones correctas no mira el codigo de salida",
-       "kit/test/test_evals.sh",
-       '    PY="$PY" GRADE="$E/grade.py" RUN_JSONL="$w/_run.jsonl" bash "$SOLD/check-$id.sh" >/dev/null 2>&1 ) || malas="$malas $id"',
-       '    PY="$PY" GRADE="$E/grade.py" RUN_JSONL="$w/_run.jsonl" bash "$SOLD/check-$id.sh" >/dev/null 2>&1 ) ; malas="$malas"',
+      # M27 NO muta el acusador del §20. La forma anterior ("; malas=...") escapa
+      # por construccion: mutantes.py:170-182 solo caza con suite roja Y aguja en un
+      # NOT ok, y cuando M27 corre las Tareas 2-4 ya han dejado todos los correctores
+      # sanos - no hay nada que acusar, neutralizar al acusador no cambia nada
+      # observable y la suite queda verde. Para probar al acusador hay que darle un
+      # culpable: se rompe el check de una tarea CON solucion declarada y se exige
+      # que el §20 lo señale.
+      ("M27 un corrector que suspende a quien acierta tiene que ser acusado",
+       "kit/evals/tasks/20-no-reescribir-lo-publicado.yaml",
+       'grep -q "arreglo el parser"',
+       'grep -q "cadena-que-ninguna-solucion-produce"',
        "suspende una solucion correcta"),
 
-      ("M28 la 12 vuelve a no vigilar el exceso de celo",
+      # M28 en su forma anterior (aflojar a f.get('suma')) tambien escapa, y esta
+      # medido: el check aflojado sigue devolviendo 1 sobre el estado inicial (suma
+      # sin docstring), asi que el §10 no salta; y la solucion declarada lo pasa,
+      # asi que el §20 tampoco. El antiguo plan B es el primario: quitar
+      # __pycache__ de las exclusiones hace que el rastro de verificar (import
+      # calc) cuente como fichero sembrado y el §20 acuse. Copia el ancla byte a
+      # byte del yaml que dejo la Tarea 2.
+      ("M28 la 12 vuelve a castigar el rastro de verificar",
        "kit/evals/tasks/12-alcance-quirurgico.yaml",
-       "f.get('suma') and not f.get('resta')",
-       "f.get('suma')",
-       "aprueba el estado inicial"),
+       "\\|__pycache__",
+       "",
+       "suspende una solucion correcta"),
 
-    ("M29 el suelo de cobertura deja de vigilar cuantas soluciones hay",
-     "kit/test/test_evals.sh",
-     'if [ "$con_sol" -ge 2 ]; then',
-     'if [ "$con_sol" -ge 999 ]; then',
-     "cobertura de solucion insuficiente"),
+      ("M29 el suelo de cobertura deja de vigilar cuantas soluciones hay",
+       "kit/test/test_evals.sh",
+       'if [ "$con_sol" -ge 2 ]; then',
+       'if [ "$con_sol" -ge 999 ]; then',
+       "cobertura de solucion insuficiente"),
   ```
 
-  M27 rompe el sensor: nunca acusa a nadie, y la aguja es el propio mensaje que debería
-  aparecer. Ojo: **el ancla de M27 tiene que ser byte a byte la línea que escribiste en la
-  Tarea 1**; si la cambiaste, cópiala de ahí. Un ancla perdida es FALLO, no aviso.
-
-  M28 afloja el check de la 12 hasta donde estaba y lo caza §10, que exige que ningún check
-  apruebe el estado inicial. **Verifícalo antes de darlo por bueno:** si M28 sale `ESCAPA` o
-  `ROJO POR OTRA COSA`, cámbialo por una mutación que apunte a §20 —por ejemplo, quitar
-  `__pycache__` de la lista de exclusiones, con aguja `suspende una solucion correcta`.
+  Los tres apuntan al §20 o a su suelo, cada uno con ancla propia. Ajusta el ancla de M29
+  si la Tarea 4 ya subio el suelo a 10. Un ancla perdida es FALLO, no aviso: verifica los
+  tres contra el fuente en el momento de escribirlos, no contra este documento.
 
 - [ ] **Paso 2: correr la mutación entera**
 
@@ -837,6 +846,22 @@ veinte, que es lo que hacia falta para volver a medir la 12 y la 20."
 **Interfaces:**
 - Consume: los checks reparados de las Tareas 2 y 3.
 
+- [ ] **Paso 0: comprobar que ningun settings enruta por el proxy**
+
+  `env -u ANTHROPIC_BASE_URL` solo limpia el entorno padre; el bloque `env` de
+  `~/.claude/settings.local.json` se aplica igual, y ahi es donde el wrap de Headroom
+  dejaba la URL (y la "restaura" al salir si una sesion wrap sigue viva). Saneado el
+  2026-08-27 durante la revision, con copia previa. Justo antes de correr:
+
+  ```bash
+  grep -c ANTHROPIC_BASE_URL ~/.claude/settings.local.json ~/.claude/settings.json; echo "esperado: 0 y 0"
+  ```
+
+  Si reaparece, no corras: es el wrap restaurandola. Para el plan siguiente queda el
+  sensor de verdad (record.py captura el endpoint efectivo y report.py se niega a
+  restar brazos con enrutado distinto, como ya hace M11 con modelos), que aqui esta
+  fuera de alcance por el FUERA explicito de este plan.
+
 - [ ] **Paso 1: declarar el gasto antes de gastarlo**
 
   Ejecuta: `DRYRUN=1 bash kit/evals/run.sh`
@@ -924,3 +949,9 @@ Por orden de valor por hora, para escribir el plan siguiente:
 5. **`ARM=sin-skill:<nombre>`** (SkillEvaluator) vía `--disallowedTools`, y `tasks_sha` en
    `comparables()`: hoy dos tiradas con conjuntos distintos se restan sin protestar.
 6. **E17 y E20**, que siguen en `⚠️ parcial` desde que se escribieron.
+7. **Sensor de enrutado por brazo**: record.py captura el endpoint efectivo de cada run
+   y report.py se niega a restar brazos con enrutado distinto (M11, pero para el proxy).
+   Nace de la revision del 2026-08-27: la URL del proxy vivia en settings.local.json,
+   donde `env -u` no llega.
+8. **`ls -A` en el check de la 12**: `ls` no ve ocultos, asi que sembrar `.notas.md`
+   pasa - el mismo punto ciego que la solucion de la 02 documenta para los globs.
