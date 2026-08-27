@@ -922,5 +922,71 @@ else
   echo "NOT ok - receta del Makefile con continuacion rota: $recetas_malas"; fail=$((fail+1))
 fi
 
+# --- 23. Dos tiradas del mismo dia no pueden pisarse la evidencia -----------
+# El nombre del transcript era '$id-$ARM-$attempt-$(date +%F)', y 'attempt'
+# reinicia en 1 en cada invocacion: dos tiradas del mismo dia sobre la misma
+# tarea y brazo escribian el mismo fichero, la segunda pisaba a la primera y
+# nadie se enteraba. En el historico dejo 26 filas de 98 sin evidencia viva.
+# Se comprueba corriendo el run.sh de verdad (copiado a un sandbox) con un
+# 'claude' y un 'date' de mentira, para que las dos tiradas caigan el MISMO dia
+# a horas distintas, que es exactamente la condicion que producia la colision.
+#
+# Son tres aserciones y cada una tapa un lado distinto. Solo la primera dejaria
+# pasar un sufijo aleatorio ($RANDOM no colisiona y tampoco se puede derivar de
+# la fila); solo la tercera dejaria pasar un esquema derivable que siga
+# colisionando. Un sensor de un solo lado es la averia que persigue esta rama.
+COL=$(mktemp -d) || exit 1
+cp "$E/run.sh" "$E/record.py" "$COL/"
+mkdir -p "$COL/tasks" "$COL/bin"
+cat > "$COL/tasks/t-colision.yaml" <<'YAML'
+tipo: positiva
+prompt: |
+  no se llega a enviar a ningun sitio
+check: |
+  exit 0
+YAML
+cat > "$COL/bin/claude" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' '{"type":"result","is_error":false,"total_cost_usd":0.01,"duration_api_ms":10,"num_turns":1,"modelUsage":{"m":{"outputTokens":5}},"usage":{"input_tokens":1,"output_tokens":1}}'
+SH
+# Reloj fijado. run.sh solo pide dos formatos: el ts ISO en UTC y el dia.
+cat > "$COL/bin/date" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *%FT%TZ*) printf '%s\n' "$RELOJ_TS" ;;
+  *)        printf '%s\n' "${RELOJ_TS%%T*}" ;;
+esac
+SH
+chmod +x "$COL/bin/claude" "$COL/bin/date"
+RELOJ_TS=2026-08-27T08:20:46Z PATH="$COL/bin:$PATH" bash "$COL/run.sh" >/dev/null 2>&1
+RELOJ_TS=2026-08-27T09:41:02Z PATH="$COL/bin:$PATH" bash "$COL/run.sh" >/dev/null 2>&1
+col=$("$PY" - "$COL/runs.jsonl" <<'PYEOF' 2>/dev/null
+import json, os, sys
+rows = [json.loads(l) for l in open(sys.argv[1])]
+p = [r.get("transcript") for r in rows]
+# El nombre se reconstruye SOLO con campos que la fila guarda. Si hiciera falta
+# algo de fuera, record.py no podria senalar la evidencia de su propia fila.
+def esperado(r):
+    return "%s-%s-%s-%s.jsonl" % (r["task"], r["arm"], r["attempt"],
+                                  (r["ts"] or "").replace("-", "").replace(":", ""))
+print("filas=%d unicos=%d vivos=%d derivables=%d"
+      % (len(p), len(set(p)),
+         sum(1 for x in p if x and os.path.exists(x)),
+         sum(1 for r in rows if os.path.basename(r.get("transcript") or "") == esperado(r))))
+PYEOF
+)
+ck "${col:-sin-store}" "filas=2 unicos=2 vivos=2 derivables=2" \
+   "dos tiradas del mismo dia dejan dos transcripts vivos y derivables de su fila"
+ck "$(find "$COL/transcripts" -name '*.jsonl' 2>/dev/null | wc -l)" 2 \
+   "la segunda tirada no pisa el fichero de la primera"
+# Y que el esquema no sea 'un nombre distinto cada vez porque si': el mismo
+# id/brazo/intento/ts tiene que dar SIEMPRE el mismo nombre, o la fila apunta a
+# una evidencia que no se puede volver a encontrar.
+rm -rf "${COL:?}/transcripts" "$COL/runs.jsonl"
+RELOJ_TS=2026-08-27T08:20:46Z PATH="$COL/bin:$PATH" bash "$COL/run.sh" >/dev/null 2>&1
+ck "$(find "$COL/transcripts" -name 't-colision-on-1-20260827T082046Z.jsonl' 2>/dev/null | wc -l)" 1 \
+   "el nombre del transcript es funcion de la fila, no del azar"
+rm -rf "$COL"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1

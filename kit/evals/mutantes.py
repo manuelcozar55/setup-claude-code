@@ -159,6 +159,22 @@ MUTANTES = [
      'if [ "$con_sol" -ge 999 ]; then',
      "cobertura de solucion insuficiente"),
 
+    ("M30 el transcript vuelve a nombrarse por el dia y las tiradas se pisan",
+     "kit/evals/run.sh",
+     'keep="$E/transcripts/$id-$ARM-$attempt-${EVAL_TS//[-:]/}.jsonl"',
+     'keep="$E/transcripts/$id-$ARM-$attempt-$(date +%F).jsonl"',
+     "dos transcripts vivos"),
+
+    # El otro lado: un sufijo al azar tampoco colisiona, pero deja una fila que
+    # no puede senalar su evidencia. Si §23 fuera solo el recuento de ficheros,
+    # esto escaparia.
+    ("M31 el transcript se nombra al azar y la fila deja de poder senalarlo",
+     "kit/evals/run.sh",
+     'keep="$E/transcripts/$id-$ARM-$attempt-${EVAL_TS//[-:]/}.jsonl"',
+     'keep="$E/transcripts/$id-$ARM-$attempt-$RANDOM$RANDOM.jsonl"',
+     "funcion de la fila"),
+
+
 ]
 
 

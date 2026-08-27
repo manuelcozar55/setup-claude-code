@@ -157,7 +157,15 @@ open(os.path.join(m,'_prompt.txt'),'w').write(t['prompt'])
     # de instrumentacion en un suspenso del agente, que es la lectura contraria.
     case $rc in 0) r=pass;; 2) r=error;; *) r=fail;; esac
     mkdir -p "$E/transcripts"
-    keep="$E/transcripts/$id-$ARM-$attempt-$(date +%F).jsonl"
+    # El sufijo es el instante de la tirada, no el dia. 'attempt' reinicia en 1 en
+    # cada invocacion, asi que con '$(date +%F)' dos tiradas del mismo dia sobre la
+    # misma tarea y el mismo brazo escribian EL MISMO fichero y la primera perdia su
+    # evidencia sin decirlo. Medido sobre el historico que dejo ese nombre: 26 de 98
+    # filas (27 %) apuntan a un transcript que otra fila piso.
+    # Los cuatro componentes son exactamente los que record.py graba en la fila
+    # (task, arm, attempt, ts), asi que desde una fila se puede reconstruir el nombre
+    # de su evidencia; un sufijo aleatorio evitaria la colision pero romperia eso.
+    keep="$E/transcripts/$id-$ARM-$attempt-${EVAL_TS//[-:]/}.jsonl"
     cp "$m/_run.jsonl" "$keep"   # sin esto no se pueden leer despues
     "$PY" "$E/record.py" "$id" "$ARM" "$attempt" "$r" "$keep" "$STORE"
     printf '  "%s": "%s",\n' "$id" "$r" >> "$TMP"
