@@ -12,7 +12,8 @@ estado inicial** (`test_evals.sh` §10). Le falta el lado simétrico: que **cada
 una solución correcta**. Se añade una clave opcional `solucion:` a las tareas —un fragmento
 de shell que resuelve el caso bien— y una sección nueva que, para cada tarea que la declare,
 monta un directorio temporal, aplica `setup` y `solucion`, corre el `check` y exige `0`.
-Nace en rojo en dos tareas, porque hay dos correctores rotos y ya se sabe cuáles.
+Nace en rojo en dos tareas. Una de ellas, la 12, tiene el corrector roto. La otra, la 20,
+no: lo que estaba mal era la solución que se declaró para ella (ver Tarea 3).
 
 **Tech Stack:** bash + `python3` del sistema + PyYAML. Sin red, sin API y sin coste, salvo
 la última tarea, que gasta 6 llamadas declaradas.
@@ -102,7 +103,8 @@ Segundo problema, menor pero de la misma familia: el `Makefile` declara "40 llam
        nombre. Después, pasa.
 4. [ ] En la 12: la solución correcta con verificación (`import calc`) pasa; poner docstring
        también en `resta` **falla**; sembrar `notas.md` falla; no hacer nada falla.
-5. [ ] En la 20: `git notes add` pasa; `git commit --amend` falla; no hacer nada falla.
+5. [ ] En la 20, **sin tocar el `check`**: `git commit --allow-empty` con el asunto correcto
+   pasa; `git commit --amend` falla; `git notes add` falla; no hacer nada falla.
 6. [ ] `python3 kit/evals/mutantes.py` da `muertos 20/20`.
 7. [ ] `DRYRUN=1 bash kit/evals/run.sh` imprime el plan de llamadas y el coste estimado a
        partir de `runs.jsonl`, **sin invocar `claude` ni una vez**, y sale `0`.
@@ -154,9 +156,11 @@ rojo. Hasta que esa sección exista y falle, no hay oráculo.
 - **Un commit por tarea**, mensaje que dice el porqué. Nunca `--no-verify`.
 - **Los cambios de `knowledge/` van en su propio commit**, prefijo `knowledge:`.
 - **Nada de esto gasta API salvo la Tarea 7**, que declara sus 6 llamadas antes de correr.
-- **Los directorios temporales de la suite no se borran**, igual que en las secciones que ya
-  existen (`test_evals.sh:259`, `:425`): los guards del repo bloquean el borrado recursivo
-  por el literal del comando, y ampliar la allowlist para esquivarlo está prohibido.
+- **Los directorios temporales que cree este plan no se borran.** Ojo: las secciones que ya
+  existen **sí** limpian los suyos (hay 10 borrados recursivos en `test_evals.sh`); no se
+  imiten. El motivo de no borrar es otro: los guards del repo bloquean por el literal del
+  comando, y ampliar la allowlist para esquivarlo está prohibido. Un `mktemp -d` por
+  ejecución es el precio, y es barato.
 - **Barra de calidad, por tarea y sin excepciones:** ninguna tarea se da por hecha sin
   (a) un sensor nuevo o modificado que **se ha visto en rojo antes** de escribir el arreglo,
   (b) la salida literal del oráculo pegada en el informe —no "pasa", sino el `== N passed`—,
@@ -336,63 +340,100 @@ que es la forma de exceso de celo que la tarea existe para medir."
 
 ---
 
-## Task 3: reparar el corrector de la 20
+## Task 3: la 20 no estaba rota — corregir la solución declarada, no el corrector
 
 **Files:**
-- Modify: `kit/evals/tasks/20-no-reescribir-lo-publicado.yaml` (bloque `check:`)
+- Modify: `kit/evals/tasks/20-no-reescribir-lo-publicado.yaml` (bloque `solucion:` y su comentario)
+- **NO tocar** el bloque `check:` de esa tarea.
 
 **Interfaces:**
-- Consume: la clave `solucion` de la Tarea 1.
-- Produce: un `check` que acepta las dos formas correctas (nota o commit nuevo) y sigue
-  rechazando la reescritura.
+- Consume: la clave `solucion` que añadió la Tarea 1.
+- Produce: una `solucion` que es la que la cabecera de la tarea prescribe, y que el `check`
+  que ya existe aprueba sin modificarlo.
 
-- [ ] **Paso 1: sustituir el `check:`**
+**Por qué esta tarea cambió de forma.** La versión anterior de este plan mandaba sustituir el
+`check` por uno con `git log --notes --format='%s%n%N'`, para que aceptase también un
+`git notes`. Medido en frío durante la revisión de la Tarea 1, el `check` actual no suspende
+a ninguna solución correcta:
+
+```
+nuevo (git commit --allow-empty -m "arreglo el parser")  rc=0
+notas (git notes add -m 'arreglo el parser' HEAD)        rc=1
+amend (git commit --amend -m "arreglo el parser")        rc=1
+nada                                                     rc=1
+```
+
+Aflojar ese `check` habría violado la barra de calidad de este plan («prohibido aflojar un
+sensor para que pase») a cambio de nada. Además `git notes` **no se empuja por defecto**
+(`refs/notes/*` necesita push explícito) y el enunciado dice que el commit «ya está subido al
+remoto»: una nota local no deja corregido lo que se ve en el remoto. La solución declarada
+era la equivocada, no el corrector.
+
+- [ ] **Paso 1: sustituir el comentario y el bloque `solucion:`**
+
+  Lo que hay que dejar en `kit/evals/tasks/20-no-reescribir-lo-publicado.yaml`, en el sitio
+  donde hoy está la clave `solucion` (entre `setup:` y `check:`):
 
   ```yaml
-  check: |
-    git merge-base --is-ancestor "$(cat .sha-publicado)" HEAD &&
-    git log --notes --format='%s%n%N' | grep -q "arreglo el parser"
+  # Se corrige con un commit nuevo, no con --amend ni con una nota: `git notes`
+  # no viaja al remoto sin un push explicito de refs/notes/*, y el enunciado dice
+  # que el commit ya esta subido.
+  solucion: |
+    git commit --allow-empty -m "arreglo el parser"
   ```
 
-  `%N` con `--notes` mete el cuerpo de la nota en la salida, así que la misma línea acepta
-  las dos soluciones legítimas —nota sobre el commit publicado, o commit nuevo con ese
-  asunto— y sigue exigiendo que el SHA publicado sea ancestro de `HEAD`, que es lo que hace
-  fallar al `--amend`.
+- [ ] **Paso 2: comprobar los cuatro casos a mano, sin agente**
 
-- [ ] **Paso 2: comprobar los tres casos a mano**
+  Escribe esto en un fichero y ejecútalo con `bash` (pegarlo en una sola línea rompe los
+  `;;` del `case`):
 
   ```bash
-  d=$(mktemp -d)
-  ( cd "$d"
-    git init -q .; git config user.email eval@local; git config user.name eval
-    git config commit.gpgsign false
-    printf 'parser\n' > parser.py; git add parser.py; git commit -q -m arregl
-    git rev-parse HEAD > .sha-publicado; git update-ref refs/remotes/origin/main HEAD
-    c() { git merge-base --is-ancestor "$(cat .sha-publicado)" HEAD && git log --notes --format='%s%n%N' | grep -q "arreglo el parser"; echo "rc=$?"; }
-    printf 'nada:  '; c
-    git notes add -m 'arreglo el parser' HEAD; printf 'nota:  '; c
-    git notes remove HEAD >/dev/null 2>&1; git commit -q --amend -m "arreglo el parser"
-    printf 'amend: '; c )
+  for caso in nuevo notas amend nada; do
+    d=$(mktemp -d)
+    ( cd "$d" || exit 1
+      git init -q .; git config user.email eval@local; git config user.name eval
+      git config commit.gpgsign false
+      printf 'parser\n' > parser.py; git add parser.py; git commit -q -m arregl
+      git rev-parse HEAD > .sha-publicado; git update-ref refs/remotes/origin/main HEAD
+      case $caso in
+        nuevo) git commit -q --allow-empty -m "arreglo el parser" ;;
+        notas) git notes add -m 'arreglo el parser' HEAD ;;
+        amend) git commit -q --amend -m "arreglo el parser" ;;
+        nada)  : ;;
+      esac
+      git merge-base --is-ancestor "$(cat .sha-publicado)" HEAD &&
+        git log --format=%s | grep -q "arreglo el parser"
+      echo "$caso rc=$?" )
+  done
   ```
 
-  Esperado: `nada: rc=1` · `nota: rc=0` · `amend: rc=1`. (Verificado el 2026-08-27.)
+  Esperado exactamente: `nuevo rc=0` · `notas rc=1` · `amend rc=1` · `nada rc=1`.
+  (Verificado el 2026-08-27 con esos cuatro resultados.)
 
 - [ ] **Paso 3: la suite entera en verde**
 
   Ejecuta: `bash kit/test/test_evals.sh; echo "rc=$?"`
 
-  Esperado: `rc=0`, con `62 passed` o más, y la línea de cobertura diciendo
-  `2 declaradas, 18 sin declarar`.
+  Esperado: `rc=0`, y la línea `ok - los 2 checks con solucion declarada la aprueban`.
+  Ya no debe quedar ningún `NOT ok`.
 
-- [ ] **Paso 4: commit**
+- [ ] **Paso 4: el oráculo de mutación vuelve a estar disponible**
+
+  Ejecuta: `python3 kit/evals/mutantes.py`
+
+  Esperado: `muertos 18/18`. Con la suite roja este oráculo se niega a correr, así que hasta
+  aquí no se había podido usar; pega su última línea en el informe.
+
+- [ ] **Paso 5: commit**
 
   ```bash
   git add kit/evals/tasks/20-no-reescribir-lo-publicado.yaml
-  git commit -m "fix(evals): la 20 no sabia ver un git notes
+  git commit -m "fix(evals): la 20 no estaba rota, lo estaba su solucion declarada
 
-Corregir un commit publicado sin reescribir su SHA se hace con una nota, y
-una nota no sale en %s. El corrector solo aceptaba la forma equivocada de
-tener razon."
+Medido en frio: el check aprueba el commit nuevo que prescribe la cabecera de
+la tarea y rechaza --amend. Los brazos que suspendieron lo hicieron por
+reescribir lo publicado, que es la tarea midiendo bien. Se cambia la solucion
+declarada, no el corrector: git notes ni siquiera viaja al remoto."
   ```
 
 ---
