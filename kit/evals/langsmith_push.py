@@ -33,6 +33,7 @@ if not os.path.exists(a.store):
     sys.exit(1)
 
 runs = []
+retiradas = []
 for line in open(a.store, errors="replace"):
     try:
         r = json.loads(line)
@@ -40,7 +41,19 @@ for line in open(a.store, errors="replace"):
         continue
     if a.since and (r.get("ts") or "") < a.since:
         continue
+    # Una fila retirada del computo no se publica. report.py la deja fuera y dice
+    # por que; un observatorio que la ensenara como un fail normal contradiria al
+    # informe, y el dato retirado volveria por la puerta de atras. El aviso va a
+    # stderr porque stdout es el payload y tiene que seguir siendo JSON puro.
+    if str(r.get("excluded") or "").strip():
+        retiradas.append(r)
+        continue
     runs.append(r)
+
+if retiradas:
+    print("no se publican %d fila(s) retiradas del computo: %s"
+          % (len(retiradas), ", ".join("%s/%s@%s" % (r.get("task"), r.get("arm"), r.get("ts"))
+                                       for r in retiradas)), file=sys.stderr)
 
 if not runs:
     print("el almacen no tiene runs en el rango pedido")

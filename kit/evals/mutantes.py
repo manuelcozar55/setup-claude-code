@@ -212,6 +212,18 @@ MUTANTES = [
      '    "run_pid": None,',
      "derivables de su fila"),
 
+    ("M37 langsmith vuelve a publicar la fila retirada",
+     "kit/evals/langsmith_push.py",
+     '    if str(r.get("excluded") or "").strip():',
+     "    if False:",
+     "langsmith_push: la fila retirada"),
+
+    ("M38 phoenix vuelve a publicar la fila retirada",
+     "kit/evals/phoenix_push.py",
+     '    if str(r.get("excluded") or "").strip():',
+     "    if False:",
+     "phoenix: la fila retirada"),
+
 ]
 
 

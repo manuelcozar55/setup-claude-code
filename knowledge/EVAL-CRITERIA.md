@@ -228,7 +228,11 @@ transcript quedó sobrescrito por el re-run del mismo día (F1, más abajo). Un 
 cuyo instrumento estaba averiado y cuya evidencia ya no existe no se arregla a
 mano: eso sería inventarlo. Queda marcado `excluded` en `runs.jsonl`, fuera de
 todo cómputo, y el informe lo dice en su primera línea en vez de retirarlo en
-silencio. **Lo zanja una sola llamada de pago — la 12, brazo `on`, `RUNS=1` — y
+silencio. Fuera de todo cómputo es también fuera de los dos puentes al
+observatorio: ni `langsmith_push.py` ni `phoenix_push.py` la publican, y los dos
+lo anuncian por `stderr` (sensores `test_evals.sh` §7 y §17, mutantes M37–M38).
+Publicarla ahí la habría devuelto por la puerta de atrás, enseñada como un `fail`
+normal. **Lo zanja una sola llamada de pago — la 12, brazo `on`, `RUNS=1` — y
 está pendiente: no se hizo en esta ronda.**
 
 ```
@@ -549,7 +553,7 @@ Dos decisiones que evitan que esto contamine el eval:
    emisor de LangSmith está probado de punta a punta, así que lo que queda es una decisión
    de compra, no de código — clave de la **nube** (gratis hasta 5 000 trazas, pero deja de
    ser local) o licencia Enterprise.
-4. **Solo 28 de los 36 mutantes son reproducibles.** `make mutantes` versiona M9–M36 y
+4. **Solo 30 de los 38 mutantes son reproducibles.** `make mutantes` versiona M9–M38 y
    falla si un ancla desaparece del fuente (un mutante que no se aplica deja de vigilar
    **en silencio**). M1–M8 se corrieron con scripts de usar y tirar: de esos ocho queda
    la palabra, no la evidencia, y queda dicho.

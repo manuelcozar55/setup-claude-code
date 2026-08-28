@@ -239,6 +239,45 @@ case "$out" in
   *) echo "NOT ok - langsmith_push ignora LANGSMITH_ENDPOINT: $out"; fail=$((fail+1));;
 esac
 
+# Y la fila retirada del computo tampoco se publica aqui. report.py la deja fuera
+# de TODO computo; si el observatorio la ensenara como un fail normal, el dato
+# retirado volveria por la puerta de atras y las dos vistas del mismo almacen
+# dirian cosas distintas. Dos aserciones y ninguna vale sola: la primera compara
+# los dos sentidos (con la clave se publica una menos, sin ella se publica), la
+# segunda exige que la retirada no sea muda.
+X=$(mktemp -d) || exit 1
+"$PY" - "$X/con.jsonl" "$X/sin.jsonl" <<'PYEOF'
+import json, sys
+def r(task, arm, res, **k):
+    d = {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": "positiva",
+         "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
+         "duration_api_ms": 5, "input_tokens": 1}
+    d.update(k)
+    return d
+# El mismo almacen dos veces, y la unica diferencia entre los dos es la clave
+# 'excluded': asi la asercion mide la retirada y no otra cosa.
+rows = [r("01-a", "on", "pass"), r("02-b", "on", "fail"), r("01-a", "off", "pass")]
+open(sys.argv[2], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+rows[1]["excluded"] = "instrumento averiado (E28)"
+open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+PYEOF
+ls_hijos() {
+  "$PY" "$P" --store "$1" --dry-run 2>/dev/null | "$PY" -c "
+import json, sys
+print(sum(1 for r in json.load(sys.stdin)['post'] if 'parent_run_id' in r))" 2>/dev/null
+}
+ck "$(ls_hijos "$X/con.jsonl") $(ls_hijos "$X/sin.jsonl")" "2 3" \
+   "langsmith_push: la fila retirada no se publica, y sin retirar si se publicaria"
+# El aviso va a stderr a proposito: stdout es el payload y tiene que seguir siendo
+# JSON puro, como comprueba la asercion de arriba de esta seccion.
+avi=$("$PY" "$P" --store "$X/con.jsonl" --dry-run 2>&1 >/dev/null)
+case "$avi" in
+  *"no se publican 1 fila"*02-b*)
+    echo "ok - langsmith_push dice que retiro una fila, no la calla"; pass=$((pass+1));;
+  *) echo "NOT ok - langsmith_push retira la fila en silencio: $avi"; fail=$((fail+1));;
+esac
+rm -f "$X"/*.jsonl; rmdir "$X" 2>/dev/null
+
 # --- 8. EVAL-CRITERIA.md no puede mentir sobre el numero de tareas ----------
 # E12 (20-50 tareas) es el criterio incumplido que mas limita al resto. Si el doc
 # dice "hay 6" cuando ya hay 20, el hueco declarado desaparece de la vista sin que
@@ -716,6 +755,39 @@ print(h["attrs"]["eval.result"] + "/" + str(json.loads(h["attrs"]["output.value"
 PYEOF
 )
 ck "$err" "error/error" "phoenix: un 'error' viaja como error, no como suspenso"
+
+# Lo mismo que en la seccion 7 y por lo mismo: report.py deja la fila fuera de todo
+# computo y este puente la publicaba como un fail normal.
+X=$(mktemp -d) || exit 1
+"$PY" - "$X/con.jsonl" "$X/sin.jsonl" <<'PYEOF'
+import json, sys
+def r(task, arm, res, **k):
+    d = {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": "positiva",
+         "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
+         "duration_api_ms": 5, "input_tokens": 1}
+    d.update(k)
+    return d
+# El mismo almacen dos veces, y la unica diferencia entre los dos es la clave
+# 'excluded': asi la asercion mide la retirada y no otra cosa.
+rows = [r("01-a", "on", "pass"), r("02-b", "on", "fail"), r("01-a", "off", "pass")]
+open(sys.argv[2], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+rows[1]["excluded"] = "instrumento averiado (E28)"
+open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+PYEOF
+ph_hijos() {
+  "$PY" "$E/phoenix_push.py" --store "$1" --dry-run 2>/dev/null | "$PY" -c "
+import json, sys
+print(sum(len(p['hijos']) for p in json.load(sys.stdin)))" 2>/dev/null
+}
+ck "$(ph_hijos "$X/con.jsonl") $(ph_hijos "$X/sin.jsonl")" "2 3" \
+   "phoenix: la fila retirada no se publica, y sin retirar si se publicaria"
+avi=$("$PY" "$E/phoenix_push.py" --store "$X/con.jsonl" --dry-run 2>&1 >/dev/null)
+case "$avi" in
+  *"no se publican 1 fila"*02-b*)
+    echo "ok - phoenix dice que retiro una fila, no la calla"; pass=$((pass+1));;
+  *) echo "NOT ok - phoenix retira la fila en silencio: $avi"; fail=$((fail+1));;
+esac
+rm -f "$X"/*.jsonl; rmdir "$X" 2>/dev/null
 rm -rf "$F"
 
 # --- 18. El modelo que se apunta es el que hizo el trabajo (E24) ------------
