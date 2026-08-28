@@ -241,7 +241,15 @@ con harness 0.85 (n=27) · sin harness 0.73 (n=48) · lift +0.12 -> SIRVE
 coste: +147.2 % ($0.2957 vs $0.1196 por run)
 positiva  (11/21 runs) 0.73 vs 0.48 · +0.25 -> el harness ayuda
 negativa  (10/21 runs) 1.00 vs 1.00 · +0.00 -> el harness no estorba
+mudas: 17/20 tareas dieron el mismo resultado en los dos brazos y en todas
+       sus repeticiones. No pueden mover el lift: el conjunto que decide
+       es de 3 tarea(s), no de 20.
+SATURADO: cuatro de cada cinco tareas ya no distinguen nada. El numero de
+arriba seguira subiendo sin que el harness mejore. Toca subir el suelo:
+retirar las mudas y minar fallos nuevos (README.md, 'Como crecer').
 sin-ajustes  (hooks, permisos y env ) 0.68 [0.47-0.84] vs 0.85 con todo · -0.17 -> la pieza APORTA
+sin-skills   SIN DATOS, y correrlo no mediria nada: skills no se activaron ni una vez
+sin-mcp      SIN DATOS, y correrlo no mediria nada: servidores MCP no se activaron ni una vez
 ```
 
 La línea negativa dejó de acusar al harness sin tocar ningún umbral, pero no lo
@@ -333,8 +341,14 @@ coste: +145.8 % ($0.2941 vs $0.1196 por run)
 positiva  (11/21 runs) 0.73 vs 0.48 · +0.25 -> el harness ayuda
 negativa  (11/21 runs) 0.91 vs 1.00 · -0.09 -> FALSOS POSITIVOS: el harness estorba
 mudas: 16/20 tareas dieron el mismo resultado en los dos brazos y en todas
-es de 4 tarea(s), no de 20.
+       sus repeticiones. No pueden mover el lift: el conjunto que decide
+       es de 4 tarea(s), no de 20.
+SATURADO: cuatro de cada cinco tareas ya no distinguen nada. El numero de
+arriba seguira subiendo sin que el harness mejore. Toca subir el suelo:
+retirar las mudas y minar fallos nuevos (README.md, 'Como crecer').
 sin-ajustes  (hooks, permisos y env ) 0.68 [0.47-0.84] vs 0.82 con todo · -0.14 -> la pieza APORTA
+sin-skills   SIN DATOS, y correrlo no mediria nada: skills no se activaron ni una vez
+sin-mcp      SIN DATOS, y correrlo no mediria nada: servidores MCP no se activaron ni una vez
 ```
 
 Contada, la acusación de la línea negativa sigue viva, el lift baja de +0,12 a

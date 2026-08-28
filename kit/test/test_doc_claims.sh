@@ -149,6 +149,53 @@ def norm(s):
     return " ".join(s.split())
 
 
+# Las salvedades del informe NO se enumeran. report.py sabe emitir AVISO, SATURADO,
+# NO COMPARABLE, NO MEDIBLE y SIN DATOS, y cada una anula o acota una cifra de las de
+# arriba: publicar el coste y callarse el AVISO que dice que ese coste no es
+# comparable es publicar media verdad. Habia una lista cerrada de lineas concretas y
+# dejaba fuera a toda esta familia; ampliarla a mano cada vez que el informe aprenda a
+# avisar de algo nuevo es la misma averia con retraso.
+SALVEDAD = re.compile(r"\b(AVISO|SATURADO|NO COMPARABLE|NO MEDIBLE|SIN DATOS)\b")
+
+# Y el veredicto, que se publica siempre: exclusion, tasas+n, coste, las dos
+# polaridades, la saturacion y la ablacion. La saturacion son TRES lineas: el
+# recuento, la que dice que las mudas no pueden mover el lift y la del conjunto que
+# decide; citar la primera y la tercera saltandose la de en medio deja la frase sin
+# sujeto, y asi se publico. Fuera queda la lista de nombres de las mudas, que es el
+# dato y no la afirmacion, y las cabeceras, las tablas por tarea y la carga de CPU,
+# que el doc no copia.
+VEREDICTO = (r"excluidas \d+ fila\(s\)",
+             r"con harness [0-9.]+ \(n=\d+\)",
+             r"coste: ",
+             r"(positiva|negativa) \(",
+             r"mudas: \d+/\d+ tareas",
+             r"sus repeticiones\.",
+             r"es de \d+ tarea\(s\)",
+             r"sin-[a-z-]+ \(.*\) [0-9.]+ \[")
+
+
+def exigidas(texto):
+    """Las lineas del informe que el bloque publicado tiene que llevar.
+
+    Una salvedad arrastra el resto de su parrafo: la consecuencia vive en sus lineas
+    de continuacion ("...el coste de arriba no son comparables"), y sin ellas la
+    salvedad se publica descabezada. Se corta por el parrafo y no por una lista de
+    continuaciones conocidas, y en la duda se exige de mas: pasarse obliga a publicar
+    una linea vecina que report.py tambien emitio; quedarse corto deja callar la
+    salvedad, que es el fallo que esto viene a cerrar.
+    """
+    lineas = texto.splitlines()
+    req, i = [], 0
+    while i < len(lineas):
+        if lineas[i].strip() and SALVEDAD.search(lineas[i]):
+            while i < len(lineas) and lineas[i].strip():
+                req.append(lineas[i])
+                i += 1
+        i += 1
+    req += [l for l in lineas if l.strip() and any(re.match(p, norm(l)) for p in VEREDICTO)]
+    return set(norm(x) for x in req)
+
+
 emitidas = set(norm(l) for l in rep.splitlines() if l.strip())
 # Solo se juzga la seccion de la tirada vigente. Mas arriba el documento cita a
 # proposito la tirada de 6 tareas y la del instrumento roto: son lecturas fechadas
@@ -242,26 +289,17 @@ else:
             p.append("el informe no emite esta linea publicada: %s" % x)
     # Y al reves, que es el lado que faltaba: exigir solo "lo publicado sale del
     # informe" deja al documento borrar en silencio la linea que no le gusta y la
-    # suite sigue verde. Las cinco familias de abajo son el veredicto: si el
-    # informe las emite, el bloque las lleva. Lo demas (cabeceras, tablas por
-    # tarea, carga de CPU) el doc no lo copia y no se exige.
-    obligatorias = (r"excluidas \d+ fila\(s\)",
-                    r"con harness [0-9.]+ \(n=\d+\)",
-                    r"coste: ",
-                    r"(positiva|negativa) \(",
-                    r"sin-[a-z-]+ \(.*\) [0-9.]+ \[")
+    # suite sigue verde.
     publicadas = set(lineas)
-    for x in sorted(emitidas):
-        if any(re.match(pat, x) for pat in obligatorias) and x not in publicadas:
+    for x in sorted(exigidas(rep)):
+        if x not in publicadas:
             p.append("el informe emite esta linea y el bloque no la publica: %s" % x)
 
 # (e) Y el bloque alternativo contra SU informe, en los dos sentidos tambien. Lleva
 #     ademas la saturacion, que es el quinto numero que mueve la fila retirada.
 if alt_tramo:
-    alt_emitidas = set(norm(l) for l in
-                       open(sys.argv[4], encoding="utf-8", errors="replace").read().splitlines()
-                       if l.strip())
-    alt_oblig = obligatorias + (r"mudas: \d+/\d+ tareas", r"es de \d+ tarea\(s\)")
+    alt_rep = open(sys.argv[4], encoding="utf-8", errors="replace").read()
+    alt_emitidas = set(norm(l) for l in alt_rep.splitlines() if l.strip())
     ab = re.search(r"```\n(.*?)```", alt_tramo, re.S)
     if ab is None:
         p.append("la lectura alternativa ya no publica su bloque de cifras")
@@ -273,8 +311,8 @@ if alt_tramo:
             if x not in alt_emitidas:
                 p.append("el informe con la fila contada no emite esta linea de la"
                          " lectura alternativa: %s" % x)
-        for x in sorted(alt_emitidas):
-            if any(re.match(pat, x) for pat in alt_oblig) and x not in set(alt_lineas):
+        for x in sorted(exigidas(alt_rep)):
+            if x not in set(alt_lineas):
                 p.append("la lectura alternativa no publica esta linea de su informe: %s" % x)
 
 print("\n".join("  " + x for x in p))
@@ -395,26 +433,80 @@ if [ -f "$STORE" ]; then
       $0 ~ desde {on=1}
       {if (on && !ya && $0 ~ pat) {ya=1; next} print}' "$EVALDOC"
   }
-  mudas=""
-  for pat in '^excluidas ' '^con harness ' '^coste: ' '^positiva ' '^negativa ' '^sin-ajustes '; do
+  # Las salvedades entran en el bucle con el mismo derecho que las cifras: son las
+  # lineas que las anulan, y son las que se estaban callando.
+  LINEAS=('^excluidas ' '^con harness ' '^coste: ' '^positiva ' '^negativa '
+          '^mudas: ' '^ *sus repeticiones' '^ *es de [0-9]' '^SATURADO: '
+          '^arriba seguira ' '^retirar las mudas ' '^sin-ajustes ' '^sin-skills '
+          '^sin-mcp ')
+  mudas=""; n_borradas=0
+  for pat in "${LINEAS[@]}"; do
     sin_linea "$pat" > "$TMPD/borrada.md"
+    n_borradas=$((n_borradas+1))
     if [ -z "$(cifras_eval "$TMPD/borrada.md" "$STORE")" ]; then
       mudas="$mudas $pat"
     fi
   done
   # Y las de la lectura alternativa, que es la columna incomoda entera: si se
   # pudiera borrar en silencio, publicarla no costaria nada ni garantizaria nada.
-  for pat in '^con harness ' '^coste: ' '^positiva ' '^negativa ' '^mudas: ' '^sin-ajustes '; do
+  # (Sin '^excluidas ': su informe no la emite, porque ahi la fila esta contada.)
+  for pat in "${LINEAS[@]:1}"; do
     sin_linea "$pat" '^### La lectura alternativa' > "$TMPD/borrada.md"
+    n_borradas=$((n_borradas+1))
     if [ -z "$(cifras_eval "$TMPD/borrada.md" "$STORE")" ]; then
       mudas="$mudas alt:$pat"
     fi
   done
   if [ -z "$mudas" ]; then
-    echo "ok - falsabilidad: borrar cualquiera de las 6+6 lineas de los dos bloques pone rojo"
+    echo "ok - falsabilidad: borrar cualquiera de las $n_borradas lineas de los dos bloques pone rojo"
     pass=$((pass+1))
   else
     echo "NOT ok - el doc puede borrar estas lineas del bloque sin que nadie se entere:$mudas"
+    fail=$((fail+1))
+  fi
+
+  # Y el lado que ningun borrado prueba: una salvedad que hoy NO se emite. Se infla
+  # la carga de una maquina en una copia del almacen -no se toca runs.jsonl- hasta
+  # que report.py dice que el coste de los dos brazos no es comparable. El doc, que
+  # no puede saberlo, tiene que quedarse rojo; y publicandola, verde. Sin esto solo
+  # constaria que las salvedades de HOY estan citadas, que es la lista cerrada de
+  # siempre disfrazada de sensor.
+  "$PY3" - "$STORE" "$TMPD/aviso.jsonl" <<'PYAVISO'
+import json, sys
+salida = open(sys.argv[2], "w")
+for l in open(sys.argv[1], errors="replace"):
+    l = l.strip()
+    if not l:
+        continue
+    try:
+        r = json.loads(l)
+    except ValueError:
+        continue
+    if isinstance(r, dict) and r.get("arm") == "on" and r.get("load1") is not None:
+        r["load1"] = 999.0
+    salida.write(json.dumps(r, ensure_ascii=False) + "\n")
+PYAVISO
+  avisos=$("$PY3" kit/evals/report.py --store "$TMPD/aviso.jsonl" 2>/dev/null \
+           | /usr/bin/grep -c '^  AVISO:')
+  quejas=$(cifras_eval "$EVALDOC" "$TMPD/aviso.jsonl" | /usr/bin/grep -c 'AVISO:')
+  # Y la reciproca, con la salvedad puesta en los dos bloques a mano.
+  "$PY3" - "$EVALDOC" "$TMPD/con-aviso.md" <<'PYDOC'
+import io, sys
+AVISO = ("AVISO: los dos brazos corrieron con la maquina distinta de ocupada.\n"
+         "La nota aguanta (el grader es determinista), pero la latencia y el\n"
+         "coste de arriba no son comparables. Repetir con la maquina en reposo.\n")
+doc = io.open(sys.argv[1], encoding="utf-8").read()
+io.open(sys.argv[2], "w", encoding="utf-8").write(
+    "".join(l + AVISO if l.startswith("coste: ") and l.endswith("por run)\n") else l
+            for l in doc.splitlines(True)))
+PYDOC
+  restantes=$(cifras_eval "$TMPD/con-aviso.md" "$TMPD/aviso.jsonl" | /usr/bin/grep -c 'AVISO:')
+  if [ "$avisos" -ge 1 ] && [ "$quejas" -ge 1 ] && [ "$restantes" -eq 0 ]; then
+    echo "ok - falsabilidad: una salvedad que report.py aprende a emitir hoy es obligatoria manana"
+    pass=$((pass+1))
+  else
+    echo "NOT ok - la salvedad no se exige sola: report.py emite $avisos AVISO,"
+    echo "         el doc que la calla da $quejas queja(s) y el que la publica $restantes"
     fail=$((fail+1))
   fi
 else
@@ -431,7 +523,7 @@ else
   echo "NOT ok - sin almacen el comprobador no se declara skip: aprobaria sin medir"
   fail=$((fail+1))
 fi
-rm -f "$TMPD"/*.md; rmdir "$TMPD"
+rm -f "$TMPD"/*.md "$TMPD"/*.jsonl; rmdir "$TMPD"
 
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
