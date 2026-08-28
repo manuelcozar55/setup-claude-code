@@ -322,14 +322,40 @@ PYEOF
   return $rc
 }
 
+# veredicto <rc> <quejas> <sujeto-ok> <sujeto-mal>: dictamina el resultado de un
+# comprobador. Devuelve 0 solo si aprobo de verdad, e imprime la linea del informe.
+#
+# Existe por el tercer caso, que es el que se colaba: un comprobador que revienta
+# escribe su traceback en stderr y deja el stdout VACIO, o sea exactamente lo mismo
+# que uno que no tiene nada que objetar. Mirando solo la salida, "no hay quejas" y
+# "no llegue a mirar" son el mismo verde, y asi se publicaba 'ok' sin haber medido
+# nada -que es peor que un rojo porque nadie vuelve a mirarlo-. El rc los separa.
+#
+# Es funcion y no codigo pegado en cada sitio para que la sonda de falsabilidad de
+# mas abajo pueda interrogar ESTA decision y no una copia suya: un veredicto que la
+# sonda reimplementa es una comprobacion hecha a mano, y se pudre igual.
+veredicto() {
+  local rc="$1" quejas="$2" sujeto_ok="$3" sujeto_mal="$4"
+  if [ "$rc" -ne 0 ]; then
+    echo "NOT ok - $sujeto_mal: el comprobador revento (rc=$rc), su traceback esta en stderr"
+    return 1
+  fi
+  if [ -n "$quejas" ]; then
+    echo "NOT ok - $sujeto_mal:"; echo "$quejas"
+    return 1
+  fi
+  echo "ok - $sujeto_ok"
+}
+
 problemas=$(cifras_eval "$EVALDOC" "$STORE"); rc=$?
 if [ "$rc" -eq 2 ]; then
   echo "skip - $EVALDOC: no hay $STORE (esta en .gitignore); sus cifras NO se han comprobado"
   skipped=$((skipped+1))
-elif [ -z "$problemas" ]; then
-  echo "ok - las cifras de $EVALDOC cuadran con $STORE"; pass=$((pass+1))
+elif veredicto "$rc" "$problemas" "las cifras de $EVALDOC cuadran con $STORE" \
+                                  "$EVALDOC no cuadra con el almacen"; then
+  pass=$((pass+1))
 else
-  echo "NOT ok - $EVALDOC no cuadra con el almacen:"; echo "$problemas"; fail=$((fail+1))
+  fail=$((fail+1))
 fi
 
 # Falsabilidad, los dos lados. Sin esto, un regex que dejara de encajar daria verde
@@ -397,12 +423,13 @@ print("\n".join("  " + x for x in p))
 PYEOF
 }
 
-problemas=$(recuento_mutantes "$EVALDOC")
-if [ -z "$problemas" ]; then
-  echo "ok - el recuento de mutantes de $EVALDOC cuadra con kit/evals/mutantes.py"
+problemas=$(recuento_mutantes "$EVALDOC"); rc=$?
+if veredicto "$rc" "$problemas" \
+     "el recuento de mutantes de $EVALDOC cuadra con kit/evals/mutantes.py" \
+     "$EVALDOC miente sobre los mutantes"; then
   pass=$((pass+1))
 else
-  echo "NOT ok - $EVALDOC miente sobre los mutantes:"; echo "$problemas"; fail=$((fail+1))
+  fail=$((fail+1))
 fi
 
 # Y que sepa suspender, en las dos redacciones y en el rango: sin esto solo consta
@@ -514,6 +541,46 @@ else
   skipped=$((skipped+1))
 fi
 
+# Y el lado que ninguna cifra falsa prueba: que un comprobador que REVIENTA salga
+# rojo. Las sondas de arriba deforman el documento, asi que solo demuestran que el
+# comprobador sabe suspender cuando funciona; el modo que se colaba es el otro, el
+# de no llegar a mirar. Un fallo incondicional tampoco lo prueba: como las demas
+# sondas trabajan sobre copias en $TMPD, un `raise` para todos las pone rojas a
+# ellas y se ve. El fallo que dejaba la suite entera en verde es el que solo
+# alcanza la entrada REAL, y ese es el que se inyecta aqui: un interprete de usar y
+# tirar que muere si y solo si le pasan el documento de verdad. No toca el fichero
+# versionado, ni el arbol, ni la variable PY3 de fuera -vive en el subshell de la
+# sustitucion-, y se exige ver el codigo inyectado en la queja para que la sonda no
+# pueda aprobar con un rojo que venga de otra cosa (un 2 por almacen ausente, por
+# ejemplo, que seria justo aprobar sin haber medido).
+# shellcheck disable=SC2016 # "$@" literal a proposito: es el cuerpo del envoltorio,
+# tiene que expandirlo /bin/sh cuando lo ejecute, no este script al escribirlo.
+printf '#!/bin/sh\nfor a in "$@"; do\n  [ "$a" = "%s" ] && exit 97\ndone\nexec %s "$@"\n' \
+  "$EVALDOC" "$PY3" > "$TMPD/py-revienta"
+chmod +x "$TMPD/py-revienta"
+sondados=""; ciegos=""
+for f in cifras_eval recuento_mutantes; do
+  # cifras_eval sale 2 sin llegar a llamar al interprete cuando no hay almacen: ahi
+  # la inyeccion no entra y la sonda no mediria lo que dice medir. Se declara.
+  if [ "$f" = cifras_eval ] && [ ! -f "$STORE" ]; then
+    continue
+  fi
+  salida=$(PY3="$TMPD/py-revienta"; "$f" "$EVALDOC" "$STORE" 2>/dev/null); rc=$?
+  linea=$(veredicto "$rc" "$salida" "NO DEBERIA aprobar: el comprobador nunca miro" "sonda de $f")
+  sondados="$sondados $f"
+  case "$linea" in
+    "NOT ok"*"rc=97"*) ;;
+    *) ciegos="$ciegos $f" ;;
+  esac
+done
+if [ -n "$ciegos" ] || [ -z "$sondados" ]; then
+  echo "NOT ok - revientan con la entrada real y aun asi se leen como 'ok':${ciegos:- ninguno se llego a sondar}"
+  fail=$((fail+1))
+else
+  echo "ok - falsabilidad: reventar solo con la entrada real sale rojo, no 'ok' ($sondados )"
+  pass=$((pass+1))
+fi
+
 # Y el otro lado del skip: sin almacen tiene que salir 2, no 0. Un 0 aqui es un 'ok'
 # emitido sin datos, que es peor que un rojo porque nadie vuelve a mirarlo.
 cifras_eval "$EVALDOC" "$TMPD/no-existe.jsonl" >/dev/null 2>&1
@@ -523,7 +590,7 @@ else
   echo "NOT ok - sin almacen el comprobador no se declara skip: aprobaria sin medir"
   fail=$((fail+1))
 fi
-rm -f "$TMPD"/*.md "$TMPD"/*.jsonl; rmdir "$TMPD"
+rm -f "$TMPD"/*.md "$TMPD"/*.jsonl "$TMPD"/py-revienta; rmdir "$TMPD"
 
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
