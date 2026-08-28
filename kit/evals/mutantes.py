@@ -10,10 +10,11 @@ mutante que no se aplica deja de vigilar en silencio, que es el modo de fallo
 que este fichero existe para evitar.
 
 Historico: los mutantes M1-M8 (brazos, grader, polaridad, oraculo visible) se
-corrieron con scripts de usar y tirar y no estan aqui. Solo M9-M12 son
-reproducibles; EVAL-CRITERIA.md lo dice asi.
+corrieron con scripts de usar y tirar y no estan aqui. Reproducible es todo
+lo que esta en MUTANTES, de M9 en adelante: no hay ninguno fuera.
 """
 import hashlib
+import re
 import io
 import os
 import shutil
@@ -49,7 +50,7 @@ MUTANTES = [
      "kit/test/test_evals.sh",
      "for flag in --setting-sources --disable-slash-commands --strict-mcp-config --model; do",
      "for flag in --setting-sources --flag-que-no-existe-jamas; do",
-     "ya no existe"),
+     "mide el harness completo"),
 
     ("M13 las tareas mudas dejan de contarse",
      "kit/evals/report.py",
@@ -67,7 +68,7 @@ MUTANTES = [
      "kit/evals/report.py",
      'if "on" not in by_arm or "off" not in by_arm:\n    print("  NO MEDIBLE: hace falta el brazo de control para saber que tareas son mudas.")',
      'if False:\n    print("  NO MEDIBLE: hace falta el brazo de control para saber que tareas son mudas.")',
-     "sin brazo de control"),
+     "se pronuncia sobre tareas mudas"),
 
     ("M16 record.py deja de registrar la carga de la maquina",
      "kit/evals/record.py",
@@ -184,7 +185,7 @@ MUTANTES = [
      "kit/evals/report.py",
      'if excluidas:\n    print("excluidas',
      'if False:\n    print("excluidas',
-     "en silencio"),
+     "excluye una fila"),
 
 ]
 
@@ -192,6 +193,15 @@ MUTANTES = [
 def corre():
     r = subprocess.run(SUITE, capture_output=True, text=True, timeout=600)
     return r.returncode, r.stdout
+
+
+def firma(l):
+    """La misma asercion en un bucle imprime una linea por vuelta, y solo cambia lo
+    que va entre comillas o entre parentesis (el valor probado, el obtenido). Eso no
+    es ambiguedad: ambiguedad es que la aguja case con OTRA asercion."""
+    l = re.sub(r"'[^']*'", "''", l)
+    l = re.sub(r"\([^)]*\)", "()", l)
+    return " ".join(l.split())
 
 
 def md5(f):
@@ -220,10 +230,21 @@ def main():
         try:
             io.open(fich, "w", encoding="utf-8").write(orig.replace(ancla, mut, 1))
             rc, out = corre()
-            motivo = [l for l in out.splitlines()
-                      if l.startswith("NOT ok") and aguja.lower() in l.lower()]
-            if rc != 0 and motivo:
-                print("  CAZADO  %s\n          -> %s" % (nombre, motivo[0].strip()))
+            motivo = {}
+            for l in out.splitlines():
+                if l.startswith("NOT ok") and aguja.lower() in l.lower():
+                    motivo.setdefault(firma(l), l.strip())
+            motivo = [motivo[k] for k in sorted(motivo)]
+            if rc != 0 and len(motivo) > 1:
+                # Una aguja que casa con dos aserciones distintas da el mutante por
+                # cazado sin saber cual disparo: es el 'rojo por otra cosa' con otro
+                # nombre, solo que aprobando. Se pide una aguja mas estrecha.
+                print("  AGUJA AMBIGUA  %s: casa con %d NOT ok distintos" % (nombre, len(motivo)))
+                for l in motivo:
+                    print("          -> %s" % l)
+                vivos.append(nombre)
+            elif rc != 0 and motivo:
+                print("  CAZADO  %s\n          -> %s" % (nombre, motivo[0]))
             elif rc != 0:
                 # Rojo por otra cosa no vale: el sensor que se esta probando no
                 # es el que disparo, y quedaria dado por bueno sin serlo.
