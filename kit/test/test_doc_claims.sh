@@ -316,34 +316,72 @@ else
   skipped=$((skipped+1))
 fi
 # El recuento de mutantes que publica el doc, contra los que hay en mutantes.py.
-# Esta cifra ya se pudrio una vez -el docstring decia "solo M9-M12" con 25 dentro- y
+# Esta cifra ya se pudrio dos veces -el docstring decia "solo M9-M12" con 25 dentro,
+# y la tabla se quedo en "33/33" con 30 versionados a doce lineas de su guardia- y
 # cada arreglo de esta rama anade mutantes, asi que se pudre sola si nadie la mide.
-problemas=$("$PY3" - "$EVALDOC" kit/evals/mutantes.py <<'PYEOF'
+recuento_mutantes() {
+"$PY3" - "$1" kit/evals/mutantes.py <<'PYEOF'
 import re, sys
 
 doc = open(sys.argv[1], encoding="utf-8", errors="replace").read()
 src = open(sys.argv[2], encoding="utf-8", errors="replace").read()
 ids = [int(x) for x in re.findall(r'^    \("M(\d+)', src, re.M)]
 p = []
-m = re.search(r"(\d+) de los \d+ mutantes son reproducibles.*?versiona M(\d+).M(\d+)", doc, re.S)
 if not ids:
     p.append("no se reconoce ningun mutante en mutantes.py")
-elif not m:
-    p.append("el doc ya no dice cuantos mutantes son reproducibles ni desde cual")
 else:
-    if int(m.group(1)) != len(ids):
-        p.append("el doc dice %s mutantes reproducibles y mutantes.py tiene %d" % (m.group(1), len(ids)))
-    if (int(m.group(2)), int(m.group(3))) != (min(ids), max(ids)):
-        p.append("el doc dice el rango M%s-M%s y es M%d-M%d"
-                 % (m.group(2), m.group(3), min(ids), max(ids)))
+    # Toda cifra pegada a la palabra 'mutantes' es un recuento, este escrita como
+    # este: "33/33 mutantes" y "30 de los 38 mutantes" son la misma afirmacion en
+    # dos redacciones. Vigilar una sola es el sensor de un lado de siempre, y por
+    # eso la otra se pudrio. Aqui se juzgan TODAS, y solo valen dos numeros: los
+    # versionados (los que este fichero puede reproducir) y el total historico.
+    versionados, total = len(ids), max(ids)
+    valores = []
+    for x in re.finditer(r"(?<![\w/-])(\d+(?:\s*/\s*\d+)?(?:\s+de\s+los\s+\d+)?)"
+                         r"\s+mutantes\b", doc):
+        valores += [int(v) for v in re.findall(r"\d+", x.group(1))]
+    malos = sorted(set(v for v in valores if v not in (versionados, total)))
+    if not valores:
+        p.append("el doc ya no dice cuantos mutantes hay")
+    for v in malos:
+        p.append("el doc publica '%d mutantes' y los unicos recuentos ciertos son"
+                 " %d versionados de %d historicos" % (v, versionados, total))
+    if valores and not malos and set(valores) != set((versionados, total)):
+        p.append("el doc solo publica %s: le falta decir %d versionados de %d historicos"
+                 % (sorted(set(valores)), versionados, total))
+    # El rango tiene que estar escrito en alguna parte, o el "los N versionados" no
+    # dice CUALES y deja de ser comprobable contra el fuente.
+    rangos = [(int(a), int(b)) for a, b in re.findall(r"M(\d+)\s*[-\u2013\u2014]\s*M(\d+)", doc)]
+    if (min(ids), max(ids)) not in rangos:
+        p.append("el doc no publica el rango de los mutantes versionados, M%d-M%d"
+                 % (min(ids), max(ids)))
 print("\n".join("  " + x for x in p))
 PYEOF
-)
+}
+
+problemas=$(recuento_mutantes "$EVALDOC")
 if [ -z "$problemas" ]; then
   echo "ok - el recuento de mutantes de $EVALDOC cuadra con kit/evals/mutantes.py"
   pass=$((pass+1))
 else
   echo "NOT ok - $EVALDOC miente sobre los mutantes:"; echo "$problemas"; fail=$((fail+1))
+fi
+
+# Y que sepa suspender, en las dos redacciones y en el rango: sin esto solo consta
+# que hoy absuelve, que es exactamente lo que este fichero no acepta de nadie.
+sed -E 's#([0-9]+)/([0-9]+) mutantes#\1/424242 mutantes#' "$EVALDOC" > "$TMPD/m1.md"
+sed -E 's#([0-9]+) de los ([0-9]+) mutantes#424242 de los \2 mutantes#' "$EVALDOC" > "$TMPD/m2.md"
+sed -E 's#M9.M38#M9-M999#g' "$EVALDOC" > "$TMPD/m3.md"
+malos=0
+for d in m1 m2 m3; do
+  [ -n "$(recuento_mutantes "$TMPD/$d.md")" ] || malos=$((malos+1))
+done
+if [ "$malos" -eq 0 ]; then
+  echo "ok - falsabilidad: acusa el recuento falso en las dos redacciones y el rango falso"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $malos de 3 recuentos de mutantes falsos pasaron el comprobador"
+  fail=$((fail+1))
 fi
 
 # Las cuatro lineas incomodas, una a una: borrar cualquiera del bloque tiene que
