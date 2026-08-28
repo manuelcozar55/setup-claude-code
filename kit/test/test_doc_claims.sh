@@ -209,6 +209,20 @@ else:
     for x in lineas:
         if x not in emitidas:
             p.append("el informe no emite esta linea publicada: %s" % x)
+    # Y al reves, que es el lado que faltaba: exigir solo "lo publicado sale del
+    # informe" deja al documento borrar en silencio la linea que no le gusta y la
+    # suite sigue verde. Las cinco familias de abajo son el veredicto: si el
+    # informe las emite, el bloque las lleva. Lo demas (cabeceras, tablas por
+    # tarea, carga de CPU) el doc no lo copia y no se exige.
+    obligatorias = (r"excluidas \d+ fila\(s\)",
+                    r"con harness [0-9.]+ \(n=\d+\)",
+                    r"coste: ",
+                    r"(positiva|negativa) \(",
+                    r"sin-[a-z-]+ \(.*\) [0-9.]+ \[")
+    publicadas = set(lineas)
+    for x in sorted(emitidas):
+        if any(re.match(pat, x) for pat in obligatorias) and x not in publicadas:
+            p.append("el informe emite esta linea y el bloque no la publica: %s" % x)
 
 print("\n".join("  " + x for x in p))
 PYEOF
@@ -248,6 +262,36 @@ else
   echo "skip - falsabilidad de las cifras: hace falta $STORE para deformarlo"
   skipped=$((skipped+1))
 fi
+# Las cuatro lineas incomodas, una a una: borrar cualquiera del bloque tiene que
+# poner esto rojo. Sin este bucle, el comprobador de arriba solo sabe suspender al
+# que publica de mas, nunca al que publica de menos.
+if [ -f "$STORE" ]; then
+  # Borra la primera linea que case DESPUES de la cabecera de la tirada vigente: las
+  # mismas etiquetas aparecen antes en el doc, en tiradas fechadas que no se juzgan.
+  sin_linea() {
+    awk -v pat="$1" 'BEGIN{on=0;ya=0}
+      /^## La tirada completa/{on=1}
+      {if (on && !ya && $0 ~ pat) {ya=1; next} print}' "$EVALDOC"
+  }
+  mudas=""
+  for pat in '^excluidas ' '^con harness ' '^coste: ' '^positiva ' '^negativa ' '^sin-ajustes '; do
+    sin_linea "$pat" > "$TMPD/borrada.md"
+    if [ -z "$(cifras_eval "$TMPD/borrada.md" "$STORE")" ]; then
+      mudas="$mudas $pat"
+    fi
+  done
+  if [ -z "$mudas" ]; then
+    echo "ok - falsabilidad: borrar del bloque cualquiera de sus 6 lineas pone rojo"
+    pass=$((pass+1))
+  else
+    echo "NOT ok - el doc puede borrar estas lineas del bloque sin que nadie se entere:$mudas"
+    fail=$((fail+1))
+  fi
+else
+  echo "skip - falsabilidad del bloque: hace falta $STORE"
+  skipped=$((skipped+1))
+fi
+
 # Y el otro lado del skip: sin almacen tiene que salir 2, no 0. Un 0 aqui es un 'ok'
 # emitido sin datos, que es peor que un rojo porque nadie vuelve a mirarlo.
 cifras_eval "$EVALDOC" "$TMPD/no-existe.jsonl" >/dev/null 2>&1
