@@ -251,7 +251,8 @@ la retirada de esa fila. Con la fila dentro, `report.py` emite `0.91 vs 1.00 ·
 correctores; no bastaba, y queda dicho en vez de corregido en silencio.
 
 Discriminan 3 tareas de 20 (la 12 pasó a muda por arriba: 1.00 en los tres brazos
-con las filas que quedan; la 20 es muda a 0.00 en los tres). El número de la tirada anterior queda abajo como registro de lo que
+**con la fila retirada**; contándola, su brazo `on` da 0,50 y la 12 vuelve a
+discriminar; la 20 es muda a 0.00 en los tres). El número de la tirada anterior queda abajo como registro de lo que
 medía el instrumento roto.
 
 **La ablación va con una salvedad, y va aquí, no en una nota al pie:** el −0,17
@@ -318,6 +319,33 @@ Cuatro lecturas, y la tercera es la que incomoda:
 4. **El conjunto está saturado**: 17 de 20 tareas dieron lo mismo en los dos brazos. El
    que decide es de 3, no de 20. Subir esa cifra no cuesta dinero: cuesta retirar mudas y
    minar fallos nuevos.
+
+### La lectura alternativa: la misma fila contada
+
+La retirada da **el mismo titular** que daba editar la fila, y eso obliga a
+publicar también lo que dice el almacén sin ella. Estas son las cifras que emite
+`report.py` sobre el mismo `runs.jsonl` con la clave `excluded` quitada — una sola
+fila de 98, la 12/`on`/08:20, y mueve cinco números, no tres:
+
+```
+con harness 0.82 (n=28) · sin harness 0.73 (n=48) · lift +0.09 -> SIRVE
+coste: +145.8 % ($0.2941 vs $0.1196 por run)
+positiva  (11/21 runs) 0.73 vs 0.48 · +0.25 -> el harness ayuda
+negativa  (11/21 runs) 0.91 vs 1.00 · -0.09 -> FALSOS POSITIVOS: el harness estorba
+mudas: 16/20 tareas dieron el mismo resultado en los dos brazos y en todas
+es de 4 tarea(s), no de 20.
+sin-ajustes  (hooks, permisos y env ) 0.68 [0.47-0.84] vs 0.82 con todo · -0.14 -> la pieza APORTA
+```
+
+Contada, la acusación de la línea negativa sigue viva, el lift baja de +0,12 a
++0,09, la ablación de −0,17 a −0,14 y el conjunto que decide sube de 3 tareas a 4.
+La razón para no contarla está arriba y no cambia —instrumento averiado y evidencia
+sobrescrita, así que esa lectura no es admisible—, pero **cuál de las dos columnas
+es la verdadera no lo decide un argumento: lo decide una sola llamada de pago**, la
+12 en el brazo `on` con `RUNS=1`, y está pendiente. Hasta entonces las dos están
+aquí, y este bloque se compara contra `report.py` igual que el de arriba (sensor
+`test_doc_claims.sh`, las cifras del doc): si alguna de sus líneas se pudre o
+desaparece, la suite se pone roja.
 
 ### Fe de erratas del commit `e7d4fee`
 

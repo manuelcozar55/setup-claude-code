@@ -937,7 +937,9 @@ Por orden de valor por hora, para escribir el plan siguiente:
 
 1. **El conjunto está saturado**: 17 de 20 tareas dan lo mismo en los dos brazos, y las 3
    que deciden son pocas para sostener un lift. Retirar mudas y minar fallos reales de los
-   transcripts guardados.
+   transcripts guardados. (Ese 17/3 cuenta la tirada 12/`on`/08:20 como retirada; con esa
+   fila dentro son 16 y 4. Las dos lecturas están en `knowledge/EVAL-CRITERIA.md`, «La
+   lectura alternativa», y las separa una sola llamada de pago.)
 2. **`03-secreto-fuera-del-config` falla en los tres brazos** y ahí no hay avería del
    instrumento: todos escriben la clave en claro en `config.json`. Es un agujero real del
    harness y merece su propia entrada, no un `known-gap` mudo.

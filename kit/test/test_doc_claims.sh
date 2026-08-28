@@ -118,11 +118,26 @@ PY3="${PYTHON3:-python3}"
 # en un clon limpio NO existe, y contestar "ok" sin haber comparado una sola cifra
 # seria justo el sensor que aprueba sin medir. Se dice 'skip' y se ve en el resumen.
 cifras_eval() {
-  local doc="$1" store="$2" rep rc
+  local doc="$1" store="$2" rep alt altstore rc
   [ -f "$store" ] || return 2
-  rep=$(mktemp)
+  rep=$(mktemp); altstore=$(mktemp); alt=$(mktemp)
   "$PY3" kit/evals/report.py --store "$store" > "$rep" 2>/dev/null
-  "$PY3" - "$doc" "$store" "$rep" <<'PYEOF'
+  # La lectura alternativa se comprueba contra su propio informe: el mismo almacen
+  # sin la clave 'excluded'. Escribir a mano lo que dice la fila retirada seria
+  # publicar una cifra sin sensor, que es la averia que este fichero persigue.
+  "$PY3" -c 'import json, sys
+for l in open(sys.argv[1], errors="replace"):
+    l = l.strip()
+    if not l:
+        continue
+    try:
+        r = json.loads(l)
+    except ValueError:
+        continue
+    r.pop("excluded", None)
+    print(json.dumps(r, ensure_ascii=False))' "$store" > "$altstore"
+  "$PY3" kit/evals/report.py --store "$altstore" > "$alt" 2>/dev/null
+  "$PY3" - "$doc" "$store" "$rep" "$alt" <<'PYEOF'
 import json, re, sys
 
 doc = open(sys.argv[1], encoding="utf-8", errors="replace").read()
@@ -141,6 +156,22 @@ emitidas = set(norm(l) for l in rep.splitlines() if l.strip())
 i = doc.find("## La tirada completa")
 tramo = doc[i:] if i >= 0 else doc
 p = []
+
+# La lectura alternativa publica las cifras del almacen CON la fila retirada
+# contada. Sale del tramo vigente antes de juzgarlo: si no, su n=28 y su 16/20 se
+# leerian como una contradiccion de lo publicado, cuando son justo la otra
+# columna. Se juzga abajo, en (e), contra su propio informe.
+ALT = "### La lectura alternativa"
+a_i = tramo.find(ALT)
+alt_tramo = ""
+if a_i < 0:
+    p.append("el doc ya no publica la lectura alternativa (la fila retirada contada)")
+else:
+    a_fin = tramo.find("\n### ", a_i + 4)
+    if a_fin < 0:
+        a_fin = len(tramo)
+    alt_tramo = tramo[a_i:a_fin]
+    tramo = tramo[:a_i] + tramo[a_fin:]
 
 # (a) Llamadas pagadas. Una fila del almacen es una llamada que se pago, entre o no
 #     despues en el computo: retirar una fila no devuelve el dinero.
@@ -224,10 +255,32 @@ else:
         if any(re.match(pat, x) for pat in obligatorias) and x not in publicadas:
             p.append("el informe emite esta linea y el bloque no la publica: %s" % x)
 
+# (e) Y el bloque alternativo contra SU informe, en los dos sentidos tambien. Lleva
+#     ademas la saturacion, que es el quinto numero que mueve la fila retirada.
+if alt_tramo:
+    alt_emitidas = set(norm(l) for l in
+                       open(sys.argv[4], encoding="utf-8", errors="replace").read().splitlines()
+                       if l.strip())
+    alt_oblig = obligatorias + (r"mudas: \d+/\d+ tareas", r"es de \d+ tarea\(s\)")
+    ab = re.search(r"```\n(.*?)```", alt_tramo, re.S)
+    if ab is None:
+        p.append("la lectura alternativa ya no publica su bloque de cifras")
+    else:
+        alt_lineas = [norm(x) for x in ab.group(1).splitlines() if x.strip()]
+        if not alt_lineas:
+            p.append("el bloque de la lectura alternativa esta vacio")
+        for x in alt_lineas:
+            if x not in alt_emitidas:
+                p.append("el informe con la fila contada no emite esta linea de la"
+                         " lectura alternativa: %s" % x)
+        for x in sorted(alt_emitidas):
+            if any(re.match(pat, x) for pat in alt_oblig) and x not in set(alt_lineas):
+                p.append("la lectura alternativa no publica esta linea de su informe: %s" % x)
+
 print("\n".join("  " + x for x in p))
 PYEOF
   rc=$?
-  rm -f "$rep"
+  rm -f "$rep" "$alt" "$altstore"
   return $rc
 }
 
@@ -300,8 +353,8 @@ if [ -f "$STORE" ]; then
   # Borra la primera linea que case DESPUES de la cabecera de la tirada vigente: las
   # mismas etiquetas aparecen antes en el doc, en tiradas fechadas que no se juzgan.
   sin_linea() {
-    awk -v pat="$1" 'BEGIN{on=0;ya=0}
-      /^## La tirada completa/{on=1}
+    awk -v pat="$1" -v desde="${2:-^## La tirada completa}" 'BEGIN{on=0;ya=0}
+      $0 ~ desde {on=1}
       {if (on && !ya && $0 ~ pat) {ya=1; next} print}' "$EVALDOC"
   }
   mudas=""
@@ -311,8 +364,16 @@ if [ -f "$STORE" ]; then
       mudas="$mudas $pat"
     fi
   done
+  # Y las de la lectura alternativa, que es la columna incomoda entera: si se
+  # pudiera borrar en silencio, publicarla no costaria nada ni garantizaria nada.
+  for pat in '^con harness ' '^coste: ' '^positiva ' '^negativa ' '^mudas: ' '^sin-ajustes '; do
+    sin_linea "$pat" '^### La lectura alternativa' > "$TMPD/borrada.md"
+    if [ -z "$(cifras_eval "$TMPD/borrada.md" "$STORE")" ]; then
+      mudas="$mudas alt:$pat"
+    fi
+  done
   if [ -z "$mudas" ]; then
-    echo "ok - falsabilidad: borrar del bloque cualquiera de sus 6 lineas pone rojo"
+    echo "ok - falsabilidad: borrar cualquiera de las 6+6 lineas de los dos bloques pone rojo"
     pass=$((pass+1))
   else
     echo "NOT ok - el doc puede borrar estas lineas del bloque sin que nadie se entere:$mudas"
