@@ -162,16 +162,16 @@ MUTANTES = [
 
     ("M30 el transcript vuelve a nombrarse por el dia y las tiradas se pisan",
      "kit/evals/run.sh",
-     'keep="$E/transcripts/$id-$ARM-$attempt-${EVAL_TS//[-:]/}.jsonl"',
+     'keep="$E/transcripts/$id-$ARM-$attempt-${EVAL_TS//[-:]/}-p$EVAL_RUN.jsonl"',
      'keep="$E/transcripts/$id-$ARM-$attempt-$(date +%F).jsonl"',
-     "dos transcripts vivos"),
+     "no pisa el fichero de la primera"),
 
     # El otro lado: un sufijo al azar tampoco colisiona, pero deja una fila que
     # no puede senalar su evidencia. Si §23 fuera solo el recuento de ficheros,
     # esto escaparia.
     ("M31 el transcript se nombra al azar y la fila deja de poder senalarlo",
      "kit/evals/run.sh",
-     'keep="$E/transcripts/$id-$ARM-$attempt-${EVAL_TS//[-:]/}.jsonl"',
+     'keep="$E/transcripts/$id-$ARM-$attempt-${EVAL_TS//[-:]/}-p$EVAL_RUN.jsonl"',
      'keep="$E/transcripts/$id-$ARM-$attempt-$RANDOM$RANDOM.jsonl"',
      "funcion de la fila"),
 
@@ -186,6 +186,31 @@ MUTANTES = [
      'if excluidas:\n    print("excluidas',
      'if False:\n    print("excluidas',
      "excluye una fila"),
+
+    # Las dos vias de colision que el ts de segundos no cerraba, una por mutante.
+    ("M34 la misma tarea repetida en una invocacion vuelve a colar dos filas",
+     "kit/evals/run.sh",
+     """    for y in ${TAREAS[@]+"${TAREAS[@]}"}; do
+      [ "$y" = "$f" ] || continue
+      echo "run.sh: la tarea '$a' esta repetida; para repetirla usa RUNS=n" >&2
+      exit 2
+    done""",
+     "    :",
+     "dos veces en una invocacion"),
+
+    ("M35 el nombre pierde el pid y dos invocaciones del mismo segundo se pisan",
+     "kit/evals/run.sh",
+     'keep="$E/transcripts/$id-$ARM-$attempt-${EVAL_TS//[-:]/}-p$EVAL_RUN.jsonl"',
+     'keep="$E/transcripts/$id-$ARM-$attempt-${EVAL_TS//[-:]/}.jsonl"',
+     "en el mismo segundo"),
+
+    # El otro lado de M35: el pid en el nombre no vale de nada si la fila no lo
+    # guarda, porque entonces el nombre deja de poder reconstruirse desde la fila.
+    ("M36 record.py deja de grabar el pid y la fila ya no llega a su evidencia",
+     "kit/evals/record.py",
+     '    "run_pid": os.environ.get("EVAL_RUN"),',
+     '    "run_pid": None,',
+     "derivables de su fila"),
 
 ]
 

@@ -89,6 +89,9 @@ rec = {
     "result": result,                 # pass | fail | error
     "model": model,
     "harness_sha": os.environ.get("EVAL_SHA"),
+    # Quinto componente del nombre del transcript. Sin el, dos invocaciones del
+    # mismo segundo dan filas identicas y el nombre no puede separarlas.
+    "run_pid": os.environ.get("EVAL_RUN"),
     # Coste y latencia van FUERA de la nota, nunca dentro: una tarea puede
     # resolverse bien y costar el triple, y esas son dos lecturas distintas.
     "cost_usd": usage.get("total_cost_usd"),

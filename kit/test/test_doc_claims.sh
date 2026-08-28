@@ -262,6 +262,37 @@ else
   echo "skip - falsabilidad de las cifras: hace falta $STORE para deformarlo"
   skipped=$((skipped+1))
 fi
+# El recuento de mutantes que publica el doc, contra los que hay en mutantes.py.
+# Esta cifra ya se pudrio una vez -el docstring decia "solo M9-M12" con 25 dentro- y
+# cada arreglo de esta rama anade mutantes, asi que se pudre sola si nadie la mide.
+problemas=$("$PY3" - "$EVALDOC" kit/evals/mutantes.py <<'PYEOF'
+import re, sys
+
+doc = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+src = open(sys.argv[2], encoding="utf-8", errors="replace").read()
+ids = [int(x) for x in re.findall(r'^    \("M(\d+)', src, re.M)]
+p = []
+m = re.search(r"(\d+) de los \d+ mutantes son reproducibles.*?versiona M(\d+).M(\d+)", doc, re.S)
+if not ids:
+    p.append("no se reconoce ningun mutante en mutantes.py")
+elif not m:
+    p.append("el doc ya no dice cuantos mutantes son reproducibles ni desde cual")
+else:
+    if int(m.group(1)) != len(ids):
+        p.append("el doc dice %s mutantes reproducibles y mutantes.py tiene %d" % (m.group(1), len(ids)))
+    if (int(m.group(2)), int(m.group(3))) != (min(ids), max(ids)):
+        p.append("el doc dice el rango M%s-M%s y es M%d-M%d"
+                 % (m.group(2), m.group(3), min(ids), max(ids)))
+print("\n".join("  " + x for x in p))
+PYEOF
+)
+if [ -z "$problemas" ]; then
+  echo "ok - el recuento de mutantes de $EVALDOC cuadra con kit/evals/mutantes.py"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $EVALDOC miente sobre los mutantes:"; echo "$problemas"; fail=$((fail+1))
+fi
+
 # Las cuatro lineas incomodas, una a una: borrar cualquiera del bloque tiene que
 # poner esto rojo. Sin este bucle, el comprobador de arriba solo sabe suspender al
 # que publica de mas, nunca al que publica de menos.

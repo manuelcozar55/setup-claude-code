@@ -68,7 +68,7 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E17 | Más evals ≠ mejor harness; la suite tiene coste | LangChain | presupuesto de complejidad en `CLAUDE.md` (no cubre evals) | ⚠️ parcial |
 | E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 + `test_evals.sh` §10: ningún check aprueba el estado inicial, y no hacer nada da `fail`, no `error` | ✅ |
-| E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan — **y no se conservaban todos**: con el nombre por día, dos tiradas del mismo día sobre la misma tarea y brazo escribían el mismo fichero. Arreglado (`ts` en el nombre, `run.sh`), sensor `test_evals.sh` §23, mutantes M30–M31 | ⚠️ **degradado**: humano, sin cadencia fijada, y con **26 de 98 filas históricas sin evidencia propia**. El sensor que declaraba esta fila vigilaba que el fichero existiera, no que fuera el de esa tirada: aprobaba sin poder suspender |
+| E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan — **y no se conservaban todos**: con el nombre por día, dos tiradas del mismo día sobre la misma tarea y brazo escribían el mismo fichero. Arreglado (`ts` y pid en el nombre, `run.sh`), sensor `test_evals.sh` §23, mutantes M30–M31 y M34–M36 | ⚠️ **degradado**: humano, sin cadencia fijada, y con **26 de 98 filas históricas sin evidencia propia**. El sensor que declaraba esta fila vigilaba que el fichero existiera, no que fuera el de esa tirada: aprobaba sin poder suspender |
 | E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 33/33 mutantes; los 25 últimos versionados en `make mutantes`; los §9–§19 nacieron ya en rojo |
 | E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **corrido**: `sin-ajustes` −0,17 → la pieza aporta (−0,12 descontando el artefacto del corrector de la 11; ver la salvedad en «La tirada completa») |
 | E23 | Un brazo cuyo flag desapareció mide el harness completo con etiqueta falsa | hallazgo propio | `test_evals.sh` §13: los 4 flags tienen que seguir en `claude --help` | ✅ · sensor mutado |
@@ -281,9 +281,15 @@ otra tirada pisó.** Las siete filas de la 20 comparten tres ficheros, uno por b
 y lo vivo es la última tirada de cada uno; el párrafo de arriba está releído contra
 esos tres — el `on` verifica, encuentra el remoto inexistente y se niega; `off` y
 `sin-ajustes` ejecutan `git commit --amend` — no contra los que ya no están. Desde
-ahora el nombre lleva el `ts` de la fila, así que una tirada no puede pisar a otra y
-desde cualquier fila se llega a su evidencia (`run.sh`, sensor §23, mutantes M30–M31).
-Lo perdido, perdido: no se renombra nada hacia atrás.
+ahora el nombre lleva el `ts` **y el pid** de la fila. El `ts` solo, que es lo primero
+que se puso, dejaba dos agujeros: dos invocaciones arrancadas dentro del mismo segundo
+—el `ts` tiene resolución de segundo— y la misma tarea nombrada dos veces en una sola
+invocación, que además escribía dos filas indistinguibles. La primera la cierra el pid,
+que separa invocaciones y va grabado en la fila, así que el nombre sigue siendo función
+de sus campos y no un sufijo al azar; la segunda se rechaza con un error, porque
+repetir una tarea es `RUNS=n`. Con eso, **dos filas distintas no pueden compartir
+transcript y desde cualquier fila se llega a su evidencia** (`run.sh`, sensor §23,
+mutantes M30–M31 y M34–M36). Lo perdido, perdido: no se renombra nada hacia atrás.
 
 ```
 (tirada del instrumento roto, solo registro)
@@ -543,7 +549,7 @@ Dos decisiones que evitan que esto contamine el eval:
    emisor de LangSmith está probado de punta a punta, así que lo que queda es una decisión
    de compra, no de código — clave de la **nube** (gratis hasta 5 000 trazas, pero deja de
    ser local) o licencia Enterprise.
-4. **Solo 25 de los 33 mutantes son reproducibles.** `make mutantes` versiona M9–M33 y
+4. **Solo 28 de los 36 mutantes son reproducibles.** `make mutantes` versiona M9–M36 y
    falla si un ancla desaparece del fuente (un mutante que no se aplica deja de vigilar
    **en silencio**). M1–M8 se corrieron con scripts de usar y tirar: de esos ocho queda
    la palabra, no la evidencia, y queda dicho.

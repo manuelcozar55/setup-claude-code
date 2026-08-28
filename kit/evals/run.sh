@@ -60,6 +60,12 @@ esac
 [ -n "${EVAL_MODEL:-}" ] && ARMFLAGS+=(--model "$EVAL_MODEL")
 STORE="$E/runs.jsonl"
 EVAL_TS="$(date -u +%FT%TZ)"; export EVAL_TS
+# El ts tiene resolucion de segundo, asi que dos invocaciones arrancadas dentro
+# del mismo segundo tienen los cuatro campos iguales (task, arm, attempt, ts) y
+# NINGUNA funcion de esos campos puede separarlas: hace falta un campo mas. El
+# pid lo es, distingue invocaciones y record.py lo graba en la fila, asi que el
+# nombre sigue siendo funcion de la fila y no un sufijo al azar.
+EVAL_RUN="$$"; export EVAL_RUN
 EVAL_SHA="$(git -C "$E" rev-parse --short HEAD 2>/dev/null || echo desconocido)"; export EVAL_SHA
 OUT="$E/resultados-$(date +%F).json"
 TMP="$E/.resultados.parcial"
@@ -73,6 +79,15 @@ else
   for a in "$@"; do
     f="$E/tasks/$a.yaml"
     [ -f "$f" ] || { echo "run.sh: no existe la tarea '$a'" >&2; exit 2; }
+    # Nombrar la misma tarea dos veces en una invocacion escribia dos filas con
+    # task, arm, attempt y ts identicos y UN solo transcript: dos filas
+    # indistinguibles entre si, y una de ellas apuntando a evidencia que no es
+    # suya. Repetir una tarea es RUNS=n, que si numera los intentos.
+    for y in ${TAREAS[@]+"${TAREAS[@]}"}; do
+      [ "$y" = "$f" ] || continue
+      echo "run.sh: la tarea '$a' esta repetida; para repetirla usa RUNS=n" >&2
+      exit 2
+    done
     TAREAS+=("$f")
   done
 fi
@@ -162,10 +177,11 @@ open(os.path.join(m,'_prompt.txt'),'w').write(t['prompt'])
     # misma tarea y el mismo brazo escribian EL MISMO fichero y la primera perdia su
     # evidencia sin decirlo. Medido sobre el historico que dejo ese nombre: 26 de 98
     # filas (27 %) apuntan a un transcript que otra fila piso.
-    # Los cuatro componentes son exactamente los que record.py graba en la fila
-    # (task, arm, attempt, ts), asi que desde una fila se puede reconstruir el nombre
-    # de su evidencia; un sufijo aleatorio evitaria la colision pero romperia eso.
-    keep="$E/transcripts/$id-$ARM-$attempt-${EVAL_TS//[-:]/}.jsonl"
+    # Los cinco componentes son exactamente los que record.py graba en la fila
+    # (task, arm, attempt, ts, run_pid), asi que desde una fila se puede reconstruir
+    # el nombre de su evidencia; un sufijo aleatorio evitaria la colision pero
+    # romperia eso. El pid esta porque el ts solo tiene segundos: ver arriba.
+    keep="$E/transcripts/$id-$ARM-$attempt-${EVAL_TS//[-:]/}-p$EVAL_RUN.jsonl"
     cp "$m/_run.jsonl" "$keep"   # sin esto no se pueden leer despues
     "$PY" "$E/record.py" "$id" "$ARM" "$attempt" "$r" "$keep" "$STORE"
     printf '  "%s": "%s",\n' "$id" "$r" >> "$TMP"

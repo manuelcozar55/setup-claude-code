@@ -960,21 +960,26 @@ SH
 chmod +x "$COL/bin/claude" "$COL/bin/date"
 RELOJ_TS=2026-08-27T08:20:46Z PATH="$COL/bin:$PATH" bash "$COL/run.sh" >/dev/null 2>&1
 RELOJ_TS=2026-08-27T09:41:02Z PATH="$COL/bin:$PATH" bash "$COL/run.sh" >/dev/null 2>&1
-col=$("$PY" - "$COL/runs.jsonl" <<'PYEOF' 2>/dev/null
+metrica() {
+  "$PY" - "$COL/runs.jsonl" <<'PYEOF' 2>/dev/null
 import json, os, sys
 rows = [json.loads(l) for l in open(sys.argv[1])]
 p = [r.get("transcript") for r in rows]
 # El nombre se reconstruye SOLO con campos que la fila guarda. Si hiciera falta
 # algo de fuera, record.py no podria senalar la evidencia de su propia fila.
 def esperado(r):
-    return "%s-%s-%s-%s.jsonl" % (r["task"], r["arm"], r["attempt"],
-                                  (r["ts"] or "").replace("-", "").replace(":", ""))
+    return "%s-%s-%s-%s-p%s.jsonl" % (r["task"], r["arm"], r["attempt"],
+                                      (r["ts"] or "").replace("-", "").replace(":", ""),
+                                      r.get("run_pid"))
 print("filas=%d unicos=%d vivos=%d derivables=%d"
       % (len(p), len(set(p)),
          sum(1 for x in p if x and os.path.exists(x)),
          sum(1 for r in rows if os.path.basename(r.get("transcript") or "") == esperado(r))))
 PYEOF
-)
+}
+# Deja el sandbox como recien creado, sin tocar tasks/ ni bin/.
+limpia() { rm -f "$COL/runs.jsonl"; find "$COL/transcripts" -name '*.jsonl' -delete 2>/dev/null; }
+col=$(metrica)
 ck "${col:-sin-store}" "filas=2 unicos=2 vivos=2 derivables=2" \
    "dos tiradas del mismo dia dejan dos transcripts vivos y derivables de su fila"
 ck "$(find "$COL/transcripts" -name '*.jsonl' 2>/dev/null | wc -l)" 2 \
@@ -984,8 +989,36 @@ ck "$(find "$COL/transcripts" -name '*.jsonl' 2>/dev/null | wc -l)" 2 \
 # una evidencia que no se puede volver a encontrar.
 rm -rf "${COL:?}/transcripts" "$COL/runs.jsonl"
 RELOJ_TS=2026-08-27T08:20:46Z PATH="$COL/bin:$PATH" bash "$COL/run.sh" >/dev/null 2>&1
-ck "$(find "$COL/transcripts" -name 't-colision-on-1-20260827T082046Z.jsonl' 2>/dev/null | wc -l)" 1 \
+ck "$(find "$COL/transcripts" -name 't-colision-on-1-20260827T082046Z-p*.jsonl' 2>/dev/null | wc -l)" 1 \
    "el nombre del transcript es funcion de la fila, no del azar"
+
+# Las dos vias que el ts de segundos NO cerraba. La primera: dos invocaciones
+# dentro del mismo segundo. Ahi los cuatro campos de la fila coinciden, asi que
+# separarlas exige un campo mas -el pid-, y la fila tiene que seguir llegando a
+# su evidencia (por eso se mira 'derivables', no solo el recuento de ficheros).
+limpia
+RELOJ_TS=2026-08-27T08:20:46Z PATH="$COL/bin:$PATH" bash "$COL/run.sh" >/dev/null 2>&1
+RELOJ_TS=2026-08-27T08:20:46Z PATH="$COL/bin:$PATH" bash "$COL/run.sh" >/dev/null 2>&1
+ck "$(metrica)" "filas=2 unicos=2 vivos=2 derivables=2" \
+   "dos invocaciones en el mismo segundo dejan dos transcripts vivos y derivables"
+
+# La segunda: la misma tarea nombrada dos veces en UNA invocacion. Ahi ni el pid
+# separa nada (es el mismo proceso), asi que no se deduplica en silencio: se
+# rechaza y se dice que repetir es RUNS=n. Y no se escribe ninguna fila.
+limpia
+RELOJ_TS=2026-08-27T08:20:46Z PATH="$COL/bin:$PATH" bash "$COL/run.sh" t-colision t-colision >/dev/null 2>&1
+rc_rep=$?
+ck "rc=$rc_rep filas=$(cat "$COL/runs.jsonl" 2>/dev/null | wc -l)" "rc=2 filas=0" \
+   "la misma tarea dos veces en una invocacion se rechaza y no deja filas"
+
+# Y el otro lado, o la guardia podria ser 'rechazar siempre que haya argumentos':
+# dos tareas DISTINTAS en una invocacion tienen que seguir corriendo las dos.
+cp "$COL/tasks/t-colision.yaml" "$COL/tasks/t-otra.yaml"
+limpia
+RELOJ_TS=2026-08-27T08:20:46Z PATH="$COL/bin:$PATH" bash "$COL/run.sh" t-colision t-otra >/dev/null 2>&1
+rc_dos=$?
+ck "rc=$rc_dos $(metrica)" "rc=0 filas=2 unicos=2 vivos=2 derivables=2" \
+   "dos tareas distintas en una invocacion siguen corriendo las dos"
 rm -rf "$COL"
 
 # --- 24. Una fila retirada del computo no puede irse en silencio -----------
