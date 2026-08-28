@@ -394,11 +394,19 @@ p = []
 if not ids:
     p.append("no se reconoce ningun mutante en mutantes.py")
 else:
-    # Toda cifra pegada a la palabra 'mutantes' es un recuento, este escrita como
-    # este: "33/33 mutantes" y "30 de los 38 mutantes" son la misma afirmacion en
-    # dos redacciones. Vigilar una sola es el sensor de un lado de siempre, y por
-    # eso la otra se pudrio. Aqui se juzgan TODAS, y solo valen dos numeros: los
-    # versionados (los que este fichero puede reproducir) y el total historico.
+    # (1) Juicio por VALOR: toda cifra pegada a la palabra 'mutantes' tiene que ser
+    # uno de los dos unicos recuentos ciertos -los versionados, que este fichero
+    # puede reproducir, y el total historico-. "33/33 mutantes" y "30 de los 38
+    # mutantes" son la misma afirmacion en dos redacciones y las dos caen aqui.
+    #
+    # Su alcance NO es "se escriba como se escriba", y decirlo era falso: esto solo
+    # ve las cifras PEGADAS a esa palabra. Medido sobre el documento real, se le
+    # escapan sin una queja "el fichero versiona 25 de ellos", "de los mutantes, se
+    # reproducen 25" y "los 25 ultimos versionados" -que es, literalmente, la mitad
+    # podrida de la frase que motivo este sensor: de las dos cifras falsas que lo
+    # provocaron, esta parte solo caza una-. Y tampoco distingue el papel: con
+    # {30, 38} como unico filtro, "30/30 mutantes; los 38 mutantes versionados",
+    # con los dos papeles cambiados, pasa limpio. Para eso esta (2).
     versionados, total = len(ids), max(ids)
     valores = []
     for x in re.finditer(r"(?<![\w/-])(\d+(?:\s*/\s*\d+)?(?:\s+de\s+los\s+\d+)?)"
@@ -413,6 +421,36 @@ else:
     if valores and not malos and set(valores) != set((versionados, total)):
         p.append("el doc solo publica %s: le falta decir %d versionados de %d historicos"
                  % (sorted(set(valores)), versionados, total))
+    # (2) Juicio por PAPEL: cada patron ata un numero a lo que ese numero significa.
+    # Es el lado que (1) no puede ver, porque para (1) los dos recuentos ciertos son
+    # intercambiables. Los marcados obligatorios tienen que APARECER: si manana se
+    # reescribe la frase en una redaccion que estos patrones no conocen, el sensor
+    # se pone rojo en vez de quedarse midiendo cero y cantando verde, que es como se
+    # perdio la anterior. Pasarse obliga a redactar de una forma concreta; quedarse
+    # corto deja el papel sin vigilar, y ese es el fallo que esto viene a cerrar.
+    ETIQUETA = {"versionados": ("los mutantes versionados", versionados),
+                "total": ("el total historico", total)}
+    PAPELES = (("los N ... versionados", True,
+                r"(?<![\w/-])(\d+)\s+(?:\S+\s+)?versionados", ("versionados",)),
+               ("N de los M mutantes", True,
+                r"(?<![\w/-])(\d+)\s+de\s+los\s+(\d+)\s+mutantes", ("versionados", "total")),
+               # No obligatorio: hoy el doc no lo usa. Esta puesto porque "versiona
+               # 25 de ellos" es una de las redacciones medidas que se colaban.
+               ("versiona N", False, r"\bversionan?\s+(\d+)", ("versionados",)))
+    vistos = set()
+    for nombre, _obl, patron, papeles in PAPELES:
+        for x in re.finditer(patron, doc):
+            vistos.add(nombre)
+            for g, papel in enumerate(papeles, 1):
+                etiqueta, cierto = ETIQUETA[papel]
+                if int(x.group(g)) != cierto:
+                    p.append("el doc escribe '%s': ahi el %s tendria que ser %d (%s)"
+                             % (" ".join(x.group(0).split()), x.group(g), cierto, etiqueta))
+    for nombre, obl, _patron, _papeles in PAPELES:
+        if obl and nombre not in vistos:
+            p.append("el doc ya no ata ninguna cifra a su papel en la forma '%s': por"
+                     " valor, %d y %d son intercambiables y nadie se enteraria"
+                     % (nombre, versionados, total))
     # El rango tiene que estar escrito en alguna parte, o el "los N versionados" no
     # dice CUALES y deja de ser comprobable contra el fuente.
     rangos = [(int(a), int(b)) for a, b in re.findall(r"M(\d+)\s*[-\u2013\u2014]\s*M(\d+)", doc)]
@@ -437,15 +475,27 @@ fi
 sed -E 's#([0-9]+)/([0-9]+) mutantes#\1/424242 mutantes#' "$EVALDOC" > "$TMPD/m1.md"
 sed -E 's#([0-9]+) de los ([0-9]+) mutantes#424242 de los \2 mutantes#' "$EVALDOC" > "$TMPD/m2.md"
 sed -E 's#M9.M38#M9-M999#g' "$EVALDOC" > "$TMPD/m3.md"
+# Y los dos que el juicio por valor no puede ver, que son los que motivan el juicio
+# por papel: m4 cambia los dos recuentos ciertos de sitio -las dos cifras siguen
+# siendo legales, solo estan en el papel del otro- y m5 escribe la cifra sin pegarla
+# a la palabra 'mutantes', que es la redaccion medida por la que se colo la mitad de
+# la frase original. Si el documento se reescribe y alguna de estas sustituciones
+# deja de encajar, la copia sale identica al original, el comprobador no se queja y
+# ESTA sonda se pone roja: una sonda que deja de inyectar tiene que notarse.
+sed -E 's#([0-9]+)/([0-9]+) mutantes; los ([0-9]+) mutantes versionados#\3/\3 mutantes; los \1 mutantes versionados#' \
+    "$EVALDOC" > "$TMPD/m4.md"
+sed -E 's#los [0-9]+ mutantes versionados#los 25 ultimos versionados#' "$EVALDOC" > "$TMPD/m5.md"
+VARIANTES=(m1 m2 m3 m4 m5)
 malos=0
-for d in m1 m2 m3; do
+for d in "${VARIANTES[@]}"; do
   [ -n "$(recuento_mutantes "$TMPD/$d.md")" ] || malos=$((malos+1))
 done
 if [ "$malos" -eq 0 ]; then
-  echo "ok - falsabilidad: acusa el recuento falso en las dos redacciones y el rango falso"
+  echo "ok - falsabilidad: acusa las ${#VARIANTES[@]} deformaciones del recuento (recuento falso en"
+  echo "     las dos redacciones, rango falso, papeles intercambiados y cifra despegada)"
   pass=$((pass+1))
 else
-  echo "NOT ok - $malos de 3 recuentos de mutantes falsos pasaron el comprobador"
+  echo "NOT ok - $malos de ${#VARIANTES[@]} deformaciones del recuento pasaron el comprobador"
   fail=$((fail+1))
 fi
 
