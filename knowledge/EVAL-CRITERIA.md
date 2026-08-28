@@ -240,10 +240,14 @@ negativa  (10/21 runs) 1.00 vs 1.00 · +0.00 -> el harness no estorba
 sin-ajustes  (hooks, permisos y env ) 0.68 [0.47-0.84] vs 0.85 con todo · -0.17 -> la pieza APORTA
 ```
 
-La línea negativa dejó de acusar al harness sin tocar ningún umbral: solo se
-repararon los correctores. Discriminan 3 tareas de 20 (la 12 pasó a muda por
-arriba: 1.00 en los tres brazos con las filas que quedan; la 20 es muda a 0.00 en
-los tres). El número de la tirada anterior queda abajo como registro de lo que
+La línea negativa dejó de acusar al harness sin tocar ningún umbral, pero no lo
+hizo sola la reparación: hacen falta las dos cosas, los correctores reparados **y**
+la retirada de esa fila. Con la fila dentro, `report.py` emite `0.91 vs 1.00 ·
+-0.09` y la acusación sigue en pie. Aquí se escribió que bastaba con reparar los
+correctores; no bastaba, y queda dicho en vez de corregido en silencio.
+
+Discriminan 3 tareas de 20 (la 12 pasó a muda por arriba: 1.00 en los tres brazos
+con las filas que quedan; la 20 es muda a 0.00 en los tres). El número de la tirada anterior queda abajo como registro de lo que
 medía el instrumento roto.
 
 **La ablación va con una salvedad, y va aquí, no en una nota al pie:** el −0,17
@@ -525,7 +529,9 @@ Dos decisiones que evitan que esto contamine el eval:
 2. ~~**El harness produce falsos positivos en las tareas negativas** (0,90 contra 1,00).~~
    **RETIRADA el 2026-08-27**, y aquí seguía en presente y sin tachar mientras el bloque de
    arriba decía lo contrario: ese −0,10 lo escribía el corrector roto de la 12, no el
-   agente. Con los correctores reparados la línea negativa da 1,00 contra 1,00. Se deja
+   agente. Con los correctores reparados **y esa fila retirada** la línea negativa da
+   1,00 contra 1,00; contada tal cual salió, da 0,91 contra 1,00 y la acusación no
+   desaparece. La reparación sola no lo explica, y esta línea llegó a decir que sí. Se deja
    tachada, no borrada, porque el registro de haberlo creído vale más que la línea limpia.
    Que estuviera horas contradiciendo al bloque de arriba sin que nada se pusiera rojo es
    lo que ahora vigila `test_doc_claims.sh` §4.
