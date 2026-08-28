@@ -577,13 +577,24 @@ io.open(sys.argv[2], "w", encoding="utf-8").write(
     "".join(l + AVISO if l.startswith("coste: ") and l.endswith("por run)\n") else l
             for l in doc.splitlines(True)))
 PYDOC
-  restantes=$(cifras_eval "$TMPD/con-aviso.md" "$TMPD/aviso.jsonl" | /usr/bin/grep -c 'AVISO:')
-  if [ "$avisos" -ge 1 ] && [ "$quejas" -ge 1 ] && [ "$restantes" -eq 0 ]; then
+  # "Verde" es CERO quejas, no cero quejas que digan 'AVISO:'. Contando solo esas,
+  # esta sonda aprobaba una cita mutilada: medido, un doc que publica el titular del
+  # AVISO y se come sus dos lineas de continuacion produce cuatro quejas -el
+  # comprobador funciona: la salvedad se publico descabezada- y NINGUNA lleva la
+  # cadena 'AVISO:', porque citan la segunda linea y la tercera. El comprobador
+  # estaba bien; la sonda medía menos de lo que su comentario prometia.
+  # Y el rc, por lo mismo que arriba: si el comprobador revienta aqui, la salida
+  # sale vacia y "no queda ninguna queja" seria otra vez un verde sin haber medido.
+  restantes_txt=$(cifras_eval "$TMPD/con-aviso.md" "$TMPD/aviso.jsonl"); rc_rest=$?
+  restantes=$(printf '%s\n' "$restantes_txt" | /usr/bin/grep -c .)
+  if [ "$avisos" -ge 1 ] && [ "$quejas" -ge 1 ] && [ "$rc_rest" -eq 0 ] \
+     && [ "$restantes" -eq 0 ]; then
     echo "ok - falsabilidad: una salvedad que report.py aprende a emitir hoy es obligatoria manana"
     pass=$((pass+1))
   else
     echo "NOT ok - la salvedad no se exige sola: report.py emite $avisos AVISO,"
-    echo "         el doc que la calla da $quejas queja(s) y el que la publica $restantes"
+    echo "         el doc que la calla da $quejas queja(s) y el que la publica $restantes (rc=$rc_rest)"
+    echo "$restantes_txt"
     fail=$((fail+1))
   fi
 else
