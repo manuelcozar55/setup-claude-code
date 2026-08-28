@@ -233,12 +233,16 @@ def corre():
 
 
 def firma(l):
-    """La misma asercion en un bucle imprime una linea por vuelta, y solo cambia lo
-    que va entre comillas o entre parentesis (el valor probado, el obtenido). Eso no
-    es ambiguedad: ambiguedad es que la aguja case con OTRA asercion."""
-    l = re.sub(r"'[^']*'", "''", l)
-    l = re.sub(r"\([^)]*\)", "()", l)
-    return " ".join(l.split())
+    """La misma asercion en un bucle imprime una linea por vuelta y solo cambia lo que
+    va entre comillas (M9 imprime una por brazo). Eso no es ambiguedad: ambiguedad es
+    que la aguja case con OTRA asercion.
+
+    Lo que iba entre parentesis SI se compara. Normalizarlo tambien tapaba ambiguedad
+    de verdad -dos aserciones distintas que solo se diferencian en el parentesis
+    quedaban con la misma firma y el mutante salia CAZADO sin saber cual disparo- y
+    medido sobre la tanda entera no protegia nada: 30/30 y cero AGUJA AMBIGUA sin esa
+    linea. Era un falso negativo pagado por un beneficio que nadie cobraba."""
+    return " ".join(re.sub(r"'[^']*'", "''", l).split())
 
 
 def md5(f):
