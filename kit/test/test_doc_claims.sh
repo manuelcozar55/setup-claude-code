@@ -399,14 +399,21 @@ else:
     # puede reproducir, y el total historico-. "33/33 mutantes" y "30 de los 38
     # mutantes" son la misma afirmacion en dos redacciones y las dos caen aqui.
     #
-    # Su alcance NO es "se escriba como se escriba", y decirlo era falso: esto solo
-    # ve las cifras PEGADAS a esa palabra. Medido sobre el documento real, se le
-    # escapan sin una queja "el fichero versiona 25 de ellos", "de los mutantes, se
-    # reproducen 25" y "los 25 ultimos versionados" -que es, literalmente, la mitad
-    # podrida de la frase que motivo este sensor: de las dos cifras falsas que lo
-    # provocaron, esta parte solo caza una-. Y tampoco distingue el papel: con
-    # {30, 38} como unico filtro, "30/30 mutantes; los 38 mutantes versionados",
-    # con los dos papeles cambiados, pasa limpio. Para eso esta (2).
+    # Los dos limites de ESTE bloque, medidos: (i) solo ve las cifras PEGADAS a la
+    # palabra -"de los mutantes, se reproducen 25" pasa por aqui sin una queja-, y
+    # (ii) solo juzga el VALOR, nunca el papel: con {versionados, total} como unico
+    # filtro los dos recuentos ciertos son intercambiables, y "30/30 mutantes; los 38
+    # mutantes versionados" pasa (1) limpio. Para (ii) esta (2), que ata cada cifra a
+    # su papel -y ahi si caza esa frase, y tambien "el fichero versiona 25 de ellos" y
+    # "los 25 ultimos versionados", que se le escapan a (1) pero no al sensor-.
+    #
+    # Y lo que se le escapa al sensor ENTERO, que no es lo mismo y es lo que hay que
+    # declarar aqui: una frase falsa cuya cifra sea uno de los dos recuentos ciertos y
+    # cuya redaccion no sea ninguna de las tres de (2). Medido sobre el documento real,
+    # estas dos pasan sin una queja, y las dos llevan la cifra pegada a la palabra:
+    #     "En la practica los 38 mutantes se reproducen todos."
+    #     "Los 30 mutantes historicos cubren toda la serie."
+    # Decir que solo se le escapa la cifra que NO va pegada a "mutantes" era falso.
     versionados, total = len(ids), max(ids)
     valores = []
     for x in re.finditer(r"(?<![\w/-])(\d+(?:\s*/\s*\d+)?(?:\s+de\s+los\s+\d+)?)"
@@ -428,6 +435,15 @@ else:
     # se pone rojo en vez de quedarse midiendo cero y cantando verde, que es como se
     # perdio la anterior. Pasarse obliga a redactar de una forma concreta; quedarse
     # corto deja el papel sin vigilar, y ese es el fallo que esto viene a cerrar.
+    #
+    # El precio de pasarse esta medido y es real: este lado ACUSA A REDACCIONES
+    # CIERTAS. Sobre el documento real, escribir "los 30 mutantes que se versionan" en
+    # vez de "los 30 mutantes versionados", o "Solo 30 mutantes de los 38 son
+    # reproducibles" en vez de "Solo 30 de los 38 mutantes son reproducibles", dispara
+    # la queja de patron obligatorio ausente siendo las dos frases verdad. Se acepta a
+    # proposito y no se afloja: falla en ruidoso -delante del operador y con un mensaje
+    # que dice exactamente que forma echa en falta-, no en silencio, y aflojar por aqui
+    # tira justo en la direccion contraria a lo que se le pide al bloque (1).
     ETIQUETA = {"versionados": ("los mutantes versionados", versionados),
                 "total": ("el total historico", total)}
     PAPELES = (("los N ... versionados", True,
