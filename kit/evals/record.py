@@ -90,7 +90,10 @@ rec = {
     "model": model,
     "harness_sha": os.environ.get("EVAL_SHA"),
     # Quinto componente del nombre del transcript. Sin el, dos invocaciones del
-    # mismo segundo dan filas identicas y el nombre no puede separarlas.
+    # mismo segundo son indistinguibles en los campos de los que se dispone AL
+    # NOMBRARLO -task, arm, attempt y ts-, asi que el nombre no puede separarlas.
+    # Las filas acabadas no son identicas (difieren coste, latencia, turnos, tokens
+    # y a veces el resultado), pero eso se sabe despues, con el transcript ya escrito.
     "run_pid": os.environ.get("EVAL_RUN"),
     # Coste y latencia van FUERA de la nota, nunca dentro: una tarea puede
     # resolverse bien y costar el triple, y esas son dos lecturas distintas.
