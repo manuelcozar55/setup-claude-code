@@ -35,10 +35,15 @@ word_for() { case "$1" in
   *) echo "";; esac; }   # >12 no aparece escrito en letra en ningun documento
 
 # claim <real> <sustantivo> <fichero...>: toda cifra que preceda a <sustantivo> en esos
-# ficheros debe ser <real>. Devuelve 1 si encuentra alguna que no lo sea.
+# ficheros debe ser <real>. Devuelve 1 si encuentra alguna que no lo sea, y tambien si no
+# encuentra NINGUNA: un claim que no juzga una sola cifra aprueba pase lo que pase.
+CLAIM_SIN_CIFRA=
+# claim_flojo: lo mismo, pero sin exigir haber juzgado nada. Solo para las afirmaciones
+# que hoy no aparecen escritas con cifra en ningun documento; el motivo, en su llamada.
+claim_flojo() { CLAIM_SIN_CIFRA=1; claim "$@"; CLAIM_SIN_CIFRA=; }
 claim() {
   local real="$1" noun="$2"; shift 2
-  local bad="" w f hit rest n; w=$(word_for "$real")
+  local bad="" w f hit rest n vistas=0; w=$(word_for "$real")
   for f in "$@"; do
     # Dos exenciones, ninguna es una cifra del inventario: una linea de presupuesto
     # ("<=6 agentes") y un recuento parcial marcado a mano con doc-claims:ignore.
@@ -50,8 +55,9 @@ claim() {
           | tr -d '+')
       [ "$n" = "$rest" ] && continue          # la regex no encajo: no hay cifra que juzgar
       case "$n" in
-        "$real"|"$w") ;;
+        "$real"|"$w") vistas=$((vistas+1)) ;;
         [0-9]*|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)
+          vistas=$((vistas+1))
           bad="$bad
   $f:$(printf '%s' "$hit" | cut -c1-90)" ;;
         *) ;;   # "las suites", "sus agentes": no es una cifra
@@ -62,8 +68,17 @@ claim() {
   if [ -n "$bad" ]; then
     echo "NOT ok - '$noun': el repo tiene $real y la doc dice otra cosa:$bad"
     fail=$((fail+1))
+  elif [ "$vistas" -eq 0 ] && [ -z "$CLAIM_SIN_CIFRA" ]; then
+    # Sin esto un `claim` cuya frase se reescribe deja de encajar y sigue diciendo
+    # 'ok' habiendo juzgado cero cifras: el sensor de un solo lado, que sabe
+    # suspender y no sabe medir. Rojo ruidoso en vez de verde mudo.
+    echo "NOT ok - '$noun': no hay ninguna cifra que juzgar en $*: mide cero y aprobaria siempre"
+    fail=$((fail+1))
+  elif [ "$vistas" -eq 0 ]; then
+    echo "ok - '$noun': ningun documento escribe una cifra delante; no hay nada que juzgar"
+    pass=$((pass+1))
   else
-    echo "ok - '$noun': la doc dice $real y el repo tiene $real"
+    echo "ok - '$noun': la doc dice $real y el repo tiene $real ($vistas cifra(s) juzgada(s))"
     pass=$((pass+1))
   fi
 }
@@ -78,9 +93,15 @@ else
 fi
 
 claim "$SUITES" suites "${DOCS[@]}"
-claim "$(count knowledge/DECISIONS/*.md)" ADRs "${DOCS[@]}"
+# Estas dos van flojas por un defecto PREEXISTENTE, no por comodidad: medido con el
+# guardia puesto, ninguna juzga una sola cifra hoy. Ningun documento de DOCS escribe un
+# numero delante de "ADR(s)", y delante de "comandos" solo hay palabras ("los comandos",
+# "ejecutar comandos"), nunca una cifra. Siguen puestas porque el dia que alguien
+# publique "9 ADRs" o "5 comandos" las cazan; exigirles medir hoy pediria escribir esas
+# cifras en README.md y CLAUDE.md, que es otro encargo. Queda declarado, no tapado.
+claim_flojo "$(count knowledge/DECISIONS/*.md)" ADRs "${DOCS[@]}"
 claim "$(count kit/claude/agents/*.md)" agentes "${DOCS[@]}"
-claim "$(count .claude/commands/*.md)" comandos "${DOCS[@]}"
+claim_flojo "$(count .claude/commands/*.md)" comandos "${DOCS[@]}"
 claim "$(count kit/docs/*.md)" documentos kit/README.md kit/docs/01-overview.md
 # El inventario del eval era la unica cifra que nadie juzgaba: "40 tareas reales
 # (30 positivas / 10 negativas)" pasaba verde. Va acotado a los dos indices porque
@@ -89,6 +110,13 @@ claim "$(count kit/docs/*.md)" documentos kit/README.md kit/docs/01-overview.md
 claim "$(count kit/evals/tasks/*.yaml)" tareas README.md kit/README.md
 claim "$(grep -l '^tipo: positiva' kit/evals/tasks/*.yaml | wc -l)" positivas README.md kit/README.md
 claim "$(grep -l '^tipo: negativa' kit/evals/tasks/*.yaml | wc -l)" negativas README.md kit/README.md
+# El mismo inventario en el indice del propio eval, anclado a la FRASE de la cabecera
+# ("**N tareas** en `tasks/*.yaml`") y no a la palabra suelta. Ese fichero lleva cuatro
+# recuentos parciales ciertos -9, 5/6, seis y 20-30- que un `claim` sobre "tareas"
+# enrojeceria, y uno de ellos vive dentro del bloque que copia la salida literal de
+# report.py: exentarlo con doc-claims:ignore falsificaria la cita. Anclar solo mide la
+# cabecera; que la cabecera siga existiendo lo exige el guardia de 'vistas' de arriba.
+claim "$(count kit/evals/tasks/*.yaml)" 'tareas\*\* en' kit/evals/README.md
 
 # --- 2. Todo script citado en la doc existe --------------------------------
 # Asi es como sobrevivio 'session-brief.sh' en tres documentos despues de borrarlo.
@@ -144,14 +172,21 @@ fi
 # --- 3. Falsabilidad: el comprobador tiene que saber fallar ----------------
 # Sin esto, un `claim` con la regex rota daria verde para siempre.
 TMP=$(mktemp); printf 'el kit trae 99 agentes y cuatro comandos\n' > "$TMP"
-before=$fail; claim 8 agentes "$TMP" >/dev/null; claim 6 comandos "$TMP" >/dev/null
-rm -f "$TMP"
-if [ $((fail - before)) -eq 2 ]; then
+# Y el tercer caso, que es el que aprobaba sin medir: un fichero donde la frase no
+# encaja. Sin el guardia de 'vistas', esto sale 'ok' habiendo juzgado cero cifras.
+MUDO=$(mktemp); printf 'el kit trae agentes, pero aqui nadie dice cuantos\n' > "$MUDO"
+before=$fail
+claim 8 agentes "$TMP" >/dev/null; claim 6 comandos "$TMP" >/dev/null
+claim 8 agentes "$MUDO" >/dev/null
+rm -f "$TMP" "$MUDO"
+if [ $((fail - before)) -eq 3 ]; then
   fail=$before; pass=$((pass+1))
-  echo "ok - falsabilidad: detecta una cifra falsa en digito (99) y en letra (cuatro)"
+  echo "ok - falsabilidad: detecta una cifra falsa en digito (99), en letra (cuatro) y un"
+  echo "     fichero sin ninguna cifra que juzgar (verde sin medir)"
 else
   fail=$before; fail=$((fail+1))
-  echo "NOT ok - el comprobador no detecto cifras deliberadamente falsas (tautologia)"
+  echo "NOT ok - el comprobador no detecto cifras deliberadamente falsas, o aprobo un fichero"
+  echo "         donde no tenia nada que medir (tautologia)"
 fi
 
 # --- 4. Las cifras de knowledge/EVAL-CRITERIA.md salen del almacen de tiradas ---
