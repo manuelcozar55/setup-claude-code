@@ -1144,5 +1144,38 @@ else
 fi
 rm -rf "$EXC"
 
+# --- 25. La suite que mide la documentacion tiene que haber medido algo ----
+# Reducir test_doc_claims.sh a `echo "== 0 passed, 0 failed =="; exit 0` dejaba
+# `make test` en verde: el Makefile solo mira el rc y ningun sensor contaba sus
+# aserciones. Un "ok" emitido sin haber medido nada es peor que un rojo.
+#
+# Se corre en la condicion del clon recien hecho (sin almacen) y con la
+# sub-sonda corto-circuitada: cuesta 0,9 s en vez de 8,8 s y es la condicion con
+# la que cualquiera se encuentra al clonar. La condicion con almacen ya la corre
+# `make test` una linea mas arriba, asi que no se queda sin cubrir.
+#
+# Lo que NO caza, dicho aqui para que nadie lo suponga: no juzga si esas
+# aserciones son ciertas -de eso responde la suite consigo misma- ni nota que se
+# pierdan una o dos por encima del suelo. Caza que deje de aserverar, y que su
+# resumen declare mas de lo que ha emitido.
+SUELO_DOC=12
+DOCTMP=$(mktemp -d) || exit 1
+salida_doc=$(DOC_CLAIMS_SUBSONDA=1 DOC_CLAIMS_STORE="$DOCTMP/sin-almacen.jsonl" \
+             bash kit/test/test_doc_claims.sh 2>/dev/null)
+rmdir "$DOCTMP"
+resumen_doc=$(printf '%s\n' "$salida_doc" | grep -E '^== [0-9]+ passed, [0-9]+ failed')
+emitidas_doc=$(printf '%s\n' "$salida_doc" | grep -cE '^(ok|NOT ok|skip) - ')
+declaradas_doc=$(printf '%s\n' "$resumen_doc" | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
+if [ -z "$resumen_doc" ]; then
+  echo "NOT ok - test_doc_claims.sh no emitio linea de resumen: no consta que midiera nada"
+  fail=$((fail+1))
+elif [ "$emitidas_doc" -lt "$SUELO_DOC" ]; then
+  echo "NOT ok - test_doc_claims.sh emitio $emitidas_doc aserciones, el suelo es $SUELO_DOC"
+  fail=$((fail+1))
+else
+  ck "$declaradas_doc" "$emitidas_doc" \
+     "test_doc_claims.sh emitio $emitidas_doc aserciones y su resumen declara las mismas"
+fi
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
