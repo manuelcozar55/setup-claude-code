@@ -145,13 +145,33 @@ awk '/^## \[Unreleased\]/ {on=1} /^## \[[0-9]/ {on=0} {print (on ? $0 : "")}' \
 # enrojecer un fichero correcto, asi que se declara 'skip' y se ve en el resumen. Lo
 # que NO se hace es aflojar los claim de abajo a claim_flojo: mientras la seccion tenga
 # contenido, un claim que no juzgue ninguna cifra es un 'ok' que no mide.
-if [ "$(grep -c . "$UNREL")" -eq 0 ]; then
+# El awk imprime tambien la linea de la cabecera, y de ahi sale la unica forma de
+# distinguir "la seccion esta vacia" de "el recorte se ha roto": si la cabecera NO
+# aparece en el recorte, el ancla ha dejado de casar y no hay nada que medir. Sin esta
+# distincion el fallo es mudo -medido: con el ancla escrita /^## \[UnReleased\]/ la
+# suite daba "22 passed, 0 failed, 1 skipped" y rc=0, seis cifras dejadas de mirar-.
+# No se cuenta la seccion por segunda vez a mano: eso serian dos implementaciones y la
+# segunda se pudriria igual.
+if [ "$(grep -c '^## \[Unreleased\]' "$UNREL")" -ne 1 ]; then
+  echo "NOT ok - el recorte de [Unreleased] no trae su cabecera: el ancla del awk ya no"
+  echo "         casa con CHANGELOG.md, y sin ella el skip aprobaria sin medir nada"
+  fail=$((fail+1))
+elif [ "$(grep -c . "$UNREL")" -eq 1 ]; then
   echo "skip - CHANGELOG.md [Unreleased]: seccion vacia (version recien etiquetada);"
   echo "       sus cifras NO se han comprobado"
   skipped=$((skipped+1))
 else
   claim "$SUITES" suites "$UNREL"
   claim "$(count knowledge/DECISIONS/*.md)" ADRs "$UNREL"
+  # El inventario del eval, que es lo que esta rama anade y lo que [Unreleased] anuncia.
+  # Aqui si van estrictos -no como sobre DOCS-: las entradas nuevas escriben las cuatro
+  # cifras, asi que hay algo que juzgar. Ojo al redactarlas: el sed de claim es GOLOSO y
+  # solo juzga la ULTIMA aparicion de "<n> <sustantivo>" de cada linea, asi que un
+  # recuento parcial cierto ("decide 3 tareas") enrojece si queda el ultimo de su linea.
+  claim "$(count kit/evals/tasks/*.yaml)" tareas "$UNREL"
+  claim "$(grep -l '^tipo: positiva' kit/evals/tasks/*.yaml | wc -l)" positivas "$UNREL"
+  claim "$(grep -l '^tipo: negativa' kit/evals/tasks/*.yaml | wc -l)" negativas "$UNREL"
+  claim "$(grep -cE '^    \("M[0-9]+' kit/evals/mutantes.py)" mutantes "$UNREL"
 fi
 rm -f "$UNREL"; rmdir "$UNRELD"
 

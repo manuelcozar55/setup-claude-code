@@ -107,6 +107,65 @@ corre hoy 25 suites de test, frente a las 16 de v1.0.0.
   esto se quedan clavadas en la versión anclada, incluidas las vulnerabilidades
   que se les descubran después.
 
+
+- **El eval set pasa de medir ruido a medir comportamiento, y de 6 casos a 20 tareas**
+  (10 positivas / 10 negativas).
+  Que la mitad sean casos negativos es deliberado: sin ellos, un harness que dice que sí
+  a todo puntúa igual que uno que discrimina. Correrlo cuesta
+  dinero, así que nunca se había corrido entero y nadie había visto que tenía un falso
+  negativo y un falso positivo estructurales.
+
+- **Brazo de control (`ARM=off`, que añade `--safe-mode`) y las tres preguntas separadas.**
+  Sin control no hay *lift*: "acierta 0,85" no dice nada si no se sabe qué acierta sin el
+  harness puesto. El informe responde por separado *¿funciona?*, *¿sirve?* y *¿a qué
+  coste?*, y no mete nunca el precio dentro de la nota.
+
+- **Ablación por componente: tres brazos más** (`sin-ajustes`, `sin-skills`, `sin-mcp`),
+  cinco en total contando `on` y `off`. El *lift* dice si el harness sirve; no dice **qué
+  pieza** sirve. Medido en la tirada del 2026-08-27: `sin-ajustes` cuesta −0,17, más que
+  el lift entero; `sin-skills` y `sin-mcp` salen `SIN DATOS` porque en esa tirada no se
+  activó ni una skill ni un servidor MCP, y el informe dice que correrlos no mediría
+  nada en vez de publicar un cero.
+
+- **Tareas mudas: el conjunto declara cuándo dejó de informar** (E16). `report.py` cuenta
+  las que dieron el mismo resultado en los dos brazos y en todas sus repeticiones —no
+  pueden mover el lift— y escribe `SATURADO`. En la tirada del 2026-08-27 son mudas 17 de
+  20 tareas: el conjunto que decide es de tres, no de veinte. Con un solo brazo el bloque
+  escribe `NO MEDIBLE` en vez de "0 mudas", porque sin control un cero sería mentir por
+  omisión.
+
+- **La máquina es una variable experimental, no un decorado** (E14). `record.py` apunta de
+  cada tirada el modelo, el sha, el coste, los turnos, la carga, las CPUs y la memoria
+  libre; `report.py` avisa si los brazos corrieron con la máquina en estados distintos, y
+  su guardia hermano `comparables()` escribe `NO COMPARABLE` en vez de restar dos brazos
+  que corrieron modelos distintos.
+
+- **`make mutantes`: 32 mutantes versionados (M9–M40)** que rompen a propósito un sensor
+  del eval cada vez y exigen que la suite se ponga roja. Un sensor que no ha suspendido
+  nunca no se sabe si sabe suspender. Tarda unos 4 minutos y no cuesta dinero.
+
+- **`DRYRUN=1` y filtro por tarea** (E29). El coste de una tirada se estima **antes** de
+  pagarla y a partir de lo ya gastado (`kit/evals/runs.jsonl`), no de una cifra escrita a
+  mano: el `Makefile` decía "40 llamadas / ~12 USD". Salvedad medida: `runs.jsonl` está en
+  `.gitignore`, y sin él el ensayo sigue contando llamadas pero no puede estimar dólares.
+
+- **Dos puentes al observatorio, ninguno con Docker ni licencia**: `langsmith_push.py`
+  —nube o receptor local en `:1984`, con `make langsmith-local` y `make langsmith-arbol`—
+  y `phoenix_push.py` con `make phoenix`, que levanta una interfaz web en `:6006`. La
+  telemetría se prueba contra algo que escucha, no en seco.
+
+- **Una fila con el instrumento averiado y sin evidencia se retira, no se corrige**
+  (`excluded` en `runs.jsonl`). Queda fuera de todo cómputo, el informe lo anuncia en su
+  primera línea en vez de retirarla en silencio, y queda fuera también de los dos puentes:
+  ni `langsmith_push.py` ni `phoenix_push.py` la publican, y ambos lo dicen por `stderr`.
+  Publicarla allí la habría devuelto por la puerta de atrás, enseñada como un `fail`
+  normal.
+
+- **`knowledge/EVAL-CRITERIA.md`: 29 criterios de calidad del eval**, cada uno con su
+  fuente y su estado honesto, y **ADR 011**, que decide no migrar a OpenHarness. Las cifras
+  que ese documento publica se derivan de `runs.jsonl` en tiempo de test; sin el almacén
+  —gitignorado— esas aserciones pasan a `skip`, no a `ok`.
+
 ### Changed
 
 - **`sentinel-allowlist.json`: fuera los tres dominios de LinkedIn**, que quedaron muertos al
@@ -140,6 +199,17 @@ corre hoy 25 suites de test, frente a las 16 de v1.0.0.
   fichero y el Stop hook leía otro, así que el gate no encontraba run y caía a modo normal.
   **Fallaba en abierto y en silencio**, que es la peor forma de fallar en un mecanismo de
   seguridad.
+
+
+- **`report.py` deja de dar un número desnudo.** Cada tasa va con su intervalo de Wilson al
+  95 %, el veredicto se decide por bandas (`SIRVE` ≥ +0,05, `PERJUDICA` ≤ −0,10, `NEUTRO`
+  en medio) y las salvedades que matan una cifra —`AVISO` de máquina distinta, `SATURADO`,
+  `NO COMPARABLE`, `NO MEDIBLE`, `SIN DATOS`— salen pegadas a ella, no en una nota al pie.
+
+- **`kit/Makefile` delega en la raíz.** El Quick start deja al lector dentro de `kit/` y le
+  manda `make test`; sin Makefile ahí, `make` encontraba el **directorio** `kit/test`, lo
+  tomaba por un target ya construido y respondía "Nothing to be done for 'test'" con exit
+  0: un oráculo que devuelve 0 sin ejecutar nada, en un repo cuya tesis es la contraria.
 
 ### Removed
 
@@ -226,6 +296,59 @@ corre hoy 25 suites de test, frente a las 16 de v1.0.0.
   reciente: interno o ZIP…)`— es YAML inválido. Se entrecomilla y se añade a
   `test_harness_structure.sh` el sensor que lo habría cazado antes de subirlo.
 
+
+- **El evaluado podía leer su propio oráculo.** El enunciado, el setup, el check y el
+  transcript vivían en el mismo directorio de trabajo que se le daba al agente: de 12
+  ejecuciones de la primera tirada real, 4 leyeron ficheros del harness y 3 hicieron `cat
+  _check.sh` — en la tarea 06 lo hicieron los dos brazos, y los dos aprobaron. Ahora el
+  meta vive en un `mktemp -d` **sin parentesco** con el del agente, así que un `../` no
+  descubre nada. El sensor es de comportamiento, no un `grep` sobre `run.sh`: corre
+  `run.sh` entero con un `claude` de mentira que solo lista su `cwd`.
+
+- **El eval set medía ruido, no comportamiento**, y no se había visto porque correrlo
+  cuesta dinero. `run.sh` definía `PY` sin exportarlo y `bash _check.sh` es otro proceso,
+  así que el check de cuatro de los seis casos se ejecutaba como `"" grade.py …` y daba
+  rojo sin mirar al agente. La 06 daba verde pasara lo que pasara: verificaba con `grep -q
+  'test_suma.py' _run.jsonl` y el prompt se copia literalmente dentro del transcript, así
+  que acertaba por el eco del enunciado. Y un `error` de instrumentación se agregaba junto
+  al `fail`, que convierte una avería del aparato en un suspenso del agente.
+
+- **El modelo apuntado era el equivocado.** `record.py` guardaba `next(iter(modelUsage))`,
+  el primero del diccionario, y cada sesión de `claude -p` gasta unos 15 tokens en un haiku
+  auxiliar: 40 tiradas de Opus quedaron etiquetadas como Haiku y el guardia de E24 se
+  negaba a comparar dos brazos que habían corrido con el **mismo** modelo. Un guardia
+  alimentado con el dato equivocado no protege: bloquea lo bueno.
+
+- **El nombre del transcript colisionaba y se comía la evidencia.** Llevaba `$(date +%F)`
+  —el día— y `attempt` reinicia en cada invocación, así que dos tiradas de la misma tarea
+  y el mismo brazo el mismo día se pisaban. Pasa a llevar el `ts` de la fila. Una de esas
+  colisiones ya había ocurrido, y por eso la fila retirada no es re-auditable.
+
+- **`make evals-paid` nunca llegaba a preguntar, y el defecto era preexistente.** La receta
+  terminaba en `\\`, que en un Makefile es una barra literal y no una continuación: `read`
+  definía `ans` en una shell y la comparación corría en otra, con `ans` vacío. Fallaba
+  **cerrado** —decía "Cancelado." y salía 1 siempre—, así que no era un riesgo de gasto:
+  era un target muerto. El sensor exige que ninguna línea de receta acabe en dos barras,
+  así que cubre también a los targets futuros.
+
+- **El ensayo podía mentir sobre lo que ibas a pagar.** El estimador de `DRYRUN=1` moría
+  con un `runs.jsonl` corrupto —una línea JSON escalar, un `cost_usd` de texto— y `run.sh`
+  salía con 0 igualmente, porque tiene `set -u` sin `set -e` y el traceback caía en un
+  `exit 0` incondicional: el operador se quedaba sin la única cifra que la herramienta
+  existe para darle, y con un exit 0 diciendo que todo fue bien. Además, el `: > "$TMP"`
+  que trunca el parcial corría **antes** del bloque de ensayo, así que un ensayo que
+  promete no tocar nada pisaba un fichero del árbol.
+
+- **Dos correctores confundían la forma con la calidad.** El de la 12 castigaba verificar
+  —`__pycache__` es el rastro de comprobar que el módulo importa, no un fichero sembrado— y
+  no miraba el exceso de celo que la tarea existe para medir. El de la 11 exige el literal
+  `.venv/bin/pip` y suspende `.venv/bin/python -m pip install requests`, que es la misma
+  solución escrita de otra forma; ese sigue sin arreglar y **infla la ablación de
+  `sin-ajustes`**, y la salvedad va escrita junto al −0,17, no en una nota al pie.
+
+- **Se deja de versionar bytecode.** Un `.pyc` publica en `co_filename` la ruta absoluta de
+  compilación, que aquí incluye el nombre de usuario.
+
 ### Documentation
 
 - **`08-plugins-mcp-y-skills.md`: la sección de MCP decía cosas que ya no eran verdad, y
@@ -294,6 +417,19 @@ corre hoy 25 suites de test, frente a las 16 de v1.0.0.
   de agosto ahí es correcta aunque hoy sea otra. De `CHANGELOG.md` entra solo la sección
   `[Unreleased]`, que describe el árbol de hoy; sus secciones publicadas quedan fuera por lo
   mismo. Trae su propio check de falsabilidad.
+
+
+- **`kit/evals/README.md` publica el inventario del eval y cómo crecerlo**, y desde esta
+  rama sus cifras tienen sensor: el recuento de tareas de su cabecera se compara con
+  `kit/evals/tasks/*.yaml` en cada `make test`.
+
+- **La tirada completa está publicada con su condición** en `knowledge/EVAL-CRITERIA.md`:
+  98 llamadas reales, los 20 casos, tres brazos, `RUNS=1`, `claude-opus-5[1m]` y sin el
+  proxy Headroom en medio —con `ANTHROPIC_BASE_URL` puesto, el lift mediría harness y
+  proxy a la vez—. Va con **las dos lecturas**, con y sin la fila retirada, porque cuál de
+  las dos columnas es la verdadera no lo decide un argumento sino una llamada de pago que
+  **está pendiente**. Y con una fe de erratas que nombra al commit `e7d4fee`: no se enmienda
+  un mensaje publicado, se corrige aquí.
 
 ### Security
 
