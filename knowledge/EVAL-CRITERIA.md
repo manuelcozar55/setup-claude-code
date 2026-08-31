@@ -5,6 +5,35 @@ se comprueba aquí** y **en qué estado está**. La regla de la casa vale tambi�
 fichero: *una afirmación sin sensor se pudre*. Por eso la última columna existe, y por eso
 hay filas en rojo — un criterio sin cumplir y declarado vale más que uno cumplido de boca.
 
+## De dónde salen estas cifras, y qué queda sin comprobar en un clon limpio
+
+Casi todo lo que este fichero publica —tasas de acierto, coste, lift, tokens— sale de
+`kit/evals/runs.jsonl` y de `kit/evals/transcripts/`, y **ninguno de los dos está
+versionado** (`.gitignore:12` y `.gitignore:10`). Versionarlos tiene superficie propia
+—qué fila se guarda, qué hacer con lo que los transcripts arrastran, cómo se firma— y no
+está decidido aquí.
+
+La consecuencia práctica es que **en un clon limpio estas cifras no se comprueban**. Lo
+que sí está resuelto es que eso no pase por verde: cuando falta el almacén,
+`test_doc_claims.sh` emite `skip`, no `ok`, y el `skip` se cuenta aparte del `pass`.
+Medir cero no es aprobar.
+
+Por eso el número de contraste va con su condición. Medido el 2026-08-31 sobre `752140e`,
+en esta máquina:
+
+| Condición | `^ok` | `^NOT ok` | `^skip` |
+|---|---|---|---|
+| con `kit/evals/runs.jsonl` presente | 296 | 0 | 0 |
+| sin él (lo que ve quien clona) | 292 | 0 | 3 |
+
+Las cuatro aserciones que cambian son las tres que pasan a `skip` más una cuarta que solo
+existe cuando hay almacén que leer. En las dos condiciones, ocho líneas `PASS=` suman 149
+aprobadas y 10 fallos deliberados —los de `test_guards_falsifiability.sh`, que se rompe a
+sí misma a propósito para demostrar que sabe ponerse roja y termina en `exit 0`—.
+
+Publicar «296» a secas sería irreproducible para cualquiera que clone el repo: le saldría
+292 y no tendría cómo saber por qué.
+
 ## Procedencia de las fuentes
 
 Verificado por mí contra la fuente primaria: Harness-Bench (arXiv:2605.27922),

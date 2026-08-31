@@ -72,7 +72,7 @@ es la firma del problema.
 **Validado:** 2026-08-21
 
 ```bash
-make test                                              # oráculo, ~30 s, exit 0 o no está hecho
+make test                                              # oráculo, ~45 s, exit 0 o no está hecho
 /usr/bin/shellcheck -x scripts/*.sh .claude/hooks/*.sh # lint, cero hallazgos
 bash kit/scan-secrets.sh .                             # secretos, capa 1
 ~/.local/bin/gitleaks dir --no-banner -c kit/claude/.gitleaks.toml .  # secretos, capa 2
