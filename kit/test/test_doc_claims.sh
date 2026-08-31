@@ -9,6 +9,10 @@
 # proposito CHANGELOG.md, knowledge/DECISIONS/ y docs/superpowers/: son registros
 # fechados, y una cifra de 2026-08 ahi es correcta aunque hoy sea otra.
 set -uo pipefail
+# Ruta absoluta de este fichero ANTES del cd: la sonda de los puntos de llamada, mas
+# abajo, vuelve a correr la suite ENTERA contra si misma, y tras el cd un $0 relativo
+# ya no la nombra.
+SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
 cd "$(dirname "$0")/../.." || exit 1
 pass=0; fail=0; skipped=0
 
@@ -110,7 +114,12 @@ fi
 # el recuento de tareas mudas, que solo existen en kit/evals/runs.jsonl. Medido:
 # meterlo en DOCS deja la suite en verde sin mirar una sola de ellas.
 EVALDOC=knowledge/EVAL-CRITERIA.md
-STORE=kit/evals/runs.jsonl
+# El almacen se deja sustituir por el entorno por la misma razon que el interprete: la
+# sonda de los puntos de llamada vuelve a correr esta suite contra si misma y, en un
+# clon limpio -donde runs.jsonl no existe, porque esta en .gitignore-, tiene que poder
+# darle un almacen fabricado para que el punto de llamada de cifras_eval se sonde
+# igual. Sin esto la sonda cubriria uno de los dos puntos y diria 'ok': medir la mitad.
+STORE="${DOC_CLAIMS_STORE:-kit/evals/runs.jsonl}"
 PY3="${PYTHON3:-python3}"
 
 # cifras_eval <doc> <almacen>: un renglon por discrepancia, nada si todo cuadra.
@@ -348,7 +357,13 @@ veredicto() {
 }
 
 problemas=$(cifras_eval "$EVALDOC" "$STORE"); rc=$?
-if [ "$rc" -eq 2 ]; then
+# El 2 solo significa "no hay datos" si de verdad no hay almacen, y eso hay que
+# exigirlo, no suponerlo. Medido con el almacen presente (57 780 B) y un rc=2
+# provocado, esto imprimia "skip - ... no hay kit/evals/runs.jsonl" y cerraba en
+# "15 passed, 0 failed, 1 skipped", EXIT=0: un reventon disfrazado de skip, y con un
+# motivo falso. Con almacen delante, un rc=2 baja a veredicto y sale rojo como
+# cualquier otro rc distinto de 0.
+if [ "$rc" -eq 2 ] && [ ! -f "$STORE" ]; then
   echo "skip - $EVALDOC: no hay $STORE (esta en .gitignore); sus cifras NO se han comprobado"
   skipped=$((skipped+1))
 elif veredicto "$rc" "$problemas" "las cifras de $EVALDOC cuadran con $STORE" \
@@ -621,41 +636,76 @@ fi
 # Y el lado que ninguna cifra falsa prueba: que un comprobador que REVIENTA salga
 # rojo. Las sondas de arriba deforman el documento, asi que solo demuestran que el
 # comprobador sabe suspender cuando funciona; el modo que se colaba es el otro, el
-# de no llegar a mirar. Un fallo incondicional tampoco lo prueba: como las demas
-# sondas trabajan sobre copias en $TMPD, un `raise` para todos las pone rojas a
-# ellas y se ve. El fallo que dejaba la suite entera en verde es el que solo
-# alcanza la entrada REAL, y ese es el que se inyecta aqui: un interprete de usar y
-# tirar que muere si y solo si le pasan el documento de verdad. No toca el fichero
-# versionado, ni el arbol, ni la variable PY3 de fuera -vive en el subshell de la
-# sustitucion-, y se exige ver el codigo inyectado en la queja para que la sonda no
-# pueda aprobar con un rojo que venga de otra cosa (un 2 por almacen ausente, por
-# ejemplo, que seria justo aprobar sin haber medido).
-# shellcheck disable=SC2016 # "$@" literal a proposito: es el cuerpo del envoltorio,
-# tiene que expandirlo /bin/sh cuando lo ejecute, no este script al escribirlo.
-printf '#!/bin/sh\nfor a in "$@"; do\n  [ "$a" = "%s" ] && exit 97\ndone\nexec %s "$@"\n' \
-  "$EVALDOC" "$PY3" > "$TMPD/py-revienta"
-chmod +x "$TMPD/py-revienta"
-sondados=""; ciegos=""
-for f in cifras_eval recuento_mutantes; do
-  # cifras_eval sale 2 sin llegar a llamar al interprete cuando no hay almacen: ahi
-  # la inyeccion no entra y la sonda no mediria lo que dice medir. Se declara.
-  if [ "$f" = cifras_eval ] && [ ! -f "$STORE" ]; then
-    continue
-  fi
-  salida=$(PY3="$TMPD/py-revienta"; "$f" "$EVALDOC" "$STORE" 2>/dev/null); rc=$?
-  linea=$(veredicto "$rc" "$salida" "NO DEBERIA aprobar: el comprobador nunca miro" "sonda de $f")
-  sondados="$sondados $f"
-  case "$linea" in
-    "NOT ok"*"rc=97"*) ;;
-    *) ciegos="$ciegos $f" ;;
-  esac
-done
-if [ -n "$ciegos" ] || [ -z "$sondados" ]; then
-  echo "NOT ok - revientan con la entrada real y aun asi se leen como 'ok':${ciegos:- ninguno se llego a sondar}"
-  fail=$((fail+1))
+# de no llegar a mirar.
+#
+# Lo que se sonda NO es veredicto() por su cuenta. El bug vivia en los dos PUNTOS DE
+# LLAMADA -capturaban la salida del comprobador y no miraban su rc-, y una sonda que
+# interroga al helper en aislamiento los deja sin vigilar: medido, revirtiendo solo
+# los dos puntos de llamada y dejando helper y sonda intactos, la suite cerraba en
+# "16 passed, 0 failed", EXIT=0, con la sonda misma diciendo 'ok'. Un arreglo que
+# nadie puede deshacer en rojo es media pieza. Asi que esta sonda vuelve a correr la
+# SUITE ENTERA -este mismo fichero, no una copia que se pudre aparte- con el
+# interprete saboteado, y exige que salga roja POR ESOS DOS SITIOS.
+#
+# El sabotaje va entero en el entorno y no escribe nada en el arbol: un interprete de
+# usar y tirar en $TMPD que muere si y solo si le pasan a la vez el documento REAL y
+# el almacen (o mutantes.py). Esa conjuncion es la que alcanza a los dos puntos de
+# llamada y a nada mas: las otras llamadas que citan el documento no citan ninguno de
+# los dos, y las demas sondas de este fichero trabajan sobre copias en $TMPD. Un
+# fallo incondicional no probaria nada, porque las pondria rojas a todas.
+#
+# Cada punto de llamada recibe un codigo distinto y se exige ver LOS DOS en la queja,
+# no solo EXIT=1. Solo esos dos sitios pueden recibirlos, asi que exigir uno de cada
+# es exigir que los dos se hayan sondado y que los dos hayan puesto rojo el reventon;
+# sin eso la sonda aprobaria con un rojo que viene de otra cosa, o con la inyeccion
+# sin llegar a ejecutarse, que seria otra vez aprobar sin haber medido nada.
+#
+# Y el 2 de cifras_eval no es un numero cualquiera: es el codigo con el que ese
+# comprobador dice "no hay almacen". Inyectarlo CON el almacen delante sonda de paso
+# que el skip exige su condicion en vez de suponerla -si vuelve a suponerla, esa
+# linea sale 'skip' en vez de 'NOT ok ... (rc=2)' y esta sonda se pone roja-.
+if [ -n "${DOC_CLAIMS_SUBSONDA:-}" ]; then
+  # Esta corrida ES la sub-corrida: sin este corte, recursion infinita. Se declara en
+  # el resumen y no se calla, para que exportar la variable por fuera se vea como un
+  # skip en el recuento en vez de borrar la sonda en silencio.
+  echo "skip - falsabilidad de los puntos de llamada: esta corrida es la sub-corrida de esa sonda"
+  skipped=$((skipped+1))
 else
-  echo "ok - falsabilidad: reventar solo con la entrada real sale rojo, no 'ok' ($sondados )"
-  pass=$((pass+1))
+  # El almacen solo tiene que EXISTIR para que la llamada llegue al interprete: lo que
+  # se mide aqui no es lo que el almacen diga, sino si el punto de llamada convierte
+  # un rc!=0 en rojo. runs.jsonl esta en .gitignore -no tenerlo es el estado de todo
+  # clon limpio y de todo worktree recien creado-, asi que cuando falta se fabrica uno
+  # vacio en $TMPD y los dos puntos se sondan igual. Sondar uno y cantar verde seria
+  # medir la mitad, y es el caso normal, no el raro.
+  if [ -f "$STORE" ]; then
+    sonda_store="$STORE"
+  else
+    sonda_store="$TMPD/sonda.jsonl"; : > "$sonda_store"
+  fi
+  # shellcheck disable=SC2016 # "$@", "$a" y "$d$s" literales a proposito: son el
+  # cuerpo del envoltorio, lo expande /bin/sh al ejecutarlo, no este script al
+  # escribirlo.
+  printf '#!/bin/sh\nd=0; s=0; m=0\nfor a in "$@"; do\n  [ "$a" = "%s" ] && d=1\n  [ "$a" = "%s" ] && s=1\n  [ "$a" = kit/evals/mutantes.py ] && m=1\ndone\n[ "$d$s" = 11 ] && exit 2\n[ "$d$m" = 11 ] && exit 97\nexec %s "$@"\n' \
+    "$EVALDOC" "$sonda_store" "$PY3" > "$TMPD/py-revienta"
+  chmod +x "$TMPD/py-revienta"
+  sub=$(DOC_CLAIMS_SUBSONDA=1 PYTHON3="$TMPD/py-revienta" DOC_CLAIMS_STORE="$sonda_store" \
+        bash "$SELF" 2>/dev/null); sub_rc=$?
+  rojos=$(printf '%s\n' "$sub" | /usr/bin/grep -c '^NOT ok')
+  con2=$(printf '%s\n' "$sub" | /usr/bin/grep -c '^NOT ok.*rc=2)')
+  con97=$(printf '%s\n' "$sub" | /usr/bin/grep -c '^NOT ok.*rc=97)')
+  if [ "$sub_rc" -eq 1 ] && [ "$con2" -eq 1 ] && [ "$con97" -eq 1 ]; then
+    echo "ok - falsabilidad: con el interprete saboteado la SUITE ENTERA sale roja (EXIT=1) y los"
+    echo "     dos puntos de llamada ponen rojo el reventon (rc=2 con almacen y rc=97), no 'ok'"
+    pass=$((pass+1))
+  else
+    echo "NOT ok - los puntos de llamada no ponen rojo el reventon: la sub-corrida de la suite"
+    echo "         entera salio EXIT=$sub_rc con $rojos 'NOT ok', $con2 con el rc=2 inyectado y"
+    echo "         $con97 con el rc=97; se esperaba EXIT=1, 1 y 1. Sus veredictos:"
+    # Solo las lineas de veredicto: el detalle de las quejas no dice nada de lo que se
+    # juzga aqui y, con el almacen fabricado, son decenas que entierran el sintoma.
+    printf '%s\n' "$sub" | /usr/bin/grep -E '^(ok|NOT ok|skip|==)' | sed 's/^/         | /'
+    fail=$((fail+1))
+  fi
 fi
 
 # Y el otro lado del skip: sin almacen tiene que salir 2, no 0. Un 0 aqui es un 'ok'
