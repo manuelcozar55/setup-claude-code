@@ -124,9 +124,12 @@ Tres cosas que pueden convertir un brazo de ablación en una mentira, y sus guar
   puede caer a otro sin avisar. `report.py` se niega a restar dos brazos con modelos
   distintos: escribe `NO COMPARABLE`. Para forzarlo, `EVAL_MODEL=claude-opus-5`.
 
-Los tres guardas se verifican rompiéndolos: `make mutantes` (gratis, ~12 s) muta cada uno
-y exige que `test_evals.sh` se ponga roja. Falla también si un ancla ya no existe en el
-fuente — un mutante que no se aplica deja de vigilar en silencio.
+Los tres guardas se verifican rompiéndolos: `make mutantes` (gratis, unos 4 min) muta
+cada uno y exige que la suite que lo vigila se ponga roja. Ese tiempo es orden de
+magnitud medido en esta máquina (WSL2 sobre ext4: 236 s una tirada, 355 s otra), y
+ningún test lo vigila: un reloj de pared no se sensa de forma estable. Falla
+también si un ancla ya no existe en el fuente — un mutante que no se aplica deja
+de vigilar en silencio.
 
 ## Tareas mudas: cuándo el conjunto dejó de informar
 

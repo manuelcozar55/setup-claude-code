@@ -38,7 +38,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 doctor: ## Verifica una instalacion existente del kit
 	bash kit/doctor.sh
 
-mutantes: ## Rompe cada sensor del eval a proposito y exige que la suite se ponga roja (gratis, ~12 s)
+mutantes: ## Rompe cada sensor del eval a proposito y exige que la suite se ponga roja (gratis, ~4 min)
 	python3 kit/evals/mutantes.py
 
 langsmith-local: ## Levanta el receptor local de trazas en :1984 (gratis, sin Docker ni licencia)

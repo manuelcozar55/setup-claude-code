@@ -10,7 +10,7 @@ después). Dos capas:
 ## Oráculo de este repo
 
 ```
-make test          # 25 suites bash, ~30 s, sin red. exit 0 o el trabajo no está hecho.
+make test          # 25 suites bash, ~45 s, sin red. exit 0 o el trabajo no está hecho.
 ```
 
 No declares nada terminado sin esa salida delante. `/verify` lo hace bien.

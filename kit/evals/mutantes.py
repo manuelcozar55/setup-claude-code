@@ -2,7 +2,7 @@
 """Mutacion de los sensores del eval: rompe UNA afirmacion y exige que la suite
 se ponga roja. Un sensor que sigue verde con la afirmacion rota no es un sensor.
 
-    python3 kit/evals/mutantes.py     # ~12 s, sin red, sin coste
+    python3 kit/evals/mutantes.py     # ~4 min, sin red, sin coste
 
 Salida 0 solo si TODOS los mutantes mueren y los ficheros quedan byte a byte
 como estaban. Si un ancla ya no existe en el fuente, es FALLO, no aviso: un
