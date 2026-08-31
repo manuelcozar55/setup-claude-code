@@ -105,6 +105,42 @@ else
   echo "NOT ok - la doc cita scripts que no existen:$missing"; fail=$((fail+1))
 fi
 
+# Las filas de EVAL-CRITERIA.md nombran el sensor por numero de seccion
+# ("test_evals.sh §21"). Cambiar §21 por §99 dejaba la fila apuntando a un sensor
+# inexistente sin una queja. Se juzga contra la UNION de las dos suites que el doc
+# cita, no contra una en concreto: la frase no siempre nombra el fichero, y atar
+# cada § a su script pediria adivinar a que se refiere el texto.
+secciones=$(grep -hoE '^# --- [0-9]+\.' kit/test/test_evals.sh kit/test/test_doc_claims.sh \
+            | grep -oE '[0-9]+' | sort -un)
+citadas=$(grep -oE '§[0-9]+' "$EVALDOC" | tr -d '§' | sort -un)
+fantasma=""
+while IFS= read -r n; do
+  [ -n "$n" ] || continue
+  printf '%s\n' "$secciones" | grep -qx "$n" || fantasma="$fantasma §$n"
+done <<< "$citadas"
+if [ -z "$fantasma" ]; then
+  echo "ok - las $(printf '%s\n' "$citadas" | wc -l) secciones que cita $EVALDOC existen"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $EVALDOC cita secciones que no existen:$fantasma"; fail=$((fail+1))
+fi
+
+# El suelo de cobertura se publica en el doc ("suelo de cobertura 10/20") y vive en
+# el fuente como `-ge 10`. Nada ataba una cifra a la otra ni al tamano del conjunto:
+# el doc podia publicar 99/20 y quedarse verde.
+suelo_src=$(grep -oE 'con_sol" -ge [0-9]+' kit/test/test_evals.sh | grep -oE '[0-9]+$')
+suelo_doc=$(grep -oE 'suelo de cobertura [0-9]+/[0-9]+' "$EVALDOC" | grep -oE '[0-9]+/[0-9]+')
+suelo_real="$suelo_src/$(count kit/evals/tasks/*.yaml)"
+if [ -z "$suelo_src" ] || [ -z "$suelo_doc" ]; then
+  echo "NOT ok - no se encuentra el suelo de cobertura en el fuente o en el doc: nada que comparar"
+  fail=$((fail+1))
+elif [ "$suelo_doc" = "$suelo_real" ]; then
+  echo "ok - el suelo de cobertura publicado ($suelo_doc) es el del fuente"; pass=$((pass+1))
+else
+  echo "NOT ok - el doc publica suelo de cobertura $suelo_doc y el fuente exige $suelo_real"
+  fail=$((fail+1))
+fi
+
 # --- 3. Falsabilidad: el comprobador tiene que saber fallar ----------------
 # Sin esto, un `claim` con la regex rota daria verde para siempre.
 TMP=$(mktemp); printf 'el kit trae 99 agentes y cuatro comandos\n' > "$TMP"
@@ -428,18 +464,29 @@ else:
     # Los dos limites de ESTE bloque, medidos: (i) solo ve las cifras PEGADAS a la
     # palabra -"de los mutantes, se reproducen 25" pasa por aqui sin una queja-, y
     # (ii) solo juzga el VALOR, nunca el papel: con {versionados, total} como unico
-    # filtro los dos recuentos ciertos son intercambiables, y "30/30 mutantes; los 38
-    # mutantes versionados" pasa (1) limpio. Para (ii) esta (2), que ata cada cifra a
-    # su papel -y ahi si caza esa frase, y tambien "el fichero versiona 25 de ellos" y
-    # "los 25 ultimos versionados", que se le escapan a (1) pero no al sensor-.
+    # filtro los dos recuentos ciertos son intercambiables, y "<total>/<total>
+    # mutantes; los <total> mutantes versionados" pasa (1) limpio. Para (ii) esta (2),
+    # que ata cada cifra a su papel -y ahi si caza esa frase, y tambien "el fichero
+    # versiona 25 de ellos" y "los 25 ultimos versionados", que se le escapan a (1)
+    # pero no al sensor-.
     #
     # Y lo que se le escapa al sensor ENTERO, que no es lo mismo y es lo que hay que
-    # declarar aqui: una frase falsa cuya cifra sea uno de los dos recuentos ciertos y
-    # cuya redaccion no sea ninguna de las tres de (2). Medido sobre el documento real,
-    # estas dos pasan sin una queja, y las dos llevan la cifra pegada a la palabra:
-    #     "En la practica los 38 mutantes se reproducen todos."
-    #     "Los 30 mutantes historicos cubren toda la serie."
-    # Decir que solo se le escapa la cifra que NO va pegada a "mutantes" era falso.
+    # declarar aqui: toda frase falsa cuya redaccion no sea ninguna de las tres de (2)
+    # y que ademas, o lleve por cifra uno de los dos recuentos ciertos, o no lleve la
+    # cifra pegada a la palabra. Medido sobre el documento real, estas tres pasan sin
+    # una queja (las dos primeras van con el papel escrito, no con el numero, para que
+    # no se pudran el dia que se anada un mutante):
+    #     "En la practica los <total> mutantes se reproducen todos."
+    #     "Los <versionados> mutantes historicos cubren toda la serie."
+    #     "De los mutantes, se reproducen 25."   (cifra falsa y despegada: da igual cual)
+    # Decir que solo se le escapa la cifra que NO va pegada a "mutantes" era falso, y
+    # decir que solo se le escapan las cifras ciertas lo era igual: la tercera no es
+    # ninguna de las dos cosas y tambien pasa.
+    #
+    # Y lo que SI caza, para que nadie lea la lista de arriba como la lista entera:
+    # cualquier cifra pegada a la palabra que no sea uno de los dos recuentos ciertos,
+    # las tres redacciones de (2) con el numero cambiado, la desaparicion de la forma
+    # obligatoria y la del rango M-M.
     versionados, total = len(ids), max(ids)
     valores = []
     for x in re.finditer(r"(?<![\w/-])(\d+(?:\s*/\s*\d+)?(?:\s+de\s+los\s+\d+)?)"

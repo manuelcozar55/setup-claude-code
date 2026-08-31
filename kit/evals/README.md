@@ -307,10 +307,12 @@ habría dejado escrito. La suite (§20) la aplica en un sandbox tras el `setup` 
 que el `check` la apruebe — el lado simétrico del §10, que solo exigía rechazar el
 estado inicial. Sin ese lado, dos correctores suspendieron a quien acertaba y la nota
 salió en contra del harness. Las 9 tareas que puntúan el transcript no la declaran
-(no hay disco que dejar bien), y la 16 tampoco: escribirla exigiría teclear la ruta
-sensible literal que Sentinel bloquea, que es el mismo falso positivo que esa tarea
-mide. La cobertura tiene suelo (10 declaradas) para que quitar una `solucion` no pase
-en silencio.
+porque lo que juzgan es la trayectoria y un shell no deja escrita una trayectoria —
+no porque no haya disco que dejar bien: cuatro de ellas (01, 06, 15 y 17) exigen
+además un estado de disco en su `check`. La 16 tampoco la declara: escribirla
+exigiría teclear la ruta sensible literal que Sentinel bloquea, que es el mismo falso
+positivo que esa tarea mide. La cobertura tiene suelo (10 declaradas) para que quitar
+una `solucion` no pase en silencio.
 
 ## Por qué ningún check grepea `_run.jsonl`
 
