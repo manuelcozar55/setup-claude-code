@@ -1216,7 +1216,7 @@ SUELO_DOC=12
 DOCTMP=$(mktemp -d) || exit 1
 salida_doc=$(DOC_CLAIMS_SUBSONDA=1 DOC_CLAIMS_STORE="$DOCTMP/sin-almacen.jsonl" \
              bash kit/test/test_doc_claims.sh 2>/dev/null)
-rmdir "$DOCTMP"
+rmdir "$DOCTMP" 2>/dev/null
 resumen_doc=$(printf '%s\n' "$salida_doc" | grep -E '^== [0-9]+ passed, [0-9]+ failed')
 emitidas_doc=$(printf '%s\n' "$salida_doc" | grep -cE '^(ok|NOT ok|skip) - ')
 declaradas_doc=$(printf '%s\n' "$resumen_doc" | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
