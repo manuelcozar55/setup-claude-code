@@ -952,7 +952,8 @@ mkdir -p "$CORR/tasks"
 cp "$E"/tasks/*.yaml "$CORR/tasks/"
 { echo '42'
   echo '{"cost_usd": "gratis"}'
-  echo '{"cost_usd": 0.5}'
+  echo '{"cost_usd": true}'
+  echo '{"cost_usd": 0.02}'
 } > "$CORR/runs.jsonl"
 salida=$(PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$CORR/run.sh" 2>&1); rc=$?
 ck "$rc" 0 "con historico corrupto el ensayo sale con 0"
@@ -968,6 +969,19 @@ if [ -e "$PROBE" ]; then
 else
   echo "ok - con historico corrupto el ensayo sigue sin invocar a claude"; pass=$((pass+1))
 fi
+# Que la cifra de coste SALGA no es que sea cierta, y ninguna asercion la
+# miraba. Quitarle a run.sh la mitad del guarda que descarta los booleanos (True
+# es int en Python, y el `if c` de despues lo da por bueno) dejaba la suite
+# verde con el ensayo anunciando 10,20 USD donde son 0,40. Se pide UNA tarea
+# para que la cifra sea aritmetica fija y no cambie el dia que crezca el
+# conjunto: 1 llamada x 0,02 USD de media, con el 42, el "gratis" y el booleano
+# descartados.
+salida=$(PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$CORR/run.sh" 12-alcance-quirurgico 2>&1)
+if printf '%s' "$salida" | grep -qF 'coste estimado: 0.02 USD (media de 1 runs'; then
+  echo "ok - el ensayo estima con el unico coste utilizable del historico"; pass=$((pass+1))
+else
+  echo "NOT ok - la cifra de coste no sale de sumar el historico: $salida"; fail=$((fail+1))
+fi
 # Un exit 0 que tapa un estimador muerto es peor que no tener estimador.
 PATH="$FAKEBIN:$PATH" PYTHON3=false DRYRUN=1 bash "$CORR/run.sh" >/dev/null 2>&1
 ck "$?" 1 "si el estimador muere, el ensayo no sale con 0"
@@ -982,16 +996,53 @@ else
 fi
 rm -rf "$CORR"
 
+# El otro lado del mismo guarda: se vigilaba que el ensayo NO escriba y nadie
+# vigilaba que la tirada de verdad SI trunque el parcial. Borrar el `: > "$TMP"`
+# de run.sh dejaba la suite verde y el JSON de resultados arrastraba las filas
+# de la tirada anterior como si fueran de esta. Sandbox propio con una tarea de
+# mentira y un 'claude' de mentira: cero llamadas de pago.
+PARC=$(mktemp -d) || exit 1
+cp "$E/run.sh" "$E/record.py" "$PARC/"
+mkdir -p "$PARC/tasks" "$PARC/bin"
+cat > "$PARC/tasks/t-parcial.yaml" <<'YAML'
+tipo: positiva
+prompt: |
+  no se llega a enviar a ningun sitio
+check: |
+  exit 0
+YAML
+cat > "$PARC/bin/claude" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' '{"type":"result","is_error":false,"total_cost_usd":0.01,"duration_api_ms":10,"num_turns":1,"modelUsage":{"m":{"outputTokens":5}},"usage":{"input_tokens":1,"output_tokens":1}}'
+SH
+chmod +x "$PARC/bin/claude"
+printf '  "t-de-otra-tirada": "pass",\n' > "$PARC/.resultados.parcial"
+PATH="$PARC/bin:$PATH" bash "$PARC/run.sh" >/dev/null 2>&1
+if grep -q 't-de-otra-tirada' "$PARC"/resultados-*.json 2>/dev/null; then
+  echo "NOT ok - la tirada real no trunca el parcial: el JSON arrastra la tirada anterior"
+  fail=$((fail+1))
+else
+  echo "ok - la tirada real trunca el parcial y no arrastra la tirada anterior"; pass=$((pass+1))
+fi
+rm -rf "$PARC"
+
 # --- 22. Ninguna receta del Makefile puede terminar en dos barras -----------
 # En un Makefile '\\' es una barra literal, no una continuacion de linea: las
 # lineas siguientes de la receta corren en shells distintas y la variable que
 # define la primera llega vacia a la segunda. Asi estaba 'evals-paid', que por
 # eso decia "Cancelado." y salia 1 sin llegar nunca a las llamadas de pago.
-recetas_malas=$(grep -nP '^\t.*\\\\$' Makefile)
-if [ -z "$recetas_malas" ]; then
-  echo "ok - ninguna receta del Makefile termina en dos barras"; pass=$((pass+1))
+# Sin Makefile el grep no casaba nada y la seccion declaraba conformidad
+# habiendo medido cero recetas. Medir cero no es aprobar.
+if [ ! -f Makefile ]; then
+  echo "NOT ok - no hay Makefile que revisar: cero recetas medidas no es conformidad"
+  fail=$((fail+1))
 else
-  echo "NOT ok - receta del Makefile con continuacion rota: $recetas_malas"; fail=$((fail+1))
+  recetas_malas=$(grep -nP '^\t.*\\\\$' Makefile)
+  if [ -z "$recetas_malas" ]; then
+    echo "ok - ninguna receta del Makefile termina en dos barras"; pass=$((pass+1))
+  else
+    echo "NOT ok - receta del Makefile con continuacion rota: $recetas_malas"; fail=$((fail+1))
+  fi
 fi
 
 # --- 23. Dos tiradas del mismo dia no pueden pisarse la evidencia -----------
