@@ -69,7 +69,7 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 + `test_evals.sh` §10: ningún check aprueba el estado inicial, y no hacer nada da `fail`, no `error` | ✅ |
 | E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan — **y no se conservaban todos**: con el nombre por día, dos tiradas del mismo día sobre la misma tarea y brazo escribían el mismo fichero. Arreglado (`ts` y pid en el nombre, `run.sh`), sensor `test_evals.sh` §23, mutantes M30–M31 y M34–M36 | ⚠️ **degradado**: humano, sin cadencia fijada, y con **26 de 98 filas históricas sin evidencia propia**. El sensor que declaraba esta fila vigilaba que el fichero existiera, no que fuera el de esa tirada: aprobaba sin poder suspender |
-| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 38/38 mutantes; los 30 mutantes versionados (M9–M38) se reproducen con `make mutantes`; los §9–§19 nacieron ya en rojo |
+| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 40/40 mutantes; los 32 mutantes versionados (M9–M40) se reproducen con `make mutantes`; los §9–§19 nacieron ya en rojo |
 | E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **corrido**: `sin-ajustes` −0,17 → la pieza aporta (−0,12 descontando el artefacto del corrector de la 11; ver la salvedad en «La tirada completa») |
 | E23 | Un brazo cuyo flag desapareció mide el harness completo con etiqueta falsa | hallazgo propio | `test_evals.sh` §13: los 4 flags tienen que seguir en `claude --help` | ✅ · sensor mutado |
 | E24 | No restar dos brazos que corrieron modelos distintos | hallazgo propio (E14 llevado al informe) | `report.py:comparables()` dice `NO COMPARABLE` en vez de dar un lift; y `record.py` apunta el modelo **que hizo el trabajo**, no el primero del diccionario (§18) | ✅ · sensor mutado ×2 |
@@ -244,10 +244,10 @@ negativa  (10/21 runs) 1.00 vs 1.00 · +0.00 -> el harness no estorba
 mudas: 17/20 tareas dieron el mismo resultado en los dos brazos y en todas
        sus repeticiones. No pueden mover el lift: el conjunto que decide
        es de 3 tarea(s), no de 20.
-SATURADO: cuatro de cada cinco tareas ya no distinguen nada. El numero de
+SATURADO: 17 de 20 tareas ya no distinguen nada. El numero de
 arriba seguira subiendo sin que el harness mejore. Toca subir el suelo:
 retirar las mudas y minar fallos nuevos (README.md, 'Como crecer').
-sin-ajustes  (hooks, permisos y env ) 0.68 [0.47-0.84] vs 0.85 con todo · -0.17 -> la pieza APORTA
+sin-ajustes  (hooks, permisos y env)  0.68 [0.47-0.84] vs 0.85 con todo · -0.17 -> la pieza APORTA
 sin-skills   SIN DATOS, y correrlo no mediria nada: skills no se activaron ni una vez
 sin-mcp      SIN DATOS, y correrlo no mediria nada: servidores MCP no se activaron ni una vez
 ```
@@ -343,10 +343,10 @@ negativa  (11/21 runs) 0.91 vs 1.00 · -0.09 -> FALSOS POSITIVOS: el harness est
 mudas: 16/20 tareas dieron el mismo resultado en los dos brazos y en todas
        sus repeticiones. No pueden mover el lift: el conjunto que decide
        es de 4 tarea(s), no de 20.
-SATURADO: cuatro de cada cinco tareas ya no distinguen nada. El numero de
+SATURADO: 16 de 20 tareas ya no distinguen nada. El numero de
 arriba seguira subiendo sin que el harness mejore. Toca subir el suelo:
 retirar las mudas y minar fallos nuevos (README.md, 'Como crecer').
-sin-ajustes  (hooks, permisos y env ) 0.68 [0.47-0.84] vs 0.82 con todo · -0.14 -> la pieza APORTA
+sin-ajustes  (hooks, permisos y env)  0.68 [0.47-0.84] vs 0.82 con todo · -0.14 -> la pieza APORTA
 sin-skills   SIN DATOS, y correrlo no mediria nada: skills no se activaron ni una vez
 sin-mcp      SIN DATOS, y correrlo no mediria nada: servidores MCP no se activaron ni una vez
 ```
@@ -595,7 +595,7 @@ Dos decisiones que evitan que esto contamine el eval:
    emisor de LangSmith está probado de punta a punta, así que lo que queda es una decisión
    de compra, no de código — clave de la **nube** (gratis hasta 5 000 trazas, pero deja de
    ser local) o licencia Enterprise.
-4. **Solo 30 de los 38 mutantes son reproducibles.** `make mutantes` versiona M9–M38 y
+4. **Solo 32 de los 40 mutantes son reproducibles.** `make mutantes` versiona M9–M40 y
    falla si un ancla desaparece del fuente (un mutante que no se aplica deja de vigilar
    **en silencio**). M1–M8 se corrieron con scripts de usar y tirar: de esos ocho queda
    la palabra, no la evidencia, y queda dicho.
