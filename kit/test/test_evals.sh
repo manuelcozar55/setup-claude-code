@@ -1207,8 +1207,11 @@ rm -rf "$EXC"
 #
 # Lo que NO caza, dicho aqui para que nadie lo suponga: no juzga si esas
 # aserciones son ciertas -de eso responde la suite consigo misma- ni nota que se
-# pierdan una o dos por encima del suelo. Caza que deje de aserverar, y que su
-# resumen declare mas de lo que ha emitido.
+# pierda ninguna mientras el recuento siga en SUELO_DOC o por encima. La holgura no
+# se escribe aqui como cifra a proposito: es la resta entre las aserciones que
+# imprime la linea 'ok' de abajo y el SUELO_DOC de aqui debajo, y las dos se mueven
+# sin que nadie se acuerde de este comentario -decia "una o dos" y la resta era ocho-.
+# Caza que deje de aserverar, y que su resumen declare mas de lo que ha emitido.
 SUELO_DOC=12
 DOCTMP=$(mktemp -d) || exit 1
 salida_doc=$(DOC_CLAIMS_SUBSONDA=1 DOC_CLAIMS_STORE="$DOCTMP/sin-almacen.jsonl" \
