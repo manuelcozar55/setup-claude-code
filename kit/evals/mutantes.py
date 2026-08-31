@@ -24,8 +24,17 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SUITE = ["bash", "kit/test/test_evals.sh"]
+SUITE_DOC = ["bash", "kit/test/test_doc_claims.sh"]
+ALMACEN = "kit/evals/runs.jsonl"
 
-# (nombre, fichero, ancla, mutacion, aguja que debe aparecer en el NOT ok)
+# Cada mutante puede declarar CUAL suite deberia cazarlo (6.o campo, por defecto
+# SUITE). No se corren las dos siempre por dos motivos, y el segundo pesa mas que
+# el primero: correr las dos multiplicaria el coste -test_evals.sh 9,4 s mas
+# test_doc_claims.sh 8,8 s por cada mutante, de 191 s a ~580 s- y, sobre todo,
+# "muertos N/N" dejaria de decir QUE sensor vigila cada afirmacion. Un mutante
+# que muere por la suite equivocada es un ROJO POR OTRA COSA dado por bueno.
+#
+# (nombre, fichero, ancla, mutacion, aguja que debe aparecer en el NOT ok[, suite])
 MUTANTES = [
     ("M9  guardia de ARM desconocido retirado",
      "kit/evals/run.sh",
@@ -224,11 +233,35 @@ MUTANTES = [
      "    if False:",
      "phoenix: la fila retirada"),
 
+    # La suite que mide la documentacion no se vigilaba a si misma: vaciarla
+    # entera dejaba `make test` en rc=0 porque el Makefile solo mira el rc.
+    ("M39 la suite que mide la documentacion se vacia y no asevera nada",
+     "kit/test/test_doc_claims.sh",
+     "pass=0; fail=0; skipped=0",
+     'pass=0; fail=0; skipped=0\necho "== 0 passed, 0 failed =="\nexit 0',
+     "el suelo es"),
+
+    # No basta con vigilar el disparador del aviso (eso ya lo hace M14): la FRASE
+    # tiene que decir la cifra contada, o vuelve a salir identica al 85 % y al
+    # 100 %. Este mutante deja el umbral intacto y solo deforma el numero.
+    ("M40 el aviso de saturacion miente en la cifra que ha contado",
+     "kit/evals/report.py",
+     '        print("  SATURADO: %d de %d tareas ya no distinguen nada. El numero de"\n'
+     "              % (len(mudas), len(comunes)))",
+     '        print("  SATURADO: %d de %d tareas ya no distinguen nada. El numero de"\n'
+     "              % (len(comunes), len(comunes)))",
+     "no cuadra con el almacen",
+     SUITE_DOC),
+
 ]
 
 
-def corre():
-    r = subprocess.run(SUITE, capture_output=True, text=True, timeout=600)
+def suite_de(m):
+    return m[5] if len(m) > 5 else SUITE
+
+
+def corre(suite):
+    r = subprocess.run(suite, capture_output=True, text=True, timeout=600)
     return r.returncode, r.stdout
 
 
@@ -251,16 +284,34 @@ def md5(f):
 
 def main():
     os.chdir(REPO)
-    antes = {f: md5(f) for _, f, _, _, _ in MUTANTES}
+    antes = {m[1]: md5(m[1]) for m in MUTANTES}
+    suites = []
+    for m in MUTANTES:
+        if suite_de(m) not in suites:
+            suites.append(suite_de(m))
 
-    rc, out = corre()
-    print("BASE: rc=%d - %s" % (rc, out.strip().splitlines()[-1]))
-    if rc != 0:
-        print("la suite ya esta roja sin mutar; no se puede medir nada")
-        return 1
+    for suite in suites:
+        rc, out = corre(suite)
+        print("BASE: rc=%d - %s (%s)" % (rc, out.strip().splitlines()[-1], suite[-1]))
+        if rc != 0:
+            print("la suite ya esta roja sin mutar; no se puede medir nada")
+            return 1
+
+    # Sin almacen, test_doc_claims.sh salta sus comprobaciones de cifras: un
+    # mutante vigilado por ella escaparia sin que ese verde signifique nada. Se
+    # declara y se cuenta aparte, como el skip de la propia suite, en vez de
+    # darlo por muerto o por vivo.
+    sin_almacen = not os.path.exists(ALMACEN)
+    no_medibles = []
 
     vivos = []
-    for nombre, fich, ancla, mut, aguja in MUTANTES:
+    for m in MUTANTES:
+        nombre, fich, ancla, mut, aguja = m[:5]
+        suite = suite_de(m)
+        if suite is SUITE_DOC and sin_almacen:
+            print("  NO MEDIBLE  %s: falta %s y la suite salta las cifras" % (nombre, ALMACEN))
+            no_medibles.append(nombre)
+            continue
         orig = io.open(fich, encoding="utf-8").read()
         if ancla not in orig:
             print("  ANCLA PERDIDA %s: ya no esta en %s" % (nombre, fich))
@@ -270,7 +321,7 @@ def main():
         shutil.copy2(fich, respaldo)
         try:
             io.open(fich, "w", encoding="utf-8").write(orig.replace(ancla, mut, 1))
-            rc, out = corre()
+            rc, out = corre(suite)
             motivo = {}
             for l in out.splitlines():
                 if l.startswith("NOT ok") and aguja.lower() in l.lower():
@@ -299,9 +350,16 @@ def main():
             os.unlink(respaldo)
 
     sucios = [f for f, h in antes.items() if md5(f) != h]
-    rc, out = corre()
-    print("\nRESTAURADO: rc=%d - %s" % (rc, out.strip().splitlines()[-1]))
-    print("muertos %d/%d" % (len(MUTANTES) - len(vivos), len(MUTANTES)))
+    print("")
+    rc = 0
+    for suite in suites:
+        r, out = corre(suite)
+        print("RESTAURADO: rc=%d - %s (%s)" % (r, out.strip().splitlines()[-1], suite[-1]))
+        rc = rc or r
+    medidos = len(MUTANTES) - len(no_medibles)
+    print("muertos %d/%d" % (medidos - len(vivos), medidos))
+    if no_medibles:
+        print("NO MEDIBLES (fuera del denominador): %s" % ", ".join(no_medibles))
     if sucios:
         print("AVISO: estos ficheros NO volvieron a su estado original: %s" % ", ".join(sucios))
     return 1 if (vivos or sucios or rc != 0) else 0

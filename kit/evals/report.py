@@ -191,7 +191,7 @@ else:
 # mas fino que con un umbral sobre el total: una tarea que da el MISMO resultado
 # en los dos brazos, en todas sus repeticiones, no puede mover el lift. Es peso
 # muerto, se pague o no. Sin esto, el conjunto se satura poco a poco y el informe
-# sigue diciendo "20 tareas" cuando las que deciden son cuatro.
+# sigue publicando el tamano del conjunto cuando las que deciden son un punado.
 print("\n== poder discriminante del conjunto ==")
 if "on" not in by_arm or "off" not in by_arm:
     print("  NO MEDIBLE: hace falta el brazo de control para saber que tareas son mudas.")
@@ -218,7 +218,12 @@ else:
     if mudas:
         print("         %s" % ", ".join(mudas))
     if comunes and utiles <= max(1, len(comunes) // 5):
-        print("  SATURADO: cuatro de cada cinco tareas ya no distinguen nada. El numero de")
+        # La cifra contada, no la del umbral: con la frase fija ("cuatro de cada
+        # cinco") el aviso salia identico al 85 % y al 100 %, y el sensor de la
+        # documentacion premiaba copiar la frase falsa y castigaba escribir la
+        # cierta. Emitiendo lo contado, republicar y decir la verdad coinciden.
+        print("  SATURADO: %d de %d tareas ya no distinguen nada. El numero de"
+              % (len(mudas), len(comunes)))
         print("  arriba seguira subiendo sin que el harness mejore. Toca subir el suelo:")
         print("  retirar las mudas y minar fallos nuevos (README.md, 'Como crecer').")
 
@@ -272,8 +277,8 @@ else:
         lect = ("la pieza APORTA" if d <= -0.05 else
                 "la pieza ESTORBA" if d >= 0.05 else "no se distingue del ruido")
         ci = "%.2f-%.2f" % s["ci"] if s["ci"] else "—"
-        print("  %-12s (%-22s) %.2f [%s] vs %.2f con todo · %+.2f -> %s"
-              % (arm, ABL[arm], s["rate"], ci, todo["rate"], d, lect))
+        print("  %-12s %-24s %.2f [%s] vs %.2f con todo · %+.2f -> %s"
+              % (arm, "(%s)" % ABL[arm], s["rate"], ci, todo["rate"], d, lect))
     # Los brazos que faltan, dichos por su nombre: y si la pieza no se activo
     # nunca, tambien que correrlos no mediria nada. Son 20 llamadas de API cada
     # uno; callarlo sale caro.
