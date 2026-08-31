@@ -6,8 +6,10 @@
 # hooks borrados. Nada se ponia rojo porque nadie medía el texto. Esto lo mide.
 #
 # Cubre solo documentos que hablan en PRESENTE del estado del repo. Quedan fuera a
-# proposito CHANGELOG.md, knowledge/DECISIONS/ y docs/superpowers/: son registros
-# fechados, y una cifra de 2026-08 ahi es correcta aunque hoy sea otra.
+# proposito knowledge/DECISIONS/ y docs/superpowers/: son registros fechados, y una
+# cifra de 2026-08 ahi es correcta aunque hoy sea otra. De CHANGELOG.md entra solo la
+# seccion [Unreleased], que describe el arbol de HOY; sus secciones publicadas quedan
+# fuera por lo mismo que los ADR, y el porque esta abajo, junto al recorte.
 set -uo pipefail
 # Ruta absoluta de este fichero ANTES del cd: la sonda de los puntos de llamada, mas
 # abajo, vuelve a correr la suite ENTERA contra si misma, y tras el cd un $0 relativo
@@ -117,6 +119,41 @@ claim "$(grep -l '^tipo: negativa' kit/evals/tasks/*.yaml | wc -l)" negativas RE
 # report.py: exentarlo con doc-claims:ignore falsificaria la cita. Anclar solo mide la
 # cabecera; que la cabecera siga existiendo lo exige el guardia de 'vistas' de arriba.
 claim "$(count kit/evals/tasks/*.yaml)" 'tareas\*\* en' kit/evals/README.md
+
+# La seccion [Unreleased] de CHANGELOG.md, y solo ella.
+#
+# El fichero entero NO puede entrar en DOCS, y no por comodidad: un changelog es un
+# registro y sus secciones publicadas DEBEN conservar los numeros que eran ciertos al
+# publicarlas. Meterlo completo bajo claim() enrojeceria afirmaciones verdaderas -el
+# sensor de un solo lado por el otro lado, que es un defecto peor que el que esto
+# cierra-. Las secciones historicas quedan fuera POR DISENO, igual que los ADR.
+#
+# Pero [Unreleased] no es historia: describe el arbol de HOY, asi que sus cifras si son
+# verificables contra el arbol de hoy, y sin sensor se pudren solas. Medido: la frase
+# "de 16 a 24" suites la escribio esta misma rama siendo CIERTA -bc8d64e tenia 24
+# ficheros en kit/test/- y la propia rama anadio la 25 sin que nada se pusiera rojo.
+#
+# La seccion se recorta a un fichero aparte y las lineas de fuera se VACIAN en vez de
+# borrarse: asi el numero de linea que sale en la queja es el de CHANGELOG.md. El corte
+# es la primera cabecera '## [<digito>', que es la del ultimo release.
+UNRELD=$(mktemp -d) || exit 1
+UNREL="$UNRELD/CHANGELOG.md-Unreleased"
+awk '/^## \[Unreleased\]/ {on=1} /^## \[[0-9]/ {on=0} {print (on ? $0 : "")}' \
+    CHANGELOG.md > "$UNREL"
+# Recien etiquetada una version, [Unreleased] se queda VACIA a proposito: es el paso 4
+# del procedimiento de release (CONTRIBUTING.md). Exigirle cifras entonces seria
+# enrojecer un fichero correcto, asi que se declara 'skip' y se ve en el resumen. Lo
+# que NO se hace es aflojar los claim de abajo a claim_flojo: mientras la seccion tenga
+# contenido, un claim que no juzgue ninguna cifra es un 'ok' que no mide.
+if [ "$(grep -c . "$UNREL")" -eq 0 ]; then
+  echo "skip - CHANGELOG.md [Unreleased]: seccion vacia (version recien etiquetada);"
+  echo "       sus cifras NO se han comprobado"
+  skipped=$((skipped+1))
+else
+  claim "$SUITES" suites "$UNREL"
+  claim "$(count knowledge/DECISIONS/*.md)" ADRs "$UNREL"
+fi
+rm -f "$UNREL"; rmdir "$UNRELD"
 
 # --- 2. Todo script citado en la doc existe --------------------------------
 # Asi es como sobrevivio 'session-brief.sh' en tres documentos despues de borrarlo.

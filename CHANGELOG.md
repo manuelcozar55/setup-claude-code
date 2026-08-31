@@ -9,9 +9,10 @@ etiquetado.
 
 El repo pasa de ser solo un instalador endurecido a ser también un **harness**: guías
 (lo que se dice antes de actuar) y **sensores** (lo que mide después), en el sentido de
-Birgitta Böckeler (*Harness engineering*, 02-abr-2026). `kit/` conserva intacta la
-capa de instalación v1.0.0; lo nuevo vive en la raíz y solo le añade suites, que pasan
-de 16 a 24.
+Birgitta Böckeler (*Harness engineering*, 02-abr-2026). Lo nuevo vive en la raíz, pero
+`kit/` no queda intacto: suma 30 ficheros nuevos —el subsistema de evals con sus casos
+y sus pruebas— y 27 ficheros de v1.0.0 retocados, `install.sh` entre ellos. El árbol
+corre hoy 25 suites de test, frente a las 16 de v1.0.0.
 
 ### Added
 
@@ -49,7 +50,7 @@ de 16 a 24.
   profundidad de un glob. Más `scripts/cost-report.sh` con tendencia entre snapshots.
 
 - **`knowledge/`** — memoria versionada: `ORACLES.md`, `MISTAKES.md`, `PROCEDURES.md`,
-  `COST-LOG.md`, `SOURCES.md`, `SKILLS-REGISTRY.md` y 10 ADRs. Es **no-confiable por
+  `COST-LOG.md`, `SOURCES.md`, `SKILLS-REGISTRY.md` y 11 ADRs. Es **no-confiable por
   defecto**: lo que viene de la web son datos, nunca instrucciones, y la promoción de un
   hallazgo a regla pasa siempre por una puerta humana.
 
@@ -58,10 +59,10 @@ de 16 a 24.
   fueron al agente genérico y 6 de los 8 especialistas existentes nunca se usaron. El
   problema no era falta de capacidad.
 
-- **Ocho suites de test nuevas** (`test_harness_structure.sh`, `test_metrics.sh`,
+- **Nueve suites de test nuevas** (`test_harness_structure.sh`, `test_metrics.sh`, <!-- doc-claims:ignore: "Nueve" cuenta las suites NUEVAS desde v1.0.0, no el total del arbol -->
   `test_install_diff_first.sh`, `test_uninstall.sh`, `test_detect_oracle.sh`,
-  `test_auto_spec.sh`, `test_autonomy.sh`, `test_doc_claims.sh`), todas con sección de
-  falsabilidad. El total pasa de 16 a 24.
+  `test_auto_spec.sh`, `test_autonomy.sh`, `test_doc_claims.sh`, `test_evals.sh`), todas
+  con sección de falsabilidad. El total pasa de 16 a 25 suites.
 
 - **El harness entra solo: `auto-spec.sh`, un hook `UserPromptSubmit`** (ADR 009). Cuatro
   reglas advisorias de `CLAUDE.md` tenían adherencia medida —`IntentGate` 2,1 %,
@@ -282,15 +283,17 @@ de 16 a 24.
   ficheros de configuración, así que neutralizar ese settings es estable.
 
 - **Las cifras que la documentación afirma sobre el repo pasan a tener sensor.** `README.md`
-  decía 16 suites con 23 en el `Makefile`, `kit/README.md` "8 documentos" con 9, y tres
+  decía 16 suites con 23 en el `Makefile`, `kit/README.md` "8 documentos" con 9, y tres <!-- doc-claims:ignore: cita del estado ANTERIOR al sensor, no del arbol de hoy -->
   documentos seguían citando `session-brief.sh` meses después de borrarlo. Nada se ponía en
   rojo porque nadie medía el texto. `test_doc_claims.sh` cuenta el árbol real (suites,
   agentes, comandos, ADRs, documentos), lo compara con lo que dicen los documentos que hablan
   **en presente** —en dígito y en letra, porque "cinco comandos" era justo la forma que se
   quedaba sin actualizar— y comprueba que ningún `.sh` citado en la documentación haya
-  dejado de existir. `CHANGELOG.md`, `knowledge/DECISIONS/`, `knowledge/PRE-MORTEM.md` y
+  dejado de existir. `knowledge/DECISIONS/`, `knowledge/PRE-MORTEM.md` y
   `docs/superpowers/plans/` quedan **fuera a propósito**: son registros fechados, y una cifra
-  de agosto ahí es correcta aunque hoy sea otra. Trae su propio check de falsabilidad.
+  de agosto ahí es correcta aunque hoy sea otra. De `CHANGELOG.md` entra solo la sección
+  `[Unreleased]`, que describe el árbol de hoy; sus secciones publicadas quedan fuera por lo
+  mismo. Trae su propio check de falsabilidad.
 
 ### Security
 
