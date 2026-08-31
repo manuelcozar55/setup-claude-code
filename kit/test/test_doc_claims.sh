@@ -17,8 +17,12 @@ cd "$(dirname "$0")/../.." || exit 1
 pass=0; fail=0; skipped=0
 
 # knowledge/PRE-MORTEM.md tampoco entra: es el mismo genero que los ADR, una foto fechada.
-DOCS=(README.md CLAUDE.md CONTRIBUTING.md kit/README.md knowledge/ORACLES.md
-      knowledge/PROCEDURES.md kit/docs/*.md)
+DOCS=(README.md CLAUDE.md CONTRIBUTING.md kit/README.md kit/evals/README.md
+      knowledge/ORACLES.md knowledge/PROCEDURES.md kit/docs/*.md)
+# Fuera de DOCS a proposito (el porque, en la seccion 4), pero sus filas nombran el
+# sensor de cada afirmacion, y esos nombres si son comprobables: citar un script que
+# no existe deja la fila sin sensor sin que se note.
+EVALDOC=knowledge/EVAL-CRITERIA.md
 
 # Cuenta ficheros por glob sin pasar por `ls` (que se rompe con nombres raros).
 count() { echo "$#"; }
@@ -78,6 +82,13 @@ claim "$(count knowledge/DECISIONS/*.md)" ADRs "${DOCS[@]}"
 claim "$(count kit/claude/agents/*.md)" agentes "${DOCS[@]}"
 claim "$(count .claude/commands/*.md)" comandos "${DOCS[@]}"
 claim "$(count kit/docs/*.md)" documentos kit/README.md kit/docs/01-overview.md
+# El inventario del eval era la unica cifra que nadie juzgaba: "40 tareas reales
+# (30 positivas / 10 negativas)" pasaba verde. Va acotado a los dos indices porque
+# "tareas" a secas tambien nombra recuentos parciales ciertos -las 9 que puntuan el
+# transcript, las 6 de la primera tirada- y ahi la cifra correcta no es el total.
+claim "$(count kit/evals/tasks/*.yaml)" tareas README.md kit/README.md
+claim "$(grep -l '^tipo: positiva' kit/evals/tasks/*.yaml | wc -l)" positivas README.md kit/README.md
+claim "$(grep -l '^tipo: negativa' kit/evals/tasks/*.yaml | wc -l)" negativas README.md kit/README.md
 
 # --- 2. Todo script citado en la doc existe --------------------------------
 # Asi es como sobrevivio 'session-brief.sh' en tres documentos despues de borrarlo.
@@ -87,7 +98,7 @@ missing=""
 while IFS= read -r s; do
   case "$GENERICOS" in *" $s "*) continue;; esac
   find . -name "$s" -not -path './.git/*' | grep -q . || missing="$missing $s"
-done <<< "$(grep -rhoE '\b[a-z0-9][a-z0-9_-]*\.sh\b' "${DOCS[@]}" | sort -u)"
+done <<< "$(grep -rhoE '\b[a-z0-9][a-z0-9_-]*\.sh\b' "${DOCS[@]}" "$EVALDOC" | sort -u)"
 if [ -z "$missing" ]; then
   echo "ok - todos los .sh citados en la doc existen en el repo"; pass=$((pass+1))
 else
@@ -112,8 +123,8 @@ fi
 # (suites, ADRs, agentes, comandos) contra lo que hay en el arbol, y NINGUNA de las
 # cifras que se pudren ahi es de esa forma: son el n de cada brazo, tasas, un lift y
 # el recuento de tareas mudas, que solo existen en kit/evals/runs.jsonl. Medido:
-# meterlo en DOCS deja la suite en verde sin mirar una sola de ellas.
-EVALDOC=knowledge/EVAL-CRITERIA.md
+# meterlo en DOCS deja la suite en verde sin mirar una sola de ellas. Lo que si se
+# le exige, arriba, es que los scripts que nombra existan.
 # El almacen se deja sustituir por el entorno por la misma razon que el interprete: la
 # sonda de los puntos de llamada vuelve a correr esta suite contra si misma y, en un
 # clon limpio -donde runs.jsonl no existe, porque esta en .gitignore-, tiene que poder
