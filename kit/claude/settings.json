@@ -1,7 +1,6 @@
 {
   "env": {
     "MAX_THINKING_TOKENS": "32000",
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "75",
     "ANTHROPIC_DISABLE_TELEMETRY": "1",
     "TRACE_TO_LANGSMITH": "false",
     "CC_LANGSMITH_PROJECT": "MyCC"
@@ -98,6 +97,16 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/smart_approve.py",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/stale-read-guard.py",
             "timeout": 10
           }
         ]

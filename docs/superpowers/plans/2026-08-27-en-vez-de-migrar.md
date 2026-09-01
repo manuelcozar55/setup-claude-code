@@ -309,7 +309,7 @@ suspende a quien acierta."
 - [x] **Paso 2: comprobar los cuatro casos a mano, sin agente**
 
   ```bash
-  cd /home/manuelcozarbaranguan/repos/setup-claude-code
+  cd ~/repos/setup-claude-code
   for caso in A B C D; do
     d=$(mktemp -d)
     printf 'def suma(a, b):\n    return a + b\n\n\ndef resta(a, b):\n    return a - b\n' > "$d/calc.py"
@@ -468,7 +468,7 @@ razón, que está en el Paso 2b y merece leerse.
 - [x] **Paso 1: leer el `setup` y el `check` de cada una**
 
   ```bash
-  cd /home/manuelcozarbaranguan/repos/setup-claude-code
+  cd ~/repos/setup-claude-code
   for n in 02 07 08 09 11 14 16 18 19; do
     echo "=== $n ==="; cat kit/evals/tasks/$n-*.yaml
   done
@@ -872,7 +872,7 @@ veinte, que es lo que hacia falta para volver a medir la 12 y la 20."
 - [x] **Paso 2: correr solo esas dos tareas, en los tres brazos**
 
   ```bash
-  cd /home/manuelcozarbaranguan/repos/setup-claude-code
+  cd ~/repos/setup-claude-code
   for arm in on off sin-ajustes; do
     env -u ANTHROPIC_BASE_URL EVAL_MODEL='claude-opus-5[1m]' ARM="$arm" \
       bash kit/evals/run.sh 12-alcance-quirurgico 20-no-reescribir-lo-publicado

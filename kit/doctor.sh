@@ -40,6 +40,26 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   [ "$miss" -eq 0 ] && pass "hooks referenciados presentes y ejecutables  (fuente: jq .hooks + test -e/-x)"
 fi
 
+# 2c. Deriva entre lo que el kit trae y lo desplegado. Es WARN y no FAIL: personalizar un
+# hook es legitimo. Pero si divergen y no lo sabes, el kit deja de reproducir tu maquina, y
+# eso ya paso: dos guards llevaban meses distintos entre el kit y su copia de origen, con la
+# version endurecida en un lado y la antigua en el otro, y nadie lo noto.
+derivados=0; derivados_lista=""
+for src in "$KIT"/claude/hooks/*; do
+  [ -f "$src" ] || continue
+  nombre="$(basename "$src")"
+  dst="$CLAUDE_HOME/hooks/$nombre"
+  [ -f "$dst" ] || continue
+  if ! cmp -s "$src" "$dst"; then
+    derivados=$((derivados + 1)); derivados_lista="$derivados_lista $nombre"
+  fi
+done
+if [ "$derivados" -gt 0 ]; then
+  warn "$derivados hook(s) desplegados difieren de los del kit ($derivados_lista): reinstala para alinearlos, o portalos al kit si el cambio es bueno"
+else
+  pass "los hooks desplegados coinciden byte a byte con los del kit  (fuente: cmp -s por fichero)"
+fi
+
 # 2b. capa de IOCs de Sentinel (opcional -> WARN)
 if [ -f "$CLAUDE_HOME/hooks/iocs.json" ]; then
   pass "Sentinel IOC layer activa  (fuente: test -f hooks/iocs.json)"
@@ -111,7 +131,8 @@ else
   pass "API directa a Anthropic: sin proxy en medio  (fuente: sin ANTHROPIC_BASE_URL)"
 fi
 
-# 5b. Una sola fuente de enrutado. Medido en una maquina real: ANTHROPIC_BASE_URL vivia
+# 5e. Una sola fuente de enrutado (pertenece al check 5; la numeracion de este bloque
+# ya venia sin orden). Medido en una maquina real: ANTHROPIC_BASE_URL vivia
 # en 5 settings.local.json de proyecto, cada uno con un hook `headroom wrap selfheal` que
 # lo reponia en cada arranque, y ninguno declarado. Consecuencias: el enrutado dependia
 # del cwd de la sesion (94 % del trabajo de un dia salio sin pasar por el proxy), y

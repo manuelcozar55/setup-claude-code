@@ -33,4 +33,24 @@ chmod -x "$CLAUDE_HOME/hooks/branch-guard.sh"
 set +e; run_doctor; rc=$?; set -e
 ck "$rc" "1" "doctor FAIL con hook no ejecutable"
 
+# Deriva entre el kit y lo desplegado -> WARN (no FAIL: personalizar es legitimo).
+# El defecto que lo motiva: dos guards llevaban meses distintos entre el kit y su copia de
+# origen, la version endurecida en un lado y la antigua en el otro, sin que nadie lo notara.
+bash "$KIT/install.sh" >/dev/null 2>&1
+out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
+       bash "$KIT/doctor.sh" 2>&1)"
+if echo "$out" | grep -q 'coinciden byte a byte con los del kit'; then
+  ck y y "sin tocar nada, doctor confirma que lo desplegado coincide con el kit"
+else
+  ck n y "sin tocar nada, doctor confirma que lo desplegado coincide con el kit"
+fi
+echo "# tocado a mano" >> "$CLAUDE_HOME/hooks/branch-guard.sh"
+out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
+       bash "$KIT/doctor.sh" 2>&1)"
+if echo "$out" | grep -qE '^WARN .*difieren de los del kit.*branch-guard'; then
+  ck y y "un hook desplegado modificado a mano produce WARN de deriva"
+else
+  ck n y "un hook desplegado modificado a mano produce WARN de deriva"
+fi
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

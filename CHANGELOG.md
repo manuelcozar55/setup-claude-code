@@ -220,6 +220,36 @@ corre hoy 26 suites de test, frente a las 16 de v1.0.0.
 
 ### Fixed
 
+- **Lo que impide que la documentación mienta no corría en CI, y nada lo declaraba.**
+  `test_doc_claims.sh` y `test_evals.sh` quedaban fuera del pipeline: El `Makefile` corría 25 y `ci.yml` 23: las ausentes eran `test_doc_claims.sh`
+  y `test_evals.sh`, así que un PR que rompiera una cifra del README pasaba en verde. Y el
+  hueco podía volver, porque el único sensor comparaba `kit/test/` contra el *target* del
+  Makefile, nunca contra CI. Se añaden a `ci.yml` y `test_harness_structure.sh` gana una
+  sección de paridad `Makefile ↔ ci.yml` con su caso de falsabilidad.
+- **La unidad systemd que genera `install.sh --with-headroom` reproducía dos bugs ya
+  diagnosticados**: sin `%h/.local/share/rtk` en `ReadWritePaths`, SQLite da *"unable to open
+  database file (code 14)"* cada 60 s; sin `HF_HUB_OFFLINE=0`, el motor de compresión queda
+  `available:false` **en silencio** mientras `/readyz` sigue diciendo `healthy`.
+- **Tres tests medían la máquina de quien los ejecutaba, no el repo.** `test_doctor.sh` y el
+  `run_doctor()` de `test_doctor_base_url.sh` no aislaban `HOME`; y `kit/scan-secrets.sh`
+  escaneaba ficheros *ignorados* por git, así que `test_harness_structure.sh` daba rojo en una
+  máquina con scratch en disco y verde en CI, donde el clon está limpio. Misma lección que
+  `628dfaa`.
+- **`.claude/skills/dev-env/SKILL.md` afirmaba que un `ANTHROPIC_BASE_URL` en `settings.json`
+  desactiva la ventana de 1M, el tool search y remote-control.** Dos de las tres son falsas,
+  medido dentro de una sesión enrutada: solo `/remote-control` cae. Y recomendaba
+  `headroom wrap claude`, que escribe la variable en el `settings.local.json` del proyecto y
+  la repone con un hook `SessionStart` — el mecanismo que dejó `ANTHROPIC_BASE_URL` en 5
+  ficheros no declarados y el enrutado dependiendo del `cwd`.
+- **`hooks/stale-read-guard.py` estaba en producción sin viajar en el kit.** Se añade y se
+  registra vía `optional-hook.sh --python`. Su propia instrumentación mide por qué importa:
+  las relecturas eran el mayor desperdicio identificado del presupuesto de tokens, mayor que
+  todo lo que comprime el proxy.
+- **Se retira `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=75` de la plantilla de `settings.json`.** Es un
+  hook de pruebas del cliente, no un ajuste soportado: en la ruta de 200k regala ~32k de los
+  180k usables, y en la de 1M es inerte. La máquina de referencia ya lo había abandonado; la
+  plantilla se había quedado atrás.
+
 - **El guard de force-push no veía los flags cortos agrupados.** `git push -uf origin main`
   fuerza de verdad, pero no contiene `-f` como token suelto, así que el patrón anterior
   (`-f\b`) lo dejaba pasar — justo la protección que el kit anuncia como dura. Pasaba en las
