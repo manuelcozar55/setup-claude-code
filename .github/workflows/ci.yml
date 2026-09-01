@@ -130,6 +130,14 @@ jobs:
       - name: "test_uninstall.sh (restaura el backup mas reciente: interno o ZIP, dry-run por defecto)"
         run: bash kit/test/test_uninstall.sh
 
+      # Estas dos corrian en `make test` pero NO en CI, y nada lo declaraba: un PR que
+      # rompiera una cifra del README pasaba en verde. Son el sensor anti-mentira.
+      - name: "test_doc_claims.sh (toda cifra que la doc afirma sobre el repo tiene sensor)"
+        run: bash kit/test/test_doc_claims.sh
+
+      - name: "test_evals.sh (sensor offline del eval set; sin almacen declara skip, nunca ok)"
+        run: bash kit/test/test_evals.sh
+
       - name: gitleaks dir sobre el repo completo
         run: gitleaks dir --no-banner .
 

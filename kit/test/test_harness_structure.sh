@@ -315,6 +315,21 @@ else
   ck y y "no hay workflow de CI (check pasa por vacio)"
 fi
 
+echo "== 9) test_ci_paridad_con_el_Makefile =="
+# La deriva ya ocurrio y nadie la vio: el Makefile corria 25 suites y ci.yml 23. Las dos
+# ausentes eran test_doc_claims.sh y test_evals.sh, justo las que impiden que la doc mienta,
+# asi que un PR que rompiera una cifra del README pasaba CI en verde. El sensor que existia
+# (test_doc_claims.sh) comparaba kit/test/ contra el Makefile, no contra CI.
+MK="Makefile"
+if [ -f "$MK" ] && [ -f "$WF" ]; then
+  ausentes=$(comm -23 \
+    <(grep -oE 'kit/test/[A-Za-z0-9_]+\.sh' "$MK" | sort -u) \
+    <(grep -oE 'kit/test/[A-Za-z0-9_]+\.sh' "$WF" | sort -u) | grep -c . || true)
+  ck "$ausentes" "0" "toda suite del Makefile corre tambien en ci.yml (ausentes en CI: $ausentes)"
+else
+  ck "y" "y" "Makefile o ci.yml ausente (check por vacio)"
+fi
+
 echo "== Falsabilidad =="
 # Cada check falsable de arriba se ejecuta aqui contra un caso fabricado a
 # proposito para demostrar que dispara de verdad, no que siempre pasa.
@@ -372,6 +387,21 @@ else
   ck "n" "y" "test_sources_freshness SI detecta una entrada vencida fabricada"
 fi
 
-ck "$([ "$falsified" -ge 4 ] && echo y || echo n)" "y" "al menos 4 checks demuestran deteccion real sobre casos fabricados a proposito (detectados: $falsified de 5) -- si fuera 0, la suite seria decorativa"
+
+# Falsabilidad de la 9: un Makefile con una suite que CI no corre tiene que detectarse.
+tmp_mk="$(mktemp)"
+printf 'test:\n\tbash kit/test/test_fabricada_que_ci_no_corre.sh\n' > "$tmp_mk"
+n_f=$(comm -23 \
+  <(grep -oE 'kit/test/[A-Za-z0-9_]+\.sh' "$tmp_mk" | sort -u) \
+  <(grep -oE 'kit/test/[A-Za-z0-9_]+\.sh' "$WF" | sort -u) | grep -c . || true)
+rm -f "$tmp_mk"
+if [ "$n_f" -ge 1 ]; then
+  ck "y" "y" "test_ci_paridad SI detecta una suite fabricada que CI no corre"
+  falsified=$((falsified + 1))
+else
+  ck "n" "y" "test_ci_paridad SI detecta una suite fabricada que CI no corre"
+fi
+
+ck "$([ "$falsified" -ge 5 ] && echo y || echo n)" "y" "al menos 5 checks demuestran deteccion real sobre casos fabricados a proposito (detectados: $falsified de 6) -- si fuera 0, la suite seria decorativa"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
