@@ -59,6 +59,11 @@ Todo vive bajo `kit/test/`:
 - `test_with_headroom.sh` — `install.sh --with-headroom` instala el proxy, lo
   arranca, comprueba `/readyz` y solo entonces escribe la variable de
   enrutado en `settings.json`.
+- `test_headroom_guardrails.sh` — los guardarrailes del proxy: `--mode cache` y no
+  `token`, nunca `--budget` ni `--log-messages`, una sola fuente de `ANTHROPIC_BASE_URL`,
+  y que la unidad generada traiga las tres correcciones medidas (rtk, HF_HUB_OFFLINE,
+  rutas inaccesibles). Hermetico: `HOME`, `XDG_CONFIG_HOME` y un `headroom` de pega
+  propios, o en CI no se ejecutaria y daria verde falso.
 - `test_install_diff_first.sh` — si `CLAUDE_HOME` es a su vez un repo git con
   remoto, `install.sh` nunca escribe encima: genera el arbol aparte y ensena
   el diff. `--apply` fuerza la escritura, `--plan` fuerza el diff.
@@ -90,7 +95,7 @@ Todo vive bajo `kit/test/`:
   sin una sola llamada a la API.
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 25 suites listadas arriba).
+(las 26 suites listadas arriba).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -192,7 +197,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 25 suites y el escaner de secretos
+# 2. las 26 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 

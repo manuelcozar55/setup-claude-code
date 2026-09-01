@@ -162,6 +162,10 @@ Type=simple
 ExecStart=%h/.local/bin/headroom proxy --port ${HR_PORT} --mode cache --no-telemetry
 Environment=HEADROOM_SAVINGS_PROFILE=coding
 Environment=PATH=%h/.local/bin:%h/.venvs/tools/bin:/usr/local/bin:/usr/bin:/bin
+# El motor de compresion descarga su modelo ONNX la primera vez. Con HF_HUB_OFFLINE=1
+# heredado del entorno, kompress queda available:false EN SILENCIO: /readyz sigue
+# healthy y el proxy no comprime nada.
+Environment=HF_HUB_OFFLINE=0
 # El '-' es deliberado: si el shaper falla, la unidad NO debe quedar en failed.
 ExecStartPost=-${SHAPER}
 Restart=always
@@ -172,7 +176,15 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.headroom %h/.cache/huggingface
+# read-only y no tmpfs a proposito: con tmpfs el home queda vacio dentro del
+# namespace y %h/.local/bin/headroom deja de existir -> la unidad no arranca
+# (203/EXEC). Como read-only si permite LEER todo el home, se tapan a mano los
+# directorios que el proxy no tiene ningun motivo para leer. El '-' tolera que falten.
+InaccessiblePaths=-%h/.ssh -%h/.aws -%h/.gnupg -%h/.config/gh
+# %h/.local/share/rtk: SQLite necesita escritura en el directorio aunque solo se
+# lea la base. Sin esto, 'unable to open database file (code 14)' cada 60 s. El '-'
+# porque el kit no instala rtk y no da por supuesto que exista.
+ReadWritePaths=%h/.headroom %h/.cache/huggingface -%h/.local/share/rtk
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
@@ -192,6 +204,10 @@ UNITEOF
       exit 1
     fi
     mkdir -p "$HOME/.headroom" "$HOME/.cache/huggingface"
+    # El proxy deja en ~/.headroom material derivado de tus prompts (ccr_store.db,
+    # savings_events.jsonl y, si alguien arranca con --log-messages, conversaciones
+    # enteras en claro). Por defecto quedaba 0755.
+    chmod 700 "$HOME/.headroom" 2>/dev/null || true
     systemctl --user daemon-reload
     systemctl --user enable --now headroom-proxy.service || true
     # linger: que el proxy arranque con la maquina y no al primer login.

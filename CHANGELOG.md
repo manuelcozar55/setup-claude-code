@@ -12,7 +12,7 @@ El repo pasa de ser solo un instalador endurecido a ser también un **harness**:
 Birgitta Böckeler (*Harness engineering*, 02-abr-2026). Lo nuevo vive en la raíz, pero
 `kit/` no queda intacto: suma 30 ficheros nuevos —el subsistema de evals con sus casos
 y sus pruebas— y 27 ficheros de v1.0.0 retocados, `install.sh` entre ellos. El árbol
-corre hoy 25 suites de test, frente a las 16 de v1.0.0.
+corre hoy 26 suites de test, frente a las 16 de v1.0.0.
 
 ### Added
 
@@ -62,7 +62,7 @@ corre hoy 25 suites de test, frente a las 16 de v1.0.0.
 - **Nueve suites de test nuevas** (`test_harness_structure.sh`, `test_metrics.sh`, <!-- doc-claims:ignore: "Nueve" cuenta las suites NUEVAS desde v1.0.0, no el total del arbol -->
   `test_install_diff_first.sh`, `test_uninstall.sh`, `test_detect_oracle.sh`,
   `test_auto_spec.sh`, `test_autonomy.sh`, `test_doc_claims.sh`, `test_evals.sh`), todas
-  con sección de falsabilidad. El total pasa de 16 a 25 suites.
+  con sección de falsabilidad. El total pasa de 16 a 26 suites.
 
 - **El harness entra solo: `auto-spec.sh`, un hook `UserPromptSubmit`** (ADR 009). Cuatro
   reglas advisorias de `CLAUDE.md` tenían adherencia medida —`IntentGate` 2,1 %,

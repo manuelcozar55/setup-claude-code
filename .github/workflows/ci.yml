@@ -112,6 +112,9 @@ jobs:
       - name: test_with_headroom.sh (solo cablea despues de comprobar /readyz)
         run: bash kit/test/test_with_headroom.sh
 
+      - name: "test_headroom_guardrails.sh (modo cache, sin --budget ni --log-messages, una sola fuente de enrutado)"
+        run: bash kit/test/test_headroom_guardrails.sh
+
       - name: test_metrics.sh (scripts/metrics.py sobre transcripts sinteticos)
         run: bash kit/test/test_metrics.sh
 

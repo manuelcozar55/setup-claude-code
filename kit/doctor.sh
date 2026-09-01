@@ -111,6 +111,25 @@ else
   pass "API directa a Anthropic: sin proxy en medio  (fuente: sin ANTHROPIC_BASE_URL)"
 fi
 
+# 5b. Una sola fuente de enrutado. Medido en una maquina real: ANTHROPIC_BASE_URL vivia
+# en 5 settings.local.json de proyecto, cada uno con un hook `headroom wrap selfheal` que
+# lo reponia en cada arranque, y ninguno declarado. Consecuencias: el enrutado dependia
+# del cwd de la sesion (94 % del trabajo de un dia salio sin pasar por el proxy), y
+# `headroom doctor` afirmaba "not routed" DENTRO de una sesion enrutada, porque solo mira
+# settings.json. Dos fuentes es peor que ninguna: no se puede apagar lo que no se ve.
+rutas_declaradas=0; rutas_detalle=""
+for f in "$CLAUDE_HOME/settings.json" "$CLAUDE_HOME/settings.local.json"; do
+  if [ -f "$f" ] && jq -e '.env.ANTHROPIC_BASE_URL' "$f" >/dev/null 2>&1; then
+    rutas_declaradas=$((rutas_declaradas + 1))
+    rutas_detalle="$rutas_detalle $(basename "$f")"
+  fi
+done
+if [ "$rutas_declaradas" -gt 1 ]; then
+  fail "ANTHROPIC_BASE_URL declarado en $rutas_declaradas ficheros ($rutas_detalle): el enrutado deja de ser una decision unica y sobrevive a que lo quites de uno. Deja solo settings.json"
+elif [ "$rutas_declaradas" -eq 1 ]; then
+  pass "enrutado declarado en un solo sitio:$rutas_detalle  (fuente: jq sobre settings.json y settings.local.json)"
+fi
+
 # 5a. Headroom (opcional -> WARN). `headroom` y `rtk` son DOS proyectos distintos
 # (ver docs/03-headroom.md): el proxy HTTP en :8787 y el filtro de salida de CLI
 # que ejecuta el hook `rtk hook claude`. Se comprueban por separado a propósito:
@@ -118,6 +137,38 @@ fi
 # "Headroom presente" siendo falso, y al revés.
 if command -v headroom >/dev/null 2>&1; then
   pass "Headroom (proxy) presente  (fuente: command -v headroom)"
+
+  # El modo pesa mas que cualquier otro ajuste. `token` reescribe los turnos anteriores
+  # e invalida el prefijo cacheado, que es de donde sale casi todo el ahorro. Medido en
+  # una maquina real: el 95,4 % del input son lecturas de cache, asi que `token` tendria
+  # que comprimir el 85 % del contexto solo para EMPATAR con `cache`, y comprime el 4,2 %
+  # de media. No se confia en el default porque la herramienta se contradice sobre cual es.
+  hr_unit="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/headroom-proxy.service"
+  if [ -f "$hr_unit" ]; then
+    if grep -qE '^ExecStart=.*--mode[ =]cache' "$hr_unit"; then
+      pass "el proxy arranca en --mode cache  (fuente: ExecStart de headroom-proxy.service)"
+    else
+      fail "headroom-proxy.service no fija --mode cache: en modo token se invalida el prefijo cacheado y el coste sube en vez de bajar (ver docs/03-headroom.md)"
+    fi
+    if grep -qE '^ExecStart=.*(--budget|--log-messages)' "$hr_unit"; then
+      fail "headroom-proxy.service arranca con --budget o --log-messages: el primero devuelve HTTP 200 con cuerpo vacio al agotarse (parece un fallo del cliente); el segundo escribe la conversacion entera en claro a disco"
+    fi
+  fi
+
+  # --log-messages es opt-in y su propio --help avisa "may log sensitive data": guarda
+  # request_messages, o sea la conversacion completa. Medido: 36 conversaciones (12 MB)
+  # seguian en un fichero 0644 dos semanas despues de la sesion que las genero.
+  hr_jsonl="$HOME/.headroom/logs/proxy.jsonl"
+  if [ -f "$hr_jsonl" ] && grep -qm1 '"request_messages":[[:space:]]*\[' "$hr_jsonl" 2>/dev/null; then
+    fail "$hr_jsonl guarda cuerpos de peticion (request_messages): conversaciones en claro en disco. Borra el fichero y no arranques el proxy con --log-messages"
+  fi
+  if [ -d "$HOME/.headroom" ]; then
+    hr_perm="$(stat -c '%a' "$HOME/.headroom" 2>/dev/null || echo '')"
+    case "$hr_perm" in
+      700|750|'') : ;;
+      *) warn "$HOME/.headroom tiene permisos $hr_perm: ahi vive material derivado de tus prompts (ccr_store.db, savings_events.jsonl). Corrigelo con: chmod 700 \"\$HOME/.headroom\"" ;;
+    esac
+  fi
 else
   warn "Headroom (proxy) no instalado (opcional; ver docs/03-headroom.md)"
 fi

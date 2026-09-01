@@ -25,6 +25,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_clean_install_resilience.sh
 	bash kit/test/test_doctor_base_url.sh
 	bash kit/test/test_with_headroom.sh
+	bash kit/test/test_headroom_guardrails.sh
 	bash kit/test/test_metrics.sh
 	bash kit/test/test_detect_oracle.sh
 	bash kit/test/test_auto_spec.sh
