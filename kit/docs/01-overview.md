@@ -82,3 +82,4 @@ flowchart LR
 - **`07-verify.md`**: cómo comprobar, con evidencia, que todo lo anterior funciona de verdad.
 - **`08-plugins-mcp-y-skills.md`**: el stack completo para replicar el sistema (plugins de Claude Code + marketplaces, servidores MCP, skills propias y prerequisitos).
 - **`09-ssh-y-gitlab-privado.md`**: generar una clave SSH desde WSL2 y darla de alta en un GitLab autoalojado, hasta clonar y hacer `push` sin contraseña y usar un marketplace de plugins privado.
+- **`10-onboarding.md`**: la ruta de un companero nuevo, de `git clone` a sesión verde con `make bootstrap`; cómo se leen `FAIL` y `WARN` de `doctor.sh`; y la decisión de Headroom con las cifras medidas delante.

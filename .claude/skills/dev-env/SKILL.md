@@ -92,9 +92,18 @@ ext4 y en `/mnt/c` (los guards no ejecutan `git status`). El más lento es
 
 `:8787` es una **unidad systemd con `Restart=always`**.
 
-- Ruta correcta: `headroom wrap claude` (alias `cc`).
-- **Nunca** `ANTHROPIC_BASE_URL` en `settings.json`: desactiva 1M de contexto, tool search y
-  remote-control.
+- Ruta correcta: `bash kit/install.sh --with-headroom`, que instala, arranca, espera a que
+  `/readyz` responda hasta 30 s y **solo entonces** enruta. `headroom wrap claude` (alias
+  `cc`) tambien funciona, pero escribe `ANTHROPIC_BASE_URL` en el `settings.local.json` del
+  proyecto y lo repone con un hook `SessionStart`: medido, dejo la variable en 5 ficheros
+  no declarados y el enrutado paso a depender del cwd de la sesion.
+- `ANTHROPIC_BASE_URL` en `settings.json` **no** desactiva la ventana de 1M ni el tool
+  search. Medido el 2026-09-01 dentro de una sesion enrutada por el `env` de settings:
+  ventana de 1M activa (va por el sufijo del id de modelo, `claude-opus-5[1m]`, no por la
+  cabecera beta) y herramientas diferidas funcionando (`ENABLE_TOOL_SEARCH`). Lo que **si**
+  se pierde es `/remote-control`, y eso lo confirma `headroom doctor`. El fallo no es
+  declararlo en `settings.json`: es declararlo en **dos** sitios, porque entonces no se
+  puede apagar. `kit/doctor.sh` falla si encuentra mas de una fuente.
 - **Nunca** `pkill -f "headroom proxy"` ni `nohup headroom proxy`: systemd relanza el suyo y
   quedan dos instancias peleando por el puerto → respuestas HTTP 200 vacías. Reiniciar solo
   con `systemctl --user restart <unidad>`.

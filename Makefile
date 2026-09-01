@@ -1,12 +1,25 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install test doctor mutantes langsmith-local langsmith-arbol phoenix phoenix-push evals-dryrun evals-paid evals-ablacion-paid
+.PHONY: help install bootstrap test doctor mutantes langsmith-local langsmith-arbol phoenix phoenix-push evals-dryrun evals-paid evals-ablacion-paid
 
 help: ## Lista los targets disponibles
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*##"}; {printf "  %-14s %s\n", $$1, $$2}'
 
 install: ## Instala el kit en CLAUDE_HOME (default $HOME/.claude)
 	bash kit/install.sh
+
+bootstrap: ## De cero a sesion verde: perfil, kit, doctor y oraculo. El comando de un companero nuevo.
+	@[ -f config/profile.yaml ] || { cp config/profile.example.yaml config/profile.yaml; \
+	  echo "==> config/profile.yaml creado desde el ejemplo. Editalo: es tuyo y no viaja en el repo."; }
+	bash kit/install.sh
+	bash kit/doctor.sh
+	@$(MAKE) --no-print-directory test
+	@echo ""
+	@echo "==> Harness levantado y verificado."
+	@echo "    Headroom NO se instala aqui a proposito: es opt-in, y en el perfil de uso"
+	@echo "    medido rinde un 0,8 % de tokens a cambio de 512 ms por peticion. Lee"
+	@echo "    kit/docs/10-onboarding.md antes de decidir; si lo quieres:"
+	@echo "        bash kit/install.sh --with-headroom"
 
 test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_guards.sh
