@@ -53,4 +53,26 @@ else
   ck n y "un hook desplegado modificado a mano produce WARN de deriva"
 fi
 
+# La capa de IOCs se busca donde la busca el hook, no en una sola ruta fija.
+# El defecto: en una instalacion donde sentinel vive FUERA de CLAUDE_HOME, doctor avisaba de
+# que la capa estaba inactiva cuando en realidad cargaba 31 patrones de ruta. Un aviso falso
+# gasta la credibilidad de los verdaderos.
+bash "$KIT/install.sh" >/dev/null 2>&1
+out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
+       bash "$KIT/doctor.sh" 2>&1)"
+if echo "$out" | grep -qE '^WARN .*IOC layer inactiva'; then
+  ck y y "sin iocs.json, doctor avisa (es opcional: el kit solo trae el .example)"
+else
+  ck n y "sin iocs.json, doctor avisa (es opcional: el kit solo trae el .example)"
+fi
+printf '{"schema_version":3,"sensitive_paths":{"patterns":[]}}\n' > "$CLAUDE_HOME/sentinel/iocs.json"
+out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
+       bash "$KIT/doctor.sh" 2>&1)"
+if echo "$out" | grep -qE '^PASS .*IOC layer activa'; then
+  ck y y "con iocs.json junto al preflight, doctor lo encuentra y lo dice"
+else
+  ck n y "con iocs.json junto al preflight, doctor lo encuentra y lo dice"
+fi
+rm -f "$CLAUDE_HOME/sentinel/iocs.json"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

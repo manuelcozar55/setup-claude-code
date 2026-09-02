@@ -61,8 +61,23 @@ else
 fi
 
 # 2b. capa de IOCs de Sentinel (opcional -> WARN)
-if [ -f "$CLAUDE_HOME/hooks/iocs.json" ]; then
-  pass "Sentinel IOC layer activa  (fuente: test -f hooks/iocs.json)"
+# Se comprueban las MISMAS rutas que busca el hook y en su orden (sentinel_preflight.py:
+# <dir del script>/iocs.json -> $CLAUDE_HOME/hooks/iocs.json -> skills/mcp-sentinel/...).
+# Antes solo se miraba la segunda, asi que en una instalacion donde sentinel vive FUERA de
+# CLAUDE_HOME el WARN era falso: la capa estaba activa con 31 patrones de ruta, 12 de comando
+# y 30 de red, y doctor decia que no. Un aviso falso gasta la credibilidad de los verdaderos.
+ioc_file=""
+ioc_pre="$(jq -r '.hooks // {} | .. | .command? // empty' "$CLAUDE_HOME/settings.json" 2>/dev/null \
+           | grep -oE '[^ ]*sentinel_preflight\.py' | head -1)"
+ioc_pre="${ioc_pre/\$HOME/$HOME}"
+ioc_dir=""
+[ -n "$ioc_pre" ] && ioc_dir="$(dirname "$ioc_pre")"
+for c in "${ioc_dir:+$ioc_dir/iocs.json}" "$CLAUDE_HOME/sentinel/iocs.json" \
+         "$CLAUDE_HOME/hooks/iocs.json" "$CLAUDE_HOME/skills/mcp-sentinel/references/iocs.json"; do
+  [ -n "$c" ] && [ -f "$c" ] && { ioc_file="$c"; break; }
+done
+if [ -n "$ioc_file" ]; then
+  pass "Sentinel IOC layer activa: $ioc_file  (fuente: mismo orden de busqueda que el hook)"
 else
   warn "Sentinel IOC layer inactiva: falta iocs.json (opcional; ver docs/05-security.md). Los guards de Bash siguen activos."
 fi
