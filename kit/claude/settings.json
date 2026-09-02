@@ -1,6 +1,5 @@
 {
   "env": {
-    "MAX_THINKING_TOKENS": "32000",
     "ANTHROPIC_DISABLE_TELEMETRY": "1",
     "TRACE_TO_LANGSMITH": "false",
     "CC_LANGSMITH_PROJECT": "MyCC"
@@ -19,28 +18,28 @@
     "deny": [
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~/*)",
-      "Bash(git push --force *)",
-      "Bash(git push -*f *)",
-      "Bash(git push -f* *)",
       "Bash(git push * --force)",
+      "Bash(git push -*f *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f* *)",
       "Bash(git push * -*f)",
       "mcp__linkedin__send_message",
-      "mcp__linkedin__connect_with_person"
+      "mcp__linkedin__connect_with_person",
+      "Write(/hooks/**)",
+      "Write(/settings.json)",
+      "Write(/settings.local.json)",
+      "Write(/sentinel-allowlist.json)",
+      "Write(/sentinel/**)",
+      "Edit(/hooks/**)",
+      "Edit(/settings.json)",
+      "Edit(/settings.local.json)",
+      "Edit(/sentinel-allowlist.json)",
+      "Edit(/sentinel/**)"
     ]
   },
   "model": "opus[1m]",
   "hooks": {
     "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/optional-hook.sh rtk hook claude",
-            "timeout": 10
-          }
-        ]
-      },
       {
         "matcher": "",
         "hooks": [
@@ -154,7 +153,19 @@
         ]
       }
     ],
-    "Stop": [
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/pre-compact.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
       {
         "hooks": [
           {
@@ -164,34 +175,11 @@
           }
         ]
       }
-    ],
-    "PreCompact": [
-      {
-        "matcher": "manual",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/pre-compact.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "auto",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/pre-compact.sh",
-            "timeout": 10
-          }
-        ]
-      }
     ]
   },
   "enabledPlugins": {
     "codex@openai-codex": true,
     "code-review@claude-plugins-official": true,
-    "github@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
