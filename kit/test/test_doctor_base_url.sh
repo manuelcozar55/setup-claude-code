@@ -10,6 +10,16 @@
 #
 # Tres casos: enrutado y muerto -> FAIL; sin enrutar -> no es FAIL (es la config
 # por defecto del kit y es valida); enrutado y vivo -> PASS.
+#
+# Casos D-F: la MISMA leccion en el ambito de PROYECTO. El check de fuente unica solo
+# miraba $CLAUDE_HOME/settings*.json, y el mecanismo que multiplica fuentes escribe en
+# <cwd>/.claude/settings.local.json (`headroom wrap`, wrap.py:1505). Medido: dos fuentes
+# vivas en una maquina real y el doctor veia una.
+#
+# Casos G-I: la statusLine. Claude Code silencia su fallo por completo (exit != 0 o stdout
+# vacio dejan la barra en blanco y stderr se descarta), asi que si nadie la comprueba nadie
+# se entera: paso hoy, 15 minutos de barra vacia despues de que una instalacion se llevara
+# la clave por delante.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 pass=0; fail=0
@@ -27,9 +37,19 @@ install_clean() { # imprime CLAUDE_HOME
   echo "$h/.claude"
 }
 
-set_base_url() { # $1 CLAUDE_HOME, $2 url
+set_base_url_file() { # $1 fichero de settings (puede no existir aun), $2 url
   local tmp; tmp="$(mktemp)"
-  jq --arg u "$2" '.env.ANTHROPIC_BASE_URL = $u' "$1/settings.json" > "$tmp" && mv "$tmp" "$1/settings.json"
+  mkdir -p "$(dirname "$1")"; [ -f "$1" ] || echo '{}' > "$1"
+  jq --arg u "$2" '.env.ANTHROPIC_BASE_URL = $u' "$1" > "$tmp" && mv "$tmp" "$1"
+}
+
+set_base_url() { # $1 CLAUDE_HOME, $2 url
+  set_base_url_file "$1/settings.json" "$2"
+}
+
+set_statusline() { # $1 CLAUDE_HOME, $2 comando
+  local tmp; tmp="$(mktemp)"
+  jq --arg c "$2" '.statusLine = {type:"command", command:$c}' "$1/settings.json" > "$tmp" && mv "$tmp" "$1/settings.json"
 }
 
 # El check nuevo mira settings.json y, si ahi no hay nada, la variable de entorno.
@@ -41,10 +61,11 @@ set_base_url() { # $1 CLAUDE_HOME, $2 url
 # legitimos pero ajenos a lo que mide este test. Sin aislarlo, un FAIL verdadero de la
 # maquina de quien corre el test (p.ej. conversaciones en claro en proxy.jsonl, cuyo
 # mensaje contiene la palabra "proxy") casaba con el grep de enrutado de los casos B y C.
-run_doctor() { # $1 CLAUDE_HOME -> imprime salida completa
-  local h; h="$(mktemp -d)"; mkdir -p "$h/.headroom/logs" "$h/.config"
-  env -u ANTHROPIC_BASE_URL HOME="$h" XDG_CONFIG_HOME="$h/.config" \
-      CLAUDE_HOME="$1" bash "$KIT/doctor.sh" 2>&1
+# El cwd tambien decide (es un ambito de settings mas), asi que es parametro.
+run_doctor() { # $1 CLAUDE_HOME [$2 raiz HOME] [$3 cwd] -> imprime salida completa
+  local h; h="${2:-$(mktemp -d)}"; mkdir -p "$h/.headroom/logs" "$h/.config"
+  ( cd "${3:-.}" && env -u ANTHROPIC_BASE_URL HOME="$h" XDG_CONFIG_HOME="$h/.config" \
+        CLAUDE_HOME="$1" bash "$KIT/doctor.sh" 2>&1 )
 }
 
 # --- caso A: enrutado a un puerto muerto -> FAIL ----------------------------
@@ -95,6 +116,74 @@ if echo "$out_c" | grep -qE '^PASS .*(BASE_URL|proxy)'; then ok; else
 fi
 if echo "$out_c" | grep -qE '^FAIL .*(BASE_URL|proxy)'; then
   ko "con el endpoint vivo no deberia haber FAIL de enrutado"
+else ok; fi
+
+# --- caso D: dos fuentes en ambito de PROYECTO -> FAIL ----------------------
+# El ambito de usuario se deja limpio a proposito: si el check volviera a mirar solo
+# $CLAUDE_HOME/settings*.json contaria cero y saldria callando, que es el defecto medido.
+CH_D="$(install_clean)"; R_D="$(mktemp -d)"; PROY_D="$(mktemp -d)"
+set_base_url_file "$CH_D/.claude/settings.local.json" "http://127.0.0.1:1"
+set_base_url_file "$PROY_D/.claude/settings.local.json" "http://127.0.0.1:1"
+jq -n --arg p "$PROY_D" '{projects:{($p):{}}}' > "$R_D/.claude.json"
+out_d="$(run_doctor "$CH_D" "$R_D")"
+if echo "$out_d" | grep -qE '^FAIL .*declarado en 2 ficheros'; then ok; else
+  ko "dos fuentes de ANTHROPIC_BASE_URL en ambito de proyecto no producen FAIL (salida: $(echo "$out_d" | grep -i base_url | tr '\n' ' '))"
+fi
+# Un FAIL que no dice QUE fichero editar no sirve para arreglar nada.
+if echo "$out_d" | grep -qE "$CH_D/\.claude/settings\.local\.json:[0-9]+.*$PROY_D/\.claude/settings\.local\.json:[0-9]+"; then ok; else
+  ko "el FAIL de fuentes duplicadas no identifica los dos ficheros con ruta y linea"
+fi
+
+# --- caso E: el proyecto del cwd cuenta como fuente -------------------------
+CH_E="$(install_clean)"; R_E="$(mktemp -d)"; PROY_E="$(mktemp -d)"
+set_base_url "$CH_E" "http://127.0.0.1:1"
+set_base_url_file "$PROY_E/.claude/settings.local.json" "http://127.0.0.1:1"
+out_e="$(run_doctor "$CH_E" "$R_E" "$PROY_E")"
+if echo "$out_e" | grep -qE '^FAIL .*declarado en 2 ficheros'; then ok; else
+  ko "settings.json de usuario + .claude/settings.local.json del cwd son dos fuentes y doctor no lo ve"
+fi
+
+# --- caso F: una sola fuente, y es de proyecto -> sin ruido -----------------
+CH_F="$(install_clean)"; R_F="$(mktemp -d)"; PROY_F="$(mktemp -d)"
+set_base_url_file "$PROY_F/.claude/settings.local.json" "http://127.0.0.1:1"
+out_f="$(run_doctor "$CH_F" "$R_F" "$PROY_F")"
+if echo "$out_f" | grep -qE '^FAIL .*declarado en'; then
+  ko "una sola fuente no puede ser FAIL de fuente duplicada, viva en el ambito que sea"
+else ok; fi
+if echo "$out_f" | grep -q 'enrutado declarado en un solo sitio'; then ok; else
+  ko "con una sola fuente en ambito de proyecto, doctor no la declara"
+fi
+
+# --- caso G: statusLine con un comando que no existe -> FAIL ---------------
+CH_G="$(install_clean)"
+set_statusline "$CH_G" "bash $CH_G/statusline-que-no-existe.sh"
+out_g="$(run_doctor "$CH_G")"
+if echo "$out_g" | grep -qE '^FAIL .*statusLine'; then ok; else
+  ko "una statusLine que apunta a un script inexistente no produce FAIL (Claude Code deja la barra en blanco sin avisar)"
+fi
+# Y tiene que senalar el script, no el interprete: 'bash' existe siempre.
+if echo "$out_g" | grep -qE '^FAIL .*statusline-que-no-existe\.sh'; then ok; else
+  ko "el FAIL de statusLine no nombra el script que falta: extrae mal el ejecutable del comando"
+fi
+
+# --- caso H: statusLine que existe pero no imprime nada -> WARN, no FAIL ---
+CH_H="$(install_clean)"
+printf '#!/usr/bin/env bash\ncat >/dev/null\n' > "$CH_H/statusline-muda.sh"
+chmod +x "$CH_H/statusline-muda.sh"
+set_statusline "$CH_H" "bash $CH_H/statusline-muda.sh"
+out_h="$(run_doctor "$CH_H")"
+if echo "$out_h" | grep -qE '^WARN .*statusLine'; then ok; else
+  ko "una statusLine que no imprime nada deja la barra en blanco y doctor no avisa"
+fi
+if echo "$out_h" | grep -qE '^FAIL .*statusLine'; then
+  ko "una statusLine muda es WARN, no FAIL: el fallo puede ser del entorno de doctor"
+else ok; fi
+
+# --- caso I: sin statusLine -> ni FAIL ni WARN ------------------------------
+# El kit no instala statusLine y la mayoria no la usa: convertir su ausencia en hallazgo
+# seria ruido en cada instalacion limpia.
+if echo "$out_b" | grep -qE '^(FAIL|WARN) .*statusLine'; then
+  ko "sin statusLine declarada doctor no puede reportar nada (salida: $(echo "$out_b" | grep -i statusline | tr '\n' ' '))"
 else ok; fi
 
 echo "PASS=$pass FAIL=$fail"

@@ -82,6 +82,46 @@ else
   warn "Sentinel IOC layer inactiva: falta iocs.json (opcional; ver docs/05-security.md). Los guards de Bash siguen activos."
 fi
 
+# 2d. statusLine: si settings.json la declara, su comando tiene que resolverse.
+# Claude Code no avisa de nada aqui: medido en 2.1.258, un exit != 0 o un stdout vacio dejan
+# la barra EN BLANCO en silencio y stderr se descarta. Ya paso: una instalacion escribio
+# settings.json entero con cp -p y se llevo la clave statusLine por delante; 15 minutos con
+# la barra vacia y ni una linea de aviso en ningun sitio.
+# Del string del comando se extrae el ejecutable REAL: en "bash ~/.claude/statusline.sh" lo
+# que puede faltar es el script, no bash.
+# Si no hay statusLine este check calla: la mayoria de instalaciones del kit no la usa y eso
+# no es un defecto. Ejecutarla es solo WARN (con timeout) porque el fallo puede ser del
+# entorno de doctor y no de la barra.
+sl_cmd="$(jq -r '.statusLine.command // empty' "$CLAUDE_HOME/settings.json" 2>/dev/null)"
+if [ -n "$sl_cmd" ]; then
+  read -r -a sl_argv <<< "$sl_cmd"
+  sl_bin="${sl_argv[0]}"; sl_directo=1
+  case "$(basename "$sl_bin")" in
+    bash|sh|dash|zsh|python|python3|node)
+      for w in "${sl_argv[@]:1}"; do
+        case "$w" in -*) ;; *) sl_bin="$w"; sl_directo=0; break ;; esac
+      done ;;
+  esac
+  sl_bin="${sl_bin/#\~/$HOME}"; sl_bin="${sl_bin/\$HOME/$HOME}"
+  [[ "$sl_bin" != */* ]] && sl_bin="$(command -v "$sl_bin" 2>/dev/null || echo "$sl_bin")"
+  if [ ! -f "$sl_bin" ]; then
+    fail "statusLine declarada en settings.json pero su comando no se resuelve: '$sl_cmd' apunta a $sl_bin, que no existe. Claude Code deja la barra en blanco SIN avisar: restaura el fichero o quita la clave statusLine"
+  elif [ "$sl_directo" -eq 1 ] && [ ! -x "$sl_bin" ]; then
+    fail "statusLine declarada pero $sl_bin no es ejecutable: la barra sale en blanco sin aviso. Corrigelo con: chmod +x \"$sl_bin\""
+  else
+    sl_out="$(printf '{"hook_event_name":"Status","session_id":"doctor","cwd":"%s","model":{"display_name":"doctor"},"workspace":{"current_dir":"%s","project_dir":"%s"}}' \
+              "$PWD" "$PWD" "$PWD" | timeout 5 bash -c "$sl_cmd" 2>/dev/null)"
+    sl_rc=$?
+    if [ "$sl_rc" -ne 0 ]; then
+      warn "statusLine: '$sl_cmd' salio con codigo $sl_rc sobre un payload JSON de prueba; con ese codigo Claude Code dejaria la barra en blanco sin avisar"
+    elif [ -z "$sl_out" ]; then
+      warn "statusLine: '$sl_cmd' no imprimio nada sobre un payload JSON de prueba; stdout vacio = barra en blanco, y Claude Code no lo reporta"
+    else
+      pass "statusLine resuelve a $sl_bin y responde  (fuente: ejecucion con payload JSON minimo y timeout 5)"
+    fi
+  fi
+fi
+
 # 3. agentes
 n=$(find "$CLAUDE_HOME/agents" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 if [ "$n" -ge 1 ]; then
@@ -153,17 +193,42 @@ fi
 # del cwd de la sesion (94 % del trabajo de un dia salio sin pasar por el proxy), y
 # `headroom doctor` afirmaba "not routed" DENTRO de una sesion enrutada, porque solo mira
 # settings.json. Dos fuentes es peor que ninguna: no se puede apagar lo que no se ve.
-rutas_declaradas=0; rutas_detalle=""
-for f in "$CLAUDE_HOME/settings.json" "$CLAUDE_HOME/settings.local.json"; do
+#
+# Se mira el ambito de PROYECTO y no solo el de usuario porque el proyecto es justo donde
+# aparecen las fuentes de mas: `headroom wrap` escribe la URL en
+# <cwd>/.claude/settings.local.json (wrap.py:1505), no en settings.json. Medido en esta
+# maquina: dos fuentes vivas, una de usuario y otra en $CLAUDE_HOME/.claude/, y la version
+# anterior de este check solo veia la primera -- acertaba por accidente.
+# Los candidatos se enumeran, no se barren: un find por el home es lento y cuenta como
+# fuente ficheros que Claude Code no carga (por ejemplo $CLAUDE_HOME/backups/**). La lista
+# de proyectos es la que ya mantiene Claude Code en ~/.claude.json, para no inventar una
+# fuente de verdad nueva. Se deduplica por ruta porque los ambitos se solapan: con $HOME
+# declarado como proyecto, $HOME/.claude/settings.local.json es el MISMO fichero que el de
+# usuario, y contarlo dos veces seria un FAIL falso.
+rutas_declaradas=0; rutas_detalle=""; rutas_vistas=""
+candidatos="$CLAUDE_HOME/settings.json
+$CLAUDE_HOME/settings.local.json"
+while IFS= read -r d; do
+  [ -n "$d" ] || continue
+  candidatos="$candidatos
+$d/.claude/settings.json
+$d/.claude/settings.local.json"
+done <<< "$CLAUDE_HOME
+$PWD
+$(jq -r '.projects // {} | keys[]' "$HOME/.claude.json" 2>/dev/null)"
+while IFS= read -r f; do
+  case " $rutas_vistas " in *" $f "*) continue ;; esac
+  rutas_vistas="$rutas_vistas $f"
   if [ -f "$f" ] && jq -e '.env.ANTHROPIC_BASE_URL' "$f" >/dev/null 2>&1; then
     rutas_declaradas=$((rutas_declaradas + 1))
-    rutas_detalle="$rutas_detalle $(basename "$f")"
+    linea="$(grep -n ANTHROPIC_BASE_URL "$f" | head -1 | cut -d: -f1)"
+    rutas_detalle="$rutas_detalle $f:${linea:-?}"
   fi
-done
+done <<< "$candidatos"
 if [ "$rutas_declaradas" -gt 1 ]; then
   fail "ANTHROPIC_BASE_URL declarado en $rutas_declaradas ficheros ($rutas_detalle): el enrutado deja de ser una decision unica y sobrevive a que lo quites de uno. Deja solo settings.json"
 elif [ "$rutas_declaradas" -eq 1 ]; then
-  pass "enrutado declarado en un solo sitio:$rutas_detalle  (fuente: jq sobre settings.json y settings.local.json)"
+  pass "enrutado declarado en un solo sitio:$rutas_detalle  (fuente: jq sobre settings*.json de usuario, del cwd y de los proyectos de ~/.claude.json)"
 fi
 
 # 5a. Headroom (opcional -> WARN). `headroom` y `rtk` son DOS proyectos distintos
