@@ -20,6 +20,13 @@
 # vacio dejan la barra en blanco y stderr se descarta), asi que si nadie la comprueba nadie
 # se entera: paso hoy, 15 minutos de barra vacia despues de que una instalacion se llevara
 # la clave por delante.
+#
+# Caso J: el sondeo del check 5 tiene que mirar TAMBIEN el ambito de proyecto. Reproducido:
+# con la URL declarada solo en <proyecto>/.claude/settings.local.json y el puerto muerto,
+# doctor firmaba "PASS - API directa" y "PASS - enrutado declarado en un solo sitio" en la
+# misma salida, con rc=0 -- porque el check 5 leia solo $CLAUDE_HOME/settings.json mientras
+# el 5e ya enumeraba el ambito de proyecto. Ese estado tenia su fixture construido aqui
+# desde el principio (el caso F) y la suite lo declaraba limpio: ver el caso F.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 pass=0; fail=0
@@ -50,6 +57,29 @@ set_base_url() { # $1 CLAUDE_HOME, $2 url
 set_statusline() { # $1 CLAUDE_HOME, $2 comando
   local tmp; tmp="$(mktemp)"
   jq --arg c "$2" '.statusLine = {type:"command", command:$c}' "$1/settings.json" > "$tmp" && mv "$tmp" "$1/settings.json"
+}
+
+# Un servidor que contesta 200 a todo en el puerto $1, y espera a que conteste antes de
+# volver. Deja el PID en SRV para que el caso lo mate. Lo usan los casos C y F: los dos
+# necesitan un endpoint VIVO, y tener el servidor escrito dos veces era la via corta a que
+# uno de los dos derivara.
+stub_vivo() { # $1 puerto -> SRV
+  "$PY" - "$1" <<'EOF' &
+import sys, http.server, socketserver
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.send_header("Content-Length","2"); self.end_headers()
+        self.wfile.write(b"ok")
+    def log_message(self, *a): pass
+socketserver.TCPServer.allow_reuse_address = True
+with socketserver.TCPServer(("127.0.0.1", int(sys.argv[1])), H) as s:
+    s.serve_forever()
+EOF
+  SRV=$!
+  for _ in $(seq 1 50); do
+    if curl -fsS -m 1 -o /dev/null "http://127.0.0.1:$1/readyz" 2>/dev/null; then return 0; fi
+    sleep 0.1
+  done
 }
 
 # El check nuevo mira settings.json y, si ahi no hay nada, la variable de entorno.
@@ -92,22 +122,7 @@ fi
 # --- caso C: enrutado a un endpoint vivo -> PASS ---------------------------
 CH_C="$(install_clean)"
 LIVE="$(free_port)"
-"$PY" - "$LIVE" <<'EOF' &
-import sys, http.server, socketserver
-class H(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200); self.send_header("Content-Length","2"); self.end_headers()
-        self.wfile.write(b"ok")
-    def log_message(self, *a): pass
-socketserver.TCPServer.allow_reuse_address = True
-with socketserver.TCPServer(("127.0.0.1", int(sys.argv[1])), H) as s:
-    s.serve_forever()
-EOF
-SRV=$!
-for _ in $(seq 1 50); do
-  if curl -fsS -m 1 -o /dev/null "http://127.0.0.1:$LIVE/readyz" 2>/dev/null; then break; fi
-  sleep 0.1
-done
+stub_vivo "$LIVE"
 set_base_url "$CH_C" "http://127.0.0.1:$LIVE"
 out_c="$(run_doctor "$CH_C")"
 kill "$SRV" 2>/dev/null; wait "$SRV" 2>/dev/null
@@ -143,16 +158,32 @@ if echo "$out_e" | grep -qE '^FAIL .*declarado en 2 ficheros'; then ok; else
   ko "settings.json de usuario + .claude/settings.local.json del cwd son dos fuentes y doctor no lo ve"
 fi
 
-# --- caso F: una sola fuente, y es de proyecto -> sin ruido -----------------
+# --- caso F: una sola fuente de proyecto, y el proxy contesta -> sin ruido --
+# Este caso apuntaba a un puerto MUERTO (como D y E, donde la liveness no importaba) y solo
+# exigia que no hubiera FAIL de fuente duplicada: llamaba "sin ruido" a una instalacion sin
+# API. Con eso, la suite tenia construido el fixture del defecto del caso J y lo declaraba
+# limpio. "Sin ruido" solo vale si el proxy declarado contesta, asi que aqui contesta: F es
+# el control positivo del sondeo en ambito de proyecto y J el negativo.
 CH_F="$(install_clean)"; R_F="$(mktemp -d)"; PROY_F="$(mktemp -d)"
-set_base_url_file "$PROY_F/.claude/settings.local.json" "http://127.0.0.1:1"
+LIVE_F="$(free_port)"
+stub_vivo "$LIVE_F"
+set_base_url_file "$PROY_F/.claude/settings.local.json" "http://127.0.0.1:$LIVE_F"
 out_f="$(run_doctor "$CH_F" "$R_F" "$PROY_F")"
-if echo "$out_f" | grep -qE '^FAIL .*declarado en'; then
-  ko "una sola fuente no puede ser FAIL de fuente duplicada, viva en el ambito que sea"
+kill "$SRV" 2>/dev/null; wait "$SRV" 2>/dev/null
+if echo "$out_f" | grep -qE '^FAIL .*(BASE_URL|proxy|enrutad|declarado)'; then
+  ko "una sola fuente de proyecto con el proxy vivo no puede dar ningun FAIL de enrutado (salida: $(echo "$out_f" | grep -E '^FAIL' | tr '\n' ' '))"
 else ok; fi
 if echo "$out_f" | grep -q 'enrutado declarado en un solo sitio'; then ok; else
   ko "con una sola fuente en ambito de proyecto, doctor no la declara"
 fi
+# Que la declare no prueba que la haya SONDEADO: eso solo lo prueba el PASS del check 5
+# nombrando la URL, y es lo que faltaba (decia "API directa" con el enrutado puesto).
+if echo "$out_f" | grep -qE "^PASS .*enrutada a http://127\.0\.0\.1:$LIVE_F"; then ok; else
+  ko "el check 5 no sondea la URL declarada en ambito de proyecto (salida: $(echo "$out_f" | grep -iE 'API (directa|enrutada)' | tr '\n' ' '))"
+fi
+if echo "$out_f" | grep -q 'API directa'; then
+  ko "doctor declara una fuente de enrutado y a la vez dice 'API directa': dos PASS que se contradicen en la misma salida"
+else ok; fi
 
 # --- caso G: statusLine con un comando que no existe -> FAIL ---------------
 CH_G="$(install_clean)"
@@ -184,6 +215,32 @@ else ok; fi
 # seria ruido en cada instalacion limpia.
 if echo "$out_b" | grep -qE '^(FAIL|WARN) .*statusLine'; then
   ko "sin statusLine declarada doctor no puede reportar nada (salida: $(echo "$out_b" | grep -i statusline | tr '\n' ' '))"
+else ok; fi
+
+# --- caso J: fuente unica de proyecto a un puerto muerto -> FAIL y rc != 0 --
+# El mismo estado que el caso F pero con el proxy caido, que es el que reproduce el fallo en
+# abierto: `headroom wrap` escribe la URL en <cwd>/.claude/settings.local.json
+# (wrap.py:1505), asi que esta es la instalacion tipica de quien usa el proxy, no un caso
+# raro. Antes salia "OK (0 FAIL)" con dos PASS contradictorios; el mismo modo de fallo que
+# el comentario del check 5 declara: aprobar una instalacion inservible retira la sospecha
+# justo donde hacia falta.
+CH_J="$(install_clean)"; R_J="$(mktemp -d)"; PROY_J="$(mktemp -d)"
+DEAD_J="$(free_port)"
+set_base_url_file "$PROY_J/.claude/settings.local.json" "http://127.0.0.1:$DEAD_J"
+out_j="$(run_doctor "$CH_J" "$R_J" "$PROY_J")"; rc_j=$?
+if echo "$out_j" | grep -qE '^FAIL .*(BASE_URL|proxy|no responde|no contesta)'; then ok; else
+  ko "con la URL declarada SOLO en ambito de proyecto y el puerto muerto, doctor no reporta FAIL (salida: $(echo "$out_j" | grep -iE 'API (directa|enrutada)|un solo sitio' | tr '\n' ' '))"
+fi
+if [ "$rc_j" -ne 0 ]; then ok; else
+  ko "doctor sale con codigo 0 sobre una instalacion enrutada a un puerto muerto desde el ambito de proyecto"
+fi
+# Un FAIL que no dice QUE fichero editar no sirve para arreglar nada, y el de proyecto no es
+# el settings.json de usuario que el mensaje nombraba antes.
+if echo "$out_j" | grep -qE "^FAIL .*$PROY_J/\.claude/settings\.local\.json"; then ok; else
+  ko "el FAIL de enrutado no nombra el fichero de proyecto que declara la URL"
+fi
+if echo "$out_j" | grep -q 'API directa'; then
+  ko "doctor dice 'API directa' con el enrutado declarado en ambito de proyecto: es el PASS que tapaba el proxy muerto"
 else ok; fi
 
 echo "PASS=$pass FAIL=$fail"
