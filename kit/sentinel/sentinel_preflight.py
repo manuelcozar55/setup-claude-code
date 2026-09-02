@@ -106,6 +106,70 @@ def is_allowed_path(text: str, allowed: list[str]) -> bool:
     return False
 
 
+# ── Never-exempt floor ───────────────────────────────────────────────────────
+# Both the allowlist and iocs.json are data files the agent can write to, so any
+# rule that lives only in that data is a rule the agent can delete. These two
+# lists live in CODE and are consulted before the allowlist:
+#
+#   ALWAYS_DENY_PATHS — live credential material. Denied even if a prefix of it
+#     is allowlisted and even if iocs.json is missing or emptied. Measured hole:
+#     '$HOME/.claude/' was in the allowlist `paths`, which exempted the whole
+#     config dir, so a Read of ~/.claude/.credentials.json (a live OAuth token)
+#     returned allow while ~/.aws/credentials, ~/.ssh/id_rsa and ~/.npmrc all
+#     returned deny. Worse, the same file was denied when *named* in a command
+#     and allowed when *opened* by file_path: the guard blocked talking about
+#     the file and permitted reading it. The three entries are key material no
+#     false positive can justify exempting, and for the last two the kit already
+#     says so in prose: docs/09 tells the user not to put '~/.ssh/' in the
+#     allowlist "para salir del paso". Prose is not enforcement; this list is.
+#     Second measured vector that makes it necessary: load_user_allowlist()
+#     prefers '$CWD/.security/sentinel-allowlist.json', so a *cloned repo* can
+#     ship its own exemptions — with paths ["/"] it turned the ~/.aws and
+#     ~/.ssh denies into allows without the user editing anything.
+#   PROTECTED_CONFIG — the guards and the config that drives them. These carry
+#     no deny of their own (blocking the write is permissions.deny's job, in the
+#     settings template); what they guarantee is that no allowlist entry — this
+#     one or a wider one added later — can exempt them from detection, and that
+#     every decision touching them reaches the audit log, `allow` included.
+#     Without the allow-side log, disabling a guard leaves no trace at all.
+ALWAYS_DENY_PATHS = [
+    r"(?i)\.credentials\.json(?![a-z0-9])",
+    r"(?i)/\.ssh/id_[a-z0-9_]+(?![a-z0-9._-])",
+    r"(?i)/\.aws/credentials(?![a-z0-9])",
+]
+
+PROTECTED_CONFIG = [
+    r"(?i)\.claude/settings[^/]*\.json(?![a-z0-9])",
+    r"(?i)\.claude/hooks/",
+    r"(?i)\.claude/sentinel/",
+    r"(?i)sentinel-allowlist\.json(?![a-z0-9])",
+    r"(?i)iocs\.json(?![a-z0-9])",
+    r"(?i)\.gitleaks\.toml(?![a-z0-9])",
+]
+
+# Fields that carry a path/target. Shared so the never-exempt checks and the
+# sensitive-path check can never drift apart on what counts as a "target".
+PATH_FIELDS = ["file_path", "path", "paths", "command", "url", "endpoint", "uri", "href", "target"]
+
+
+def always_deny_hit(tool_input: dict) -> str | None:
+    """Text of the first field naming never-exempt credential material."""
+    for text in collect_fields(tool_input, PATH_FIELDS):
+        for rx in ALWAYS_DENY_PATHS:
+            if re.search(rx, text):
+                return text
+    return None
+
+
+def protected_config_hit(tool_input: dict) -> str | None:
+    """Text of the first field touching guard/config paths (allow or deny)."""
+    for text in collect_fields(tool_input, PATH_FIELDS):
+        for rx in PROTECTED_CONFIG:
+            if re.search(rx, text):
+                return text
+    return None
+
+
 def _url_hosts(text: str) -> set[str]:
     """Extract the actual hostnames from any http(s) URLs in the text."""
     hosts = set()
@@ -170,8 +234,13 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
     regexes = iocs.get("sensitive_paths", {}).get("regex_patterns", [])
     allowed = allowlist.get("paths", []) + iocs.get("allowlist", {}).get("paths", [])
 
-    for text in collect_fields(tool_input, ["file_path", "path", "paths", "command", "url", "endpoint", "uri", "href", "target"]):
-        if is_allowed_path(text, allowed):
+    for text in collect_fields(tool_input, PATH_FIELDS):
+        for rx in ALWAYS_DENY_PATHS:
+            m = re.search(rx, text)
+            if m:
+                return (f"never-exempt credential material: {m.group(0)}", "critical")
+        # The allowlist may not exempt the guards or their config.
+        if not protected_config_hit({"path": text}) and is_allowed_path(text, allowed):
             continue
         for p in patterns:
             if path_matches(text, p):
@@ -323,21 +392,34 @@ def main() -> None:
         sys.exit(0)
 
     tool_name = payload.get("tool_name") or payload.get("tool", "<unknown>")
+    tool_input = payload.get("tool_input") or payload.get("input") or {}
     decision, reason = decide(payload)
 
     if decision == "allow":
+        # An allow on a guard/config path is the one allow worth keeping: it is
+        # the only trace left when a guard, the settings or this allowlist are
+        # rewritten. Everything else stays silent (zero-noise design).
+        touched = protected_config_hit(tool_input)
+        if touched:
+            audit_log(tool_name, "allow", f"config path touched: {touched[:200]}")
         sys.exit(0)
 
     audit_log(tool_name, decision, reason)
 
     if decision == "deny":
+        # The allowlist hint is a lie for a never-exempt deny (no allowlist
+        # entry can lift it) and it is also the instruction sheet for disabling
+        # the guard, so it is printed only where it is actually true.
+        hint = (
+            "" if always_deny_hit(tool_input)
+            else "\nTo allowlist a false positive: add to ~/.claude/sentinel-allowlist.json"
+        )
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
                 "permissionDecisionReason": (
-                    f"SENTINEL BLOCKED [{tool_name}]: {reason}\n"
-                    "To allowlist a false positive: add to ~/.claude/sentinel-allowlist.json"
+                    f"SENTINEL BLOCKED [{tool_name}]: {reason}{hint}"
                 ),
             }
         }))

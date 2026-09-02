@@ -2,8 +2,7 @@
   "paths": [
     "/tmp/",
     "/var/tmp/",
-    "$HOME/.claude/sentinel/",
-    "$HOME/.claude/"
+    "$HOME/.claude/sentinel/"
   ],
   "domains": [
     "api.anthropic.com",
