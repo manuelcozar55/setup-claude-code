@@ -348,9 +348,9 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
   install_file "$KIT/claude/sentinel-allowlist.json" "$base/sentinel-allowlist.json"
   install_file "$KIT/claude/.gitleaks.toml"       "$base/.gitleaks.toml"
-  for f in "$KIT"/claude/agents/*; do [ -e "$f" ] && install_file "$f" "$base/agents/$(basename "$f")"; done
+  for f in "$KIT"/claude/agents/*; do [ -f "$f" ] && install_file "$f" "$base/agents/$(basename "$f")"; done
   for f in "$KIT"/claude/hooks/*;  do [ -f "$f" ] && install_file "$f" "$base/hooks/$(basename "$f")"; done
-  for f in "$KIT"/sentinel/*;      do [ -e "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
+  for f in "$KIT"/sentinel/*;      do [ -f "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
   mkdir -p "$base/hooks/git"
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
   chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit 2>/dev/null || true
