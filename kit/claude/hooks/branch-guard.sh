@@ -7,7 +7,11 @@ INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [[ -z "$COMMAND" ]] && exit 0
 
-echo "$COMMAND" | grep -qE '^\s*git\s+push' || exit 0
+# Sin ancla de inicio y sin exigir `push` pegado a `git`: el ancla '^' dejaba pasar
+# `cd /tmp && git push origin master` y exigir `git\s+push` dejaba pasar
+# `git -C /ruta push origin main`. El corte por [;&|] mantiene el patron dentro de un
+# solo comando, para que un "push" de otro segmento no active el guard.
+echo "$COMMAND" | grep -qE '\bgit\b[^;&|]*\bpush\b' || exit 0
 
 PROTECTED="${CC_PROTECT_BRANCHES:-main:master:production}"
 IFS=':' read -ra BRANCHES <<< "$PROTECTED"
