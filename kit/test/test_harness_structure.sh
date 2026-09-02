@@ -330,6 +330,62 @@ else
   ck "y" "y" "Makefile o ci.yml ausente (check por vacio)"
 fi
 
+echo "== 10) test_diagramas_mermaid =="
+# Un diagrama es codigo: se versiona, se difea, y una IA lo lee como texto estructurado. Por eso
+# van en fences `mermaid` --que GitHub renderiza nativo-- y no en PNG: una imagen es vistosa para
+# un humano e ILEGIBLE para un agente, y no se puede revisar en un diff. Estos checks vigilan las
+# cuatro cosas que rompen un diagrama asi sin que nadie se entere, porque el fence roto no
+# aparece como error: aparece como un bloque de texto crudo en la pagina.
+#
+# El de los rellenos palidos es un fallo real de este repo: cinco `fill:#eef3ff` con texto
+# `#1a1a1a` se leian bien en el tema claro y quedaban ilegibles en el oscuro de GitHub. La regla
+# --todo `fill:` con texto blanco-- fuerza tonos medios, que se leen sobre los dos fondos.
+mermaid_md=""
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  mermaid_md="$(git ls-files "*.md" 2>/dev/null)"
+fi
+if [ -z "$mermaid_md" ]; then
+  ck "y" "y" "sin .md versionados (check por vacio)"
+else
+  mm_total=0; mm_abiertos=0; mm_malos=0; mm_palidos=0; mm_mudos=0; mm_flojos=0
+  for f in $mermaid_md; do
+    [ -f "$f" ] || continue
+    # shellcheck disable=SC2046 # el troceado en palabras es el objetivo: awk emite 5 enteros
+    set -- $(awk '
+  function hx(s,  i,c,v) { v=0; for (i=1; i<=length(s); i++) { c=tolower(substr(s,i,1)); v = v*16 + index("0123456789abcdef", c) - 1 } return v }
+  function canal(x) { x = x/255; return (x <= 0.03928) ? x/12.92 : ((x+0.055)/1.055)^2.4 }
+  function luma(h) { return 0.2126*canal(hx(substr(h,1,2))) + 0.7152*canal(hx(substr(h,3,2))) + 0.0722*canal(hx(substr(h,5,2))) }
+  function contraste(a, b,  la, lb, hi, lo) { la=luma(a); lb=luma(b); hi=(la>lb)?la:lb; lo=(la>lb)?lb:la; return (hi+0.05)/(lo+0.05) }
+  /^```mermaid[[:space:]]*$/ { dentro=1; total++; tipo=""; etiq=0; next }
+  dentro && /^```[[:space:]]*$/ {
+      dentro=0
+      if (tipo !~ /^(flowchart|graph|sequenceDiagram|stateDiagram|classDiagram|erDiagram|gitGraph|journey|pie|timeline|quadrantChart|mindmap)/) malos++
+      else if (tipo ~ /^(flowchart|graph)/ && etiq == 0) mudos++
+      next }
+  dentro {
+      linea=$0; sub(/^[[:space:]]+/, "", linea)
+      if (tipo == "" && linea != "" && linea !~ /^%%/) tipo=linea
+      if (linea ~ /--(>|-)\|/) etiq=1
+      if (linea ~ /fill:#/ && linea !~ /color:#([Ff][Ff][Ff]|[Ff][Ff][Ff][Ff][Ff][Ff])([,[:space:]]|$)/) palidos++
+      if (match(linea, /fill:#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]/)) {
+          relleno = substr(linea, RSTART+6, 6)
+          if (contraste(relleno, "FFFFFF") < 4.5) flojos++
+      }
+  }
+  END { if (dentro) abiertos++; printf "%d %d %d %d %d %d\n", total+0, abiertos+0, malos+0, palidos+0, mudos+0, flojos+0 }
+' "$f")
+    mm_total=$((mm_total + $1)); mm_abiertos=$((mm_abiertos + $2))
+    mm_malos=$((mm_malos + $3)); mm_palidos=$((mm_palidos + $4))
+    mm_mudos=$((mm_mudos + $5)); mm_flojos=$((mm_flojos + $6))
+  done
+  ck "$([ "$mm_total" -ge 5 ] && echo y || echo n)" "y" "hay diagramas mermaid que medir (encontrados: $mm_total)"
+  ck "$mm_abiertos" "0" "todo bloque mermaid cierra su fence (sin cerrar: $mm_abiertos)"
+  ck "$mm_malos" "0" "todo bloque declara un tipo de diagrama que mermaid conoce (invalidos: $mm_malos)"
+  ck "$mm_palidos" "0" "todo fill: lleva texto blanco, o seria ilegible en el tema oscuro (palidos: $mm_palidos)"
+  ck "$mm_mudos" "0" "todo flowchart etiqueta al menos una flecha; una flecha muda solo dice \"relacionados de algun modo\" (mudos: $mm_mudos)"
+  ck "$mm_flojos" "0" "todo fill: alcanza 4.5:1 de contraste WCAG AA con su texto -- legibilidad MEDIDA, no supuesta (por debajo: $mm_flojos)"
+fi
+
 echo "== Falsabilidad =="
 # Cada check falsable de arriba se ejecuta aqui contra un caso fabricado a
 # proposito para demostrar que dispara de verdad, no que siempre pasa.
@@ -402,6 +458,44 @@ else
   ck "n" "y" "test_ci_paridad SI detecta una suite fabricada que CI no corre"
 fi
 
-ck "$([ "$falsified" -ge 5 ] && echo y || echo n)" "y" "al menos 5 checks demuestran deteccion real sobre casos fabricados a proposito (detectados: $falsified de 6) -- si fuera 0, la suite seria decorativa"
+
+# Falsabilidad de la 10: un bloque con relleno palido, sin tipo y con la flecha muda tiene que
+# disparar los tres checks a la vez.
+tmp_md="$(mktemp)"
+# shellcheck disable=SC2016 # las comillas invertidas son una valla markdown literal, no una sustitucion
+printf '```mermaid\n    A --> B\n    style A fill:#eef3ff,color:#1a1a1a\n```\n' > "$tmp_md"
+# shellcheck disable=SC2046 # el troceado en palabras es el objetivo: awk emite 5 enteros
+set -- $(awk '
+  function hx(s,  i,c,v) { v=0; for (i=1; i<=length(s); i++) { c=tolower(substr(s,i,1)); v = v*16 + index("0123456789abcdef", c) - 1 } return v }
+  function canal(x) { x = x/255; return (x <= 0.03928) ? x/12.92 : ((x+0.055)/1.055)^2.4 }
+  function luma(h) { return 0.2126*canal(hx(substr(h,1,2))) + 0.7152*canal(hx(substr(h,3,2))) + 0.0722*canal(hx(substr(h,5,2))) }
+  function contraste(a, b,  la, lb, hi, lo) { la=luma(a); lb=luma(b); hi=(la>lb)?la:lb; lo=(la>lb)?lb:la; return (hi+0.05)/(lo+0.05) }
+  /^```mermaid[[:space:]]*$/ { dentro=1; total++; tipo=""; etiq=0; next }
+  dentro && /^```[[:space:]]*$/ {
+      dentro=0
+      if (tipo !~ /^(flowchart|graph|sequenceDiagram|stateDiagram|classDiagram|erDiagram|gitGraph|journey|pie|timeline|quadrantChart|mindmap)/) malos++
+      else if (tipo ~ /^(flowchart|graph)/ && etiq == 0) mudos++
+      next }
+  dentro {
+      linea=$0; sub(/^[[:space:]]+/, "", linea)
+      if (tipo == "" && linea != "" && linea !~ /^%%/) tipo=linea
+      if (linea ~ /--(>|-)\|/) etiq=1
+      if (linea ~ /fill:#/ && linea !~ /color:#([Ff][Ff][Ff]|[Ff][Ff][Ff][Ff][Ff][Ff])([,[:space:]]|$)/) palidos++
+      if (match(linea, /fill:#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]/)) {
+          relleno = substr(linea, RSTART+6, 6)
+          if (contraste(relleno, "FFFFFF") < 4.5) flojos++
+      }
+  }
+  END { if (dentro) abiertos++; printf "%d %d %d %d %d %d\n", total+0, abiertos+0, malos+0, palidos+0, mudos+0, flojos+0 }
+' "$tmp_md")
+rm -f "$tmp_md"
+if [ "$3" -ge 1 ] && [ "$4" -ge 1 ] && [ "$6" -ge 1 ]; then
+  ck "y" "y" "test_diagramas_mermaid SI detecta el bloque fabricado: sin tipo, relleno palido y contraste por debajo de AA"
+  falsified=$((falsified + 1))
+else
+  ck "n" "y" "test_diagramas_mermaid SI detecta el bloque fabricado: sin tipo, relleno palido y contraste por debajo de AA"
+fi
+
+ck "$([ "$falsified" -ge 6 ] && echo y || echo n)" "y" "al menos 6 checks demuestran deteccion real sobre casos fabricados a proposito (detectados: $falsified de 7) -- si fuera 0, la suite seria decorativa"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
