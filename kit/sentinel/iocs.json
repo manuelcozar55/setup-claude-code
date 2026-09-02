@@ -161,8 +161,11 @@
       "books.google.com",
       "api.crossref.org",
       "www.boe.es",
-      "ec.europa.eu"
+      "ec.europa.eu",
+      "127.0.0.1",
+      "localhost"
     ],
-    "env_vars": []
+    "env_vars": [],
+    "_comment_domains": "El loopback va en la linea base y no solo en el allowlist de usuario: no es un destino de exfiltracion por definicion, y el propio preflight.sh del kit consulta 127.0.0.1:8787. Sin esto, el guard marcaba la comprobacion de salud del propio kit en cuanto el allowlist de usuario no estaba donde el hook lo busca."
   }
 }
