@@ -12,7 +12,7 @@ El repo pasa de ser solo un instalador endurecido a ser también un **harness**:
 Birgitta Böckeler (*Harness engineering*, 02-abr-2026). Lo nuevo vive en la raíz, pero
 `kit/` no queda intacto: suma 30 ficheros nuevos —el subsistema de evals con sus casos
 y sus pruebas— y 27 ficheros de v1.0.0 retocados, `install.sh` entre ellos. El árbol
-corre hoy 26 suites de test, frente a las 16 de v1.0.0.
+corre hoy 27 suites de test, frente a las 16 de v1.0.0.
 
 ### Added
 
@@ -61,8 +61,9 @@ corre hoy 26 suites de test, frente a las 16 de v1.0.0.
 
 - **Nueve suites de test nuevas** (`test_harness_structure.sh`, `test_metrics.sh`, <!-- doc-claims:ignore: "Nueve" cuenta las suites NUEVAS desde v1.0.0, no el total del arbol -->
   `test_install_diff_first.sh`, `test_uninstall.sh`, `test_detect_oracle.sh`,
-  `test_auto_spec.sh`, `test_autonomy.sh`, `test_doc_claims.sh`, `test_evals.sh`), todas
-  con sección de falsabilidad. El total pasa de 16 a 26 suites.
+  `test_auto_spec.sh`, `test_autonomy.sh`, `test_doc_claims.sh`, `test_evals.sh`,
+  `test_install_settings_merge.sh`), todas
+  con sección de falsabilidad. El total pasa de 16 a 27 suites.
 
 - **El harness entra solo: `auto-spec.sh`, un hook `UserPromptSubmit`** (ADR 009). Cuatro
   reglas advisorias de `CLAUDE.md` tenían adherencia medida —`IntentGate` 2,1 %,
@@ -165,6 +166,21 @@ corre hoy 26 suites de test, frente a las 16 de v1.0.0.
   fuente y su estado honesto, y **ADR 011**, que decide no migrar a OpenHarness. Las cifras
   que ese documento publica se derivan de `runs.jsonl` en tiempo de test; sin el almacén
   —gitignorado— esas aserciones pasan a `skip`, no a `ok`.
+
+- **`kit/doctor.sh` era ciego justo donde se produce el daño, y la garantía de la fusión no
+  tenía sensor.** El check de fuente única de `ANTHROPIC_BASE_URL` solo recorría el ámbito de
+  usuario, pero el que multiplica fuentes es `headroom wrap`, que escribe en
+  `$PWD/.claude/settings.local.json` — ámbito de **proyecto**. Ahora enumera también los
+  proyectos que Claude Code registra en `~/.claude.json`, deduplicando por ruta de fichero (en
+  un `$HOME` declarado como proyecto, el fichero de proyecto y el de usuario son el mismo, y
+  sin dedupe una sola fuente contaba dos veces y daba un FAIL falso), e informa de `ruta:línea`
+  de cada fuente. Un check nuevo vigila `statusLine`: resuelve el ejecutable real del comando
+  saltando el intérprete, FALLA si no existe o no es ejecutable, avisa si no imprime nada o
+  sale con código distinto de 0 —el modo de fallo que Claude Code silencia por completo— y
+  calla si no está declarada, porque el kit no la instala. Y suite nueva
+  `test_install_settings_merge.sh`: 23 aserciones sobre la fusión de `settings.json`, con el
+  caso del incidente verificado por mutación (al revertir la fusión a la copia entera, la
+  suite cae con 5 fallos, el primero por `statusLine` ausente).
 
 ### Changed
 
@@ -400,6 +416,16 @@ corre hoy 26 suites de test, frente a las 16 de v1.0.0.
 - **Se deja de versionar bytecode.** Un `.pyc` publica en `co_filename` la ruta absoluta de
   compilación, que aquí incluye el nombre de usuario.
 
+- **Dos fallos en abierto del propio arreglo de la fusión.** La escritura final era `cp -p`
+  desde un temporal en `/tmp`: un fallo a mitad dejaba el `settings.json` truncado, y además
+  el `cp` desde `/tmp` bajaba el modo del fichero a `600` en cada instalación. Ahora el
+  temporal se crea junto al destino y entra con `mv` —rename atómico— preservando el modo
+  original (`644`, el que escribe una instalación limpia). Y el hook `preflight.sh` resucitaba
+  el proxy de Headroom en **cada** sesión de **cualquier** proyecto, contradiciendo su propio
+  mensaje ("Claude Code funciona igual, no depende del proxy"): ahora solo lo levanta si hay
+  opt-in declarado —la variable en el entorno o la URL en un `settings`—, porque sin nadie
+  enrutado son 1,3 GB de RSS para nadie.
+
 ### Documentation
 
 - **`08-plugins-mcp-y-skills.md`: la sección de MCP decía cosas que ya no eran verdad, y
@@ -481,6 +507,17 @@ corre hoy 26 suites de test, frente a las 16 de v1.0.0.
   las dos columnas es la verdadera no lo decide un argumento sino una llamada de pago que
   **está pendiente**. Y con una fe de erratas que nombra al commit `e7d4fee`: no se enmienda
   un mensaje publicado, se corrige aquí.
+
+- **La doc recomendaba como oráculo del enrutado una herramienta que miente en los dos
+  sentidos.** `headroom doctor` da `claude ⚠ not routed` dentro de una sesión enrutada —solo
+  juzga ficheros, no la sesión— y a la vez `codex ✓ routed` con cero peticiones OpenAI en los
+  logs; reproducido tres veces, la última hoy. Se retira como oráculo de `03-headroom.md` y de
+  `07-verify.md` y se sustituye por los dos que sí contestan: el `environ` de un proceso hijo
+  de la sesión y `doctor.sh`. Se documenta el mecanismo que faltaba —`headroom wrap` escribe la
+  URL en el `settings.local.json` del **proyecto** y la restaura al salir, así que el enrutado
+  es por proyecto y quitarla a mano no dura— y que el kit **no fija versión** de `headroom-ai`.
+  Seis afirmaciones de esa doc pasan a tener sensor en `test_doc_claims.sh`, con diez averías
+  fabricadas para probar que acusan.
 
 ### Security
 
