@@ -6,9 +6,11 @@ No es una opinión, no es "revisar que funcione", no es el juicio del agente al 
 
 ## Reglas de este registro
 
-1. **Comando por ruta absoluta, `rtk proxy …` o `make …`.** Nunca un binario por nombre
-   suelto: el hook `PreToolUse/Bash` sustituye el ejecutable en posición de comando
-   (ver [MISTAKES.md](MISTAKES.md) · M-001). `test_oracle_registry` lo verifica.
+1. **Comando por ruta absoluta o `make …`.** Nunca un binario por nombre suelto: un hook
+   `PreToolUse/Bash` puede sustituir el ejecutable en posición de comando — el de `rtk` lo
+   hacía, y se retiró en la 1.1.0 justo por eso (ver [MISTAKES.md](MISTAKES.md) · M-001).
+   La regla no depende de que ese hook exista: el canal sigue siendo reescribible por
+   cualquier hook futuro. `test_oracle_registry` lo verifica.
 2. **Resultado con fecha.** Un resultado sin fecha es una predicción.
 3. **Un rojo honesto es un oráculo válido.** La línea base es lo que hay, no lo que
    queremos que haya. No se arregla el proyecto para que el oráculo pase.
@@ -22,7 +24,7 @@ No es una opinión, no es "revisar que funcione", no es el juicio del agente al 
 
 | Proyecto | Comando | Resultado | Fecha | Duración | Fiabilidad |
 |---|---|---|---|---|---|
-| **mcharness** (este repo) | `make test` | ✅ **exit 0** · 27 suites, 0 failed | 2026-09-02 | 151 s | **Alta.** Determinista, sin red, sin LLM. Es el oráculo de referencia del harness. |
+| **mcharness** (este repo) | `make test` | ✅ **exit 0** · 27 suites, 0 failed | 2026-09-02 | 118-179 s | **Alta.** Determinista, sin red, sin LLM. Es el oráculo de referencia del harness. |
 | **mcharness** (lint) | `/usr/bin/shellcheck -x scripts/*.sh kit/**/*.sh` | ✅ limpio | 2026-08-21 | <2 s | Alta. Computacional. |
 | **mcharness** (secretos) | `/home/…/.local/bin/gitleaks dir --no-banner .` | ✅ `no leaks found` | 2026-08-21 | 124 ms | Alta. |
 | `sistema-riego` | `/home/…/.venvs/riego/bin/pytest tests/unit -q` | ⏸️ **NO EJECUTADO** | 2026-08-21 | — | **Desconocida.** Ejecución no autorizada por el propietario. Ver nota. |
