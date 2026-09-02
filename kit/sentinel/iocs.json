@@ -1,0 +1,168 @@
+{
+  "schema_version": "1.2",
+  "description": "Security sentinel IOC library. Extended from soy-rafa/claude-mcp-sentinel with prompt injection detection, audit logging, and full tool coverage.",
+  "last_updated": "2026-06-25",
+  "sensitive_paths": {
+    "patterns": [
+      "~/.ssh/",
+      "~/.ssh/id_rsa",
+      "~/.ssh/id_ed25519",
+      "~/.ssh/id_ecdsa",
+      "~/.ssh/id_dsa",
+      "~/.ssh/config",
+      "~/.ssh/known_hosts",
+      "~/.ssh/authorized_keys",
+      "~/.aws/credentials",
+      "~/.aws/config",
+      "~/.gnupg/",
+      "~/.config/gh/hosts.yml",
+      "~/.netrc",
+      "~/.pgpass",
+      "~/.docker/config.json",
+      "~/.kube/config",
+      "~/.npmrc",
+      "/etc/shadow",
+      "/etc/passwd",
+      "/etc/sudoers"
+    ],
+    "regex_patterns": [
+      "(?i)(^|[/\\\\])\\.env(rc|\\.(?!(?:example|template|sample|dist))[a-z].*)?(?=$|[\\s\"'/:,;])",
+      "(?i)credentials?\\.json",
+      "(?i)secrets?\\.(json|ya?ml|env|txt)",
+      "(?i)api[_-]?keys?\\.(json|txt|env)",
+      "(?i)private[_-]?key",
+      "(?i)\\.pem(?![a-z0-9])",
+      "(?i)\\.key(?![a-z0-9])",
+      "(?i)\\.p12(?![a-z0-9])",
+      "(?i)\\.pfx(?![a-z0-9])",
+      "(?i)\\.jks(?![a-z0-9])",
+      "(?i)\\.keystore(?![a-z0-9])"
+    ]
+  },
+  "sensitive_env_vars": {
+    "patterns": [
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+      "AWS_ACCESS_KEY_ID",
+      "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY",
+      "GITHUB_TOKEN",
+      "GH_TOKEN",
+      "STRIPE_SECRET_KEY",
+      "DATABASE_URL",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "CLOUDFLARE_API_TOKEN",
+      "VERCEL_TOKEN",
+      "NETLIFY_AUTH_TOKEN",
+      "HEROKU_API_KEY",
+      "DIGITALOCEAN_TOKEN",
+      "SENDGRID_API_KEY",
+      "TWILIO_AUTH_TOKEN"
+    ],
+    "regex_patterns": [
+      "(?i).*_API_KEY$",
+      "(?i).*_SECRET$",
+      "(?i).*_TOKEN$",
+      "(?i).*_PASSWORD$",
+      "(?i).*_PRIVATE_KEY$"
+    ]
+  },
+  "suspicious_network": {
+    "known_malicious_domains": [
+      {
+        "domain": "giftshop.club",
+        "incident": "Postmark MCP backdoor (v1.0.16, Sept 2025)"
+      }
+    ],
+    "suspicious_tlds": [
+      ".tk",
+      ".ml",
+      ".ga",
+      ".cf",
+      ".gq",
+      ".xyz",
+      ".top",
+      ".work",
+      ".click",
+      ".club"
+    ],
+    "pastebin_style": [
+      "pastebin.com",
+      "paste.ee",
+      "hastebin.com",
+      "dpaste.com",
+      "termbin.com",
+      "transfer.sh",
+      "0x0.st",
+      "file.io",
+      "bashupload.com",
+      "webhook.site",
+      "requestbin.com",
+      "pipedream.net",
+      "ngrok.io",
+      "ngrok.app",
+      "serveo.net"
+    ],
+    "suspicious_patterns": [
+      "https?://\\d+\\.\\d+\\.\\d+\\.\\d+",
+      "https?://0x[0-9a-fA-F]+",
+      "https?://\\d{8,}(?:[/:?#]|$)",
+      "(?i)\\b(curl|wget|nc|ncat|scp|ftp|telnet)\\b[^\\n]*?\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b"
+    ]
+  },
+  "dangerous_commands": {
+    "patterns": [
+      "curl\\s+.*\\|\\s*(bash|sh|zsh|python3?|perl|ruby)",
+      "wget\\s+.*\\|\\s*(bash|sh|zsh|python3?|perl|ruby)",
+      "(?i)(bash|sh|zsh)\\s+<\\(\\s*(curl|wget)",
+      "(?i)base64\\s.*(curl|wget|ncat|\\bnc\\b|python|perl)",
+      "(?i)(^|[;&|(){}\\n])\\s*eval\\s+",
+      "(?i)nc\\s+-e",
+      "(?i)ncat\\s+-e",
+      "(?i)bash\\s+-i\\s+>&\\s*/dev/tcp/",
+      "(?i)bash\\s+-i\\s+>&\\s*/dev/udp/",
+      "(?i)python3?\\s+-c.*socket.*connect",
+      "(?i)(>>|tee\\s+(-a\\s+)?)\\s*(~|\\$HOME|/root|/home/[^/\\s]+)/\\.(bashrc|zshrc|bash_profile|profile|bash|zsh)",
+      "(?i)mkfs\\."
+    ]
+  },
+  "prompt_injection_phrases": {
+    "patterns": [
+      "(?i)ignore\\s+(all\\s+)?previous\\s+instructions",
+      "(?i)disregard\\s+(all\\s+)?(the\\s+)?(above|previous)",
+      "(?i)act\\s+as\\s+(root|admin|superuser|a\\s+different)",
+      "(?i)you\\s+are\\s+now\\s+in\\s+developer\\s+mode",
+      "(?i)do\\s+not\\s+(tell|show|mention)\\s+the\\s+user",
+      "(?i)hide\\s+this\\s+from\\s+the\\s+user",
+      "(?i)bypass\\s+(safety|security|guidelines|constraints)",
+      "(?i)new\\s+system\\s+prompt",
+      "(?i)forget\\s+(all\\s+)?(your\\s+)?(previous\\s+)?(instructions|training|rules)",
+      "(?i)DAN\\s+mode",
+      "(?i)override\\s+(all\\s+)?constraints"
+    ]
+  },
+  "allowlist": {
+    "paths": [
+      "/tmp/",
+      "/var/tmp/",
+      "~/sentinel/",
+      "~/.claude/sentinel/",
+      "~/.claude/hooks/"
+    ],
+    "domains": [
+      "api.anthropic.com",
+      "api.github.com",
+      "github.com",
+      "raw.githubusercontent.com",
+      "registry.npmjs.org",
+      "pypi.org",
+      "files.pythonhosted.org",
+      "doi.org",
+      "books.google.com",
+      "api.crossref.org",
+      "www.boe.es",
+      "ec.europa.eu"
+    ],
+    "env_vars": []
+  }
+}

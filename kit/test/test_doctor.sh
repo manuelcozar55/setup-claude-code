@@ -58,14 +58,18 @@ fi
 # que la capa estaba inactiva cuando en realidad cargaba 31 patrones de ruta. Un aviso falso
 # gasta la credibilidad de los verdaderos.
 bash "$KIT/install.sh" >/dev/null 2>&1
+# El kit SI distribuye iocs.json (la capa activa de fabrica), asi que para probar el aviso
+# hay que quitarlo. Antes solo venia iocs.example.json y cada instalacion arrancaba con la
+# capa apagada y un WARN que nadie lee.
+mv "$CLAUDE_HOME/sentinel/iocs.json" "$tmp/iocs.json.guardado"
 out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
        bash "$KIT/doctor.sh" 2>&1)"
 if echo "$out" | grep -qE '^WARN .*IOC layer inactiva'; then
-  ck y y "sin iocs.json, doctor avisa (es opcional: el kit solo trae el .example)"
+  ck y y "si quitas iocs.json, doctor avisa (la capa es opcional, pero el kit la trae activa)"
 else
-  ck n y "sin iocs.json, doctor avisa (es opcional: el kit solo trae el .example)"
+  ck n y "si quitas iocs.json, doctor avisa (la capa es opcional, pero el kit la trae activa)"
 fi
-printf '{"schema_version":3,"sensitive_paths":{"patterns":[]}}\n' > "$CLAUDE_HOME/sentinel/iocs.json"
+mv "$tmp/iocs.json.guardado" "$CLAUDE_HOME/sentinel/iocs.json"
 out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
        bash "$KIT/doctor.sh" 2>&1)"
 if echo "$out" | grep -qE '^PASS .*IOC layer activa'; then
@@ -73,6 +77,5 @@ if echo "$out" | grep -qE '^PASS .*IOC layer activa'; then
 else
   ck n y "con iocs.json junto al preflight, doctor lo encuentra y lo dice"
 fi
-rm -f "$CLAUDE_HOME/sentinel/iocs.json"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

@@ -282,11 +282,66 @@ install_file() {  # src dst
   cp -p "$src" "$dst"
 }
 
+# settings.json NO se reemplaza si ya existe: se fusiona. Regla, y es deliberada:
+#   - `hooks`      -> gana el KIT. La cadena de guards es lo que el kit aporta.
+#   - `permissions`-> UNION. Nunca se pierde un deny (seguridad) ni un allow (tu trabajo).
+#   - `env`        -> tus claves ganan, y las nuevas del kit se anaden.
+#   - todo lo demas (model, statusLine, theme, enabledPlugins...) -> lo tuyo, intacto.
+# Por que existe esto: reemplazar el fichero entero borraba en silencio el ajuste personal.
+# Medido en una maquina real al reinstalar: se perdieron ENABLE_TOOL_SEARCH (que vale ~30k de
+# contexto por sesion), ANTHROPIC_MODEL con el sufijo de la ventana de 1M,
+# CLAUDE_CODE_AUTO_COMPACT_WINDOW y tres limites mas. Habia backup, pero un backup que hay que
+# descubrir no es una salvaguarda: es una autopsia.
+install_settings() {  # src dst
+  local src="$1" dst="$2" tmp
+  if [ ! -f "$dst" ] || ! command -v jq >/dev/null 2>&1; then
+    [ -f "$dst" ] && echo "   AVISO: sin jq no se puede fusionar settings.json; se reemplaza con backup" >&2
+    install_file "$src" "$dst"; return
+  fi
+  if ! jq empty "$dst" 2>/dev/null; then
+    echo "   AVISO: $dst no es JSON valido; se reemplaza con backup" >&2
+    install_file "$src" "$dst"; return
+  fi
+  tmp="$(mktemp)"
+  if jq -s '
+      .[0] as $kit | .[1] as $old |
+      ($kit + $old)
+      | .env = (($kit.env // {}) + ($old.env // {}))
+      | .hooks = ($kit.hooks // $old.hooks)
+      | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
+          | .allow = ((($kit.permissions.allow // []) + ($old.permissions.allow // [])) | unique)
+          | .deny  = ((($kit.permissions.deny  // []) + ($old.permissions.deny  // [])) | unique))
+    ' "$src" "$dst" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
+    if ! cmp -s "$tmp" "$dst"; then
+      mkdir -p "$(dirname "$BK/${dst#"$CLAUDE_HOME"/}")"
+      cp -p "$dst" "$BK/${dst#"$CLAUDE_HOME"/}"
+      echo "   backup: ${dst#"$CLAUDE_HOME"/} (fusionado: hooks del kit, permisos unidos, tu env y tu model intactos)"
+      cp -p "$tmp" "$dst"
+    fi
+    rm -f "$tmp"
+  else
+    rm -f "$tmp"
+    echo "   AVISO: la fusion de settings.json fallo; se deja el tuyo intacto" >&2
+  fi
+}
+
+# CLAUDE.md son instrucciones que escribes tu: no se pisa si ya la has tocado. Se deja la del
+# kit al lado, como CLAUDE.kit.md, y se avisa. Reemplazarla borraba trabajo irrecuperable por
+# fusion automatica -- una prosa no se puede fusionar como un JSON.
+install_claude_md() {  # src dst
+  local src="$1" dst="$2"
+  if [ ! -f "$dst" ]; then cp -p "$src" "$dst"; return; fi
+  if cmp -s "$src" "$dst"; then return; fi
+  cp -p "$src" "$(dirname "$dst")/CLAUDE.kit.md"
+  echo "   CLAUDE.md ya existe y la has modificado: NO se toca."
+  echo "   La version del kit queda en CLAUDE.kit.md para que compares y copies lo que quieras."
+}
+
 install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   local base="$1"
   mkdir -p "$base/hooks" "$base/agents" "$base/sentinel"
-  install_file "$KIT/claude/CLAUDE.md"            "$base/CLAUDE.md"
-  install_file "$KIT/claude/settings.json"        "$base/settings.json"
+  install_claude_md "$KIT/claude/CLAUDE.md"       "$base/CLAUDE.md"
+  install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
   install_file "$KIT/claude/sentinel-allowlist.json" "$base/sentinel-allowlist.json"
   install_file "$KIT/claude/.gitleaks.toml"       "$base/.gitleaks.toml"
   for f in "$KIT"/claude/agents/*; do [ -e "$f" ] && install_file "$f" "$base/agents/$(basename "$f")"; done

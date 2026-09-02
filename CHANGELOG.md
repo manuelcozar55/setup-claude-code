@@ -220,6 +220,27 @@ corre hoy 26 suites de test, frente a las 16 de v1.0.0.
 
 ### Fixed
 
+- **Reinstalar el kit destruía la configuración personal de quien ya lo tenía.** Medido en una
+  máquina real: un `install.sh --apply` sobre una instalación existente reemplazaba
+  `settings.json` entero y se llevaba en silencio `ENABLE_TOOL_SEARCH` (que vale ~30k de
+  contexto por sesión), el `ANTHROPIC_MODEL` con el sufijo de la ventana de 1M,
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, tres límites más, el `statusLine` y tres hooks; y
+  reemplazaba `CLAUDE.md`, que es prosa escrita a mano. Había backup, pero un backup que hay
+  que descubrir no es una salvaguarda: es una autopsia. Ahora `settings.json` se **fusiona**
+  con una regla declarada — los `hooks` los pone el kit, los `permissions` se unen (nunca se
+  pierde un `deny` ni un `allow`), tus claves de `env` ganan y el kit solo añade las nuevas, y
+  todo lo demás es tuyo e intacto — y `CLAUDE.md` no se pisa: la del kit queda al lado como
+  `CLAUDE.kit.md`.
+- **El kit no distribuía tres hooks que sí corrían en producción**, así que instalarlo los
+  borraba y un clon limpio nunca los tenía: `write-guard.py` (secretos en el contenido que se
+  escribe), `narthex-post-mcp.py` (unicode invisible y frases de jailbreak en respuestas de
+  MCPs de terceros) y `preflight.sh` (recupera el proxy por systemd). Los tres son portables
+  y ya están registrados vía `optional-hook.sh`.
+- **La capa de IOCs de Sentinel venía apagada de fábrica.** El kit solo traía
+  `iocs.example.json`, así que cada instalación arrancaba sin los 31 patrones de ruta
+  sensible, 12 de comando peligroso y 30 de red — con un `WARN` que nadie lee. Ahora se
+  distribuye `iocs.json` completo, con su allowlist en `~/` y no en el home de nadie.
+
 - **Lo que impide que la documentación mienta no corría en CI, y nada lo declaraba.**
   `test_doc_claims.sh` y `test_evals.sh` quedaban fuera del pipeline: El `Makefile` corría 25 y `ci.yml` 23: las ausentes eran `test_doc_claims.sh`
   y `test_evals.sh`, así que un PR que rompiera una cifra del README pasaba en verde. Y el

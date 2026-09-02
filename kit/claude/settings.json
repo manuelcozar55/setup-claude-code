@@ -110,6 +110,28 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/write-guard.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/narthex-post-mcp.py",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -119,6 +141,15 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/session-start.sh",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/preflight.sh",
+            "timeout": 15
           }
         ]
       }

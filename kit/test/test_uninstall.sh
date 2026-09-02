@@ -38,7 +38,9 @@ out_empty="$(bash "$UNINSTALL" --list 2>&1)"
 ck "$(echo "$out_empty" | grep -qic 'no hay backups' && echo y || echo n)" "y" "--list sin backups lo dice con claridad"
 
 bash "$REPO/kit/install.sh" >/dev/null 2>&1
-echo "MODIFICADO" >> "$CLAUDE_HOME/CLAUDE.md"
+# Testigo: .gitleaks.toml y no CLAUDE.md. CLAUDE.md son TUS instrucciones y desde ahora
+# install.sh no la pisa, asi que ya no genera backup interno (deja CLAUDE.kit.md al lado).
+echo "MODIFICADO" >> "$CLAUDE_HOME/.gitleaks.toml"
 bash "$REPO/kit/install.sh" >/dev/null 2>&1   # genera un backup interno
 
 out_list="$(bash "$UNINSTALL" --list 2>&1)"
@@ -60,18 +62,18 @@ bash "$UNINSTALL" >/dev/null 2>&1
 after2="$(tree_checksum "$H1")"
 ck "$before2" "$after2" "sin argumentos (modo por defecto) tampoco modifica nada"
 
-# El backup interno mas reciente contiene el CLAUDE.md de ANTES de la 2a
+# El backup interno mas reciente contiene el .gitleaks.toml de ANTES de la 2a
 # instalacion (kit + "MODIFICADO"): eso es lo que --apply debe traer de
 # vuelta, no el contenido actual (que ya es el kit "limpio" tras esa 2a
 # instalacion).
 latest_backup_dir="$(find "$CLAUDE_HOME/backups" -mindepth 1 -maxdepth 1 -type d | LC_ALL=C sort | tail -1)"
-expected_restore="$(cat "$latest_backup_dir/CLAUDE.md")"
+expected_restore="$(cat "$latest_backup_dir/.gitleaks.toml")"
 bash "$UNINSTALL" --apply >/tmp/uninstall_apply_out.$$.log 2>&1
 apply_rc=$?
 ck "$apply_rc" "0" "--apply sale con exit 0"
-after_restore="$(cat "$CLAUDE_HOME/CLAUDE.md")"
+after_restore="$(cat "$CLAUDE_HOME/.gitleaks.toml")"
 ck "$([ "$expected_restore" = "$after_restore" ] && echo mismo || echo distinto)" "mismo" \
-  "--apply restaura el CLAUDE.md del backup interno mas reciente (contenido MODIFICADO)"
+  "--apply restaura el .gitleaks.toml del backup interno mas reciente (contenido MODIFICADO)"
 ck "$(find "$BACKUP_DIR" -maxdepth 1 -name 'claude-state-*.zip' 2>/dev/null | wc -l | tr -d ' ')" "1" \
   "--apply hizo primero su propio backup de seguridad (ZIP en BACKUP_DIR)"
 rm -f "/tmp/uninstall_apply_out.$$.log"

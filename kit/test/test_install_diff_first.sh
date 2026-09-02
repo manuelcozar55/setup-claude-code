@@ -43,8 +43,17 @@ MCHARNESS_OUT="$tmp/out-2" bash "$KIT/install.sh" --apply >/dev/null 2>&1; rc3=$
 set -e
 ck "$rc3" "0" "--apply sobre CLAUDE_HOME (repo git con remoto): sale con exit 0"
 ck "$([ -f "$CLAUDE_HOME/settings.json" ] && echo y || echo n)" "y" "--apply SI escribe (instala settings.json)"
-ck "$([ "$(cat "$CLAUDE_HOME/CLAUDE.md")" != "MIO, NO TOCAR" ] && echo y || echo n)" "y" "--apply SI sobreescribe CLAUDE.md"
-ck "$(find "$CLAUDE_HOME/backups" -mindepth 2 -maxdepth 2 -name CLAUDE.md 2>/dev/null | wc -l | tr -d ' ')" "1" "--apply hace backup del CLAUDE.md previo (el 'MIO, NO TOCAR')"
+# CLAUDE.md es prosa escrita a mano y no se puede fusionar: --apply escribe todo lo demas,
+# pero NO la pisa; deja la del kit al lado. Antes SI la sobreescribia (con backup), y eso
+# costo trabajo irrecuperable en una maquina real: un backup que hay que descubrir no es una
+# salvaguarda, es una autopsia. El proposito de este caso -- que --apply no sea un no-op --
+# lo sostiene la asercion de settings.json de arriba y el backup de aqui abajo.
+ck "$(cat "$CLAUDE_HOME/CLAUDE.md")" "MIO, NO TOCAR" "--apply NO pisa un CLAUDE.md escrito a mano"
+ck "$([ -f "$CLAUDE_HOME/CLAUDE.kit.md" ] && echo y || echo n)" "y" "--apply deja la version del kit en CLAUDE.kit.md"
+# Y el mecanismo de backup sigue vivo bajo --apply, sobre un fichero que el kit SI posee.
+echo "# MOD" >> "$CLAUDE_HOME/.gitleaks.toml"
+set +e; MCHARNESS_OUT="$tmp/out-3" bash "$KIT/install.sh" --apply >/dev/null 2>&1; set -e
+ck "$(find "$CLAUDE_HOME/backups" -mindepth 2 -maxdepth 2 -name .gitleaks.toml 2>/dev/null | wc -l | tr -d ' ')" "1" "--apply sigue haciendo backup de lo que el kit SI posee"
 
 # --- Caso 4: --plan fuerza el modo diff aunque NO sea un repo git ----------
 export CLAUDE_HOME="$tmp/dot-noplan"
