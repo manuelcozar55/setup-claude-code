@@ -39,6 +39,8 @@ headroom --version
 
 Sin el extra `[proxy]` el proxy no arranca y falla con `No module named 'httpx'`.
 
+**No hay pin de versión**, ni aquí ni en `install.sh`, que instala con `pip install -q --upgrade 'headroom-ai[proxy]'`: te llevas la última publicada, y este kit **no espera una versión concreta** — lo que el kit fija es el cableado, no el número. Las conductas de la herramienta que describe este documento se midieron sobre la **0.36.2**; si tu versión hace otra cosa, manda lo que veas en tu máquina.
+
 ### O con un flag, si prefieres que lo haga el kit
 
 Todo lo de este documento —el extra `[proxy]`, la unidad de systemd con sus tres detalles, el modo `cache`, el output-shaper y el cableado— lo automatiza:
@@ -217,6 +219,30 @@ Cómo evitarlo:
   el runtime—, así que neutralizar ese `settings.local.json` no se deshace por sí solo
   en el siguiente arranque.
 
+## `headroom wrap` sí reescribe tu config: la URL del proxy en el `settings.local.json` del proyecto
+
+Ojo con la distinción, porque son dos vectores distintos y la frase de arriba solo cubre uno:
+«`headroom init hook ensure` **no** reescribe ficheros de configuración» es cierto de `hook
+ensure`, y **no** vale para `wrap`. Medido en la 0.36.2: `_write_claude_wrap_base_url()`
+(`headroom/cli/wrap.py`) escribe `ANTHROPIC_BASE_URL` en
+`Path.cwd()/.claude/settings.local.json` —el del **proyecto**, no el global—, guarda el valor
+anterior en su marker y lo restaura al salir.
+
+Tres consecuencias, sin adornos:
+
+- **Quitar la URL a mano no dura.** Si queda un `wrap` huérfano, o el hook `wrap selfheal` que
+  la propia herramienta instala, la repone en el siguiente arranque. Comprueba el fichero, no
+  tu recuerdo de haberlo editado: `jq -r '.env.ANTHROPIC_BASE_URL' .claude/settings.local.json`
+  en la raíz del proyecto.
+- **El enrutado resultante es por proyecto, no global.** Solo lo cargan las sesiones cuyo
+  directorio de trabajo sea la raíz de ese proyecto. De ahí un síntoma que no se parece a un
+  problema de configuración: el proxy "parece" apagado en unos proyectos y encendido en otros,
+  con la misma instalación y el mismo `settings.json`.
+- **Una comprobación global no lo ve** — es el ámbito que las del kit no cubrían. Fue el
+  escondite del incidente que `doctor.sh` documenta en su propio código: la URL vivía en cinco
+  `settings.local.json` de proyecto, cada uno con su hook `wrap selfheal` reponiéndola, y el
+  94 % del trabajo de un día salió sin pasar por el proxy.
+
 ## Modo del proxy: `cache` vs `token`
 
 Headroom arranca en uno de dos modos, y la diferencia importa para la factura, no solo para el tamaño del contexto:
@@ -238,11 +264,25 @@ curl -s 127.0.0.1:8787/readyz
 
 Ten cuidado con este comando: Sentinel (ver `05-security.md`) trata las IP en crudo dentro de una URL como un patrón sospechoso, y puede bloquear ese `curl` aunque el destino sea inofensivo y local. El allowlist que este kit instala (`sentinel-allowlist.json`) ya incluye `127.0.0.1` y `localhost` como dominios permitidos, así que el comando de arriba debería pasar sin fricción tras `install.sh`. Si partes de un allowlist propio construido desde cero y no lo has incluido, tienes dos salidas: añadirlo al allowlist, o usar directamente el CLI que la propia instalación de Headroom exponga para estadísticas (por ejemplo `headroom_stats`, si tu instalación lo provee), que no contiene una URL y por tanto no dispara esa regla.
 
-**Mejor que el `curl`: `headroom doctor`.** Comprueba en una tabla lo que de verdad importa — que el proxy corre, que la versión del proceso coincide con la instalada, que Claude Code y Codex están enrutados (y **por qué fichero**), y cuántos tokens se han ahorrado de verdad. Ese último es el que descubre el fallo más común: si dice `savings: no tokens saved yet`, tienes el proxy vivo y **el cliente sin enrutar**, que es precisamente el estado que un `curl /readyz` te reporta como correcto.
+**Lo que `headroom doctor` NO es: el oráculo del enrutado.** Su tabla sirve para lo demás —que el proxy corra, que la versión del proceso coincida con la instalada, qué apaga el endpoint custom—, pero la fila que dice si tu cliente está enrutado **miente en los dos sentidos**, porque no juzga la sesión: juzga un fichero. Medido el 2026-09-01 y el 2026-09-02:
+
+- **Falso negativo.** `claude ⚠ not routed (no ANTHROPIC_BASE_URL in settings env)` dentro de una sesión que sí estaba pasando por el proxy, porque la URL no venía del `settings.json` que él mira, sino del `settings.local.json` de proyecto que escribe `headroom wrap` (ver arriba) o del entorno heredado del shell. Tres filas más abajo, en la misma tabla, `shell env ✓ routed via ANTHROPIC_BASE_URL`: se contradice consigo mismo.
+- **Falso positivo.** `codex ✓ routed` con **cero** peticiones OpenAI (`/v1/responses`, `/v1/chat/completions`) en todos los logs vigentes del proxy. Que un fichero de config lo declare no significa que haya pasado tráfico.
+
+Los dos oráculos que sí contestan a "¿está *esta* sesión pasando por el proxy?":
 
 ```bash
-headroom doctor
+# 1. El entorno de un proceso HIJO de la sesión —vale cualquier servidor MCP—, que es lo
+#    que la sesión usa de verdad. Mirar el `environ` del propio `claude` no basta: es el
+#    de su exec, y lo que entra por `settings.json` se aplica ya en proceso.
+pgrep -a -f 'mcp' | head
+tr '\0' '\n' < /proc/<pid-del-hijo>/environ | grep ANTHROPIC_BASE_URL
+
+# 2. El del kit, que además falla si el enrutado está declarado en dos sitios a la vez.
+bash doctor.sh
 ```
+
+El contador de ahorro de su informe sí vale como señal de humo: `savings: no tokens saved yet` con el proxy vivo significa que por ahí no ha pasado nada, que es precisamente el estado que un `curl /readyz` te reporta como correcto. Para las cifras, el histórico durable es `/stats-history` (más abajo), no esa fila.
 
 Un `200 OK` en `/readyz` confirma que *algo* responde en ese puerto, no que sea tu proxy. Un healthcheck que solo mira el puerto no distingue una instancia vieja o a medio configurar (por ejemplo, un servicio anterior que quedó ocupando el 8787) de la que tú acabas de arrancar; puede darte "vivo" mientras la que responde de verdad no es la tuya. Si algo no cuadra (el proxy no aplica el modo que configuraste, o los resultados no parecen pasar por él), comprueba qué proceso tiene el puerto realmente abierto (`lsof -i :8787` o equivalente) antes de fiarte solo del curl.
 

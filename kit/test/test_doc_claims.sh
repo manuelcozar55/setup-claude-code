@@ -869,6 +869,228 @@ else
 fi
 rm -f "$TMPD"/*.md "$TMPD"/*.jsonl "$TMPD"/py-revienta; rmdir "$TMPD"
 
+# --- 5. La doc de Headroom, contra install.sh, el Makefile y la unidad -----
+# Headroom era la unica parte grande del repo sin sensor de doc: cero coincidencias con
+# "headroom" en este fichero. Sus afirmaciones no son cifras de inventario -las que
+# `claim` sabe juzgar-, son promesas sobre lo que install.sh escribe, sobre lo que la
+# unidad systemd arranca y sobre con que se comprueba el enrutado. Se cubren esas.
+#
+# Lo que NO se cubre, y es deliberado: las cifras de ahorro, latencia y RAM del proxy.
+# Son mediciones fechadas de una maquina concreta y no tienen fuente de verdad en el
+# arbol, asi que un sensor solo podria compararlas consigo mismas. Copiar el texto no
+# es medirlo.
+#
+# Cada comprobador recibe los ficheros por argumento en vez de nombrarlos dentro: asi
+# las sondas de falsabilidad del final pueden interrogarlo sobre copias deformadas. Un
+# comprobador que solo sabe mirar el arbol real no se puede poner rojo a proposito.
+HRDOC=kit/docs/03-headroom.md
+ONBDOC=kit/docs/10-onboarding.md
+VERDOC=kit/docs/07-verify.md
+
+# hr_check <sujeto> <comprobador> <fichero...>: un renglon por queja, nada si cuadra.
+hr_check() {
+  local sujeto="$1" fn="$2"; shift 2
+  local q; q=$("$fn" "$@")
+  if [ -z "$q" ]; then
+    echo "ok - $sujeto"; pass=$((pass+1))
+  else
+    echo "NOT ok - $sujeto:"; echo "$q"; fail=$((fail+1))
+  fi
+}
+
+# La unidad systemd: `--mode cache` explicito y NUNCA `--budget` ni `--log-messages`.
+# El modo token invalida el prompt-caching, que es de donde sale el ahorro de verdad;
+# --budget devuelve HTTP 200 con cuerpo vacio al agotarse, que se lee como un fallo del
+# cliente; --log-messages escribe la conversacion entera en claro. doctor.sh vigila la
+# unidad INSTALADA (test_headroom_guardrails.sh); lo que nadie vigilaba es el ExecStart
+# que PUBLICA la doc, y copiar un ExecStart de un documento es exactamente como llegan
+# esos flags a una maquina.
+hr_unidad() {
+  local f l vistas=0
+  for f in "$@"; do
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      vistas=$((vistas+1))
+      case "$l" in
+        *"--mode cache"*) ;;
+        *) echo "  $f: ExecStart sin '--mode cache': $(printf '%s' "$l" | cut -c1-58)" ;;
+      esac
+      case "$l" in
+        *--budget*|*--log-messages*)
+          echo "  $f: ExecStart con --budget o --log-messages: $(printf '%s' "$l" | cut -c1-58)" ;;
+      esac
+    done <<< "$(grep -h '^ExecStart=.*headroom proxy' "$f" 2>/dev/null)"
+  done
+  [ "$vistas" -gt 0 ] || echo "  ningun ExecStart de 'headroom proxy' en $*: no hay nada que juzgar"
+}
+hr_check "la unidad de Headroom lleva --mode cache y nunca --budget ni --log-messages" \
+  hr_unidad "$HRDOC" kit/install.sh
+
+# ANTHROPIC_BASE_URL se escribe SOLO bajo --with-headroom. Es la promesa central del kit
+# sobre esa variable -distribuirla dejaba a quien clonaba en limpio enrutado a un puerto
+# muerto, sin API y con un sintoma que no se parece a un problema de config- y vive en
+# dos sitios que se pudren por separado: el codigo y la frase del documento. El bloque
+# se delimita por sus dos anclas reales (el `if` del flag y su `exit 0` + `fi`); si
+# dejan de casar, esto se queja en vez de aprobar sin haber mirado nada.
+hr_base_url() {
+  local src="$1"; shift
+  local gate end hit n dentro=0 f
+  gate=$(grep -nF '= "--with-headroom" ]; then' "$src" | head -1 | cut -d: -f1)
+  if [ -n "$gate" ]; then
+    end=$(awk -v g="$gate" 'NR>=g { if (prev=="  exit 0" && $0=="fi") { print NR; exit } } { prev=$0 }' "$src")
+  fi
+  if [ -z "$gate" ] || [ -z "$end" ]; then
+    echo "  no se reconoce el bloque --with-headroom de $src: no hay nada que juzgar"
+  else
+    while IFS= read -r hit; do
+      [ -n "$hit" ] || continue
+      n=${hit%%:*}
+      if [ "$n" -ge "$gate" ] && [ "$n" -le "$end" ]; then
+        dentro=$((dentro+1))
+      else
+        echo "  $src:$n toca ANTHROPIC_BASE_URL fuera del bloque --with-headroom ($gate-$end)"
+      fi
+    done <<< "$(grep -n 'ANTHROPIC_BASE_URL' "$src" | grep -vE '^[0-9]+:[[:space:]]*#')"
+    [ "$dentro" -gt 0 ] || echo "  ninguna linea de $src escribe ANTHROPIC_BASE_URL dentro del bloque: el cableado se fue de sitio"
+  fi
+  for f in "$@"; do
+    if ! grep -qE 'ANTHROPIC_BASE_URL.*--with-headroom|--with-headroom.*ANTHROPIC_BASE_URL' "$f"; then
+      echo "  $f ya no dice que ANTHROPIC_BASE_URL la escriba install.sh --with-headroom"
+    fi
+  done
+}
+hr_check "ANTHROPIC_BASE_URL solo se escribe bajo --with-headroom, y la doc lo dice" \
+  hr_base_url kit/install.sh "$HRDOC"
+
+# `make bootstrap` no instala Headroom. Es opt-in por una medicion, no por gusto (paso 5
+# de 10-onboarding.md), asi que el dia que bootstrap lo arrastre, la primera tabla que
+# lee un companero nuevo miente y nadie se enteraria: bootstrap no lo declara, lo hace.
+#
+# Se juzgan los COMANDOS del target, no su texto: las lineas de `echo` del propio
+# bootstrap nombran Headroom precisamente para decir que ahi no se instala -y hasta
+# imprimen el `install.sh --with-headroom` como pista-, asi que un grep sobre el cuerpo
+# entero enrojece el estado correcto. Medido: es lo que hacia la primera version de
+# esto. Lo que no puede aparecer es un comando que lo instale.
+hr_bootstrap() {
+  local mk="$1"; shift
+  local cuerpo f
+  cuerpo=$(awk '/^bootstrap:/ {on=1; next} /^[a-zA-Z_.-]+:/ {on=0} on {print}' "$mk" \
+           | grep -vE '^[[:space:]]*@?echo ')
+  if [ -z "$cuerpo" ] || ! printf '%s\n' "$cuerpo" | grep -q 'install.sh'; then
+    echo "  no se reconoce el target bootstrap de $mk (o ya no llama a install.sh): nada que juzgar"
+  elif printf '%s\n' "$cuerpo" | grep -qi 'headroom'; then
+    echo "  un comando del target bootstrap de $mk nombra headroom: la doc promete que bootstrap NO lo instala"
+  fi
+  for f in "$@"; do
+    # shellcheck disable=SC2016 # los backticks son los del markdown de la fila, literales
+    if ! grep -qE '^\| Headroom .*`make bootstrap` no lo instala' "$f"; then
+      echo "  $f ya no declara que 'make bootstrap' no instala Headroom"
+    fi
+  done
+}
+hr_check "'make bootstrap' no instala Headroom, y 10-onboarding.md lo declara" \
+  hr_bootstrap Makefile "$ONBDOC"
+
+# Regresion del oraculo de enrutado. `headroom doctor` estuvo recomendado en dos sitios
+# -"Mejor que el curl" en 03 y la fila de la tabla de 07- teniendo el propio repo medido
+# que miente en los dos sentidos: dice `claude not routed` DENTRO de una sesion enrutada
+# (solo juzga el settings.json que el mira, no la sesion) y `codex routed` con cero
+# peticiones OpenAI en los logs. Aqui se vigila que no vuelva.
+#
+# A este comprobador NO se le exige haber juzgado alguna linea, y es la excepcion
+# razonada al guardia de 'vistas' que gobierna el resto del fichero: que la doc deje de
+# nombrar a `headroom doctor` junto al enrutado es un estado CORRECTO, no un sensor
+# ciego. Lo que sostiene la medicion son las dos piezas de al lado: la sonda de
+# falsabilidad, que le mete la frase retirada tal como estaba escrita, y hr_oraculos,
+# que exige que los dos oraculos que si funcionan sigan citados.
+hr_doctor_oraculo() {
+  local f l vistas=0
+  for f in "$@"; do
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      vistas=$((vistas+1))
+      printf '%s' "$l" | grep -qiE 'miente|no uses' \
+        || echo "  $f: propone 'headroom doctor' como comprobacion de enrutado: $(printf '%s' "$l" | cut -c1-58)"
+    done <<< "$(grep -iE 'headroom doctor' "$f" 2>/dev/null | grep -iE 'enrutad|routed')"
+  done
+}
+hr_oraculos() {
+  local f
+  for f in "$@"; do
+    grep -q 'environ' "$f" || echo "  $f ya no cita el oraculo del entorno del proceso hijo (/proc/<pid>/environ)"
+    grep -q 'doctor\.sh' "$f" || echo "  $f ya no cita doctor.sh como oraculo del enrutado"
+  done
+}
+hr_check "ninguna linea de la doc propone 'headroom doctor' como oraculo del enrutado" \
+  hr_doctor_oraculo kit/docs/*.md
+hr_check "03 y 07 citan los dos oraculos que si contestan (el hijo de la sesion y doctor.sh)" \
+  hr_oraculos "$HRDOC" "$VERDOC"
+
+# El pin que no hay: install.sh instala con --upgrade y sin version, asi que el kit no
+# espera una version concreta. El documento lo dice ahora porque antes se leia justo lo
+# contrario; si algun dia se pina, esto se pone rojo y la frase hay que reescribirla.
+hr_sin_pin() {
+  local src="$1"; shift
+  local pip f
+  pip=$(grep -nE "install .*'headroom-ai\[proxy\]'" "$src" | head -1)
+  if [ -z "$pip" ]; then
+    echo "  $src ya no instala 'headroom-ai[proxy]' sin pin reconocible: nada que juzgar"
+  elif printf '%s\n' "$pip" | grep -qE 'headroom-ai\[proxy\](==|>=|<=|~=|!=)'; then
+    echo "  $src instala headroom-ai[proxy] con pin de version: la doc dice que no hay pin"
+  fi
+  for f in "$@"; do
+    grep -q 'No hay pin de versión' "$f" || echo "  $f ya no dice que no hay pin de version"
+  done
+}
+hr_check "headroom-ai[proxy] se instala sin pin, y 03-headroom.md lo dice" \
+  hr_sin_pin kit/install.sh "$HRDOC"
+
+# Falsabilidad de los cinco. Sin esto, un grep que dejara de encajar daria verde para
+# siempre, que es el modo de fallo que este fichero existe para evitar. Cada caso
+# deforma una COPIA con la averia exacta que su comprobador persigue -incluida la frase
+# que se retiro, escrita tal como estaba- y se exigen los diez rojos: los cinco del lado
+# del codigo y los cinco del lado del documento, que son los dos sitios donde se pudre.
+HRTMP=$(mktemp -d) || exit 1
+sed 's/--mode cache/--mode token/' "$HRDOC"                     > "$HRTMP/u-token.md"
+sed 's/--no-telemetry/--no-telemetry --log-messages/' "$HRDOC"  > "$HRTMP/u-log.md"
+{ cat kit/install.sh; echo 'ANTHROPIC_BASE_URL=http://127.0.0.1:8787  # reintroducido fuera del flag'; } \
+                                                                > "$HRTMP/i-fuera.sh"
+sed 's/--with-headroom//g' "$HRDOC"                             > "$HRTMP/d-sin-flag.md"
+sed 's|bash kit/install.sh$|bash kit/install.sh --with-headroom|' Makefile > "$HRTMP/mk-hr"
+sed 's/no lo instala/lo instala/' "$ONBDOC"                     > "$HRTMP/d-bootstrap.md"
+# shellcheck disable=SC2016 # es la frase retirada, con sus backticks de markdown literales
+printf '%s\n' '**Mejor que el `curl`: `headroom doctor`.** Comprueba que Claude Code y Codex estan enrutados.' \
+                                                                > "$HRTMP/d-viejo.md"
+sed 's/environ/entorno/g; s/doctor\.sh/comprobador/g' "$VERDOC" > "$HRTMP/d-sin-oraculos.md"
+sed "s/'headroom-ai\[proxy\]'/'headroom-ai[proxy]==0.36.2'/" kit/install.sh > "$HRTMP/i-pin.sh"
+sed 's/No hay pin/Hay pin/' "$HRDOC"                            > "$HRTMP/d-pin.md"
+hr_malos=0
+for hr_caso in \
+  "hr_unidad $HRTMP/u-token.md" \
+  "hr_unidad $HRTMP/u-log.md" \
+  "hr_base_url $HRTMP/i-fuera.sh $HRDOC" \
+  "hr_base_url kit/install.sh $HRTMP/d-sin-flag.md" \
+  "hr_bootstrap $HRTMP/mk-hr $ONBDOC" \
+  "hr_bootstrap Makefile $HRTMP/d-bootstrap.md" \
+  "hr_doctor_oraculo $HRTMP/d-viejo.md" \
+  "hr_oraculos $HRTMP/d-sin-oraculos.md" \
+  "hr_sin_pin $HRTMP/i-pin.sh $HRDOC" \
+  "hr_sin_pin kit/install.sh $HRTMP/d-pin.md"
+do
+  # shellcheck disable=SC2086 # la palabra es "<comprobador> <fichero...>": se parte a proposito
+  [ -n "$($hr_caso)" ] || { hr_malos=$((hr_malos+1)); echo "     (sin queja: $hr_caso)"; }
+done
+if [ "$hr_malos" -eq 0 ]; then
+  echo "ok - falsabilidad: los cinco comprobadores de Headroom acusan las diez averias"
+  echo "     fabricadas (--mode token, --log-messages, la URL fuera del flag, bootstrap"
+  echo "     instalandolo, la frase retirada de 'headroom doctor' y el pin de version)"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $hr_malos de 10 averias fabricadas pasaron el comprobador (tautologia)"
+  fail=$((fail+1))
+fi
+rm -f "$HRTMP"/*; rmdir "$HRTMP"
+
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
 else
