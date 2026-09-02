@@ -309,8 +309,8 @@ install_settings() {  # src dst
       | .env = (($kit.env // {}) + ($old.env // {}))
       | .hooks = ($kit.hooks // $old.hooks)
       | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
-          | .allow = ((($kit.permissions.allow // []) + ($old.permissions.allow // [])) | unique)
-          | .deny  = ((($kit.permissions.deny  // []) + ($old.permissions.deny  // [])) | unique))
+          | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
+          | .deny  = (($kit.permissions.deny  // []) + (($old.permissions.deny  // []) - ($kit.permissions.deny  // []))))
     ' "$src" "$dst" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
     if ! cmp -s "$tmp" "$dst"; then
       mkdir -p "$(dirname "$BK/${dst#"$CLAUDE_HOME"/}")"
