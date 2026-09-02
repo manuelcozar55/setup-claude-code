@@ -68,8 +68,10 @@ flowchart LR
     T --> SE
     T --> DR
     MAPA -->|"del mapa al territorio"| TERR
-    style MAPA fill:#faf1dc,stroke:#8f5e00,color:#1a1a1a
-    style TERR fill:#eef3ff,stroke:#3b4cca,color:#1a1a1a
+    classDef mapa fill:#8F5E00,stroke:#6B4600,color:#FFFFFF
+    classDef terr fill:#3B4CCA,stroke:#2A379B,color:#FFFFFF
+    class MAPA mapa
+    class TERR terr
 ```
 
 ## Qué documenta cada doc siguiente

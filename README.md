@@ -41,51 +41,64 @@ ella). Un *harness* es *"everything in an AI agent except the model itself"*, y 
 Ninguno basta solo: sin sensores el agente repite los mismos errores; sin guías codifica
 reglas sin llegar a saber si funcionaron.
 
+```mermaid
+flowchart LR
+    U(["<b>Tú</b><br/><i>«migra el módulo de auth»</i>"])
+    subgraph H["mcharness"]
+        direction TB
+        G["<b>Guías</b> · feedforward<br/>CLAUDE.md · skills · profile.yaml"]
+        S["<b>Sensores</b> · feedback<br/>make test · hooks · /review"]
+    end
+    CC["<b>Claude Code</b><br/>implementa"]
+    V{"¿el oráculo<br/>está en verde?"}
+    R(["<b>Informe</b><br/>con la salida literal del oráculo"])
+
+    U -->|"encargo en lenguaje natural"| G
+    G -->|"spec: criterios + oráculo"| CC
+    CC -->|"diff + evidencia"| S
+    S -->|"ejecuta el oráculo"| V
+    V -->|"rojo · repara, máx. 3 intentos"| CC
+    V -->|"verde"| R
+
+    classDef guia fill:#3B4CCA,stroke:#2A379B,color:#FFFFFF
+    classDef sensor fill:#8F5E00,stroke:#6B4600,color:#FFFFFF
+    classDef verde fill:#2EA44F,stroke:#1F7A38,color:#FFFFFF
+    class G guia
+    class S sensor
+    class R verde
 ```
-        TÚ                        mcharness                    CLAUDE CODE
-         │                            │                             │
-    "haz X"  ──────────────▶  /spec ──┼──▶ criterios + oráculo       │
-         │                            │         │                    │
-         │                            │         └──────────────▶  implementa
-         │                     ┌──────┴──────┐                       │
-         │            GUÍAS ───┤             ├─── SENSORES           │
-         │         CLAUDE.md   │             │   make test  ◀────────┤
-         │         skills/     │             │   hooks               │
-         │         profile     │             │   /review             │
-         │                     └──────┬──────┘       │               │
-         │                            │              ▼               │
-         │                            │        ¿verde o rojo?        │
-         │                            │              │               │
-         │                            │      rojo ───┴──▶ repara (máx 3)
-         │                            │              │               │
-         ◀───── evidencia, no ────────┼────── verde ─┘               │
-                 afirmaciones         │                              │
-                                      ▼                              │
-                              knowledge/  ◀── /retro ────────────────┘
-                          (lo aprendido sobrevive a la sesión)
-```
+
+> **Lo que muestra:** las guías actúan **antes** de que el agente escriba código y los sensores
+> **después**. El lazo no se cierra por decisión de nadie: se cierra cuando el oráculo da verde.
 
 ### El harness entra solo
 
 Lo primero que hay que saber es que **no hay que acordarse de nada**. Un hook
 `UserPromptSubmit` mira cada encargo y actúa solo cuando aporta:
 
+```mermaid
+flowchart TB
+    P(["Escribes un prompt"])
+    Q1{"¿es un <b>encargo</b><br/>o una pregunta?"}
+    Q2{"¿trae criterio<br/>de verificación?"}
+    SIL(["<b>Silencio total</b><br/>0 tokens añadidos"])
+    REC(["Solo recuerda el oráculo"])
+    INJ["<b>Inyecta:</b> «declara qué será cierto al terminar<br/>y qué comando lo demuestra»<br/>+ el oráculo detectado del proyecto<br/><i>y que se ejecute EN FRÍO</i>"]
+
+    P --> Q1
+    Q1 -->|"pregunta"| SIL
+    Q1 -->|"encargo"| Q2
+    Q2 -->|"sí"| REC
+    Q2 -->|"no"| INJ
+
+    classDef calla fill:#475569,stroke:#334155,color:#FFFFFF
+    classDef actua fill:#D97757,stroke:#B4573A,color:#FFFFFF
+    class SIL,REC calla
+    class INJ actua
 ```
-tú escribes:  "arregla el bug del login"
-                        │
-                        ▼
-        ¿es un encargo?  ─── no ──▶  silencio total
-                        │
-                       sí
-                        │
-        ¿trae criterio de verificación? ─── sí ──▶  solo recuerda el oráculo
-                        │
-                        no
-                        ▼
-   inyecta: "declara qué será cierto al terminar y qué comando lo demuestra.
-             Oráculo de este proyecto (detectado): make test.
-             Ejecútalo EN FRÍO: si ya pasa, no mide lo que vas a cambiar."
-```
+
+> **Lo que muestra:** el hook tiene dos salidas mudas y una sola que añade contexto. No es un
+> recordatorio que se dispara siempre: **solo habla cuando aporta**, y por eso no se puede ignorar.
 
 Existe porque la evidencia era concluyente: había una regla de 227 tokens exigiendo plan
 mode y el plan mode valía **2,1 %**. Cuatro reglas advisorias, cuatro incumplimientos.
@@ -104,21 +117,35 @@ recordarlos**.
 `/work` es la entrada principal. Entras **una sola vez** —una tanda de preguntas agrupada y
 la aprobación de la especificación— y a partir de ahí el sistema conduce:
 
+```mermaid
+sequenceDiagram
+    autonumber
+    actor T as Tú
+    participant W as /work
+    participant O as Oráculo
+    participant R as Revisor adversario
+
+    T->>W: «migra el módulo de auth a la nueva API»
+    W->>W: explora el código y detecta el oráculo
+    W->>T: UNA tanda de preguntas (solo lo que cambia el entregable)
+    T-->>W: respuestas
+    W->>T: spec — alcance, criterios, oráculo, supuestos
+    Note over T,W: Única puerta humana: apruebas la spec. Y te vas.
+    T-->>W: aprobado
+    W->>W: aísla en rama e implementa
+    loop hasta verde · máx. 3 intentos
+        W->>O: ejecuta el oráculo
+        O-->>W: rojo → repara
+    end
+    O-->>W: verde
+    W->>R: revisión en contexto limpio
+    R-->>W: hallazgos
+    W->>O: reverifica tras corregir
+    W->>T: informe único — qué se hizo, salida literal, supuestos, qué NO cubre el oráculo
 ```
-/work migra el módulo de auth a la nueva API
-        │
-        ├─ explora el código y detecta el oráculo del proyecto
-        ├─ UNA tanda de preguntas, solo lo que cambia el entregable
-        ├─ enseña la spec: alcance, criterios, oráculo, supuestos     ◀── entras aquí
-        │
-        ▼   (te vas)
-   aísla en rama · implementa · ejecuta el oráculo · repara (máx 3)
-   revisión adversaria · verifica los hallazgos · reverifica
-        │
-        ▼
-   informe único: qué se hizo, salida literal del oráculo, supuestos,
-   qué NO cubre el oráculo
-```
+
+> **Lo que muestra:** hay **una sola** puerta humana, y está al principio. Todo lo que viene
+> después ocurre sin ti, y el turno no termina con el oráculo en rojo.
 
 Mientras el run está activo, **el turno no puede terminar con el oráculo en rojo**: el Stop
 hook lo bloquea con la salida real del comando. Es lo que permite irse de la silla, y es un

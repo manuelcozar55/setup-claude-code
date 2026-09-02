@@ -67,9 +67,10 @@ flowchart LR
     D["2 · Diagnosticar<br/>doctor.sh (PASS/WARN/FAIL por componente)"]
     C["3 · Corregir<br/>editar .env, reinstalar terceros"]
     I --> D --> C -->|"vuelve a instalar"| I
-    style I fill:#eef3ff,stroke:#3b4cca,color:#1a1a1a
-    style D fill:#faf1dc,stroke:#8f5e00,color:#1a1a1a
-    style C fill:#fde8e8,stroke:#b03030,color:#1a1a1a
+    classDef paso fill:#475569,stroke:#334155,color:#FFFFFF
+    classDef gate fill:#8F5E00,stroke:#6B4600,color:#FFFFFF
+    class I,C paso
+    class D gate
 ```
 
 `design the loop, not the prompt`: `doctor.sh` es el bucle de verificación, `scan-secrets.sh` es el guardarraíl determinista que lo cierra. Ninguna pieza se da por instalada sin su comando y su salida esperada.
