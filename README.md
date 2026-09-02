@@ -42,22 +42,22 @@ Ninguno basta solo: sin sensores el agente repite los mismos errores; sin guías
 reglas sin llegar a saber si funcionaron.
 
 ```mermaid
-flowchart LR
-    U(["<b>Tú</b><br/><i>«migra el módulo de auth»</i>"])
+flowchart TB
+    U(["<b>Tú</b><br/>«migra el módulo de auth»"])
     subgraph H["mcharness"]
         direction TB
-        G["<b>Guías</b> · feedforward<br/>CLAUDE.md · skills · profile.yaml"]
-        S["<b>Sensores</b> · feedback<br/>make test · hooks · /review"]
+        G["<b>Guías</b> · actúan antes<br/>CLAUDE.md · skills · perfil"]
+        S["<b>Sensores</b> · miden después<br/>make test · hooks · /review"]
     end
-    CC["<b>Claude Code</b><br/>implementa"]
-    V{"¿el oráculo<br/>está en verde?"}
+    CC["<b>Claude Code</b> implementa"]
+    V{"¿oráculo<br/>en verde?"}
     R(["<b>Informe</b><br/>con la salida literal del oráculo"])
 
-    U -->|"encargo en lenguaje natural"| G
-    G -->|"spec: criterios + oráculo"| CC
-    CC -->|"diff + evidencia"| S
-    S -->|"ejecuta el oráculo"| V
-    V -->|"rojo · repara, máx. 3 intentos"| CC
+    U -->|"encargo"| G
+    G -->|"spec + oráculo"| CC
+    CC -->|"diff"| S
+    S -->|"mide"| V
+    V -->|"rojo · repara<br/>máx. 3 intentos"| CC
     V -->|"verde"| R
 
     classDef guia fill:#3B4CCA,stroke:#2A379B,color:#FFFFFF
