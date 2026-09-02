@@ -62,7 +62,7 @@ flowchart TB
 
     classDef guia fill:#3B4CCA,stroke:#2A379B,color:#FFFFFF
     classDef sensor fill:#8F5E00,stroke:#6B4600,color:#FFFFFF
-    classDef verde fill:#2EA44F,stroke:#1F7A38,color:#FFFFFF
+    classDef verde fill:#1F7A38,stroke:#166534,color:#FFFFFF
     class G guia
     class S sensor
     class R verde
@@ -92,7 +92,7 @@ flowchart TB
     Q2 -->|"no"| INJ
 
     classDef calla fill:#475569,stroke:#334155,color:#FFFFFF
-    classDef actua fill:#D97757,stroke:#B4573A,color:#FFFFFF
+    classDef actua fill:#A34A2C,stroke:#8F4026,color:#FFFFFF
     class SIL,REC calla
     class INJ actua
 ```
