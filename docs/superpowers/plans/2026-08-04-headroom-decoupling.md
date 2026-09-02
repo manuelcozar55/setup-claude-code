@@ -144,8 +144,6 @@ contesta, es FAIL, no WARN.
 - **Fuera de alcance, dicho explícitamente:** traducción a inglés (pendiente de decisión del autor);
   `model: opus[1m]` y `effortLevel: xhigh` se dejan como están (son la identidad opinada del kit, y
   no pude verificar cómo falla en una cuenta sin acceso a Opus); no se toca `~/.claude` de esta máquina.
-</content>
-</invoke>
 
 ---
 

@@ -35,15 +35,38 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 # del contenido). env -u GITLEAKS_CONFIG: evita que una variable de entorno
 # apuntando a una config permisiva sustituya la config por defecto sin aviso.
 #
-# -c "$REPO_ROOT/.gitleaks.toml": el fichero de config anade una regla propia
-# (contraseñas tipo diccionario en ficheros de config, ver ese fichero) que
-# EXTIENDE las reglas por defecto (useDefault = true). Se pasa explicito
-# porque, aun cuando gitleaks a veces recoge un .gitleaks.toml en el path
-# destino por su cuenta, no hay que depender de esa autodeteccion (varia con
-# el cwd y con la version): -c fija sin ambiguedad que config se usa, y
-# convive con el -u GITLEAKS_CONFIG de arriba (uno fija la config, el otro
-# impide que una variable de entorno la sustituya; no se pisan).
-env -u GITLEAKS_CONFIG "$GITLEAKS" git --staged --no-banner --redact --ignore-gitleaks-allow -c "$REPO_ROOT/.gitleaks.toml" "$REPO_ROOT"
+# -c CONFIG: el fichero de config anade una regla propia (contraseñas tipo
+# diccionario en ficheros de config, ver ese fichero) que EXTIENDE las reglas
+# por defecto (useDefault = true). Se pasa explicito porque, aun cuando
+# gitleaks a veces recoge un .gitleaks.toml en el path destino por su cuenta,
+# no hay que depender de esa autodeteccion (varia con el cwd y con la
+# version): -c fija sin ambiguedad que config se usa, y convive con el
+# -u GITLEAKS_CONFIG de arriba (uno fija la config, el otro impide que una
+# variable de entorno la sustituya; no se pisan).
+#
+# QUE config, y por que se busca en vez de fijarla: antes se pasaba a ciegas
+# "$REPO_ROOT/.gitleaks.toml", pero install.sh deja el fichero en
+# $CLAUDE_HOME, que NO es la raiz del repo protegido. En cualquier repo sin
+# ese fichero propio, gitleaks ni arrancaba ("unable to load gitleaks config")
+# y, como este hook falla cerrado, el error de configuracion se convertia en
+# un bloqueo permanente de TODOS los commits con un mensaje que apuntaba al
+# sitio equivocado ("posibles secretos"). Orden: config del repo si la trae
+# (override local legitimo), si no la que instala el kit.
+CLAUDE_HOME_DIR="${CLAUDE_HOME:-$HOME/.claude}"
+CONFIG=""
+for c in "$REPO_ROOT/.gitleaks.toml" "$CLAUDE_HOME_DIR/.gitleaks.toml"; do
+  [ -f "$c" ] && { CONFIG="$c"; break; }
+done
+
+if [ -n "$CONFIG" ]; then
+  env -u GITLEAKS_CONFIG "$GITLEAKS" git --staged --no-banner --redact --ignore-gitleaks-allow -c "$CONFIG" "$REPO_ROOT"
+else
+  # Sin ninguna config disponible se escanea con las reglas por defecto de
+  # gitleaks: pierde la regla propia del kit, pero cubrir de menos es mejor
+  # que bloquear todo commit por un fichero ausente.
+  echo "AVISO: sin .gitleaks.toml (ni en el repo ni en $CLAUDE_HOME_DIR); se usan las reglas por defecto." >&2
+  env -u GITLEAKS_CONFIG "$GITLEAKS" git --staged --no-banner --redact --ignore-gitleaks-allow "$REPO_ROOT"
+fi
 STATUS=$?
 
 if [ "$STATUS" -ne 0 ]; then

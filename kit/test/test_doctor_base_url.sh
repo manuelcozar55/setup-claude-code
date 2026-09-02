@@ -36,8 +36,15 @@ set_base_url() { # $1 CLAUDE_HOME, $2 url
 # Se limpia ANTHROPIC_BASE_URL del entorno a proposito: si no, la maquina del que
 # corre el test (que puede tener un proxy vivo, como la del autor) decidiria el
 # resultado y el caso "sin enrutar" pasaria por el motivo equivocado.
+# Se aisla tambien HOME y XDG_CONFIG_HOME: doctor.sh mira estado de MAQUINA fuera de
+# CLAUDE_HOME (la unidad systemd, ~/.headroom/logs/proxy.jsonl), y esos hallazgos son
+# legitimos pero ajenos a lo que mide este test. Sin aislarlo, un FAIL verdadero de la
+# maquina de quien corre el test (p.ej. conversaciones en claro en proxy.jsonl, cuyo
+# mensaje contiene la palabra "proxy") casaba con el grep de enrutado de los casos B y C.
 run_doctor() { # $1 CLAUDE_HOME -> imprime salida completa
-  env -u ANTHROPIC_BASE_URL CLAUDE_HOME="$1" bash "$KIT/doctor.sh" 2>&1
+  local h; h="$(mktemp -d)"; mkdir -p "$h/.headroom/logs" "$h/.config"
+  env -u ANTHROPIC_BASE_URL HOME="$h" XDG_CONFIG_HOME="$h/.config" \
+      CLAUDE_HOME="$1" bash "$KIT/doctor.sh" 2>&1
 }
 
 # --- caso A: enrutado a un puerto muerto -> FAIL ----------------------------

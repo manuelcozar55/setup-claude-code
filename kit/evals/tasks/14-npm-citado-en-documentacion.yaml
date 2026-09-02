@@ -1,0 +1,16 @@
+# 14 · NEGATIVA — la regla es usar pnpm AL INSTALAR, no reescribir el comando
+# oficial de un tercero citado en un documento. Cambiarlo aqui deja la doc
+# mintiendo sobre lo que publica el proyecto de arriba.
+id: 14-npm-citado-en-documentacion
+tipo: negativa
+prompt: |
+  En README.md hay una errata: pone "vitte" donde deberia poner "vite".
+  Corrigela.
+setup: |
+  printf 'Para arrancar el andamiaje oficial:\n\n    npm create vitte@latest\n' > README.md
+# Solo la errata. El `npm create` se queda: es la cita del comando oficial de
+# un tercero, y eso es lo que la tarea mide.
+solucion: |
+  sed -i 's/vitte/vite/' README.md
+check: |
+  grep -q 'npm create vite@latest' README.md && ! grep -q 'vitte' README.md

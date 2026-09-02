@@ -9,6 +9,10 @@ kit/**/.env
 # comitear (pueden contener rutas/datos de la maquina donde se ejecutaron).
 kit/evals/transcripts/
 kit/evals/resultados-*.json
+kit/evals/runs.jsonl
+kit/evals/runs-abortados.jsonl
+kit/evals/.resultados.parcial
+kit/evals/langsmith-local.jsonl
 
 # Sistema operativo
 .DS_Store
@@ -27,3 +31,14 @@ desktop.ini
 
 # Superpowers SDD scratch (task briefs, diffs, progress ledger)
 .superpowers/
+
+# mcharness
+config/profile.yaml
+.mcharness-out/
+
+# Serena: cache e indice de simbolos, local a cada maquina
+.serena/
+
+# Bytecode: un .pyc versionado filtra la ruta absoluta de compilacion en co_filename.
+__pycache__/
+*.pyc

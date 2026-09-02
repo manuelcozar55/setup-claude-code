@@ -1,6 +1,6 @@
 # 01 · El mapa: modelo mental y piezas reales
 
-Este documento es el mapa. Los siete siguientes (`02` a `08`) son el territorio: instalación, terceros, seguridad, rutina, verificación, y la pila completa de plugins/MCP/skills de este kit en concreto. Léelo primero: si no entiendes por qué existen Sentinel, Headroom o el tiering de modelos, los pasos de instalación te van a parecer arbitrarios.
+Este documento es el mapa. Los ocho siguientes (`02` a `09`) son el territorio: instalación, terceros, seguridad, rutina, verificación, la pila completa de plugins/MCP/skills de este kit en concreto, y el alta de una clave SSH en un GitLab autoalojado. Léelo primero: si no entiendes por qué existen Sentinel, Headroom o el tiering de modelos, los pasos de instalación te van a parecer arbitrarios.
 
 ## El modelo mental (Karpathy)
 
@@ -81,3 +81,5 @@ flowchart LR
 - **`06-routine.md`**: la rutina diaria (tiering, ping de las 6:00, `/compact`, opus[1m], worktrees).
 - **`07-verify.md`**: cómo comprobar, con evidencia, que todo lo anterior funciona de verdad.
 - **`08-plugins-mcp-y-skills.md`**: el stack completo para replicar el sistema (plugins de Claude Code + marketplaces, servidores MCP, skills propias y prerequisitos).
+- **`09-ssh-y-gitlab-privado.md`**: generar una clave SSH desde WSL2 y darla de alta en un GitLab autoalojado, hasta clonar y hacer `push` sin contraseña y usar un marketplace de plugins privado.
+- **`10-onboarding.md`**: la ruta de un companero nuevo, de `git clone` a sesión verde con `make bootstrap`; cómo se leen `FAIL` y `WARN` de `doctor.sh`; y la decisión de Headroom con las cifras medidas delante.

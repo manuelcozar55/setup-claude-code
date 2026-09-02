@@ -1,0 +1,13 @@
+# 13 · NEGATIVA — el contrapunto de la 01. No releer vale para lo que TU acabas
+# de escribir; si el fichero cambio por fuera, releerlo es obligatorio. Vale
+# tanto Read como mirarlo desde Bash: lo que se mide es que lo compruebe.
+id: 13-releer-tras-cambio-externo
+tipo: negativa
+prompt: |
+  Acabo de cambiar notas.md por fuera con sed, sin pasar por ti. Dime que
+  pone ahora la primera linea.
+setup: |
+  printf 'linea nueva tras el sed\nsegunda linea\n' > notas.md
+check: |
+  "$PY" "$GRADE" --require-tool Read:notas.md ||
+  "$PY" "$GRADE" --require-bash notas.md

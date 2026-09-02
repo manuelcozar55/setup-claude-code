@@ -1,0 +1,44 @@
+# mcharness — perfil personal
+#
+# Copia este fichero a config/profile.yaml y ajústalo. profile.yaml está en .gitignore:
+# es tuyo, no viaja en el repo. Esto es lo que hace el harness transferible — otra persona
+# clona, define su perfil y trabaja, sin heredar el entorno de nadie.
+
+name: tu-nombre
+
+# Cuánto explica el coach. Ver .claude/skills/coach/SKILL.md
+#   off   — no explica; solo el informe final
+#   brief — 2-3 líneas tras cada decisión relevante  (recomendado)
+#   full  — mecanismo, alternativa descartada, coste y cómo se falsaría
+explain: brief
+
+# Nivel declarado. Ajusta cuánto contexto se da por sabido, no la calidad del trabajo.
+#   junior | mid | senior
+level: senior
+
+# Idioma de la conversación. El repo y el código van siempre en inglés para que sean
+# transferibles; esto solo afecta a cómo se habla contigo.
+language: es
+
+# ───────────────────────────────────────────────────────────────────────────
+# Oráculo por defecto del proyecto actual.
+# Debe ser ruta absoluta, `rtk proxy …` o `make …`: el hook PreToolUse/Bash sustituye el
+# ejecutable en posición de comando y un binario por nombre suelto no ejecuta lo que crees.
+# Ver knowledge/MISTAKES.md · M-001.
+oracle: make test
+
+# Presupuesto de tiempo de una ejecución del oráculo, en segundos.
+# El presupuesto real de una tarea es este número × 5: tres reparaciones son cinco
+# ejecuciones (una en frío, una tras el trabajo, una por reparación).
+oracle_timeout: 300
+
+# ───────────────────────────────────────────────────────────────────────────
+# Sensores. Todos son observadores: ninguno bloquea la ejecución.
+sensors:
+  # Registra en qué sesiones se ejecutó un oráculo. Alimenta el KPI que más importa.
+  oracle_log: true
+  # Avisa al terminar si se tocó código sin verificar. Avisa, no bloquea: un falso
+  # positivo bloqueante cuesta mucho más que un aviso ignorado.
+  verify_gate: true
+  # Al arrancar, pone delante el oráculo del proyecto y los errores ya cometidos aquí.
+  session_brief: true

@@ -703,12 +703,12 @@
   <p class="lede">
     Tres piezas sostienen mi forma de trabajar: <strong class="p-method">superpowers</strong> es el método,
     <strong class="p-sentinel">Sentinel</strong> es la puerta y <strong class="p-headroom">Headroom</strong> es la factura.
-    Cada cifra de esta página sale de un log, un audit real o una llamada a <code>headroom_stats</code> de esta misma máquina — no de un folleto.
+    Cada cifra de esta página sale de un log, un audit real o una llamada a la tool MCP <code>headroom_stats</code> de esta misma máquina — no de un folleto.
   </p>
   <ul class="hero-facts">
-    <li><b class="m" data-count="14">14</b> skills en superpowers v6.1.1</li>
-    <li><b class="g" data-count="204">204</b> DENY reales registrados por Sentinel</li>
-    <li><b class="b" data-count="57.3" data-dec="1" data-suffix="&nbsp;M">57,3&nbsp;M</b> tokens comprimidos por Headroom</li>
+    <li><b class="m" data-count="14">14</b> skills en superpowers v6.3.0</li>
+    <li><b class="g" data-count="161">161</b> DENY reales registrados por Sentinel</li>
+    <li><b class="b" data-count="6.3" data-dec="1" data-suffix="&nbsp;M">6,3&nbsp;M</b> tokens comprimidos por Headroom</li>
     <li><b data-count="4">4</b> fases del operating loop</li>
   </ul>
 </section>
@@ -758,7 +758,7 @@
       </li>
     </ol>
 
-    <h3 data-reveal><span class="h-num">1.2</span>Las 14 skills de superpowers <span class="mono" style="color:var(--faint);font-weight:500">v6.1.1</span></h3>
+    <h3 data-reveal><span class="h-num">1.2</span>Las 14 skills de superpowers <span class="mono" style="color:var(--faint);font-weight:500">v6.3.0</span></h3>
     <p class="sec-lead" style="margin-bottom:0" data-reveal>
       Cuatro son <strong>leyes de hierro</strong> —invariantes que el bucle nunca salta—; las otras diez son
       herramientas que se invocan según la tarea lo pida.
@@ -998,10 +998,10 @@
     <p class="pipe-note"><strong>Fail-open por diseño:</strong> si el hook falla, deja pasar la acción — prioriza no romper el flujo sobre el bloqueo estricto.</p>
 
     <ul class="stat-row acc-g" data-reveal aria-label="Estadísticas reales del audit log de Sentinel">
-      <li><b data-count="216">216</b>eventos registrados</li>
-      <li><b data-count="204">204</b>DENY (bloqueos)</li>
-      <li><b data-count="12">12</b>warn</li>
-      <li><b data-count="207">207</b>comandos bloqueados <span class="mono">blocked-commands.log</span></li>
+      <li><b data-count="166">166</b>eventos registrados</li>
+      <li><b data-count="161">161</b>DENY (bloqueos)</li>
+      <li><b data-count="5">5</b>warn</li>
+      <li><b data-count="143">143</b>comandos bloqueados <span class="mono">blocked-commands.log</span></li>
     </ul>
 
     <div class="table-scroll acc-g" data-reveal tabindex="0" role="region" aria-label="Top motivos de DENY reales (desplazable)">
@@ -1011,13 +1011,13 @@
           <tr><th scope="col">Motivo</th><th scope="col" class="num">Nº</th></tr>
         </thead>
         <tbody>
-          <tr><td>Ruta sensible</td><td class="num">75</td></tr>
-          <tr><td>Comando peligroso</td><td class="num">53</td></tr>
-          <tr><td>IP en crudo</td><td class="num">25</td></tr>
-          <tr><td><code>~/.ssh/</code></td><td class="num">18</td></tr>
-          <tr><td>Env <code>ANTHROPIC_API_KEY</code></td><td class="num">8</td></tr>
-          <tr><td>Dominio malicioso <code>giftshop.club</code></td><td class="num">4</td></tr>
-          <tr><td>Prompt injection</td><td class="num">4</td></tr>
+          <tr><td>Ruta sensible (patrón)</td><td class="num">59</td></tr>
+          <tr><td>Comando peligroso</td><td class="num">37</td></tr>
+          <tr><td><code>~/.ssh/</code></td><td class="num">34</td></tr>
+          <tr><td>IP en crudo</td><td class="num">17</td></tr>
+          <tr><td><code>~/.npmrc</code></td><td class="num">6</td></tr>
+          <tr><td><code>/etc/passwd</code></td><td class="num">3</td></tr>
+          <tr><td>Prompt injection · exfil · <code>~/.netrc</code> · <code>~/.pgpass</code> · <code>/etc/sudoers</code></td><td class="num">5</td></tr>
         </tbody>
       </table>
     </div>
@@ -1026,8 +1026,18 @@
       <h4>El log tiene sesgo — y es honesto decirlo</h4>
       <p>
         El audit solo registra <strong>lo que se bloqueó</strong>, así que refleja mis propios hábitos, no una amenaza
-        externa. Y Sentinel es <strong>fail-open por diseño</strong>: si el hook falla, deja pasar. Es una red de
+        externa. El contador arranca el <strong>3 de agosto de 2026</strong>, cuando monté esta máquina: no es un total
+        de por vida. Y Sentinel es <strong>fail-open por diseño</strong>: si el hook falla, deja pasar. Es una red de
         seguridad calibrada para no estorbar, no un cortafuegos infalible.
+      </p>
+      <p>
+        Y son <strong>dos capas, no una</strong>. Los guards de bash (<code>block-dangerous-commands.sh</code>,
+        <code>destructive-guard.sh</code>, <code>secret-guard.sh</code>) bloquean nada más instalar y no dependen de
+        configuración. El preflight (<code>sentinel_preflight.py</code>) lee sus patrones de un <code>iocs.json</code>
+        que <strong>el kit no distribuye</strong> —solo <code>kit/sentinel/iocs.example.json</code> como plantilla—: sin
+        copiarlo, esa capa carga <code>{}</code> y deja pasar todo, y <code>doctor.sh</code> lo avisa con un WARN.
+        Con el <code>iocs.json</code> puesto, <code>ANTHROPIC_API_KEY</code> sale como <strong>WARN, no DENY</strong>,
+        y <code>rm -rf /</code> lo para el guard de bash, no el preflight.
       </p>
     </aside>
     <p class="sub-note" data-reveal>
@@ -1050,46 +1060,47 @@
       <span class="pipe-node" role="listitem">API de Anthropic</span>
     </div>
 
-    <ul class="stat-row acc-b" data-reveal aria-label="Estadísticas reales de Headroom vía headroom_stats">
-      <li><b>v0.32.1</b>versión en uso</li>
-      <li><b data-count="57.3" data-dec="1" data-suffix="&nbsp;M">57,3&nbsp;M</b>tokens comprimidos</li>
-      <li><b>$<span class="tnum" data-count="231.71" data-dec="2">231,71</span></b>ahorro propio (compresión)</li>
-      <li><b>$<span class="tnum" data-count="1852.87" data-dec="2">1.852,87</span></b>ahorro por caché nativa · <span class="mono">438&nbsp;M</span> tokens cache-read</li>
-      <li><b>$<span class="tnum" data-count="2973.13" data-dec="2">2.973,13</span></b>coste input total pagado</li>
+    <ul class="stat-row acc-b" data-reveal aria-label="Estadísticas reales de Headroom vía la tool MCP headroom_stats">
+      <li><b>v0.36.2</b>versión en uso</li>
+      <li><b data-count="6.3" data-dec="1" data-suffix="&nbsp;M">6,3&nbsp;M</b>tokens comprimidos</li>
+      <li><b>$<span class="tnum" data-count="59.80" data-dec="2">59,80</span></b>ahorro propio (compresión)</li>
+      <li><b>$<span class="tnum" data-count="3322.21" data-dec="2">3.322,21</span></b>ahorro por caché nativa · <span class="mono">1.107&nbsp;M</span> tokens cache-read</li>
+      <li><b>$<span class="tnum" data-count="4125.78" data-dec="2">4.125,78</span></b>coste input total pagado</li>
     </ul>
     <p class="sub-note" data-reveal>
-      Compresión típica <strong>~8,2 %/evento</strong> (agregado global <strong>3,1 %</strong>).
+      Agregado global <strong>0,55 %</strong> de los tokens de input (<code>tokens_saved / total_input_tokens</code>).
+      Snapshot del <strong>25-ago-2026</strong>; el contador arranca el 3 de agosto, con esta máquina.
     </p>
 
     <h4 class="mono" style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin:2rem 0 0" data-reveal>Cascada de coste · potencial → real</h4>
-    <div class="waterfall acc-b" data-reveal role="group" aria-label="Cascada de coste. Coste potencial sin optimización: 5.057,71 dólares, el 100 %. Menos caché nativa de Anthropic: 1.852,87 dólares, el 36,6 %. Menos compresión de Headroom: 231,71 dólares, el 4,6 %. Coste real pagado: 2.973,13 dólares, el 58,8 % del potencial. Ahorro total 41,2 %.">
+    <div class="waterfall acc-b" data-reveal role="group" aria-label="Cascada de coste. Coste potencial sin optimización: 7.507,79 dólares, el 100 %. Menos caché nativa de Anthropic: 3.322,21 dólares, el 44,3 %. Menos compresión de Headroom: 59,80 dólares, el 0,8 %. Coste real pagado: 4.125,78 dólares, el 54,9 % del potencial. Ahorro total 45,1 %.">
       <div class="wf-row">
         <span class="wf-name">Coste potencial <span style="color:var(--muted)">(sin optimización)</span></span>
         <span class="wf-track"><span class="wf-bar total" style="left:0;width:100%"></span></span>
-        <span class="wf-val">$5.057,71 <span class="pct">100 %</span></span>
+        <span class="wf-val">$7.507,79 <span class="pct">100 %</span></span>
       </div>
       <div class="wf-row">
         <span class="wf-name">− Caché nativa de Anthropic</span>
-        <span class="wf-track"><span class="wf-bar cut" style="left:63.4%;width:36.6%"></span></span>
-        <span class="wf-val">−$1.852,87 <span class="pct">36,6 %</span></span>
+        <span class="wf-track"><span class="wf-bar cut" style="left:55.7%;width:44.3%"></span></span>
+        <span class="wf-val">−$3.322,21 <span class="pct">44,3 %</span></span>
       </div>
       <div class="wf-row">
         <span class="wf-name">− Compresión de Headroom</span>
-        <span class="wf-track"><span class="wf-bar cut" style="left:58.8%;width:4.6%"></span></span>
-        <span class="wf-val">−$231,71 <span class="pct">4,6 %</span></span>
+        <span class="wf-track"><span class="wf-bar cut" style="left:54.9%;width:0.8%"></span></span>
+        <span class="wf-val">−$59,80 <span class="pct">0,8 %</span></span>
       </div>
       <div class="wf-row">
         <span class="wf-name"><strong>= Coste real pagado</strong></span>
-        <span class="wf-track"><span class="wf-bar net" style="left:0;width:58.8%"></span></span>
-        <span class="wf-val">$2.973,13 <span class="pct">58,8 %</span></span>
+        <span class="wf-track"><span class="wf-bar net" style="left:0;width:54.9%"></span></span>
+        <span class="wf-val">$4.125,78 <span class="pct">54,9 %</span></span>
       </div>
     </div>
 
     <aside class="honest acc-b" data-reveal aria-label="Medición honesta del ahorro de Headroom">
       <h4>Medición honesta</h4>
       <p>
-        El grueso del ahorro (<strong>$1.852,87</strong>) lo aporta la <strong>caché nativa de Anthropic, no Headroom</strong>.
-        El mérito propio de Headroom es <strong>pequeño pero real</strong> —<strong>$231,71</strong>, ~11 % del ahorro— y su
+        El grueso del ahorro (<strong>$3.322,21</strong>) lo aporta la <strong>caché nativa de Anthropic, no Headroom</strong>.
+        El mérito propio de Headroom es <strong>pequeño pero real</strong> —<strong>$59,80</strong>, ~1,8 % del ahorro— y su
         valor clave es <strong>proteger esa caché mientras comprime</strong>, no pisarla.
       </p>
     </aside>
@@ -1263,12 +1274,12 @@
           <tr><th scope="col">Cifra (snapshot)</th><th scope="col">Fuente</th><th scope="col">Comando</th></tr>
         </thead>
         <tbody>
-          <tr><td class="cifra">216 eventos</td><td>audit log</td><td><code class="cmd">wc -l ~/.claude/audit-logs/sentinel.jsonl</code></td></tr>
-          <tr><td class="cifra">204 DENY</td><td>audit log</td><td><code class="cmd">grep -c '"deny"' ~/.claude/audit-logs/sentinel.jsonl</code></td></tr>
-          <tr><td class="cifra">207 comandos bloqueados</td><td>log de bloqueos</td><td><code class="cmd">wc -l ~/.claude/audit-logs/blocked-commands.log</code></td></tr>
-          <tr><td class="cifra">57,3&nbsp;M tokens comprimidos</td><td>proxy Headroom</td><td><code class="cmd">jq .lifetime.tokens_saved ~/.headroom/proxy_savings.json</code></td></tr>
-          <tr><td class="cifra">$231,71 propio · $1.852,87 caché</td><td>proxy Headroom</td><td><code class="cmd">headroom_stats</code> · o <code class="cmd">jq .lifetime ~/.headroom/proxy_savings.json</code></td></tr>
-          <tr><td class="cifra">proxy vivo (v0.32.1)</td><td>endpoint de salud</td><td><code class="cmd">curl -s 127.0.0.1:8787/readyz</code></td></tr>
+          <tr><td class="cifra">166 eventos</td><td>audit log</td><td><code class="cmd">wc -l ~/.claude/audit-logs/sentinel.jsonl</code></td></tr>
+          <tr><td class="cifra">161 DENY</td><td>audit log</td><td><code class="cmd">grep -c '"deny"' ~/.claude/audit-logs/sentinel.jsonl</code></td></tr>
+          <tr><td class="cifra">143 comandos bloqueados</td><td>log de bloqueos</td><td><code class="cmd">wc -l ~/.claude/audit-logs/blocked-commands.log</code></td></tr>
+          <tr><td class="cifra">6,3&nbsp;M tokens comprimidos</td><td>proxy Headroom</td><td><code class="cmd">jq .lifetime.tokens_saved ~/.headroom/proxy_savings.json</code></td></tr>
+          <tr><td class="cifra">$59,80 propio · $3.322,21 caché</td><td>proxy Headroom</td><td><code class="cmd">jq .lifetime ~/.headroom/proxy_savings.json</code> <span class="mono">(o la tool MCP <code>headroom_stats</code>, que no es un comando de shell)</span></td></tr>
+          <tr><td class="cifra">proxy vivo (v0.36.2)</td><td>endpoint de salud</td><td><code class="cmd">curl -s http://127.0.0.1:8787/readyz</code></td></tr>
         </tbody>
       </table>
     </div>
@@ -1299,7 +1310,7 @@
         <ul>
           <li>Sentinel · <strong>MIT</strong></li>
           <li>Headroom · <strong>Apache-2.0</strong></li>
-          <li>superpowers (plugin) · <strong>v6.1.1</strong></li>
+          <li>superpowers (plugin) · <strong>v6.3.0</strong></li>
         </ul>
       </div>
     </div>

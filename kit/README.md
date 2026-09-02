@@ -48,14 +48,14 @@ La excepción, y es un `FAIL`: si tu `settings.json` enruta la API a un proxy (`
 
 | Pieza | Contenido | Qué resuelve |
 |---|---|---|
-| `claude/` | `CLAUDE.md`, `settings.json`, `sentinel-allowlist.json` | la config saneada que `install.sh` copia a `CLAUDE_HOME` |
-| `claude/hooks/` | guards de Bash (`block-dangerous-commands.sh`, `branch-guard.sh`, `destructive-guard.sh`, `secret-guard.sh`), hooks de sesión, y `hooks/git/pre-commit` + `.gitleaks.toml` (Capa 2 de secretos, por contenido) | barreras deterministas antes de cada acción, y sobre el índice real antes de cada commit |
+| `claude/` | `CLAUDE.md`, `settings.json`, `sentinel-allowlist.json`, `.gitleaks.toml` | la config saneada que `install.sh` copia a `CLAUDE_HOME` |
+| `claude/hooks/` | guards de Bash (`block-dangerous-commands.sh`, `branch-guard.sh`, `destructive-guard.sh`, `secret-guard.sh`), `optional-hook.sh` y `smart_approve.py`, hooks de sesión, y `hooks/git/pre-commit` (Capa 2 de secretos, por contenido, con `claude/.gitleaks.toml`) | barreras deterministas antes de cada acción, y sobre el índice real antes de cada commit |
 | `claude/agents/` | 8 agentes (`orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker`) | orquestación con tiering de modelo por tarea |
 | `sentinel/` | `sentinel_preflight.py` | el motor de políticas `PreToolUse` que decide allow/warn/deny |
 | `install.sh` · `doctor.sh` · `scan-secrets.sh` | scripts de instalación y verificación | instalar sin pisar nada, diagnosticar con evidencia, cerrar la puerta de secretos |
-| `test/` | regresión de guards, instalador y Capa 2 de secretos, en bash puro | `test/test_guards.sh`, `test/test_guards_falsifiability.sh`, `test/test_secret_content_gitleaks.sh` y el resto, todos `PASS=N FAIL=0` |
-| `evals/` | 6 tareas reales + harness de grading (opt-in, no corre en `test/`, cuesta llamadas reales a `claude -p`) | medir comportamiento del agente, no solo de los guards — ver [`evals/README.md`](evals/README.md) |
-| `docs/` | 8 documentos, del mapa (`01`) a plugins/MCP/skills (`08`) | el mapa mental y el "cómo" de cada pieza, con enlaces a terceros |
+| `test/` | regresión de guards, instalador y Capa 2 de secretos, en bash puro | `test/test_guards.sh`, `test/test_guards_falsifiability.sh`, `test/test_secret_content_gitleaks.sh` y el resto: 26 suites, todas en `make test` |
+| `evals/` | 20 tareas reales (10 positivas / 10 negativas), brazo de control (`ARM=off`), historico, emisor a LangSmith y receptor local para probarlo (opt-in, no corre en `test/`, cuesta llamadas reales a `claude -p`) | medir si el harness **sirve**, no solo si el agente pasa — ver [`evals/README.md`](evals/README.md) |
+| `docs/` | 10 documentos, del mapa (`01`) al onboarding de un companero nuevo (`10`) | el mapa mental y el "cómo" de cada pieza, con enlaces a terceros |
 
 ## Cómo funciona
 
@@ -100,6 +100,7 @@ El kit no redistribuye binarios de terceros, solo los documenta y los cablea con
 | [`docs/07-verify.md`](docs/07-verify.md) | los tres scripts, con evidencia "cifra → fuente → comando" |
 | [`docs/08-plugins-mcp-y-skills.md`](docs/08-plugins-mcp-y-skills.md) | la pila completa: plugins de Claude Code, servidores MCP, skills adicionales, prerrequisitos extra |
 | [`docs/09-ssh-y-gitlab-privado.md`](docs/09-ssh-y-gitlab-privado.md) | clave SSH desde WSL2 y alta en un GitLab autoalojado, paso a paso |
+| [`docs/10-onboarding.md`](docs/10-onboarding.md) | de cero a sesión verde: `make bootstrap`, cómo leer `doctor.sh`, y Headroom con sus cifras medidas |
 
 ## Notas de experto
 

@@ -142,6 +142,26 @@ Es decir: si tienes `"model": "opus[1m]"` en `settings.json` y crees que estás 
 
 Este kit **no** fija `ANTHROPIC_MODEL` en el `settings.json` que instala, a propósito: pinchar un modelo concreto en la config de otra persona sería peor que el problema que resuelve. Si usas el proxy con un modelo `[1m]`, añádelo tú.
 
+### El sufijo `[1m]` viaja pegado al modelo, y eso rompe el cambio de modelo
+
+`--1m` no activa una opción: **reescribe `ANTHROPIC_MODEL` del proceso hijo** con el sufijo
+pegado — `claude-opus-5[1m]`. Consecuencia que no es evidente hasta que la sufres: el sufijo
+se aplica a **cualquier** modelo que le pases, tenga o no derecho a la ventana de 1M en tu
+suscripción. Medido el 2026-08-25:
+
+```
+$ headroom wrap claude --1m -- -p "..." --model claude-haiku-4-5-20251001
+  --model claude-haiku-4-5-20251001[1m] (1M context window; issue #1158)
+API Error: 400 The long context beta is not yet available for this subscription.
+```
+
+No es un fallo del proxy ni de tu configuración: Haiku no tiene la beta de contexto largo, y
+`--1m` se la pide igual. Si trabajas con modelos mixtos, lanza **sin** `--1m` para esa sesión
+(el alias `claude-directo` ya sirve) o quédate en el modelo que sí tiene la ventana. El fallo
+llega como un `400` de la API, así que es fácil confundirlo con un problema de cuota o de
+credenciales.
+
+
 ### `ENABLE_TOOL_SEARCH` ya la pone `headroom wrap`: no la dupliques a ciegas
 
 La fila de la tabla de arriba es correcta pero incompleta en un punto que sale caro

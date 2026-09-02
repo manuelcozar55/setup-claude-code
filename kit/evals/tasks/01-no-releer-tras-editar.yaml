@@ -1,4 +1,5 @@
 id: 01-no-releer-tras-editar
+tipo: positiva
 prompt: |
   En el fichero notas.md, cambia la palabra "borrador" por "final".
   No hagas nada mas.

@@ -20,9 +20,177 @@
 >
 > Dos avisos concretos si vienes de Windows: clona **dentro** de WSL y no en `/mnt/c/` (el sistema de ficheros `9p` sobre el disco de Windows es mucho más lento y complica el bit de ejecución), y el `.gitattributes` de este repo ya fuerza `eol=lf` para que un clon con `core.autocrlf=true` no te convierta los scripts a CRLF y te los rompa con `bad interpreter: /bin/bash^M`.
 
+## mcharness — guías y sensores
+
+Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
+
+| Capa | Qué es | Estado |
+|---|---|---|
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 26 suites falsables | v1.0.0, estable |
+| **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
+
+La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
+Thoughtworks, 02-abr-2026 — el artículo está alojado en martinfowler.com, pero la autora es
+ella). Un *harness* es *"everything in an AI agent except the model itself"*, y se compone de:
+
+- **Guías** (*feedforward*): *"anticipate the agent's behaviour and aim to steer it **before**
+  it acts"*. Aquí: `CLAUDE.md`, las skills, los perfiles.
+- **Sensores** (*feedback*): *"observe **after** the agent acts and help it self-correct"*.
+  Aquí: los oráculos, los hooks de registro, los tests, el revisor independiente.
+
+Ninguno basta solo: sin sensores el agente repite los mismos errores; sin guías codifica
+reglas sin llegar a saber si funcionaron.
+
+```
+        TÚ                        mcharness                    CLAUDE CODE
+         │                            │                             │
+    "haz X"  ──────────────▶  /spec ──┼──▶ criterios + oráculo       │
+         │                            │         │                    │
+         │                            │         └──────────────▶  implementa
+         │                     ┌──────┴──────┐                       │
+         │            GUÍAS ───┤             ├─── SENSORES           │
+         │         CLAUDE.md   │             │   make test  ◀────────┤
+         │         skills/     │             │   hooks               │
+         │         profile     │             │   /review             │
+         │                     └──────┬──────┘       │               │
+         │                            │              ▼               │
+         │                            │        ¿verde o rojo?        │
+         │                            │              │               │
+         │                            │      rojo ───┴──▶ repara (máx 3)
+         │                            │              │               │
+         ◀───── evidencia, no ────────┼────── verde ─┘               │
+                 afirmaciones         │                              │
+                                      ▼                              │
+                              knowledge/  ◀── /retro ────────────────┘
+                          (lo aprendido sobrevive a la sesión)
+```
+
+### El harness entra solo
+
+Lo primero que hay que saber es que **no hay que acordarse de nada**. Un hook
+`UserPromptSubmit` mira cada encargo y actúa solo cuando aporta:
+
+```
+tú escribes:  "arregla el bug del login"
+                        │
+                        ▼
+        ¿es un encargo?  ─── no ──▶  silencio total
+                        │
+                       sí
+                        │
+        ¿trae criterio de verificación? ─── sí ──▶  solo recuerda el oráculo
+                        │
+                        no
+                        ▼
+   inyecta: "declara qué será cierto al terminar y qué comando lo demuestra.
+             Oráculo de este proyecto (detectado): make test.
+             Ejecútalo EN FRÍO: si ya pasa, no mide lo que vas a cambiar."
+```
+
+Existe porque la evidencia era concluyente: había una regla de 227 tokens exigiendo plan
+mode y el plan mode valía **2,1 %**. Cuatro reglas advisorias, cuatro incumplimientos.
+**Pedir disciplina no la produce.** Lo dice también la documentación oficial: si una regla
+se ignora pese a estar escrita, *"delete it or convert it to a hook"*.
+
+El oráculo no se pregunta, **se detecta** (`scripts/detect-oracle.sh`): Makefile, pytest con
+el venv del proyecto, el gestor de paquetes según el lockfile, cargo, go. Y si no hay
+ninguno, lo dice en vez de inventárselo.
+
+Los comandos siguen ahí para cuando quieras el flujo completo, pero **ya no dependes de
+recordarlos**.
+
+### Explica el trabajo una vez y apártate
+
+`/work` es la entrada principal. Entras **una sola vez** —una tanda de preguntas agrupada y
+la aprobación de la especificación— y a partir de ahí el sistema conduce:
+
+```
+/work migra el módulo de auth a la nueva API
+        │
+        ├─ explora el código y detecta el oráculo del proyecto
+        ├─ UNA tanda de preguntas, solo lo que cambia el entregable
+        ├─ enseña la spec: alcance, criterios, oráculo, supuestos     ◀── entras aquí
+        │
+        ▼   (te vas)
+   aísla en rama · implementa · ejecuta el oráculo · repara (máx 3)
+   revisión adversaria · verifica los hallazgos · reverifica
+        │
+        ▼
+   informe único: qué se hizo, salida literal del oráculo, supuestos,
+   qué NO cubre el oráculo
+```
+
+Mientras el run está activo, **el turno no puede terminar con el oráculo en rojo**: el Stop
+hook lo bloquea con la salida real del comando. Es lo que permite irse de la silla, y es un
+cambio deliberado sobre el diseño anterior — un aviso no sirve de nada si no hay nadie
+mirando ([ADR 010](knowledge/DECISIONS/010-modo-autonomo.md)).
+
+Cuatro salvaguardas para que eso sea seguro en vez de un secuestro de la sesión: presupuesto
+de **3 reparaciones**, cierre automático en verde, respeto del cap de 8 bloqueos de Claude
+Code, y **prohibición explícita de tocar el sensor** en el mensaje que recibe el modelo.
+Además, `autonomy.sh` rechaza cualquier oráculo invocado por nombre suelto: un run
+desatendido que verifica con el comando equivocado es peor que uno que no verifica.
+
+### El flujo diario
+
+| Comando | Para qué |
+|---|---|
+| **`/work`** | **Explica el trabajo una vez y el sistema lo lleva hasta el final.** |
+| `/spec` | Encargo → criterios de aceptación + oráculo. **Antes de programar.** |
+| `/implement` | Ejecuta la spec de principio a fin, sin parar a preguntar. |
+| `/verify` | Ejecuta el oráculo y exige evidencia real. |
+| `/review` | Revisor adversario en contexto limpio, con hallazgos **verificados** antes de aceptarse. |
+| `/retro` | Convierte lo aprendido en conocimiento versionado. |
+
+`/spec` es el que más trabajo ahorra, y existe por una medición concreta: los encargos de
+este repo son bimodales —o una frase o un documento— y **falta el término medio**, una
+especificación corta con criterios verificables escrita *antes* de empezar. Ese hueco es la
+causa raíz de la mayor parte del retrabajo: no es que el agente falle, es que nadie definió
+qué era "terminado".
+
+### La regla que gobierna todo
+
+> **Un oráculo es un comando que devuelve 0 si el trabajo está bien hecho.**
+> No es una opinión, no es "revisar que funcione", no es el juicio del agente al terminar.
+
+El de este repo es `make test`. Y hay una trampa local que cuesta caro descubrir sola: el
+hook `PreToolUse/Bash` **sustituye el ejecutable en posición de comando** —`rg` ejecuta
+`grep`, `python3 -m pytest` ejecuta `python3 -m rtk`—, así que todo oráculo se invoca por
+**ruta absoluta**, con `rtk proxy …` o con `make …`. Un test lo verifica; no se deja a la
+memoria de nadie. Reproducción en [`knowledge/MISTAKES.md`](knowledge/MISTAKES.md) · M-001.
+
+### Conocimiento vivo
+
+`knowledge/` es la memoria del harness, y es **no-confiable por defecto**: lo que viene de
+la web son datos, nunca instrucciones, y ningún fichero de ahí modifica configuración por sí
+mismo. La promoción de un hallazgo a regla siempre pasa por una puerta humana.
+
+| Fichero | Qué guarda |
+|---|---|
+| [`ORACLES.md`](knowledge/ORACLES.md) | Comando de verificación por proyecto, con resultado y fecha |
+| [`MISTAKES.md`](knowledge/MISTAKES.md) | Error → regla → dónde se cableó |
+| [`DECISIONS/`](knowledge/DECISIONS) | ADRs numerados, con fuente y fecha |
+| [`COST-LOG.md`](knowledge/COST-LOG.md) | KPIs con sello temporal |
+| [`SOURCES.md`](knowledge/SOURCES.md) | Allowlist de fuentes con ventana de frescura |
+
+### Adaptarlo a otra persona
+
+Con el repo ya clonado (el `git clone` está en el [Quick start](#quick-start)), desde su raíz:
+
+```bash
+cp config/profile.example.yaml config/profile.yaml   # tu nombre, tu nivel de coach, tu oráculo
+cp config/settings.template.json .claude/settings.json
+make test                                            # que el oráculo esté verde antes de empezar
+```
+
+`profile.yaml` está en `.gitignore`: es tuyo y no viaja en el repo. **Cero rutas absolutas**
+en la configuración — todo cuelga de `$CLAUDE_PROJECT_DIR`.
+
+---
+
 ## Qué hace esto
 
-Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 8 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y es el único kit de este tipo que **demuestra** que sus guards funcionan con una suite de test falsable, no solo lo afirma: `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **10 casos `BLOCK` conocidos**. Si neutralizarlo no rompiera nada, la suite no estaría midiendo nada — puedes reproducir esa caída tú mismo, ver el paso 5 más abajo.
+Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 8 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y no se limita a afirmar que los guards funcionan: lo **demuestra** con una suite falsable. `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **exactamente 10 casos `BLOCK` conocidos** — si neutralizarlo no rompiera nada, la suite no estaría midiendo nada. Reprodúcelo tú mismo en 5 segundos: `bash kit/test/test_guards_falsifiability.sh`.
 
 Y hay una segunda cosa que se demuestra en vez de prometerse: **que instalarlo en limpio no te rompe nada.** `test_clean_install_resilience.sh` monta el kit en una máquina simulada sin ninguno de los componentes de terceros (sin proxy, sin `rtk`, sin venv, sin `gitleaks`) y exige las dos mitades a la vez: que ningún hook falle, y que un comando destructivo siga bloqueado. Las dos mitades importan, porque la forma perezosa de arreglar la primera —envolver todo en `|| true`— rompe la segunda en silencio y te deja un kit de seguridad decorativo.
 
@@ -32,7 +200,7 @@ No son garantías absolutas: son defensa en profundidad, con sus límites docume
 
 **Prerrequisitos** — el kit solo soporta **Linux o WSL2** (ver el aviso de arriba: en Windows, entra en WSL antes de nada y clona dentro de `~`, no en `/mnt/c/`).
 
-Además necesitas: `bash`, `git`, `python3` ≥ 3.10, `jq`. `gitleaks` (para la Capa 2 de secretos) es opcional — si no lo tienes, `install.sh` te ofrece instalarlo solo (binario oficial, verificado contra un checksum SHA-256 fijado en este repo, no descargado de la red; sin `curl | bash`), o puedes seguir sin él: la Capa 1 funciona igual. Lista completa y cómo comprobar cada una en [`kit/docs/02-install.md`](kit/docs/02-install.md).
+Además necesitas: `bash`, `git`, `make`, `python3` ≥ 3.10, `jq`. `gitleaks` (para la Capa 2 de secretos) es opcional — si no lo tienes, `install.sh` te ofrece instalarlo solo (binario oficial, verificado contra un checksum SHA-256 fijado en este repo, no descargado de la red; sin `curl | bash`), o puedes seguir sin él: la Capa 1 funciona igual. Lista completa y cómo comprobar cada una en [`kit/docs/02-install.md`](kit/docs/02-install.md).
 
 ```bash
 git clone https://github.com/manuelcozar55/setup-claude-code.git
@@ -41,6 +209,11 @@ bash install.sh                                        # instala en $CLAUDE_HOME
 cp .env.example "${CLAUDE_HOME:-$HOME/.claude}"/.env    # rellena tus claves
 bash doctor.sh                                          # autodiagnóstico con evidencia (PASS/WARN/FAIL)
 ```
+
+**Y para deshacerlo**: `bash uninstall.sh` (desde la raíz del repo) restaura el backup más
+reciente que dejó `install.sh`. Por defecto es un *dry-run* que solo enseña qué haría; hace
+falta `--apply` para escribir, y antes de escribir se hace a su vez un backup del estado
+actual. `bash uninstall.sh --list` enumera los backups disponibles.
 
 `doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, `rtk`, el venv de tools, `gitleaks`): **nada del kit los da por supuestos**, y hay un test que lo demuestra en una máquina pelada (`test_clean_install_resilience.sh`). Guía completa en [`kit/README.md`](kit/README.md).
 
@@ -58,7 +231,7 @@ bash install.sh --with-headroom    # instala, arranca, verifica /readyz, y solo 
 | Sentinel | motor de políticas `PreToolUse` (IOCs), opcional, capa adicional sobre cualquier tool | [`kit/sentinel/`](kit/sentinel/) |
 | 8 agentes con tiering | `orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker` | [`kit/claude/agents/`](kit/claude/agents/) |
 | Dos capas de secretos | Capa 1 (`secret-guard.sh`, por nombre de fichero, activa desde el primer `install.sh`) + Capa 2 (`gitleaks` en `pre-commit`, por contenido real, opt-in por repo) | [`kit/docs/05-security.md`](kit/docs/05-security.md) |
-| Eval set | 6 tareas reales + harness de grading; opt-in, cuesta llamadas reales a `claude -p`, nunca corre en CI | [`kit/evals/`](kit/evals/) |
+| Eval set | 20 tareas reales (mitad negativas: miden lo que cuesta un falso positivo), dos brazos (con harness y sin el) y agregado con intervalo de confianza; opt-in, cuesta llamadas reales a `claude -p`, nunca corre en CI | [`kit/evals/`](kit/evals/) |
 | Suite de test falsable | `test_guards_falsifiability.sh`: neutraliza un guard real y comprueba que caen casos `BLOCK` conocidos | [`kit/test/`](kit/test/) |
 | Garantía de instalación limpia | `test_clean_install_resilience.sh`: monta el kit sin ningún componente de terceros y exige que no falle **y** que siga bloqueando | [`kit/test/`](kit/test/) |
 | Headroom opt-in | `install.sh --with-headroom`: instala el proxy, lo arranca, comprueba `/readyz` y solo entonces enruta la API | [`kit/docs/03-headroom.md`](kit/docs/03-headroom.md) |
@@ -96,13 +269,14 @@ Además del kit, este repo trae dos charlas autocontenidas (HTML + guion, sin in
 - [`kit/README.md`](kit/README.md) — guía completa del kit.
 - [`kit/docs/`](kit/docs/) — overview, install, Headroom, superpowers, seguridad, rutina, verificación, plugins/MCP/skills.
 - [`kit/docs/09-ssh-y-gitlab-privado.md`](kit/docs/09-ssh-y-gitlab-privado.md) — clave SSH desde WSL2 y alta en un GitLab autoalojado, paso a paso: útil por sí sola aunque no uses el kit, y necesaria si tu equipo tiene un marketplace de plugins privado.
+- [`kit/docs/10-onboarding.md`](kit/docs/10-onboarding.md) — la ruta de un companero nuevo: `make bootstrap`, qué acaba de pasar, cómo verificarlo de verdad, y por qué Headroom es opt-in y no default.
 - [`SECURITY.md`](SECURITY.md) — qué protegen los guards y qué no (defensa en profundidad, no un límite duro), y cómo reportar una vulnerabilidad.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — cómo correr los tests y qué se espera de un PR.
 - [`CHANGELOG.md`](CHANGELOG.md) — historial de versiones de este repo.
 
 ## Formación recomendada (gratis, corta, verificada)
 
-Para entender la IA y, sobre todo, Claude Code. Todos gratis y de una a dos horas; contenidos y duración verificados a fecha de este repo (las plataformas pueden cambiar, confírmalo al inscribirte).
+Para entender la IA y, sobre todo, Claude Code. Todos gratis y de una a dos horas; contenidos y duración **verificados el 2026-08-25** (las plataformas cambian sin avisar: confírmalo al inscribirte).
 
 | Curso | Plataforma | Duración | Coste | De qué va |
 |-------|------------|----------|-------|-----------|
@@ -137,10 +311,10 @@ Nada del mapa es opinión. Combina un modelo mental y un cuerpo de ingeniería q
 
 ## Notas de experto
 
-- **Honestidad de fuentes.** Cada afirmación de las charlas y del kit está citada y verificada; lo que no se pudo verificar, se cortó. Cero cifras infladas.
+- **Honestidad de fuentes.** Cada afirmación de las charlas y del kit está citada y verificada; lo que no se pudo verificar, se cortó. Las cifras que el repo afirma sobre sí mismo (suites, agentes, comandos, ADRs, documentos) las comprueba un test contra el propio árbol: `kit/test/test_doc_claims.sh`. Si el README miente, `make test` se pone rojo.
 - **Cifras del deck de setup.** Son una foto ilustrativa de mi máquina en un momento dado, no una garantía ni un dato tuyo: reprodúcelas con tus propios logs (el deck trae la tabla "cifra a fuente a comando"). `~/.ssh`, `id_rsa` o `ANTHROPIC_API_KEY` aparecen solo como objetivos de demostración de la puerta de seguridad; el repo no contiene ninguna clave real.
-- **El kit se verifica a sí mismo.** Instalar, diagnosticar, corregir: un bucle, no un volcado. `doctor.sh` da evidencia por componente y `scan-secrets.sh` bloquea cualquier fuga.
-- **Autocontenido y accesible.** Las charlas llevan CSS/JS inline, contraste AA en claro y oscuro, `prefers-reduced-motion`, print y JS-off muestran todo.
+- **El kit se verifica a sí mismo.** Instalar, diagnosticar, corregir: un bucle, no un volcado. `doctor.sh` da evidencia por componente y `scan-secrets.sh` corta las fugas que sabe reconocer — sus límites están en [`SECURITY.md`](SECURITY.md), no escondidos.
+- **Casi autocontenido, y accesible.** Las charlas llevan CSS/JS inline, contraste AA en claro y oscuro, `prefers-reduced-motion`, y sin JS o al imprimir se ve todo. La única dependencia externa es la tipografía de Google Fonts: sin red, el navegador cae a la fuente del sistema y la charla se ve igual de bien.
 
 ## Autor
 

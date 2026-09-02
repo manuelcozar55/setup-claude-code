@@ -83,7 +83,12 @@ chk '\btee\s+\S*\.ssh/'                "BLOCKED: tee to .ssh directory"
 
 # ── GIT FORCE PUSH (HARD DENY) ───────────────────────────────────────────────
 chk '\bgit\s+push\s+.*--force'          "BLOCKED: git push --force"
-chk '\bgit\s+push\s+(-f\b|.*\s-f\b)'   "BLOCKED: git push -f (force push)"
+# Flags cortos agrupados: `git push -uf origin main` fuerza de verdad y no contiene "-f"
+# como token suelto, asi que la version anterior ('-f\b') lo dejaba pasar -- justo la
+# proteccion que el kit anuncia como dura. Se acepta cualquier grupo de flags cortos que
+# contenga una f: en `git push` la unica opcion corta con f es --force, y las largas tipo
+# --follow-tags no emparejan porque tras el guion viene otro guion, no letras.
+chk '\bgit\s+push\b[^;&|]*\s-[A-Za-z]*f'  "BLOCKED: git push -f / -uf (force push)"
 
 # ── CREDENTIAL EXFILTRATION (HARD DENY) ──────────────────────────────────────
 chk '\b(printenv|env)\b.*\|\s*(curl|nc|wget)\b'   "BLOCKED: env vars leaked to network"

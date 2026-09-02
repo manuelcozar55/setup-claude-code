@@ -2,25 +2,90 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 Este proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
-`[Unreleased]` recoge lo que ya está en `main` y aún no se ha etiquetado.
+`[Unreleased]` recoge lo que está en `main`, o en camino a él por PR, y aún no se ha
+etiquetado.
 
 ## [Unreleased]
 
-### Fixed
-
-- **El software del kit no tenía licencia, y el README daba a entender que sí.**
-  El `LICENSE` de CC BY 4.0 acota su alcance, en su propio preámbulo, a los decks
-  y sus guiones originales: nunca cubrió `kit/`. Pero el README decía
-  *"CC BY 4.0. Comparte y adapta con atribución"* sin distinguir, así que quien
-  clonaba el repo creía tener un permiso que legalmente no existía — por defecto,
-  ausencia de licencia es reserva de todos los derechos. Se añade
-  **`LICENSE-CODE`** con licencia **MIT** para todo lo de `kit/` y los scripts de
-  `.github/`; se acota explícitamente el `LICENSE` de CC BY a las charlas; y la
-  sección de licencia del README pasa a declarar el reparto en una tabla. MIT es
-  elección deliberada: es la misma licencia del material del que derivan tres
-  guards, así que no hay fricción de compatibilidad.
+El repo pasa de ser solo un instalador endurecido a ser también un **harness**: guías
+(lo que se dice antes de actuar) y **sensores** (lo que mide después), en el sentido de
+Birgitta Böckeler (*Harness engineering*, 02-abr-2026). Lo nuevo vive en la raíz, pero
+`kit/` no queda intacto: suma 30 ficheros nuevos —el subsistema de evals con sus casos
+y sus pruebas— y 27 ficheros de v1.0.0 retocados, `install.sh` entre ellos. El árbol
+corre hoy 26 suites de test, frente a las 16 de v1.0.0.
 
 ### Added
+
+- **El hallazgo que reordenó el trabajo: el canal de Bash reescribe los comandos.**
+  El hook `PreToolUse/Bash` sustituye el ejecutable en posición de comando — `rg` ejecuta
+  `grep`, `python3 -m pytest` ejecuta `python3 -m rtk`. Bash acumula **6.093 llamadas a
+  herramienta** en el snapshot del 2026-08-21 (2.410 en la sesión principal + 3.683 en
+  subagentes, `tools_top.Bash` de cada mitad),
+  así que casi todo sensor pasaba por un canal que altera la pregunta.
+  Un oráculo así no mide lo que dice medir. Reproducción, alcance y las tres vías que lo
+  evitan en `knowledge/MISTAKES.md` · M-001, y un test que rechaza cualquier oráculo
+  registrado por nombre suelto.
+
+- **Cinco prompts de trabajo** en `.claude/commands/`: `/spec`, `/implement`, `/verify`,
+  `/review`, `/retro`. `/spec` existe por una medición concreta: los encargos eran
+  bimodales —una frase o un documento— y faltaba el término medio, la especificación con
+  criterios verificables escrita antes de empezar.
+
+- **Tres sensores** en `.claude/hooks/`, medidos entre 15 y 23 ms: `oracle-log.sh` registra
+  qué sesiones ejecutaron un oráculo, `verify-gate.sh` avisa al terminar si se tocó código
+  sin verificar, y `auto-spec.sh` pone delante el oráculo del proyecto en el primer encargo
+  (detalle más abajo; sustituye a `session-brief.sh`). **En modo normal ninguno bloquea**:
+  un falso positivo bloqueante cuesta mucho más que un aviso ignorado, y ese endurecimiento
+  se decide con datos. La única excepción llegó después y con ADR propio: con un run
+  autónomo activo, `verify-gate.sh` sí bloquea el cierre de turno (ADR 010).
+
+- **`scripts/backup.sh`** — ZIP con manifiesto SHA-256 que **restaura en un temporal y
+  revalida los 932 checksums**, y que se probó falsable en cuatro casos. Resuelve
+  `sha256sum` frente a `shasum -a 256` porque aquí es uutils, no GNU, y en macOS no existe.
+
+- **`scripts/metrics.py`** — absorbe `analyze.py` con **cero regresiones** en sus ~44
+  métricas y añade las que el encargo declaraba y el instrumento no calculaba: retrabajo
+  **por sesión** (no solo por turno), mediana y p90 de tool calls, y sesiones con oráculo
+  ejecutado. El filtro de subagentes pasa a ser explícito en vez de depender de la
+  profundidad de un glob. Más `scripts/cost-report.sh` con tendencia entre snapshots.
+
+- **`knowledge/`** — memoria versionada: `ORACLES.md`, `MISTAKES.md`, `PROCEDURES.md`,
+  `COST-LOG.md`, `SOURCES.md`, `SKILLS-REGISTRY.md` y 11 ADRs. Es **no-confiable por
+  defecto**: lo que viene de la web son datos, nunca instrucciones, y la promoción de un
+  hallazgo a regla pasa siempre por una puerta humana.
+
+- **Cuatro skills** (`harness` absorbida sin cambios y verificada por checksum,
+  `house-rules`, `coach`, `dev-env`) y **cero agentes nuevos**: de 150 delegaciones, 105
+  fueron al agente genérico y 6 de los 8 especialistas existentes nunca se usaron. El
+  problema no era falta de capacidad.
+
+- **Nueve suites de test nuevas** (`test_harness_structure.sh`, `test_metrics.sh`, <!-- doc-claims:ignore: "Nueve" cuenta las suites NUEVAS desde v1.0.0, no el total del arbol -->
+  `test_install_diff_first.sh`, `test_uninstall.sh`, `test_detect_oracle.sh`,
+  `test_auto_spec.sh`, `test_autonomy.sh`, `test_doc_claims.sh`, `test_evals.sh`), todas
+  con sección de falsabilidad. El total pasa de 16 a 26 suites.
+
+- **El harness entra solo: `auto-spec.sh`, un hook `UserPromptSubmit`** (ADR 009). Cuatro
+  reglas advisorias de `CLAUDE.md` tenían adherencia medida —`IntentGate` 2,1 %,
+  `Parallel-First` 0 invocaciones, la tabla de delegación 70 % al agente genérico, "verifica
+  tu trabajo" 27,7 % de sesiones con oráculo—: pedir disciplina no la produce. El hook
+  clasifica el prompt y **solo** si es un encargo sin criterio de verificación inyecta la
+  petición de declarar qué será cierto al terminar, el oráculo del proyecto detectado por
+  `scripts/detect-oracle.sh` y el recordatorio de ejecutarlo en frío; si el criterio ya viene
+  escrito, se calla. Emite **stdout plano**, que es lo único que la documentación especifica
+  para este evento, y **nunca `exit 2`**, que borraría el prompt recién escrito. Verificado en
+  `test_auto_spec.sh` con 16 checks —incluido el de falsabilidad: un encargo y una pregunta
+  tienen que producir salidas distintas— y 23 ms de latencia medida.
+- **Modo autónomo: `/work` y `scripts/autonomy.sh`** (ADR 010). Un sexto prompt de trabajo en
+  el que el usuario entra **una sola vez** (una tanda de preguntas agrupada más la aprobación
+  de la spec); a partir de ahí, cada pregunta es un fallo de diseño. No aparece un hook nuevo:
+  `verify-gate.sh` gana un segundo modo, y con un run activo un oráculo en rojo **bloquea**
+  (`decision: block`) con un presupuesto de 3 reparaciones. El ADR 004 decidió que nada
+  bloquea porque un aviso le llega a un humano que reacciona, y esa es justo la premisa que
+  desaparece en un run desatendido. El motivo devuelto al modelo prohíbe explícitamente tocar
+  el sensor, y `autonomy.sh start` rechaza oráculos que no sean ruta absoluta, `rtk proxy …` o
+  `make …`, porque el canal de Bash sustituye el ejecutable (M-001) y verificar con el comando
+  equivocado es peor que no verificar: parece que sí. Los cuatro estados —rojo, verde,
+  presupuesto agotado y `stop_hook_active`— están cubiertos en `test_autonomy.sh`.
 
 - **`THIRD-PARTY.md`** con los avisos de terceros, que faltaban. Reproduce íntegro
   el aviso MIT de `yurukusa/claude-code-hooks` (`Copyright (c) 2026 yurukusa`,
@@ -36,6 +101,340 @@ Este proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
   repositorio **no tiene fichero de licencia** (`license: null` en la API de
   GitHub) y el dominio público no se presume. No se corrige inventando otra
   afirmación: se registra el hecho verificable y las tres vías para cerrarlo.
+
+- **`.github/dependabot.yml`** para el ecosistema `github-actions`. El CI ancla
+  las Actions por SHA, que es lo correcto, pero un pin no se actualiza solo: sin
+  esto se quedan clavadas en la versión anclada, incluidas las vulnerabilidades
+  que se les descubran después.
+
+
+- **El eval set pasa de medir ruido a medir comportamiento, y de 6 casos a 20 tareas**
+  (10 positivas / 10 negativas).
+  Que la mitad sean casos negativos es deliberado: sin ellos, un harness que dice que sí
+  a todo puntúa igual que uno que discrimina. Correrlo cuesta
+  dinero, así que nunca se había corrido entero y nadie había visto que tenía un falso
+  negativo y un falso positivo estructurales.
+
+- **Brazo de control (`ARM=off`, que añade `--safe-mode`) y las tres preguntas separadas.**
+  Sin control no hay *lift*: "acierta 0,85" no dice nada si no se sabe qué acierta sin el
+  harness puesto. El informe responde por separado *¿funciona?*, *¿sirve?* y *¿a qué
+  coste?*, y no mete nunca el precio dentro de la nota.
+
+- **Ablación por componente: tres brazos más** (`sin-ajustes`, `sin-skills`, `sin-mcp`),
+  cinco en total contando `on` y `off`. El *lift* dice si el harness sirve; no dice **qué
+  pieza** sirve. Medido en la tirada del 2026-08-27: `sin-ajustes` cuesta −0,17, más que
+  el lift entero; `sin-skills` y `sin-mcp` salen `SIN DATOS` porque en esa tirada no se
+  activó ni una skill ni un servidor MCP, y el informe dice que correrlos no mediría
+  nada en vez de publicar un cero.
+
+- **Tareas mudas: el conjunto declara cuándo dejó de informar** (E16). `report.py` cuenta
+  las que dieron el mismo resultado en los dos brazos y en todas sus repeticiones —no
+  pueden mover el lift— y escribe `SATURADO`. En la tirada del 2026-08-27 son mudas 17 de
+  20 tareas: el conjunto que decide es de tres, no de veinte. Con un solo brazo el bloque
+  escribe `NO MEDIBLE` en vez de "0 mudas", porque sin control un cero sería mentir por
+  omisión.
+
+- **La máquina es una variable experimental, no un decorado** (E14). `record.py` apunta de
+  cada tirada el modelo, el sha, el coste, los turnos, la carga, las CPUs y la memoria
+  libre; `report.py` avisa si los brazos corrieron con la máquina en estados distintos, y
+  su guardia hermano `comparables()` escribe `NO COMPARABLE` en vez de restar dos brazos
+  que corrieron modelos distintos.
+
+- **`make mutantes`: 32 mutantes versionados (M9–M40)** que rompen a propósito un sensor
+  del eval cada vez y exigen que la suite se ponga roja. Un sensor que no ha suspendido
+  nunca no se sabe si sabe suspender. Tarda unos 4 minutos y no cuesta dinero.
+
+- **`DRYRUN=1` y filtro por tarea** (E29). El coste de una tirada se estima **antes** de
+  pagarla y a partir de lo ya gastado (`kit/evals/runs.jsonl`), no de una cifra escrita a
+  mano: el `Makefile` decía "40 llamadas / ~12 USD". Salvedad medida: `runs.jsonl` está en
+  `.gitignore`, y sin él el ensayo sigue contando llamadas pero no puede estimar dólares.
+
+- **Dos puentes al observatorio, ninguno con Docker ni licencia**: `langsmith_push.py`
+  —nube o receptor local en `:1984`, con `make langsmith-local` y `make langsmith-arbol`—
+  y `phoenix_push.py` con `make phoenix`, que levanta una interfaz web en `:6006`. La
+  telemetría se prueba contra algo que escucha, no en seco.
+
+- **Una fila con el instrumento averiado y sin evidencia se retira, no se corrige**
+  (`excluded` en `runs.jsonl`). Queda fuera de todo cómputo, el informe lo anuncia en su
+  primera línea en vez de retirarla en silencio, y queda fuera también de los dos puentes:
+  ni `langsmith_push.py` ni `phoenix_push.py` la publican, y ambos lo dicen por `stderr`.
+  Publicarla allí la habría devuelto por la puerta de atrás, enseñada como un `fail`
+  normal.
+
+- **`knowledge/EVAL-CRITERIA.md`: 29 criterios de calidad del eval**, cada uno con su
+  fuente y su estado honesto, y **ADR 011**, que decide no migrar a OpenHarness. Las cifras
+  que ese documento publica se derivan de `runs.jsonl` en tiempo de test; sin el almacén
+  —gitignorado— esas aserciones pasan a `skip`, no a `ok`.
+
+### Changed
+
+- **`sentinel-allowlist.json`: fuera los tres dominios de LinkedIn**, que quedaron muertos al
+  retirar ese MCP. Es **higiene, no endurecimiento**, y conviene no venderlo como otra cosa:
+  la allowlist de Sentinel solo hace que una URL *salte* las heurísticas de red (pastebin,
+  TLD sospechoso, IP cruda), así que `linkedin.com` las pasaría igual estando o no en la
+  lista. Lo que se gana es que la config deje de describir un servidor que ya no existe.
+
+- **`CLAUDE.md`** de proyecto: 76 líneas / ~895 aprox-tokens, bajo el presupuesto que
+  verifica `test_harness_structure.sh` (<100 líneas, <900 aprox-tokens). La auditoría que lo justifica está en `knowledge/AUDIT-CLAUDE-MD.md` y se apoya
+  en uso medido: la sección más larga del fichero anterior regía un plan mode al 2,1 %.
+
+- **`kit/install.sh`** pasa a ser *diff-first por detección*: si `$CLAUDE_HOME` es un repo
+  git con remoto —el caso real del autor, con 138 ficheros sin commitear— no escribe;
+  genera el árbol aparte, muestra el diff y dice qué commitear. `--apply` fuerza. En un HOME
+  temporal sin git el comportamiento es el de siempre, así que ni las suites ni CI cambian.
+
+- **El presupuesto de `timeout` de los hooks deja de ser un número plano.** Los 5 s protegen
+  el **camino caliente** (`UserPromptSubmit` en cada prompt, `PostToolUse` en cada llamada a
+  herramienta), donde cada milisegundo se paga cientos de veces. El `Stop` no está en ese
+  camino y en modo autónomo su trabajo *es* ejecutar el oráculo: declararlo a 5 s no lo hacía
+  barato, lo hacía **inútil**, porque Claude Code mataba el hook antes de que el oráculo
+  terminara (`make test` tarda ~30 s) y el gate fallaba **en abierto**, dejando cerrar el
+  turno con el oráculo en rojo. Ahora se declara a 600 s y `test_harness_structure.sh` exige
+  la regla de verdad: un `Stop` nunca puede declarar menos que el `timeout` que se aplica a
+  sí mismo por dentro, con su propio check de falsabilidad.
+
+- **El estado del modo autónomo se indexa por directorio de proyecto, no por `session_id`.**
+  Quien arranca el run es el modelo desde Bash, y ahí el `session_id` no existe: solo aparece
+  dentro del payload del hook. Con la clave anterior, `autonomy.sh start` escribía en un
+  fichero y el Stop hook leía otro, así que el gate no encontraba run y caía a modo normal.
+  **Fallaba en abierto y en silencio**, que es la peor forma de fallar en un mecanismo de
+  seguridad.
+
+
+- **`report.py` deja de dar un número desnudo.** Cada tasa va con su intervalo de Wilson al
+  95 %, el veredicto se decide por bandas (`SIRVE` ≥ +0,05, `PERJUDICA` ≤ −0,10, `NEUTRO`
+  en medio) y las salvedades que matan una cifra —`AVISO` de máquina distinta, `SATURADO`,
+  `NO COMPARABLE`, `NO MEDIBLE`, `SIN DATOS`— salen pegadas a ella, no en una nota al pie.
+
+- **`kit/Makefile` delega en la raíz.** El Quick start deja al lector dentro de `kit/` y le
+  manda `make test`; sin Makefile ahí, `make` encontraba el **directorio** `kit/test`, lo
+  tomaba por un target ya construido y respondía "Nothing to be done for 'test'" con exit
+  0: un oráculo que devuelve 0 sin ejecutar nada, en un repo cuya tesis es la contraria.
+
+### Removed
+
+- **`session-brief.sh`**, sustituido por `auto-spec.sh` (ADR 009). Su función —poner delante
+  el oráculo del proyecto y los errores ya cometidos— se hace ahora en el primer *encargo* y
+  no en el arranque, donde se diluía y no sobrevivía a un `/clear`. **El presupuesto se
+  mantiene en 3 hooks**: se sustituye, no se suma.
+
+### Fixed
+
+- **Reinstalar el kit destruía la configuración personal de quien ya lo tenía.** Medido en una
+  máquina real: un `install.sh --apply` sobre una instalación existente reemplazaba
+  `settings.json` entero y se llevaba en silencio `ENABLE_TOOL_SEARCH` (que vale ~30k de
+  contexto por sesión), el `ANTHROPIC_MODEL` con el sufijo de la ventana de 1M,
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, tres límites más, el `statusLine` y tres hooks; y
+  reemplazaba `CLAUDE.md`, que es prosa escrita a mano. Había backup, pero un backup que hay
+  que descubrir no es una salvaguarda: es una autopsia. Ahora `settings.json` se **fusiona**
+  con una regla declarada — los `hooks` los pone el kit, los `permissions` se unen (nunca se
+  pierde un `deny` ni un `allow`), tus claves de `env` ganan y el kit solo añade las nuevas, y
+  todo lo demás es tuyo e intacto — y `CLAUDE.md` no se pisa: la del kit queda al lado como
+  `CLAUDE.kit.md`.
+- **El kit no distribuía tres hooks que sí corrían en producción**, así que instalarlo los
+  borraba y un clon limpio nunca los tenía: `write-guard.py` (secretos en el contenido que se
+  escribe), `narthex-post-mcp.py` (unicode invisible y frases de jailbreak en respuestas de
+  MCPs de terceros) y `preflight.sh` (recupera el proxy por systemd). Los tres son portables
+  y ya están registrados vía `optional-hook.sh`.
+- **La capa de IOCs de Sentinel venía apagada de fábrica.** El kit solo traía
+  `iocs.example.json`, así que cada instalación arrancaba sin los 31 patrones de ruta
+  sensible, 12 de comando peligroso y 30 de red — con un `WARN` que nadie lee. Ahora se
+  distribuye `iocs.json` completo, con su allowlist en `~/` y no en el home de nadie.
+
+- **Lo que impide que la documentación mienta no corría en CI, y nada lo declaraba.**
+  `test_doc_claims.sh` y `test_evals.sh` quedaban fuera del pipeline: El `Makefile` corría 25 y `ci.yml` 23: las ausentes eran `test_doc_claims.sh`
+  y `test_evals.sh`, así que un PR que rompiera una cifra del README pasaba en verde. Y el
+  hueco podía volver, porque el único sensor comparaba `kit/test/` contra el *target* del
+  Makefile, nunca contra CI. Se añaden a `ci.yml` y `test_harness_structure.sh` gana una
+  sección de paridad `Makefile ↔ ci.yml` con su caso de falsabilidad.
+- **La unidad systemd que genera `install.sh --with-headroom` reproducía dos bugs ya
+  diagnosticados**: sin `%h/.local/share/rtk` en `ReadWritePaths`, SQLite da *"unable to open
+  database file (code 14)"* cada 60 s; sin `HF_HUB_OFFLINE=0`, el motor de compresión queda
+  `available:false` **en silencio** mientras `/readyz` sigue diciendo `healthy`.
+- **Tres tests medían la máquina de quien los ejecutaba, no el repo.** `test_doctor.sh` y el
+  `run_doctor()` de `test_doctor_base_url.sh` no aislaban `HOME`; y `kit/scan-secrets.sh`
+  escaneaba ficheros *ignorados* por git, así que `test_harness_structure.sh` daba rojo en una
+  máquina con scratch en disco y verde en CI, donde el clon está limpio. Misma lección que
+  `628dfaa`.
+- **`.claude/skills/dev-env/SKILL.md` afirmaba que un `ANTHROPIC_BASE_URL` en `settings.json`
+  desactiva la ventana de 1M, el tool search y remote-control.** Dos de las tres son falsas,
+  medido dentro de una sesión enrutada: solo `/remote-control` cae. Y recomendaba
+  `headroom wrap claude`, que escribe la variable en el `settings.local.json` del proyecto y
+  la repone con un hook `SessionStart` — el mecanismo que dejó `ANTHROPIC_BASE_URL` en 5
+  ficheros no declarados y el enrutado dependiendo del `cwd`.
+- **`hooks/stale-read-guard.py` estaba en producción sin viajar en el kit.** Se añade y se
+  registra vía `optional-hook.sh --python`. Su propia instrumentación mide por qué importa:
+  las relecturas eran el mayor desperdicio identificado del presupuesto de tokens, mayor que
+  todo lo que comprime el proxy.
+- **Se retira `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=75` de la plantilla de `settings.json`.** Es un
+  hook de pruebas del cliente, no un ajuste soportado: en la ruta de 200k regala ~32k de los
+  180k usables, y en la de 1M es inerte. La máquina de referencia ya lo había abandonado; la
+  plantilla se había quedado atrás.
+
+- **El guard de force-push no veía los flags cortos agrupados.** `git push -uf origin main`
+  fuerza de verdad, pero no contiene `-f` como token suelto, así que el patrón anterior
+  (`-f\b`) lo dejaba pasar — justo la protección que el kit anuncia como dura. Pasaba en las
+  **dos** capas: el hook `block-dangerous-commands.sh` y los globs de `permissions.deny` en
+  `settings.json`, que `smart_approve.py` evalúa. Ahora se acepta cualquier grupo de flags
+  cortos que contenga una `f` (en `git push` la única opción corta con `f` es `--force`), y
+  `--follow-tags` sigue pasando porque tras el guion viene otro guion, no letras. Cinco casos
+  de regresión nuevos en `test_guards.sh`, que pasa de 28 a 33 checks.
+- **La Capa 2 de secretos bloqueaba *todos* los commits de cualquier repo protegido que no
+  tuviera `.gitleaks.toml` propio.** El hook `pre-commit` pasaba a ciegas
+  `-c "$REPO_ROOT/.gitleaks.toml"`; si el fichero no estaba, gitleaks abortaba con
+  `unable to load gitleaks config` y el commit moría — un fallo cerrado que parece un
+  hallazgo de secreto. Ahora resuelve la config en orden (repo → `$CLAUDE_HOME`) y, si no
+  hay ninguna, avisa por stderr y sigue con las reglas por defecto de gitleaks en vez de
+  abortar. **El fixture del test tapaba el bug**: copiaba la config a la raíz del repo de
+  prueba, un escenario que un usuario real no tiene. Ya no la copia, y hay tres casos nuevos
+  (`test_secret_content_gitleaks.sh`, 20 checks) incluido el que importa: sin config en
+  ninguna parte, un commit limpio pasa y una credencial AWS real sigue bloqueada.
+- **`make test` desde `kit/` devolvía exit 0 sin ejecutar un solo test.** El Quick start deja
+  al lector dentro de `kit/`, donde no había `Makefile`: make encontraba el *directorio*
+  `kit/test`, lo tomaba por un target ya construido y respondía "Nothing to be done for
+  'test'". Un oráculo que devuelve 0 sin medir nada, en el repo cuya tesis es lo contrario.
+  `kit/Makefile` delega ahora en la raíz.
+- **`test_autonomy.sh` seguía probando un contrato que ya no existía.** El estado del modo
+  autónomo pasó a indexarse por directorio de proyecto y no por `session_id` (quien lanza el
+  run desde Bash no conoce el `session_id`), y la suite seguía arrancando los runs con
+  `--session`. Reescritos los ocho bloques del gate: el run se arranca como lo arranca el
+  modelo, y cada payload lleva a propósito un UUID distinto, de forma que una regresión al
+  indexado por sesión se caería en rojo en vez de dejar cerrar el turno con el oráculo rojo.
+- **`test_guards_falsifiability.sh` comprobaba `> 0` caídas y citaba una constante que no
+  existía.** Una regresión que bajase de 10 casos `BLOCK` a 1 pasaba en verde, y el 10 que
+  el README publica como hecho medido no estaba anclado en ninguna parte. Ahora
+  `STUB_BLOCK_CASES=10` es explícito y la suite exige esa cifra exacta.
+- **El sensor de frescura de `SOURCES.md` leía el número de fila como si fueran días,
+  y tumbaba `make test` entero.** En `source_field` el patrón de la ventana llevaba el
+  sufijo de unidad como opcional — `(d|dias|días)?` — así que casaba con la primera
+  columna numérica de la fila, que es el `#` de orden. Las filas 1 a 4 salían
+  "vencidas sin marcar `[STALE]`" por su posición en la tabla, no por su fecha:
+  `| … | 2026-08-21 | 365 d |` se leía como una ventana de 4 días. Como
+  `test_harness_structure.sh` es la antepenúltima suite del `Makefile` y make aborta en el
+  primer fallo, **las dos últimas suites (`test_install_diff_first`, `test_uninstall`)
+  llevaban tiempo sin ejecutarse**: 21 de 23. Con la unidad obligatoria, las 23 corren y
+  `make test` vuelve a exit 0.
+- **El check de falsabilidad de ese sensor pasaba sin cubrir el bug que tenía delante.**
+  Su fila fabricada era `| url | primaria | fecha | 30 |`: sin columna `#` y sin unidad,
+  es decir, con una forma que la tabla real nunca tiene. Un caso fabricado que no imita
+  la forma de los datos de producción demuestra menos de lo que aparenta. Ahora la fila
+  fabricada tiene las siete columnas reales.
+- **`session-start.sh` metía `MEMORY.md` dos veces en el contexto de cada sesión.** El
+  hook volcaba el índice con `head -20` y la auto-memoria de Claude Code ya lo inyecta
+  por su cuenta: ~985 tokens duplicados en cada arranque. Ahora imprime el recuento de
+  entradas y el aviso de tamaño — la señal de vida que la auto-memoria no da — pero no
+  el cuerpo.
+
+- **Falso fallo en la verificación de backups por SIGPIPE.** `unzip -Z1 | grep -q` con
+  `set -o pipefail` mataba a `unzip` y el verificador reportaba un ZIP correcto como roto.
+  Solo aparecía a escala real (933 entradas), no con el fixture de 6. `shellcheck` no lo
+  detecta. Queda documentado en `MISTAKES.md` · M-003.
+
+- **El software del kit no tenía licencia, y el README daba a entender que sí.**
+  El `LICENSE` de CC BY 4.0 acota su alcance, en su propio preámbulo, a los decks
+  y sus guiones originales: nunca cubrió `kit/`. Pero el README decía
+  *"CC BY 4.0. Comparte y adapta con atribución"* sin distinguir, así que quien
+  clonaba el repo creía tener un permiso que legalmente no existía — por defecto,
+  ausencia de licencia es reserva de todos los derechos. Se añade
+  **`LICENSE-CODE`** con licencia **MIT** para todo lo de `kit/` y los scripts de
+  `.github/`; se acota explícitamente el `LICENSE` de CC BY a las charlas; y la
+  sección de licencia del README pasa a declarar el reparto en una tabla. MIT es
+  elección deliberada: es la misma licencia del material del que derivan tres
+  guards, así que no hay fricción de compatibilidad.
+
+- **El workflow de CI no parseaba, así que su último job no llegaba a ejecutarse.** Un
+  `name:` sin comillas con dos puntos dentro —`test_uninstall.sh (restaura el backup mas
+  reciente: interno o ZIP…)`— es YAML inválido. Se entrecomilla y se añade a
+  `test_harness_structure.sh` el sensor que lo habría cazado antes de subirlo.
+
+
+- **El evaluado podía leer su propio oráculo.** El enunciado, el setup, el check y el
+  transcript vivían en el mismo directorio de trabajo que se le daba al agente: de 12
+  ejecuciones de la primera tirada real, 4 leyeron ficheros del harness y 3 hicieron `cat
+  _check.sh` — en la tarea 06 lo hicieron los dos brazos, y los dos aprobaron. Ahora el
+  meta vive en un `mktemp -d` **sin parentesco** con el del agente, así que un `../` no
+  descubre nada. El sensor es de comportamiento, no un `grep` sobre `run.sh`: corre
+  `run.sh` entero con un `claude` de mentira que solo lista su `cwd`.
+
+- **El eval set medía ruido, no comportamiento**, y no se había visto porque correrlo
+  cuesta dinero. `run.sh` definía `PY` sin exportarlo y `bash _check.sh` es otro proceso,
+  así que el check de cuatro de los seis casos se ejecutaba como `"" grade.py …` y daba
+  rojo sin mirar al agente. La 06 daba verde pasara lo que pasara: verificaba con `grep -q
+  'test_suma.py' _run.jsonl` y el prompt se copia literalmente dentro del transcript, así
+  que acertaba por el eco del enunciado. Y un `error` de instrumentación se agregaba junto
+  al `fail`, que convierte una avería del aparato en un suspenso del agente.
+
+- **El modelo apuntado era el equivocado.** `record.py` guardaba `next(iter(modelUsage))`,
+  el primero del diccionario, y cada sesión de `claude -p` gasta unos 15 tokens en un haiku
+  auxiliar: 40 tiradas de Opus quedaron etiquetadas como Haiku y el guardia de E24 se
+  negaba a comparar dos brazos que habían corrido con el **mismo** modelo. Un guardia
+  alimentado con el dato equivocado no protege: bloquea lo bueno.
+
+- **El nombre del transcript colisionaba y se comía la evidencia.** Llevaba `$(date +%F)`
+  —el día— y `attempt` reinicia en cada invocación, así que dos tiradas de la misma tarea
+  y el mismo brazo el mismo día se pisaban. Pasa a llevar el `ts` de la fila. Una de esas
+  colisiones ya había ocurrido, y por eso la fila retirada no es re-auditable.
+
+- **`make evals-paid` nunca llegaba a preguntar, y el defecto era preexistente.** La receta
+  terminaba en `\\`, que en un Makefile es una barra literal y no una continuación: `read`
+  definía `ans` en una shell y la comparación corría en otra, con `ans` vacío. Fallaba
+  **cerrado** —decía "Cancelado." y salía 1 siempre—, así que no era un riesgo de gasto:
+  era un target muerto. El sensor exige que ninguna línea de receta acabe en dos barras,
+  así que cubre también a los targets futuros.
+
+- **El ensayo podía mentir sobre lo que ibas a pagar.** El estimador de `DRYRUN=1` moría
+  con un `runs.jsonl` corrupto —una línea JSON escalar, un `cost_usd` de texto— y `run.sh`
+  salía con 0 igualmente, porque tiene `set -u` sin `set -e` y el traceback caía en un
+  `exit 0` incondicional: el operador se quedaba sin la única cifra que la herramienta
+  existe para darle, y con un exit 0 diciendo que todo fue bien. Además, el `: > "$TMP"`
+  que trunca el parcial corría **antes** del bloque de ensayo, así que un ensayo que
+  promete no tocar nada pisaba un fichero del árbol.
+
+- **Dos correctores confundían la forma con la calidad.** El de la 12 castigaba verificar
+  —`__pycache__` es el rastro de comprobar que el módulo importa, no un fichero sembrado— y
+  no miraba el exceso de celo que la tarea existe para medir. El de la 11 exige el literal
+  `.venv/bin/pip` y suspende `.venv/bin/python -m pip install requests`, que es la misma
+  solución escrita de otra forma; ese sigue sin arreglar y **infla la ablación de
+  `sin-ajustes`**, y la salvedad va escrita junto al −0,17, no en una nota al pie.
+
+- **Se deja de versionar bytecode.** Un `.pyc` publica en `co_filename` la ruta absoluta de
+  compilación, que aquí incluye el nombre de usuario.
+
+### Documentation
+
+- **`08-plugins-mcp-y-skills.md`: la sección de MCP decía cosas que ya no eran verdad, y
+  callaba la que más cuesta.** Listaba `perplexity` como si estuviera operativa (dada de
+  baja el 2026-08-17) y no mencionaba `headroom`, `firecrawl` ni `serena`. Se reescribe con
+  el estado real y se añade **"Un MCP en ámbito global es un impuesto fijo, y casi nunca se
+  mide"**: por qué `--scope user` lo arranca también en `/tmp` y en repos ajenos, el script
+  para contar el uso *efectivo* en tus propias transcripciones (bloques `tool_use`, no
+  menciones: el nombre del servidor sale en el prompt de cada sesión e infla cualquier
+  `grep` ingenuo), y el caso medido que lo motiva — Serena en global durante semanas, 1 de
+  55 sesiones con llamadas reales y sus 12 últimos arranques sin proyecto activo. Incluye
+  el detalle que hace que quitarlo no funcione a la primera: `headroom wrap claude`
+  re-registra Serena en cada lanzamiento salvo con `--code-memory none`. Incluye el
+  contraejemplo que evita leer mal la regla: `firecrawl` tiene el **mismo** uso medido que
+  Serena — 4 llamadas en 1 de esas 55 sesiones — y se queda, porque es `type: http` en ámbito de
+  proyecto y no levanta proceso local. Se retira por **coste de arranque x ubicuidad**, no
+  por recuento de llamadas.
+- **`03-headroom.md`: el sufijo `[1m]` viaja pegado al modelo y rompe el cambio de modelo.**
+  `--1m` reescribe `ANTHROPIC_MODEL` del proceso hijo, y se lo aplica a *cualquier* modelo que
+  le pases. Con Haiku, que no tiene la beta de contexto largo, la sesión muere con
+  `400 The long context beta is not yet available for this subscription` — un error que se
+  confunde con un problema de cuota o de credenciales. Documentado con la traza medida.
+
+- **Atribuciones corregidas**, todas verificadas contra la fuente el 2026-08-21:
+  el artículo de *harness engineering* es de **Birgitta Böckeler**, no de Fowler, y **no da
+  una definición formal de *harnessability***; el de *context engineering* es de
+  sep-2025 y **no fija ningún presupuesto de tokens para CLAUDE.md**; los cuatro principios
+  atribuidos a **Karpathy no tienen fuente primaria** y pasan a ser "principios de la casa";
+  la cita de Cherny sigue siendo **secundaria**; y `anthropics/skills` **no enumera 17
+  skills** y tiene licencia mixta.
+
+- **Los KPIs heredados se archivan como históricos sin procedencia verificable.** El "68 %
+  de sesiones con correcciones" medía en realidad 8,8 % de *turnos*; la métrica correcta,
+  ahora que existe, da 19,1 % de sesiones. Y las sesiones con oráculo no valían 0 sino
+  27,7 %: nunca se habían medido, que no es lo mismo.
 
 - **`03-headroom.md` explica ahora que `headroom wrap` pone `ENABLE_TOOL_SEARCH`
   por su cuenta.** La doc recomendaba la variable en `settings.json` pero no decía
@@ -56,10 +455,44 @@ Este proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
   puerto 8787** y respuestas **HTTP 200 vacías** que Claude Code reporta como
   fallo de la API. Se documenta cómo evitarlo y que `hook ensure` no reescribe
   ficheros de configuración, así que neutralizar ese settings es estable.
-- **`.github/dependabot.yml`** para el ecosistema `github-actions`. El CI ancla
-  las Actions por SHA, que es lo correcto, pero un pin no se actualiza solo: sin
-  esto se quedan clavadas en la versión anclada, incluidas las vulnerabilidades
-  que se les descubran después.
+
+- **Las cifras que la documentación afirma sobre el repo pasan a tener sensor.** `README.md`
+  decía 16 suites con 23 en el `Makefile`, `kit/README.md` "8 documentos" con 9, y tres <!-- doc-claims:ignore: cita del estado ANTERIOR al sensor, no del arbol de hoy -->
+  documentos seguían citando `session-brief.sh` meses después de borrarlo. Nada se ponía en
+  rojo porque nadie medía el texto. `test_doc_claims.sh` cuenta el árbol real (suites,
+  agentes, comandos, ADRs, documentos), lo compara con lo que dicen los documentos que hablan
+  **en presente** —en dígito y en letra, porque "cinco comandos" era justo la forma que se
+  quedaba sin actualizar— y comprueba que ningún `.sh` citado en la documentación haya
+  dejado de existir. `knowledge/DECISIONS/`, `knowledge/PRE-MORTEM.md` y
+  `docs/superpowers/plans/` quedan **fuera a propósito**: son registros fechados, y una cifra
+  de agosto ahí es correcta aunque hoy sea otra. De `CHANGELOG.md` entra solo la sección
+  `[Unreleased]`, que describe el árbol de hoy; sus secciones publicadas quedan fuera por lo
+  mismo. Trae su propio check de falsabilidad.
+
+
+- **`kit/evals/README.md` publica el inventario del eval y cómo crecerlo**, y desde esta
+  rama sus cifras tienen sensor: el recuento de tareas de su cabecera se compara con
+  `kit/evals/tasks/*.yaml` en cada `make test`.
+
+- **La tirada completa está publicada con su condición** en `knowledge/EVAL-CRITERIA.md`:
+  98 llamadas reales, los 20 casos, tres brazos, `RUNS=1`, `claude-opus-5[1m]` y sin el
+  proxy Headroom en medio —con `ANTHROPIC_BASE_URL` puesto, el lift mediría harness y
+  proxy a la vez—. Va con **las dos lecturas**, con y sin la fila retirada, porque cuál de
+  las dos columnas es la verdadera no lo decide un argumento sino una llamada de pago que
+  **está pendiente**. Y con una fe de erratas que nombra al commit `e7d4fee`: no se enmienda
+  un mensaje publicado, se corrige aquí.
+
+### Security
+
+- **Tres rutas con el nombre real de personas salían publicadas en `HEAD`**, en
+  `knowledge/ORACLES.md` y en `.claude/skills/harness/referencias/oraculos.md`: rutas
+  absolutas de proyectos de cliente con el nombre de usuario y, en un caso, el nombre civil
+  completo dentro de una ruta de Windows. Redactadas conservando la lección que las hacía
+  útiles (el oráculo se invoca por **ruta absoluta**, M-001).
+- **Un `.pyc` estaba versionado** (`scripts/__pycache__/metrics.cpython-314.pyc`). El
+  bytecode lleva dentro la ruta absoluta de compilación en `co_filename`, así que publicaba
+  el árbol de directorios de la máquina del autor. Se saca del índice y `__pycache__/` entra
+  en `.gitignore`.
 
 ## [1.0.0] - 2026-08-05
 

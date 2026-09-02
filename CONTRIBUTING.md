@@ -59,9 +59,48 @@ Todo vive bajo `kit/test/`:
 - `test_with_headroom.sh` — `install.sh --with-headroom` instala el proxy, lo
   arranca, comprueba `/readyz` y solo entonces escribe la variable de
   enrutado en `settings.json`.
+- `test_headroom_guardrails.sh` — los guardarrailes del proxy: `--mode cache` y no
+  `token`, nunca `--budget` ni `--log-messages`, una sola fuente de `ANTHROPIC_BASE_URL`,
+  y que la unidad generada traiga las tres correcciones medidas (rtk, HF_HUB_OFFLINE,
+  rutas inaccesibles). Hermetico: `HOME`, `XDG_CONFIG_HOME` y un `headroom` de pega
+  propios, o en CI no se ejecutaria y daria verde falso.
+- `test_install_diff_first.sh` — si `CLAUDE_HOME` es a su vez un repo git con
+  remoto, `install.sh` nunca escribe encima: genera el arbol aparte y ensena
+  el diff. `--apply` fuerza la escritura, `--plan` fuerza el diff.
+- `test_uninstall.sh` — `uninstall.sh` restaura de verdad el backup mas
+  reciente (backups incrementales de `install.sh` y ZIP de `scripts/backup.sh`),
+  y falla si no puede verificar lo que restaura.
+- `test_auto_spec.sh` — el hook `UserPromptSubmit` que mete el harness solo.
+  No comprueba que "produzca texto": comprueba que DISCRIMINE entre un encargo
+  y una pregunta. Un clasificador que responde lo mismo a todo no clasifica.
+- `test_autonomy.sh` — `scripts/autonomy.sh` y el Stop hook `verify-gate.sh` en
+  los cuatro estados que deciden si un run desatendido es seguro: oraculo rojo
+  (bloquea), verde (libera), presupuesto agotado (libera y avisa) y cap de
+  Claude Code (`stop_hook_active`: se aparta).
+- `test_detect_oracle.sh` — `scripts/detect-oracle.sh` contra proyectos
+  sinteticos, nunca contra proyectos reales del usuario.
+- `test_metrics.sh` — `scripts/metrics.py` sobre transcripts sinteticos, con
+  valores EXACTOS conocidos, y una comprobacion de falsabilidad: cambia el
+  fixture y exige que las metricas cambien.
+- `test_harness_structure.sh` — el presupuesto de complejidad de la capa nueva
+  (`.claude/`, `config/`, `knowledge/`). La linea base de `kit/` queda fuera
+  del computo a proposito (ADR 005).
+- `test_doc_claims.sh` — las cifras que la documentacion afirma sobre el repo
+  (suites, agentes, comandos, ADRs, documentos) contra el arbol real, y que
+  ningun documento cite un script que ya no existe.
+- `test_evals.sh` — el INSTRUMENTO del eval set, no el agente: que `run.sh`
+  exporte las variables que usan los checks, que ninguna tarea verifique
+  grepeando el transcript crudo (el prompt se copia dentro, asi que ese grep
+  acierta solo por el eco) y que cada modo de `grade.py` sepa fallar. Offline,
+  sin una sola llamada a la API.
+
+**Un `shellcheck` verde en local no es prueba.** El de CI se instala con `apt` y puede ser
+mas antiguo que el tuyo: sigue emitiendo checks de categoria `style` que las versiones
+>= 0.11 retiraron (p. ej. `SC2002`, *useless cat*). Paso exactamente eso — local limpio con
+0.11.0 y CI en rojo. **El oraculo es CI**, no tu maquina.
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 16 suites listadas arriba).
+(las 26 suites listadas arriba).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -163,7 +202,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 16 suites y el escaner de secretos
+# 2. las 26 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 

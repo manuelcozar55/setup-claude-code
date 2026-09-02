@@ -10,6 +10,13 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
+# Numero exacto de casos BLOCK que dependen de secret-guard.sh. Comprobar solo "> 0"
+# dejaba que una regresion bajara de 10 a 1 sin que nada se pusiera rojo, y ademas
+# README.md cita este 10 como hecho medido: sin fijarlo aqui, esa cifra podia quedarse
+# falsa en silencio. Si cambias los casos de test_guards.sh, actualiza este numero Y el
+# del README en el mismo commit -- ese es justo el punto de tenerlo aqui.
+STUB_BLOCK_CASES=10
+
 STUB=$(mktemp)
 printf '#!/bin/bash\nexit 0\n' > "$STUB"
 chmod +x "$STUB"
@@ -31,10 +38,18 @@ FLIPPED=$((STUB_FAIL - BASELINE_FAIL))
 echo "== resultado =="
 echo "casos que caen al neutralizar el guard: $FLIPPED"
 
-if [ "$BASELINE_FAIL" -eq 0 ] && [ "$FLIPPED" -gt 0 ]; then
-  echo "OK: la suite es falsable (un guard no-op rompe $FLIPPED caso(s) BLOCK que antes pasaban)."
-  exit 0
-else
+if [ "$BASELINE_FAIL" -ne 0 ]; then
+  echo "FAIL: la baseline no esta limpia (FAIL=$BASELINE_FAIL); arregla test_guards.sh antes."
+  exit 1
+fi
+if [ "$FLIPPED" -eq 0 ]; then
   echo "FAIL: la suite no detecto el guard neutralizado (posible tautologia)."
   exit 1
 fi
+if [ "$FLIPPED" -ne "$STUB_BLOCK_CASES" ]; then
+  echo "FAIL: caen $FLIPPED casos, se esperaban $STUB_BLOCK_CASES (STUB_BLOCK_CASES)."
+  echo "      Si el cambio es intencionado, actualiza STUB_BLOCK_CASES aqui y la cifra de README.md."
+  exit 1
+fi
+echo "OK: la suite es falsable (un guard no-op rompe los $FLIPPED casos BLOCK esperados)."
+exit 0

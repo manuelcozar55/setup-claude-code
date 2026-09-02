@@ -162,6 +162,10 @@ Type=simple
 ExecStart=%h/.local/bin/headroom proxy --port ${HR_PORT} --mode cache --no-telemetry
 Environment=HEADROOM_SAVINGS_PROFILE=coding
 Environment=PATH=%h/.local/bin:%h/.venvs/tools/bin:/usr/local/bin:/usr/bin:/bin
+# El motor de compresion descarga su modelo ONNX la primera vez. Con HF_HUB_OFFLINE=1
+# heredado del entorno, kompress queda available:false EN SILENCIO: /readyz sigue
+# healthy y el proxy no comprime nada.
+Environment=HF_HUB_OFFLINE=0
 # El '-' es deliberado: si el shaper falla, la unidad NO debe quedar en failed.
 ExecStartPost=-${SHAPER}
 Restart=always
@@ -172,7 +176,15 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.headroom %h/.cache/huggingface
+# read-only y no tmpfs a proposito: con tmpfs el home queda vacio dentro del
+# namespace y %h/.local/bin/headroom deja de existir -> la unidad no arranca
+# (203/EXEC). Como read-only si permite LEER todo el home, se tapan a mano los
+# directorios que el proxy no tiene ningun motivo para leer. El '-' tolera que falten.
+InaccessiblePaths=-%h/.ssh -%h/.aws -%h/.gnupg -%h/.config/gh
+# %h/.local/share/rtk: SQLite necesita escritura en el directorio aunque solo se
+# lea la base. Sin esto, 'unable to open database file (code 14)' cada 60 s. El '-'
+# porque el kit no instala rtk y no da por supuesto que exista.
+ReadWritePaths=%h/.headroom %h/.cache/huggingface -%h/.local/share/rtk
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
@@ -192,6 +204,10 @@ UNITEOF
       exit 1
     fi
     mkdir -p "$HOME/.headroom" "$HOME/.cache/huggingface"
+    # El proxy deja en ~/.headroom material derivado de tus prompts (ccr_store.db,
+    # savings_events.jsonl y, si alguien arranca con --log-messages, conversaciones
+    # enteras en claro). Por defecto quedaba 0755.
+    chmod 700 "$HOME/.headroom" 2>/dev/null || true
     systemctl --user daemon-reload
     systemctl --user enable --now headroom-proxy.service || true
     # linger: que el proxy arranque con la maquina y no al primer login.
@@ -237,11 +253,24 @@ UNITEOF
   exit 0
 fi
 
-STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo backup)-$$-${RANDOM:-0}"
-BK="$CLAUDE_HOME/backups/$STAMP"
+# --- Modo diff-first: CLAUDE_HOME es un repo git ajeno con remoto ----------
+# Si $CLAUDE_HOME es en si mismo un repositorio git con al menos un remoto
+# configurado, se asume que es un repo de configuracion propio del usuario
+# (p.ej. un "claude-config-private") y nunca se escribe encima sin que el
+# usuario lo vea: se genera aparte el arbol que se instalaria y se muestra
+# el diff contra lo instalado. --apply fuerza la escritura real; --plan
+# fuerza el modo diff aunque CLAUDE_HOME no sea un repo git (util en tests).
+is_git_repo_with_remote() {
+  git -C "$CLAUDE_HOME" rev-parse --git-dir >/dev/null 2>&1 || return 1
+  [ -n "$(git -C "$CLAUDE_HOME" remote 2>/dev/null)" ]
+}
 
-echo "==> Instalando en $CLAUDE_HOME"
-mkdir -p "$CLAUDE_HOME/hooks" "$CLAUDE_HOME/agents" "$CLAUDE_HOME/sentinel"
+MODE_APPLY=0
+MODE_PLAN=0
+case "${1:-}" in
+  --apply) MODE_APPLY=1 ;;
+  --plan)  MODE_PLAN=1 ;;
+esac
 
 install_file() {  # src dst
   local src="$1" dst="$2"
@@ -253,16 +282,134 @@ install_file() {  # src dst
   cp -p "$src" "$dst"
 }
 
-install_file "$KIT/claude/CLAUDE.md"            "$CLAUDE_HOME/CLAUDE.md"
-install_file "$KIT/claude/settings.json"        "$CLAUDE_HOME/settings.json"
-install_file "$KIT/claude/sentinel-allowlist.json" "$CLAUDE_HOME/sentinel-allowlist.json"
-install_file "$KIT/claude/.gitleaks.toml"       "$CLAUDE_HOME/.gitleaks.toml"
-for f in "$KIT"/claude/agents/*; do [ -e "$f" ] && install_file "$f" "$CLAUDE_HOME/agents/$(basename "$f")"; done
-for f in "$KIT"/claude/hooks/*;  do [ -f "$f" ] && install_file "$f" "$CLAUDE_HOME/hooks/$(basename "$f")"; done
-for f in "$KIT"/sentinel/*;      do [ -e "$f" ] && install_file "$f" "$CLAUDE_HOME/sentinel/$(basename "$f")"; done
-mkdir -p "$CLAUDE_HOME/hooks/git"
-install_file "$KIT/claude/hooks/git/pre-commit" "$CLAUDE_HOME/hooks/git/pre-commit"
-chmod +x "$CLAUDE_HOME"/hooks/*.sh "$CLAUDE_HOME"/hooks/git/pre-commit 2>/dev/null || true
+# settings.json NO se reemplaza si ya existe: se fusiona. Regla, y es deliberada:
+#   - `hooks`      -> gana el KIT. La cadena de guards es lo que el kit aporta.
+#   - `permissions`-> UNION. Nunca se pierde un deny (seguridad) ni un allow (tu trabajo).
+#   - `env`        -> tus claves ganan, y las nuevas del kit se anaden.
+#   - todo lo demas (model, statusLine, theme, enabledPlugins...) -> lo tuyo, intacto.
+# Por que existe esto: reemplazar el fichero entero borraba en silencio el ajuste personal.
+# Medido en una maquina real al reinstalar: se perdieron ENABLE_TOOL_SEARCH (que vale ~30k de
+# contexto por sesion), ANTHROPIC_MODEL con el sufijo de la ventana de 1M,
+# CLAUDE_CODE_AUTO_COMPACT_WINDOW y tres limites mas. Habia backup, pero un backup que hay que
+# descubrir no es una salvaguarda: es una autopsia.
+install_settings() {  # src dst
+  local src="$1" dst="$2" tmp
+  if [ ! -f "$dst" ] || ! command -v jq >/dev/null 2>&1; then
+    [ -f "$dst" ] && echo "   AVISO: sin jq no se puede fusionar settings.json; se reemplaza con backup" >&2
+    install_file "$src" "$dst"; return
+  fi
+  if ! jq empty "$dst" 2>/dev/null; then
+    echo "   AVISO: $dst no es JSON valido; se reemplaza con backup" >&2
+    install_file "$src" "$dst"; return
+  fi
+  tmp="$(mktemp)"
+  if jq -s '
+      .[0] as $kit | .[1] as $old |
+      ($kit + $old)
+      | .env = (($kit.env // {}) + ($old.env // {}))
+      | .hooks = ($kit.hooks // $old.hooks)
+      | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
+          | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
+          | .deny  = (($kit.permissions.deny  // []) + (($old.permissions.deny  // []) - ($kit.permissions.deny  // []))))
+    ' "$src" "$dst" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
+    if ! cmp -s "$tmp" "$dst"; then
+      mkdir -p "$(dirname "$BK/${dst#"$CLAUDE_HOME"/}")"
+      cp -p "$dst" "$BK/${dst#"$CLAUDE_HOME"/}"
+      echo "   backup: ${dst#"$CLAUDE_HOME"/} (fusionado: hooks del kit, permisos unidos, tu env y tu model intactos)"
+      cp -p "$tmp" "$dst"
+    fi
+    rm -f "$tmp"
+  else
+    rm -f "$tmp"
+    echo "   AVISO: la fusion de settings.json fallo; se deja el tuyo intacto" >&2
+  fi
+}
+
+# CLAUDE.md son instrucciones que escribes tu: no se pisa si ya la has tocado. Se deja la del
+# kit al lado, como CLAUDE.kit.md, y se avisa. Reemplazarla borraba trabajo irrecuperable por
+# fusion automatica -- una prosa no se puede fusionar como un JSON.
+install_claude_md() {  # src dst
+  local src="$1" dst="$2"
+  if [ ! -f "$dst" ]; then cp -p "$src" "$dst"; return; fi
+  if cmp -s "$src" "$dst"; then return; fi
+  cp -p "$src" "$(dirname "$dst")/CLAUDE.kit.md"
+  echo "   CLAUDE.md ya existe y la has modificado: NO se toca."
+  echo "   La version del kit queda en CLAUDE.kit.md para que compares y copies lo que quieras."
+}
+
+install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
+  local base="$1"
+  mkdir -p "$base/hooks" "$base/agents" "$base/sentinel"
+  install_claude_md "$KIT/claude/CLAUDE.md"       "$base/CLAUDE.md"
+  install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
+  install_file "$KIT/claude/sentinel-allowlist.json" "$base/sentinel-allowlist.json"
+  install_file "$KIT/claude/.gitleaks.toml"       "$base/.gitleaks.toml"
+  for f in "$KIT"/claude/agents/*; do [ -e "$f" ] && install_file "$f" "$base/agents/$(basename "$f")"; done
+  for f in "$KIT"/claude/hooks/*;  do [ -f "$f" ] && install_file "$f" "$base/hooks/$(basename "$f")"; done
+  for f in "$KIT"/sentinel/*;      do [ -e "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
+  mkdir -p "$base/hooks/git"
+  install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
+  chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit 2>/dev/null || true
+}
+
+run_diff_first() {
+  local out="${MCHARNESS_OUT:-$PWD/.mcharness-out}"
+  rm -rf "$out"
+  install_kit_files "$out"
+
+  echo "==> $CLAUDE_HOME es un repositorio git con remoto configurado: no se escribe nada ahi."
+  echo "    Arbol que se instalaria, generado en: $out"
+  echo
+
+  local rel
+  local new=() changed=() same=()
+  while IFS= read -r -d '' f; do
+    rel="${f#"$out"/}"
+    if [ ! -e "$CLAUDE_HOME/$rel" ]; then
+      new+=("$rel")
+    elif cmp -s "$f" "$CLAUDE_HOME/$rel"; then
+      same+=("$rel")
+    else
+      changed+=("$rel")
+    fi
+  done < <(find "$out" -type f -print0)
+
+  echo "==> nuevos (no existen en $CLAUDE_HOME):"
+  if [ "${#new[@]}" -gt 0 ]; then printf '    %s\n' "${new[@]}"; else echo "    (ninguno)"; fi
+  echo "==> identicos (nada que hacer):"
+  if [ "${#same[@]}" -gt 0 ]; then printf '    %s\n' "${same[@]}"; else echo "    (ninguno)"; fi
+  echo "==> modificados (diff completo abajo):"
+  if [ "${#changed[@]}" -eq 0 ]; then echo "    (ninguno)"; fi
+
+  for rel in "${changed[@]}"; do
+    echo "----- diff: $rel -----"
+    diff -u "$CLAUDE_HOME/$rel" "$out/$rel" || true
+  done
+
+  cat <<EOF
+
+==> $CLAUDE_HOME es tu propio repo git (con remoto): no se sobreescribe sin
+    que lo veas. Que hacer:
+      1. Revisa arriba los ficheros nuevos/modificados (arbol completo en $out).
+      2. Copia a mano lo que quieras adoptar de $out a $CLAUDE_HOME.
+      3. Commitea esos cambios en TU repo (el privado), como de costumbre.
+
+    Si en vez de eso quieres que este instalador escriba directamente sobre
+    $CLAUDE_HOME (con el backup habitual de siempre), vuelve a lanzarlo con:
+        bash $KIT/install.sh --apply
+EOF
+}
+
+if [ "$MODE_APPLY" -eq 0 ] && { [ "$MODE_PLAN" -eq 1 ] || is_git_repo_with_remote; }; then
+  run_diff_first
+  exit 0
+fi
+
+STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo backup)-$$-${RANDOM:-0}"
+BK="$CLAUDE_HOME/backups/$STAMP"
+
+echo "==> Instalando en $CLAUDE_HOME"
+install_kit_files "$CLAUDE_HOME"
 
 # --- gitleaks: dependencia de la Capa 2 (opcional; la Capa 1 no la necesita) -
 gitleaks_present() {
