@@ -68,9 +68,9 @@ de ahí, con los límites de "por nombre" ya descritos arriba — no de la Capa
 ### Sentinel (`sentinel/sentinel_preflight.py`)
 
 Es **fail-open** por diseño: si el hook crashea o no encuentra su fichero de
-IOCs (`iocs.json`, que el kit no incluye para no filtrar indicadores
-propios), `decide()` resuelve "allow" en vez de bloquear. Esto es una
-decisión consciente de disponibilidad sobre seguridad — ver
+IOCs (`kit/sentinel/iocs.json`, que el kit **sí** distribuye, así que en una
+instalación normal está), `decide()` resuelve "allow" en vez de bloquear.
+Esto es una decisión consciente de disponibilidad sobre seguridad — ver
 `kit/docs/05-security.md` para el razonamiento completo — y significa que
 Sentinel es opcional y aditivo, no la barrera principal.
 

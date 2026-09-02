@@ -22,9 +22,9 @@ Un hábito operativo: mandar un mensaje mínimo a las 6:00 de la mañana para an
 
 Este ping **no se automatiza como parte de este kit**. Si quieres programarlo tú mismo, hay una plantilla opcional y comentada más abajo.
 
-## `/compact` a mano frente a autocompact al 75 %
+## `/compact` a mano frente al autocompact
 
-Prefiere compactar a mano con `/compact`, indicando explícitamente qué conservar, en los puntos naturales de una tarea (tras cerrar una fase, antes de delegar a un sub-agente). El autocompact automático, que este kit configura al 75 % de la ventana (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: "75"` en `settings.json`), es el airbag, no el plan A: está para cuando te olvidas o la sesión se alarga más de lo previsto, no para sustituir la decisión consciente de qué es prescindible.
+Prefiere compactar a mano con `/compact`, indicando explícitamente qué conservar, en los puntos naturales de una tarea (tras cerrar una fase, antes de delegar a un sub-agente). El autocompact automático es el airbag, no el plan A: está para cuando te olvidas o la sesión se alarga más de lo previsto, no para sustituir la decisión consciente de qué es prescindible. Este kit **no** toca su umbral: el `settings.json` que instala no lleva ninguna clave para moverlo.
 
 ## `opus[1m]` solo cuando no cabe
 

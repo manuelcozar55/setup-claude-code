@@ -1091,6 +1091,238 @@ else
 fi
 rm -f "$HRTMP"/*; rmdir "$HRTMP"
 
+# --- 6. La capa de IOCs: el kit la trae, y ningun documento puede negarlo ----
+# Tres documentos publicaban que "el kit no trae iocs.json" y que para activar la capa
+# habia que copiar el ejemplo a $HOME/.claude/hooks/. Las dos cosas eran falsas:
+# kit/sentinel/iocs.json esta versionado, install.sh lo copia junto al hook y doctor.sh
+# imprime PASS en una instalacion limpia; y el paso que mandaba el doc creaba un fichero
+# SOMBREADO, porque load_iocs() mira primero al lado de sentinel_preflight.py. Nada se
+# puso rojo porque el sensor de esta suite juzga cifras de inventario, y "el kit no lo
+# trae" no lleva cifra.
+#
+# Se juzga en los DOS sentidos, y por eso el fichero entra por argumento: mientras el kit
+# lo distribuya, ningun documento puede negarlo; si algun dia deja de distribuirlo, el que
+# lo afirme se pone rojo. Un sensor de un solo lado convierte el arreglo de hoy en la
+# mentira de manana.
+iocs_doc() {
+  local ioc="$1"; shift
+  local f l corte vistas=0
+  corte=$(printf '%s' "$ioc" | cut -c1-40)
+  for f in "$@"; do
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      vistas=$((vistas+1))
+      if [ -f "$ioc" ]; then
+        printf '%s' "$l" | grep -qiE 'no (lo |la )?(trae|incluye|distribuye|reparte)' \
+          && echo "  $f niega que el kit traiga $corte, y esta versionado: $(printf '%s' "$l" | cut -c1-70)"
+      elif printf '%s' "$l" | grep -qiE '(trae|distribuye|incluye|viene con)' \
+        && ! printf '%s' "$l" | grep -qiE 'no (lo |la )?(trae|incluye|distribuye|reparte)'; then
+        echo "  $f afirma que el kit trae $corte y ya no esta en el arbol: $(printf '%s' "$l" | cut -c1-70)"
+      fi
+    done <<< "$(grep -ni 'iocs\.json' "$f" 2>/dev/null | grep -v 'doc-claims:ignore')"
+  done
+  [ "$vistas" -gt 0 ] \
+    || echo "  ninguno de los $# documentos nombra iocs.json: no hay nada que juzgar"
+}
+# SECURITY.md no esta en DOCS -no habla en presente del inventario del arbol- pero es uno
+# de los tres sitios donde vivia la frase falsa, asi que entra aqui por su nombre.
+hr_check "ningun documento niega que el kit distribuya kit/sentinel/iocs.json" \
+  iocs_doc kit/sentinel/iocs.json "${DOCS[@]}" SECURITY.md
+
+# Falsabilidad, los dos sentidos y el caso mudo. Las dos primeras copias reinyectan la
+# frase retirada TAL COMO estaba escrita; la tercera pregunta por un iocs.json que no
+# existe, que es el unico modo de sondar la otra rama sin borrar el fichero del arbol.
+IOCTMP=$(mktemp -d) || exit 1
+sed 's/el kit lo distribuye/el kit no lo trae/' kit/docs/05-security.md > "$IOCTMP/d-niega.md"
+sed 's/que el kit \*\*sí\*\* distribuye/que el kit no incluye/' SECURITY.md > "$IOCTMP/s-niega.md"
+printf 'Sentinel lee sus patrones de un fichero.\n' > "$IOCTMP/d-mudo.md"
+ioc_malos=0
+for ioc_caso in \
+  "iocs_doc kit/sentinel/iocs.json $IOCTMP/d-niega.md" \
+  "iocs_doc kit/sentinel/iocs.json $IOCTMP/s-niega.md" \
+  "iocs_doc $IOCTMP/no-existe.json kit/docs/05-security.md" \
+  "iocs_doc kit/sentinel/iocs.json $IOCTMP/d-mudo.md"
+do
+  # shellcheck disable=SC2086 # la palabra es "<comprobador> <fichero...>": se parte a proposito
+  [ -n "$($ioc_caso)" ] || { ioc_malos=$((ioc_malos+1)); echo "     (sin queja: $ioc_caso)"; }
+done
+if [ "$ioc_malos" -eq 0 ]; then
+  echo "ok - falsabilidad: acusa las dos redacciones de la frase retirada, el documento que"
+  echo "     afirmaria lo contrario si el kit dejara de traer el fichero, y el que no mide nada"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $ioc_malos de 4 averias fabricadas pasaron el comprobador de iocs.json"
+  fail=$((fail+1))
+fi
+rm -f "$IOCTMP"/*; rmdir "$IOCTMP"
+
+# --- 7. La plantilla publica: sin el estado de esta maquina y con techo propio ---
+# kit/claude/CLAUDE.md no es documentacion: install.sh la ESCRIBE en el $HOME/.claude de
+# quien la instala. Llevaba dentro dos bloques que Claude Code inyecta el mismo en cada
+# sesion -'# userEmail' y '# currentDate'-, asi que la plantilla le afirmaba al modelo un
+# correo ajeno y una fecha congelada (112 dias de desfase el dia que se retiro) en cada
+# sesion de cada usuario. Y una version fijada de agent-browser, que se pudre sola en
+# cuanto el paquete publica: la cura no es actualizarla, es no escribirla.
+#
+# El techo va aqui por una asimetria medida: el presupuesto de contexto de
+# test_harness_structure.sh vigila SOLO el CLAUDE.md de la raiz (<100 lineas, <900
+# aprox-tokens; medido 76/899), y la plantilla que se reparte llegaba a 143 lineas y 1.977
+# aprox-tokens sin un solo sensor. Su techo es mas alto a proposito -tiene que sostenerse
+# sola en una maquina recien instalada, sin knowledge/ ni skills al lado- pero es un
+# numero declarado y medido, no la ausencia de numero. Pasar de aqui pide otra ronda de
+# poda (knowledge/AUDIT-CLAUDE-MD.md, que aun tiene secciones marcadas SKILL y HOOK), no
+# subir el techo.
+PLANTILLA_LINEAS=120
+PLANTILLA_TOKENS=1700
+plantilla_doc() {
+  local f="$1" l t
+  if [ ! -f "$f" ]; then
+    echo "  no existe $f: install.sh escribe esa plantilla en el \$HOME de quien lo corre"
+    return 0
+  fi
+  grep -qi 'userEmail' "$f" \
+    && echo "  $f fija el correo del usuario: Claude Code inyecta '# userEmail' en runtime"
+  grep -qiE "currentDate|today's date is" "$f" \
+    && echo "  $f fija la fecha: Claude Code inyecta '# currentDate' en runtime, y aqui se pudre"
+  grep -qE 'agent-browser[ `]+[0-9]+\.[0-9]+' "$f" \
+    && echo "  $f fija una version de agent-browser: se pudre en la siguiente publicacion"
+  l=$(wc -l < "$f" | tr -d ' ')
+  t=$(( $(wc -c < "$f" | tr -d ' ') / 4 ))
+  [ "$l" -lt "$PLANTILLA_LINEAS" ] \
+    || echo "  $f tiene $l lineas y su techo declarado son $PLANTILLA_LINEAS"
+  [ "$t" -lt "$PLANTILLA_TOKENS" ] \
+    || echo "  $f tiene $t aprox-tokens (chars/4) y su techo declarado son $PLANTILLA_TOKENS"
+  return 0
+}
+hr_check "la plantilla kit/claude/CLAUDE.md no lleva estado de una maquina y cabe en su techo ($PLANTILLA_LINEAS lineas / $PLANTILLA_TOKENS aprox-tokens)" \
+  plantilla_doc kit/claude/CLAUDE.md
+
+# Falsabilidad: los tres bloques retirados, escritos tal como estaban, el techo desbordado
+# y la plantilla ausente.
+PLTMP=$(mktemp -d) || exit 1
+{ cat kit/claude/CLAUDE.md; printf '# userEmail\nThe user email address is x@example.com.\n'; } \
+  > "$PLTMP/p-mail.md"
+{ cat kit/claude/CLAUDE.md; printf '# currentDate\nToday'"'"'s date is 2026-05-13.\n'; } \
+  > "$PLTMP/p-fecha.md"
+# shellcheck disable=SC2016 # los backticks son los del markdown de la plantilla, literales
+sed 's/Installed globally as `agent-browser`/Installed globally: `agent-browser 0.27.0`/' \
+  kit/claude/CLAUDE.md > "$PLTMP/p-version.md"
+{ cat kit/claude/CLAUDE.md; seq 1 "$PLANTILLA_LINEAS" | sed 's/^/relleno /'; } > "$PLTMP/p-gordo.md"
+pl_malos=0
+for pl_caso in p-mail p-fecha p-version p-gordo no-existe; do
+  [ -n "$(plantilla_doc "$PLTMP/$pl_caso.md")" ] \
+    || { pl_malos=$((pl_malos+1)); echo "     (sin queja: $pl_caso)"; }
+done
+if [ "$pl_malos" -eq 0 ]; then
+  echo "ok - falsabilidad: acusa los tres bloques retirados (userEmail, currentDate, la version"
+  echo "     de agent-browser), el techo desbordado y la plantilla que no esta"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $pl_malos de 5 averias fabricadas pasaron el comprobador de la plantilla"
+  fail=$((fail+1))
+fi
+rm -f "$PLTMP"/*; rmdir "$PLTMP"
+
+# --- 8. La version: una fuente legible por maquina y sus copias en prosa ------
+# Hasta la 1.1.0 la version vivia SOLO en prosa -README.md y CLAUDE.md decian "v1.0.0,
+# estable"- y nada la vigilaba: `grep '1\.0\.0' kit/test/*.sh` daba cero coincidencias con
+# el arbol a 111 commits de la etiqueta. Etiquetar la 1.1.0 habria dejado los dos
+# documentos diciendo v1.0.0 con las 27 suites en verde.
+#
+# La fuente es el fichero VERSION y NO `git tag`: actions/checkout no trae etiquetas, asi
+# que atarlo a la etiqueta degradaria este check a un skip en CI, que es un verde que no
+# mide. La seccion mas nueva del CHANGELOG entra porque es la que dice QUE es esa version;
+# sus secciones publicadas siguen fuera de `claim` por lo de §1, que es otra cosa: aqui no
+# se juzga ninguna cifra de dentro, solo el numero de la cabecera.
+#
+# En prosa se ancla a la linea que declara el estado del kit ("v1.1.0, estable"), no a
+# cualquier vX.Y.Z del documento: la capa de la raiz publica su propia version en la fila
+# de al lado ("v0.1.0, nuevo") y es correcta. El precio del ancla esta medido y se acepta:
+# si alguien escribe "estable" en una linea que lleva otra version, sale rojo; y si la
+# quita, sale rojo por no haber medido nada.
+ver_unica() {
+  local vf="$1" chlog="$2"; shift 2
+  local ver nuevo f v n
+  ver=$(sed -n 1p "$vf" 2>/dev/null | tr -d ' \r')
+  if [ -z "$ver" ]; then
+    echo "  no hay $vf o su primera linea esta vacia: la version vuelve a vivir solo en prosa"
+    return 0
+  fi
+  case "$ver" in
+    [0-9]*.[0-9]*.[0-9]*) ;;
+    *) echo "  $vf no contiene una version semantica, sino '$ver'"; return 0 ;;
+  esac
+  nuevo=$(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' "$chlog" 2>/dev/null | sed -n 1p \
+          | tr -d '#[] ')
+  if [ -z "$nuevo" ]; then
+    echo "  $chlog no publica ninguna seccion '## [x.y.z]': $vf dice $ver y nadie lo respalda"
+  elif [ "$nuevo" != "$ver" ]; then
+    echo "  $vf dice $ver y la seccion mas nueva de $chlog es la [$nuevo]"
+  fi
+  for f in "$@"; do
+    n=0
+    while IFS= read -r v; do
+      [ -n "$v" ] || continue
+      n=$((n+1))
+      [ "$v" = "v$ver" ] || echo "  $f publica $v donde $vf dice $ver"
+    done <<< "$(grep -h 'estable' "$f" 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')"
+    [ "$n" -gt 0 ] \
+      || echo "  $f ya no publica ninguna version junto a 'estable': no hay nada que juzgar"
+  done
+}
+hr_check "VERSION, README.md, CLAUDE.md y la seccion mas nueva de CHANGELOG.md dicen la misma version" \
+  ver_unica VERSION CHANGELOG.md README.md CLAUDE.md
+
+# Falsabilidad. Las deformaciones NO salen del arbol real, y esa es la diferencia con las
+# sondas de arriba: mientras la version en curso no este etiquetada en el CHANGELOG, el
+# comprobador ya se queja del arbol, y deformar una copia de un estado que YA esta rojo no
+# demuestra nada -saldria queja igual y la sonda aprobaria sin medir-. Asi que se fabrica
+# un juego coherente de cuatro ficheros, se exige que salga VERDE, y desde ahi se deforma
+# una pieza cada vez.
+VTMP=$(mktemp -d) || exit 1
+printf '9.9.9\n' > "$VTMP/VERSION"
+# shellcheck disable=SC2016 # los backticks son los del markdown de las dos filas, literales
+printf '| **`kit/`** | La instalacion: guards, hooks, Sentinel | v9.9.9, estable |\n' > "$VTMP/README.md"
+# shellcheck disable=SC2016 # idem: es la linea de CLAUDE.md, no una expansion
+printf -- '- `kit/` - capa de instalacion, v9.9.9, estable. No se toca sin `make test`.\n' \
+  > "$VTMP/CLAUDE.md"
+printf '# Changelog\n\n## [Unreleased]\n\n## [9.9.9] - 2026-01-01\n\n## [1.0.0] - 2026-08-05\n' \
+  > "$VTMP/CHANGELOG.md"
+printf '1.2.3\n' > "$VTMP/VERSION-otra"
+: > "$VTMP/VERSION-vacia"
+sed 's/v9\.9\.9/v1.2.3/' "$VTMP/README.md"                  > "$VTMP/README-otra.md"
+sed 's/v9\.9\.9, //'     "$VTMP/README.md"                  > "$VTMP/README-muda.md"
+sed 's/v9\.9\.9/v1.2.3/' "$VTMP/CLAUDE.md"                  > "$VTMP/CLAUDE-otra.md"
+sed 's/^## \[9\.9\.9\]/## [1.2.3]/' "$VTMP/CHANGELOG.md"    > "$VTMP/CHANGELOG-otra.md"
+sed '/^## \[[0-9]/d'     "$VTMP/CHANGELOG.md"               > "$VTMP/CHANGELOG-sin.md"
+ver_malos=0
+if [ -n "$(ver_unica "$VTMP/VERSION" "$VTMP/CHANGELOG.md" "$VTMP/README.md" "$VTMP/CLAUDE.md")" ]; then
+  ver_malos=$((ver_malos+1)); echo "     (el juego coherente sale con quejas: el comprobador no sabe aprobar)"
+fi
+for ver_caso in \
+  "$VTMP/VERSION-otra $VTMP/CHANGELOG.md $VTMP/README.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION-vacia $VTMP/CHANGELOG.md $VTMP/README.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION $VTMP/CHANGELOG-otra.md $VTMP/README.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION $VTMP/CHANGELOG-sin.md $VTMP/README.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION $VTMP/CHANGELOG.md $VTMP/README-otra.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION $VTMP/CHANGELOG.md $VTMP/README-muda.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION $VTMP/CHANGELOG.md $VTMP/README.md $VTMP/CLAUDE-otra.md"
+do
+  # shellcheck disable=SC2086 # la palabra son los cuatro ficheros: se parte a proposito
+  [ -n "$(ver_unica $ver_caso)" ] \
+    || { ver_malos=$((ver_malos+1)); echo "     (sin queja: $ver_caso)"; }
+done
+if [ "$ver_malos" -eq 0 ]; then
+  echo "ok - falsabilidad: aprueba un juego coherente y acusa las siete deformaciones (VERSION"
+  echo "     distinta y vacia, CHANGELOG con otra cabecera y sin ninguna, README con otra"
+  echo "     version y sin ninguna, CLAUDE.md con otra version)"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $ver_malos de 8 casos fabricados salieron al reves (tautologia)"
+  fail=$((fail+1))
+fi
+rm -f "$VTMP"/*; rmdir "$VTMP"
+
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
 else
