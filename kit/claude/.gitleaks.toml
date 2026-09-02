@@ -24,8 +24,23 @@
 # repetir la medicion sobre un repo representativo.
 #
 # useDefault = true: extiende (no reemplaza) las reglas por defecto de
-# gitleaks -- las claves de alta entropia (AWS, Anthropic, genericas, etc.)
-# se siguen detectando igual que antes de que este fichero existiera.
+# gitleaks -- las claves de AWS y las genericas de alta entropia se siguen
+# detectando igual que antes de que este fichero existiera.
+#
+# Para Anthropic eso NO bastaba, y el comentario anterior lo afirmaba de mas.
+# Medido con gitleaks 8.30.1 sobre repos desechables (claves sinteticas): la
+# regla por defecto anthropic-api-key solo dispara con la forma exacta
+# sk-ant-<tipo>-<93 chars>AA. Con la misma clave alargada a 105 chars, el
+# fichero se COMITEA sin bloqueo en .yaml, .txt y .md; lo unico que salvaba el
+# caso .yaml del test era el prefijo de asignacion (ANTHROPIC_API_KEY=...),
+# que lo caza dict-password-config-file, no una regla de Anthropic. Es decir:
+# la deteccion dependia de la entropia y la forma del valor, no del prefijo
+# sk-ant-, y fuera de las extensiones de config no quedaba nada.
+#
+# De ahi anthropic-api-key-prefix, abajo: SIN acotar por path (el prefijo
+# sk-ant- es inequivoco, no necesita el contexto de un fichero de config) y
+# sin umbral de entropia ni longitud fija, para que cubra tambien claves
+# truncadas, de admin o de un formato futuro.
 #
 # Nota de invocacion: este fichero se pasa con -c explicito en
 # hooks/git/pre-commit, no se depende de la autodeteccion
@@ -49,3 +64,9 @@ path = '''\.(ya?ml|toml|ini|properties|conf|cfg)$'''
     '''^\$\{''',
     '''^<.*>$''',
   ]
+
+[[rules]]
+id = "anthropic-api-key-prefix"
+description = "Clave de API de Anthropic por prefijo sk-ant-, en cualquier tipo de fichero (la regla por defecto solo cubre la forma <93 chars>AA)"
+regex = '''sk-ant-[a-zA-Z0-9\-_]{20,}'''
+keywords = ["sk-ant-"]
