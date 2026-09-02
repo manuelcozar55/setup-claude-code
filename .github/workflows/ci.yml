@@ -79,6 +79,9 @@ jobs:
       - name: test_install.sh (instala + idempotencia con backup)
         run: bash kit/test/test_install.sh
 
+      - name: test_install_settings_merge.sh (statusLine y lo tuyo sobreviven a la fusion)
+        run: bash kit/test/test_install_settings_merge.sh
+
       - name: test_doctor.sh
         run: bash kit/test/test_doctor.sh
 

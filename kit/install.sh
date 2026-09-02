@@ -302,7 +302,10 @@ install_settings() {  # src dst
     echo "   AVISO: $dst no es JSON valido; se reemplaza con backup" >&2
     install_file "$src" "$dst"; return
   fi
-  tmp="$(mktemp)"
+  # El temporal va en el MISMO directorio que $dst para que el mv de abajo sea un rename
+  # atomico (no cruza sistemas de ficheros): un fallo a mitad del cp anterior dejaba tu
+  # settings.json truncado, y no hay medio settings.json que valga.
+  tmp="$(mktemp "$dst.XXXXXX")"
   if jq -s '
       .[0] as $kit | .[1] as $old |
       ($kit + $old)
@@ -316,7 +319,8 @@ install_settings() {  # src dst
       mkdir -p "$(dirname "$BK/${dst#"$CLAUDE_HOME"/}")"
       cp -p "$dst" "$BK/${dst#"$CLAUDE_HOME"/}"
       echo "   backup: ${dst#"$CLAUDE_HOME"/} (fusionado: hooks del kit, permisos unidos, tu env y tu model intactos)"
-      cp -p "$tmp" "$dst"
+      chmod --reference="$dst" "$tmp"
+      mv "$tmp" "$dst"
     fi
     rm -f "$tmp"
   else
