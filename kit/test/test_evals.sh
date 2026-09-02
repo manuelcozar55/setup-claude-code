@@ -1131,7 +1131,10 @@ ck "$(metrica)" "filas=2 unicos=2 vivos=2 derivables=2" \
 limpia
 RELOJ_TS=2026-08-27T08:20:46Z PATH="$COL/bin:$PATH" bash "$COL/run.sh" t-colision t-colision >/dev/null 2>&1
 rc_rep=$?
-ck "rc=$rc_rep filas=$(cat "$COL/runs.jsonl" 2>/dev/null | wc -l)" "rc=2 filas=0" \
+# `cat f | wc -l` era un cat inutil (SC2002). Se cuenta con una redireccion, pero hay que
+# conservar el comportamiento con el fichero AUSENTE: tiene que dar 0, no vacio.
+filas_rep=0; [ -f "$COL/runs.jsonl" ] && filas_rep="$(wc -l < "$COL/runs.jsonl")"
+ck "rc=$rc_rep filas=$filas_rep" "rc=2 filas=0" \
    "la misma tarea dos veces en una invocacion se rechaza y no deja filas"
 
 # Y el otro lado, o la guardia podria ser 'rechazar siempre que haya argumentos':

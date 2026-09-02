@@ -94,6 +94,11 @@ Todo vive bajo `kit/test/`:
   acierta solo por el eco) y que cada modo de `grade.py` sepa fallar. Offline,
   sin una sola llamada a la API.
 
+**Un `shellcheck` verde en local no es prueba.** El de CI se instala con `apt` y puede ser
+mas antiguo que el tuyo: sigue emitiendo checks de categoria `style` que las versiones
+>= 0.11 retiraron (p. ej. `SC2002`, *useless cat*). Paso exactamente eso — local limpio con
+0.11.0 y CI en rojo. **El oraculo es CI**, no tu maquina.
+
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
 (las 26 suites listadas arriba).
 
