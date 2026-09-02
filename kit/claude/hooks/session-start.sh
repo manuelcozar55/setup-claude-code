@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # SessionStart hook — brief context reminder
 #
-# NO imprime el cuerpo de MEMORY.md. La auto-memoria de Claude Code ya inyecta ese
-# indice por su cuenta, asi que volcarlo aqui lo mete DOS VECES en el contexto de
-# cada sesion (medido 2026-08-25: ~985 tokens duplicados por arranque, gratis).
-# Lo que este hook aporta y la auto-memoria no es la senal de vida: si esta linea
-# no sale, la ruta de memoria no es la que crees, y eso hay que verlo.
+# NO imprime el cuerpo de MEMORY.md: el sistema de auto-memoria de Claude Code ya
+# lo inyecta por su cuenta, y hasta 2026-08-25 el indice entero llegaba DOS veces
+# al contexto (~985 tokens duplicados por sesion). Lo que este hook aporta y la
+# auto-memoria no es la senal de vida: si esta linea no aparece, la ruta de
+# memoria no es la que crees, y eso hay que verlo.
 MEMORY="$HOME/.claude/projects/$(echo "$PWD" | tr '/' '-')/memory/MEMORY.md"
+# El limite estaba en 20 y el indice ya iba por 16 (2026-08-17): a cuatro memorias
+# de empezar a perderlas sin decir nada. Si se vuelve a alcanzar, que se note.
 LIMIT=60
 if [ -f "$MEMORY" ]; then
   N=$(grep -c '^- \[' "$MEMORY" 2>/dev/null || echo 0)

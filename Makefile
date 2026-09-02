@@ -12,10 +12,13 @@ bootstrap: ## De cero a sesion verde: perfil, kit, doctor y oraculo. El comando 
 	@[ -f config/profile.yaml ] || { cp config/profile.example.yaml config/profile.yaml; \
 	  echo "==> config/profile.yaml creado desde el ejemplo. Editalo: es tuyo y no viaja en el repo."; }
 	bash kit/install.sh
-	bash kit/doctor.sh
 	@$(MAKE) --no-print-directory test
 	@echo ""
+	@echo "==> Suite verde. Ahora el estado de ESTA maquina:"
+	bash kit/doctor.sh
+	@echo ""
 	@echo "==> Harness levantado y verificado."
+	@echo "    Un FAIL de doctor.sh es un hallazgo de tu maquina, no del kit: leelo y actua."
 	@echo "    Headroom NO se instala aqui a proposito: es opt-in, y en el perfil de uso"
 	@echo "    medido rinde un 0,8 % de tokens a cambio de 512 ms por peticion. Lee"
 	@echo "    kit/docs/10-onboarding.md antes de decidir; si lo quieres:"
