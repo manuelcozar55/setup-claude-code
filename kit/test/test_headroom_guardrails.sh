@@ -43,10 +43,15 @@ install_clean() { # imprime CLAUDE_HOME
   echo "$h/.claude"
 }
 
-mk_home() { # imprime una raiz que hace de HOME, con un headroom de pega en el PATH
+mk_home() { # imprime una raiz que hace de HOME, con un headroom de pega
   local r; r="$(mktemp -d)"
-  mkdir -p "$r/bin" "$r/.config/systemd/user" "$r/.headroom/logs"
-  printf '#!/bin/sh\nexit 0\n' > "$r/bin/headroom"; chmod +x "$r/bin/headroom"
+  mkdir -p "$r/.local/bin" "$r/.config/systemd/user" "$r/.headroom/logs"
+  # En .local/bin y no en bin/: la unidad referencia %h/.local/bin/headroom, y
+  # `systemd-analyze verify` COMPRUEBA que el ExecStart exista. Con un HOME falso sin
+  # el binario devuelve rc=1 ("Command ... is not executable"), asi que el mismo test
+  # pasaba lanzado a mano (HOME real, binario presente) y fallaba dentro de
+  # `make bootstrap` (HOME aislado). Es la misma no-hermeticidad que esta suite vigila.
+  printf '#!/bin/sh\nexit 0\n' > "$r/.local/bin/headroom"; chmod +x "$r/.local/bin/headroom"
   chmod 700 "$r/.headroom"
   echo "$r"
 }
@@ -64,7 +69,7 @@ write_unit() { # $1 raiz-HOME, $2 argumentos de ExecStart
 
 run_doctor() { # $1 CLAUDE_HOME, $2 raiz-HOME -> salida completa
   env -u ANTHROPIC_BASE_URL HOME="$2" XDG_CONFIG_HOME="$2/.config" \
-      PATH="$2/bin:$PATH" CLAUDE_HOME="$1" bash "$KIT/doctor.sh" 2>&1
+      PATH="$2/.local/bin:$PATH" CLAUDE_HOME="$1" bash "$KIT/doctor.sh" 2>&1
 }
 
 # --- 1) dos fuentes de enrutado -> FAIL -------------------------------------
@@ -141,7 +146,7 @@ fi
 
 # --- 7) la unidad que GENERA install.sh trae las tres correcciones ---------
 # Se genera con el mismo camino que usa test_with_headroom.sh: sin red y sin systemd.
-R7="$(mktemp -d)"
+R7="$(mk_home)"
 CLAUDE_HOME="$R7/.claude" GITLEAKS_AUTO_INSTALL=n bash "$KIT/install.sh" >/dev/null 2>&1
 CLAUDE_HOME="$R7/.claude" XDG_CONFIG_HOME="$R7/.config" HEADROOM_DRY_RUN=1 HEADROOM_FAKE_READY=1 \
   bash "$KIT/install.sh" --with-headroom >/dev/null 2>&1
@@ -162,7 +167,7 @@ if [ -f "$U7" ]; then
   else ok; fi
   if command -v systemd-analyze >/dev/null 2>&1; then
     want "systemd-analyze verify rechaza la unidad generada" \
-      systemd-analyze verify --user "$U7" >/dev/null 2>&1
+      env HOME="$R7" systemd-analyze verify --user "$U7" >/dev/null 2>&1
   else
     echo "skip - systemd-analyze ausente: no se valida la sintaxis de la unidad"
   fi
