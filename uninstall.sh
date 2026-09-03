@@ -18,11 +18,17 @@
 #
 # Overrides (igual que scripts/backup.sh):
 #   CLAUDE_HOME  (def. $HOME/.claude)   BACKUP_DIR  (def. $HOME/backups)
+# El claude.json se restaura AL LADO de $CLAUDE_HOME, no en $HOME.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
+# Destino del claude.json, derivado de $CLAUDE_HOME y no de $HOME: con el valor por
+# defecto sale el mismo $HOME/.claude.json de siempre, pero con un CLAUDE_HOME temporal
+# deja de pisar el fichero REAL de quien ejecuta el script (25 proyectos y el historial
+# de sesiones dentro). No se hace sobreescribible: el derivarlo ES la proteccion.
+CLAUDE_JSON="$(dirname "$CLAUDE_HOME")/.claude.json"
 
 die() { printf '\033[31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 ok()  { printf '\033[32m ok \033[0m %s\n' "$*"; }
@@ -153,7 +159,7 @@ restore_zip_plan() {
   echo "  origen: snapshot ZIP de scripts/backup.sh ($zip)"
   root="$(extract_and_verify_zip "$zip")"
   echo "  restauraria: $root/claude/  ->  $CLAUDE_HOME/"
-  [ -f "$root/claude.json" ] && echo "  restauraria: $root/claude.json  ->  \$HOME/.claude.json"
+  [ -f "$root/claude.json" ] && echo "  restauraria: $root/claude.json  ->  $CLAUDE_JSON"
   rm -rf "${root%/*}"
 }
 
@@ -164,8 +170,8 @@ restore_zip_apply() {
   cp -a "$root/claude/." "$CLAUDE_HOME/"
   ok "restaurado $CLAUDE_HOME desde $root/claude/"
   if [ -f "$root/claude.json" ]; then
-    cp -p "$root/claude.json" "$HOME/.claude.json"
-    ok "restaurado \$HOME/.claude.json"
+    cp -p "$root/claude.json" "$CLAUDE_JSON"
+    ok "restaurado $CLAUDE_JSON"
   fi
   rm -rf "${root%/*}"
 }
@@ -174,6 +180,8 @@ restore_zip_apply() {
 # Nunca se restaura sin red: antes de escribir nada de verdad, se respalda el
 # estado actual con la misma herramienta que produce los ZIP que este script
 # sabe restaurar (scripts/backup.sh), reutilizando su verificacion.
+# CLAUDE_JSON viaja tambien: sin el, backup.sh respaldaria su propio default
+# ($HOME/.claude.json) y no el fichero que --apply esta a punto de sobreescribir.
 safety_backup() {
   if [ ! -d "$CLAUDE_HOME" ] || [ -z "$(find "$CLAUDE_HOME" -mindepth 1 -maxdepth 1 2>/dev/null)" ]; then
     echo "== \$CLAUDE_HOME vacio o inexistente: nada que respaldar antes de restaurar =="
@@ -184,7 +192,7 @@ safety_backup() {
     return 0
   fi
   echo "== backup de seguridad del estado actual antes de restaurar =="
-  CLAUDE_HOME="$CLAUDE_HOME" BACKUP_DIR="$BACKUP_DIR" bash "$HERE/scripts/backup.sh" \
+  CLAUDE_HOME="$CLAUDE_HOME" BACKUP_DIR="$BACKUP_DIR" CLAUDE_JSON="$CLAUDE_JSON" bash "$HERE/scripts/backup.sh" \
     || die "fallo el backup de seguridad previo; abortando la restauracion (nada se ha tocado)"
 }
 

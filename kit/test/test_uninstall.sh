@@ -119,4 +119,31 @@ set -e
 ck "$rc_bad" "1" "ZIP con checksum invalido: uninstall.sh NO restaura, sale con exit distinto de 0"
 ck "$(echo "$out_bad" | grep -qic 'checksum' && echo y || echo n)" "y" "el motivo del rechazo se explica (checksum)"
 
+# ==================================== Caso 6: el .claude.json de $HOME no se toca
+# uninstall.sh restauraba el claude.json del backup en un "$HOME/.claude.json" literal,
+# el unico sitio del script que no honraba $CLAUDE_HOME: probarlo con un CLAUDE_HOME
+# temporal pisaba el .claude.json REAL de quien lo ejecutaba con una copia de semanas
+# atras. Aqui HOME y CLAUDE_HOME son temporales DISTINTOS (la forma exacta del fallo, y
+# la razon de que este caso sea seguro de correr) y lo que se mide es que el .claude.json
+# de $HOME sigue byte a byte igual.
+H4="$(setup_home home4)"
+CH4="$tmp/claude-home4"; mkdir -p "$CH4"
+export HOME="$H4" CLAUDE_HOME="$CH4" BACKUP_DIR="$tmp/backups4"
+printf '{"proyectos":"los de verdad"}\n' > "$H4/.claude.json"
+json_before="$(sha256sum "$H4/.claude.json" | cut -d' ' -f1)"
+
+stage_json="$tmp/stage-json/claude-state-json"
+mkdir -p "$stage_json/claude" "$BACKUP_DIR"
+echo "del backup" > "$stage_json/claude/CLAUDE.md"
+printf '{"proyectos":"los del backup"}\n' > "$stage_json/claude.json"
+( cd "$stage_json" && find . -type f -exec sha256sum {} + ) > "$tmp/manifest-json"
+mv "$tmp/manifest-json" "$stage_json/MANIFEST.sha256"
+( cd "$tmp/stage-json" && zip -qr "$BACKUP_DIR/claude-state-json.zip" claude-state-json )
+
+bash "$UNINSTALL" --apply >/dev/null 2>&1
+ck "$(sha256sum "$H4/.claude.json" | cut -d' ' -f1)" "$json_before" \
+  "--apply con un CLAUDE_HOME temporal NO toca el .claude.json de \$HOME"
+ck "$(cat "$tmp/.claude.json" 2>/dev/null || echo ausente)" '{"proyectos":"los del backup"}' \
+  "--apply restaura el claude.json del backup al lado de \$CLAUDE_HOME"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
