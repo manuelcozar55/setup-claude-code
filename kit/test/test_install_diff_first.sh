@@ -94,4 +94,26 @@ ruta5="$(printf '%s\n' "$out5" | sed -n 's/.*generado en: //p' | head -1)"
 ck "$(case "$ruta5" in "$tmp/cwd-limpio"*) echo dentro ;; "") echo ninguna ;; *) echo fuera ;; esac)" "fuera" \
    "el arbol se genera fuera del directorio de trabajo y la salida dice donde"
 
+# --- Caso 6: dos '--plan' seguidos no acumulan un arbol por invocacion ------
+# El primer arreglo (mktemp -d por invocacion) resolvio el cwd pero abrio una
+# fuga: cada '--plan' dejaba un cckit-diff.XXXXXX nuevo en /tmp y nada lo
+# limpiaba (sin trap). La correccion usa una ruta fija por uid, borrada y
+# recreada al INICIO de cada run: el arbol sobrevive a la ejecucion para que
+# el usuario copie de el a mano (asi lo dice el mensaje de cierre de la
+# funcion), pero nunca hay mas de uno acumulandose.
+export CLAUDE_HOME="$tmp/dot-tmpout6"
+tmpdir6="$tmp/tmpdir-fijo"
+mkdir -p "$tmpdir6"
+set +e
+TMPDIR="$tmpdir6" env -u MCHARNESS_OUT bash "$KIT/install.sh" --plan >/dev/null 2>&1; rc6a=$?
+TMPDIR="$tmpdir6" env -u MCHARNESS_OUT bash "$KIT/install.sh" --plan >/dev/null 2>&1; rc6b=$?
+set -e
+ck "$rc6a" "0" "--plan (1a pasada) sin MCHARNESS_OUT: sale con exit 0"
+ck "$rc6b" "0" "--plan (2a pasada) sin MCHARNESS_OUT: sale con exit 0"
+ck "$(find "$tmpdir6" -maxdepth 1 -name 'cckit-diff*' | wc -l | tr -d ' ')" "1" \
+   "dos '--plan' seguidos dejan un solo arbol cckit-diff, no uno por invocacion"
+dir6="$(find "$tmpdir6" -maxdepth 1 -name 'cckit-diff*' -print -quit)"
+ck "$([ -n "$dir6" ] && [ -d "$dir6" ] && echo y || echo n)" "y" \
+   "el arbol sigue existiendo tras salir el proceso (sobrevive para que el usuario copie de el)"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
