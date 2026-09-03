@@ -12,13 +12,14 @@
 # Si una suite no deja un resumen parseable, se nombra en vez de sumarse en
 # silencio como si tuviera 0 passed/0 failed: eso seria otro verde falso.
 #
-# Nombrarla no tira el total a rojo por si sola: test_guards_falsifiability.sh
-# es un caso real y legitimo sin tally propio (ver flush() mas abajo), y
-# forzar aqui sale a estar siempre rojo seria tan deshonesto como el "mudo"
-# que esto reemplaza. Si de verdad hay una suite que dejo de imprimir su
-# resumen por un bug (como test_metrics.sh antes de A2), el AVISO la senala
-# para que alguien la mire -- pero el veredicto rojo/verde de esta linea lo
-# decide "fallaron aserciones" (total_fail > 0), no "una suite no tiene tally".
+# test_guards_falsifiability.sh era el caso real y legitimo sin tally propio
+# (su veredicto es un unico cheque -- "cayeron los N casos esperados" -- no
+# una bateria numerable); desde H-1 declara ese cheque como "PASS=1 FAIL=0"
+# (o 0/1 si falla) y ya no cae en este cubo. Si de verdad aparece una suite
+# que deja de imprimir su resumen por un bug (como test_metrics.sh antes de
+# A2), el veredicto de mas abajo ya NO lo pasa por alto: cuenta como "no se
+# pudo verificar", que es distinto tanto de "fallaron aserciones" (eso lo
+# sigue decidiendo solo total_fail > 0) como de un passed silencioso.
 set -euo pipefail
 LOG="kit/test/.make-test.log"
 if [ ! -f "$LOG" ]; then
@@ -85,7 +86,19 @@ if [ "${#sin_resumen[@]}" -gt 0 ]; then
 fi
 echo "########################################"
 
+# Tres veredictos, no dos: "fallo" y "no pude verificarlo" son cosas
+# distintas y antes de esto compartian el mismo exit 0 que "paso". Un
+# total_skip>0 (p.ej. las suites que dependen de jq y no lo encuentran) o una
+# suite sin resumen parseable significan que parte del target NO SE EJECUTO
+# o no se pudo leer su resultado -- eso no es un passed, aunque total_fail
+# sea 0.
 if [ "$total_fail" -gt 0 ]; then
+  echo "#### VEREDICTO: FALLO -- $total_fail aserciones en rojo ####"
   exit 1
 fi
+if [ "$total_skip" -gt 0 ] || [ "${#sin_resumen[@]}" -gt 0 ]; then
+  echo "#### VEREDICTO: NO SE PUDO VERIFICAR -- $total_skip caso(s) saltado(s) y ${#sin_resumen[@]} suite(s) sin resumen parseable; ninguna assertion en rojo, pero tampoco se ejecuto/leyo todo ####"
+  exit 2
+fi
+echo "#### VEREDICTO: PASO -- $n suites, $total_pass passed, 0 failed, 0 skipped ####"
 exit 0
