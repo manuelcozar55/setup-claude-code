@@ -7,12 +7,14 @@ etiquetado.
 
 ## [Unreleased]
 
-Dos frentes con la misma forma: **protecciones que el repo declaraba y que no existían.** Por
-un lado se cierran los guards y el instalador, que fallaban en abierto cuando faltaba `jq`;
-por otro se retiran afirmaciones publicadas que dejaron de ser verdad cuando cambió el kit, y
-se escribe lo que no estaba escrito. Del inventario solo se mueve una cifra, y es la de los
-sensores: **27 → 28 suites**, por el que vigila la capa de permisos. Siguen 11 ADRs, y el
-conjunto de evals sigue en 20 tareas —10 positivas y 10 negativas— con 32 mutantes.
+Tres frentes con la misma forma: **protecciones que el repo declaraba y que no existían.** Por
+un lado se cierran los guards y el instalador, que fallaban en abierto cuando faltaba `jq`; por
+otro los sensores de Headroom, que vigilaban el fichero equivocado o no vigilaban del todo
+(`InaccessiblePaths`, el `UMask` de los logs); y por el tercero se retiran afirmaciones
+publicadas que dejaron de ser verdad cuando cambió el kit, y se escribe lo que no estaba
+escrito. Del inventario solo se mueve una cifra, y es la de los sensores: **27 → 28 suites**,
+por el que vigila la capa de permisos. Siguen 11 ADRs, y el conjunto de evals sigue en
+20 tareas —10 positivas y 10 negativas— con 32 mutantes.
 
 ### Security
 
@@ -74,7 +76,8 @@ conjunto de evals sigue en 20 tareas —10 positivas y 10 negativas— con 32 mu
   claro solo miraba `~/.headroom/logs/proxy.jsonl` y su marca `request_messages`.
   La fuga real la escribe `compression_store` en `proxy.log`, a nivel INFO y con
   `--log-messages` **apagado**, en forma de `payload_preview` de hasta 4096
-  caracteres: 100 líneas medidas en un solo día. El sensor estaba verde.
+  caracteres: 592 líneas solo del 2026-09-03, contando las seis franjas de rotación
+  (una medición contra una sola franja había dado 100). El sensor estaba verde.
 - **La unidad generada no tapaba las credenciales en las máquinas viejas.** La
   plantilla declara `InaccessiblePaths` desde hace tiempo, pero nada re-aplica la
   plantilla y `doctor.sh` solo inspeccionaba `ExecStart=`. Ahora avisa, y lee
