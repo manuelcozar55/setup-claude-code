@@ -77,4 +77,21 @@ set -e
 ck "$rc5" "0" "repo git SIN remoto: install.sh sale 0"
 ck "$([ -f "$CLAUDE_HOME/CLAUDE.md" ] && echo y || echo n)" "y" "repo git SIN remoto NO activa el modo diff (escribe igual, falsabilidad del check)"
 
+# --- Caso 5: sin MCHARNESS_OUT, el arbol va a un temporal, no al cwd -------
+# La copia que se generaba en $PWD se quedaba ahi: una instantanea del arbol
+# instalable que envejece en el arbol de trabajo, con nueve divergencias en la
+# direccion peligrosa, y que despues se lee como si fuera fuente. El artefacto
+# de un diff es efimero: su sitio es un temporal.
+export CLAUDE_HOME="$tmp/dot-tmpout"
+mkdir -p "$tmp/cwd-limpio"
+set +e
+out5="$(cd "$tmp/cwd-limpio" && env -u MCHARNESS_OUT bash "$KIT/install.sh" --plan 2>&1)"; rc5b=$?
+set -e
+ck "$rc5b" "0" "--plan sin MCHARNESS_OUT: sale con exit 0"
+ck "$([ -e "$tmp/cwd-limpio/.mcharness-out" ] && echo existe || echo no)" "no" \
+   "--plan sin MCHARNESS_OUT NO deja .mcharness-out en el directorio de trabajo"
+ruta5="$(printf '%s\n' "$out5" | sed -n 's/.*generado en: //p' | head -1)"
+ck "$(case "$ruta5" in "$tmp/cwd-limpio"*) echo dentro ;; "") echo ninguna ;; *) echo fuera ;; esac)" "fuera" \
+   "el arbol se genera fuera del directorio de trabajo y la salida dice donde"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
