@@ -583,7 +583,7 @@ systemctl --user show -p DropInPaths --value headroom-proxy.service
 - Create: `~/.config/systemd/user/headroom-perf-archive.timer`
 
 **Interfaces:**
-- Produces: `~/.headroom/logs/perf-YYYY-MM.tsv` con 13 columnas y cabecera. La
+- Produces: `~/.headroom/metrics/perf-YYYY-MM.tsv` con 13 columnas y cabecera. La
   Task 9 lo lee para el informe.
 
 - [ ] **Step 1: escribir el archivador**
@@ -591,7 +591,7 @@ systemctl --user show -p DropInPaths --value headroom-proxy.service
 ```bash
 cat > ~/.claude/scripts/headroom-perf-archive.sh <<'EOF'
 #!/usr/bin/env bash
-# Extrae las lineas PERF de proxy.log a un TSV mensual antes de que la rotacion
+# Extrae las lineas PERF de proxy.log a TSVs mensuales antes de que la rotacion
 # las borre. POR QUE: la rotacion es 10 MB x 5 backups y esta cableada en el
 # paquete (headroom/proxy/helpers.py:1506-1539), y el 28 % de los bytes del log
 # son las cabeceras de cada peticion. Sin esto no hay serie historica de ahorro
@@ -600,27 +600,74 @@ cat > ~/.claude/scripts/headroom-perf-archive.sh <<'EOF'
 # Idempotente: deduplica por el id de peticion (hr_<epoch>_<contador>), asi que
 # no le afecta que las rotaciones muevan los bytes.
 set -euo pipefail
+# POR QUE nullglob: sin el, un glob sin coincidencias deja el literal, y con `set -e` + `pipefail`
+# el bucle de lectura del archivo aborta el script en silencio la PRIMERA vez que corre (o si el
+# ultimo perf-*.tsv por orden alfabetico esta a cero bytes).
+shopt -s nullglob
 umask 077
 
+# Un solo directorio temporal y el trap justo despues de crearlo: si TMP y
+# VISTOS se crean en lineas separadas, un mktemp fallido a mitad deja el otro
+# fichero huerfano porque el trap todavia no existe.
+TD="$(mktemp -d)"
+trap 'rm -f "$TD"/* 2>/dev/null; rmdir "$TD" 2>/dev/null' EXIT
+TMP="$TD/tmp.tsv"
+VISTOS="$TD/vistos.tsv"
+NUEVAS="$TD/nuevas.tsv"
+
 DIR="${HOME}/.headroom/logs"
-DEST="${DIR}/perf-$(date +%Y-%m).tsv"
-TMP="$(mktemp)"; VISTOS="$(mktemp)"
-trap 'rm -f "$TMP" "$VISTOS"' EXIT
+# El archivo vive fuera de logs/: ese directorio es el que la tarea 8 vacia, y
+# mientras el archivo sea la unica copia un borrado por glob se lo llevaria.
+MET="${HOME}/.headroom/metrics"
+mkdir -p "$MET"
+chmod 700 "$MET"
 
-if [ ! -s "$DEST" ]; then
-  printf 'fecha\thora\treq_id\tmodel\ttok_before\ttok_after\ttok_saved\ttok_inflated\ttool_saved\tcache_read\tcache_write\topt_ms\ttotal_ms\n' > "$DEST"
-fi
+# Cerrojo sobre todo el tramo de lectura-y-escritura: sin el, dos corridas
+# solapadas (el timer horario disparando mientras algo mas lo llama a mano)
+# fotografian VISTOS antes de que ninguna añada, y ambas añaden lo mismo.
+exec 200>"$MET/.archive.lock"
+flock 200
 
-tail -n +2 "$DEST" | cut -f3 | sort -u > "$VISTOS"
+# Migracion unica del fichero que quedo en logs/ de una corrida anterior a
+# este arreglo. mv, no cp: dos copias del mismo TSV en dos sitios es
+# exactamente la ambiguedad que este cambio cierra.
+[[ -f "$DIR/perf-2026-09.tsv" ]] && mv "$DIR/perf-2026-09.tsv" "$MET/perf-2026-09.tsv"
 
-for f in "$DIR/proxy.log" "$DIR/proxy.log.1" "$DIR/proxy.log.2"; do
+contar_filas_datos() {
+  { cat /dev/null "$MET"/perf-*.tsv 2>/dev/null || true; } | grep -c '^[0-9]' || true
+}
+
+# El conjunto de vistos se construye de TODOS los meses ya archivados, no solo
+# del mes en curso: si no, la primera corrida tras medianoche del dia 1
+# re-archiva del orden de 6000 filas en el mes nuevo y cualquier agregado
+# sobre perf-*.tsv las cuenta dos veces.
+{ for a in "$MET"/perf-*.tsv; do
+    [[ -s "$a" ]] && cut -f3 "$a" | tail -n +2
+  done; true; } | sort -u > "$VISTOS"
+
+# Cubre las SEIS ranuras de rotacion (proxy.log + 5 backups), no solo tres: la
+# rotacion es 10 MB x 5 y quedarse en .log.2 pierde todo lo que ya rodo mas
+# alla. Con nullglob activo, los backups que no existan desaparecen del bucle;
+# el '[ -r "$f" ] || continue' cubre el otro caso, que proxy.log en si no exista
+# o no se pueda leer. Barrer mas ancho es gratis porque el deduplicado por
+# req_id ya existe.
+for f in "$DIR"/proxy.log "$DIR"/proxy.log.[1-5]; do
   [ -r "$f" ] || continue
-  grep -h ' PERF ' "$f" 2>/dev/null || true
+  # Anclado a la forma exacta del registro PERF, no a la subcadena ' PERF ':
+  # esa subcadena tambien aparece dentro de previews de conversacion de
+  # compression_store, que son texto arbitrario y pueden llevar un id entre
+  # corchetes. Sin anclar, esa linea se coleria como fila vacia y registraria
+  # el req_id como visto, suprimiendo para siempre el PERF autentico.
+  command grep -hE '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:,]+ - headroom\.proxy - INFO - \[hr_[0-9]+_[0-9]+\] PERF model=' "$f" 2>/dev/null || true
 done | awk '
   {
     id = ""
     if (match($0, /\[hr_[0-9]+_[0-9]+\]/)) id = substr($0, RSTART + 1, RLENGTH - 2)
     if (id == "") next
+    # Guarda de forma: sin esto, una fila cuya columna 1 no sea una fecha (arrastrada por un
+    # ancla que no fuera de inicio de linea) crearia perf-<cualquiercosa>.tsv, que luego casa
+    # con el glob perf-*.tsv e infla los recuentos.
+    if ($1 !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) { descartadas++; next }
     split("", v)
     for (i = 1; i <= NF; i++) { n = index($i, "="); if (n > 1) v[substr($i, 1, n - 1)] = substr($i, n + 1) }
     split($2, hh, ",")
@@ -629,15 +676,45 @@ done | awk '
       v["tok_inflated"], v["tool_saved"], v["cache_read"], v["cache_write"], \
       v["opt_ms"], v["total_ms"]
   }
+  END { if (descartadas > 0) print "headroom-perf-archive: descartadas " descartadas " filas con fecha invalida" > "/dev/stderr" }
 ' | sort -u > "$TMP"
 
-antes=$(wc -l < "$DEST")
-awk -F'\t' 'NR==FNR { visto[$1] = 1; next } !($3 in visto)' "$VISTOS" "$TMP" >> "$DEST"
-despues=$(wc -l < "$DEST")
-chmod 600 "$DEST"
+antes=$(contar_filas_datos)
+
+# No se usa el idioma de dos ficheros 'NR==FNR': se rompe cuando VISTOS esta
+# vacio (la primera corrida) porque NR nunca se adelanta a FNR y awk trata
+# TODO TMP como si fuera el primer fichero, descartandolo entero. Con getline
+# en BEGIN el filtrado no depende de que VISTOS tenga contenido.
+awk -F'\t' -v vistos="$VISTOS" '
+  BEGIN { while ((getline linea < vistos) > 0) visto[linea] = 1 }
+  !($3 in visto)
+' "$TMP" > "$NUEVAS"
+
+# Cada fila va al mes de SU PROPIA fecha (columna 1), no al mes en que corre
+# el script: si no, una corrida el dia 1 archivaria filas de finales del mes
+# anterior en el TSV del mes nuevo.
+cut -f1 "$NUEVAS" | cut -c1-7 | sort -u | while read -r mes; do
+  d="$MET/perf-$mes.tsv"
+  [[ -s "$d" ]] || printf 'fecha\thora\treq_id\tmodel\ttok_before\ttok_after\ttok_saved\ttok_inflated\ttool_saved\tcache_read\tcache_write\topt_ms\ttotal_ms\n' > "$d"
+done
+awk -F'\t' -v dir="$MET" '{ print >> (dir "/perf-" substr($1,1,7) ".tsv") }' "$NUEVAS"
+chmod 600 "$MET"/perf-*.tsv 2>/dev/null || true
+
+despues=$(contar_filas_datos)
+esperado=$(wc -l < "$NUEVAS")
+# Esto NO detecta una escritura truncada a mitad de fila: 'grep -c "^[0-9]"' cuenta una linea
+# incompleta igual que una completa, asi que un truncado por disco lleno cuadraria igual. Ante
+# eso la proteccion real es que 'awk' fallaria al escribir y 'set -e' cortaria el script antes
+# de llegar aqui. Lo que esta comprobacion SI garantiza es mas modesto: que el total conto
+# exactamente las filas que NUEVAS traia, para atrapar cualquier otra discrepancia (p.ej. un
+# reparto a un mes equivocado) que de otro modo pasaria sin abortar.
+if (( despues - antes != esperado )); then
+  echo "headroom-perf-archive: ERROR - se esperaban +${esperado} filas y el total paso de ${antes} a ${despues}" >&2
+  exit 1
+fi
 
 printf 'headroom-perf-archive: +%s filas -> %s (total %s)\n' \
-  "$((despues - antes))" "$DEST" "$((despues - 1))"
+  "$esperado" "$MET" "$despues"
 EOF
 chmod +x ~/.claude/scripts/headroom-perf-archive.sh
 shellcheck ~/.claude/scripts/headroom-perf-archive.sh; echo "shellcheck rc=$?"
@@ -649,14 +726,16 @@ shellcheck ~/.claude/scripts/headroom-perf-archive.sh; echo "shellcheck rc=$?"
 
 ```bash
 ~/.claude/scripts/headroom-perf-archive.sh
-stat -c '%a %n' ~/.headroom/logs/perf-*.tsv
-head -1 ~/.headroom/logs/perf-*.tsv
-wc -l ~/.headroom/logs/perf-*.tsv
+stat -c '%a %n' ~/.headroom/metrics/perf-*.tsv
+head -1 ~/.headroom/metrics/perf-*.tsv
+wc -l ~/.headroom/metrics/perf-*.tsv
 ```
 
-  Esperado: modo `600`, cabecera de 13 columnas, y del orden de **4000-6000
-  filas** (hoy hay 1288 líneas `PERF` en `proxy.log` más lo que quede en `.log.1`
-  y `.log.2`).
+  Esperado: modo `600`, cabecera de 13 columnas en cada fichero, y un total del
+  orden de **11 700 filas** repartidas entre `perf-2026-08.tsv` y
+  `perf-2026-09.tsv` — el archivador cubre las seis ranuras de rotación
+  (`proxy.log` + `.log.1` … `.log.5`), no solo las tres primeras (ver la
+  precondición de la Task 8).
 
 - [ ] **Step 3: probar la idempotencia (criterio A12)**
 
@@ -674,29 +753,76 @@ wc -l ~/.headroom/logs/perf-*.tsv
 cat > ~/.claude/scripts/headroom-quiesce-check.sh <<'EOF'
 #!/usr/bin/env bash
 # Dice si es seguro reiniciar el proxy: rc=0 si no hay trafico de inferencia
-# reciente ni conexiones con datos en vuelo; rc=1 si hay que esperar.
+# reciente ni peticiones en vuelo; rc=1 si hay que esperar, o si no se pudo
+# medir con confianza.
 # POR QUE: el reinicio aborta las peticiones en curso de las sesiones de Claude
 # Code enrutadas, y a media respuesta eso se ve como un error de API.
 set -uo pipefail
 
 LOG="${HOME}/.headroom/logs/proxy.log"
 VENTANA="${1:-45}"
+ahora=$(date +%s)
 
-ultima=0
-if [ -r "$LOG" ]; then
-  linea=$(grep 'path=/v1/messages' "$LOG" | tail -1 || true)
-  if [ -n "$linea" ]; then
-    marca="${linea%%,*}"
-    ultima=$(date -d "$marca" +%s 2>/dev/null || echo 0)
-  fi
+# POR QUE se filtra la lista: awk trata un fichero inexistente como error fatal, y tras el
+# borrado de los rotados (tarea 8) este comprobador quedaria diciendo "no se pudo medir" para
+# siempre si se le sigue pasando un .log.1 que ya no existe.
+LOGS=()
+for l in "$LOG" "${LOG}.1"; do [[ -f "$l" ]] && LOGS+=("$l"); done
+if (( ${#LOGS[@]} == 0 )); then
+  echo "ESPERAR: no hay ningun log que medir"
+  exit 1
 fi
-silencio=$(( $(date +%s) - ultima ))
 
-en_vuelo=$(ss -tn state established 2>/dev/null \
-  | awk '$3 ~ /:8787$/ || $4 ~ /:8787$/' \
-  | awk '$1 + 0 > 0 || $2 + 0 > 0' | wc -l)
+medido=0
+ultima=0
+linea=$( { for l in "${LOGS[@]}"; do tac "$l" 2>/dev/null; done; } \
+         | command grep -m1 -E 'event=proxy_inbound_(request|response).*path=/v1/messages' || true )
+if [[ -n "$linea" ]]; then
+  marca="${linea%%,*}"                       # "2026-09-03 16:55:46"
+  if ultima=$(date -d "$marca" +%s 2>/dev/null); then medido=1; fi
+fi
 
-printf 'silencio=%ss (exigido %ss)  conexiones_con_datos=%s\n' \
+# POR QUE se sale por 1 sin medir: "no se pudo medir" no es "no hay trafico". Aprobar aqui
+# abortaria la peticion en curso de una sesion viva.
+if (( medido == 0 )); then
+  echo "ESPERAR: no se pudo medir el silencio (log ilegible, vacio o marca no parseable)"
+  exit 1
+fi
+silencio=$(( ahora - ultima ))
+
+# POR QUE por emparejamiento de ids y no por bytes en cola: una peticion en vuelo tiene las dos
+# colas del socket a 0 mientras el proxy espera al upstream, asi que contar bytes da siempre 0.
+# Solo cuentan los desemparejados recientes: un request abortado hace horas nunca vera su
+# response y bloquearia el gate de por vida.
+en_vuelo=$(awk -v ahora="$ahora" -v margen=600 '
+  function id_de(l) {
+    return (match(l, /id=inbound-[0-9]+/)) ? substr(l, RSTART+3, RLENGTH-3) : ""
+  }
+  # POR QUE se corta la cadena en vez de dividir por 1e9: el id trae nanosegundos (19 digitos) y
+  # eso no cabe exacto en el doble que usa awk. Quitando los 9 ultimos digitos quedan los
+  # segundos, exactos y sin coma flotante.
+  # POR QUE el segundo parametro "nsec": sin declararla ahi, esa variable es GLOBAL en awk y
+  # pisa la "n" contadora del bloque END en cada llamada (comprobado: sin esto,
+  # peticiones_en_vuelo salia como el numero de nanosegundos del ultimo id, no un conteo).
+  function epoch_de(i,   nsec) { nsec = substr(i, 9); return substr(nsec, 1, length(nsec) - 9) + 0 }
+  /event=proxy_inbound_request/  { i = id_de($0); if (i != "") req[i] = 1 }
+  /event=proxy_inbound_response/ { i = id_de($0); if (i != "") res[i] = 1 }
+  END {
+    n = 0
+    for (i in req) {
+      if (i in res) continue
+      if (ahora - epoch_de(i) <= margen) n++
+    }
+    print n
+  }
+' "${LOGS[@]}" 2>/dev/null) || en_vuelo=-1
+
+if (( en_vuelo < 0 )); then
+  echo "ESPERAR: no se pudo contar las peticiones en vuelo"
+  exit 1
+fi
+
+printf 'silencio=%ss (exigido %ss)  peticiones_en_vuelo=%s\n' \
   "$silencio" "$VENTANA" "$en_vuelo"
 
 if [ "$silencio" -ge "$VENTANA" ] && [ "$en_vuelo" -eq 0 ]; then

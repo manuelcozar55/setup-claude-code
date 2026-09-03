@@ -136,7 +136,7 @@ largo del tiempo, no para prometer un ahorro en la factura.
 | A8 | Permisos apretados | `stat -c '%a %n' ~/.headroom/logs ~/.headroom/logs/*` | `700` y `600` |
 | A9 | Unidad válida | `systemd-analyze --user verify headroom-proxy.service` | `rc=0`, sin salida |
 | A10 | Nadie perdió el enrutado | `ss -tnp \| grep -c '127.0.0.1:8787'` | ≥ 3 sockets de `claude` |
-| A11 | Serie histórica existente | `stat -c '%a' ~/.headroom/logs/perf-2026-09.tsv` y `wc -l` | `600`, > 1 línea |
+| A11 | Serie histórica existente | `stat -c '%a' ~/.headroom/metrics/perf-2026-08.tsv ~/.headroom/metrics/perf-2026-09.tsv` y `wc -l` | `600` en los dos ficheros, > 1 línea |
 | A12 | El archivador es idempotente | correrlo dos veces seguidas | la 2.ª añade **0** líneas |
 | A13 | `doctor.sh` sigue aprobando | `bash kit/doctor.sh` | `OK (0 FAIL)` |
 | A14 | El sensor nuevo sabe ponerse rojo | bloque de falsabilidad de la suite | detecta el caso fabricado |
