@@ -49,12 +49,33 @@ sin_mch_path(){
 }
 corre_sin_mch(){ printf '%s' "$(pl false)" | env PATH="$(sin_mch_path)" bash "$GATE" 2>/dev/null; }
 
+# Para F-1 de degradacion no basta con quitar del PATH el directorio de jq como
+# hace sin_mch_path: en esta maquina jq vive en /usr/bin junto con bash, git,
+# grep... y quitar ese directorio entero se llevaria por delante el propio
+# interprete del hook. Tampoco vale recorrer cada directorio del PATH real con
+# un glob: esta maquina es WSL y varios directorios del PATH cuelgan del
+# montaje 9P de Windows (/mnt/c/...), donde listar un directorio entero es
+# minutos, no milisegundos. Se resuelve por nombre, uno a uno, solo lo que el
+# hook necesita de verdad -- ni jq ni mch entran en esta lista.
+sin_jq_path(){
+  farm="$T/nojq"; mkdir -p "$farm"
+  for b in bash cat git grep printf rm sed timeout; do
+    p="$(command -v "$b" 2>/dev/null)" || continue
+    ln -sf "$p" "$farm/$b" 2>/dev/null
+  done
+  printf '%s' "$T/bin:$farm"
+}
+
 ROJO='{"contrato":1,"gobierna":true,"veredicto":"rojo","motivo":"no hay ejecucion VERDE del oraculo registrada tras el ultimo start","tarea":"T-042","titulo":"x","clase":"sensor","oraculo_sellado":"pytest tests/ -q","intentos":7,"ultimo_run_rc":1,"alcance":"verificable","evidencia":"incompleta"}'
 VERDE='{"contrato":1,"gobierna":true,"veredicto":"verde","motivo":"ok","tarea":"T-042","intentos":1}'
 FUTURO='{"contrato":99,"gobierna":true,"veredicto":"rojo","motivo":"algo","tarea":"T-042","intentos":1}'
 # rc=0 tiene DOS significados muy distintos y este es el segundo: mch no tiene ninguna
 # tarea en curso de la que opinar. No dice que el turno este verificado.
 SIN_TAREA='{"contrato":1,"gobierna":true,"veredicto":"verde","motivo":"no hay ninguna tarea en curso"}'
+# El primer significado de rc=0 (F-1): lazo cerrado -- hay tarea, con sonda sellada y
+# run VERDE. Comparte gobierna:true y veredicto:verde con SIN_TAREA; verificado contra
+# _gate_estado() en bin/mch, solo `evidencia` distingue los dos casos.
+VERDE_CERRADO='{"contrato":1,"gobierna":true,"veredicto":"verde","evidencia":"completa","motivo":"start con sonda sellada y run VERDE del oraculo sellado","tarea":"T-042","intentos":1}'
 
 # --- A6: sin mch en PATH, NUNCA bloquea -----------------------------------
 rm -f "$T/bin/mch"
@@ -142,5 +163,29 @@ avisa="$(printf '%s' "$(pl false)" | env PATH="$T/bin:$PATH" bash "$GATE" 2>&1 >
 ck "$(printf '%s' "$avisa" | grep -qi 'oráculo' && echo y || echo n)" "y" \
    "rc=0 sin tarea en curso no apaga el modo aviso"
 ck "$(decision "$(corre)")" "ninguna" "rc=0 avisa por stderr pero no bloquea"
+
+# --- F-1: rc=0 con lazo cerrado en verde -> el aviso NO se repite ----------
+# mch ya certifico (gobierna:true, veredicto:verde, evidencia:completa): repetir
+# "NINGUN oraculo ejecutado" seria mentir. Caso nuevo que exige el brief.
+fabrica_mch 0 "$VERDE_CERRADO"
+ck "$(corre)" "" "F-1: lazo cerrado en verde no bloquea (stdout vacio)"
+err_f1="$(printf '%s' "$(pl false)" | env PATH="$T/bin:$PATH" bash "$GATE" 2>&1 >/dev/null)"
+ck "$(printf '%s' "$err_f1" | grep -qi 'NINGÚN oráculo ejecutado' && echo y || echo n)" "n" \
+   "F-1: lazo cerrado en verde no repite 'NINGUN oraculo ejecutado' (mch ya certifico)"
+
+# --- F-1 degradacion: mismo lazo cerrado, pero SIN jq -> no se puede leer el
+# JSON, asi que no se puede confirmar el cierre: avisa igual. Perder un aviso
+# sale barato; fabricar un silencio que parezca una certificacion no.
+# 'command' es un builtin, no un ejecutable: 'env PATH=... command -v jq' no lo
+# lanzaria (fallaria con "No such file or directory" y de rebote diria "no"
+# aunque jq siguiera en el PATH). Por eso aqui se invoca con 'bash -c', que si
+# arranca un interprete real con el PATH recortado.
+ck "$(PATH="$(sin_jq_path)" bash -c 'command -v jq' >/dev/null 2>&1 && echo encontrado || echo no)" "no" \
+   "falsabilidad del andamio: el PATH recortado no tiene ningun jq"
+err_f1d="$( (cd "$T/proj" && printf '%s' "$(pl false)" | env PATH="$(sin_jq_path)" bash "$GATE") 2>&1 >/dev/null)"
+ck "$(printf '%s' "$err_f1d" | grep -qi 'oráculo' && echo y || echo n)" "y" \
+   "F-1 degradacion: sin jq, lazo cerrado en verde avisa igual (no se puede confirmar)"
+salida_f1d="$( (cd "$T/proj" && printf '%s' "$(pl false)" | env PATH="$(sin_jq_path)" bash "$GATE") 2>/dev/null)"
+ck "$(decision "$salida_f1d")" "ninguna" "F-1 degradacion sin jq: avisa pero no bloquea"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

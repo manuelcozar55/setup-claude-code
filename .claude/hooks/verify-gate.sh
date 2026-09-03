@@ -21,9 +21,11 @@ set -uo pipefail
 payload=$(cat 2>/dev/null) || exit 0
 
 if command -v jq >/dev/null 2>&1; then
+  HAY_JQ=1
   cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null)
   active=$(printf '%s' "$payload" | jq -r '.stop_hook_active // false' 2>/dev/null)
 else
+  HAY_JQ=0
   cwd="$PWD"; active="false"
 fi
 [ -n "$cwd" ] || cwd="$PWD"
@@ -57,8 +59,32 @@ if command -v mch >/dev/null 2>&1; then
     # tambien cuando simplemente no hay ninguna tarea en curso de la que opinar.
     # Salir aqui con exit 0 apagaria en silencio todo lo que hay debajo -- incluido
     # un run autonomo en marcha -- en cualquier repo con TAREAS.md. Solo el rojo
-    # cortocircuita; el verde se limita a no anadir nada.
-    0)   : ;;
+    # cortocircuita; el verde se limita a no anadir nada... salvo en el unico
+    # sub-caso en que mch SI se ha pronunciado: lazo cerrado en verde.
+    #
+    # _gate_estado() en mch (bin/mch) tiene DOS ramas con rc=0, y ambas devuelven
+    # gobierna:true y veredicto:verde -- esas dos claves NO alcanzan para
+    # distinguirlas. Solo `evidencia` lo hace: la rama "no hay ninguna tarea en
+    # curso" no trae esa clave; la rama "start con sonda sellada y run VERDE"
+    # trae evidencia:"completa". Exigir tambien evidencia=="completa" es el
+    # criterio mas estrecho que de verdad discrimina; gobierna+veredicto solos
+    # (la sugerencia obvia) habrian apagado el aviso tambien cuando no hay
+    # tarea en curso, que es justo el caso que R29 esta aqui para no repetir.
+    0)
+      if [ "$HAY_JQ" = 1 ]; then
+        gobierna=$(printf '%s' "$gate_out"  | jq -r '.gobierna // false' 2>/dev/null)
+        veredicto=$(printf '%s' "$gate_out" | jq -r '.veredicto // ""' 2>/dev/null)
+        evidencia=$(printf '%s' "$gate_out" | jq -r '.evidencia // ""' 2>/dev/null)
+        if [ "$gobierna" = "true" ] && [ "$veredicto" = "verde" ] && [ "$evidencia" = "completa" ]; then
+          # El lazo esta cerrado y mch ya certifico: repetir el aviso de mas abajo
+          # seria mentir. Termina aqui, sin stdout ni stderr.
+          exit 0
+        fi
+      fi
+      # Sin jq no se puede leer ningun campo del JSON: no se puede confirmar
+      # lazo cerrado, asi que se cae al modo aviso. Perder un aviso sale barato;
+      # fabricar un silencio que parece una certificacion no.
+      ;;
     2|3) : ;;                           # mch no gobierna aqui: sigue abajo, en modo aviso
     1)
       motivo=$(printf '%s' "$gate_out"   | jq -r '.motivo // "sin motivo"' 2>/dev/null)
