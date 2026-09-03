@@ -768,10 +768,21 @@ systemctl --user status headroom-perf-archive.service --no-pager | tail -5
 
 **Files:**
 - Modify: estado del servicio `headroom-proxy.service`
-- Delete: `~/.headroom/logs/proxy.log*` (histórico con conversación en claro)
+- Delete: los seis ficheros `proxy.log`, `proxy.log.1` … `proxy.log.5` de
+  `~/.headroom/logs/`, **enumerados uno a uno y nunca como glob del directorio**
+  (histórico con conversación en claro)
 
 **Interfaces:**
-- Consumes: el drop-in de la Task 6 y el TSV ya archivado de la Task 7.
+- Consumes: el drop-in de la Task 6 y el archivo de la Task 7, que vive en
+  `~/.headroom/metrics/`, **fuera** del directorio que este paso vacía.
+
+> **Precondición añadida tras la revisión de las Tasks 6+7.** La versión inicial
+> del archivador leía tres de las seis ranuras de rotación, y se midieron 5676
+> registros PERF que existían **solo** en `proxy.log.3`, `.4` y `.5`. Borrar con
+> ese archivador habría destruido el 48,6 % de la serie. Antes de borrar nada,
+> el archivo debe contener la barrida ancha: del orden de 11 700 filas de datos
+> repartidas entre `perf-2026-08.tsv` y `perf-2026-09.tsv`. Si el recuento no
+> llega, **no se borra**.
 
 > **Este es el único paso que no es reversible sin coste.** El reinicio corta las
 > peticiones en vuelo de tres sesiones vivas, y el borrado de los logs es
@@ -796,10 +807,13 @@ systemctl --user status headroom-perf-archive.service --no-pager | tail -5
 
 ```bash
 ~/.claude/scripts/headroom-perf-archive.sh
-wc -l ~/.headroom/logs/perf-*.tsv
+wc -l ~/.headroom/metrics/perf-*.tsv
+cut -f3 ~/.headroom/metrics/perf-*.tsv | sort | uniq -d | head
 ```
 
-  Esperado: unas pocas filas nuevas; anotar el total.
+  Esperado: unas pocas filas nuevas, un total ≥ 11 700 filas de datos, y la
+  comprobación de duplicados **vacía**. Anotar la cifra exacta: es la única copia
+  que queda después del Step 4, y este recuento es lo que autoriza el borrado.
 
 - [ ] **Step 4: parar, limpiar el histórico y arrancar**
 
@@ -826,7 +840,7 @@ echo "--- A4 umask (esperado 0077) ---";      grep ^Umask /proc/$P/status
 echo "--- A5 credenciales tapadas ---";       systemctl --user show -p InaccessiblePaths --value headroom-proxy.service
 echo "--- A9 unidad valida ---";              systemd-analyze --user verify headroom-proxy.service; echo "rc=$?"
 echo "--- servicio sano ---";                 curl -s -m 5 localhost:8787/readyz | head -c 60; echo
-echo "--- A8 permisos ---";                   stat -c '%a %n' ~/.headroom/logs ~/.headroom/logs/*
+echo "--- A8 permisos ---";                   stat -c '%a %n' ~/.headroom/logs ~/.headroom/logs/* ~/.headroom/metrics ~/.headroom/metrics/*
 echo "--- A10 enrutado (esperado >=3) ---";   ss -tnp 2>/dev/null | grep -c '127.0.0.1:8787'
 echo "--- A7 la medicion sigue viva ---";     grep -c PERF ~/.headroom/logs/proxy.log
 ```
@@ -867,8 +881,18 @@ systemctl --user restart headroom-proxy.service
 curl -s -m 5 localhost:8787/readyz | head -c 40; echo
 ```
 
-  Deja la máquina como estaba salvo por los logs borrados, cuyo `PERF` está en el
-  TSV. La copia de seguridad de la unidad de la Task 6 sigue disponible.
+  Eso revierte **el drop-in**, que es el único cambio de comportamiento del
+  proxy. No revierte las otras dos cosas que esta entrega dejó en la máquina, y
+  conviene saberlo antes de suponer que borrar un fichero la restaura:
+
+  - el `chmod 700` de `~/.headroom/logs`, que era `775`. Se revierte con un
+    `chmod`, pero nadie debería querer revertirlo.
+  - el archivador horario, que son dos unidades más:
+    `systemctl --user disable --now headroom-perf-archive.timer` y borrar
+    `headroom-perf-archive.{service,timer}` y el script.
+
+  Los logs borrados no se recuperan; su `PERF` está en `~/.headroom/metrics/`.
+  La copia de seguridad de la unidad de la Task 6 sigue disponible.
 
 ---
 
