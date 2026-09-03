@@ -12,6 +12,15 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 
+# Doble dependencia de jq: esta suite fabrica el manifiesto de hashes con `jq -n`/`jq -R`
+# mas abajo, y ademas ejerce kit/doctor.sh, que lo usa en 12 sitios. Sin jq daba
+# "6 passed, 5 failed": cinco rojos que no eran deriva de nada, solo la falta de una
+# herramienta. Se omite declarandolo, como ya hacen otras diez suites de este repo.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "skip - jq ausente: esta suite fabrica el manifiesto con jq y ejerce doctor.sh, que tambien lo usa"
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
+fi
+
 if ! git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1; then
   echo "ok - el kit no es un checkout de git: suite omitida"; echo "== 1 passed, 0 failed =="; exit 0
 fi

@@ -2,7 +2,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-pass=0; fail=0
+pass=0; fail=0; skipped=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 
 export CLAUDE_HOME="$tmp/dot"
@@ -47,7 +47,16 @@ if command -v jq >/dev/null 2>&1; then
   ck "$(grep -c 'no me borres' "$CLAUDE_HOME/CLAUDE.md")" "1" "reinstalar NO pisa tu CLAUDE.md"
   ck "$([ -f "$CLAUDE_HOME/CLAUDE.kit.md" ] && echo y)" "y" "la version del kit queda al lado en CLAUDE.kit.md"
 else
-  echo "skip - jq ausente: no se prueba la fusion de settings.json"
+  # Este salto era INVISIBLE para el agregado: se imprimia "skip - ..." pero el resumen
+  # seguia diciendo "== 11 passed, 0 failed ==", sin ningun skipped y con rc=0. Ocho
+  # comprobaciones que NO se habian ejecutado se leian como aprobadas -- ni fallo ni
+  # salto, el peor de los tres. Ahora se cuenta, y kit/sumar-tests.sh baja el veredicto
+  # agregado a "NO SE PUDO VERIFICAR", que es exactamente lo que es.
+  # Cuenta como UN bloque saltado, no como 8: el numero de checks del bloque cambia cada
+  # vez que alguien anade uno, y un contador con ese numero a mano acabaria mintiendo por
+  # el otro lado. La magnitud va en el mensaje, que no gobierna ninguna cifra.
+  echo "skip - jq ausente: no se prueba la fusion de settings.json (8 comprobaciones sin ejecutar)"
+  skipped=$((skipped+1))
 fi
 
 # Regresion 2026-09-02: un __pycache__ dentro del kit rompia el bucle `cp` de install.sh
@@ -63,4 +72,12 @@ ck "$(grep -c 'omitting directory' "$tmp/pyc.log" || true)" "0" "install.sh no i
 ck "$([ -f "$tmp/dot2/sentinel/sentinel_preflight.py" ] && echo y)" "y" "sentinel se instala con __pycache__ presente"
 ck "$([ -d "$tmp/dot2/sentinel/__pycache__" ] && echo y || echo n)" "n" "el __pycache__ no viaja a CLAUDE_HOME"
 
-echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
+# El campo skipped solo aparece cuando lo hay: asi la linea de una corrida normal no
+# cambia (mismo formato que ya leen kit/sumar-tests.sh y CI), y cuando algo se salta
+# se ve. Mismo criterio que test_doc_claims.sh.
+if [ "$skipped" -gt 0 ]; then
+  echo "== $pass passed, $fail failed, $skipped skipped =="
+else
+  echo "== $pass passed, $fail failed =="
+fi
+[ "$fail" -eq 0 ]

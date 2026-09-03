@@ -5,6 +5,16 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 
+# Esta suite no llama a jq, pero lo que ejerce si: kit/doctor.sh lo usa en 12 sitios.
+# Sin jq el primer check ("doctor PASS sobre instalacion limpia") daba 1 != 0 y, con el
+# `set -e` de arriba, la suite moria ANTES de imprimir su resumen: kit/sumar-tests.sh la
+# listaba como "sin resumen parseable", que es ruido y no un hallazgo. Se omite
+# declarandolo, como ya hacen otras diez suites de este repo.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "skip - jq ausente: esta suite ejerce doctor.sh, que lee settings.json con jq"
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
+fi
+
 export CLAUDE_HOME="$tmp/dot"
 
 # doctor.sh mira estado de MAQUINA, no solo de CLAUDE_HOME: la unidad systemd en

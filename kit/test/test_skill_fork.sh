@@ -9,6 +9,15 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 
+# Esta suite no llama a jq, pero todo lo que mide sale de kit/doctor.sh, que lo usa en
+# 12 sitios: sin jq doctor no llega al check de la skill y la suite daba "2 passed,
+# 3 failed" -- tres rojos que no dicen nada sobre la divergencia que vigila. Se omite
+# declarandolo, como ya hacen otras diez suites de este repo.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "skip - jq ausente: esta suite lee el informe de doctor.sh, que necesita jq para producirlo"
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
+fi
+
 correr(){ env -u ANTHROPIC_BASE_URL CLAUDE_HOME="$tmp/dot" HOME="$tmp/home" \
             XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1; }
 mkdir -p "$tmp/home/.config"
