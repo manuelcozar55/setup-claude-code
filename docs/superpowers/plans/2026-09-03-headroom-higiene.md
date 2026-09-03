@@ -721,7 +721,6 @@ shellcheck ~/.claude/scripts/headroom-quiesce-check.sh; echo "shellcheck rc=$?"
 cat > ~/.config/systemd/user/headroom-perf-archive.service <<'EOF'
 [Unit]
 Description=Archiva las lineas PERF de headroom antes de que roten
-Documentation=file:///home/manuelcozarbaranguan/.claude/scripts/headroom-perf-archive.sh
 
 [Service]
 Type=oneshot
