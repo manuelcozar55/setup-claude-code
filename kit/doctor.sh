@@ -93,7 +93,7 @@ else
   pass "los hooks desplegados coinciden byte a byte con los del kit  (fuente: cmp -s por fichero)"
 fi
 
-# 2d. la skill 'harness' vive en dos copias sin dueno declarado. El kit NO instala
+# 2e. la skill 'harness' vive en dos copias sin dueno declarado. El kit NO instala
 #     skills, asi que ninguna de las dos es "la del kit": es un fork sin origen,
 #     divergente en ambas direcciones. Se avisa, no se falla: unificarla exige un
 #     paso de redaccion de PII que todavia no existe (spec fase 3), y publicar la

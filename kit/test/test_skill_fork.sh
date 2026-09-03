@@ -15,7 +15,14 @@ mkdir -p "$tmp/home/.config"
 
 REPOSKILL="$REPO/.claude/skills/harness/SKILL.md"
 if [ ! -f "$REPOSKILL" ]; then
-  echo "ok - el repo no trae skills/harness: suite omitida"; echo "== 1 passed, 0 failed =="; exit 0
+  # .claude/skills/harness/SKILL.md esta versionado (git ls-files lo confirma): su
+  # presencia es un invariante del repo, no un input opcional. Si algun dia falta -- y
+  # va a faltar: la fase 3 unifica esta skill -- un skip verde aqui mediria cero en
+  # silencio. Eso es un sensor inerte, no un skip honesto: falla ruidoso.
+  echo "NOT ok - $REPOSKILL no existe: esta suite no mide nada. Si la fase 3 unifico" \
+       "la skill harness, esta suite hay que REESCRIBIRLA, no omitirla."
+  echo "== 0 passed, 1 failed =="
+  exit 1
 fi
 
 # --- Caso 1: las dos copias existen y difieren -> doctor lo reporta --------

@@ -38,6 +38,9 @@ Todo vive bajo `kit/test/`:
   antigua del propio kit (FAIL, hay que reinstalar) de uno personalizado
   localmente (WARN): el discriminador es el sha del blob contra el historial
   de git del kit.
+- `test_skill_fork.sh` — la skill `harness` vive en dos copias sin dueno
+  declarado (repo y desplegada): `doctor.sh` avisa (WARN, no FAIL) cuando
+  divergen, hasta que la fase 3 las unifique.
 - `test_install_platform_gate.sh` — la puerta de plataforma de `install.sh`
   (solo Linux/WSL2) aborta en cualquier otra y no deja nada a medias.
 - `test_install_gitleaks.sh` — deteccion de `gitleaks` y degradacion con
