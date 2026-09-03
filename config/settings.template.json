@@ -1,7 +1,7 @@
 {
   "$comment": [
     "mcharness -- plantilla de settings de PROYECTO (.claude/settings.json).",
-    "Tres sensores. El de UserPromptSubmit es el que hace que el harness entre SOLO:",
+    "Dos sensores. El de UserPromptSubmit es el que hace que el harness entre SOLO:",
     "inyecta contexto por stdout plano (contrato verificado en code.claude.com/docs/en/hooks:",
     "UserPromptSubmit y SessionStart anaden su stdout plano al contexto del modelo).",
     "NUNCA exit 2 en UserPromptSubmit: la doc dice que borra el prompt del usuario.",

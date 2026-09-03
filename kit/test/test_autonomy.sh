@@ -10,10 +10,6 @@ cd "$(dirname "$0")/../.." || exit 1
 AUT="$PWD/scripts/autonomy.sh"
 pass=0; fail=0
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ok - jq no disponible: suite omitida"; echo "== 1 passed, 0 failed =="; exit 0
-fi
-
 ck() { if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1))
        else echo "NOT ok - $3 (obtenido '$1', esperado '$2')"; fail=$((fail+1)); fi; }
 

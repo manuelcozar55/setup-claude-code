@@ -80,10 +80,9 @@ Todo vive bajo `kit/test/`:
 - `test_auto_spec.sh` — el hook `UserPromptSubmit` que mete el harness solo.
   No comprueba que "produzca texto": comprueba que DISCRIMINE entre un encargo
   y una pregunta. Un clasificador que responde lo mismo a todo no clasifica.
-- `test_autonomy.sh` — `scripts/autonomy.sh` y el Stop hook `verify-gate.sh` en
-  los cuatro estados que deciden si un run desatendido es seguro: oraculo rojo
-  (bloquea), verde (libera), presupuesto agotado (libera y avisa) y cap de
-  Claude Code (`stop_hook_active`: se aparta).
+- `test_autonomy.sh` — `scripts/autonomy.sh` como herramienta manual: rechaza
+  un oraculo por nombre suelto (M-001) y el presupuesto de intentos. La
+  cobertura del Stop hook `verify-gate.sh` vive en `kit/test/test_verify_gate.sh`.
 - `test_detect_oracle.sh` — `scripts/detect-oracle.sh` contra proyectos
   sinteticos, nunca contra proyectos reales del usuario.
 - `test_metrics.sh` — `scripts/metrics.py` sobre transcripts sinteticos, con

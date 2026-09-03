@@ -92,7 +92,7 @@ No termines el turno dando por bueno lo que no se ha podido comprobar. Ejecuta \
   esac
 fi
 
-# ─────────────────────────── MODO NORMAL ───────────────────────────
+# ─────────────────────────── MODO AVISO ───────────────────────────
 # Solo habla si de verdad se toco codigo: en una sesion de lectura el aviso seria el ruido
 # que hace que manana se ignore el aviso que si importaba.
 git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1 || exit 0

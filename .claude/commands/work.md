@@ -78,21 +78,28 @@ Estado HOY en frío: <verde|rojo>
 
 Si no tienes ninguna pregunta, **no inventes una**: enseña la spec y pide solo el visto bueno.
 
-## 4 · Activa el modo autónomo
+## 4 · Entra en el lazo con `mch`
 
 Con la aprobación dada:
 
 ```bash
-scripts/autonomy.sh start --oracle "<comando>" --goal "<condición verificable>" --max-repairs 3
+mch task start <id>
 ```
 
-Esto arma el Stop hook: **mientras el oráculo esté rojo y queden intentos, el turno no
-puede terminar.** Es lo que permite que el usuario se vaya, y por eso el oráculo tiene que
-ser real: si es falso o trivial, el lazo se cierra sin significar nada.
+Quien impide terminar el turno no es un script del kit: es `mch`, leyendo
+`.agents/journal.jsonl` — un registro append-only que el agente no puede reescribir
+ni decrementar. El Stop hook (`verify-gate.sh`) le pregunta a `mch task gate` en cada
+intento de cerrar el turno y obedece su código de salida: **mientras la tarea siga
+abierta sin una ejecución VERDE del oráculo registrada tras el `start`, bloquea.** Es
+lo que permite que el usuario se vaya.
 
 Como alternativa nativa, `/goal <condición>` hace algo parecido evaluado por un modelo.
 Úsalo cuando el criterio no sea un comando sino un estado observable en la conversación
 (*"todos los criterios del diseño se cumplen"*). Los dos se pueden combinar.
+
+**En un repo sin `mch`** (o donde no gobierna) no hay nada que consultar: el hook
+avisa por stderr si hay cambios sin verificar, pero no bloquea. Ahí `/work` no ofrece
+una red — solo el aviso.
 
 ## 5 · Ejecuta sin volver a preguntar
 
@@ -119,8 +126,11 @@ salida válida antes del final.
 
 ## 6 · Cierra
 
+Con el oráculo en VERDE, cierra la tarea en la cola:
+
 ```bash
-scripts/autonomy.sh stop
+mch task run <id>    # registra la ejecución del oráculo
+mch task done <id>   # cierra la tarea si esa ejecución fue VERDE
 ```
 
 Informe único, no narración durante el trabajo:

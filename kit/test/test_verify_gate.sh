@@ -115,7 +115,7 @@ AGOTADO='{"contrato":1,"gobierna":true,"veredicto":"rojo","motivo":"la ultima ej
 fabrica_mch 1 "$AGOTADO"
 out3="$(corre)"
 ck "$(decision "$out3")" "block" "muchos intentos: sigue bloqueando (el presupuesto no se borra)"
-ck "$(printf '%s' "$out3" | jq -r '.reason // ""' | grep -q '9' && echo y || echo n)" "y" \
+ck "$(printf '%s' "$out3" | jq -r '.reason // ""' | grep -qE '^Intentos registrados desde el ultimo start: 9$' && echo y || echo n)" "y" \
    "el bloqueo dice cuantos intentos van"
 
 # --- modo aviso: mch no gobierna y hay cambios sin verificar ---------------
