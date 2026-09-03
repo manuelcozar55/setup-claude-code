@@ -357,15 +357,18 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
 }
 
 run_diff_first() {
-  # El artefacto de un diff es efimero. Escribirlo en $PWD hizo que acabara
-  # commiteado: una instantanea muerta del arbol instalable documentando la
-  # version vulnerable. Sin MCHARNESS_OUT explicito, va a un temporal.
+  # El artefacto de un diff es efimero, pero el arbol debe sobrevivir a la
+  # ejecucion: el mensaje de cierre le dice al usuario que copie a mano desde
+  # el. Un mktemp por invocacion resolvia el cwd pero abria una fuga (un
+  # directorio nuevo por '--plan', nada los limpiaba nunca). Ruta fija por
+  # uid en su lugar, borrada y recreada al INICIO de cada run: nunca hay mas
+  # de un arbol, y sigue ahi para inspeccionar despues de salir.
   local out="${MCHARNESS_OUT:-}"
-  if [ -n "$out" ]; then
-    rm -rf "$out"
-  else
-    out="$(mktemp -d "${TMPDIR:-/tmp}/cckit-diff.XXXXXX")"
+  if [ -z "$out" ]; then
+    out="${TMPDIR:-/tmp}/cckit-diff-$(id -u)"
   fi
+  rm -rf "$out"
+  mkdir -m 700 -p "$out" || { echo "no se pudo crear $out" >&2; return 1; }
   install_kit_files "$out"
 
   echo "==> $CLAUDE_HOME es un repositorio git con remoto configurado: no se escribe nada ahi."

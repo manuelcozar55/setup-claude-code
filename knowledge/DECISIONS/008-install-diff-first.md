@@ -37,9 +37,10 @@ si $CLAUDE_HOME es repo git CON remoto  →  no escribe; genera, diffea, explica
 en cualquier otro caso                  →  comportamiento de siempre, sin cambios
 ```
 
-En modo diff genera el árbol completo en `${MCHARNESS_OUT:-$PWD/.mcharness-out}`, clasifica
-en **nuevos / idénticos / modificados**, imprime el `diff -u` solo de los modificados, y
-dice qué copiar y qué commitear en el repo privado.
+En modo diff genera el árbol completo en `${MCHARNESS_OUT:-${TMPDIR:-/tmp}/cckit-diff-$(id -u)}`
+— una ruta fija por usuario, borrada y recreada al empezar cada run, nunca un directorio
+nuevo por invocación — clasifica en **nuevos / idénticos / modificados**, imprime el
+`diff -u` solo de los modificados, y dice qué copiar y qué commitear en el repo privado.
 
 **Por qué la detección y no un flag:** un flag protege a quien ya sabe que lo necesita.
 La detección protege a quien no lo sabe, que es justo el caso en el que se pierde trabajo.

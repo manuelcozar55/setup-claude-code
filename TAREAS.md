@@ -59,3 +59,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] sin MCHARNESS_OUT el arbol va a un temporal
   - [x] la instantanea rancia .mcharness-out desaparece del arbol de trabajo
 
+## T-004 · el arbol de diff deja de fugarse en /tmp
+
+- estado: en-curso
+- oráculo: `make test`
+- riesgo: bajo
+- clase: sensor
+- sensor: kit/test/test_install_diff_first.sh
+- timeout: 15min
+- criterios:
+  - [ ] dos --plan seguidos dejan un solo arbol cckit-diff, no uno por invocacion
+  - [ ] el arbol sigue existiendo tras salir el proceso para que el usuario copie de el
+
