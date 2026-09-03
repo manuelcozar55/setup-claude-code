@@ -48,7 +48,7 @@ sin_mch_path(){
 }
 corre_sin_mch(){ printf '%s' "$(pl false)" | env PATH="$(sin_mch_path)" bash "$GATE" 2>/dev/null; }
 
-ROJO='{"contrato":1,"gobierna":true,"veredicto":"rojo","motivo":"no hay ejecucion VERDE del oraculo registrada tras el ultimo start","tarea":"T-042","titulo":"x","clase":"sensor","oraculo_sellado":"pytest tests/ -q","intentos":2,"ultimo_run_rc":1,"alcance":"verificable","evidencia":"incompleta"}'
+ROJO='{"contrato":1,"gobierna":true,"veredicto":"rojo","motivo":"no hay ejecucion VERDE del oraculo registrada tras el ultimo start","tarea":"T-042","titulo":"x","clase":"sensor","oraculo_sellado":"pytest tests/ -q","intentos":7,"ultimo_run_rc":1,"alcance":"verificable","evidencia":"incompleta"}'
 VERDE='{"contrato":1,"gobierna":true,"veredicto":"verde","motivo":"ok","tarea":"T-042","intentos":1}'
 FUTURO='{"contrato":99,"gobierna":true,"veredicto":"rojo","motivo":"algo","tarea":"T-042","intentos":1}'
 # rc=0 tiene DOS significados muy distintos y este es el segundo: mch no tiene ninguna
@@ -85,7 +85,8 @@ ck "$(decision "$out")" "block" "A7: rc=1 (tarea en curso sin evidencia) bloquea
 razon="$(printf '%s' "$out" | jq -r '.reason // ""')"
 ck "$(printf '%s' "$razon" | grep -q 'T-042' && echo y || echo n)" "y" "el bloqueo nombra la tarea"
 ck "$(printf '%s' "$razon" | grep -q 'no hay ejecucion VERDE' && echo y || echo n)" "y" "el bloqueo lleva el motivo de mch"
-ck "$(printf '%s' "$razon" | grep -q '2' && echo y || echo n)" "y" "el bloqueo lleva los intentos derivados del journal"
+ck "$(printf '%s' "$razon" | grep -q 'Intentos registrados desde el ultimo start: 7' && echo y || echo n)" "y" \
+   "el bloqueo lleva los intentos derivados del journal"
 
 # --- rc desconocido: autoridad presente que no responde -> BLOQUEA ---------
 fabrica_mch 9 ''
@@ -106,22 +107,39 @@ ck "$(printf '%s' "$out2" | jq -r '.reason // ""' | grep -qi 'contrato' && echo 
 fabrica_mch 1 "$ROJO"
 ck "$(decision "$(corre true)")" "ninguna" "stop_hook_active=true: el hook se aparta (cap de 8)"
 
+# --- intentos altos: sigue bloqueando, y el modelo ve cuantos lleva --------
+# Sustituye al caso "presupuesto agotado" del modo autonomo. La diferencia es que
+# el presupuesto ya no se puede agotar borrando un fichero: 'intentos' se deriva
+# de un journal append-only, y solo baja si alguien reescribe la historia.
+AGOTADO='{"contrato":1,"gobierna":true,"veredicto":"rojo","motivo":"la ultima ejecucion registrada es ROJA (rc=1)","tarea":"T-042","clase":"sensor","oraculo_sellado":"make test","intentos":9,"ultimo_run_rc":1,"alcance":"verificable","evidencia":"incompleta"}'
+fabrica_mch 1 "$AGOTADO"
+out3="$(corre)"
+ck "$(decision "$out3")" "block" "muchos intentos: sigue bloqueando (el presupuesto no se borra)"
+ck "$(printf '%s' "$out3" | jq -r '.reason // ""' | grep -q '9' && echo y || echo n)" "y" \
+   "el bloqueo dice cuantos intentos van"
+
+# --- modo aviso: mch no gobierna y hay cambios sin verificar ---------------
+# El kit tiene que seguir sirviendo en repos sin mch: avisa por stderr, no bloquea.
+fabrica_mch 3 '{"contrato":1,"gobierna":false,"veredicto":"no-gobernado","motivo":"sin cola"}'
+git -C "$T/proj" init -q 2>/dev/null
+git -C "$T/proj" config user.email t@t; git -C "$T/proj" config user.name t
+echo "base" > "$T/proj/f.txt"; git -C "$T/proj" add -A; git -C "$T/proj" commit -qm base
+echo "cambio sin verificar" >> "$T/proj/f.txt"
+err="$(printf '%s' "$(pl false)" | env PATH="$T/bin:$PATH" bash "$GATE" 2>&1 >/dev/null)"
+ck "$(printf '%s' "$err" | grep -qi 'oraculo\|oráculo\|verific' && echo y || echo n)" "y" \
+   "mch no gobierna + cambios sin verificar: avisa por stderr"
+salida="$(printf '%s' "$(pl false)" | env PATH="$T/bin:$PATH" bash "$GATE" 2>/dev/null)"
+ck "$(decision "$salida")" "ninguna" "mch no gobierna: avisa pero NO bloquea"
+
 # --- rc=0 NO puede apagar lo que hay debajo (fallo en abierto) -------------
-# Va el ultimo a proposito: deja un scripts/autonomy.sh en $T/proj que cambiaria el
-# resultado de cualquier caso posterior. Un `exit 0` en la rama rc=0 dejaria sin
-# efecto el respaldo autonomo en cualquier repo que tenga TAREAS.md y ninguna tarea
-# en curso -- en silencio, que es exactamente el fallo en abierto de 6edfd73.
-mkdir -p "$T/proj/scripts"
-cat > "$T/proj/scripts/autonomy.sh" <<'AUTEOF'
-#!/usr/bin/env bash
-case "$1" in
-  oracle)  echo "/bin/false" ;;
-  attempt) echo 1; exit 0 ;;
-  *)       exit 0 ;;
-esac
-AUTEOF
-chmod +x "$T/proj/scripts/autonomy.sh"
+# La rama 0) del case cae hacia abajo a proposito: `gate` devuelve rc=0 tambien
+# cuando no hay ninguna tarea en curso, y un `exit 0` ahi dejaria mudo el modo
+# aviso en cualquier repo con TAREAS.md. Antes esto se medía contra el modo
+# autonomo; retirado ese, se mide contra el aviso, que es lo que hay debajo ahora.
 fabrica_mch 0 "$SIN_TAREA"
-ck "$(decision "$(corre)")" "block" "rc=0 sin tarea en curso no apaga el respaldo autonomo"
+avisa="$(printf '%s' "$(pl false)" | env PATH="$T/bin:$PATH" bash "$GATE" 2>&1 >/dev/null)"
+ck "$(printf '%s' "$avisa" | grep -qi 'oráculo' && echo y || echo n)" "y" \
+   "rc=0 sin tarea en curso no apaga el modo aviso"
+ck "$(decision "$(corre)")" "ninguna" "rc=0 avisa por stderr pero no bloquea"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
