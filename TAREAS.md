@@ -61,13 +61,13 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
 ## T-004 · el arbol de diff deja de fugarse en /tmp
 
-- estado: en-curso
+- estado: hecha
 - oráculo: `make test`
 - riesgo: bajo
 - clase: sensor
 - sensor: kit/test/test_install_diff_first.sh
 - timeout: 15min
 - criterios:
-  - [ ] dos --plan seguidos dejan un solo arbol cckit-diff, no uno por invocacion
-  - [ ] el arbol sigue existiendo tras salir el proceso para que el usuario copie de el
+  - [x] dos --plan seguidos dejan un solo arbol cckit-diff, no uno por invocacion
+  - [x] el arbol sigue existiendo tras salir el proceso para que el usuario copie de el
 
