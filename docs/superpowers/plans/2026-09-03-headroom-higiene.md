@@ -583,7 +583,7 @@ systemctl --user show -p DropInPaths --value headroom-proxy.service
 - Create: `~/.config/systemd/user/headroom-perf-archive.timer`
 
 **Interfaces:**
-- Produces: `~/.headroom/logs/perf-YYYY-MM.tsv` con 12 columnas y cabecera. La
+- Produces: `~/.headroom/logs/perf-YYYY-MM.tsv` con 13 columnas y cabecera. La
   Task 9 lo lee para el informe.
 
 - [ ] **Step 1: escribir el archivador**
@@ -608,7 +608,7 @@ TMP="$(mktemp)"; VISTOS="$(mktemp)"
 trap 'rm -f "$TMP" "$VISTOS"' EXIT
 
 if [ ! -s "$DEST" ]; then
-  printf 'fecha\thora\treq_id\tmodel\ttok_before\ttok_after\ttok_saved\ttool_saved\tcache_read\tcache_write\topt_ms\ttotal_ms\n' > "$DEST"
+  printf 'fecha\thora\treq_id\tmodel\ttok_before\ttok_after\ttok_saved\ttok_inflated\ttool_saved\tcache_read\tcache_write\topt_ms\ttotal_ms\n' > "$DEST"
 fi
 
 tail -n +2 "$DEST" | cut -f3 | sort -u > "$VISTOS"
@@ -624,9 +624,10 @@ done | awk '
     split("", v)
     for (i = 1; i <= NF; i++) { n = index($i, "="); if (n > 1) v[substr($i, 1, n - 1)] = substr($i, n + 1) }
     split($2, hh, ",")
-    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", \
+    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", \
       $1, hh[1], id, v["model"], v["tok_before"], v["tok_after"], v["tok_saved"], \
-      v["tool_saved"], v["cache_read"], v["cache_write"], v["opt_ms"], v["total_ms"]
+      v["tok_inflated"], v["tool_saved"], v["cache_read"], v["cache_write"], \
+      v["opt_ms"], v["total_ms"]
   }
 ' | sort -u > "$TMP"
 
@@ -653,7 +654,7 @@ head -1 ~/.headroom/logs/perf-*.tsv
 wc -l ~/.headroom/logs/perf-*.tsv
 ```
 
-  Esperado: modo `600`, cabecera de 12 columnas, y del orden de **3000-4000
+  Esperado: modo `600`, cabecera de 13 columnas, y del orden de **4000-6000
   filas** (hoy hay 1288 líneas `PERF` en `proxy.log` más lo que quede en `.log.1`
   y `.log.2`).
 
