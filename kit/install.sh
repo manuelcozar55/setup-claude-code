@@ -187,6 +187,15 @@ Environment=PATH=%h/.local/bin:%h/.venvs/tools/bin:/usr/local/bin:/usr/bin:/bin
 # heredado del entorno, kompress queda available:false EN SILENCIO: /readyz sigue
 # healthy y el proxy no comprime nada.
 Environment=HF_HUB_OFFLINE=0
+# El default de Headroom es escribir en proxy.log hasta 4096 chars de conversacion
+# literal por cada event=headroom_retrieve: _payload_preview_enabled() devuelve True
+# cuando la variable NO esta puesta. Con 0 solo registra recuentos de bytes. No se
+# puede cambiar en caliente: la clave no esta en _KNOBS_BY_ENV y el lector consulta
+# os.environ directo, asi que /admin/runtime-env no la ve.
+Environment=HEADROOM_LOG_PAYLOAD_PREVIEW=0
+# El proceso hereda Umask 0002 y por eso proxy.log nace en 664. Esto solo gobierna
+# los ficheros futuros, incluidas las rotaciones; lo ya escrito se arregla aparte.
+UMask=0077
 # El '-' es deliberado: si el shaper falla, la unidad NO debe quedar en failed.
 ExecStartPost=-${SHAPER}
 Restart=always
@@ -229,6 +238,8 @@ UNITEOF
     # savings_events.jsonl y, si alguien arranca con --log-messages, conversaciones
     # enteras en claro). Por defecto quedaba 0755.
     chmod 700 "$HOME/.headroom" 2>/dev/null || true
+    # logs/ aparte: se crea con el umask del proceso, no hereda el 700 de arriba.
+    chmod 700 "$HOME/.headroom/logs" 2>/dev/null || true
     systemctl --user daemon-reload
     systemctl --user enable --now headroom-proxy.service || true
     # linger: que el proxy arranque con la maquina y no al primer login.
