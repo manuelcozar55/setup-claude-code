@@ -357,8 +357,15 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
 }
 
 run_diff_first() {
-  local out="${MCHARNESS_OUT:-$PWD/.mcharness-out}"
-  rm -rf "$out"
+  # El artefacto de un diff es efimero. Escribirlo en $PWD hizo que acabara
+  # commiteado: una instantanea muerta del arbol instalable documentando la
+  # version vulnerable. Sin MCHARNESS_OUT explicito, va a un temporal.
+  local out="${MCHARNESS_OUT:-}"
+  if [ -n "$out" ]; then
+    rm -rf "$out"
+  else
+    out="$(mktemp -d "${TMPDIR:-/tmp}/cckit-diff.XXXXXX")"
+  fi
   install_kit_files "$out"
 
   echo "==> $CLAUDE_HOME es un repositorio git con remoto configurado: no se escribe nada ahi."

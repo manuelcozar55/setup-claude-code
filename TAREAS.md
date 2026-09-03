@@ -47,3 +47,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
   T-001 quedo con un falso verde en CI: shallow clone -> ningun hook con 2 versiones -> suite omitida en silencio -> revert completo del discriminador pasaria sin detectar
 
+## T-003 · el arbol de diff deja de persistir en el repo
+
+- estado: hecha
+- oráculo: `make test`
+- riesgo: bajo
+- clase: sensor
+- sensor: kit/test/test_install_diff_first.sh
+- timeout: 15min
+- criterios:
+  - [x] sin MCHARNESS_OUT el arbol va a un temporal
+  - [x] la instantanea rancia .mcharness-out desaparece del arbol de trabajo
+
