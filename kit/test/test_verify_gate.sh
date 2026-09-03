@@ -13,7 +13,8 @@ pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 
 if ! command -v jq >/dev/null 2>&1; then
-  echo "ok - jq no disponible: suite omitida"; echo "== 1 passed, 0 failed =="; exit 0
+  echo "skip - jq ausente: esta suite decodifica con jq la decision JSON del gate"
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
 fi
 
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT

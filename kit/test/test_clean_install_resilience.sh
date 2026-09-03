@@ -20,7 +20,7 @@ ko(){ fail=$((fail+1)); echo "FAIL: $1"; }
 # explicito: want "mensaje" <comando>.
 want(){ local msg="$1"; shift; if "$@"; then ok; else ko "$msg"; fi; }
 
-command -v jq >/dev/null 2>&1 || { echo "FAIL: jq requerido"; echo "PASS=0 FAIL=1"; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo "skip - jq ausente: esta suite audita settings.json con jq"; echo "PASS=0 FAIL=0 SKIP=1"; exit 0; }
 
 S="$KIT/claude/settings.json"
 

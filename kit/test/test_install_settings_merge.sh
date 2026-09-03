@@ -27,7 +27,7 @@ ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT 
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "skip - jq ausente: esta suite mide la fusion, que solo existe con jq"
-  echo "== 0 passed, 0 failed =="; exit 0
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
 fi
 
 # Todo ocurre en un HOME temporal: esta suite no puede acercarse al ~/.claude real.

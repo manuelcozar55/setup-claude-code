@@ -33,7 +33,7 @@ pass=0; fail=0
 ok(){ pass=$((pass+1)); }
 ko(){ fail=$((fail+1)); echo "FAIL: $1"; }
 
-command -v jq >/dev/null 2>&1 || { echo "FAIL: jq requerido"; echo "PASS=0 FAIL=1"; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo "skip - jq ausente: esta suite fabrica settings.json con jq para simular el enrutado"; echo "PASS=0 FAIL=0 SKIP=1"; exit 0; }
 PY="${PYTHON3:-python3}"
 
 free_port() { "$PY" -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()'; }
