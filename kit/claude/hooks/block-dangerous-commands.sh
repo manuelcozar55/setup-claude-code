@@ -1,11 +1,27 @@
 #!/bin/bash
 # block-dangerous-commands.sh — PreToolUse Bash security blocklist
 # Source: randomdreft/claude-code-security-hook (public domain), extended
-# Protocol: JSON deny/ask output + exit 0, or silent exit 0 to allow
+# Protocol: JSON deny/ask output + exit 0, or silent exit 0 to allow. When the input
+# cannot be read at all, the fallback is exit 2 + stderr (also a block in Claude Code,
+# and the only one available here: the JSON verdict below is emitted WITH jq).
 
 set -uo pipefail
 
-COMMAND=$(jq -r '.tool_input.command // empty' 2>/dev/null)
+# Lo que separa "no hay comando que revisar" de "no he podido leer el comando" NO es que
+# la salida venga vacia: es el CODIGO DE SALIDA de jq. Sin jq (rc=127) la sustitucion
+# dejaba COMMAND vacia, el `[[ -z ]]` de abajo lo confundia con el primer caso y este
+# guard PERMITIA en silencio justo lo que con jq deniega. rc=0 con salida vacia sigue
+# permitiendo (un evento que no es Bash no trae .tool_input.command, y ahi permitir es
+# correcto); rc!=0 significa que el guard esta ciego, y un guard ciego no puede autorizar.
+# Aqui no vale responder `deny` por JSON: ese JSON lo construye `jq -n`, que es
+# exactamente lo que falta. Por eso el bloqueo va por exit 2 + stderr, que no depende de
+# nada instalado -- el mismo mecanismo con el que bloquean los otros tres guards del kit.
+COMMAND=$(jq -r '.tool_input.command // empty' 2>/dev/null); JQ_RC=$?
+if [[ "$JQ_RC" -ne 0 ]]; then
+  echo "BLOCKED: cannot read the hook input with jq (rc=$JQ_RC: jq missing from PATH, or input that is not readable JSON)." >&2
+  echo "block-dangerous-commands.sh will not allow a command it could not inspect. Install jq, or remove this hook deliberately." >&2
+  exit 2
+fi
 [[ -z "$COMMAND" ]] && exit 0
 
 ALLOWLIST_FILE="${HOME}/.claude/sentinel-allowlist.json"
