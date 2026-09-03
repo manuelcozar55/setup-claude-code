@@ -18,12 +18,32 @@
 # positive). Extensions are anchored to end-of-token, not end-of-string.
 
 INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
+
+# Fail-closed: sin jq no hay decision posible, y permitir en silencio apagaba toda la
+# Capa 1 sin un mensaje. Denegar puede frenar trabajo legitimo, y por eso install.sh
+# exige jq en una puerta de dependencia: llegar aqui sin el es una instalacion incompleta.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "BLOCKED (fail-closed): falta jq en el PATH, asi que secret-guard no puede leer el comando." >&2
+  echo "Instala jq (apt install jq) y reintenta." >&2
+  exit 2
+fi
+if ! COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null); then
+  echo "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable; secret-guard no puede leer el comando." >&2
+  exit 2
+fi
 [[ -z "$COMMAND" ]] && exit 0
 
 # Anchored to (^|[;&|(]) so "cd x && git add key" and "(git add key)" don't
 # evade the guard — a bare "^" only catches git add at the very start.
-echo "$COMMAND" | grep -qE '(^|[;&|(])\s*git\s+add' || exit 0
+# rc=1 is "not a git add" and we exit; rc>=2 is "the regex did not compile", which `|| exit 0`
+# turned into a silent allow. Keep them apart: a broken filter must deny, not fall through.
+echo "$COMMAND" | grep -qE '(^|[;&|(])\s*git\s+add'
+rc_filter=$?
+if [ "$rc_filter" -ge 2 ]; then
+  echo "BLOCKED: secret-guard cannot evaluate the command (grep rc=$rc_filter)." >&2
+  exit 2
+fi
+[ "$rc_filter" -eq 0 ] || exit 0
 
 # Block .env files (allow known-safe template variants: .env.example, .env.template, .env.sample, .env.dist)
 if echo "$COMMAND" | grep -qiE 'git\s+add\s+.*\.env' && \
