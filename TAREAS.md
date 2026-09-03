@@ -96,3 +96,16 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] A7: rc=1 bloquea con motivo, tarea e intentos
   - [x] ausencia de autoridad no bloquea; autoridad muda si
 
+## T-007 · retirar oracle-log.sh y la via de desarme de autonomy.sh
+
+- estado: hecha
+- oráculo: `make test`
+- riesgo: bajo
+- clase: sensor
+- sensor: kit/test/test_verify_gate.sh
+- timeout: 15min
+- criterios:
+  - [x] verify-gate no menciona MCHARNESS_STATE ni autonomy.sh
+  - [x] oracle-log.sh no existe ni esta registrado en ningun settings
+  - [x] lo borrado de test_autonomy.sh tiene reemplazo nombrado
+
