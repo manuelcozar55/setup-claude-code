@@ -131,6 +131,8 @@ jobs:
 
       - name: test_autonomy
         run: bash kit/test/test_autonomy.sh
+      - name: test_verify_gate
+        run: bash kit/test/test_verify_gate.sh
       - name: test_detect_oracle
         run: bash kit/test/test_detect_oracle.sh
       - name: test_auto_spec

@@ -83,3 +83,16 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] dos copias divergentes se reportan
   - [x] copias identicas no se reportan (falsabilidad)
 
+## T-006 · verify-gate consulta 'mch task gate'
+
+- estado: hecha
+- oráculo: `make test`
+- riesgo: bajo
+- clase: sensor
+- sensor: kit/test/test_verify_gate.sh
+- timeout: 15min
+- criterios:
+  - [x] A6: sin mch en PATH no bloquea nunca
+  - [x] A7: rc=1 bloquea con motivo, tarea e intentos
+  - [x] ausencia de autoridad no bloquea; autoridad muda si
+
