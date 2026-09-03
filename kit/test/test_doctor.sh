@@ -47,7 +47,7 @@ fi
 echo "# tocado a mano" >> "$CLAUDE_HOME/hooks/branch-guard.sh"
 out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
        bash "$KIT/doctor.sh" 2>&1)"
-if echo "$out" | grep -qE '^WARN .*difieren de los del kit.*branch-guard'; then
+if echo "$out" | grep -qE '^WARN .*branch-guard.*personalizacion local'; then
   ck y y "un hook desplegado modificado a mano produce WARN de deriva"
 else
   ck n y "un hook desplegado modificado a mano produce WARN de deriva"
