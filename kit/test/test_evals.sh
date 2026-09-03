@@ -122,7 +122,11 @@ ck "$(g vacio.jsonl --require-bash x)"          2 "transcript vacio devuelve 2 (
 ck "$(g vacio.jsonl --no-read-after-edit x.md)" 2 "transcript vacio devuelve 2 tambien en --no-read-after-edit"
 
 # run.sh tiene que traducir ese 2 a algo distinto de 'fail'.
-if grep -q '2) r=error' "$E/run.sh"; then
+# Sin anclar, un case agrupado como '1|2) r=error' tambien contiene la
+# subcadena '2) r=error' y este assert lo daria por bueno sin serlo: exige
+# que el '2)' sea su propio brazo de case (precedido por ';;' o el 'in'
+# inicial), no una alternativa dentro de un '1|2)'.
+if grep -qE '(^|;;)[[:space:]]*2\)[[:space:]]*r=error' "$E/run.sh"; then
   echo "ok - run.sh registra el codigo 2 como 'error', no como 'fail'"; pass=$((pass+1))
 else
   echo "NOT ok - run.sh no distingue el codigo 2 (error) del 1 (fail)"; fail=$((fail+1))
@@ -133,7 +137,10 @@ fi
 # ser una copia del 'on': el lift sale 0.00, report.py lo llama NEUTRO y el eval
 # concluye en silencio que el harness no sirve. Es el fallo mas caro posible aqui,
 # porque parece un resultado en vez de una averia.
-if grep -q 'ARMFLAGS=(--safe-mode)' "$E/run.sh"; then
+# Sin anclar al brazo 'off)', un swap que moviera --safe-mode al brazo 'on)'
+# (invirtiendo control y tratamiento) dejaria la subcadena igual de presente
+# en el fichero y este assert seguiria diciendo ok.
+if grep -qE '^[[:space:]]*off\)[[:space:]]+ARMFLAGS=\(--safe-mode\)' "$E/run.sh"; then
   echo "ok - run.sh usa --safe-mode como brazo de control"; pass=$((pass+1))
 else
   echo "NOT ok - run.sh no define el brazo de control con --safe-mode"; fail=$((fail+1))
@@ -544,7 +551,8 @@ open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
 PYEOF
 sat=$("$PY" "$E/report.py" --store "$W/saturado.jsonl" 2>&1)
 rm -rf "$W"
-if printf '%s' "$sat" | grep -q 'mudas: 5/6'; then
+# Sin ancla final, 'mudas: 5/6' tambien casa dentro de 'mudas: 5/60'.
+if printf '%s' "$sat" | grep -qE 'mudas: 5/6\b'; then
   echo "ok - el informe cuenta las tareas que no distinguen los brazos"; pass=$((pass+1))
 else
   echo "NOT ok - las tareas mudas no se cuentan: el conjunto se satura en silencio"; fail=$((fail+1))
@@ -935,7 +943,9 @@ else
   echo "ok - el patron de una tarea no casa con un numero mayor"; pass=$((pass+1))
 fi
 salida=$(PATH="$FAKEBIN:$PATH" DRYRUN=1 bash "$E/run.sh" 12-alcance-quirurgico 18-commitear-solo-lo-pedido 2>&1)
-if printf '%s' "$salida" | grep -qF '2 tareas' && ! printf '%s' "$salida" | grep -qF "$UNA_TAREA"; then
+# -qF sin ancla: '2 tareas' tambien casa dentro de '12 tareas' o '32 tareas'
+# (grep -qF fija el patron, no el borde). \b lo ata al numero exacto.
+if printf '%s' "$salida" | grep -qE '\b2 tareas\b' && ! printf '%s' "$salida" | grep -qF "$UNA_TAREA"; then
   echo "ok - con dos nombres el ensayo cuenta dos tareas"; pass=$((pass+1))
 else
   echo "NOT ok - con dos nombres el ensayo no cuenta dos tareas: $salida"; fail=$((fail+1))
