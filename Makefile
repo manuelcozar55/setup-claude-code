@@ -33,6 +33,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_install_settings_merge.sh
 	bash kit/test/test_doctor.sh
 	bash kit/test/test_doctor_drift.sh
+	bash kit/test/test_skill_fork.sh
 	bash kit/test/test_install_platform_gate.sh
 	bash kit/test/test_install_gitleaks.sh
 	bash kit/test/test_install_gitleaks_checksum.sh
