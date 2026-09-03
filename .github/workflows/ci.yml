@@ -90,6 +90,9 @@ jobs:
       - name: test_doctor_drift.sh
         run: bash kit/test/test_doctor_drift.sh
 
+      - name: test_skill_fork.sh
+        run: bash kit/test/test_skill_fork.sh
+
       - name: test_install_platform_gate.sh (puerta de plataforma Linux/WSL2)
         run: bash kit/test/test_install_platform_gate.sh
 

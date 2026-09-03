@@ -71,3 +71,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] dos --plan seguidos dejan un solo arbol cckit-diff, no uno por invocacion
   - [x] el arbol sigue existiendo tras salir el proceso para que el usuario copie de el
 
+## T-005 · doctor reporta el fork de la skill harness
+
+- estado: hecha
+- oráculo: `make test`
+- riesgo: bajo
+- clase: sensor
+- sensor: kit/test/test_skill_fork.sh
+- timeout: 15min
+- criterios:
+  - [x] dos copias divergentes se reportan
+  - [x] copias identicas no se reportan (falsabilidad)
+

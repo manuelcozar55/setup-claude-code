@@ -93,6 +93,21 @@ else
   pass "los hooks desplegados coinciden byte a byte con los del kit  (fuente: cmp -s por fichero)"
 fi
 
+# 2d. la skill 'harness' vive en dos copias sin dueno declarado. El kit NO instala
+#     skills, asi que ninguna de las dos es "la del kit": es un fork sin origen,
+#     divergente en ambas direcciones. Se avisa, no se falla: unificarla exige un
+#     paso de redaccion de PII que todavia no existe (spec fase 3), y publicar la
+#     copia mas completa sin ese paso seria peor que la divergencia.
+skill_repo="$KIT/../.claude/skills/harness/SKILL.md"
+skill_desp="$CLAUDE_HOME/skills/harness/SKILL.md"
+if [ -f "$skill_repo" ] && [ -f "$skill_desp" ] && ! cmp -s "$skill_repo" "$skill_desp"; then
+  n_repo="$(wc -l < "$skill_repo" | tr -d ' ')"
+  n_desp="$(wc -l < "$skill_desp" | tr -d ' ')"
+  warn "dos copias divergentes de la skill harness sin fuente unica: $skill_desp ($n_desp lineas) vs $skill_repo ($n_repo lineas)  (fuente: cmp -s)"
+else
+  pass "skill harness: sin fork detectable entre la copia del repo y la desplegada  (fuente: cmp -s)"
+fi
+
 # 2b. capa de IOCs de Sentinel (opcional -> WARN)
 # Se comprueban las MISMAS rutas que busca el hook y en su orden (sentinel_preflight.py:
 # <dir del script>/iocs.json -> $CLAUDE_HOME/hooks/iocs.json -> skills/mcp-sentinel/...).
