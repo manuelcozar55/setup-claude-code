@@ -137,7 +137,27 @@ sección «Contención»: eso solo cubre esta pieza, no las otras dos.
 fase**: `grep ^Umask /proc/385/status` → `0002` (no `0077`), confirmado de
 nuevo al escribir este informe.
 
-## 6. Máquina — el archivador de PERF y el comprobador de reposo (Task 7, dos rondas de arreglo)
+## 6. Máquina — `~/.headroom/logs` cerrado a `700`
+
+**Qué:** `chmod 700 ~/.headroom/logs` (de `775` a `700`). No es la Task 6 del
+plan (el drop-in, que sigue inerte) ni la Task 8 (que aplicaría este mismo
+`chmod` de nuevo tras el borrado y reinicio): es un endurecimiento aparte,
+aplicado directamente sobre el directorio ya existente.
+
+**Por qué:** con la unidad todavía en `Umask 0002` (Task 8 sin ejecutar), el
+directorio en `775` deja atravesarlo a cualquier proceso del grupo o de
+otros del sistema; cerrarlo a `700` corta ese acceso de inmediato, sin
+esperar al reinicio que sí requiere autorización explícita. No cierra la
+fuga de contenido (`payload_preview` en claro dentro de los ficheros, que
+siguen en `664`) — solo quién puede llegar al directorio.
+
+**Verificado:** `stat -c '%a %n' ~/.headroom/logs` → `700` (`drwx------`)
+hoy. Los ficheros de dentro siguen en `664`
+(`stat -c '%a %n' ~/.headroom/logs/*`), coherente con que la Task 8 —que
+aplicaría el `UMask=0077` del drop-in a los ficheros que nazcan tras el
+reinicio— no se haya ejecutado.
+
+## 7. Máquina — el archivador de PERF y el comprobador de reposo (Task 7, tres rondas de arreglo)
 
 **Qué:** `~/.claude/scripts/headroom-perf-archive.sh` (extrae las líneas
 `PERF` de las 6 ranuras de rotación de `proxy.log` a un TSV mensual de 13
@@ -155,16 +175,38 @@ horas en un día cargado — sin archivar antes, la Task 8 (que sí purga logs)
 perdería historia. El comprobador de reposo existe porque un reinicio corta
 las peticiones en curso de las sesiones enrutadas a media respuesta.
 
-**Verificado** (estado final, tras la segunda ronda de arreglo — ver la
-sección de «Defectos del propio plan» para lo que se corrigió y por qué):
-archivo real en `~/.headroom/metrics/perf-2026-08.tsv` +
-`perf-2026-09.tsv`, ambos en `600`, **12611 filas de datos**, **0
-duplicados por `req_id`**, **0 filas con número de columnas incorrecto**.
-Idempotencia confirmada con dos corridas seguidas: la segunda añade `+0`.
-Arranque de cero (sin `metrics/` previo) probado en sandbox: antes del
-arreglo B, `rc=1` sin nada en stderr; después, `rc=0` y filas reales. Timer
-activo: próximo disparo `Thu 2026-09-03 20:04:40 CEST`, última corrida hace
-55 min con resultado `success`. `systemd-analyze --user verify
+**Verificado** (estado final, tras la tercera ronda de arreglo — ver la
+sección de «Defectos del propio plan» para lo que se corrigió en las dos
+primeras y por qué): archivo real en `~/.headroom/metrics/perf-2026-08.tsv`
++ `perf-2026-09.tsv`, ambos en `600`, **12815 filas de datos** (medido
+2026-09-03 20:44 con `awk 'FNR>1' perf-*.tsv | wc -l`; la serie sigue
+creciendo porque el timer dispara cada hora — el desglose por fecha,
+sellado a esa misma hora, está en «Premisa del spec que resultó falsa»),
+**0 duplicados por `req_id`**, **0 filas con número de columnas
+incorrecto**. Idempotencia confirmada con dos corridas seguidas: la segunda
+añade `+0`.
+
+Arranque de cero (sin `metrics/` previo): la reproducción registrada aquí
+se hizo **siempre con la entrada estándar redirigida** (un `echo |` o un
+fichero, nunca heredada de una terminal o de una tubería sin cerrar).
+Con esa condición: antes del arreglo B (la segunda ronda), `rc=1` sin nada
+en stderr; después de esa ronda, `rc=0` y filas reales. Esa reproducción
+**no cubría** un tercer defecto, encontrado en esta ronda: con
+`metrics/` vacío y `shopt -s nullglob` activo, el glob de
+`contar_filas_datos` (línea 44) desaparece y `cat` se queda sin argumentos
+— con stdin heredada de una tubería o de una sesión interactiva, en vez de
+fallar se queda leyendo de esa stdin y el script se **cuelga
+indefinidamente**, nunca llega a dar el `rc=1` de arriba. Corregido con
+`cat /dev/null "$MET"/perf-*.tsv` (un token: `/dev/null` garantiza que `cat`
+siempre tenga al menos un argumento). Verificado con `timeout 30` para no
+bloquear la propia verificación: dos corridas seguidas contra un `HOME` de
+prueba (`env HOME="$S" bash headroom-perf-archive.sh`, con `echo |` delante
+para no colgar el terminal si el arreglo fallara) dieron `rc=0` las dos
+veces, `+147` filas la primera y `+0` la segunda. `shellcheck -x` sobre el
+script → limpio.
+
+Timer activo: próximo disparo `Thu 2026-09-03 20:04:40 CEST`, última
+corrida hace 55 min con resultado `success`. `systemd-analyze --user verify
 headroom-perf-archive.service headroom-perf-archive.timer` → rc=0.
 `shellcheck` sobre ambos scripts → limpio. Proxy intacto durante todo el
 proceso: pid 385, `Umask 0002`, arrancado el 2 de septiembre — confirmado de
@@ -172,7 +214,7 @@ nuevo al escribir este informe.
 
 ---
 
-## 7. Task 8 — NO aplicada
+## 8. Task 8 — NO aplicada
 
 **La Task 8 (reinicio del proxy con el drop-in activo + purga de logs
 vaciados de `proxy.log`) NO se ha ejecutado.** Está congelada, a la espera de
@@ -196,11 +238,18 @@ este escrito: el proxy sigue escribiendo `payload_preview` en claro en
 El spec (`20f5f26`) toma como origen de la vida de Headroom el 31-ago 19:36
 con 4876 peticiones, cifra leída del endpoint `/stats` del propio proxy.
 **Esa cifra es el uptime del contador de `/stats`, no el alcance real del
-log.** El archivador (sección 6), al leer las 6 ranuras de rotación en vez
+log.** El archivador (sección 7), al leer las 6 ranuras de rotación en vez
 de solo el log vivo, recuperó registros `PERF` genuinos hasta el
 **2026-08-28** — tres días antes de lo que el spec daba por inicio. El
-desglose por fecha es 894 (08-28) / 3391 (08-31) / 477 (09-01) / 2929 (09-02)
-/ 4449 (09-03) filas. Verificado que son registros genuinos y no corrupción:
+desglose por fecha, medido en el **mismo instante** que el total de la
+sección 7 (`2026-09-03 20:44`, sellado con `date` para que las dos cifras
+describan un único momento — la versión anterior de este informe mezclaba
+dos instantes distintos: un desglose que sumaba 12140 filas frente a un
+total de 12611 tomado más tarde, cuando el timer horario ya había añadido
+más filas; la serie crece por diseño, así que la única foto honesta es una
+medición sellada), es 894 (08-28) / 3391 (08-31) / 477 (09-01) / 2929
+(09-02) / 5124 (09-03) filas, que suma **12815**, igual al total de la
+sección 7. Verificado que son registros genuinos y no corrupción:
 en las filas del 08-28, la marca de tiempo que escribe el propio log
 concuerda **al segundo** con el epoch que el `req_id` lleva incrustado
 (`hr_<epoch>_<contador>`) — dos fuentes independientes de tiempo dentro de la
@@ -262,7 +311,7 @@ construidos a propósito (log sintético con el `PERF` envenenado incrustado →
 | `test_doc_claims.sh` en solitario | `44 passed, 0 failed, 3 skipped` |
 | `shellcheck -x` sobre los ficheros tocados en repo | 0 hallazgos |
 | Sensor `payload_preview` (Task 2+3) | `FAIL` real, y falsable (Task 4) |
-| Archivo histórico `~/.headroom/metrics/*.tsv` | 12611 filas, 0 duplicados, 0 filas irregulares, ambos en `600` |
+| Archivo histórico `~/.headroom/metrics/*.tsv` | 12815 filas (medido 2026-09-03 20:44; crece con el timer horario), 0 duplicados, 0 filas irregulares, ambos en `600` |
 | Timer `headroom-perf-archive.timer` | habilitado, próximo disparo con margen |
 | Drop-in `10-higiene.conf` | escrito, validado, **inerte** (Task 8 no aplicada) |
 | Proxy vivo | pid 385, `Umask 0002` — sin tocar |
