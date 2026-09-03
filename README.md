@@ -26,7 +26,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 27 suites falsables | v1.1.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 28 suites falsables | v1.1.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -180,11 +180,13 @@ qué era "terminado".
 > **Un oráculo es un comando que devuelve 0 si el trabajo está bien hecho.**
 > No es una opinión, no es "revisar que funcione", no es el juicio del agente al terminar.
 
-El de este repo es `make test`. Y hay una trampa local que cuesta caro descubrir sola: el
-hook `PreToolUse/Bash` **sustituye el ejecutable en posición de comando** —`rg` ejecuta
-`grep`, `python3 -m pytest` ejecuta `python3 -m rtk`—, así que todo oráculo se invoca por
-**ruta absoluta**, con `rtk proxy …` o con `make …`. Un test lo verifica; no se deja a la
-memoria de nadie. Reproducción en [`knowledge/MISTAKES.md`](knowledge/MISTAKES.md) · M-001.
+El de este repo es `make test`. Y hay una trampa local que cuesta caro descubrir sola: hasta
+la 1.1.0, un hook `PreToolUse/Bash` **sustituía el ejecutable en posición de comando** —`rg`
+ejecutaba `grep`, `python3 -m pytest` acababa en un `python3 -m rtk` inexistente—. Se retiró
+por eso: un filtro que miente sobre la salida de un comando no ahorra, obliga a repetir la
+medición. El hábito se queda, porque el canal sigue siendo reescribible: todo oráculo se
+invoca por **ruta absoluta** o con `make …`. Un test lo verifica; no se deja a la memoria de
+nadie. Reproducción en [`knowledge/MISTAKES.md`](knowledge/MISTAKES.md) · M-001.
 
 ### Conocimiento vivo
 
@@ -219,7 +221,7 @@ en la configuración — todo cuelga de `$CLAUDE_PROJECT_DIR`.
 
 Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 8 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y no se limita a afirmar que los guards funcionan: lo **demuestra** con una suite falsable. `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **exactamente 10 casos `BLOCK` conocidos** — si neutralizarlo no rompiera nada, la suite no estaría midiendo nada. Reprodúcelo tú mismo en 5 segundos: `bash kit/test/test_guards_falsifiability.sh`.
 
-Y hay una segunda cosa que se demuestra en vez de prometerse: **que instalarlo en limpio no te rompe nada.** `test_clean_install_resilience.sh` monta el kit en una máquina simulada sin ninguno de los componentes de terceros (sin proxy, sin `rtk`, sin venv, sin `gitleaks`) y exige las dos mitades a la vez: que ningún hook falle, y que un comando destructivo siga bloqueado. Las dos mitades importan, porque la forma perezosa de arreglar la primera —envolver todo en `|| true`— rompe la segunda en silencio y te deja un kit de seguridad decorativo.
+Y hay una segunda cosa que se demuestra en vez de prometerse: **que instalarlo en limpio no te rompe nada.** `test_clean_install_resilience.sh` monta el kit en una máquina simulada sin ninguno de los componentes de terceros opcionales (sin proxy, sin venv, sin `gitleaks`) y exige las dos mitades a la vez: que ningún hook falle, y que un comando destructivo siga bloqueado. Las dos mitades importan, porque la forma perezosa de arreglar la primera —envolver todo en `|| true`— rompe la segunda en silencio y te deja un kit de seguridad decorativo.
 
 No son garantías absolutas: son defensa en profundidad, con sus límites documentados en [`SECURITY.md`](SECURITY.md), no escondidos.
 
@@ -242,7 +244,7 @@ reciente que dejó `install.sh`. Por defecto es un *dry-run* que solo enseña qu
 falta `--apply` para escribir, y antes de escribir se hace a su vez un backup del estado
 actual. `bash uninstall.sh --list` enumera los backups disponibles.
 
-`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, `rtk`, el venv de tools, `gitleaks`): **nada del kit los da por supuestos**, y hay un test que lo demuestra en una máquina pelada (`test_clean_install_resilience.sh`). Guía completa en [`kit/README.md`](kit/README.md).
+`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, `rtk`, el venv de tools, `gitleaks`): **nada del kit los da por supuestos**, y hay un test que lo demuestra en una máquina pelada (`test_clean_install_resilience.sh`). La excepción es `jq`, y es explícita: el kit **sí** lo exige — `install.sh` aborta si falta, y sin él los guards de Bash fallan en cerrado, deniegan en vez de permitir en silencio —, y ese mismo test también lo demuestra. Guía completa en [`kit/README.md`](kit/README.md).
 
 Si quieres el proxy de contexto, es un flag — y se cablea solo si arranca de verdad:
 

@@ -23,6 +23,45 @@ no para contener a un adversario activo que controle el prompt o el entorno.
 Documentamos sus límites conocidos en vez de esconderlos: un proyecto de
 seguridad que declara dónde se rompe es más creíble, no menos.
 
+### Capa 0 — `permissions.deny` de `settings.json` (antes de que corra un hook)
+
+Antes de los guards y de Sentinel hay una capa que no es un hook: las reglas
+`permissions.deny` que el kit distribuye en `settings.json`. Las evalúa Claude
+Code, así que deniegan la llamada a la herramienta **antes** de que ningún hook
+la vea. Cubren tres familias: los borrados de la raíz y de `$HOME` y el `git
+push --force` en sus distintas escrituras (reglas `Bash(...)`), los dos métodos
+del MCP de LinkedIn que escriben a terceros, y la configuración del propio kit
+—`Edit(/hooks/**)`, `Edit(/settings.json)`, `Edit(/settings.local.json)`,
+`Edit(/sentinel-allowlist.json)` y `Edit(/sentinel/**)`— para que una sesión no
+pueda desarmar sus propias barreras editándolas. Del lado de Sentinel, esas
+mismas rutas están en `PROTECTED_CONFIG`: no las deniega él —bloquear la
+escritura es trabajo de esta capa— pero garantiza que ningún allowlist las
+exima de la detección y que toda decisión sobre ellas llegue al log de
+auditoría, `allow` incluido.
+
+Dos cosas de esta capa no son obvias, y las dos están medidas hoy sobre Claude
+Code 2.1.259:
+
+- **Las comprobaciones de permisos de fichero solo consultan reglas
+  `Edit(ruta)`.** `Edit` ya cubre `Write`, `MultiEdit` y `NotebookEdit`, así que
+  una regla `Write(ruta)` se acepta como sintácticamente válida y **se ignora**;
+  el propio binario lo avisa por `stderr` en cada arranque. Escribir la regla
+  duplicada (`Write(...)` **y** `Edit(...)`) no protege más que la segunda sola;
+  escribirla solo como `Write(...)` no protege nada, y parece que sí.
+- **Una barra inicial ancla la ruta al fichero de settings, no a la raíz del
+  filesystem.** `Edit(/hooks/**)` significa "el `hooks/` que está junto a este
+  `settings.json`" —es decir `~/.claude/hooks/**`, que es exactamente lo que se
+  quiere aquí—, no `/hooks/**`. Para una ruta absoluta de verdad hacen falta
+  **dos**: `Edit(//home/usuario/...)`.
+
+Y lo que esta capa **no** cubre: una regla `Edit(...)` no frena a `Bash`. Un
+`sed -i`, un `tee`, un `>` o un `cp` sobre el mismo fichero llegan por otra
+herramienta y por otra ruta de decisión, y esa es la mitad que sostienen los
+guards de la Capa 1 y `smart_approve.py`, que descompone los comandos
+compuestos antes de comprobarlos. Las dos mitades hacen falta: con una sola, el
+fichero queda protegido por un lado y abierto por el otro. Detalle operativo en
+[`kit/docs/05-security.md`](kit/docs/05-security.md).
+
 ### Capa 1 — guards por nombre de fichero/comando (`secret-guard.sh` y afines)
 
 Estos hooks `PreToolUse` inspeccionan el **texto del comando `Bash`** antes de
@@ -73,6 +112,20 @@ instalación normal está), `decide()` resuelve "allow" en vez de bloquear.
 Esto es una decisión consciente de disponibilidad sobre seguridad — ver
 `kit/docs/05-security.md` para el razonamiento completo — y significa que
 Sentinel es opcional y aditivo, no la barrera principal.
+
+**El allowlist se busca primero en el directorio de trabajo.**
+`load_user_allowlist()` prueba `./.security/sentinel-allowlist.json` **antes**
+que `$HOME/.claude/sentinel-allowlist.json` y se queda con el primero que
+exista, así que un repo clonado puede traer sus propias exenciones y ganárselas
+a las tuyas por el solo hecho de que abras la sesión dentro de él (medido: con
+`paths: ["/"]` convertía en `allow` los denies de `~/.aws` y `~/.ssh` sin que el
+usuario editara nada). Es un compromiso deliberado —un proyecto puede declarar
+sus falsos positivos sin obligar a cada persona del equipo a copiarlos a su
+`$HOME`— y se documenta en vez de esconderse, porque el precio es que el
+allowlist efectivo depende del `cwd`. Lo que ningún allowlist puede levantar es
+el suelo en código (`ALWAYS_DENY_PATHS`: el fichero de credenciales de Claude
+Code, la clave privada de SSH y las credenciales de AWS), que se consulta antes.
+En un repo ajeno, mira qué trae ese fichero antes de fiarte de esta capa.
 
 ## En resumen
 

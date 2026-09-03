@@ -1,6 +1,6 @@
 # agent-browser (browser automation standard)
 - **Use `agent-browser` only** for browser/web automation unless the user explicitly requests another stack.
-- Installed globally as `agent-browser`; Chrome lives under `~/.agent-browser/browsers/`.
+- Install it globally (`pnpm add -g agent-browser`); Chrome lands under `~/.agent-browser/browsers/` after the first run.
 - Before browser work, load the local `agent-browser` skill, then refresh current docs with `agent-browser skills get core`.
 - Default workflow: `open` → `snapshot -i -c` → act on `@eN` refs → wait for expected URL/text/load → re-snapshot after every page change.
 - Prefer compact accessibility snapshots and refs over screenshots, raw DOM, Playwright MCP, `browser-use`, or ad-hoc JS. Screenshots are only for visual verification.
@@ -42,7 +42,7 @@ Never use `pip install --break-system-packages` or system-wide `pip3 install`. A
 )
 ```
 
-- Venv: `~/.venvs/tools/` — already created, `~/.local/bin` already in PATH
+- Venv: `~/.venvs/tools/` — create it if it is missing; `~/.local/bin` has to be in PATH
 - Install: `~/.venvs/tools/bin/pip install <pkg> -q`
 - Expose: `ln -sf ~/.venvs/tools/bin/<tool> ~/.local/bin/<tool>`
 - Upgrade: `~/.venvs/tools/bin/pip install -U <pkg> -q`
@@ -112,4 +112,4 @@ it auto-engage on those conditions.
 The design gate (IntentGate / brainstorming) runs *before* execution; once the design is approved,
 Never-Stop governs — drive to completion, no mid-run "should I continue?". Verify with evidence,
 not claims. Prefer the `superpowers` skills over ad-hoc process; delegate specialist work to the
-subagents in the table above.
+subagents this kit installs in `~/.claude/agents/`.
