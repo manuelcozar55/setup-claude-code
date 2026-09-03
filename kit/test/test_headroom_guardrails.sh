@@ -53,7 +53,10 @@ mk_home() { # imprime una raiz que hace de HOME, con un headroom de pega
   # `make bootstrap` (HOME aislado). Es la misma no-hermeticidad que esta suite vigila.
   printf '#!/bin/sh\nexit 0\n' > "$r/.local/bin/headroom"; chmod +x "$r/.local/bin/headroom"
   chmod 700 "$r/.headroom"
-  # logs/ aparte: nace con el umask del proceso (755), no hereda el 700 del padre.
+  # logs/ aparte: nace con el umask del proceso (755), no hereda el 700 del padre. Este
+  # 755 es el directorio que crea este mkdir bajo el umask 022 de la shell de test; no es
+  # el mismo dato que el 0002/664 de kit/doctor.sh:322-324, que describe los FICHEROS que
+  # escribe el proxy real bajo el umask de su propio servicio systemd.
   chmod 700 "$r/.headroom/logs"
   echo "$r"
 }
@@ -183,7 +186,7 @@ else
   ko "install.sh --with-headroom no genero la unidad en XDG_CONFIG_HOME"
 fi
 
-# --- 12) falsabilidad del sensor nuevo -------------------------------------
+# --- 8) falsabilidad del sensor nuevo --------------------------------------
 # Un sensor que no se puede poner rojo no es un sensor. Se neutraliza la marca que
 # busca, sobre una COPIA, y se exige que el caso malo pase de detectado a mudo. Sin
 # esto el sensor podria estar comparando contra una cadena que nunca aparece --
@@ -200,17 +203,13 @@ else
   ok; falsified=$((falsified + 1))
 fi
 
-# Un sensor que no puede ponerse rojo no es un sensor.
-if [ "$falsified" -ge 3 ]; then ok; else
-  ko "los casos negativos no demuestran deteccion real (detectados: $falsified de 3)"
-fi
-
-# --- 7) conversacion en claro en proxy.log -> FAIL --------------------------
+# --- 9) conversacion en claro en proxy.log -> FAIL --------------------------
 # El sensor viejo solo miraba proxy.jsonl y su marca "request_messages". La fuga
 # real vive en proxy.log, la escribe compression_store a nivel INFO con
 # event=headroom_retrieve y --log-messages APAGADO, y su marca es "payload_preview".
 # Un sensor que vigila el fichero equivocado se queda verde con conversacion en
-# claro a un directorio de distancia: medido el 2026-09-03, 100 lineas en un dia.
+# claro a un directorio de distancia: 592 lineas del 2026-09-03 contando las seis
+# franjas de rotacion (una medicion contra una sola franja habia dado 100).
 CH7="$(install_clean)"; R7="$(mk_home)"
 printf '%s\n' '2026-09-03 15:35:10,407 - headroom.cache.compression_store - INFO - event=headroom_retrieve {"hash":"abc","payload_preview":"texto literal de la conversacion","payload_preview_chars":1062}' \
   > "$R7/.headroom/logs/proxy.log"
@@ -219,15 +218,16 @@ if echo "$out7" | grep -qE '^FAIL .*payload_preview'; then ok; else
   ko "un proxy.log con payload_preview con contenido no produce FAIL"
 fi
 
-# --- 8) el mismo log con el preview ya apagado -> silencio ------------------
+# --- 10) el mismo log con el preview ya apagado -> silencio -----------------
 printf '%s\n' '2026-09-03 15:35:10,407 - headroom.cache.compression_store - INFO - event=headroom_retrieve {"hash":"abc","payload_preview":"","payload_preview_chars":0}' \
   > "$R7/.headroom/logs/proxy.log"
+[ -f "$R7/.headroom/logs/proxy.log" ] || ko "el caso 10 corrio sin proxy.log: verde vacio"
 out8="$(run_doctor "$CH7" "$R7")"
 if echo "$out8" | grep -qE '^FAIL .*payload_preview'; then
   ko "un proxy.log con el preview apagado produce un FAIL falso"
 else ok; fi
 
-# --- 9) permisos de ~/.headroom/logs -> WARN -------------------------------
+# --- 11) permisos de ~/.headroom/logs -> WARN ------------------------------
 # El 700 del directorio padre no cubre al hijo, y ahi es donde vive el log.
 chmod 755 "$R7/.headroom/logs"
 out9="$(run_doctor "$CH7" "$R7")"
@@ -236,7 +236,7 @@ if echo "$out9" | grep -qE '^WARN .*headroom/logs tiene permisos 755'; then ok; 
 fi
 chmod 700 "$R7/.headroom/logs"
 
-# --- 10) unidad sin InaccessiblePaths -> WARN ------------------------------
+# --- 12) unidad sin InaccessiblePaths -> WARN ------------------------------
 # Con ProtectHome=read-only el proxy puede LEER ~/.ssh, ~/.aws, ~/.gnupg y
 # ~/.config/gh. La plantilla del kit lo tapa, pero nada re-aplica la plantilla:
 # la unidad viva de esta maquina es del 21-ago y no llego a tenerlo.
@@ -247,13 +247,22 @@ if echo "$out10" | grep -qE '^WARN .*InaccessiblePaths'; then ok; else
   ko "una unidad que no declara InaccessiblePaths no produce WARN"
 fi
 
-# --- 11) el mismo endurecimiento, pero en un drop-in -> silencio -----------
+# --- 13) el mismo endurecimiento, pero en un drop-in -> silencio -----------
 # Un grep al fichero de la unidad no ve lo que vive en .service.d/: sin esto el
 # sensor daria rojo falso a una maquina correctamente arreglada con drop-in.
 write_dropin "$R10" 'InaccessiblePaths=-%h/.ssh -%h/.aws -%h/.gnupg -%h/.config/gh'
+[ -f "$R10/.config/systemd/user/headroom-proxy.service" ] || ko "el caso 13 corrio sin unidad: verde vacio"
 out11="$(run_doctor "$CH10" "$R10")"
 if echo "$out11" | grep -qE '^WARN .*InaccessiblePaths'; then
   ko "el sensor no lee los drop-ins: da WARN con el endurecimiento ya puesto"
 else ok; fi
+
+# Un sensor que no puede ponerse rojo no es un sensor. El contador vive aqui, al final
+# del fichero, a proposito: en la posicion vieja (justo tras el caso 8) cualquier
+# `falsified++` de un caso añadido despues no se contaba. Aqui abajo, cualquier caso
+# nuevo que se añada por encima siempre queda dentro de la cuenta.
+if [ "$falsified" -ge 3 ]; then ok; else
+  ko "los casos negativos no demuestran deteccion real (detectados: $falsified de 3)"
+fi
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
