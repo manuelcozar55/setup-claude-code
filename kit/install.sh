@@ -44,6 +44,29 @@ if [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null
   echo "==> Detectado WSL2 (${WSL_DISTRO_NAME:-distro desconocida}). Soportado igual que Linux nativo."
 fi
 
+# --- Puerta de dependencia: jq ----------------------------------------------
+# jq no es opcional: los cuatro guards de Bash leen el comando del payload de
+# PreToolUse con jq, y fallan en CERRADO si no esta (deniegan en vez de permitir
+# en silencio). Instalar sin jq dejaria un kit que bloquea cada comando de Bash,
+# asi que se para aqui, antes de escribir nada, y con la orden que lo arregla.
+if ! command -v jq >/dev/null 2>&1; then
+  cat >&2 <<EOF
+==> Falta jq, y este kit lo necesita.
+
+Los cuatro guards de Bash (block-dangerous-commands, branch-guard,
+destructive-guard, secret-guard) leen el comando con jq. Sin jq no pueden
+decidir, y fallan en cerrado: DENIEGAN todo comando de Bash. Instalarlo asi
+te dejaria Claude Code bloqueado, asi que no se instala nada.
+
+Instala jq y repite:
+
+  sudo apt install jq      # Debian / Ubuntu / WSL2
+  sudo dnf install jq      # Fedora
+  sudo pacman -S jq        # Arch
+EOF
+  exit 1
+fi
+
 # --- Subcomando: activar la Capa 2 de secretos en el repo actual ------------
 # core.hooksPath es config POR REPOSITORIO. install.sh nunca la toca por su
 # cuenta: modificar la config de git de un repo que el usuario no ha nombrado
@@ -85,10 +108,8 @@ if [ "${1:-}" = "--with-headroom" ]; then
     echo "==> Instala primero el kit:  bash $KIT/install.sh" >&2
     exit 1
   fi
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "==> jq es necesario para cablear settings.json sin romperlo." >&2
-    exit 1
-  fi
+  # Sin comprobar jq: la puerta de dependencia de arriba ya paro la ejecucion si
+  # falta, asi que aqui esta garantizado (lo usa el cableado del paso 4).
 
   # 1. Paquete en el venv de tools (nunca pip del sistema).
   if [ "$DRY" != "1" ]; then
@@ -294,8 +315,9 @@ install_file() {  # src dst
 # descubrir no es una salvaguarda: es una autopsia.
 install_settings() {  # src dst
   local src="$1" dst="$2" tmp
-  if [ ! -f "$dst" ] || ! command -v jq >/dev/null 2>&1; then
-    [ -f "$dst" ] && echo "   AVISO: sin jq no se puede fusionar settings.json; se reemplaza con backup" >&2
+  # Sin fichero previo no hay nada que fusionar. El caso "sin jq" ya no llega hasta aqui:
+  # la puerta de dependencia del principio aborta antes, sin tocar tu settings.json.
+  if [ ! -f "$dst" ]; then
     install_file "$src" "$dst"; return
   fi
   if ! jq empty "$dst" 2>/dev/null; then
