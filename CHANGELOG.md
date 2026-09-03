@@ -70,6 +70,23 @@ conjunto de evals sigue en 20 tareas —10 positivas y 10 negativas— con 32 mu
   muestra antes de conceder permisos automáticos. En un kit cuya tesis son capas que bloquean,
   eso no puede ser el default. Se retira de los tres `settings.json` y el sensor nuevo vigila
   que no reaparezca. Quien lo quiera, lo pone en su config; ya no viene puesto.
+- **`doctor.sh` vigilaba el fichero equivocado.** El sensor de conversación en
+  claro solo miraba `~/.headroom/logs/proxy.jsonl` y su marca `request_messages`.
+  La fuga real la escribe `compression_store` en `proxy.log`, a nivel INFO y con
+  `--log-messages` **apagado**, en forma de `payload_preview` de hasta 4096
+  caracteres: 100 líneas medidas en un solo día. El sensor estaba verde.
+- **La unidad generada no tapaba las credenciales en las máquinas viejas.** La
+  plantilla declara `InaccessiblePaths` desde hace tiempo, pero nada re-aplica la
+  plantilla y `doctor.sh` solo inspeccionaba `ExecStart=`. Ahora avisa, y lee
+  también `headroom-proxy.service.d/*.conf` para no dar verde falso a una máquina
+  arreglada con drop-in ni rojo falso a la que lo tiene en la unidad.
+- **`UMask=0077` y `HEADROOM_LOG_PAYLOAD_PREVIEW=0` en la unidad.** El proceso
+  heredaba `Umask 0002`, así que los logs nacían en 664 y cada rotación los
+  volvía a crear así; `chmod` solo arregla el pasado. La variable no se puede
+  cambiar en caliente: no está en `_KNOBS_BY_ENV` y el lector consulta
+  `os.environ` directo, así que `/admin/runtime-env` no la ve.
+- `chmod 700` también a `~/.headroom/logs`, que el `700` del directorio padre no
+  cubría.
 
 ### Fixed
 
