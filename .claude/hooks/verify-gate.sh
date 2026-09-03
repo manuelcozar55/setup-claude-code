@@ -45,7 +45,15 @@ fi
 # La asimetria del final es deliberada y es la leccion de 6edfd73:
 #   ausencia de autoridad              => NO bloquear (el kit sirve sin mch)
 #   autoridad presente que no responde => BLOQUEAR (fallo cerrado)
-CONTRATO_SOPORTADO=1
+#
+# Subido a 2 (T-042 en mcharness, F-3): ese contrato solo cambio el
+# significado de `alcance` -- separo "sin comprobar" (una puerta anterior aun
+# no llego al cotejo) de "no verificable" (se intento y no habia con que),
+# dos cosas que antes compartian la misma cadena. Este hook nunca lee
+# `alcance`. Las claves que si lee (gobierna, veredicto, evidencia, motivo,
+# tarea, intentos, oraculo_sellado, contrato) no cambiaron de significado
+# entre 1 y 2 -- comprobado contra _gate_estado()/_gate_alcance() en bin/mch.
+CONTRATO_SOPORTADO=2
 
 bloquear() { jq -n --arg r "$1" '{decision:"block", reason:$r}'; exit 0; }
 

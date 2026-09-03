@@ -35,7 +35,9 @@ fabrica_mch(){
   } > "$T/bin/mch"
   chmod +x "$T/bin/mch"
 }
-corre(){ printf '%s' "$(pl "${1:-false}")" | env PATH="$T/bin:$PATH" bash "$GATE" 2>/dev/null; }
+# $2 opcional: que copia del hook correr (por defecto $GATE). Lo usa H-2 para
+# ejercitar una version "vieja" del hook sin mantener un segundo fichero real.
+corre(){ printf '%s' "$(pl "${1:-false}")" | env PATH="$T/bin:$PATH" bash "${2:-$GATE}" 2>/dev/null; }
 
 # Para el caso A6 no basta con borrar $T/bin/mch: en una maquina con mch instalado
 # seguiria encontrandolo en el PATH del sistema y el test pasaria por la razon
@@ -187,5 +189,46 @@ ck "$(printf '%s' "$err_f1d" | grep -qi 'oráculo' && echo y || echo n)" "y" \
    "F-1 degradacion: sin jq, lazo cerrado en verde avisa igual (no se puede confirmar)"
 salida_f1d="$( (cd "$T/proj" && printf '%s' "$(pl false)" | env PATH="$(sin_jq_path)" bash "$GATE") 2>/dev/null)"
 ck "$(decision "$salida_f1d")" "ninguna" "F-1 degradacion sin jq: avisa pero no bloquea"
+
+# --- H-2: el hook entiende el contrato 2 que emite mch hoy -----------------
+# `mch task gate --json` subio de contrato 1 a 2 (T-042 en mcharness: separo
+# 'sin comprobar' de 'no verificable', dos cosas que antes compartian cadena
+# en `alcance`; este hook no lee esa clave). Aqui se prueban las DOS
+# direcciones del desfase de version, y la que de verdad importa es la
+# primera: un hook viejo desplegado, sin actualizar, tiene que seguir
+# protegiendo a quien no lo haya subido -- bloquear Y avisar que el detalle
+# puede estar incompleto. No se mantiene un segundo fichero para eso: se
+# fabrica una copia del hook ACTUAL con CONTRATO_SOPORTADO parcheado de
+# vuelta a 1, para no divergir de la logica real del `case` de mas arriba.
+GATE_VIEJO="$T/verify-gate-viejo.sh"
+sed 's/^CONTRATO_SOPORTADO=2$/CONTRATO_SOPORTADO=1/' "$GATE" > "$GATE_VIEJO"
+chmod +x "$GATE_VIEJO"
+ck "$(grep -c '^CONTRATO_SOPORTADO=1$' "$GATE_VIEJO")" "1" \
+   "falsabilidad del andamio H-2: el hook viejo declara de verdad CONTRATO_SOPORTADO=1"
+
+MCH2_ROJO='{"contrato":2,"gobierna":true,"veredicto":"rojo","motivo":"no hay ejecucion VERDE del oraculo registrada tras el ultimo start","tarea":"T-050","titulo":"y","clase":"sensor","oraculo_sellado":"pytest -q","intentos":2,"ultimo_run_rc":1,"alcance":"sin comprobar","evidencia":"incompleta"}'
+fabrica_mch 1 "$MCH2_ROJO"
+out_viejo="$(corre false "$GATE_VIEJO")"
+ck "$(decision "$out_viejo")" "block" \
+   "H-2: hook viejo (CONTRATO_SOPORTADO=1) contra mch en contrato 2 sigue bloqueando"
+ck "$(printf '%s' "$out_viejo" | jq -r '.reason // ""' | grep -qi 'contrato' && echo y || echo n)" "y" \
+   "H-2: hook viejo avisa de que mch habla un contrato mas nuevo del que entiende"
+
+out_nuevo="$(corre)"
+ck "$(decision "$out_nuevo")" "block" \
+   "H-2: hook actual (CONTRATO_SOPORTADO=2) bloquea igual contra mch en contrato 2"
+ck "$(printf '%s' "$out_nuevo" | jq -r '.reason // ""' | grep -qi 'contrato' && echo y || echo n)" "n" \
+   "H-2: hook actual NO avisa -- entiende el contrato 2 de verdad, no es que perdiera el aviso"
+
+# Mutacion CERCANA (2 -> 3), no lejana (no -> 99 como FUTURO mas arriba): fija
+# el limite exacto de la comparacion en 'mas nuevo que 2', no en 'un numero
+# grande cualquiera'. Sin este caso, un "> 2" roto como ">= 2" o un ">" que en
+# realidad compara contra 1 seguirian pasando la asercion de arriba.
+MCH3_ROJO='{"contrato":3,"gobierna":true,"veredicto":"rojo","motivo":"no hay ejecucion VERDE del oraculo registrada tras el ultimo start","tarea":"T-050","titulo":"y","clase":"sensor","oraculo_sellado":"pytest -q","intentos":2,"ultimo_run_rc":1,"alcance":"sin comprobar","evidencia":"incompleta"}'
+fabrica_mch 1 "$MCH3_ROJO"
+out_mut="$(corre)"
+ck "$(decision "$out_mut")" "block" "H-2 mutacion cercana: mch en contrato 3 sigue bloqueando"
+ck "$(printf '%s' "$out_mut" | jq -r '.reason // ""' | grep -qi 'contrato' && echo y || echo n)" "y" \
+   "H-2 mutacion cercana: contrato 3 SI dispara el aviso (el limite esta en 2, no en 99)"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
