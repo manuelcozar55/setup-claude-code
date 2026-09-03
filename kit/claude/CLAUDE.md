@@ -1,17 +1,10 @@
-# graphify
-- **graphify** (`~/.claude/skills/graphify/SKILL.md`) - any input to knowledge graph. Trigger: `/graphify`
-When the user types `/graphify`, invoke the Skill tool with `skill: "graphify"` before doing anything else.
 # agent-browser (browser automation standard)
 - **Use `agent-browser` only** for browser/web automation unless the user explicitly requests another stack.
-- Installed globally: `agent-browser 0.27.0`; Chrome lives under `~/.agent-browser/browsers/`.
+- Installed globally as `agent-browser`; Chrome lives under `~/.agent-browser/browsers/`.
 - Before browser work, load the local `agent-browser` skill, then refresh current docs with `agent-browser skills get core`.
 - Default workflow: `open` → `snapshot -i -c` → act on `@eN` refs → wait for expected URL/text/load → re-snapshot after every page change.
 - Prefer compact accessibility snapshots and refs over screenshots, raw DOM, Playwright MCP, `browser-use`, or ad-hoc JS. Screenshots are only for visual verification.
 - Security: never expose secrets/cookies in output; use auth vault/state files for credentials; restrict browsing to user-requested domains.
-# userEmail
-The user's email address is you@example.com.
-# currentDate
-Today's date is 2026-05-13.
 
 ## Setup del harness — levantarlo y repararlo
 
@@ -84,12 +77,6 @@ Never use `pip install --break-system-packages` or system-wide `pip3 install`. A
 - Never `--no-verify`; fix the underlying hook issue instead
 - Never amend published commits; create new ones
 
-## Performance & Token Efficiency
-- Prefer Grep over full-file Read when searching
-- Use `Agent(subagent_type="Explore")` for open-ended codebase searches >3 queries
-- Avoid redundant re-reads of already-loaded files
-- Auto-compact threshold: 75% context window
-
 ## IntentGate — Before Any Complex Task
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
@@ -111,21 +98,6 @@ For multi-step tasks, state a brief execution plan before touching code:
 
 ## Never-Stop Principle
 Clarify *before* starting (IntentGate). Once execution begins: no mid-task "should I continue?". Execute to completion, then report. If ambiguity arises mid-task → make the most conservative reversible choice and note it in the final report. The only valid stop is surfacing a blocker that makes completion impossible without user input.
-
-## Parallel-First Execution
-For any task with 2+ independent workstreams: launch agents in parallel by default via `superpowers:dispatching-parallel-agents`. Sequential only when there is a hard dependency.
-
-## Agent Delegation
-| Need | Agent |
-|---|---|
-| Complex multi-part task | `orchestrator` (coordinates parallel specialists) |
-| Ambiguous scope / architecture | `strategist` (IntentGate + structured plan) |
-| Autonomous implementation | `deep-worker` (end-to-end, no interruptions) |
-| Pre-PR code review | `code-reviewer` (APPROVE / WARNING / BLOCK) |
-| Security audit | `security-reviewer` (OWASP Top 10) |
-| Codebase exploration | `code-explorer` (focused search) |
-| Lint / types / tests | `quick-checker` (PASS / FAIL only) |
-| Maximum power mode | `/ultrawork` skill — all agents, parallel, no stops |
 
 ## Operating loop
 For substantial / ambiguous / irreversible / security- or production-touching work, run the

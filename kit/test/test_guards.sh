@@ -67,6 +67,45 @@ expect "guard: --follow-tags NO denegado" "$(run_blockdc 'git push --follow-tags
 expect "deny-list: -uf agrupado denegado" "$(run_smart 'git push -uf origin main')"          BLOCK
 expect "deny-list: -fu agrupado denegado" "$(run_smart 'git push -fu origin main')"          BLOCK
 
+# Huecos de force-push medidos: estos cinco comandos pasaban los CINCO guards. La causa
+# no era la lista de patrones sino su ancla: block-dangerous-commands.sh exigia
+# `git\s+push` (se rompe con cualquier opcion de git por delante: -C, --git-dir, -c) y
+# branch-guard.sh anclaba a '^' (se rompe con un comando encadenado). Los dos ALLOW son
+# el contrapeso: un patron independiente de la posicion no puede bloquear un push normal.
+run_branchguard() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | bash "$KIT/claude/hooks/branch-guard.sh" 2>&1; }
+expect "guard: -C antes de push denegado"         "$(run_blockdc 'git -C /home/user/repo push -f origin main')"  BLOCK
+expect "guard: refspec + forzado denegado"        "$(run_blockdc 'git push origin +release:release')"            BLOCK
+expect "guard: --mirror denegado"                 "$(run_blockdc 'git push --mirror origin')"                    BLOCK
+expect "guard: --delete de rama remota denegado"  "$(run_blockdc 'git push origin --delete release')"            BLOCK
+expect "guard: --force-with-lease sigue denegado" "$(run_blockdc 'git push --force-with-lease origin feature')"  BLOCK
+expect "guard: -C sin forzar NO denegado"         "$(run_blockdc 'git -C /home/user/repo push origin feature')"  ALLOW
+expect "branch-guard: master tras cd + && denegado" "$(run_branchguard 'cd /tmp && git push origin master')"     BLOCK
+expect "branch-guard: -C antes de push a main denegado" "$(run_branchguard 'git -C /home/user/repo push origin main')" BLOCK
+expect "branch-guard: rama de feature NO denegada"  "$(run_branchguard 'git push origin feature/x')"             ALLOW
+
+# Borrado recursivo en forma larga: `rm --recursive --force ruta` no lleva ninguna r ni f
+# agrupada tras un guion, y `find /home/... -delete` no emparejaba el patron de find (que
+# exigia un separador justo tras / ~ ..). Las dos capas fallaban por separado, asi que se
+# cubren por separado.
+run_destructive() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" bash "$KIT/claude/hooks/destructive-guard.sh" 2>&1; }
+expect "guard: rm --recursive --force denegado"   "$(run_blockdc 'rm --recursive --force /home/usuario/docs')"   BLOCK
+expect "guard: rm -r sin forzar NO denegado"      "$(run_blockdc 'rm -r node_modules')"                          ALLOW
+expect "destructive: rm forma larga en /home denegado" "$(run_destructive 'rm --recursive --force /home/usuario/docs')" BLOCK
+expect "destructive: find -delete bajo /home denegado" "$(run_destructive 'find /home/usuario/docs -delete')"    BLOCK
+expect "destructive: find -delete en /tmp NO denegado" "$(run_destructive 'find /tmp/build -delete')"            ALLOW
+
+# Las 43 reglas del guard se evaluaban con 43 `echo | grep` (58 ms por llamada, medido);
+# ahora la union de todos los patrones se prueba con UN grep y el desglose regla a regla
+# solo corre si esa union dispara. Las reglas ASK quedan detras del mismo grep: si la
+# union se quedase solo con las DENY, los `ask` desaparecerian en silencio -- fallo en
+# abierto que ningun caso BLOCK/ALLOW de arriba notaria, porque `ask` no es ninguno de los
+# dos. Este es el unico assert que lo ve.
+if run_blockdc 'npm publish' | grep -q '"ask"'; then
+  pass=$((pass+1))
+else
+  fail=$((fail+1)); echo "FAIL: guard: npm publish debe seguir pidiendo confirmacion (ask)"
+fi
+
 # Hallazgo de seguridad documentado (no un bug de esta suite): smart_approve.py
 # falla ABIERTO si $HOME/.claude/settings.json no existe o no tiene
 # permissions.deny -- sin ese fichero, deny_rules queda vacio y todo se
@@ -183,6 +222,21 @@ if [ -x "$KIT/claude/hooks/git/pre-commit" ] && [ -f "$KIT/claude/.gitleaks.toml
 else
   fail=$((fail+1)); echo "FAIL: la Capa 2 (hooks/git/pre-commit + .gitleaks.toml) se distribuye en el kit"
 fi
+
+# 15) modo de los hooks: settings.json los invoca por RUTA DIRECTA, asi que un *.sh
+# versionado como 100644 devuelve rc=126 en cada arranque de sesion de cualquier
+# instalacion de terceros. Le paso a preflight.sh, el unico de los nueve sin el bit, y
+# ningun test lo veia. Se comprueba el modo REGISTRADO en git y no solo el del disco: el
+# checkout de un tercero reproduce lo que diga el indice, no el chmod local de nadie.
+mode_fail=0
+while IFS= read -r hook; do
+  [ -x "$hook" ] || { echo "FAIL: hook no ejecutable en disco: $hook"; mode_fail=1; }
+done < <(find "$KIT/claude/hooks" -name '*.sh')
+if git -C "$KIT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  NOT_755=$(git -C "$KIT" ls-files -s -- 'claude/hooks/*.sh' | awk '$1 != "100755" {print $4}')
+  [ -z "$NOT_755" ] || { echo "FAIL: hooks *.sh versionados sin bit de ejecucion: $NOT_755"; mode_fail=1; }
+fi
+if [ "$mode_fail" -eq 0 ]; then pass=$((pass+1)); else fail=$((fail+1)); fi
 
 rm -rf "$SG_DIR"
 rm -rf "$GUARDS_TEST_HOME"

@@ -100,7 +100,7 @@ mas antiguo que el tuyo: sigue emitiendo checks de categoria `style` que las ver
 0.11.0 y CI en rojo. **El oraculo es CI**, no tu maquina.
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 26 suites listadas arriba).
+(las 27 suites listadas arriba).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -202,7 +202,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 26 suites y el escaner de secretos
+# 2. las 27 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 
@@ -248,6 +248,9 @@ hallazgo en material **versionado**, y eso se comprueba sin ambigüedad en un
 clon limpio (`git clone` a un directorio nuevo y `bash kit/scan-secrets.sh .`
 ahí).
 
-Nota sobre el paso 3: los dos `WARN` de `doctor.sh` en una instalación limpia
-(IOCs de Sentinel y Capa 2 de secretos) son correctos — son capas opt-in, y
+Nota sobre el paso 3: el `WARN` de la Capa 2 de secretos (`core.hooksPath`)
+en una instalación limpia es correcto — es una capa opt-in por repositorio, y
 `doctor.sh` sale con 0 igualmente. Lo que bloquea una release es un `FAIL`.
+La capa de IOCs de Sentinel, en cambio, ya no avisa: el kit distribuye
+`kit/sentinel/iocs.json` y en una instalación limpia sale
+`PASS · Sentinel IOC layer activa`.

@@ -302,7 +302,10 @@ install_settings() {  # src dst
     echo "   AVISO: $dst no es JSON valido; se reemplaza con backup" >&2
     install_file "$src" "$dst"; return
   fi
-  tmp="$(mktemp)"
+  # El temporal va en el MISMO directorio que $dst para que el mv de abajo sea un rename
+  # atomico (no cruza sistemas de ficheros): un fallo a mitad del cp anterior dejaba tu
+  # settings.json truncado, y no hay medio settings.json que valga.
+  tmp="$(mktemp "$dst.XXXXXX")"
   if jq -s '
       .[0] as $kit | .[1] as $old |
       ($kit + $old)
@@ -316,7 +319,8 @@ install_settings() {  # src dst
       mkdir -p "$(dirname "$BK/${dst#"$CLAUDE_HOME"/}")"
       cp -p "$dst" "$BK/${dst#"$CLAUDE_HOME"/}"
       echo "   backup: ${dst#"$CLAUDE_HOME"/} (fusionado: hooks del kit, permisos unidos, tu env y tu model intactos)"
-      cp -p "$tmp" "$dst"
+      chmod --reference="$dst" "$tmp"
+      mv "$tmp" "$dst"
     fi
     rm -f "$tmp"
   else
@@ -344,9 +348,9 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
   install_file "$KIT/claude/sentinel-allowlist.json" "$base/sentinel-allowlist.json"
   install_file "$KIT/claude/.gitleaks.toml"       "$base/.gitleaks.toml"
-  for f in "$KIT"/claude/agents/*; do [ -e "$f" ] && install_file "$f" "$base/agents/$(basename "$f")"; done
+  for f in "$KIT"/claude/agents/*; do [ -f "$f" ] && install_file "$f" "$base/agents/$(basename "$f")"; done
   for f in "$KIT"/claude/hooks/*;  do [ -f "$f" ] && install_file "$f" "$base/hooks/$(basename "$f")"; done
-  for f in "$KIT"/sentinel/*;      do [ -e "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
+  for f in "$KIT"/sentinel/*;      do [ -f "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
   mkdir -p "$base/hooks/git"
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
   chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit 2>/dev/null || true

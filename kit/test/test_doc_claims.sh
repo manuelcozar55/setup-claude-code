@@ -869,6 +869,460 @@ else
 fi
 rm -f "$TMPD"/*.md "$TMPD"/*.jsonl "$TMPD"/py-revienta; rmdir "$TMPD"
 
+# --- 5. La doc de Headroom, contra install.sh, el Makefile y la unidad -----
+# Headroom era la unica parte grande del repo sin sensor de doc: cero coincidencias con
+# "headroom" en este fichero. Sus afirmaciones no son cifras de inventario -las que
+# `claim` sabe juzgar-, son promesas sobre lo que install.sh escribe, sobre lo que la
+# unidad systemd arranca y sobre con que se comprueba el enrutado. Se cubren esas.
+#
+# Lo que NO se cubre, y es deliberado: las cifras de ahorro, latencia y RAM del proxy.
+# Son mediciones fechadas de una maquina concreta y no tienen fuente de verdad en el
+# arbol, asi que un sensor solo podria compararlas consigo mismas. Copiar el texto no
+# es medirlo.
+#
+# Cada comprobador recibe los ficheros por argumento en vez de nombrarlos dentro: asi
+# las sondas de falsabilidad del final pueden interrogarlo sobre copias deformadas. Un
+# comprobador que solo sabe mirar el arbol real no se puede poner rojo a proposito.
+HRDOC=kit/docs/03-headroom.md
+ONBDOC=kit/docs/10-onboarding.md
+VERDOC=kit/docs/07-verify.md
+
+# hr_check <sujeto> <comprobador> <fichero...>: un renglon por queja, nada si cuadra.
+hr_check() {
+  local sujeto="$1" fn="$2"; shift 2
+  local q; q=$("$fn" "$@")
+  if [ -z "$q" ]; then
+    echo "ok - $sujeto"; pass=$((pass+1))
+  else
+    echo "NOT ok - $sujeto:"; echo "$q"; fail=$((fail+1))
+  fi
+}
+
+# La unidad systemd: `--mode cache` explicito y NUNCA `--budget` ni `--log-messages`.
+# El modo token invalida el prompt-caching, que es de donde sale el ahorro de verdad;
+# --budget devuelve HTTP 200 con cuerpo vacio al agotarse, que se lee como un fallo del
+# cliente; --log-messages escribe la conversacion entera en claro. doctor.sh vigila la
+# unidad INSTALADA (test_headroom_guardrails.sh); lo que nadie vigilaba es el ExecStart
+# que PUBLICA la doc, y copiar un ExecStart de un documento es exactamente como llegan
+# esos flags a una maquina.
+hr_unidad() {
+  local f l vistas=0
+  for f in "$@"; do
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      vistas=$((vistas+1))
+      case "$l" in
+        *"--mode cache"*) ;;
+        *) echo "  $f: ExecStart sin '--mode cache': $(printf '%s' "$l" | cut -c1-58)" ;;
+      esac
+      case "$l" in
+        *--budget*|*--log-messages*)
+          echo "  $f: ExecStart con --budget o --log-messages: $(printf '%s' "$l" | cut -c1-58)" ;;
+      esac
+    done <<< "$(grep -h '^ExecStart=.*headroom proxy' "$f" 2>/dev/null)"
+  done
+  [ "$vistas" -gt 0 ] || echo "  ningun ExecStart de 'headroom proxy' en $*: no hay nada que juzgar"
+}
+hr_check "la unidad de Headroom lleva --mode cache y nunca --budget ni --log-messages" \
+  hr_unidad "$HRDOC" kit/install.sh
+
+# ANTHROPIC_BASE_URL se escribe SOLO bajo --with-headroom. Es la promesa central del kit
+# sobre esa variable -distribuirla dejaba a quien clonaba en limpio enrutado a un puerto
+# muerto, sin API y con un sintoma que no se parece a un problema de config- y vive en
+# dos sitios que se pudren por separado: el codigo y la frase del documento. El bloque
+# se delimita por sus dos anclas reales (el `if` del flag y su `exit 0` + `fi`); si
+# dejan de casar, esto se queja en vez de aprobar sin haber mirado nada.
+hr_base_url() {
+  local src="$1"; shift
+  local gate end hit n dentro=0 f
+  gate=$(grep -nF '= "--with-headroom" ]; then' "$src" | head -1 | cut -d: -f1)
+  if [ -n "$gate" ]; then
+    end=$(awk -v g="$gate" 'NR>=g { if (prev=="  exit 0" && $0=="fi") { print NR; exit } } { prev=$0 }' "$src")
+  fi
+  if [ -z "$gate" ] || [ -z "$end" ]; then
+    echo "  no se reconoce el bloque --with-headroom de $src: no hay nada que juzgar"
+  else
+    while IFS= read -r hit; do
+      [ -n "$hit" ] || continue
+      n=${hit%%:*}
+      if [ "$n" -ge "$gate" ] && [ "$n" -le "$end" ]; then
+        dentro=$((dentro+1))
+      else
+        echo "  $src:$n toca ANTHROPIC_BASE_URL fuera del bloque --with-headroom ($gate-$end)"
+      fi
+    done <<< "$(grep -n 'ANTHROPIC_BASE_URL' "$src" | grep -vE '^[0-9]+:[[:space:]]*#')"
+    [ "$dentro" -gt 0 ] || echo "  ninguna linea de $src escribe ANTHROPIC_BASE_URL dentro del bloque: el cableado se fue de sitio"
+  fi
+  for f in "$@"; do
+    if ! grep -qE 'ANTHROPIC_BASE_URL.*--with-headroom|--with-headroom.*ANTHROPIC_BASE_URL' "$f"; then
+      echo "  $f ya no dice que ANTHROPIC_BASE_URL la escriba install.sh --with-headroom"
+    fi
+  done
+}
+hr_check "ANTHROPIC_BASE_URL solo se escribe bajo --with-headroom, y la doc lo dice" \
+  hr_base_url kit/install.sh "$HRDOC"
+
+# `make bootstrap` no instala Headroom. Es opt-in por una medicion, no por gusto (paso 5
+# de 10-onboarding.md), asi que el dia que bootstrap lo arrastre, la primera tabla que
+# lee un companero nuevo miente y nadie se enteraria: bootstrap no lo declara, lo hace.
+#
+# Se juzgan los COMANDOS del target, no su texto: las lineas de `echo` del propio
+# bootstrap nombran Headroom precisamente para decir que ahi no se instala -y hasta
+# imprimen el `install.sh --with-headroom` como pista-, asi que un grep sobre el cuerpo
+# entero enrojece el estado correcto. Medido: es lo que hacia la primera version de
+# esto. Lo que no puede aparecer es un comando que lo instale.
+hr_bootstrap() {
+  local mk="$1"; shift
+  local cuerpo f
+  cuerpo=$(awk '/^bootstrap:/ {on=1; next} /^[a-zA-Z_.-]+:/ {on=0} on {print}' "$mk" \
+           | grep -vE '^[[:space:]]*@?echo ')
+  if [ -z "$cuerpo" ] || ! printf '%s\n' "$cuerpo" | grep -q 'install.sh'; then
+    echo "  no se reconoce el target bootstrap de $mk (o ya no llama a install.sh): nada que juzgar"
+  elif printf '%s\n' "$cuerpo" | grep -qi 'headroom'; then
+    echo "  un comando del target bootstrap de $mk nombra headroom: la doc promete que bootstrap NO lo instala"
+  fi
+  for f in "$@"; do
+    # shellcheck disable=SC2016 # los backticks son los del markdown de la fila, literales
+    if ! grep -qE '^\| Headroom .*`make bootstrap` no lo instala' "$f"; then
+      echo "  $f ya no declara que 'make bootstrap' no instala Headroom"
+    fi
+  done
+}
+hr_check "'make bootstrap' no instala Headroom, y 10-onboarding.md lo declara" \
+  hr_bootstrap Makefile "$ONBDOC"
+
+# Regresion del oraculo de enrutado. `headroom doctor` estuvo recomendado en dos sitios
+# -"Mejor que el curl" en 03 y la fila de la tabla de 07- teniendo el propio repo medido
+# que miente en los dos sentidos: dice `claude not routed` DENTRO de una sesion enrutada
+# (solo juzga el settings.json que el mira, no la sesion) y `codex routed` con cero
+# peticiones OpenAI en los logs. Aqui se vigila que no vuelva.
+#
+# A este comprobador NO se le exige haber juzgado alguna linea, y es la excepcion
+# razonada al guardia de 'vistas' que gobierna el resto del fichero: que la doc deje de
+# nombrar a `headroom doctor` junto al enrutado es un estado CORRECTO, no un sensor
+# ciego. Lo que sostiene la medicion son las dos piezas de al lado: la sonda de
+# falsabilidad, que le mete la frase retirada tal como estaba escrita, y hr_oraculos,
+# que exige que los dos oraculos que si funcionan sigan citados.
+hr_doctor_oraculo() {
+  local f l vistas=0
+  for f in "$@"; do
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      vistas=$((vistas+1))
+      printf '%s' "$l" | grep -qiE 'miente|no uses' \
+        || echo "  $f: propone 'headroom doctor' como comprobacion de enrutado: $(printf '%s' "$l" | cut -c1-58)"
+    done <<< "$(grep -iE 'headroom doctor' "$f" 2>/dev/null | grep -iE 'enrutad|routed')"
+  done
+}
+hr_oraculos() {
+  local f
+  for f in "$@"; do
+    grep -q 'environ' "$f" || echo "  $f ya no cita el oraculo del entorno del proceso hijo (/proc/<pid>/environ)"
+    grep -q 'doctor\.sh' "$f" || echo "  $f ya no cita doctor.sh como oraculo del enrutado"
+  done
+}
+hr_check "ninguna linea de la doc propone 'headroom doctor' como oraculo del enrutado" \
+  hr_doctor_oraculo kit/docs/*.md
+hr_check "03 y 07 citan los dos oraculos que si contestan (el hijo de la sesion y doctor.sh)" \
+  hr_oraculos "$HRDOC" "$VERDOC"
+
+# El pin que no hay: install.sh instala con --upgrade y sin version, asi que el kit no
+# espera una version concreta. El documento lo dice ahora porque antes se leia justo lo
+# contrario; si algun dia se pina, esto se pone rojo y la frase hay que reescribirla.
+hr_sin_pin() {
+  local src="$1"; shift
+  local pip f
+  pip=$(grep -nE "install .*'headroom-ai\[proxy\]'" "$src" | head -1)
+  if [ -z "$pip" ]; then
+    echo "  $src ya no instala 'headroom-ai[proxy]' sin pin reconocible: nada que juzgar"
+  elif printf '%s\n' "$pip" | grep -qE 'headroom-ai\[proxy\](==|>=|<=|~=|!=)'; then
+    echo "  $src instala headroom-ai[proxy] con pin de version: la doc dice que no hay pin"
+  fi
+  for f in "$@"; do
+    grep -q 'No hay pin de versión' "$f" || echo "  $f ya no dice que no hay pin de version"
+  done
+}
+hr_check "headroom-ai[proxy] se instala sin pin, y 03-headroom.md lo dice" \
+  hr_sin_pin kit/install.sh "$HRDOC"
+
+# Falsabilidad de los cinco. Sin esto, un grep que dejara de encajar daria verde para
+# siempre, que es el modo de fallo que este fichero existe para evitar. Cada caso
+# deforma una COPIA con la averia exacta que su comprobador persigue -incluida la frase
+# que se retiro, escrita tal como estaba- y se exigen los diez rojos: los cinco del lado
+# del codigo y los cinco del lado del documento, que son los dos sitios donde se pudre.
+HRTMP=$(mktemp -d) || exit 1
+sed 's/--mode cache/--mode token/' "$HRDOC"                     > "$HRTMP/u-token.md"
+sed 's/--no-telemetry/--no-telemetry --log-messages/' "$HRDOC"  > "$HRTMP/u-log.md"
+{ cat kit/install.sh; echo 'ANTHROPIC_BASE_URL=http://127.0.0.1:8787  # reintroducido fuera del flag'; } \
+                                                                > "$HRTMP/i-fuera.sh"
+sed 's/--with-headroom//g' "$HRDOC"                             > "$HRTMP/d-sin-flag.md"
+sed 's|bash kit/install.sh$|bash kit/install.sh --with-headroom|' Makefile > "$HRTMP/mk-hr"
+sed 's/no lo instala/lo instala/' "$ONBDOC"                     > "$HRTMP/d-bootstrap.md"
+# shellcheck disable=SC2016 # es la frase retirada, con sus backticks de markdown literales
+printf '%s\n' '**Mejor que el `curl`: `headroom doctor`.** Comprueba que Claude Code y Codex estan enrutados.' \
+                                                                > "$HRTMP/d-viejo.md"
+sed 's/environ/entorno/g; s/doctor\.sh/comprobador/g' "$VERDOC" > "$HRTMP/d-sin-oraculos.md"
+sed "s/'headroom-ai\[proxy\]'/'headroom-ai[proxy]==0.36.2'/" kit/install.sh > "$HRTMP/i-pin.sh"
+sed 's/No hay pin/Hay pin/' "$HRDOC"                            > "$HRTMP/d-pin.md"
+hr_malos=0
+for hr_caso in \
+  "hr_unidad $HRTMP/u-token.md" \
+  "hr_unidad $HRTMP/u-log.md" \
+  "hr_base_url $HRTMP/i-fuera.sh $HRDOC" \
+  "hr_base_url kit/install.sh $HRTMP/d-sin-flag.md" \
+  "hr_bootstrap $HRTMP/mk-hr $ONBDOC" \
+  "hr_bootstrap Makefile $HRTMP/d-bootstrap.md" \
+  "hr_doctor_oraculo $HRTMP/d-viejo.md" \
+  "hr_oraculos $HRTMP/d-sin-oraculos.md" \
+  "hr_sin_pin $HRTMP/i-pin.sh $HRDOC" \
+  "hr_sin_pin kit/install.sh $HRTMP/d-pin.md"
+do
+  # shellcheck disable=SC2086 # la palabra es "<comprobador> <fichero...>": se parte a proposito
+  [ -n "$($hr_caso)" ] || { hr_malos=$((hr_malos+1)); echo "     (sin queja: $hr_caso)"; }
+done
+if [ "$hr_malos" -eq 0 ]; then
+  echo "ok - falsabilidad: los cinco comprobadores de Headroom acusan las diez averias"
+  echo "     fabricadas (--mode token, --log-messages, la URL fuera del flag, bootstrap"
+  echo "     instalandolo, la frase retirada de 'headroom doctor' y el pin de version)"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $hr_malos de 10 averias fabricadas pasaron el comprobador (tautologia)"
+  fail=$((fail+1))
+fi
+rm -f "$HRTMP"/*; rmdir "$HRTMP"
+
+# --- 6. La capa de IOCs: el kit la trae, y ningun documento puede negarlo ----
+# Tres documentos publicaban que "el kit no trae iocs.json" y que para activar la capa
+# habia que copiar el ejemplo a $HOME/.claude/hooks/. Las dos cosas eran falsas:
+# kit/sentinel/iocs.json esta versionado, install.sh lo copia junto al hook y doctor.sh
+# imprime PASS en una instalacion limpia; y el paso que mandaba el doc creaba un fichero
+# SOMBREADO, porque load_iocs() mira primero al lado de sentinel_preflight.py. Nada se
+# puso rojo porque el sensor de esta suite juzga cifras de inventario, y "el kit no lo
+# trae" no lleva cifra.
+#
+# Se juzga en los DOS sentidos, y por eso el fichero entra por argumento: mientras el kit
+# lo distribuya, ningun documento puede negarlo; si algun dia deja de distribuirlo, el que
+# lo afirme se pone rojo. Un sensor de un solo lado convierte el arreglo de hoy en la
+# mentira de manana.
+iocs_doc() {
+  local ioc="$1"; shift
+  local f l corte vistas=0
+  corte=$(printf '%s' "$ioc" | cut -c1-40)
+  for f in "$@"; do
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      vistas=$((vistas+1))
+      if [ -f "$ioc" ]; then
+        printf '%s' "$l" | grep -qiE 'no (lo |la )?(trae|incluye|distribuye|reparte)' \
+          && echo "  $f niega que el kit traiga $corte, y esta versionado: $(printf '%s' "$l" | cut -c1-70)"
+      elif printf '%s' "$l" | grep -qiE '(trae|distribuye|incluye|viene con)' \
+        && ! printf '%s' "$l" | grep -qiE 'no (lo |la )?(trae|incluye|distribuye|reparte)'; then
+        echo "  $f afirma que el kit trae $corte y ya no esta en el arbol: $(printf '%s' "$l" | cut -c1-70)"
+      fi
+    done <<< "$(grep -ni 'iocs\.json' "$f" 2>/dev/null | grep -v 'doc-claims:ignore')"
+  done
+  [ "$vistas" -gt 0 ] \
+    || echo "  ninguno de los $# documentos nombra iocs.json: no hay nada que juzgar"
+}
+# SECURITY.md no esta en DOCS -no habla en presente del inventario del arbol- pero es uno
+# de los tres sitios donde vivia la frase falsa, asi que entra aqui por su nombre.
+hr_check "ningun documento niega que el kit distribuya kit/sentinel/iocs.json" \
+  iocs_doc kit/sentinel/iocs.json "${DOCS[@]}" SECURITY.md
+
+# Falsabilidad, los dos sentidos y el caso mudo. Las dos primeras copias reinyectan la
+# frase retirada TAL COMO estaba escrita; la tercera pregunta por un iocs.json que no
+# existe, que es el unico modo de sondar la otra rama sin borrar el fichero del arbol.
+IOCTMP=$(mktemp -d) || exit 1
+sed 's/el kit lo distribuye/el kit no lo trae/' kit/docs/05-security.md > "$IOCTMP/d-niega.md"
+sed 's/que el kit \*\*sí\*\* distribuye/que el kit no incluye/' SECURITY.md > "$IOCTMP/s-niega.md"
+printf 'Sentinel lee sus patrones de un fichero.\n' > "$IOCTMP/d-mudo.md"
+ioc_malos=0
+for ioc_caso in \
+  "iocs_doc kit/sentinel/iocs.json $IOCTMP/d-niega.md" \
+  "iocs_doc kit/sentinel/iocs.json $IOCTMP/s-niega.md" \
+  "iocs_doc $IOCTMP/no-existe.json kit/docs/05-security.md" \
+  "iocs_doc kit/sentinel/iocs.json $IOCTMP/d-mudo.md"
+do
+  # shellcheck disable=SC2086 # la palabra es "<comprobador> <fichero...>": se parte a proposito
+  [ -n "$($ioc_caso)" ] || { ioc_malos=$((ioc_malos+1)); echo "     (sin queja: $ioc_caso)"; }
+done
+if [ "$ioc_malos" -eq 0 ]; then
+  echo "ok - falsabilidad: acusa las dos redacciones de la frase retirada, el documento que"
+  echo "     afirmaria lo contrario si el kit dejara de traer el fichero, y el que no mide nada"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $ioc_malos de 4 averias fabricadas pasaron el comprobador de iocs.json"
+  fail=$((fail+1))
+fi
+rm -f "$IOCTMP"/*; rmdir "$IOCTMP"
+
+# --- 7. La plantilla publica: sin el estado de esta maquina y con techo propio ---
+# kit/claude/CLAUDE.md no es documentacion: install.sh la ESCRIBE en el $HOME/.claude de
+# quien la instala. Llevaba dentro dos bloques que Claude Code inyecta el mismo en cada
+# sesion -'# userEmail' y '# currentDate'-, asi que la plantilla le afirmaba al modelo un
+# correo ajeno y una fecha congelada (112 dias de desfase el dia que se retiro) en cada
+# sesion de cada usuario. Y una version fijada de agent-browser, que se pudre sola en
+# cuanto el paquete publica: la cura no es actualizarla, es no escribirla.
+#
+# El techo va aqui por una asimetria medida: el presupuesto de contexto de
+# test_harness_structure.sh vigila SOLO el CLAUDE.md de la raiz (<100 lineas, <900
+# aprox-tokens; medido 76/899), y la plantilla que se reparte llegaba a 143 lineas y 1.977
+# aprox-tokens sin un solo sensor. Su techo es mas alto a proposito -tiene que sostenerse
+# sola en una maquina recien instalada, sin knowledge/ ni skills al lado- pero es un
+# numero declarado y medido, no la ausencia de numero. Pasar de aqui pide otra ronda de
+# poda (knowledge/AUDIT-CLAUDE-MD.md, que aun tiene secciones marcadas SKILL y HOOK), no
+# subir el techo.
+PLANTILLA_LINEAS=120
+PLANTILLA_TOKENS=1700
+plantilla_doc() {
+  local f="$1" l t
+  if [ ! -f "$f" ]; then
+    echo "  no existe $f: install.sh escribe esa plantilla en el \$HOME de quien lo corre"
+    return 0
+  fi
+  grep -qi 'userEmail' "$f" \
+    && echo "  $f fija el correo del usuario: Claude Code inyecta '# userEmail' en runtime"
+  grep -qiE "currentDate|today's date is" "$f" \
+    && echo "  $f fija la fecha: Claude Code inyecta '# currentDate' en runtime, y aqui se pudre"
+  grep -qE 'agent-browser[ `]+[0-9]+\.[0-9]+' "$f" \
+    && echo "  $f fija una version de agent-browser: se pudre en la siguiente publicacion"
+  l=$(wc -l < "$f" | tr -d ' ')
+  t=$(( $(wc -c < "$f" | tr -d ' ') / 4 ))
+  [ "$l" -lt "$PLANTILLA_LINEAS" ] \
+    || echo "  $f tiene $l lineas y su techo declarado son $PLANTILLA_LINEAS"
+  [ "$t" -lt "$PLANTILLA_TOKENS" ] \
+    || echo "  $f tiene $t aprox-tokens (chars/4) y su techo declarado son $PLANTILLA_TOKENS"
+  return 0
+}
+hr_check "la plantilla kit/claude/CLAUDE.md no lleva estado de una maquina y cabe en su techo ($PLANTILLA_LINEAS lineas / $PLANTILLA_TOKENS aprox-tokens)" \
+  plantilla_doc kit/claude/CLAUDE.md
+
+# Falsabilidad: los tres bloques retirados, escritos tal como estaban, el techo desbordado
+# y la plantilla ausente.
+PLTMP=$(mktemp -d) || exit 1
+{ cat kit/claude/CLAUDE.md; printf '# userEmail\nThe user email address is x@example.com.\n'; } \
+  > "$PLTMP/p-mail.md"
+{ cat kit/claude/CLAUDE.md; printf '# currentDate\nToday'"'"'s date is 2026-05-13.\n'; } \
+  > "$PLTMP/p-fecha.md"
+# shellcheck disable=SC2016 # los backticks son los del markdown de la plantilla, literales
+sed 's/Installed globally as `agent-browser`/Installed globally: `agent-browser 0.27.0`/' \
+  kit/claude/CLAUDE.md > "$PLTMP/p-version.md"
+{ cat kit/claude/CLAUDE.md; seq 1 "$PLANTILLA_LINEAS" | sed 's/^/relleno /'; } > "$PLTMP/p-gordo.md"
+pl_malos=0
+for pl_caso in p-mail p-fecha p-version p-gordo no-existe; do
+  [ -n "$(plantilla_doc "$PLTMP/$pl_caso.md")" ] \
+    || { pl_malos=$((pl_malos+1)); echo "     (sin queja: $pl_caso)"; }
+done
+if [ "$pl_malos" -eq 0 ]; then
+  echo "ok - falsabilidad: acusa los tres bloques retirados (userEmail, currentDate, la version"
+  echo "     de agent-browser), el techo desbordado y la plantilla que no esta"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $pl_malos de 5 averias fabricadas pasaron el comprobador de la plantilla"
+  fail=$((fail+1))
+fi
+rm -f "$PLTMP"/*; rmdir "$PLTMP"
+
+# --- 8. La version: una fuente legible por maquina y sus copias en prosa ------
+# Hasta la 1.1.0 la version vivia SOLO en prosa -README.md y CLAUDE.md decian "v1.0.0,
+# estable"- y nada la vigilaba: `grep '1\.0\.0' kit/test/*.sh` daba cero coincidencias con
+# el arbol a 111 commits de la etiqueta. Etiquetar la 1.1.0 habria dejado los dos
+# documentos diciendo v1.0.0 con las 27 suites en verde.
+#
+# La fuente es el fichero VERSION y NO `git tag`: actions/checkout no trae etiquetas, asi
+# que atarlo a la etiqueta degradaria este check a un skip en CI, que es un verde que no
+# mide. La seccion mas nueva del CHANGELOG entra porque es la que dice QUE es esa version;
+# sus secciones publicadas siguen fuera de `claim` por lo de §1, que es otra cosa: aqui no
+# se juzga ninguna cifra de dentro, solo el numero de la cabecera.
+#
+# En prosa se ancla a la linea que declara el estado del kit ("v1.1.0, estable"), no a
+# cualquier vX.Y.Z del documento: la capa de la raiz publica su propia version en la fila
+# de al lado ("v0.1.0, nuevo") y es correcta. El precio del ancla esta medido y se acepta:
+# si alguien escribe "estable" en una linea que lleva otra version, sale rojo; y si la
+# quita, sale rojo por no haber medido nada.
+ver_unica() {
+  local vf="$1" chlog="$2"; shift 2
+  local ver nuevo f v n
+  ver=$(sed -n 1p "$vf" 2>/dev/null | tr -d ' \r')
+  if [ -z "$ver" ]; then
+    echo "  no hay $vf o su primera linea esta vacia: la version vuelve a vivir solo en prosa"
+    return 0
+  fi
+  case "$ver" in
+    [0-9]*.[0-9]*.[0-9]*) ;;
+    *) echo "  $vf no contiene una version semantica, sino '$ver'"; return 0 ;;
+  esac
+  nuevo=$(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' "$chlog" 2>/dev/null | sed -n 1p \
+          | tr -d '#[] ')
+  if [ -z "$nuevo" ]; then
+    echo "  $chlog no publica ninguna seccion '## [x.y.z]': $vf dice $ver y nadie lo respalda"
+  elif [ "$nuevo" != "$ver" ]; then
+    echo "  $vf dice $ver y la seccion mas nueva de $chlog es la [$nuevo]"
+  fi
+  for f in "$@"; do
+    n=0
+    while IFS= read -r v; do
+      [ -n "$v" ] || continue
+      n=$((n+1))
+      [ "$v" = "v$ver" ] || echo "  $f publica $v donde $vf dice $ver"
+    done <<< "$(grep -h 'estable' "$f" 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')"
+    [ "$n" -gt 0 ] \
+      || echo "  $f ya no publica ninguna version junto a 'estable': no hay nada que juzgar"
+  done
+}
+hr_check "VERSION, README.md, CLAUDE.md y la seccion mas nueva de CHANGELOG.md dicen la misma version" \
+  ver_unica VERSION CHANGELOG.md README.md CLAUDE.md
+
+# Falsabilidad. Las deformaciones NO salen del arbol real, y esa es la diferencia con las
+# sondas de arriba: mientras la version en curso no este etiquetada en el CHANGELOG, el
+# comprobador ya se queja del arbol, y deformar una copia de un estado que YA esta rojo no
+# demuestra nada -saldria queja igual y la sonda aprobaria sin medir-. Asi que se fabrica
+# un juego coherente de cuatro ficheros, se exige que salga VERDE, y desde ahi se deforma
+# una pieza cada vez.
+VTMP=$(mktemp -d) || exit 1
+printf '9.9.9\n' > "$VTMP/VERSION"
+# shellcheck disable=SC2016 # los backticks son los del markdown de las dos filas, literales
+printf '| **`kit/`** | La instalacion: guards, hooks, Sentinel | v9.9.9, estable |\n' > "$VTMP/README.md"
+# shellcheck disable=SC2016 # idem: es la linea de CLAUDE.md, no una expansion
+printf -- '- `kit/` - capa de instalacion, v9.9.9, estable. No se toca sin `make test`.\n' \
+  > "$VTMP/CLAUDE.md"
+printf '# Changelog\n\n## [Unreleased]\n\n## [9.9.9] - 2026-01-01\n\n## [1.0.0] - 2026-08-05\n' \
+  > "$VTMP/CHANGELOG.md"
+printf '1.2.3\n' > "$VTMP/VERSION-otra"
+: > "$VTMP/VERSION-vacia"
+sed 's/v9\.9\.9/v1.2.3/' "$VTMP/README.md"                  > "$VTMP/README-otra.md"
+sed 's/v9\.9\.9, //'     "$VTMP/README.md"                  > "$VTMP/README-muda.md"
+sed 's/v9\.9\.9/v1.2.3/' "$VTMP/CLAUDE.md"                  > "$VTMP/CLAUDE-otra.md"
+sed 's/^## \[9\.9\.9\]/## [1.2.3]/' "$VTMP/CHANGELOG.md"    > "$VTMP/CHANGELOG-otra.md"
+sed '/^## \[[0-9]/d'     "$VTMP/CHANGELOG.md"               > "$VTMP/CHANGELOG-sin.md"
+ver_malos=0
+if [ -n "$(ver_unica "$VTMP/VERSION" "$VTMP/CHANGELOG.md" "$VTMP/README.md" "$VTMP/CLAUDE.md")" ]; then
+  ver_malos=$((ver_malos+1)); echo "     (el juego coherente sale con quejas: el comprobador no sabe aprobar)"
+fi
+for ver_caso in \
+  "$VTMP/VERSION-otra $VTMP/CHANGELOG.md $VTMP/README.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION-vacia $VTMP/CHANGELOG.md $VTMP/README.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION $VTMP/CHANGELOG-otra.md $VTMP/README.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION $VTMP/CHANGELOG-sin.md $VTMP/README.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION $VTMP/CHANGELOG.md $VTMP/README-otra.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION $VTMP/CHANGELOG.md $VTMP/README-muda.md $VTMP/CLAUDE.md" \
+  "$VTMP/VERSION $VTMP/CHANGELOG.md $VTMP/README.md $VTMP/CLAUDE-otra.md"
+do
+  # shellcheck disable=SC2086 # la palabra son los cuatro ficheros: se parte a proposito
+  [ -n "$(ver_unica $ver_caso)" ] \
+    || { ver_malos=$((ver_malos+1)); echo "     (sin queja: $ver_caso)"; }
+done
+if [ "$ver_malos" -eq 0 ]; then
+  echo "ok - falsabilidad: aprueba un juego coherente y acusa las siete deformaciones (VERSION"
+  echo "     distinta y vacia, CHANGELOG con otra cabecera y sin ninguna, README con otra"
+  echo "     version y sin ninguna, CLAUDE.md con otra version)"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $ver_malos de 8 casos fabricados salieron al reves (tautologia)"
+  fail=$((fail+1))
+fi
+rm -f "$VTMP"/*; rmdir "$VTMP"
+
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
 else

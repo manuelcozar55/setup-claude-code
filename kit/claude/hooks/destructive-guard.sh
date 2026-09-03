@@ -23,7 +23,10 @@ COMMAND_SCAN=$(printf '%s' "$COMMAND" | sed 's/[[:space:]]#.*$//')
 
 # Check 1: rm -rf on sensitive paths. ~ and .. are matched even when followed by
 # more text (previously end-anchored, so a trailing token defeated detection).
-if echo "$COMMAND_SCAN" | grep -qE 'rm\s+(-[rf]+\s+)*(\/$|\/\s|\/[^a-z]|\/home|\/etc|\/usr|\/var|\/root|\/boot|~($|[/[:space:]])|\.\.($|[/[:space:]]))'; then
+# Las formas largas (--recursive/--force) van en la clase de opciones: solo se aceptaban
+# grupos de flags cortos, asi que `rm --recursive --force /home/usuario/docs` no
+# emparejaba la ruta sensible y salia limpio de los cinco guards.
+if echo "$COMMAND_SCAN" | grep -qE 'rm\s+((-[rf]+|--recursive|--force)\s+)*(\/$|\/\s|\/[^a-z]|\/home|\/etc|\/usr|\/var|\/root|\/boot|~($|[/[:space:]])|\.\.($|[/[:space:]]))'; then
   SAFE=0
   IFS=':' read -ra DIRS <<< "$SAFE_DIRS"
   for dir in "${DIRS[@]}"; do
@@ -58,8 +61,10 @@ if echo "$COMMAND_SCAN" | grep -qE '(^|[;&|])\s*git\s+clean\s+-[a-z]*[fd]'; then
   exit 2
 fi
 
-# Check 4: find -delete on broad paths (WSL2 junction risk)
-if echo "$COMMAND_SCAN" | grep -qE 'find\s+(\/|~|\.\.)\s.*-delete'; then
+# Check 4: find -delete on broad paths (WSL2 junction risk). /home/... entra por su
+# propia alternativa: el resto exige un separador justo tras / ~ .., asi que
+# `find /home/usuario/docs -delete` no emparejaba ninguna.
+if echo "$COMMAND_SCAN" | grep -qE 'find\s+((\/|~|\.\.)\s|\/home\/).*-delete'; then
   echo "BLOCKED: find -delete on broad path (WSL2 junction risk)." >&2
   exit 2
 fi

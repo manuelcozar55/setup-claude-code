@@ -6,19 +6,19 @@ La filosofía de esta capa en una frase: **barreras deterministas que acotan el 
 
 Sentinel (`sentinel/sentinel_preflight.py`) es un hook `PreToolUse` con `matcher` **vacío**, lo que significa que se ejecuta antes de cada llamada a **cualquier** tool, no solo `Bash`. Recibe por `stdin` el JSON de la tool call y decide.
 
-### ⚠ Importante: Sentinel necesita `iocs.json`, y el kit no lo trae
+### La capa de IOCs viene activa: el kit trae `iocs.json`
 
-Todos los checks de Sentinel (rutas sensibles, red sospechosa, comandos peligrosos, variables de entorno, prompt injection) leen sus patrones de un fichero `iocs.json` que `load_iocs()` busca en `sentinel/iocs.json`, `$HOME/.claude/hooks/iocs.json` o la ruta de la skill `mcp-sentinel`. **El kit no incluye ninguno de esos ficheros** (para no filtrar indicadores propios/personales en el repo), así que en una instalación recién hecha `load_iocs()` devuelve `{}` y **todos los checks de Sentinel son un no-op silencioso**: `decide()` siempre resuelve "allow".
+Todos los checks de Sentinel (rutas sensibles, red sospechosa, comandos peligrosos, variables de entorno, prompt injection) leen sus patrones de un fichero `iocs.json` que `load_iocs()` busca en tres rutas, y **el kit lo distribuye**: `sentinel/iocs.json`, con 31 patrones de ruta, 12 de comando y 30 de red. `install.sh` lo copia junto al hook, así que en una instalación recién hecha `doctor.sh` imprime `PASS · Sentinel IOC layer activa` sin que tengas que hacer nada.
 
-Por defecto, nada más instalar el kit, la protección activa y funcional sin ningún fichero adicional son los **4 guards de Bash** de la siguiente sección (`block-dangerous-commands.sh`, `branch-guard.sh`, `destructive-guard.sh`, `secret-guard.sh`): esos sí llevan sus patrones embebidos en el propio script y funcionan solos.
+Lo que sigue siendo cierto es el fail-open de la sección siguiente aplicado a este fichero: si `iocs.json` **no** está —porque lo has borrado, o porque instalaste Sentinel a mano sin él—, `load_iocs()` devuelve `{}` y **todos los checks de Sentinel son un no-op silencioso**: `decide()` siempre resuelve "allow". Los **4 guards de Bash** de la siguiente sección (`block-dangerous-commands.sh`, `branch-guard.sh`, `destructive-guard.sh`, `secret-guard.sh`) no dependen de él: llevan sus patrones embebidos en el propio script y funcionan solos.
 
-Para activar la capa de IOCs de Sentinel:
+Para personalizar la capa, **edita `sentinel/iocs.json`** con tus propios dominios/IPs/patrones; no crees otro fichero al lado, porque el orden de búsqueda de `load_iocs()` decide y se queda con el primero que exista:
 
-```bash
-cp $HOME/.claude/sentinel/iocs.example.json $HOME/.claude/hooks/iocs.json
-```
+1. `iocs.json` en el directorio de `sentinel_preflight.py` — aquí es donde deja el suyo `install.sh`
+2. `$HOME/.claude/hooks/iocs.json`
+3. `$HOME/.claude/skills/mcp-sentinel/references/iocs.json`
 
-y luego personaliza `iocs.json` con tus propios dominios/IPs/patrones (el fichero de ejemplo trae solo entradas genéricas tipo `evil.example.com`). Ver `docs/07-verify.md` para comprobar si esta capa está activa.
+Es decir: un `iocs.json` puesto en (2) queda **sombreado** por el del kit y no se lee nunca. `iocs.example.json` se sigue distribuyendo como plantilla de la forma del fichero (solo entradas genéricas tipo `evil.example.com`), no como paso de activación. Ver `docs/07-verify.md` para comprobar qué fichero se está cargando.
 
 En el código, la decisión resultante es siempre una de tres: **allow** (silencioso, exit 0), **warn** (deja pasar la acción pero añade contexto visible: `additionalContext` con el motivo) o **deny** (bloquea con `permissionDecision: "deny"` y una razón). Uno de los guards de Bash de esta misma capa (`block-dangerous-commands.sh`, más abajo) añade una cuarta posibilidad sobre el mismo protocolo de Claude Code: **ask**, para pedir confirmación humana en vez de bloquear o dejar pasar en silencio.
 

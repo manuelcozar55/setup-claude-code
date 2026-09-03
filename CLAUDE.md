@@ -3,24 +3,23 @@
 Harness personal para Claude Code: **guías** (antes de actuar) y **sensores** (miden
 después). Dos capas:
 
-- `kit/` — **capa de instalación**, v1.0.0, estable. Guards, hooks, Sentinel, `install.sh`,
-  26 suites de test. No se toca sin ejecutar `make test`.
+- `kit/` — **capa de instalación**, v1.1.0, estable. Guards, hooks, Sentinel, `install.sh`,
+  27 suites de test. No se toca sin ejecutar `make test`.
 - raíz — **capa de harness**: `.claude/`, `knowledge/`, `scripts/`. Lo nuevo va aquí.
 
 ## Oráculo de este repo
 
 ```
-make test          # 26 suites bash, ~45 s, sin red. exit 0 o el trabajo no está hecho.
+make test  # 27 suites bash, sin red, 118-179 s en un i9-14900HX. exit 0 o el trabajo no está hecho.
 ```
 
 No declares nada terminado sin esa salida delante. `/verify` lo hace bien.
 
 ## Gotchas de este entorno (medidos, no supuestos)
 
-**El hook `PreToolUse/Bash` sustituye el ejecutable en posición de comando.** `rg` ejecuta
-`grep`; `python3 -m pytest` ejecuta `python3 -m rtk`.
-→ **Invoca todo oráculo por ruta absoluta, con `rtk proxy …` o con `make …`.**
-Detalle: `knowledge/MISTAKES.md` · M-001.
+**Un hook `PreToolUse/Bash` sustituía el ejecutable en posición de comando**: `rg` ejecutaba
+`grep`. Retirado en la 1.1.0, pero el hábito se queda: el canal es reescribible.
+→ **Invoca todo oráculo por ruta absoluta o con `make …`.** Detalle: `MISTAKES.md` · M-001.
 
 **Los guards bloquean por el literal del comando, no por la acción**: nombrar un fichero de
 credenciales, aunque sea para excluirlo, dispara Sentinel. → Reformula. **Nunca amplíes la

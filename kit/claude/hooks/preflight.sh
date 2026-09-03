@@ -38,7 +38,18 @@ set -uo pipefail
 M=""
 
 # --- headroom: recuperar por systemd, sin bloquear ---------------------------
-if ! curl -sf -m 2 "http://127.0.0.1:${HEADROOM_PORT:-8787}/readyz" >/dev/null 2>&1; then
+# Solo si alguien ha declarado el opt-in. Sin nadie enrutado, levantar el proxy
+# son 1,3 GB de RSS para nadie: medido el 2026-09-02, 0,813 % de ahorro de por
+# vida a cambio de 497 ms por peticion, y el 81,5 % de las del dia no ahorraron.
+_headroom_optin() {
+  [ -n "${ANTHROPIC_BASE_URL:-}" ] && return 0
+  command grep -qs ANTHROPIC_BASE_URL \
+    "${CLAUDE_HOME:-$HOME/.claude}/settings.json" \
+    "${CLAUDE_HOME:-$HOME/.claude}/settings.local.json" \
+    "$PWD/.claude/settings.local.json"
+}
+
+if _headroom_optin && ! curl -sf -m 2 "http://127.0.0.1:${HEADROOM_PORT:-8787}/readyz" >/dev/null 2>&1; then
   # reset-failed es lo que desatasca una unidad que se quedo en bucle de bind.
   systemctl --user reset-failed headroom-proxy.service >/dev/null 2>&1
   systemctl --user start        headroom-proxy.service >/dev/null 2>&1
@@ -48,7 +59,7 @@ if ! curl -sf -m 2 "http://127.0.0.1:${HEADROOM_PORT:-8787}/readyz" >/dev/null 2
   if curl -sf -m 2 "http://127.0.0.1:${HEADROOM_PORT:-8787}/readyz" >/dev/null 2>&1; then
     M="Headroom estaba caido: systemd lo ha levantado."
   else
-    M="Headroom caido; systemd reintentando. Claude Code funciona igual (no depende del proxy)."
+    M="Headroom caido y hay enrutado declarado: systemd reintentando. Para trabajar sin el, ANTHROPIC_BASE_URL= claude."
   fi
 fi
 

@@ -15,7 +15,7 @@ persona lo pida** — cuesta latencia y no se recupera sola.
 |---|---|---|
 | `kit/` | La instalación endurecida en tu `~/.claude`: guards deterministas, Sentinel, 8 agentes, y la Capa 2 de secretos sobre cada commit | Sí |
 | raíz (`.claude/`, `knowledge/`, `scripts/`) | El harness: comandos, skills, hooks de proyecto y el conocimiento versionado. Ya viaja en el repo | Sí, ya la tienes al clonar |
-| Headroom | Proxy local de compresión de contexto en `:8787` | **No.** Opt-in, y lee el paso 5 antes |
+| Headroom | Proxy local de compresión de contexto en `:8787` | **No.** Opt-in: `make bootstrap` no lo instala, y lee el paso 5 antes |
 | `rtk`, `gitleaks` | Filtro de salida de CLI y escáner de secretos por contenido | No. Sin ellos el kit degrada a no-op **y sigue bloqueando** |
 
 Nada del kit da por supuesto lo opcional, y hay un test que lo demuestra en una máquina
@@ -59,7 +59,7 @@ del repo.
 ## 4 · Verificar de verdad
 
 ```bash
-make test          # 26 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
+make test          # 27 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
 bash kit/doctor.sh # estado de ESTA máquina
 ```
 
@@ -84,7 +84,7 @@ real de un día (687 peticiones):
 | | |
 |---|---|
 | Input que son lecturas de caché | **95,4 %** |
-| Ahorro efectivo de tokens | **0,8 %** (coincide con el 0,835 % de toda la vida del proxy) |
+| Ahorro efectivo de tokens | **0,8 %** (de por vida: 0,813 % sobre 26 353 peticiones, medido el 2026-09-02) |
 | Latencia añadida | **512 ms** de media por petición, pico de 2 633 ms |
 | RAM residente | ~1,3 GB permanentes |
 | Ahorro en dinero según su propia contabilidad | **0,00 $** |

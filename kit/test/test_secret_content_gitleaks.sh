@@ -217,6 +217,40 @@ printf 'KEY=%s\n' "$AKIA6" > "$D/creds.txt"
 (cd "$D" && git add creds.txt)
 expect_commit "$D" "sin config, credencial real sigue bloqueando (reglas por defecto)" BLOCK "$SIN_CONFIG"
 
+# --- 22/23) clave de Anthropic FUERA de un fichero de config ------------------
+# El caso 1 de arriba pasaba por una razon que no era la que parecia: lo que lo
+# bloqueaba era la regla por defecto anthropic-api-key, que exige la forma
+# exacta sk-ant-<tipo>-<93 chars>AA. Medido con gitleaks 8.30.1: la misma clave
+# alargada a 105 chars se COMITEA en .yaml, .txt y .md, y en .yaml solo la
+# salvaba un prefijo de asignacion tipo ANTHROPIC_API_KEY= (eso lo caza
+# dict-password-config-file, no una regla de Anthropic). O sea: fuera de las
+# extensiones de config no quedaba nada, justo lo contrario de lo que decia el
+# comentario de claude/.gitleaks.toml.
+#
+# Falsificabilidad (probada por mutacion, no por confianza): si se borra la
+# regla anthropic-api-key-prefix de claude/.gitleaks.toml, el caso 22 pasa a
+# ALLOW y esta suite falla. El 23 es su control: el prefijo citado en prosa,
+# sin clave detras, no debe bloquear.
+#
+# La clave se compone en ejecucion a proposito: un literal de 20+ caracteres
+# tras "sk-ant-" en este fichero haria que la propia regla bloquease el commit
+# que anade el test.
+D="$BASE/anthropic-plain-txt"; newrepo "$D"
+ANT_KEY_LONG=$(python3 -c "
+import random
+random.seed(7)
+c='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-'
+print('sk-ant-'+'api03-'+''.join(random.choice(c) for _ in range(105)))
+")
+printf '%s\n' "$ANT_KEY_LONG" > "$D/key.txt"
+(cd "$D" && git add key.txt)
+expect_commit "$D" "clave de Anthropic de 105 chars en .txt (fuera de path de config)" BLOCK
+
+D="$BASE/anthropic-prefix-prose"; newrepo "$D"
+printf 'las claves de Anthropic empiezan por %s\n' 'sk-ant-api03-' > "$D/notes.md"
+(cd "$D" && git add notes.md)
+expect_commit "$D" "prefijo sk-ant- citado en prosa, sin clave detras, no bloquea" ALLOW
+
 rm -rf "$BASE"
 echo "PASS=$pass FAIL=$fail"
 [ $fail -eq 0 ]

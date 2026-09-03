@@ -7,12 +7,14 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-02
+
 El repo pasa de ser solo un instalador endurecido a ser también un **harness**: guías
 (lo que se dice antes de actuar) y **sensores** (lo que mide después), en el sentido de
 Birgitta Böckeler (*Harness engineering*, 02-abr-2026). Lo nuevo vive en la raíz, pero
-`kit/` no queda intacto: suma 30 ficheros nuevos —el subsistema de evals con sus casos
-y sus pruebas— y 27 ficheros de v1.0.0 retocados, `install.sh` entre ellos. El árbol
-corre hoy 26 suites de test, frente a las 16 de v1.0.0.
+`kit/` no queda intacto: suma 38 ficheros nuevos —el subsistema de evals con sus casos
+y sus pruebas— y 41 ficheros de v1.0.0 retocados, `install.sh` entre ellos. El árbol
+corre hoy 27 suites de test, frente a las 16 de v1.0.0.
 
 ### Added
 
@@ -61,8 +63,9 @@ corre hoy 26 suites de test, frente a las 16 de v1.0.0.
 
 - **Nueve suites de test nuevas** (`test_harness_structure.sh`, `test_metrics.sh`, <!-- doc-claims:ignore: "Nueve" cuenta las suites NUEVAS desde v1.0.0, no el total del arbol -->
   `test_install_diff_first.sh`, `test_uninstall.sh`, `test_detect_oracle.sh`,
-  `test_auto_spec.sh`, `test_autonomy.sh`, `test_doc_claims.sh`, `test_evals.sh`), todas
-  con sección de falsabilidad. El total pasa de 16 a 26 suites.
+  `test_auto_spec.sh`, `test_autonomy.sh`, `test_doc_claims.sh`, `test_evals.sh`,
+  `test_install_settings_merge.sh`), todas
+  con sección de falsabilidad. El total pasa de 16 a 27 suites.
 
 - **El harness entra solo: `auto-spec.sh`, un hook `UserPromptSubmit`** (ADR 009). Cuatro
   reglas advisorias de `CLAUDE.md` tenían adherencia medida —`IntentGate` 2,1 %,
@@ -165,6 +168,21 @@ corre hoy 26 suites de test, frente a las 16 de v1.0.0.
   fuente y su estado honesto, y **ADR 011**, que decide no migrar a OpenHarness. Las cifras
   que ese documento publica se derivan de `runs.jsonl` en tiempo de test; sin el almacén
   —gitignorado— esas aserciones pasan a `skip`, no a `ok`.
+
+- **`kit/doctor.sh` era ciego justo donde se produce el daño, y la garantía de la fusión no
+  tenía sensor.** El check de fuente única de `ANTHROPIC_BASE_URL` solo recorría el ámbito de
+  usuario, pero el que multiplica fuentes es `headroom wrap`, que escribe en
+  `$PWD/.claude/settings.local.json` — ámbito de **proyecto**. Ahora enumera también los
+  proyectos que Claude Code registra en `~/.claude.json`, deduplicando por ruta de fichero (en
+  un `$HOME` declarado como proyecto, el fichero de proyecto y el de usuario son el mismo, y
+  sin dedupe una sola fuente contaba dos veces y daba un FAIL falso), e informa de `ruta:línea`
+  de cada fuente. Un check nuevo vigila `statusLine`: resuelve el ejecutable real del comando
+  saltando el intérprete, FALLA si no existe o no es ejecutable, avisa si no imprime nada o
+  sale con código distinto de 0 —el modo de fallo que Claude Code silencia por completo— y
+  calla si no está declarada, porque el kit no la instala. Y suite nueva
+  `test_install_settings_merge.sh`: 23 aserciones sobre la fusión de `settings.json`, con el
+  caso del incidente verificado por mutación (al revertir la fusión a la copia entera, la
+  suite cae con 5 fallos, el primero por `statusLine` ausente).
 
 ### Changed
 
@@ -400,6 +418,39 @@ corre hoy 26 suites de test, frente a las 16 de v1.0.0.
 - **Se deja de versionar bytecode.** Un `.pyc` publica en `co_filename` la ruta absoluta de
   compilación, que aquí incluye el nombre de usuario.
 
+- **Dos fallos en abierto del propio arreglo de la fusión.** La escritura final era `cp -p`
+  desde un temporal en `/tmp`: un fallo a mitad dejaba el `settings.json` truncado, y además
+  el `cp` desde `/tmp` bajaba el modo del fichero a `600` en cada instalación. Ahora el
+  temporal se crea junto al destino y entra con `mv` —rename atómico— preservando el modo
+  original (`644`, el que escribe una instalación limpia). Y el hook `preflight.sh` resucitaba
+  el proxy de Headroom en **cada** sesión de **cualquier** proyecto, contradiciendo su propio
+  mensaje ("Claude Code funciona igual, no depende del proxy"): ahora solo lo levanta si hay
+  opt-in declarado —la variable en el entorno o la URL en un `settings`—, porque sin nadie
+  enrutado son 1,3 GB de RSS para nadie.
+
+- **`install.sh` abortaba la instalación entera si Sentinel había dejado un `__pycache__`.**
+  Los bucles de `agents/*` y `sentinel/*` filtraban con `[ -e "$f" ]`, así que un directorio
+  llegaba a un `cp` sin `-r`: `cp: -r not specified; omitting directory`, `rc=1` e instalación
+  a medias — y `test_doctor.sh` en rojo por una causa ajena al doctor, porque corre `install.sh`
+  bajo `set -e`. El filtro pasa a `[ -f "$f" ]`, que es lo que ya hacía el bucle de `hooks/`.
+  Reproducido sobre el árbol real, que arrastraba tres `__pycache__` desde el 25-ago: `rc=1`
+  antes, `rc=0` después. Cuatro casos nuevos en `test_install.sh`, y el rc del primer
+  `install.sh` deja de perderse: antes un fallo ahí mataba la suite con `rc=1` y cero salida.
+- **`doctor.sh` daba por buena una instalación sin API.** El check 5 leía
+  `.env.ANTHROPIC_BASE_URL` solo del `settings.json` de usuario, así que un enrutado declarado
+  en ámbito de proyecto —que es el que gana— no se sondeaba: con el proxy muerto imprimía
+  `PASS · API directa a Anthropic` junto al `PASS` del 5e que sí lo veía declarado, dos
+  afirmaciones que se contradicen, y `rc=0`. La enumeración de ámbitos se extrae a
+  `enumerar_enrutado()` y la consumen los dos checks en orden de precedencia real; el `FAIL`
+  nombra el fichero de origen. `test_doctor_base_url.sh` pasa de 16 a 22 asserts: el caso F
+  era un sensor invertido —afirmaba que una instalación sin API es un estado limpio— y queda
+  como control positivo, con el caso J nuevo como negativo. Falsabilidad medida: los 6 asserts
+  nuevos caen contra el `doctor.sh` anterior y los 16 previos siguen verdes.
+- **`pre-compact.sh` leía un campo que no existe.** Esperaba `triggerReason`; el evento envía
+  `trigger`, y `triggerReason` tiene 0 apariciones en el binario 2.1.258, así que el hook
+  imprimía siempre `(unknown)`. Las dos entradas `PreCompact` del `settings.json` instalado
+  (`manual` y `auto`, mismo comando) se consolidan en un `matcher: "manual|auto"`.
+
 ### Documentation
 
 - **`08-plugins-mcp-y-skills.md`: la sección de MCP decía cosas que ya no eran verdad, y
@@ -482,6 +533,42 @@ corre hoy 26 suites de test, frente a las 16 de v1.0.0.
   **está pendiente**. Y con una fe de erratas que nombra al commit `e7d4fee`: no se enmienda
   un mensaje publicado, se corrige aquí.
 
+- **La doc recomendaba como oráculo del enrutado una herramienta que miente en los dos
+  sentidos.** `headroom doctor` da `claude ⚠ not routed` dentro de una sesión enrutada —solo
+  juzga ficheros, no la sesión— y a la vez `codex ✓ routed` con cero peticiones OpenAI en los
+  logs; reproducido tres veces, la última hoy. Se retira como oráculo de `03-headroom.md` y de
+  `07-verify.md` y se sustituye por los dos que sí contestan: el `environ` de un proceso hijo
+  de la sesión y `doctor.sh`. Se documenta el mecanismo que faltaba —`headroom wrap` escribe la
+  URL en el `settings.local.json` del **proyecto** y la restaura al salir, así que el enrutado
+  es por proyecto y quitarla a mano no dura— y que el kit **no fija versión** de `headroom-ai`.
+  Seis afirmaciones de esa doc pasan a tener sensor en `test_doc_claims.sh`, con diez averías
+  fabricadas para probar que acusan.
+
+- **Tres afirmaciones falsas sobre la capa de IOCs, retiradas.** `05-security.md` y
+  `SECURITY.md` decían que el kit no distribuye `iocs.json` "para no filtrar indicadores
+  propios"; el kit lo trae desde `2de31d5`, con 31 patrones de ruta, 12 de comando y 30 de red,
+  e `install.sh` lo copia junto al hook. En una instalación limpia `doctor.sh` imprime
+  `PASS · Sentinel IOC layer activa` sin que haya que hacer nada, así que el paso de activación
+  que documentaban era un rito vacío. Se conserva íntegro el comportamiento *fail-open* —sin el
+  fichero, `load_iocs()` devuelve `{}` y todos los checks son un no-op silencioso— y se
+  documenta el orden de búsqueda real, con su consecuencia: un `iocs.json` puesto en `hooks/`
+  queda sombreado por el del kit y no se lee nunca. `07-verify.md` publicaba además un oráculo
+  falso (`test -f "$CLAUDE_HOME/hooks/iocs.json"`, que da `WARN` donde `doctor.sh` da `PASS`).
+- **`06-routine.md` atribuía al kit un umbral de autocompact que el kit no toca.** Afirmaba
+  configurar el 75 % con `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` en `settings.json`; esa clave no
+  aparece en el `settings.json` que instala. Medido aparte: ese override es un hook de test que
+  solo *baja* el umbral, y en la ruta de 1M es inerte.
+- **La plantilla `kit/claude/CLAUDE.md` deja de llevar el estado de una máquina.** Fuera el
+  correo del autor, la fecha del día y tres bloques con 0 uso medido: 143 → 115 líneas y
+  1.977 → 1.624 aprox-tokens, con techo declarado en su sensor (120 líneas / 1.700 tokens).
+  Queda dicho lo que sigue sobrando y no se toca aquí: la plantilla manda usar skills
+  (`deep-change`, `superpowers`) que el kit no instala.
+- **`VERSION` en la raíz como única fuente de la versión**, con un sensor que exige que
+  coincidan `VERSION`, la sección más nueva del CHANGELOG y el `vX.Y.Z` de la línea `estable`
+  de `README.md` y `CLAUDE.md`. Sin `git tag` a propósito: `actions/checkout` no trae tags y el
+  check degradaría a `skip` en CI, que es como no tenerlo. La duración del oráculo en
+  `CLAUDE.md` pasa de "~45 s" a "151-179 s en un i9-14900HX", que es lo medido.
+
 ### Security
 
 - **Tres rutas con el nombre real de personas salían publicadas en `HEAD`**, en
@@ -493,6 +580,84 @@ corre hoy 26 suites de test, frente a las 16 de v1.0.0.
   bytecode lleva dentro la ruta absoluta de compilación en `co_filename`, así que publicaba
   el árbol de directorios de la máquina del autor. Se saca del índice y `__pycache__/` entra
   en `.gitignore`.
+
+- **Nueve huecos de los guards de `git push` y `rm`, cerrados con su caso de test.** Se colaban
+  el `push -f` con `-C` delante, el refspec forzado con `+`, `--mirror`, el borrado de rama
+  remota con `--delete`, el `push` a `master` tras un `cd` encadenado (por el ancla `^` de
+  `branch-guard.sh`), el `rm` recursivo y forzado en forma larga, y `find … -delete` bajo
+  `/home/`. `test_guards.sh` suma 14 casos —10 que caen contra los guards anteriores y 6
+  contrapesos anti-sobrebloqueo: `-C` sin forzar, rama de feature, `rm -r` sin forzar,
+  `find -delete` en `/tmp`— y `test_guards_falsifiability.sh` mantiene sus 10 `BLOCK` exactos,
+  así que la cifra que afirma el README sigue siendo verdad. La tabla de reglas gana un camino
+  rápido de un solo `grep`: el camino caliente (comando permitido) baja de 62 a 8 ms medianos y
+  de 43 a 1 invocación de proceso; el denegado sube de 44 a 68 ms, que es el raro y acaba en una
+  interrupción al usuario. Diferencial sobre 65 comandos: 7 diferencias de decisión, las 7
+  intencionadas.
+- **Sentinel gana un suelo en código que ningún fichero de datos puede levantar.**
+  `ALWAYS_DENY_PATHS` —el fichero de credenciales de Claude Code, la clave privada de SSH (el
+  `.pub` no empareja) y las credenciales de AWS— se consulta **antes** del allowlist. Cierra una
+  asimetría medida: con `$HOME/.claude/` en el allowlist, *nombrar* ese fichero de credenciales
+  se bloqueaba y *abrirlo* se permitía sin registro. Aguanta con un allowlist hostil
+  (`paths: ["/"]`) y con `iocs.json` vaciado a `{}`, que es el kill-switch que convierte todos
+  los demás checks de ruta en no-op. Coste medido sobre el `~/.claude` real (6.358 ficheros):
+  las denegaciones pasan de 1 a 13, y las 12 nuevas son material de clave —el de control del
+  demonio y 11 de sesión— que el kit no referencia en ningún sitio.
+- **El agente ya no puede desactivar sus propios guards sin dejar rastro.** `PROTECTED_CONFIG`
+  (`settings*.json`, `hooks/`, `sentinel/`, `sentinel-allowlist.json`, `iocs.json`,
+  `.gitleaks.toml`) no deniega —eso es cosa de `permissions.deny`— pero **no es eximible y se
+  registra siempre**: seis vías que antes pasaban `allow` sin log, incluida la de añadir una
+  entrada al allowlist con `jq`, quedan auditadas. Sobre los mismos 6.358 ficheros añade **0
+  denegaciones** y 30 rutas registradas, y `kit/claude/hooks/` del propio repo no empareja
+  (falta el punto), así que no estorba al desarrollo del kit. El mensaje de `deny` deja de
+  anunciar la vía de exención donde era mentira: para una regla del suelo ningún allowlist la
+  levanta, así que el prospecto era falso y a la vez instructivo.
+- **gitleaks: las claves de Anthropic se colaban en 5 de 7 emplazamientos.** La regla por
+  defecto `anthropic-api-key` solo dispara con la forma exacta de 93 caracteres terminada en
+  `AA`, así que la misma clave alargada a 105 se comiteaba incluso en `.yaml` — y el caso 1 de
+  la suite pasaba por la regla por defecto, no por una del kit, de modo que la afirmación de
+  `.gitleaks.toml:26-28` era falsa. Regla nueva `anthropic-api-key-prefix` sobre el prefijo de
+  clave de Anthropic con 20+ caracteres, sin `path` y sin umbral de entropía ni longitud fija;
+  la medición queda dentro del comentario. Falsabilidad: neutralizar el regex hace caer **1 de
+  22** casos y no 22, lo que prueba que la mutación desactiva la regla y no la carga de la
+  config. La clave del fixture se compone en ejecución, porque un literal de 20+ caracteres tras
+  el prefijo haría que la regla bloqueara el commit que lo añade.
+- **Los nueve `*.sh` de `kit/claude/hooks/` quedan versionados `100755`.** `preflight.sh` era el
+  único a `100644`: instalado, `rc=126` y nunca se ejecutaba, con el fallo leyéndose como "el
+  hook no hace nada". `test_guards.sh` añade un sensor de modo que mira disco **e** índice
+  —falsable quitando el bit solo del índice— porque `git ls-files -s` es la única vía que ve la
+  causa real.
+- **Guard de configuración: 10 reglas `deny` sobre `Write`/`Edit` de `hooks/**`,
+  `settings.json`, `settings.local.json`, `sentinel-allowlist.json` y `sentinel/**`** (rutas con
+  una sola barra, ancladas al propio fichero de settings). El motivo es medido: en un solo día
+  tres escritores distintos reescribieron el `settings.json` de usuario y uno se llevó por
+  delante la clave `statusLine`. **Declarado y sin sensor**: la sonda que confirmaría que el
+  binario honra esa forma la intercepta el clasificador de permisos antes de llegar a la capa
+  que se quiere medir, así que no se afirma que funcione. El enforcement probado sigue siendo
+  el de los hooks.
+
+### Deuda declarada
+
+Lo que se midió, no se arregló en esta versión y se documenta para que nadie lo lea como
+resuelto. Ninguna de estas líneas tiene sensor: son huecos conocidos, no regresiones.
+
+- **El allowlist por proyecto sigue abierto y sin documentar.** `load_user_allowlist()` prefiere
+  el `.security/sentinel-allowlist.json` del directorio de trabajo sobre el del usuario, así que
+  **un repo clonado puede traer sus propias exenciones**. Con el suelo en código ya no expone
+  credenciales ni la config de los guards, pero todavía puede eximirse la config de npm, los
+  certificados o la base de contraseñas del sistema. Seguimiento nº 1.
+- **`block-dangerous-commands.sh` exime por igualdad exacta de cadena** (`index($cmd)` + `exit
+  0`): una línea en el allowlist desactiva **todo** el blocklist, no un patrón. En Sentinel esa
+  misma lista es más estrecha, porque solo exime el check de comandos.
+- **Sentinel es fail-open por diseño** (`except: sys.exit(0)`): cualquier entrada que lo haga
+  fallar es un bypass universal y silencioso.
+- **Los guards leen el literal del comando, no el `argv`** que expandirá el shell: entrecomillar
+  los flags o pasarlos por una variable derrota cualquier regex de flags. Está dicho en el
+  comentario del hook y no se tapa con más regex, que daría una falsa sensación de cierre.
+- **`dict-password-config-file` sigue acotada por extensión de config**, así que una contraseña
+  en un `.txt` se comitea. Ampliarla reintroduce la clase de 18 falsos positivos ya medida.
+- **`kit/docs/07-verify.md:84` sigue describiendo la fuente del check 5 como un `jq` sobre el
+  `settings.json` de usuario**, que con la corrección de este release es incompleto: ahora es la
+  enumeración de ámbitos. Ninguna suite grepea esa expresión, así que nada se pone rojo.
 
 ## [1.0.0] - 2026-08-05
 
@@ -769,5 +934,6 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/manuelcozar55/setup-claude-code/releases/tag/v1.0.0

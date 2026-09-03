@@ -6,7 +6,10 @@ pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 
 export CLAUDE_HOME="$tmp/dot"
-bash "$KIT/install.sh" >/dev/null 2>&1
+# Con `set -e` y la salida a /dev/null, un fallo aqui mataba la suite con rc=1 y CERO salida:
+# rojo correcto pero imposible de diagnosticar. Se captura para que el rojo diga por que.
+set +e; bash "$KIT/install.sh" >"$tmp/install.log" 2>&1; irc=$?; set -e
+ck "$irc" "0" "install.sh sale 0 en un CLAUDE_HOME limpio$([ "$irc" -eq 0 ] || printf ' -- %s' "$(tail -1 "$tmp/install.log")")"
 ck "$([ -f "$CLAUDE_HOME/CLAUDE.md" ] && echo y)" "y" "instala CLAUDE.md"
 ck "$([ -f "$CLAUDE_HOME/settings.json" ] && echo y)" "y" "instala settings.json"
 ck "$([ -x "$CLAUDE_HOME/hooks/branch-guard.sh" ] && echo y)" "y" "hook ejecutable"
@@ -46,5 +49,18 @@ if command -v jq >/dev/null 2>&1; then
 else
   echo "skip - jq ausente: no se prueba la fusion de settings.json"
 fi
+
+# Regresion 2026-09-02: un __pycache__ dentro del kit rompia el bucle `cp` de install.sh
+# ("cp: -r not specified; omitting directory"), el instalador salia rc=1 y dejaba la
+# instalacion a medias -- y con ella test_doctor.sh en rojo por una causa ajena al doctor.
+# Los bucles filtran con -f: un directorio se ignora en vez de matar la instalacion.
+cp -a "$KIT" "$tmp/kitcopy"
+mkdir -p "$tmp/kitcopy/sentinel/__pycache__" "$tmp/kitcopy/claude/agents/__pycache__"
+: > "$tmp/kitcopy/sentinel/__pycache__/sentinel_preflight.cpython-314.pyc"
+set +e; CLAUDE_HOME="$tmp/dot2" bash "$tmp/kitcopy/install.sh" >"$tmp/pyc.log" 2>&1; prc=$?; set -e
+ck "$prc" "0" "un __pycache__ en el kit no rompe la instalacion"
+ck "$(grep -c 'omitting directory' "$tmp/pyc.log" || true)" "0" "install.sh no intenta copiar directorios"
+ck "$([ -f "$tmp/dot2/sentinel/sentinel_preflight.py" ] && echo y)" "y" "sentinel se instala con __pycache__ presente"
+ck "$([ -d "$tmp/dot2/sentinel/__pycache__" ] && echo y || echo n)" "n" "el __pycache__ no viaja a CLAUDE_HOME"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
