@@ -824,7 +824,14 @@ rm -f ~/.headroom/logs/proxy.log ~/.headroom/logs/proxy.log.1 \
       ~/.headroom/logs/proxy.log.4 ~/.headroom/logs/proxy.log.5
 chmod 700 ~/.headroom/logs
 systemctl --user start headroom-proxy.service
+chmod 600 ~/.headroom/logs/*
 ```
+
+  El `chmod` final no es decorativo: `proxy.stderr` **no se borra** (son 1860 bytes
+  de banner de arranque, sin conversación: verificado con 0 coincidencias de
+  `payload_preview`, `headroom_retrieve` y `PERF`) y está en `644`. `UMask=0077`
+  solo gobierna los ficheros que nazcan después, no el modo de uno que sobrevive.
+  `~/.headroom/metrics/` no se toca en ningún caso: es la única copia de la serie.
 
   Se para y se arranca en vez de `restart` porque el manejador de logs mantiene el
   descriptor abierto: borrar el fichero con el proceso vivo lo deja escribiendo a
