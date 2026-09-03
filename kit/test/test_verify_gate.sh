@@ -85,7 +85,7 @@ ck "$(decision "$out")" "block" "A7: rc=1 (tarea en curso sin evidencia) bloquea
 razon="$(printf '%s' "$out" | jq -r '.reason // ""')"
 ck "$(printf '%s' "$razon" | grep -q 'T-042' && echo y || echo n)" "y" "el bloqueo nombra la tarea"
 ck "$(printf '%s' "$razon" | grep -q 'no hay ejecucion VERDE' && echo y || echo n)" "y" "el bloqueo lleva el motivo de mch"
-ck "$(printf '%s' "$razon" | grep -q 'Intentos registrados desde el ultimo start: 7' && echo y || echo n)" "y" \
+ck "$(printf '%s' "$razon" | grep -qE '^Intentos registrados desde el ultimo start: 7$' && echo y || echo n)" "y" \
    "el bloqueo lleva los intentos derivados del journal"
 
 # --- rc desconocido: autoridad presente que no responde -> BLOQUEA ---------
