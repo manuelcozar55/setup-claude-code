@@ -75,9 +75,9 @@ write_dropin() { # $1 raiz-HOME, $2 cuerpo de [Service]
     > "$1/.config/systemd/user/headroom-proxy.service.d/10-higiene.conf"
 }
 
-run_doctor() { # $1 CLAUDE_HOME, $2 raiz-HOME -> salida completa
+run_doctor() { # $1 CLAUDE_HOME, $2 raiz-HOME, $3 doctor alternativo (opcional) -> salida completa
   env -u ANTHROPIC_BASE_URL HOME="$2" XDG_CONFIG_HOME="$2/.config" \
-      PATH="$2/.local/bin:$PATH" CLAUDE_HOME="$1" bash "$KIT/doctor.sh" 2>&1
+      PATH="$2/.local/bin:$PATH" CLAUDE_HOME="$1" bash "${3:-$KIT/doctor.sh}" 2>&1
 }
 
 # --- 1) dos fuentes de enrutado -> FAIL -------------------------------------
@@ -183,9 +183,26 @@ else
   ko "install.sh --with-headroom no genero la unidad en XDG_CONFIG_HOME"
 fi
 
+# --- 12) falsabilidad del sensor nuevo -------------------------------------
+# Un sensor que no se puede poner rojo no es un sensor. Se neutraliza la marca que
+# busca, sobre una COPIA, y se exige que el caso malo pase de detectado a mudo. Sin
+# esto el sensor podria estar comparando contra una cadena que nunca aparece --
+# exactamente el defecto que esta entrega arregla -- y la suite seguiria verde.
+CH12="$(install_clean)"; R12="$(mk_home)"
+FALS="$(mktemp -d)"; cp "$KIT/doctor.sh" "$FALS/doctor.sh"
+sed -i 's/payload_preview/zzz_marca_que_no_existe/g' "$FALS/doctor.sh"
+printf '%s\n' '2026-09-03 15:35:10,407 - headroom.cache.compression_store - INFO - event=headroom_retrieve {"payload_preview":"texto literal","payload_preview_chars":13}' \
+  > "$R12/.headroom/logs/proxy.log"
+mudo="$(run_doctor "$CH12" "$R12" "$FALS/doctor.sh")"
+if echo "$mudo" | grep -qE '^FAIL .*payload_preview'; then
+  ko "el sensor de payload_preview no es falsable: neutralizado sigue detectando"
+else
+  ok; falsified=$((falsified + 1))
+fi
+
 # Un sensor que no puede ponerse rojo no es un sensor.
-if [ "$falsified" -ge 2 ]; then ok; else
-  ko "los casos negativos no demuestran deteccion real (detectados: $falsified de 2)"
+if [ "$falsified" -ge 3 ]; then ok; else
+  ko "los casos negativos no demuestran deteccion real (detectados: $falsified de 3)"
 fi
 
 # --- 7) conversacion en claro en proxy.log -> FAIL --------------------------
