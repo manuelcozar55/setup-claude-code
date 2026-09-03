@@ -61,6 +61,11 @@ for src in "$KIT"/claude/hooks/*; do
   [ -f "$dst" ] || continue
   cmp -s "$src" "$dst" && continue
 
+  # git rev-list HEAD solo ve lo que el historial disponible trae: un checkout
+  # superficial o una rama con squash/rebase pueden no traer la version vieja
+  # aunque exista. Eso empuja hacia "propio" (WARN) un caso que en realidad es
+  # "rancio" (FAIL) -- se equivoca del lado seguro, y es inherente a como git
+  # ve el historial, no algo que este check pueda arreglar por si solo.
   encontrado=n
   if [ "$tiene_git" = y ]; then
     blob="$(git -C "$REPO" hash-object "$dst" 2>/dev/null)"

@@ -34,6 +34,10 @@ Todo vive bajo `kit/test/`:
   `gitleaks` en `pre-commit`). Se salta sola (SKIP, no FAIL) si no encuentra
   el binario `gitleaks` en el sistema.
 - `test_install.sh`, `test_doctor.sh`, `test_scan_secrets.sh`.
+- `test_doctor_drift.sh` — distingue un hook desplegado que es una version
+  antigua del propio kit (FAIL, hay que reinstalar) de uno personalizado
+  localmente (WARN): el discriminador es el sha del blob contra el historial
+  de git del kit.
 - `test_install_platform_gate.sh` — la puerta de plataforma de `install.sh`
   (solo Linux/WSL2) aborta en cualquier otra y no deja nada a medias.
 - `test_install_gitleaks.sh` — deteccion de `gitleaks` y degradacion con

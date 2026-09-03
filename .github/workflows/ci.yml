@@ -52,6 +52,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0 # test_doctor_drift.sh necesita el historial completo (ver T-002)
 
       - name: Instalar gitleaks (version fijada + checksum)
         run: |
