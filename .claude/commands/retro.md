@@ -62,8 +62,9 @@ nadie usa. Anótalo en `MISTAKES.md` y recorta el nivel. Explicar de más tambi�
 ### 5. Entrega
 
 Muestra un **diff propuesto** de los ficheros de `knowledge/`, no los edites a la brava.
-Espera el visto bueno. Después, cada cambio en `knowledge/` va en un commit separado con
-prefijo `knowledge:`.
+Espera el visto bueno. Después, el cambio en `knowledge/` va en el mismo commit de la tarea
+(la regla de commit aparte con prefijo `knowledge:` se retiró: era insatisfiable a la vez
+que un commit por tarea).
 
 Cierra con:
 

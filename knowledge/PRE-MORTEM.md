@@ -55,7 +55,9 @@ primera mejora de la lista.
 describe un entorno que cambió, y `SOURCES.md` está lleno de `[STALE]`. Consultarlo empieza
 a dar información falsa, así que se deja de consultar, y entonces sí es peso muerto.
 
-**Señal temprana.** Ningún commit con prefijo `knowledge:` en cuatro semanas.
+**Señal temprana.** Ningún commit que toque `knowledge/` en cuatro semanas. (Antes se
+buscaba por el prefijo `knowledge:`; se retiró por insatisfiable junto a un commit por
+tarea, así que la señal ahora es tocar la carpeta, no el prefijo.)
 
 **Qué hace el diseño.** `test_sources_freshness` falla cuando una fuente vence sin marcar,
 y está **demostrado que detecta una entrada vencida fabricada**. Cada procedimiento lleva
