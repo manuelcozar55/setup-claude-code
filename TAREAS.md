@@ -28,6 +28,22 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 - sensor: kit/test/test_doctor_drift.sh
 - timeout: 15min
 - criterios:
-  - [ ] una version antigua del kit sale como FAIL y doctor rc!=0
-  - [ ] una personalizacion sale como WARN y no se llama rancia
+  - [x] una version antigua del kit sale como FAIL y doctor rc!=0
+  - [x] una personalizacion sale como WARN y no se llama rancia
+
+## T-002 · T-002: test_doctor_drift.sh corre de verdad en CI
+
+- estado: pendiente
+- oráculo: `make test`
+- riesgo: bajo
+- clase: regresión
+- sensor: kit/test/test_doctor_drift.sh,.github/workflows/ci.yml
+- timeout: 15min
+- criterios:
+  - [ ] un checkout de git shallow hace FAIL ruidoso (rc!=0), nunca skip silencioso
+  - [ ] preparar_home() escribe settings.json valido: el rc!=0 de la instalacion rancia lo causa el discriminador, no un FAIL ajeno
+  - [ ] una copia del kit sin git (tiene_git=n) clasifica como personalizacion local, nunca como rancio
+  - [ ] ci.yml hace fetch-depth: 0 en el checkout de test-suites
+
+  T-001 quedo con un falso verde en CI: shallow clone -> ningun hook con 2 versiones -> suite omitida en silencio -> revert completo del discriminador pasaria sin detectar
 

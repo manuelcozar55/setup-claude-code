@@ -109,4 +109,22 @@ ck "$(printf '%s' "$out4" | grep -qi 'personalizacion local' && echo y || echo n
 ck "$(printf '%s' "$out4" | grep -qi 'version ANTIGUA del kit' && echo y || echo n)" "n" \
    "sin git: nunca se afirma rancio sin evidencia de historial para probarlo"
 
+# --- Caso 5 (autoverificacion): el guardia de shallow dispara de verdad ----
+# No basta con documentarlo ni con probarlo a mano una vez: si nadie se acuerda
+# de revisarlo en CI, un shallow clone puede volver a colar un revert completo
+# en silencio. Se clona el propio repo con --depth 1 (local, file://, sin red)
+# y se corre ESTA MISMA suite dentro: tiene que salir con rc != 0 y nombrar la
+# condicion, nunca un skip silencioso.
+shallow="$tmp/shallow"
+if git clone --depth 1 --quiet "file://$REPO" "$shallow" >/dev/null 2>&1; then
+  out5="$(bash "$shallow/kit/test/test_doctor_drift.sh" 2>&1)"; rc5=$?
+  ck "$([ "$rc5" -ne 0 ] && echo y || echo n)" "y" \
+     "autoverificacion: la suite corrida dentro de un clon shallow sale con rc != 0"
+  ck "$(printf '%s' "$out5" | grep -qi 'shallow' && echo y || echo n)" "y" \
+     "autoverificacion: el mensaje nombra la condicion shallow"
+else
+  fail=$((fail+1))
+  echo "NOT ok - no se pudo crear un clon shallow (file://, local, sin red) para autoverificar el guardia: eso tambien tiene que sonar, no callarse"
+fi
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
