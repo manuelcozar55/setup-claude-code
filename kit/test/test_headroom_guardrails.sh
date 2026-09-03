@@ -53,6 +53,8 @@ mk_home() { # imprime una raiz que hace de HOME, con un headroom de pega
   # `make bootstrap` (HOME aislado). Es la misma no-hermeticidad que esta suite vigila.
   printf '#!/bin/sh\nexit 0\n' > "$r/.local/bin/headroom"; chmod +x "$r/.local/bin/headroom"
   chmod 700 "$r/.headroom"
+  # logs/ aparte: nace con el umask del proceso (755), no hereda el 700 del padre.
+  chmod 700 "$r/.headroom/logs"
   echo "$r"
 }
 
@@ -65,6 +67,12 @@ set_base_url() { # $1 fichero de settings, $2 url
 write_unit() { # $1 raiz-HOME, $2 argumentos de ExecStart
   printf '[Unit]\nDescription=t\n\n[Service]\nExecStart=%%h/.local/bin/headroom %s\n\n[Install]\nWantedBy=default.target\n' \
     "$2" > "$1/.config/systemd/user/headroom-proxy.service"
+}
+
+write_dropin() { # $1 raiz-HOME, $2 cuerpo de [Service]
+  mkdir -p "$1/.config/systemd/user/headroom-proxy.service.d"
+  printf '[Service]\n%s\n' "$2" \
+    > "$1/.config/systemd/user/headroom-proxy.service.d/10-higiene.conf"
 }
 
 run_doctor() { # $1 CLAUDE_HOME, $2 raiz-HOME -> salida completa
@@ -179,5 +187,56 @@ fi
 if [ "$falsified" -ge 2 ]; then ok; else
   ko "los casos negativos no demuestran deteccion real (detectados: $falsified de 2)"
 fi
+
+# --- 7) conversacion en claro en proxy.log -> FAIL --------------------------
+# El sensor viejo solo miraba proxy.jsonl y su marca "request_messages". La fuga
+# real vive en proxy.log, la escribe compression_store a nivel INFO con
+# event=headroom_retrieve y --log-messages APAGADO, y su marca es "payload_preview".
+# Un sensor que vigila el fichero equivocado se queda verde con conversacion en
+# claro a un directorio de distancia: medido el 2026-09-03, 100 lineas en un dia.
+CH7="$(install_clean)"; R7="$(mk_home)"
+printf '%s\n' '2026-09-03 15:35:10,407 - headroom.cache.compression_store - INFO - event=headroom_retrieve {"hash":"abc","payload_preview":"texto literal de la conversacion","payload_preview_chars":1062}' \
+  > "$R7/.headroom/logs/proxy.log"
+out7="$(run_doctor "$CH7" "$R7")"
+if echo "$out7" | grep -qE '^FAIL .*payload_preview'; then ok; else
+  ko "un proxy.log con payload_preview con contenido no produce FAIL"
+fi
+
+# --- 8) el mismo log con el preview ya apagado -> silencio ------------------
+printf '%s\n' '2026-09-03 15:35:10,407 - headroom.cache.compression_store - INFO - event=headroom_retrieve {"hash":"abc","payload_preview":"","payload_preview_chars":0}' \
+  > "$R7/.headroom/logs/proxy.log"
+out8="$(run_doctor "$CH7" "$R7")"
+if echo "$out8" | grep -qE '^FAIL .*payload_preview'; then
+  ko "un proxy.log con el preview apagado produce un FAIL falso"
+else ok; fi
+
+# --- 9) permisos de ~/.headroom/logs -> WARN -------------------------------
+# El 700 del directorio padre no cubre al hijo, y ahi es donde vive el log.
+chmod 755 "$R7/.headroom/logs"
+out9="$(run_doctor "$CH7" "$R7")"
+if echo "$out9" | grep -qE '^WARN .*headroom/logs tiene permisos 755'; then ok; else
+  ko "un ~/.headroom/logs en 755 no produce WARN de permisos"
+fi
+chmod 700 "$R7/.headroom/logs"
+
+# --- 10) unidad sin InaccessiblePaths -> WARN ------------------------------
+# Con ProtectHome=read-only el proxy puede LEER ~/.ssh, ~/.aws, ~/.gnupg y
+# ~/.config/gh. La plantilla del kit lo tapa, pero nada re-aplica la plantilla:
+# la unidad viva de esta maquina es del 21-ago y no llego a tenerlo.
+CH10="$(install_clean)"; R10="$(mk_home)"
+write_unit "$R10" "proxy --port 8787 --mode cache --no-telemetry"
+out10="$(run_doctor "$CH10" "$R10")"
+if echo "$out10" | grep -qE '^WARN .*InaccessiblePaths'; then ok; else
+  ko "una unidad que no declara InaccessiblePaths no produce WARN"
+fi
+
+# --- 11) el mismo endurecimiento, pero en un drop-in -> silencio -----------
+# Un grep al fichero de la unidad no ve lo que vive en .service.d/: sin esto el
+# sensor daria rojo falso a una maquina correctamente arreglada con drop-in.
+write_dropin "$R10" 'InaccessiblePaths=-%h/.ssh -%h/.aws -%h/.gnupg -%h/.config/gh'
+out11="$(run_doctor "$CH10" "$R10")"
+if echo "$out11" | grep -qE '^WARN .*InaccessiblePaths'; then
+  ko "el sensor no lee los drop-ins: da WARN con el endurecimiento ya puesto"
+else ok; fi
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
