@@ -7,12 +7,14 @@ etiquetado.
 
 ## [Unreleased]
 
-Dos frentes con la misma forma: **protecciones que el repo declaraba y que no existían.** Por
-un lado se cierran los guards y el instalador, que fallaban en abierto cuando faltaba `jq`;
-por otro se retiran afirmaciones publicadas que dejaron de ser verdad cuando cambió el kit, y
-se escribe lo que no estaba escrito. Del inventario solo se mueve una cifra, y es la de los
-sensores: **27 → 28 suites**, por el que vigila la capa de permisos. Siguen 11 ADRs, y el
-conjunto de evals sigue en 20 tareas —10 positivas y 10 negativas— con 32 mutantes.
+Tres frentes con la misma forma: **protecciones que el repo declaraba y que no existían.** Por
+un lado se cierran los guards y el instalador, que fallaban en abierto cuando faltaba `jq`; por
+otro los sensores de Headroom, que vigilaban el fichero equivocado o no vigilaban del todo
+(`InaccessiblePaths`, el `UMask` de los logs); y por el tercero se retiran afirmaciones
+publicadas que dejaron de ser verdad cuando cambió el kit, y se escribe lo que no estaba
+escrito. Del inventario solo se mueve una cifra, y es la de los sensores: **27 → 28 suites**,
+por el que vigila la capa de permisos. Siguen 11 ADRs, y el conjunto de evals sigue en
+20 tareas —10 positivas y 10 negativas— con 32 mutantes.
 
 ### Security
 
@@ -70,6 +72,24 @@ conjunto de evals sigue en 20 tareas —10 positivas y 10 negativas— con 32 mu
   muestra antes de conceder permisos automáticos. En un kit cuya tesis son capas que bloquean,
   eso no puede ser el default. Se retira de los tres `settings.json` y el sensor nuevo vigila
   que no reaparezca. Quien lo quiera, lo pone en su config; ya no viene puesto.
+- **`doctor.sh` vigilaba el fichero equivocado.** El sensor de conversación en
+  claro solo miraba `~/.headroom/logs/proxy.jsonl` y su marca `request_messages`.
+  La fuga real la escribe `compression_store` en `proxy.log`, a nivel INFO y con
+  `--log-messages` **apagado**, en forma de `payload_preview` de hasta 4096
+  caracteres: 592 líneas solo del 2026-09-03, contando las seis franjas de rotación
+  (una medición contra una sola franja había dado 100). El sensor estaba verde.
+- **La unidad generada no tapaba las credenciales en las máquinas viejas.** La
+  plantilla declara `InaccessiblePaths` desde hace tiempo, pero nada re-aplica la
+  plantilla y `doctor.sh` solo inspeccionaba `ExecStart=`. Ahora avisa, y lee
+  también `headroom-proxy.service.d/*.conf` para no dar verde falso a una máquina
+  arreglada con drop-in ni rojo falso a la que lo tiene en la unidad.
+- **`UMask=0077` y `HEADROOM_LOG_PAYLOAD_PREVIEW=0` en la unidad.** El proceso
+  heredaba `Umask 0002`, así que los logs nacían en 664 y cada rotación los
+  volvía a crear así; `chmod` solo arregla el pasado. La variable no se puede
+  cambiar en caliente: no está en `_KNOBS_BY_ENV` y el lector consulta
+  `os.environ` directo, así que `/admin/runtime-env` no la ve.
+- `chmod 700` también a `~/.headroom/logs`, que el `700` del directorio padre no
+  cubría.
 
 ### Fixed
 

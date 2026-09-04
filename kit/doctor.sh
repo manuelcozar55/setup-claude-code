@@ -282,6 +282,15 @@ if command -v headroom >/dev/null 2>&1; then
     if grep -qE '^ExecStart=.*(--budget|--log-messages)' "$hr_unit"; then
       fail "headroom-proxy.service arranca con --budget o --log-messages: el primero devuelve HTTP 200 con cuerpo vacio al agotarse (parece un fallo del cliente); el segundo escribe la conversacion entera en claro a disco"
     fi
+
+    # El endurecimiento puede vivir en la unidad o en un drop-in, asi que se leen
+    # los dos: un grep solo al fichero de la unidad daria verde falso en una maquina
+    # arreglada con drop-in, y rojo falso en la que lo tiene en la unidad.
+    hr_efectivo="$(cat "$hr_unit" "${hr_unit}.d"/*.conf 2>/dev/null)"
+    case "$hr_efectivo" in
+      *InaccessiblePaths*) : ;;
+      *) warn "la unidad de headroom no declara InaccessiblePaths: con ProtectHome=read-only el proxy puede LEER ~/.ssh, ~/.aws, ~/.gnupg y ~/.config/gh. Añade: InaccessiblePaths=-%h/.ssh -%h/.aws -%h/.gnupg -%h/.config/gh" ;;
+    esac
   fi
 
   # --log-messages es opt-in y su propio --help avisa "may log sensitive data": guarda
@@ -291,11 +300,37 @@ if command -v headroom >/dev/null 2>&1; then
   if [ -f "$hr_jsonl" ] && grep -qm1 '"request_messages":[[:space:]]*\[' "$hr_jsonl" 2>/dev/null; then
     fail "$hr_jsonl guarda cuerpos de peticion (request_messages): conversaciones en claro en disco. Borra el fichero y no arranques el proxy con --log-messages"
   fi
+
+  # La otra mitad de la fuga, y la que estaba sin vigilar: compression_store
+  # escribe en proxy.log, a nivel INFO y con --log-messages APAGADO, hasta 4096
+  # chars de conversacion literal por cada event=headroom_retrieve. Su marca no es
+  # request_messages sino payload_preview con contenido. Medido el 2026-09-03 contando
+  # las seis franjas de rotacion: 592 lineas ese mismo dia (una medicion contra una
+  # sola franja habia dado 100). Se apaga con Environment=HEADROOM_LOG_PAYLOAD_PREVIEW=0
+  # en la unidad; no vale /admin/runtime-env, que no conoce esa clave.
+  hr_log="$HOME/.headroom/logs/proxy.log"
+  if [ -f "$hr_log" ] && grep -qm1 '"payload_preview":[[:space:]]*"[^"]' "$hr_log" 2>/dev/null; then
+    fail "$hr_log guarda payload_preview con contenido: conversacion en claro en disco. Apagalo con Environment=HEADROOM_LOG_PAYLOAD_PREVIEW=0 en la unidad, borra o rota el log ya escrito, y reinicia el servicio"
+  fi
   if [ -d "$HOME/.headroom" ]; then
     hr_perm="$(stat -c '%a' "$HOME/.headroom" 2>/dev/null || echo '')"
     case "$hr_perm" in
       700|750|'') : ;;
       *) warn "$HOME/.headroom tiene permisos $hr_perm: ahi vive material derivado de tus prompts (ccr_store.db, savings_events.jsonl). Corrigelo con: chmod 700 \"\$HOME/.headroom\"" ;;
+    esac
+  fi
+
+  # logs/ aparte: nace con el umask del proceso (medido: 0002 -> ficheros 664), asi
+  # que el 700 del directorio padre no lo cubre. Solo lo protege que ~/.headroom
+  # bloquee el paso, y eso es una sola linea de defensa. Este 0002/664 son los FICHEROS
+  # que escribe el proxy real; no es el mismo dato que el 755 de
+  # kit/test/test_headroom_guardrails.sh:56, que es el directorio que crea mkdir bajo el
+  # umask 022 de la shell de test.
+  if [ -d "$HOME/.headroom/logs" ]; then
+    hr_lperm="$(stat -c '%a' "$HOME/.headroom/logs" 2>/dev/null || echo '')"
+    case "$hr_lperm" in
+      700|750|'') : ;;
+      *) warn "$HOME/.headroom/logs tiene permisos $hr_lperm: ahi vive el log del proxy. Corrigelo con chmod 700 y añade UMask=0077 a la unidad para las rotaciones futuras" ;;
     esac
   fi
 else
