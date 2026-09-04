@@ -225,19 +225,29 @@ CLAUDE_HOME="$T/h" bash kit/install.sh
 CLAUDE_HOME="$T/h" bash kit/doctor.sh   # exit 0, 0 FAIL
 rm -r "$T"
 
-# 4. rama para el CHANGELOG: mover [Unreleased] -> [X.Y.Z] - AAAA-MM-DD, dejar
-#    [Unreleased] vacio, y añadir los dos enlaces de comparacion del final
+# 4. rama de release. Son CUATRO ficheros, no solo el CHANGELOG: la version
+#    tiene una fuente legible por maquina (VERSION) y dos copias en prosa, y
+#    test_doc_claims.sh exige que las tres coincidan con la seccion mas nueva
+#    del CHANGELOG. Mover solo el CHANGELOG deja la suite en rojo.
 V=X.Y.Z
 git checkout -b "release/v$V"
-# ... editar CHANGELOG.md ...
-git status --porcelain   # solo CHANGELOG.md
-git add CHANGELOG.md
+# ... editar CHANGELOG.md: [Unreleased] -> [X.Y.Z] - AAAA-MM-DD, dejar
+#     [Unreleased] vacio y actualizar los dos enlaces de comparacion del final
+echo "$V" > VERSION
+# ... y la linea que declara el estado del kit ("vX.Y.Z, estable") en README.md
+#     y en CLAUDE.md: es a esa a la que se ancla el sensor
+git status --porcelain   # CHANGELOG.md, VERSION, README.md, CLAUDE.md
+make test                # aqui es donde falla el sensor de version, si falla
+git add CHANGELOG.md VERSION README.md CLAUDE.md
 git commit -m "docs: preparar CHANGELOG para v$V"
 git push -u origin "release/v$V"
 gh pr create --title "docs: preparar CHANGELOG para v$V" --body "Release v$V."
 
-# 5. mergear el PR y esperar CI en verde sobre main antes de seguir
-gh pr merge --squash --delete-branch
+# 5. mergear el PR y esperar CI en verde sobre main antes de seguir.
+#    Merge commit, no squash: es la convencion de este repo -por eso
+#    required_linear_history esta en false en la proteccion de main- y es lo
+#    que hicieron todos los PRs anteriores.
+gh pr merge --merge --delete-branch
 git checkout main && git pull --ff-only
 
 # 6. etiquetar y publicar (ahora si sobre el commit que ya tiene el CHANGELOG)
