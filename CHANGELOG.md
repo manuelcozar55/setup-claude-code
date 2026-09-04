@@ -46,6 +46,11 @@ Inventario del árbol que describe esta sección:
 
 ### Fixed
 
+- **Cuatro salidas por omisión imprimían «ok» y sumaban un aprobado.** Sin
+  checkout de git, sin un hook con dos versiones, sin `pyyaml` o sin `claude`
+  instalado, dos suites reportaban un verde por cero mediciones y el agregado
+  lo sumaba como tal. Ahora declaran `skip`, que es el estado que existe para
+  esto, y un check nuevo impide que vuelva a aparecer una quinta.
 - **`install.sh` reemplazaba tu `settings.json` cuando faltaba `jq`.** Ahora
   fusiona con `python3` si `jq` no está, y si no hay ninguno de los dos **no
   toca el fichero**: reemplazarlo destruye ajustes que sólo tú tienes, y un

@@ -156,3 +156,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] sin jq NI python3, deja tu fichero intacto en vez de reemplazarlo
   - [x] los dos motores producen el mismo resultado, comprobado sobre la misma entrada
 
+## T-012 · una suite que se omite a si misma cuenta como aprobada
+
+- estado: hecha
+- oráculo: `bash kit/test/test_harness_structure.sh`
+- riesgo: bajo
+- clase: sensor
+- timeout: 25min
+- criterios:
+  - [x] ninguna suite imprime 'ok' por trabajo que decidio no hacer
+  - [x] omitida de verdad, test_doctor_drift declara skip y el agregado lo ve
+  - [x] el detector demuestra que sabe decir que no
+

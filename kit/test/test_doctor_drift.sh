@@ -22,7 +22,11 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 if ! git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1; then
-  echo "ok - el kit no es un checkout de git: suite omitida"; echo "== 1 passed, 0 failed =="; exit 0
+# Omitir no es aprobar. Hay tres estados y el del medio -"no se pudo verificar"- existe
+# para esto: imprimir `ok` y sumar un passed por trabajo que se decidio no hacer le
+# entregaba al agregado de `make test` un verde por cero mediciones.
+  echo "skip - el kit no es un checkout de git: suite omitida, sus casos NO se han comprobado"
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
 fi
 
 # Un checkout SI es git pero superficial (CI sin fetch-depth: 0, p.ej.) no tiene
@@ -66,8 +70,8 @@ for h in "$KIT"/claude/hooks/*.sh; do
   if [ -n "$v" ]; then HOOK="$n"; VIEJO="$v"; break; fi
 done
 if [ -z "$HOOK" ]; then
-  echo "ok - ningun hook tiene dos versiones en el historial: suite omitida"
-  echo "== 1 passed, 0 failed =="; exit 0
+  echo "skip - ningun hook tiene dos versiones en el historial: suite omitida, sus casos NO se han comprobado"
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
 fi
 
 # --- Caso 1: instalacion RANCIA -> FAIL, y doctor no puede salir 0 ---------

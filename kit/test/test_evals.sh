@@ -18,9 +18,14 @@ pass=0; fail=0
 ck() { if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1))
        else echo "NOT ok - $3 (obtenido '$1', esperado '$2')"; fail=$((fail+1)); fi; }
 
+skipped=0
 PY="${PYTHON3:-python3}"
 if ! "$PY" -c 'import yaml' 2>/dev/null; then
-  echo "ok - pyyaml no disponible: suite omitida"; echo "== 1 passed, 0 failed =="; exit 0
+# Omitir no es aprobar. Hay tres estados y el del medio -"no se pudo verificar"- existe
+# para esto: imprimir `ok` y sumar un passed por trabajo que se decidio no hacer le
+# entregaba al agregado de `make test` un verde por cero mediciones.
+  echo "skip - pyyaml no disponible: suite omitida, sus casos NO se han comprobado"
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
 fi
 
 # --- 1. Contrato de variables entre run.sh y los checks ---------------------
@@ -456,7 +461,7 @@ if command -v claude >/dev/null 2>&1; then
     fi
   done
 else
-  echo "ok - claude no instalado: comprobacion de flags omitida"; pass=$((pass+1))
+  echo "skip - claude no instalado: la comprobacion de flags NO se ha hecho"; skipped=$((skipped+1))
 fi
 
 # Un ARM mal escrito corria con el harness puesto y se guardaba con el typo por
@@ -1244,5 +1249,6 @@ else
      "test_doc_claims.sh emitio $emitidas_doc aserciones y su resumen declara las mismas"
 fi
 
-echo "== $pass passed, $fail failed =="
+if [ "$skipped" -gt 0 ]; then echo "== $pass passed, $fail failed, $skipped skipped =="
+else echo "== $pass passed, $fail failed =="; fi
 [ "$fail" -eq 0 ] || exit 1

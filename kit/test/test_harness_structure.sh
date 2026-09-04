@@ -498,4 +498,41 @@ fi
 
 ck "$([ "$falsified" -ge 6 ] && echo y || echo n)" "y" "al menos 6 checks demuestran deteccion real sobre casos fabricados a proposito (detectados: $falsified de 7) -- si fuera 0, la suite seria decorativa"
 
+echo "== 11) test_omision_no_es_aprobado =="
+# Una suite que decide no hacer su trabajo no puede imprimir "ok" ni sumar un passed.
+# Hay tres estados, no dos, y el del medio existe precisamente para esto: "no se pudo
+# verificar". test_doctor_drift.sh tenia DOS salidas asi -sin checkout de git, y sin
+# ningun hook con dos versiones en el historial- y las dos imprimian
+# `ok - ... suite omitida` y `== 1 passed, 0 failed ==`. En un entorno sin historial
+# -un `git archive`, un clon superficial, un tarball- la suite reportaba un aprobado
+# por cero mediciones, y el agregado lo sumaba como verde.
+omisiones_aprobadas(){ grep -lE "^[[:space:]]*echo \"ok - .*(omitida|se omite)" "$@" 2>/dev/null | grep -c . || true; }
+n=$(omisiones_aprobadas kit/test/test_*.sh)
+ck "$n" "0" "ninguna suite imprime 'ok' por trabajo que decidio no hacer (suites asi: $n)"
+
+# Falsabilidad del detector: sobre un fichero fabricado con el fallo dentro tiene que verlo.
+tmp_om="$(mktemp -d)"
+printf '#!/bin/bash\necho "ok - algo: suite omitida"\n' > "$tmp_om/test_fabricada.sh"
+if [ "$(omisiones_aprobadas "$tmp_om"/test_*.sh)" = "1" ]; then
+  ck "y" "y" "falsabilidad: el detector SI ve la omision aprobada en un fichero fabricado"
+  falsified=$((falsified + 1))
+else
+  ck "n" "y" "falsabilidad: el detector SI ve la omision aprobada en un fichero fabricado"
+fi
+rm -f "$tmp_om"/test_*.sh; rmdir "$tmp_om"
+
+# Y por ejecucion, que es lo que de verdad importa: forzada la omision -un arbol sin
+# historial de git-, test_doctor_drift.sh tiene que declarar skip, no aprobado. Se monta
+# con un symlink para no copiar el kit: `cd` conserva la ruta logica, asi que el REPO que
+# la suite deduce es el directorio temporal, que no es un checkout.
+tmp_sl="$(mktemp -d)"; ln -s "$(cd "$(dirname "$0")/.." && pwd)" "$tmp_sl/kit"
+out_om="$(bash "$tmp_sl/kit/test/test_doctor_drift.sh" 2>&1 || true)"
+ck "$(printf '%s' "$out_om" | grep -qE '^(skip|ok) - el kit no es un checkout de git' && echo y || echo n)" "y" \
+   "el andamio SI fuerza la omision (si no, los dos checks de abajo aprobarian sin medir)"
+ck "$(printf '%s' "$out_om" | grep -qE '^skip - ' && echo y || echo n)" "y" \
+   "omitida de verdad, test_doctor_drift declara skip"
+ck "$(printf '%s' "$out_om" | tail -1 | grep -q 'skipped' && echo y || echo n)" "y" \
+   "y su resumen lo dice, que es lo unico que el agregado de make test puede leer"
+rm -f "$tmp_sl/kit"; rmdir "$tmp_sl"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
