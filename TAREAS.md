@@ -168,3 +168,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] omitida de verdad, test_doctor_drift declara skip y el agregado lo ve
   - [x] el detector demuestra que sabe decir que no
 
+## T-013 · la puerta de PII no ve el nombre de la cuenta a secas
+
+- estado: hecha
+- oráculo: `bash kit/test/test_scan_secrets.sh`
+- riesgo: bajo
+- clase: sensor
+- timeout: 25min
+- criterios:
+  - [x] el nombre de la cuenta sin ruta delante se detecta
+  - [x] un nombre generico o corto no convierte la puerta en ruido, y se dice cuando no se comprueba
+  - [x] el escaner demuestra que sabe decir que no
+
