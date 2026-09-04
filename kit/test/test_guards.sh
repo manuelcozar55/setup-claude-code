@@ -101,9 +101,12 @@ expect "guard: rama llamada desarrollo NO denegada" "$(run_blockdc 'git push ori
 # porque `d` es una letra de flag frecuente y `:` aparece en cualquier refspec: si alguien
 # vuelve a ensanchar la valla, estos casos lo dicen. (Comillas simples, no dobles: run_blockdc
 # interpola en crudo dentro del JSON y unas dobles harian denegar por payload ilegible.)
+# shellcheck disable=SC2016  # las comillas simples son el punto: estos payloads llevan
+# $(...) y backticks LITERALES porque lo que se prueba es que el guard no los expanda.
 expect "guard: substitucion con -d tras 'push' NO denegada"  "$(run_blockdc 'git log --grep push --since=$(date -d yesterday +%F)')" ALLOW
 expect "guard: rama push-notifications con -d NO denegada"   "$(run_blockdc 'git branch push-notifications -d')"                    ALLOW
 expect "guard: ruta ../push-wt con -d NO denegada"           "$(run_blockdc 'git worktree add ../push-wt -d')"                      ALLOW
+# shellcheck disable=SC2016  # idem: el $(...) va literal a proposito.
 expect "guard: push con -o y substitucion NO denegado"       "$(run_blockdc 'git push origin main -o msg=$(date -d yesterday +%F)')" ALLOW
 expect "guard: dos puntos en un comentario NO denegado"      "$(run_blockdc 'git push origin main # nota :importante')"             ALLOW
 expect "guard: dos puntos entre comillas NO denegado"        "$(run_blockdc "git commit -m 'fix push :bug' && git push")"           ALLOW
