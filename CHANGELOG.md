@@ -7,12 +7,14 @@ etiquetado.
 
 ## [Unreleased]
 
-Dos frentes con la misma forma: **protecciones que el repo declaraba y que no existían.** Por
-un lado se cierran los guards y el instalador, que fallaban en abierto cuando faltaba `jq`;
-por otro se retiran afirmaciones publicadas que dejaron de ser verdad cuando cambió el kit, y
-se escribe lo que no estaba escrito. Del inventario solo se mueve una cifra, y es la de los
-sensores: **27 → 28 suites**, por el que vigila la capa de permisos. Siguen 11 ADRs, y el
-conjunto de evals sigue en 20 tareas —10 positivas y 10 negativas— con 32 mutantes.
+Tres frentes con la misma forma: **protecciones que el repo declaraba y que no existían.** Por
+un lado se cierran los guards y el instalador, que fallaban en abierto cuando faltaba `jq`; por
+otro los sensores de Headroom, que vigilaban el fichero equivocado o no vigilaban del todo
+(`InaccessiblePaths`, el `UMask` de los logs); y por el tercero se retiran afirmaciones
+publicadas que dejaron de ser verdad cuando cambió el kit, y se escribe lo que no estaba
+escrito. Del inventario solo se mueve una cifra, y es la de los sensores: **27 → 28 suites**,
+por el que vigila la capa de permisos. Siguen 11 ADRs, y el conjunto de evals sigue en
+20 tareas —10 positivas y 10 negativas— con 32 mutantes.
 
 ### Security
 
@@ -70,6 +72,24 @@ conjunto de evals sigue en 20 tareas —10 positivas y 10 negativas— con 32 mu
   muestra antes de conceder permisos automáticos. En un kit cuya tesis son capas que bloquean,
   eso no puede ser el default. Se retira de los tres `settings.json` y el sensor nuevo vigila
   que no reaparezca. Quien lo quiera, lo pone en su config; ya no viene puesto.
+- **`doctor.sh` vigilaba el fichero equivocado.** El sensor de conversación en
+  claro solo miraba `~/.headroom/logs/proxy.jsonl` y su marca `request_messages`.
+  La fuga real la escribe `compression_store` en `proxy.log`, a nivel INFO y con
+  `--log-messages` **apagado**, en forma de `payload_preview` de hasta 4096
+  caracteres: 592 líneas solo del 2026-09-03, contando las seis franjas de rotación
+  (una medición contra una sola franja había dado 100). El sensor estaba verde.
+- **La unidad generada no tapaba las credenciales en las máquinas viejas.** La
+  plantilla declara `InaccessiblePaths` desde hace tiempo, pero nada re-aplica la
+  plantilla y `doctor.sh` solo inspeccionaba `ExecStart=`. Ahora avisa, y lee
+  también `headroom-proxy.service.d/*.conf` para no dar verde falso a una máquina
+  arreglada con drop-in ni rojo falso a la que lo tiene en la unidad.
+- **`UMask=0077` y `HEADROOM_LOG_PAYLOAD_PREVIEW=0` en la unidad.** El proceso
+  heredaba `Umask 0002`, así que los logs nacían en 664 y cada rotación los
+  volvía a crear así; `chmod` solo arregla el pasado. La variable no se puede
+  cambiar en caliente: no está en `_KNOBS_BY_ENV` y el lector consulta
+  `os.environ` directo, así que `/admin/runtime-env` no la ve.
+- `chmod 700` también a `~/.headroom/logs`, que el `700` del directorio padre no
+  cubría.
 
 ### Fixed
 
@@ -163,7 +183,44 @@ conjunto de evals sigue en 20 tareas —10 positivas y 10 negativas— con 32 mu
   persona— con su contrapeso en código (`ALWAYS_DENY_PATHS`, que se consulta antes y ningún
   fichero de datos levanta). La exención sigue abierta: el seguimiento n.º 1 no se cierra.
 
+- **`AGENTS.md`: el mapa que faltaba para un agente.** Varios harness buscan las instrucciones
+  del repo por ese nombre y no existía, y `CLAUDE.md` no podía absorberlo porque vivía a **un
+  token** de su techo de 900 (`test_harness_structure.sh` mide `wc -c / 4`: bytes, no
+  caracteres, y con acentos la diferencia decide si algo cabe). No repite las reglas: mapea lo
+  que un agente no puede deducir leyendo el código. Que hay **dos** `CLAUDE.md` con propósitos
+  opuestos —el de la raíz manda en este repo; `kit/claude/CLAUDE.md` es una plantilla que se
+  instala en el `~/.claude` de otra persona—, que `kit/docs/` es referencia y `docs/` es archivo
+  de proceso, que los guards bloquean por el **literal** del comando (nombrar una ruta de
+  credenciales aunque sea para excluirla dispara Sentinel, y la salida es reformular, nunca
+  ampliar la allowlist), y que `knowledge/` es memoria no-confiable por defecto.
+- **El README dice en 30 segundos qué es esto, para quién es y para quién no.** Su «Qué hace
+  esto» vivía en la línea 225, no contestaba nunca lo segundo, y su única frase-resumen
+  viajaba URL-encoded dentro del `src` de la imagen de cabecera, invisible en texto plano. Al
+  escribirlo se midieron sus dos promesas nuevas y **una salió falsa**: «`uninstall.sh`
+  revierte» es mentira —sin flags solo simula, revertir exige `--apply`— y se corrigió antes de
+  publicarla. La otra se sostiene: `install.sh` fusiona `settings.json` con `jq`, comprobado con
+  cinco marcas propias que sobreviven a la instalación.
+- **Las tablas de `knowledge/` declaraban cinco de nueve ficheros.** Ahora están los nueve, en
+  el README con su glosa y en `CLAUDE.md` como índice: el techo de tokens no daba para ambos.
+
 ### Testing
+
+- **Un sensor que mantiene honesto a `AGENTS.md`.** El valor entero de ese fichero está en su
+  tabla de rutas, así que una ruta muerta no es un detalle de estilo: manda al agente a leer
+  nada y le hace creer que ya lo leyó. El check vive en `test_doc_claims.sh` —que ya es el
+  guardián de las afirmaciones— en vez de en una suite nueva, que habría cambiado el recuento
+  declarado en tres documentos; comprueba las rutas que el mapa cita y trae su propia
+  falsabilidad. Verificado contra el fichero **real**, no solo con un fixture: inyectando una
+  ruta inexistente la suite sale rc=1, y al restaurarla vuelve a verde.
+- **Doce hallazgos `SC2016` que tumbaban la CI, declarados uno a uno.** El job de `shellcheck`
+  corre con severidad por defecto, así que un `note` lo tumba igual que un error. Los doce
+  (medidos: 10 en `test_doc_claims.sh`, 2 en `test_guards.sh`) son casos donde las comillas
+  simples **son** el punto: el payload debe llegar literal al guard, o el patrón buscar
+  backticks de markdown, o el test deja de medir lo que dice medir. Se declaran con once
+  directivas por línea, cada una con su motivo, en vez de una exención de fichero: así un
+  `SC2016` futuro que sí sea un error no queda tapado. Colocarlas mal cuesta más que el
+  hallazgo — una entre un `done` y su heredoc rompió el parseo del fichero entero (`SC1123`
+  más `SC1009`/`SC1073`/`SC1072`): la directiva precede al **comando compuesto completo**.
 
 - **Siete aserciones nuevas en `kit/test/test_doc_claims.sh`.** Seis comprobaciones derivadas
   del árbol en vez de escritas a mano: la longitud de la cadena `PreToolUse` sobre `Bash` que

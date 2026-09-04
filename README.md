@@ -20,6 +20,34 @@
 >
 > Dos avisos concretos si vienes de Windows: clona **dentro** de WSL y no en `/mnt/c/` (el sistema de ficheros `9p` sobre el disco de Windows es mucho más lento y complica el bit de ejecución), y el `.gitattributes` de este repo ya fuerza `eol=lf` para que un clon con `core.autocrlf=true` no te convierta los scripts a CRLF y te los rompa con `bad interpreter: /bin/bash^M`.
 
+## En 30 segundos
+
+**Qué es.** Una configuración de Claude Code endurecida y *medible*: guards deterministas que
+bloquean comandos destructivos y fugas de secretos, agentes con tiering de modelo, y una suite
+que no se limita a afirmar que los guards funcionan — los **neutraliza** y exige que eso rompa
+casos conocidos.
+
+**Para quién es.** Para quien ya usa Claude Code a diario en WSL2 o Linux y quiere que su
+configuración esté verificada en vez de supuesta.
+
+**Para quién no es.** No es un tutorial de Claude Code, no funciona desde Windows nativo ni
+macOS (no hay CI que lo demuestre), y no es un framework del que dependas: se instala en tu
+`~/.claude` y se desinstala.
+
+```bash
+git clone https://github.com/manuelcozar55/setup-claude-code.git
+cd setup-claude-code
+bash kit/install.sh    # requiere jq; FUSIONA tu settings.json con jq, no lo pisa
+make test              # el oráculo de este repo: exit 0, o el trabajo no está hecho
+bash kit/doctor.sh     # diagnostico de lo que ya tienes instalado
+bash uninstall.sh      # SIMULA la reversion; con --apply la ejecuta (y hace backup antes)
+```
+
+**Cómo está organizado.** `kit/` es la instalación y la raíz es el harness. La documentación de
+referencia vive en [`kit/docs/`](kit/docs); `docs/` es **archivo de proceso** (specs, planes e
+informes de trabajos ya cerrados), no referencia. Si eres un agente, entra por
+[`AGENTS.md`](AGENTS.md).
+
 ## mcharness — guías y sensores
 
 Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
@@ -201,6 +229,11 @@ mismo. La promoción de un hallazgo a regla siempre pasa por una puerta humana.
 | [`DECISIONS/`](knowledge/DECISIONS) | ADRs numerados, con fuente y fecha |
 | [`COST-LOG.md`](knowledge/COST-LOG.md) | KPIs con sello temporal |
 | [`SOURCES.md`](knowledge/SOURCES.md) | Allowlist de fuentes con ventana de frescura |
+| [`PROCEDURES.md`](knowledge/PROCEDURES.md) | Procedimientos repetibles, escritos para ejecutarse |
+| [`EVAL-CRITERIA.md`](knowledge/EVAL-CRITERIA.md) | Qué se mide en cada eval y con qué sensor |
+| [`PRE-MORTEM.md`](knowledge/PRE-MORTEM.md) | Fallos previstos antes de que ocurran |
+| [`SKILLS-REGISTRY.md`](knowledge/SKILLS-REGISTRY.md) | Skills instaladas y para qué sirve cada una |
+| [`AUDIT-CLAUDE-MD.md`](knowledge/AUDIT-CLAUDE-MD.md) | Auditoría línea a línea de un `CLAUDE.md` personal (KEEP/SKILL/HOOK/CUT). El método es reutilizable: es lo que fijó el ADR 002 |
 
 ### Adaptarlo a otra persona
 
