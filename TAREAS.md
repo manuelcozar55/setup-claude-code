@@ -109,3 +109,14 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] oracle-log.sh no existe ni esta registrado en ningun settings
   - [x] lo borrado de test_autonomy.sh tiene reemplazo nombrado
 
+## T-008 · realinear la instalacion de ~/.claude con el kit
+
+- estado: bloqueada
+- oráculo: `bash kit/doctor.sh`
+- riesgo: alto
+- clase: sensor
+- timeout: 5min
+- criterios:
+  - [ ] doctor deja de reportar hooks desplegados como version antigua
+  - [ ] los nueve huecos de 69db95d quedan cerrados en la maquina
+
