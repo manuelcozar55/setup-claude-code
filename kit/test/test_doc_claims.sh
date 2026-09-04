@@ -1530,6 +1530,8 @@ rm -f "$NUTMP"/*; rmdir "$NUTMP"
 if [ -f AGENTS.md ]; then
   am_malas=0
   am_total=0
+  # shellcheck disable=SC2016  # el patron busca backticks LITERALES en AGENTS.md: con
+  # comillas dobles la shell intentaria ejecutar lo que hubiera entre ellos.
   while read -r ruta; do
     [ -n "$ruta" ] || continue
     am_total=$((am_total+1))
@@ -1551,7 +1553,9 @@ AM
   # Falsabilidad del sensor de arriba: si una ruta inventada NO lo pusiera en rojo,
   # el sensor no estaria mirando nada.
   AMTMP=$(mktemp -d)
+  # shellcheck disable=SC2016  # idem: el fixture y su patron llevan backticks literales.
   printf 'cita `kit/no/existe/jamas.md` y nada mas\n' > "$AMTMP/AGENTS.md"
+  # shellcheck disable=SC2016  # idem: backticks literales en el patron del fixture.
   am_fake=$( (cd "$AMTMP" && grep -oE '`[^`]+`' AGENTS.md | tr -d '`' \
     | grep -vE '^[~/$.]|[*[:space:]]' | grep -E '/|\.md$' \
     | while read -r r; do [ -e "$r" ] || echo malo; done | wc -l) )
