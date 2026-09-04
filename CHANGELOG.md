@@ -23,6 +23,13 @@ Inventario del árbol que describe esta sección:
 
 ### Added
 
+- **La puerta de PII ve el nombre de la cuenta aunque no lleve ruta delante.**
+  El patrón `/home/<cuenta>/` sólo lo reconocía dentro de una ruta; suelto en un
+  campo `actor` pasaba por limpio. Cuando el nombre es corto o genérico el
+  escáner **dice** que ese check no se ha hecho, en vez de callarlo.
+- **`.gitleaks.toml` en la raíz del repo.** El hook la prefiere sobre la copia
+  instalada en la máquina de quien commitea, así que hasta ahora este repo se
+  juzgaba con una config que podía ser más vieja que la que publica. Lo era.
 - **`doctor.sh` distingue una instalación rancia de una personalizada.** Antes
   las juntaba, así que un desfase real quedaba tapado por la personalización
   legítima del usuario.
@@ -48,9 +55,17 @@ Inventario del árbol que describe esta sección:
 
 - **Cuatro salidas por omisión imprimían «ok» y sumaban un aprobado.** Sin
   checkout de git, sin un hook con dos versiones, sin `pyyaml` o sin `claude`
-  instalado, dos suites reportaban un verde por cero mediciones y el agregado
+  instalado, `test_doctor_drift.sh` y `test_evals.sh` reportaban un verde por
+  cero mediciones y el agregado
   lo sumaba como tal. Ahora declaran `skip`, que es el estado que existe para
   esto, y un check nuevo impide que vuelva a aparecer una quinta.
+- **El gate de gitleaks bloqueaba los commits del propio repo.** Cada
+  `mch task start` con `- sensor:` sella una huella SHA-256 en el journal, y
+  `generic-api-key` la tomaba por una clave. La excepción va por forma del
+  secreto y no por ruta: medido, un `paths` en un allowlist global exime el
+  fichero entero antes de mirar el contenido, y `matchCondition = "AND"` no lo
+  impide. Lo que la excepción cede — una credencial de exactamente 64 hex — lo
+  cubre `scan-secrets.sh`.
 - **`install.sh` reemplazaba tu `settings.json` cuando faltaba `jq`.** Ahora
   fusiona con `python3` si `jq` no está, y si no hay ninguno de los dos **no
   toca el fichero**: reemplazarlo destruye ajustes que sólo tú tienes, y un
