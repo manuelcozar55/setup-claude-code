@@ -14,7 +14,7 @@ sí mismo.
 
 Inventario del árbol que describe esta sección:
 
-- 30 suites de test
+- 31 suites de test
 - 11 ADRs
 - 20 tareas de eval
 - de ellas, 10 positivas
@@ -46,6 +46,11 @@ Inventario del árbol que describe esta sección:
 
 ### Fixed
 
+- **`make test` abortaba en la primera suite roja** y no llegaba nunca al
+  agregado: el total y su tercer veredicto eran inalcanzables justo en el caso
+  para el que se construyeron. Además, una suite que imprimía «0 failed» y
+  moría después se contaba como verde; ahora el runner anota su código de
+  salida y el agregado exige que las dos señales coincidan.
 - **Los cuatro guards `PreToolUse` PERMITÍAN en silencio** cuando no podían leer
   su entrada. Un guard que no puede decidir tiene que fallar cerrado.
 - **El hook `Stop` dejaba pasar el turno que `mch` acababa de rechazar** si

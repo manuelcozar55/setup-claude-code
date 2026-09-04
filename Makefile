@@ -26,36 +26,37 @@ bootstrap: ## De cero a sesion verde: perfil, kit, doctor y oraculo. El comando 
 
 test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	@rm -f kit/test/.make-test.log
-	bash kit/test-runner.sh kit/test/test_guards.sh
-	bash kit/test-runner.sh kit/test/test_guards_falsifiability.sh
-	bash kit/test-runner.sh kit/test/test_secret_content_gitleaks.sh
-	bash kit/test-runner.sh kit/test/test_scan_secrets.sh
-	bash kit/test-runner.sh kit/test/test_install.sh
-	bash kit/test-runner.sh kit/test/test_install_settings_merge.sh
-	bash kit/test-runner.sh kit/test/test_doctor.sh
-	bash kit/test-runner.sh kit/test/test_doctor_drift.sh
-	bash kit/test-runner.sh kit/test/test_skill_fork.sh
-	bash kit/test-runner.sh kit/test/test_install_platform_gate.sh
-	bash kit/test-runner.sh kit/test/test_install_gitleaks.sh
-	bash kit/test-runner.sh kit/test/test_install_gitleaks_checksum.sh
-	bash kit/test-runner.sh kit/test/test_enable_secrets_layer2.sh
-	bash kit/test-runner.sh kit/test/test_gitattributes.sh
-	bash kit/test-runner.sh kit/test/test_exec_modes.sh
-	bash kit/test-runner.sh kit/test/test_optional_hook.sh
-	bash kit/test-runner.sh kit/test/test_clean_install_resilience.sh
-	bash kit/test-runner.sh kit/test/test_doctor_base_url.sh
-	bash kit/test-runner.sh kit/test/test_with_headroom.sh
-	bash kit/test-runner.sh kit/test/test_headroom_guardrails.sh
-	bash kit/test-runner.sh kit/test/test_metrics.sh
-	bash kit/test-runner.sh kit/test/test_detect_oracle.sh
-	bash kit/test-runner.sh kit/test/test_auto_spec.sh
-	bash kit/test-runner.sh kit/test/test_autonomy.sh
-	bash kit/test-runner.sh kit/test/test_verify_gate.sh
-	bash kit/test-runner.sh kit/test/test_harness_structure.sh
-	bash kit/test-runner.sh kit/test/test_install_diff_first.sh
-	bash kit/test-runner.sh kit/test/test_uninstall.sh
-	bash kit/test-runner.sh kit/test/test_doc_claims.sh
-	bash kit/test-runner.sh kit/test/test_evals.sh
+	-bash kit/test-runner.sh kit/test/test_guards.sh
+	-bash kit/test-runner.sh kit/test/test_guards_falsifiability.sh
+	-bash kit/test-runner.sh kit/test/test_secret_content_gitleaks.sh
+	-bash kit/test-runner.sh kit/test/test_scan_secrets.sh
+	-bash kit/test-runner.sh kit/test/test_install.sh
+	-bash kit/test-runner.sh kit/test/test_install_settings_merge.sh
+	-bash kit/test-runner.sh kit/test/test_doctor.sh
+	-bash kit/test-runner.sh kit/test/test_doctor_drift.sh
+	-bash kit/test-runner.sh kit/test/test_skill_fork.sh
+	-bash kit/test-runner.sh kit/test/test_install_platform_gate.sh
+	-bash kit/test-runner.sh kit/test/test_install_gitleaks.sh
+	-bash kit/test-runner.sh kit/test/test_install_gitleaks_checksum.sh
+	-bash kit/test-runner.sh kit/test/test_enable_secrets_layer2.sh
+	-bash kit/test-runner.sh kit/test/test_gitattributes.sh
+	-bash kit/test-runner.sh kit/test/test_exec_modes.sh
+	-bash kit/test-runner.sh kit/test/test_optional_hook.sh
+	-bash kit/test-runner.sh kit/test/test_clean_install_resilience.sh
+	-bash kit/test-runner.sh kit/test/test_doctor_base_url.sh
+	-bash kit/test-runner.sh kit/test/test_with_headroom.sh
+	-bash kit/test-runner.sh kit/test/test_headroom_guardrails.sh
+	-bash kit/test-runner.sh kit/test/test_metrics.sh
+	-bash kit/test-runner.sh kit/test/test_detect_oracle.sh
+	-bash kit/test-runner.sh kit/test/test_auto_spec.sh
+	-bash kit/test-runner.sh kit/test/test_autonomy.sh
+	-bash kit/test-runner.sh kit/test/test_verify_gate.sh
+	-bash kit/test-runner.sh kit/test/test_harness_structure.sh
+	-bash kit/test-runner.sh kit/test/test_install_diff_first.sh
+	-bash kit/test-runner.sh kit/test/test_uninstall.sh
+	-bash kit/test-runner.sh kit/test/test_doc_claims.sh
+	-bash kit/test-runner.sh kit/test/test_make_test_verdict.sh
+	-bash kit/test-runner.sh kit/test/test_evals.sh
 	bash kit/sumar-tests.sh
 
 doctor: ## Verifica una instalacion existente del kit

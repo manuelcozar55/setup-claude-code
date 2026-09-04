@@ -132,3 +132,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] [Unreleased] recoge lo que la rama anade, con sus cifras reales
   - [x] la suite deja de saltarse el bloque y el agregado puede dar veredicto
 
+## T-010 · make test no puede dar veredicto cuando mas falta hace
+
+- estado: hecha
+- oráculo: `bash kit/test/test_make_test_verdict.sh`
+- riesgo: bajo
+- clase: sensor
+- timeout: 25min
+- criterios:
+  - [x] una suite roja ya no aborta el target antes del agregado
+  - [x] el agregado decide el codigo de salida, con sus tres veredictos
+  - [x] una suite que muere DESPUES de imprimir su resumen deja de contarse como verde
+

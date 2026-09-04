@@ -150,6 +150,8 @@ jobs:
       # rompiera una cifra del README pasaba en verde. Son el sensor anti-mentira.
       - name: "test_doc_claims.sh (toda cifra que la doc afirma sobre el repo tiene sensor)"
         run: bash kit/test/test_doc_claims.sh
+      - name: "test_make_test_verdict.sh (make test da veredicto tambien con una suite roja)"
+        run: bash kit/test/test_make_test_verdict.sh
 
       - name: "test_evals.sh (sensor offline del eval set; sin almacen declara skip, nunca ok)"
         run: bash kit/test/test_evals.sh

@@ -34,6 +34,11 @@ total_fail=0
 total_skip=0
 n=0
 sin_resumen=()
+# Suites que imprimieron '0 failed' y aun asi murieron: el resumen dice lo que la
+# suite creia, el codigo de salida dice como acabo. Contar solo el primero dejaba
+# pasar por verde una suite que revienta despues de imprimirlo.
+murieron=()
+rc_actual=""
 
 suite=""
 block=""
@@ -66,13 +71,23 @@ flush() {
   total_pass=$((total_pass + p))
   total_fail=$((total_fail + f))
   total_skip=$((total_skip + s))
+  if [ -n "$rc_actual" ] && [ "$rc_actual" != "0" ] && [ "$f" -eq 0 ]; then
+    murieron+=("$suite (rc=$rc_actual)")
+  fi
 }
 
 while IFS= read -r linea; do
-  if [[ "$linea" == "### "* ]]; then
+  if [[ "$linea" == "### rc="* ]]; then
+    # Marca que escribe kit/test-runner.sh tras cada suite. Se atiende ANTES que
+    # el caso general de '### ', que abre suite nueva: si cayera ahi, cada suite
+    # arrastraria una suite fantasma sin resumen y el agregado diria "no se pudo
+    # verificar" siempre.
+    rc_actual="${linea#\#\#\# rc=}"
+  elif [[ "$linea" == "### "* ]]; then
     flush
     suite="${linea#\#\#\# }"
     block=""
+    rc_actual=""
   else
     block+="$linea"$'\n'
   fi
@@ -92,8 +107,12 @@ echo "########################################"
 # suite sin resumen parseable significan que parte del target NO SE EJECUTO
 # o no se pudo leer su resultado -- eso no es un passed, aunque total_fail
 # sea 0.
-if [ "$total_fail" -gt 0 ]; then
-  echo "#### VEREDICTO: FALLO -- $total_fail aserciones en rojo ####"
+if [ "$total_fail" -gt 0 ] || [ "${#murieron[@]}" -gt 0 ]; then
+  extra=""
+  if [ "${#murieron[@]}" -gt 0 ]; then
+    extra=" y ${#murieron[@]} suite(s) que imprimieron 0 failed y murieron igual: ${murieron[*]}"
+  fi
+  echo "#### VEREDICTO: FALLO -- $total_fail aserciones en rojo$extra ####"
   exit 1
 fi
 if [ "$total_skip" -gt 0 ] || [ "${#sin_resumen[@]}" -gt 0 ]; then

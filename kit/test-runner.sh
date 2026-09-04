@@ -15,3 +15,11 @@ set -o pipefail
 suite="$1"
 printf '### %s\n' "$suite" >> kit/test/.make-test.log
 bash "$suite" 2>&1 | tee -a kit/test/.make-test.log
+rc=$?
+# El resumen que la suite imprime dice lo que la suite CREIA; el codigo de
+# salida dice como acabo de verdad. Una suite que imprime "0 failed" y muere
+# despues -un `set -e` en la limpieza, un timeout, un trap- se contaba como
+# verde, porque el agregado solo leia la linea. Anotarlo aqui es lo que le
+# permite a kit/sumar-tests.sh no fiarse de una sola de las dos senales.
+printf '### rc=%s\n' "$rc" >> kit/test/.make-test.log
+exit "$rc"
