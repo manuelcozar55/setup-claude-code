@@ -273,4 +273,65 @@ ck "$(PATH="$(sin_jq_path)" bash -c 'command -v mch' >/dev/null 2>&1 && echo enc
    "falsabilidad del andamio: el PATH recortado no tiene ni jq ni mch"
 ck "$(rc_sin_jq)" "0" "L-1 regresion: sin mch y sin jq el hook NO bloquea"
 
+
+# --- M: sin jq pero CON python3 -> INDISTINGUIBLE de con jq ----------------
+# L-1 (arriba) dejo el fallo cerrado, que es correcto pero convierte una maquina sin jq
+# en una que bloquea TODO, tambien lo inocuo. Track M antepone un segundo eslabon:
+# python3, que no es dependencia nueva -- kit/install.sh aborta si no puede crear el venv
+# con el. El fallo cerrado sigue ahi, pero como ULTIMO recurso.
+#
+# La granja de L-1 (sin_jq_path) NO tiene python3, asi que sigue midiendo el tercer
+# entorno; esta anade uno con python3 para medir el segundo.
+sin_jq_con_py_path(){
+  farm="$T/nojq_py"; mkdir -p "$farm"
+  for b in bash cat git grep printf rm sed timeout python3; do
+    p="$(command -v "$b" 2>/dev/null)" || continue
+    ln -sf "$p" "$farm/$b" 2>/dev/null
+  done
+  printf '%s' "$T/bin:$farm"
+}
+ck "$(PATH="$(sin_jq_con_py_path)" bash -c 'command -v jq' >/dev/null 2>&1 && echo encontrado || echo no)" "no" \
+   "falsabilidad del andamio M: la granja del segundo eslabon no tiene jq"
+ck "$(PATH="$(sin_jq_con_py_path)" bash -c 'command -v python3' >/dev/null 2>&1 && echo encontrado || echo no)" "encontrado" \
+   "falsabilidad del andamio M: la granja del segundo eslabon SI tiene python3 (es lo que mide)"
+# Y la del ultimo recurso NO puede tener python3: si alguien se lo anade, los casos L-1
+# de exit 2 de mas arriba dejarian de medir lo que dicen medir, y en silencio.
+ck "$(PATH="$(sin_jq_path)" bash -c 'command -v python3' >/dev/null 2>&1 && echo encontrado || echo no)" "no" \
+   "falsabilidad del andamio M: la granja del ultimo recurso tampoco tiene python3"
+
+# Sin cd a $T/proj a proposito, al reves que en rc_sin_jq: aqui el hook SI puede leer
+# `.cwd` del payload, y que lo lea es justo lo que se esta midiendo.
+corre_py(){ printf '%s' "$(pl "${1:-false}")" | env PATH="$(sin_jq_con_py_path)" bash "$GATE" 2>/dev/null; }
+rc_py(){
+  printf '%s' "$(pl false)" | env PATH="$(sin_jq_con_py_path)" bash "$GATE" >"$T/out_py" 2>"$T/err_py"
+  echo $?
+}
+
+fabrica_mch 1 "$ROJO"
+ck "$(decision "$(corre_py)")" "block" \
+   "M: rc=1 (lazo abierto) sin jq pero con python3 bloquea POR JSON, como con jq"
+ck "$(rc_py)" "0" \
+   "M: y con rc=0 -- el protocolo documentado de Stop, no el repuesto exit 2 de L-1"
+ck "$(corre_py)" "$(corre)" \
+   "M: el JSON del bloqueo es identico byte a byte al que produce jq"
+
+# Lo que se olvida: que ademas de bloquear lo que debe, DEJE PASAR lo que debe. Sin estas
+# tres, "bloquear siempre" pasaria las tres de arriba y pareceria el arreglo.
+fabrica_mch 0 "$VERDE_CERRADO"
+ck "$(corre_py)" "" "M: lazo cerrado en verde sin jq (con python3): no bloquea, stdout vacio"
+err_py="$(printf '%s' "$(pl false)" | env PATH="$(sin_jq_con_py_path)" bash "$GATE" 2>&1 >/dev/null)"
+ck "$(printf '%s' "$err_py" | grep -qi 'NINGÚN oráculo ejecutado' && echo y || echo n)" "n" \
+   "M: con python3 el cierre YA se puede confirmar, asi que no repite el aviso (con jq tampoco)"
+
+fabrica_mch 3 '{"contrato":1,"gobierna":false,"veredicto":"no-gobernado","motivo":"sin cola"}'
+ck "$(decision "$(corre_py)")" "ninguna" \
+   "M: mch no gobierna, sin jq (con python3): avisa pero NO bloquea"
+
+# La asimetria del otro lado, intacta: el kit tiene que seguir sirviendo en los cientos
+# de repos que no usan mch, y tampoco por no tener jq.
+rm -f "$T/bin/mch"
+ck "$(PATH="$(sin_jq_con_py_path)" bash -c 'command -v mch' >/dev/null 2>&1 && echo encontrado || echo no)" "no" \
+   "falsabilidad del andamio M: la granja del segundo eslabon no tiene ningun mch"
+ck "$(rc_py)" "0" "M regresion: sin mch y sin jq (pero con python3) el hook NO bloquea"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

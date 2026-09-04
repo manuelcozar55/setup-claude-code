@@ -14,22 +14,61 @@
 #
 # Contrato Stop (code.claude.com/docs/en/hooks-guide, verificado 2026-08-21):
 #   bloquear = stdout {"decision":"block","reason":"..."}
-#   bloquear sin jq  = exit 2 con el motivo por stderr; el runtime lo traduce a
-#     ese mismo {"decision":"block"} (ver bloquear(), verificado en 2.1.260)
+#   bloquear sin jq ni python3 = exit 2 con el motivo por stderr; el runtime lo
+#     traduce a ese mismo {"decision":"block"} (ver bloquear(), verificado en 2.1.260)
 #   'stop_hook_active' true => salir ya; Claude Code anula el hook tras 8 bloqueos
 #   seguidos sin progreso (cap ajustable con CLAUDE_CODE_STOP_HOOK_BLOCK_CAP).
 set -uo pipefail
 
 payload=$(cat 2>/dev/null) || exit 0
 
-if command -v jq >/dev/null 2>&1; then
-  HAY_JQ=1
-  cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null)
-  active=$(printf '%s' "$payload" | jq -r '.stop_hook_active // false' 2>/dev/null)
-else
-  HAY_JQ=0
-  cwd="$PWD"; active="false"
-fi
+# >>> hk-json ─────────────────────────────────────────────────────────────────
+# Leer JSON sin depender de jq. Cadena de tres eslabones, en este orden:
+#   1. jq si esta         -> el camino de siempre, sin cambiar un byte
+#   2. python3 si no      -> json de la stdlib, parseo de verdad
+#   3. ninguno de los dos -> fallo cerrado; quien llama decide como bloquear
+# python3 NO es una dependencia nueva: kit/install.sh aborta con exit 1 si no puede crear
+# el venv con `python3 -m venv`, y el kit ya distribuye cuatro hooks .py. jq, en cambio,
+# no esta declarado como requisito en ningun sitio.
+# PROHIBIDO parsear esto con grep/sed/awk: el payload lleva llaves, comillas y saltos de
+# linea DENTRO de los valores, y una igualdad por subcadena es exactamente el defecto que
+# este repo lleva media rama persiguiendo.
+# Este bloque esta DUPLICADO en los seis hooks que leen JSON, y kit/test/test_guards.sh
+# comprueba que los seis son identicos byte a byte. Se duplica en vez de compartirse
+# porque un hook es un ejecutable hoja que el runtime lanza por ruta absoluta: ninguno de
+# los 14 del kit hace `source` de nada, los cuatro guards se instalan en ~/.claude/hooks/
+# mientras que auto-spec y verify-gate viven en el repo (no hay ruta relativa comun), y
+# una libreria compartida anadiria a un control de seguridad un modo de fallo nuevo --
+# libreria ausente => bloquear TODO.
+if command -v jq >/dev/null 2>&1; then HK_JSON=jq
+elif command -v python3 >/dev/null 2>&1; then HK_JSON=py
+else HK_JSON=no; fi
+
+# hk_get <ruta.punteada> [defecto]  --  JSON por stdin, valor por stdout.
+# El contrato es el que ya tenia jq a solas, y de el depende todo lo de abajo:
+#   rc=0 con salida vacia -> el campo no esta (permitir es lo correcto)
+#   rc!=0                 -> no se ha podido leer la entrada (ciego: no puede autorizar)
+# El defecto viaja por --arg/argv, nunca interpolado dentro del programa.
+hk_get() {
+  case "$HK_JSON" in
+    jq) if [ $# -ge 2 ]; then jq -r --arg d "$2" ".$1 // \$d" 2>/dev/null
+        else jq -r ".$1 // empty" 2>/dev/null; fi ;;
+    py) python3 -c 'import json,sys
+try: d = json.load(sys.stdin)
+except Exception: sys.exit(5)
+for k in sys.argv[1].split("."):
+    if d is None: break
+    if not isinstance(d, dict): sys.exit(5)
+    d = d.get(k)
+if d is None or d is False: d = sys.argv[2] if len(sys.argv) > 2 else None
+if d is not None: print(d if isinstance(d, str) else json.dumps(d))' "$1" ${2+"$2"} 2>/dev/null ;;
+    *)  return 127 ;;
+  esac
+}
+# <<< hk-json ─────────────────────────────────────────────────────────────────
+
+cwd=$(printf '%s' "$payload" | hk_get cwd)
+active=$(printf '%s' "$payload" | hk_get stop_hook_active false)
 [ -n "$cwd" ] || cwd="$PWD"
 
 # El cap de 8 existe para que un hook mal escrito no secuestre la sesion. Respetarlo no
@@ -61,22 +100,33 @@ CONTRATO_SOPORTADO=2
 # Sin jq, `jq -n` fallaba, stdout quedaba VACIO y el `exit 0` de aqui PERMITIA el
 # turno -- justo el que mch acababa de rechazar. Autoridad presente que habla y
 # hook que se queda mudo: exactamente la asimetria que este fichero declara, al
-# reves. El repuesto no necesita nada instalado y es el mismo protocolo que J-1
-# dejo en kit/claude/hooks/destructive-guard.sh: salir con 2 y el motivo por
-# stderr. Verificado contra el binario que lo ejecuta (claude 2.1.260), no
+# reves.
+#
+# Desde Track M ese caso casi no se alcanza: sin jq el veredicto lo construye
+# python3 y sale por stdout con el MISMO JSON, asi que se respeta el contrato
+# documentado y no se pierden ni el motivo ni los campos. El repuesto por codigo
+# de salida queda para el ULTIMO recurso -- ni jq ni python3 -- y no necesita nada
+# instalado: es el mismo protocolo que J-1 dejo en
+# kit/claude/hooks/destructive-guard.sh, salir con 2 y el motivo por stderr.
+# Verificado contra el binario que lo ejecuta (claude 2.1.260), no
 # supuesto: la doc del evento Stop que trae dentro dice "Exit code 2 - show
 # stderr to model and continue conversation", y su interprete de resultados
 # convierte ese 2 en el mismo {"decision":"block", reason:<stderr>} -- la
 # excepcion que Stop SI tiene (no bloquear con 2) es solo para hooks que anuncian
-# `async` por stdout, que no es el caso. Sin jq los campos que vienen del JSON de
-# mch salen vacios; el bloqueo no depende de ellos, y se dice en vez de presentar
-# huecos como si fueran la respuesta del gate.
+# `async` por stdout, que no es el caso. Sin ningun parser los campos que vienen
+# del JSON de mch salen vacios; el bloqueo no depende de ellos, y se dice en vez
+# de presentar huecos como si fueran la respuesta del gate.
 bloquear() {
-  if [ "$HAY_JQ" = 1 ]; then
+  if [ "$HK_JSON" = jq ]; then
     jq -n --arg r "$1" '{decision:"block", reason:$r}'
     exit 0
   fi
-  printf '%s\n\n(sin jq: los campos leidos del JSON de mch salen vacios; el veredicto del gate, que es un codigo de salida, no.)\n' "$1" >&2
+  if [ "$HK_JSON" = py ]; then
+    python3 -c 'import json,sys
+print(json.dumps({"decision": "block", "reason": sys.argv[1]}, indent=2, ensure_ascii=False))' "$1"
+    exit 0
+  fi
+  printf '%s\n\n(sin jq ni python3: los campos leidos del JSON de mch salen vacios; el veredicto del gate, que es un codigo de salida, no.)\n' "$1" >&2
   exit 2
 }
 
@@ -102,27 +152,27 @@ if command -v mch >/dev/null 2>&1; then
     # (la sugerencia obvia) habrian apagado el aviso tambien cuando no hay
     # tarea en curso, que es justo el caso que R29 esta aqui para no repetir.
     0)
-      if [ "$HAY_JQ" = 1 ]; then
-        gobierna=$(printf '%s' "$gate_out"  | jq -r '.gobierna // false' 2>/dev/null)
-        veredicto=$(printf '%s' "$gate_out" | jq -r '.veredicto // ""' 2>/dev/null)
-        evidencia=$(printf '%s' "$gate_out" | jq -r '.evidencia // ""' 2>/dev/null)
+      if [ "$HK_JSON" != no ]; then
+        gobierna=$(printf '%s' "$gate_out"  | hk_get gobierna false)
+        veredicto=$(printf '%s' "$gate_out" | hk_get veredicto "")
+        evidencia=$(printf '%s' "$gate_out" | hk_get evidencia "")
         if [ "$gobierna" = "true" ] && [ "$veredicto" = "verde" ] && [ "$evidencia" = "completa" ]; then
           # El lazo esta cerrado y mch ya certifico: repetir el aviso de mas abajo
           # seria mentir. Termina aqui, sin stdout ni stderr.
           exit 0
         fi
       fi
-      # Sin jq no se puede leer ningun campo del JSON: no se puede confirmar
-      # lazo cerrado, asi que se cae al modo aviso. Perder un aviso sale barato;
-      # fabricar un silencio que parece una certificacion no.
+      # Sin jq NI python3 no se puede leer ningun campo del JSON: no se puede
+      # confirmar lazo cerrado, asi que se cae al modo aviso. Perder un aviso sale
+      # barato; fabricar un silencio que parece una certificacion no.
       ;;
     2|3) : ;;                           # mch no gobierna aqui: sigue abajo, en modo aviso
     1)
-      motivo=$(printf '%s' "$gate_out"   | jq -r '.motivo // "sin motivo"' 2>/dev/null)
-      tarea=$(printf '%s' "$gate_out"    | jq -r '.tarea // "?"' 2>/dev/null)
-      intentos=$(printf '%s' "$gate_out" | jq -r '.intentos // 0' 2>/dev/null)
-      oraculo=$(printf '%s' "$gate_out"  | jq -r '.oraculo_sellado // "?"' 2>/dev/null)
-      contrato=$(printf '%s' "$gate_out" | jq -r '.contrato // 0' 2>/dev/null)
+      motivo=$(printf '%s' "$gate_out"   | hk_get motivo "sin motivo")
+      tarea=$(printf '%s' "$gate_out"    | hk_get tarea "?")
+      intentos=$(printf '%s' "$gate_out" | hk_get intentos 0)
+      oraculo=$(printf '%s' "$gate_out"  | hk_get oraculo_sellado "?")
+      contrato=$(printf '%s' "$gate_out" | hk_get contrato 0)
       # Un contrato mas nuevo del que este hook entiende: el rc sigue siendo el
       # contrato estable, asi que el bloqueo se mantiene; lo que se degrada es la
       # confianza en el detalle, y se dice.
