@@ -7,6 +7,39 @@ etiquetado.
 
 ## [Unreleased]
 
+### Documentation
+
+- **`LICENSE` es ahora el texto MIT literal: renombrarlo no bastaba.** En la 1.2.0 se
+  intercambiaron los nombres para que el fichero que GitHub inspecciona fuese el del
+  software, y la API pasó de `license: null` a `Other` / `NOASSERTION`: encontraba el
+  fichero y no reconocía su contenido. La causa medida son las nueve líneas de preámbulo
+  en castellano (alcance y terceros) que llevaba delante del texto legal — el detector
+  compara el fichero con una plantilla, y esa prosa lo aleja lo bastante. El cuerpo MIT ya
+  era **byte a byte** el de la plantilla de GitHub (`gh api /licenses/mit`), así que el
+  arreglo es quitarle todo lo que no es licencia: `LICENSE` queda idéntico a esa plantilla
+  salvo el titular del copyright. Las precisiones no se pierden, se mudan a `NOTICE`
+  —alcance de la MIT frente a la CC BY 4.0 de las charlas, y la incorporación de
+  `THIRD-PARTY.md` a las condiciones—, que es un nombre que el detector ignora por
+  convención. `README.md` explica el porqué en el sitio donde alguien lo busca. No cambia
+  ninguna condición de licencia: cambia qué fichero las contiene.
+
+### Testing
+
+- **El sensor de `[Unreleased]` enrojecía un CHANGELOG correcto, y se vio al estrenar el
+  procedimiento de release.** `test_doc_claims.sh` juzga las cifras de inventario de esa
+  sección —suites, ADRs y las cuatro del eval— y lo hace estricto a propósito: un `claim`
+  que no llega a juzgar ninguna cifra aprobaría pase lo que pase. Contemplaba la sección
+  **vacía** (recién etiquetada una versión) como `skip`, pero no el caso siguiente: la
+  primera entrada nueva puede hablar de algo que no es el inventario. La de licencias de
+  arriba no menciona ninguna de las seis, y las seis dieron `NOT ok` sobre un fichero que
+  no tenía nada mal — el sensor exigía que cada entrada del changelog recitara el
+  inventario. Se añade a `claim` un tercer estado, `claim_omiso`: estricto con la cifra
+  que esté escrita, `skip` **visible en el resumen** con la que no. No se ha usado
+  `claim_flojo`, que existía ya, precisamente porque su camino silencioso imprime `ok`
+  habiendo juzgado cero. Y el modo nuevo trae su propia sonda de falsabilidad: sobre una
+  sección fabricada que escribe una cifra falsa, `claim_omiso` sigue enrojeciendo — lo que
+  había que demostrar no es que sepa omitir, sino que omitir no le quitó el juicio.
+
 ## [1.2.0] - 2026-09-04
 
 Tres frentes con la misma forma: **protecciones que el repo declaraba y que no existían.** Por
