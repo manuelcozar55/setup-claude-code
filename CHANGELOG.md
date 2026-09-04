@@ -7,6 +7,8 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-04
+
 Tres frentes con la misma forma: **protecciones que el repo declaraba y que no existían.** Por
 un lado se cierran los guards y el instalador, que fallaban en abierto cuando faltaba `jq`; por
 otro los sensores de Headroom, que vigilaban el fichero equivocado o no vigilaban del todo
@@ -1209,6 +1211,7 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/manuelcozar55/setup-claude-code/releases/tag/v1.0.0
