@@ -72,6 +72,16 @@ while IFS= read -r -d '' f; do
     report "nombre de la cuenta local a secas en $f (usa un marcador de posicion)"
     grep -Fnw -e "$CUENTA" "$f" | head -2 || true
   fi
+  # Credencial de 64 hex ASIGNADA a un nombre de credencial. Existe porque
+  # claude/.gitleaks.toml exime esa forma del generic-api-key -- es la forma de las
+  # huellas que mch sella como `- sensor:` -- y ese comentario promete que este
+  # escaner cubre lo cedido. La clave esta en exigir el nombre pegado al valor: en
+  # el journal esos mismos 64 hex van indexados por una RUTA de fichero, no por un
+  # nombre de credencial, y por eso no caen aqui.
+  if grep -IniE '(password|passwd|secret|token|api_?key)[[:space:]]*[:=][[:space:]]*"?[a-f0-9]{64}"?' "$f" >/dev/null 2>&1; then
+    report "credencial de 64 hex asignada en $f"
+    grep -IniE '(password|passwd|secret|token|api_?key)[[:space:]]*[:=][[:space:]]*"?[a-f0-9]{64}"?' "$f" | head -2 || true
+  fi
   # Ruta del home de una persona concreta. No entra en PATTERNS porque necesita excluir
   # los marcadores de posicion legitimos, igual que el check de emails. Por que existe:
   # este kit vendoriza sentinel, y la copia de origen habia sustituido /root/ por el home

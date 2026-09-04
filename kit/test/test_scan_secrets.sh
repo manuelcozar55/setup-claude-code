@@ -96,5 +96,28 @@ if [ "${#CUENTA}" -ge 8 ]; then
   check "$rc" "1" "falsabilidad: el mismo arbol con la cuenta real dentro SI cae"
 fi
 
+# --- El hueco que cede la excepcion de gitleaks -----------------------------
+# claude/.gitleaks.toml exime del generic-api-key cualquier secreto que sea 64
+# hex en minuscula, porque esa es la forma de las huellas que mch sella. El
+# comentario de esa config promete que este escaner cubre lo que alli se cede:
+# una credencial de 64 hex ASIGNADA en un fichero de config. Sin este caso, la
+# promesa seria una frase.
+HEX64=$(printf 'clave-sintetica-para-el-test' | sha256sum | cut -d" " -f1)
+mkdir -p "$tmp/hex64"; printf 'API_KEY = %s\n' "$HEX64" > "$tmp/hex64/config.yaml"
+set +e; bash "$SCAN" "$tmp/hex64" >/dev/null 2>&1; rc=$?; set -e
+check "$rc" "1" "API_KEY con un valor de 64 hex en un .yaml se detecta"
+
+# Control: la palabra sin valor detras es prosa, no una credencial.
+mkdir -p "$tmp/hex64b"; printf 'exporta API_KEY antes de arrancar\nAPI_KEY no lleva valor aqui\n' > "$tmp/hex64b/notas.md"
+set +e; bash "$SCAN" "$tmp/hex64b" >/dev/null 2>&1; rc=$?; set -e
+check "$rc" "0" "mencionar API_KEY sin valor detras no enrojece"
+
+# Y el journal de mch, que esta LLENO de 64 hex, no puede dispararlo: la clave
+# de esas lineas es una ruta de fichero, no un nombre de credencial.
+mkdir -p "$tmp/hex64c/.agents"
+printf '{"event":"start","sensor_hashes":{"kit/test/test_scan_secrets.sh": "%s"}}\n' "$HEX64" > "$tmp/hex64c/.agents/journal.jsonl"
+set +e; bash "$SCAN" "$tmp/hex64c" >/dev/null 2>&1; rc=$?; set -e
+check "$rc" "0" "las huellas selladas en el journal no disparan el check de 64 hex"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

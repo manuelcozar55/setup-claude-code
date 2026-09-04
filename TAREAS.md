@@ -192,3 +192,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] una clave real dentro del propio journal sigue bloqueando
   - [x] el repo se mide con la config que el propio kit distribuye, no con la que haya instalada
 
+## T-015 · nadie cubre el hueco que cede la excepcion de gitleaks
+
+- estado: hecha
+- oráculo: `bash kit/test/test_scan_secrets.sh`
+- riesgo: bajo
+- clase: sensor
+- timeout: 20min
+- criterios:
+  - [x] API_KEY=<64 hex> en un fichero de config lo caza el escaner
+  - [x] la mencion de API_KEY sin valor detras no enrojece
+  - [x] las huellas del propio journal no lo disparan
+
