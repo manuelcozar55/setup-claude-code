@@ -144,3 +144,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] el agregado decide el codigo de salida, con sus tres veredictos
   - [x] una suite que muere DESPUES de imprimir su resumen deja de contarse como verde
 
+## T-011 · install_settings reemplaza tu settings.json cuando falta jq
+
+- estado: hecha
+- oráculo: `bash kit/test/test_install_settings_merge.sh`
+- riesgo: medio
+- clase: sensor
+- timeout: 30min
+- criterios:
+  - [x] sin jq pero con python3, fusiona en vez de reemplazar
+  - [x] sin jq NI python3, deja tu fichero intacto en vez de reemplazarlo
+  - [x] los dos motores producen el mismo resultado, comprobado sobre la misma entrada
+

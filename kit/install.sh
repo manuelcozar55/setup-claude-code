@@ -292,13 +292,82 @@ install_file() {  # src dst
 # contexto por sesion), ANTHROPIC_MODEL con el sufijo de la ventana de 1M,
 # CLAUDE_CODE_AUTO_COMPACT_WINDOW y tres limites mas. Habia backup, pero un backup que hay que
 # descubrir no es una salvaguarda: es una autopsia.
+_settings_valido() {  # motor fichero
+  case "$1" in
+    jq) jq empty "$2" 2>/dev/null ;;
+    py) python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$2" 2>/dev/null ;;
+  esac
+}
+
+# La MISMA regla de fusion, escrita dos veces. No se comparte porque cada motor habla su
+# idioma; lo que impide que las dos se separen sin que nadie lo note es el caso j de
+# kit/test/test_install_settings_merge.sh, que fusiona la misma entrada por los dos
+# caminos y exige el mismo objeto.
+_settings_fusiona() {  # motor src dst  -> el JSON fusionado por stdout
+  case "$1" in
+    jq)
+      jq -s '
+        .[0] as $kit | .[1] as $old |
+        ($kit + $old)
+        | .env = (($kit.env // {}) + ($old.env // {}))
+        | .hooks = ($kit.hooks // $old.hooks)
+        | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
+            | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
+            | .deny  = (($kit.permissions.deny  // []) + (($old.permissions.deny  // []) - ($kit.permissions.deny  // []))))
+      ' "$2" "$3"
+      ;;
+    py)
+      python3 - "$2" "$3" <<'PY'
+import json, sys
+
+with open(sys.argv[1], encoding="utf-8") as f: kit = json.load(f)
+with open(sys.argv[2], encoding="utf-8") as f: old = json.load(f)
+
+# $kit + $old: fusion superficial en la que gana lo TUYO, conservando el orden de claves
+# del kit y anadiendo al final las que solo tienes tu. Es lo mismo que hace jq.
+out = dict(kit); out.update(old)
+out["env"] = {**(kit.get("env") or {}), **(old.get("env") or {})}
+# `//` de jq cae al segundo operando tambien con false; aqui solo puede ser objeto o
+# ausente, asi que basta con distinguir None.
+out["hooks"] = kit.get("hooks") if kit.get("hooks") is not None else old.get("hooks")
+
+kp = kit.get("permissions") or {}
+op = old.get("permissions") or {}
+perm = dict(kp); perm.update(op)
+for lista in ("allow", "deny"):
+    del_kit = kp.get(lista) or []
+    # jq resta arrays quitando TODAS las apariciones; de ahi el filtro, no un set:
+    # un set perderia el orden, y el orden de los permisos se lee.
+    perm[lista] = del_kit + [x for x in (op.get(lista) or []) if x not in del_kit]
+out["permissions"] = perm
+
+json.dump(out, sys.stdout, ensure_ascii=False, indent=2)
+sys.stdout.write("\n")
+PY
+      ;;
+  esac
+}
+
 install_settings() {  # src dst
   local src="$1" dst="$2" tmp
-  if [ ! -f "$dst" ] || ! command -v jq >/dev/null 2>&1; then
-    [ -f "$dst" ] && echo "   AVISO: sin jq no se puede fusionar settings.json; se reemplaza con backup" >&2
-    install_file "$src" "$dst"; return
+  if [ ! -f "$dst" ]; then install_file "$src" "$dst"; return; fi
+  # Motor de fusion, en este orden: jq si esta -el camino de siempre, sin cambiar un byte-
+  # y python3 si no. python3 no es una dependencia nueva: el kit ya distribuye cuatro hooks
+  # .py y los cablea en la misma cadena PreToolUse.
+  local motor=""
+  if command -v jq >/dev/null 2>&1; then motor=jq
+  elif command -v python3 >/dev/null 2>&1; then motor=py
+  else
+    # Sin ningun motor NO se reemplaza. Reemplazar destruye ajustes que solo tu tienes
+    # -medido en una maquina real: ENABLE_TOOL_SEARCH, el sufijo de la ventana de 1M,
+    # el limite de autocompact y tres mas-, y aunque quede backup, un backup que hay que
+    # descubrir no es una salvaguarda: es una autopsia. Callar y no tocar es peor que
+    # avisar y no tocar, asi que se avisa.
+    echo "   AVISO: sin jq ni python3 no se puede fusionar settings.json." >&2
+    echo "          NO se toca el tuyo. Instala jq o python3 y repite para cablear los hooks." >&2
+    return
   fi
-  if ! jq empty "$dst" 2>/dev/null; then
+  if ! _settings_valido "$motor" "$dst"; then
     echo "   AVISO: $dst no es JSON valido; se reemplaza con backup" >&2
     install_file "$src" "$dst"; return
   fi
@@ -306,15 +375,7 @@ install_settings() {  # src dst
   # atomico (no cruza sistemas de ficheros): un fallo a mitad del cp anterior dejaba tu
   # settings.json truncado, y no hay medio settings.json que valga.
   tmp="$(mktemp "$dst.XXXXXX")"
-  if jq -s '
-      .[0] as $kit | .[1] as $old |
-      ($kit + $old)
-      | .env = (($kit.env // {}) + ($old.env // {}))
-      | .hooks = ($kit.hooks // $old.hooks)
-      | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
-          | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
-          | .deny  = (($kit.permissions.deny  // []) + (($old.permissions.deny  // []) - ($kit.permissions.deny  // []))))
-    ' "$src" "$dst" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
+  if _settings_fusiona "$motor" "$src" "$dst" > "$tmp" && _settings_valido "$motor" "$tmp"; then
     if ! cmp -s "$tmp" "$dst"; then
       mkdir -p "$(dirname "$BK/${dst#"$CLAUDE_HOME"/}")"
       cp -p "$dst" "$BK/${dst#"$CLAUDE_HOME"/}"

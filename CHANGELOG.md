@@ -46,6 +46,12 @@ Inventario del árbol que describe esta sección:
 
 ### Fixed
 
+- **`install.sh` reemplazaba tu `settings.json` cuando faltaba `jq`.** Ahora
+  fusiona con `python3` si `jq` no está, y si no hay ninguno de los dos **no
+  toca el fichero**: reemplazarlo destruye ajustes que sólo tú tienes, y un
+  backup que hay que descubrir no es una salvaguarda, es una autopsia. Las dos
+  implementaciones de la fusión no pueden separarse sin que salte: un caso
+  fusiona la misma entrada por los dos caminos y exige el mismo objeto.
 - **`make test` abortaba en la primera suite roja** y no llegaba nunca al
   agregado: el total y su tercer veredicto eran inalcanzables justo en el caso
   para el que se construyeron. Además, una suite que imprimía «0 failed» y
