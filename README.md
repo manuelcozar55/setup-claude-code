@@ -233,7 +233,7 @@ mismo. La promoción de un hallazgo a regla siempre pasa por una puerta humana.
 | [`EVAL-CRITERIA.md`](knowledge/EVAL-CRITERIA.md) | Qué se mide en cada eval y con qué sensor |
 | [`PRE-MORTEM.md`](knowledge/PRE-MORTEM.md) | Fallos previstos antes de que ocurran |
 | [`SKILLS-REGISTRY.md`](knowledge/SKILLS-REGISTRY.md) | Skills instaladas y para qué sirve cada una |
-| [`AUDIT-CLAUDE-MD.md`](knowledge/AUDIT-CLAUDE-MD.md) | Auditoría del `CLAUDE.md` personal del autor |
+| [`AUDIT-CLAUDE-MD.md`](knowledge/AUDIT-CLAUDE-MD.md) | Auditoría línea a línea de un `CLAUDE.md` personal (KEEP/SKILL/HOOK/CUT). El método es reutilizable: es lo que fijó el ADR 002 |
 
 ### Adaptarlo a otra persona
 
