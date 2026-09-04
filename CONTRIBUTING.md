@@ -118,6 +118,19 @@ mas antiguo que el tuyo: sigue emitiendo checks de categoria `style` que las ver
 >= 0.11 retiraron (p. ej. `SC2002`, *useless cat*). Paso exactamente eso — local limpio con
 0.11.0 y CI en rojo. **El oraculo es CI**, no tu maquina.
 
+No hace falta gastar un ciclo de CI para averiguarlo. Los binarios estaticos de
+las versiones viejas se bajan sueltos, y la invocacion que hay que reproducir es
+la del job, no un `shellcheck *.sh` cualquiera:
+
+```bash
+v=v0.9.0   # la de ubuntu 24.04; prueba tambien v0.10.0
+curl -sSfL -o /tmp/sc.tar.xz \
+  "https://github.com/koalaman/shellcheck/releases/download/$v/shellcheck-$v.linux.x86_64.tar.xz"
+mkdir -p /tmp/sc && tar -xJf /tmp/sc.tar.xz -C /tmp/sc --strip-components=1
+mapfile -t scripts < <(git ls-files -- '*.sh' kit/claude/hooks/git/pre-commit)
+/tmp/sc/shellcheck -x -- "${scripts[@]}"
+```
+
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
 (las 32 suites listadas arriba).
 

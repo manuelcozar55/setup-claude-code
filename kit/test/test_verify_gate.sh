@@ -301,7 +301,12 @@ ck "$(PATH="$(sin_jq_path)" bash -c 'command -v python3' >/dev/null 2>&1 && echo
 
 # Sin cd a $T/proj a proposito, al reves que en rc_sin_jq: aqui el hook SI puede leer
 # `.cwd` del payload, y que lo lea es justo lo que se esta midiendo.
-corre_py(){ printf '%s' "$(pl "${1:-false}")" | env PATH="$(sin_jq_con_py_path)" bash "$GATE" 2>/dev/null; }
+# El parametro opcional que tenia aqui no lo pasaba ninguna de las cuatro llamadas. El
+# linter de la CI (mas viejo que el de esta maquina) lo ve como SC2120 y rompe el job; el
+# de aqui no. Se va el parametro: `pl false` es lo que las cuatro querian decir.
+# (Una linea de comentario que EMPIEZA por la palabra del linter se parsea como directiva
+#  suya y da SC1073, asi que no se nombra al principio de linea.)
+corre_py(){ printf '%s' "$(pl false)" | env PATH="$(sin_jq_con_py_path)" bash "$GATE" 2>/dev/null; }
 rc_py(){
   printf '%s' "$(pl false)" | env PATH="$(sin_jq_con_py_path)" bash "$GATE" >"$T/out_py" 2>"$T/err_py"
   echo $?

@@ -92,20 +92,34 @@ Inventario del árbol que describe esta sección:
 - Esta misma sección dejaba de comprobarse cuando estaba vacía. Ahora un
   `[Unreleased]` vacío sólo se acepta si nada bajo `kit/` cambió después del
   último cambio del CHANGELOG; si cambió, el fichero está rancio y se dice.
-- **Dos avisos de `shellcheck` que habrían roto CI en el primer push.** El
-  árbol de diff se creaba con `mkdir -m 700 -p`, donde el modo sólo se aplica
-  al último nivel y no se toca si el directorio ya existe (SC2174): ahora el
-  `chmod 700` va aparte y no depende de ninguna de las dos cosas. Y `g_err` en
-  `test_guards.sh` redirige `2>&1 >/dev/null` **a propósito** —quiere sólo
-  stderr—, así que lleva su `disable=SC2069` con el motivo escrito: con el
-  orden que sugiere la regla, las aserciones sobre el mensaje del guard
-  aprobarían también un texto emitido por stdout.
+- **Tres avisos de `shellcheck`, y el tercero enseñó que el linter local y el de
+  CI no son el mismo.** El árbol de diff se creaba con `mkdir -m 700 -p`, donde
+  el modo sólo se aplica al último nivel y no se toca si el directorio ya existe
+  (SC2174): ahora el `chmod 700` va aparte y no depende de ninguna de las dos
+  cosas. `g_err` en `test_guards.sh` redirige `2>&1 >/dev/null` **a propósito**
+  —quiere sólo stderr—, así que lleva su `disable=SC2069` con el motivo escrito:
+  con el orden que sugiere la regla, las aserciones sobre el mensaje del guard
+  aprobarían también un texto emitido por stdout. El tercero (SC2120 sobre un
+  parámetro opcional que ninguna de las cuatro llamadas pasaba, en
+  `test_verify_gate.sh`) **no lo ve el 0.11.0 de esta máquina y sí el que CI
+  instala por apt**: pasó el lint local y rompió el job. El parámetro se retira
+  —era flexibilidad que nadie usaba—, que es lo que deja el fichero limpio bajo
+  las dos versiones — comprobado corriendo la invocación exacta del job contra
+  los binarios estáticos de 0.9.0, 0.10.0 y 0.11.0, no sólo contra el de esta
+  máquina. La lección queda anotada aquí y en `CONTRIBUTING.md`, que ahora dice
+  cómo bajarse esas versiones en vez de limitarse a avisar: un `shellcheck`
+  local en verde **no** es evidencia de que CI vaya a estarlo.
 - **El comprobador de `rtk hook claude` enrojecía por un scratch local.**
   Recorre el árbol con `grep -r` para no depender del índice de git, y así
   también veía `.superpowers/`, el andamio de las ejecuciones con subagentes:
   está en `.gitignore`, no se publica nunca, y sus diffs de revisión citan la
   frase retirada tal como estaba el día que se ejecutó el plan. Sale de la
-  lista por la misma razón que `docs/superpowers/`: registro fechado.
+  lista por la misma razón que `docs/superpowers/`: registro fechado. Los
+  `*.log` salen por otra peor: `kit/test/.make-test.log` guarda la corrida
+  anterior, en la que este mismo comprobador imprimió su título —que contiene
+  la frase—, así que la suite pasaba dentro de `make test` y fallaba al
+  correrla suelta después. Un veredicto que depende del orden en que se lanza
+  no es un veredicto.
 
 ### Documentation
 

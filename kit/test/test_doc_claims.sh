@@ -1581,9 +1581,14 @@ rtk_no_cableado() {
 # frase retirada tal como estaba el dia que se ejecuto el plan. Juzgarla ahi ponia rojo un
 # comprobador de contenido PUBLICADO por culpa de un scratch de una maquina, asi que sale
 # por la misma razon que docs/superpowers/: registro fechado, no afirmacion vigente.
+# Y los `*.log` (.gitignore:29) por otra peor: `kit/test/.make-test.log` guarda la salida
+# de la corrida anterior, en la que ESTE comprobador imprimio su propio titulo -- que
+# contiene la frase. Sin excluirlos, la suite pasaba dentro de `make test` (el log aun no
+# la tenia) y fallaba al correrla suelta despues. Un veredicto que depende del orden en
+# que se lanza no es un veredicto.
 RTK_FICHEROS=$(grep -rl 'rtk hook claude' . --exclude-dir=.git 2>/dev/null \
                | sed 's|^\./||' \
-               | grep -vE '^(CHANGELOG\.md|knowledge/|docs/superpowers/|\.superpowers/|kit/test/test_doc_claims\.sh)' \
+               | grep -vE '^(CHANGELOG\.md|knowledge/|docs/superpowers/|\.superpowers/|kit/test/test_doc_claims\.sh)|\.log$' \
                | sort | tr '\n' ' ')
 # shellcheck disable=SC2086 # la lista de ficheros se parte a proposito
 hr_check "ningun hook del kit cablea 'rtk hook claude' y ninguna linea lo afirma en presente" \
