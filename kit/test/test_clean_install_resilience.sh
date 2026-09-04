@@ -57,12 +57,28 @@ if [ "$bare_venv" -eq 0 ]; then ok; else ko "el python3 del venv se invoca sin o
 # --- 3. no se ha perdido ninguna salvaguarda por el camino -----------------
 # Blindaje contra el arreglo perezoso: si alguien "simplifica" settings.json y se
 # lleva por delante las denegaciones, el kit deja de proteger.
-n_deny="$(jq -r '.permissions.deny | length' "$S")"
+# El suelo "-ge 8 denegaciones" no medía nada: pasaba igual con 19 reglas que con 9. Se
+# exige el conjunto que el kit promete, entrada por entrada, para que quitar cualquiera
+# ponga el test en rojo; anadir reglas nuevas no lo rompe.
+REQUIRED_DENY=(
+  'Bash(rm -rf /*)'
+  'Bash(rm -rf ~/*)'
+  'Bash(git push --force *)'
+  'Edit(/hooks/**)'
+  'Edit(/settings.json)'
+  'Edit(/settings.local.json)'
+  'Edit(/sentinel-allowlist.json)'
+  'Edit(/sentinel/**)'
+)
+for d in "${REQUIRED_DENY[@]}"; do
+  if jq -e --arg d "$d" '.permissions.deny | index($d) != null' "$S" >/dev/null 2>&1; then
+    ok
+  else
+    ko "falta la denegacion '$d' en settings.json"
+  fi
+done
 n_allow="$(jq -r '.permissions.allow | length' "$S")"
-want "esperaba >=8 denegaciones, hay $n_deny" [ "$n_deny" -ge 8 ]
 want "esperaba >=8 permisos, hay $n_allow" [ "$n_allow" -ge 8 ]
-if jq -e '.permissions.deny | index("Bash(rm -rf /*)")' "$S" >/dev/null 2>&1; then ok; else ko "falta la denegacion de borrado de raiz"; fi
-if jq -e '.permissions.deny | index("Bash(git push --force *)")' "$S" >/dev/null 2>&1; then ok; else ko "falta la denegacion de git push --force"; fi
 
 # --- 4. instalacion limpia en un CLAUDE_HOME temporal ----------------------
 TMP_HOME="$(mktemp -d)"
@@ -101,14 +117,63 @@ fi
 
 # --- 6. y sigue protegiendo: rm -rf / debe bloquear -----------------------
 # Esta es la mitad que impide el arreglo perezoso. Los guards que protegen
-# (block-dangerous-commands, destructive-guard) son del kit y no dependen de
-# terceros, asi que deben funcionar igual en la maquina pelada.
+# (block-dangerous-commands, destructive-guard) son del kit, pero NO son
+# autonomos: leen el comando del payload con jq. Ese es su unico tercero, y no
+# es opcional -- install.sh lo exige en una puerta de dependencia --, asi que
+# CLEAN_PATH lo conserva a proposito (/usr/bin/jq). El caso contrario, un PATH
+# sin jq, se mide aparte en el bloque 7.
 destructive='{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}'
 if run_hook_chain "$destructive" | grep -q '^rc:2$'; then
   ok
 else
   ko "rm -rf / NO queda bloqueado en una instalacion limpia: los guards son decorativos"
 fi
+
+# --- 7. sin jq en el PATH: la Capa 1 falla en CERRADO ---------------------
+# El bloque 6 corre con jq presente, asi que no veia el caso real: los cuatro guards
+# leen el payload con jq y, sin el, salian 0 en silencio -- la Capa 1 entera apagada sin
+# un solo mensaje. Aqui se exige lo contrario: que DENIEGUEN (cada uno con su protocolo)
+# incluso con un comando inocente, y que install.sh se niegue a instalar sin jq -- si
+# instalara, denegar en el guard dejaria a quien instala sin Bash y sin explicacion.
+# Granja de symlinks a CLEAN_PATH saltando jq: es la unica forma de que `command -v jq`
+# falle DE VERDAD dentro del hook (un jq no ejecutable o una funcion no lo consiguen).
+NOJQ="$TMP_HOME/nojq"; mkdir -p "$NOJQ"
+IFS=: read -ra CDIRS <<< "$CLEAN_PATH"
+for d in "${CDIRS[@]}"; do
+  [ -d "$d" ] || continue
+  for f in "$d"/*; do
+    b="${f##*/}"
+    [ -e "$f" ] && [ "$b" != jq ] && [ ! -e "$NOJQ/$b" ] && ln -s "$f" "$NOJQ/$b"
+  done
+done
+if env -i PATH="$NOJQ" sh -c 'command -v jq >/dev/null 2>&1'; then
+  ko "la granja sin jq si tiene jq: el bloque 7 no probaria nada (falsabilidad)"
+else
+  ok
+fi
+
+run_guard() { # $1 = fichero del guard, $2 = payload; imprime "rc:<codigo> <salida>"
+  local rc=0 out
+  out=$(printf '%s' "$2" | env -i HOME="$TMP_HOME" PATH="$NOJQ" \
+    bash "$CLAUDE_HOME/hooks/$1" 2>&1) || rc=$?
+  printf 'rc:%s %s' "$rc" "$out"
+}
+
+case "$(run_guard block-dangerous-commands.sh "$benign")" in
+  rc:0*'"permissionDecision"'*'"deny"'*) ok ;;
+  *) ko "block-dangerous-commands.sh no deniega sin jq: permite en silencio (fail-open)" ;;
+esac
+for g in branch-guard.sh destructive-guard.sh secret-guard.sh; do
+  case "$(run_guard "$g" "$benign")" in
+    rc:2*) ok ;;
+    *) ko "$g no bloquea (exit 2) sin jq: permite en silencio (fail-open)" ;;
+  esac
+done
+
+rc_nojq=0
+CLAUDE_HOME="$TMP_HOME/.claude-nojq" PATH="$NOJQ" bash "$KIT/install.sh" </dev/null >/dev/null 2>&1 || rc_nojq=$?
+want "install.sh instala sin jq (rc=$rc_nojq): falta la puerta de dependencia" [ "$rc_nojq" -ne 0 ]
+want "install.sh dejo un CLAUDE_HOME a medias al abortar sin jq" [ ! -e "$TMP_HOME/.claude-nojq" ]
 
 rm -rf "$TMP_HOME"
 echo "PASS=$pass FAIL=$fail"

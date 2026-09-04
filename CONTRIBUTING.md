@@ -48,11 +48,12 @@ Todo vive bajo `kit/test/`:
 - `test_exec_modes.sh` — los scripts versionados que se invocan como
   ejecutable (`./script.sh`) tienen el bit de ejecucion y un shebang correcto.
 - `test_optional_hook.sh` — `optional-hook.sh` degrada con aviso (no rotura)
-  cuando la dependencia que envuelve (`rtk`, venv) no esta instalada, y
-  propaga el exit code si el guard subyacente si esta instalado y bloquea.
+  cuando la dependencia que envuelve (el interprete del venv de tools) no
+  esta instalada, y propaga el exit code si el guard subyacente si esta
+  instalado y bloquea.
 - `test_clean_install_resilience.sh` — el kit instalado en una maquina
-  simulada sin ningun componente de terceros (sin proxy, sin `rtk`, sin venv,
-  sin `gitleaks`) no rompe ningun hook y sigue bloqueando comandos
+  simulada sin ningun componente de terceros (sin proxy, sin venv, sin
+  `gitleaks`) no rompe ningun hook y sigue bloqueando comandos
   destructivos: las dos mitades a la vez.
 - `test_doctor_base_url.sh` — `doctor.sh` consulta `/readyz` (no `/health`) y
   marca `FAIL` si algo enruta la API a un endpoint que no contesta.
@@ -93,6 +94,13 @@ Todo vive bajo `kit/test/`:
   grepeando el transcript crudo (el prompt se copia dentro, asi que ese grep
   acierta solo por el eco) y que cada modo de `grade.py` sepa fallar. Offline,
   sin una sola llamada a la API.
+- `test_install_settings_merge.sh` — la fusion del `settings.json` del usuario:
+  que respete lo que ya hubiera, que aborte sin `jq` en vez de reemplazarlo, y
+  que entonces no deje backup.
+- `test_permisos_efectivos.sh` — que las reglas de permiso que el repo publica
+  hagan algo: ninguna `Write(...)` sin su gemela `Edit(...)` (las de `Write`
+  se ignoran en silencio), ningun consentimiento prefirmado, y que alguna regla
+  `deny` empareje cada grafia del push forzado.
 
 **Un `shellcheck` verde en local no es prueba.** El de CI se instala con `apt` y puede ser
 mas antiguo que el tuyo: sigue emitiendo checks de categoria `style` que las versiones
@@ -100,7 +108,7 @@ mas antiguo que el tuyo: sigue emitiendo checks de categoria `style` que las ver
 0.11.0 y CI en rojo. **El oraculo es CI**, no tu maquina.
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 27 suites listadas arriba).
+(las 28 suites de `kit/test/`).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -202,7 +210,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 27 suites y el escaner de secretos
+# 2. las 28 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 

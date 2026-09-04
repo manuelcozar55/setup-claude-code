@@ -27,8 +27,12 @@ ck "$(echo "$out" | grep -qc 'gitleaks ya presente' && echo y || echo n)" "y" "r
 # --- Caso 2: gitleaks AUSENTE, no interactivo, sin GITLEAKS_AUTO_INSTALL ---
 # PATH restringido a solo lo imprescindible para que install.sh corra, sin
 # gitleaks en ningun sitio (ni PATH ni ~/.local/bin, via HOME temporal).
+# `jq` va en la lista porque install.sh lo exige en una puerta de dependencia: sin el aborta a
+# proposito (ver test_clean_install_resilience.sh y test_install_settings_merge.sh). Lo que
+# este caso mide es gitleaks ausente, no jq ausente; dejarlo fuera hacia fallar la suite por
+# una razon que no es la suya.
 RESTRICTED="$tmp/restrictedbin"; mkdir -p "$RESTRICTED"
-for b in bash uname date cp mkdir chmod cmp dirname basename sed sha256sum tar install curl mktemp cat; do
+for b in bash uname date cp mkdir chmod cmp dirname basename sed sha256sum tar install curl mktemp cat jq; do
   p="$(command -v "$b" 2>/dev/null || true)"
   [ -n "$p" ] && ln -sf "$p" "$RESTRICTED/$b"
 done

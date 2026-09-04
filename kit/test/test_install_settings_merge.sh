@@ -9,8 +9,8 @@
 # la garantia se quedo casi sin sensor: lo unico que la vigilaba era una linea de test_install.sh
 # (`.statusLine.command` sobrevive). Fuera de esa clave y de ese camino no habia nada, asi que
 # el proximo refactor la rompe igual de callado. Aqui se mide el resto: el objeto entero, las
-# claves que el kit no conoce, los dos caminos degradados (JSON invalido y sin jq), la
-# idempotencia y el modo del fichero.
+# claves que el kit no conoce, el camino degradado (JSON invalido), la puerta que aborta sin
+# jq sin tocar tu fichero, la idempotencia y el modo del fichero.
 #
 # El contrato que se fija aqui, clave por clave (kit/install.sh, install_settings):
 #   statusLine y cualquier otra clave que el kit no conozca -> TUYAS, intactas
@@ -98,7 +98,12 @@ ck "$(cmp -s "$KIT/claude/settings.json" "$S" && echo y || echo n)" "y" "JSON in
 ck "$(backups)" "1" "JSON invalido: tu fichero queda en backup"
 ck "$(grep -c mio "$(find "$CLAUDE_HOME/backups" -name settings.json)")" "1" "JSON invalido: el backup lleva tu contenido, no el del kit"
 
-# --- Caso g: sin jq en el PATH -> reemplazo con backup --------------------
+# --- Caso g: sin jq en el PATH -> install.sh aborta sin tocar tu fichero ---
+# Este caso afirmaba lo contrario: sin jq, install.sh reemplazaba tu settings.json con la
+# plantilla del kit y confiaba en el backup. Ya no hay tal degradacion, hay una puerta de
+# dependencia: los cuatro guards de Bash leen el payload con jq y sin el fallan en CERRADO
+# (deniegan), asi que instalar en esa maquina dejaria Claude Code bloqueado. La garantia
+# nueva es mas fuerte que la vieja -- no se te toca el fichero, no hay backup que descubrir.
 # Un PATH sin jq y con todo lo demas: una granja de symlinks a cada binario del PATH real,
 # saltando jq. Es la unica forma de que `command -v jq` falle DE VERDAD dentro de install.sh
 # (un jq no ejecutable, o una funcion exportada, no lo consiguen).
@@ -115,9 +120,12 @@ seed g <<'EOF'
 { "statusLine": { "command": "mio" } }
 EOF
 ck "$(PATH="$farm" bash -c 'command -v jq >/dev/null 2>&1 && echo y || echo n')" "n" "el PATH de la granja no tiene jq (falsabilidad del caso)"
-set +e; PATH="$farm" bash "$KIT/install.sh" >/dev/null 2>&1; set -e
-ck "$(cmp -s "$KIT/claude/settings.json" "$S" && echo y || echo n)" "y" "sin jq: se reemplaza con la plantilla del kit"
-ck "$(backups)" "1" "sin jq: tu fichero queda en backup"
+sha_g="$(sha256sum "$S" | cut -d' ' -f1)"
+set +e; out_g="$(PATH="$farm" bash "$KIT/install.sh" 2>&1)"; rc_g=$?; set -e
+ck "$([ "$rc_g" -ne 0 ] && echo y || echo n)" "y" "sin jq: install.sh aborta (rc=$rc_g)"
+ck "$(echo "$out_g" | grep -qi 'falta jq' && echo y || echo n)" "y" "sin jq: el mensaje dice que falta jq"
+ck "$(sha256sum "$S" | cut -d' ' -f1)" "$sha_g" "sin jq: tu settings.json queda intacto"
+ck "$(backups)" "0" "sin jq: no hay backup que descubrir, porque no se toco nada"
 
 # --- Caso h: idempotencia (se reusa el HOME del caso a, ya fusionado) -----
 export CLAUDE_HOME="$tmp/a"; S="$CLAUDE_HOME/settings.json"

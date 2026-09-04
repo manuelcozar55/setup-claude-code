@@ -131,9 +131,9 @@ Un tercio irreplicable no suena a mucho hasta que se mira **cuál** tercio.
    DSL no es portarlo, es reescribirlo. Peor: `optional-hook.sh` existe porque Claude Code
    trata el `exit 2` como *blocking error*; un sustrato con otra semántica de códigos de
    salida convierte los guards en **fail-open** sin que nada se ponga rojo.
-5. **Siete claves de `settings.json` sin destino** — `model: "opus[1m]"`, `enabledPlugins`,
-   `extraKnownMarketplaces`, `effortLevel`, `autoUpdatesChannel`, `theme`,
-   `skipAutoPermissionPrompt`, más `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` y `MAX_THINKING_TOKENS`
+5. **Seis claves de `settings.json` sin destino** — `model: "opus[1m]"`, `enabledPlugins`,
+   `extraKnownMarketplaces`, `effortLevel`, `autoUpdatesChannel` y `theme`, más
+   `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` y `MAX_THINKING_TOKENS`
    — y el ecosistema de plugins (`superpowers`, `codex`, `understand-anything`) que el
    harness da por instalado.
 

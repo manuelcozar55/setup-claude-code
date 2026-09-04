@@ -261,7 +261,7 @@ fi
 
 # 5a. Headroom (opcional -> WARN). `headroom` y `rtk` son DOS proyectos distintos
 # (ver docs/03-headroom.md): el proxy HTTP en :8787 y el filtro de salida de CLI
-# que ejecuta el hook `rtk hook claude`. Se comprueban por separado a propósito:
+# que el kit ya NO cablea (el hook `rtk hook claude` se retiró). Se comprueban aparte porque
 # con un solo `command -v rtk`, una instalación con rtk pero sin el proxy daba
 # "Headroom presente" siendo falso, y al revés.
 if command -v headroom >/dev/null 2>&1; then
@@ -304,7 +304,7 @@ fi
 if command -v rtk >/dev/null 2>&1; then
   pass "rtk (filtro de salida de CLI) presente  (fuente: command -v rtk)"
 else
-  warn "rtk no instalado: el hook 'rtk hook claude' de settings.json queda en no-op via optional-hook.sh (opcional; ver docs/03-headroom.md)"
+  warn "rtk no instalado (opcional): el kit no lo cablea -- ningun hook de settings.json lo invoca -- y solo lo deja permitido en permissions.allow; ver docs/03-headroom.md"
 fi
 
 # 5b. gitleaks (opcional -> WARN): requerido solo para activar la Capa 2 de

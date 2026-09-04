@@ -5,18 +5,6 @@
 
 set -uo pipefail
 
-COMMAND=$(jq -r '.tool_input.command // empty' 2>/dev/null)
-[[ -z "$COMMAND" ]] && exit 0
-
-ALLOWLIST_FILE="${HOME}/.claude/sentinel-allowlist.json"
-
-command_allowlisted() {
-  [[ -f "$ALLOWLIST_FILE" ]] || return 1
-  jq -e --arg cmd "$COMMAND" '(.commands // []) | index($cmd) != null' "$ALLOWLIST_FILE" >/dev/null 2>&1
-}
-
-command_allowlisted && exit 0
-
 deny() {
   jq -n --arg r "$1" '{
     hookSpecificOutput: {
@@ -27,6 +15,28 @@ deny() {
   }'
   exit 0
 }
+
+# Fail-closed. Sin jq no se puede leer el comando, y permitir a ciegas apagaba la Capa 1
+# entera sin un solo mensaje. El compromiso es real -- denegar sin jq bloquea al usuario --
+# y por eso install.sh trae una puerta de dependencia: jq se exige al instalar, asi que
+# llegar aqui sin el es una instalacion incompleta, no el caso normal. El JSON va literal
+# porque deny() necesita el jq que falta.
+if ! command -v jq >/dev/null 2>&1; then
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (fail-closed): falta jq en el PATH, asi que este guard no puede evaluar el comando. Instala jq (apt install jq) y reintenta."}}'
+  exit 0
+fi
+COMMAND=$(jq -r '.tool_input.command // empty' 2>/dev/null) \
+  || deny "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable, asi que este guard no puede evaluar el comando."
+[[ -z "$COMMAND" ]] && exit 0
+
+ALLOWLIST_FILE="${HOME}/.claude/sentinel-allowlist.json"
+
+command_allowlisted() {
+  [[ -f "$ALLOWLIST_FILE" ]] || return 1
+  jq -e --arg cmd "$COMMAND" '(.commands // []) | index($cmd) != null' "$ALLOWLIST_FILE" >/dev/null 2>&1
+}
+
+command_allowlisted && exit 0
 
 ask() {
   jq -n --arg r "$1" '{
@@ -101,6 +111,24 @@ DENY_RULES=(
   '\bgit\b[^;&|]*\bpush\b[^;&|]*\s\+[^ ]*:'     "BLOCKED: git push +refspec (forced refspec)"
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--mirror'       "BLOCKED: git push --mirror (can delete remote refs)"
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--delete'       "BLOCKED: git push --delete (deletes a remote branch)"
+  # Las otras dos grafias del mismo borrado. Medido: contra rama protegida las tres caian, pero
+  # por branch-guard.sh --que bloquea por el NOMBRE de la rama--, no por esta regla; contra una
+  # rama de feature `--delete` se denegaba y `-d` / `:rama` pasaban. Cubrir una sola grafia de un
+  # borrado remoto es la misma trampa que dejaba pasar `git push -uf`: la proteccion se anuncia
+  # entera y solo existe para la forma larga.
+  #
+  # La valla NO es la de las reglas de force (`[^;&|]*`). Con ella, estos dos patrones daban
+  # falsos positivos medidos, porque `d` es una letra de flag mucho mas frecuente que `f`:
+  # `git log --grep push --since=$(date -d ...)`, `git branch push-notifications -d`,
+  # `git push origin main # nota :importante` y `git commit -m "fix push :bug" && git push`
+  # se denegaban todos. Un guard que grita en falso se acaba desactivando, asi que aqui la
+  # valla es una LISTA BLANCA de tokens de refspec: nada de `$`, parentesis, comillas ni `#`,
+  # que es donde vivian los cuatro. Y `push` tiene que ser token suelto (`push[[:space:]]`),
+  # porque `\bpush\b` emparejaba dentro de `push-notifications`. El precio, declarado: si el
+  # flag llega por sustitucion (`git push $FLAGS`) no se ve -- limite general de leer el
+  # literal en vez del argv, ya documentado en el kit.
+  '\bgit\b[-A-Za-z0-9_./ =+@]*\bpush[[:space:]]+([-A-Za-z0-9_./=+@]+[[:space:]]+)*-[A-Za-z]*d[A-Za-z]*\b' "BLOCKED: git push -d (deletes a remote branch)"
+  '\bgit\b[-A-Za-z0-9_./ =+@]*\bpush[[:space:]]+([-A-Za-z0-9_./=+@]+[[:space:]]+)*:[^[:space:]]' "BLOCKED: git push :rama (deletes a remote branch)"
 
   # ── CREDENTIAL EXFILTRATION ────────────────────────────────────────────────
   '\b(printenv|env)\b.*\|\s*(curl|nc|wget)\b'   "BLOCKED: env vars leaked to network"
@@ -141,7 +169,15 @@ ASK_RULES=(
 UNION=''
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do UNION+="|${DENY_RULES[i]}"; done
 for ((i = 0; i < ${#ASK_RULES[@]}; i += 2)); do UNION+="|${ASK_RULES[i]}"; done
-echo "$COMMAND" | grep -qiE "${UNION#|}" || exit 0
+# `|| exit 0` confundia "no ha emparejado" (grep rc=1) con "la regex no compila" (grep rc=2):
+# un solo patron mal formado en la tabla convertia TODO el blocklist en un permiso silencioso,
+# porque el error de grep sale por stderr y con exit 0 no se muestra. Se distinguen los dos.
+echo "$COMMAND" | grep -qiE "${UNION#|}"
+rc_union=$?
+if [ "$rc_union" -ge 2 ]; then
+  deny "BLOCKED: el blocklist no compila (grep rc=$rc_union); se deniega por seguridad"
+fi
+[ "$rc_union" -eq 0 ] || exit 0
 
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do
   echo "$COMMAND" | grep -qiE "${DENY_RULES[i]}" && deny "${DENY_RULES[i + 1]}"

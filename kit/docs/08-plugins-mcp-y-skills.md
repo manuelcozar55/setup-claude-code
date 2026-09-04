@@ -4,20 +4,19 @@ La base que instala este kit (`CLAUDE.md`, `settings.json`, hooks, agentes, Sent
 
 ## Plugins de Claude Code
 
-`claude/settings.json` declara ocho plugins en `enabledPlugins`. Cinco vienen del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual); los otros tres vienen de marketplaces externos que el propio `settings.json` del kit ya declara en `extraKnownMarketplaces`, así que Claude Code los reconoce sin que tengas que darlos de alta a mano.
+`claude/settings.json` declara siete plugins en `enabledPlugins`, cuatro del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual); los otros tres vienen de marketplaces externos que el propio `settings.json` del kit ya declara en `extraKnownMarketplaces`, así que Claude Code los reconoce sin que tengas que darlos de alta a mano.
 
 | Plugin | Para qué | Cómo |
 |---|---|---|
 | `superpowers@claude-plugins-official` | el método y sus skills (ver `04-superpowers.md`) | `/plugin` |
 | `code-review@claude-plugins-official` | revisión de PRs | `/plugin` |
-| `github@claude-plugins-official` | flujos de GitHub (PRs, issues) | `/plugin` |
 | `skill-creator@claude-plugins-official` | crear y editar skills | `/plugin` |
 | `frontend-design@claude-plugins-official` | diseño de interfaces | `/plugin` |
 | `codex@openai-codex` | integración con Codex | marketplace externo (GitHub `openai/codex-plugin-cc`), ya declarado en `extraKnownMarketplaces`; activa con `/plugin` |
 | `understand-anything@understand-anything` | grafos de conocimiento del código; aporta las skills `understand-*` | marketplace externo (GitHub `Lum1104/Understand-Anything`), ya declarado en `extraKnownMarketplaces`; activa con `/plugin` |
 | `langsmith-tracing@langsmith-claude-code-plugins` | trazas de ejecución en LangSmith | marketplace externo (GitHub `langchain-ai/langsmith-claude-code-plugins`), ya declarado en `extraKnownMarketplaces`; viene **desactivado** por defecto (`false` en `enabledPlugins`); actívalo con `/plugin` si lo necesitas |
 
-Los cinco primeros se activan (o reinstalan si hiciera falta) con el comando interactivo `/plugin` dentro de una sesión de Claude Code. Los tres últimos, al venir de marketplaces externos ya declarados en el `settings.json` que instala este kit, se activan exactamente igual: `/plugin` los lista porque el marketplace ya es conocido, no hace falta registrar nada a mano. Verifica el estado (instalados, activos, disponibles) con:
+Los cuatro primeros se activan (o reinstalan si hiciera falta) con el comando interactivo `/plugin` dentro de una sesión de Claude Code. Los tres últimos, al venir de marketplaces externos ya declarados en el `settings.json` que instala este kit, se activan exactamente igual: `/plugin` los lista porque el marketplace ya es conocido, no hace falta registrar nada a mano. Verifica el estado (instalados, activos, disponibles) con:
 
 ```bash
 /plugin
@@ -78,7 +77,7 @@ Cómo se añaden: `claude mcp add ...`. La sintaxis exacta (transporte, comando 
 
 **Headroom son dos piezas, y solo una es un MCP.** El **proxy** de contexto (ver `03-headroom.md`) no se añade con `claude mcp add`: se cablea vía `ANTHROPIC_BASE_URL` y actúa sobre las peticiones a la API, por debajo del protocolo MCP. Aparte de eso, Headroom trae **también** un servidor MCP (`headroom mcp serve`) que sí se registra como cualquier otro y da acceso a sus estadísticas y a recuperar contenido que el proxy comprimió. Puedes usar el proxy sin registrar ese MCP; lo que no tiene sentido es lo contrario.
 
-Y ojo con una confusión que este documento arrastraba: el hook `rtk hook claude` del `settings.json` **no es de Headroom**, es de [`rtk`](https://github.com/rtk-ai/rtk), otro proyecto que filtra la salida de los comandos de shell. Puedes tener uno sin el otro. Ver la tabla comparativa al principio de `03-headroom.md`.
+Y ojo con una confusión que este documento arrastraba: [`rtk`](https://github.com/rtk-ai/rtk) **no es Headroom**, es otro proyecto, el que filtra la salida de los comandos de shell. Puedes tener uno sin el otro, y el kit no cablea ninguno de los dos: el hook `rtk hook claude` que este `settings.json` traía se retiró (ver `03-headroom.md`), y de `rtk` solo queda `Bash(rtk *)` en `permissions.allow`. Ver la tabla comparativa al principio de `03-headroom.md`.
 
 Verifica los servidores dados de alta con:
 
@@ -114,7 +113,7 @@ Todos estos van en `02-install.md`; recordatorio de la pila que usa el setup com
 | `uv` | gestor de paquetes Python; el kit lo usa vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
 | venv de tools (`$HOME/.venvs/tools`) | ejecuta Sentinel y `smart_approve.py` con un Python propio, no el del sistema (ver `02-install.md`, paso 4) | `test -x $HOME/.venvs/tools/bin/python3` |
 | `headroom` | el proxy de contexto en `127.0.0.1:8787`, y el servidor MCP `headroom mcp serve` (ver `03-headroom.md`) | `headroom --version` · `headroom doctor` |
-| `rtk` | filtra la salida de los comandos de shell antes de que entre en contexto; es lo que ejecuta el hook `rtk hook claude`. **Proyecto distinto de Headroom** | `rtk --version` |
+| `rtk` | filtra la salida de los comandos de shell antes de que entre en contexto; el kit no lo cablea, se invoca a mano (`rtk proxy <comando>`). **Proyecto distinto de Headroom** | `rtk --version` |
 | `pnpm` | instala `agent-browser` y otros paquetes globales de Node | `pnpm --version` |
 
 ## Verificación rápida

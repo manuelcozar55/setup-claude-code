@@ -16,7 +16,7 @@ persona lo pida** — cuesta latencia y no se recupera sola.
 | `kit/` | La instalación endurecida en tu `~/.claude`: guards deterministas, Sentinel, 8 agentes, y la Capa 2 de secretos sobre cada commit | Sí |
 | raíz (`.claude/`, `knowledge/`, `scripts/`) | El harness: comandos, skills, hooks de proyecto y el conocimiento versionado. Ya viaja en el repo | Sí, ya la tienes al clonar |
 | Headroom | Proxy local de compresión de contexto en `:8787` | **No.** Opt-in: `make bootstrap` no lo instala, y lee el paso 5 antes |
-| `rtk`, `gitleaks` | Filtro de salida de CLI y escáner de secretos por contenido | No. Sin ellos el kit degrada a no-op **y sigue bloqueando** |
+| `gitleaks`, venv de tools | Escáner de secretos por contenido (Capa 2) e intérprete de los hooks Python | No. Sin el venv esos hooks quedan en no-op **y los guards de bash siguen bloqueando**; sin `gitleaks` no puedes activar la Capa 2 |
 
 Nada del kit da por supuesto lo opcional, y hay un test que lo demuestra en una máquina
 pelada: `kit/test/test_clean_install_resilience.sh`.
@@ -30,7 +30,7 @@ pelada: `kit/test/test_clean_install_resilience.sh`.
 - **`git config core.autocrlf`**: si lo tienes en `true` (típico si vienes de Windows), el
   repo trae `.gitattributes` que fuerza LF en scripts y hooks. No lo desactives: un hook con
   CRLF no se ejecuta y el fallo se lee como "el hook no hace nada".
-- `bash`, `git`, `jq`, `curl`, `python3`. `jq` es dependencia dura de cinco guards.
+- `bash`, `git`, `jq`, `curl`, `python3`. `jq` es dependencia dura de cuatro guards.
 
 ## 2 · El camino corto
 
@@ -59,7 +59,7 @@ del repo.
 ## 4 · Verificar de verdad
 
 ```bash
-make test          # 27 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
+make test          # 28 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
 bash kit/doctor.sh # estado de ESTA máquina
 ```
 

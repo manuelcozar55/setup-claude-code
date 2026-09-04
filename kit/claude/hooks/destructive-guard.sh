@@ -5,9 +5,23 @@
 # Protocol: exit 2 = block
 
 INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
-[[ -z "$COMMAND" ]] && exit 0
+# El escape hatch declarado se atiende ANTES del fail-closed de abajo: quien pone
+# CC_ALLOW_DESTRUCTIVE=1 ya ha apagado este guard a proposito, y no necesita jq para eso.
 [[ "${CC_ALLOW_DESTRUCTIVE:-0}" == "1" ]] && exit 0
+
+# Fail-closed: sin jq no hay decision posible, y permitir en silencio apagaba toda la
+# Capa 1 sin un mensaje. Denegar puede frenar trabajo legitimo, y por eso install.sh
+# exige jq en una puerta de dependencia: llegar aqui sin el es una instalacion incompleta.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "BLOCKED (fail-closed): falta jq en el PATH, asi que destructive-guard no puede leer el comando." >&2
+  echo "Instala jq (apt install jq) y reintenta." >&2
+  exit 2
+fi
+if ! COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null); then
+  echo "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable; destructive-guard no puede leer el comando." >&2
+  exit 2
+fi
+[[ -z "$COMMAND" ]] && exit 0
 
 log_block() {
   local logfile="${CC_BLOCK_LOG:-$HOME/.claude/audit-logs/blocked-commands.log}"
@@ -65,6 +79,7 @@ fi
 # propia alternativa: el resto exige un separador justo tras / ~ .., asi que
 # `find /home/usuario/docs -delete` no emparejaba ninguna.
 if echo "$COMMAND_SCAN" | grep -qE 'find\s+((\/|~|\.\.)\s|\/home\/).*-delete'; then
+  log_block "find -delete on broad path"
   echo "BLOCKED: find -delete on broad path (WSL2 junction risk)." >&2
   exit 2
 fi
