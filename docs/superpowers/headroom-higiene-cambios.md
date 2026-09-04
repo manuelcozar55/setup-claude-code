@@ -426,6 +426,65 @@ jq-merge del kit «todavía no está commiteado»; hoy `origin/main` ya trae
 reemplazar el fichero. El no-objetivo se deja citado tal cual porque es una
 cita del spec.
 
+**Y una razón mejor para el mismo no-objetivo.** «No re-ejecutar
+`kit/install.sh` en esta máquina» sigue en pie, pero el motivo real no es el
+estado del jq-merge: en esta máquina `install.sh` va en modo **diff-first**
+—`~/.claude` es un repo git con remoto, y lo dice en su línea 2— así que no
+escribe nada ahí; genera el árbol en `.mcharness-out` y muestra el diff. Lo
+único que sí escribe, por otro camino, son la unidad de systemd y el
+`ANTHROPIC_BASE_URL` con `--with-headroom`. Y `--apply` sería peor que inútil:
+declara 11 ficheros y uno es `CLAUDE.md` —el global personal, con todo el stack
+local—, que `install_file()` sobreescribiría con la plantilla en inglés del kit,
+porque hace `cp -p` a pelo y solo `settings.json` se fusiona con `jq`. Es la
+trampa de los «dos `CLAUDE.md` con propósitos opuestos» que documenta
+`AGENTS.md`, aplicada a la máquina. Los hooks se realinearon copiando los cinco
+ficheros a mano.
+
+**Y un error propio, del mismo tipo que persigue esta rama.** Declaré que
+`install.sh --with-headroom` había realineado los hooks después de leer solo
+`tail -18` de su salida: vi `rc=0` y lo di por hecho. No había tocado nada —los
+`mtime` seguían siendo del 2 de septiembre—. Un `rc` no es un sensor de
+escritura; lo son `mtime` y `cmp`.
+
+## Cierre — licencias y release v1.2.0
+
+Dos cosas que quedaban como decisión del propietario y que se ejecutaron con
+autorización explícita («haz los dos»).
+
+**Las licencias, en dos pasos porque el primero no bastó.** GitHub declaraba
+`licenseInfo: null` —a ojos de un extraño, todos los derechos reservados—
+porque su detector solo mira el fichero llamado exactamente `LICENSE` y ahí
+vivía la CC BY 4.0 de las charlas. Se intercambiaron los nombres (`LICENSE` =
+MIT del software, `LICENSE-DOCS` = charlas) con sus referencias cruzadas, y la
+medición posterior al merge dio **`Other` / `NOASSERTION`**: ya encontraba el
+fichero, pero no reconocía su contenido. La causa son las nueve líneas de
+preámbulo en castellano que iban delante del texto legal. El cuerpo MIT ya era
+byte a byte el de `gh api /licenses/mit` (verificado con `diff`; solo difería la
+línea de copyright), así que el arreglo fue dejar `LICENSE` en texto MIT literal
+y mudar las precisiones a `NOTICE`, nombre que el detector ignora por convención
+y que `README.md` explica. **Verificado:** `spdx_id: MIT`, `name: MIT License`.
+Ninguna condición de licencia cambió — cambió qué fichero las contiene.
+
+**La release.** `1.2.0` (MINOR por la regla del propio `CONTRIBUTING.md`: nada
+rompe una instalación existente). El sensor `ver_unica()` obliga a mover cuatro
+ficheros juntos —`VERSION`, la sección más nueva del CHANGELOG y las dos copias
+en prosa de `README.md:57` y `CLAUDE.md:6`—, y **el procedimiento escrito decía
+«solo CHANGELOG.md»**: se corrigió, junto con un `--squash` que contradecía la
+convención de merge commit del repo. Puertas antes de etiquetar: `make test`
+rc=0, `scan-secrets` PASS, instalación limpia en un `CLAUDE_HOME` virgen con
+`doctor.sh` rc=0 y 0 FAIL. Tag `v1.2.0` sobre el commit que ya lleva el
+CHANGELOG, notas extraídas con el `awk` documentado (276 líneas, 0 líneas
+prohibidas).
+
+**Un sensor que enrojecía material correcto.** `test_doc_claims.sh` exigía las
+seis cifras de inventario a *cualquier* `[Unreleased]` con contenido; contemplaba
+la sección vacía pero no una entrada que legítimamente no habla del inventario
+—la de licencias—, y dio 6 fallos sobre un CHANGELOG sin nada mal. Tercer estado
+en `claim`: `claim_omiso`, estricto con la cifra escrita y `skip` **visible** con
+la que no. No se usó `claim_flojo`, que ya existía, porque su camino silencioso
+imprime `ok` habiendo juzgado cero. Lleva sonda propia: con una cifra falsa
+fabricada sigue enrojeciendo. `make test` → 92 passed, 0 failed.
+
 ## Fuera de alcance
 
 Repetidos aquí los no-objetivos declarados en el spec (`20f5f26`, §5), sin
