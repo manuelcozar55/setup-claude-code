@@ -157,9 +157,31 @@ if [ "$(grep -c '^## \[Unreleased\]' "$UNREL")" -ne 1 ]; then
   echo "         casa con CHANGELOG.md, y sin ella el skip aprobaria sin medir nada"
   fail=$((fail+1))
 elif [ "$(grep -c . "$UNREL")" -eq 1 ]; then
-  echo "skip - CHANGELOG.md [Unreleased]: seccion vacia (version recien etiquetada);"
-  echo "       sus cifras NO se han comprobado"
-  skipped=$((skipped+1))
+  # Vacia es legitimo SOLO recien etiquetada una version. Eso se DISTINGUE midiendo, no
+  # se supone: si algo bajo kit/ cambio DESPUES del ultimo cambio de CHANGELOG.md,
+  # entonces la seccion no esta vacia porque acabe de salir una version -esta vacia
+  # porque el CHANGELOG se quedo atras-, y abstenerse ahi es justo lo que deja que se
+  # pudra. Medido en esta rama: 35 commits sobre v1.1.0 con [Unreleased] vacia, y el
+  # unico sintoma era este 'skip', que el agregado leia como "no se pudo verificar".
+  # Sin git no se puede medir: entonces se sigue declarando skip, pero con OTRO motivo,
+  # porque "no puedo mirar" y "he mirado y esta bien" no pueden imprimir lo mismo.
+  chg_ct=$(git log -1 --format=%ct -- CHANGELOG.md 2>/dev/null || true)
+  kit_ct=$(git log -1 --format=%ct -- kit 2>/dev/null || true)
+  if [ -n "$(git status --porcelain -- CHANGELOG.md 2>/dev/null)" ]; then chg_ct=$(date +%s); fi
+  if [ -z "$chg_ct" ] || [ -z "$kit_ct" ]; then
+    echo "skip - CHANGELOG.md [Unreleased]: sin historia de git no se puede saber si"
+    echo "       la seccion esta vacia por recien etiquetada o por rancia"
+    skipped=$((skipped+1))
+  elif [ "$kit_ct" -gt "$chg_ct" ]; then
+    echo "NOT ok - CHANGELOG.md [Unreleased] esta vacia y kit/ cambio despues del ultimo"
+    echo "         cambio del CHANGELOG: no es una version recien etiquetada, es un"
+    echo "         CHANGELOG que se quedo atras. Anota el cambio en [Unreleased]."
+    fail=$((fail+1))
+  else
+    echo "skip - CHANGELOG.md [Unreleased]: seccion vacia (version recien etiquetada);"
+    echo "       sus cifras NO se han comprobado"
+    skipped=$((skipped+1))
+  fi
 else
   claim "$SUITES" suites "$UNREL"
   claim "$(count knowledge/DECISIONS/*.md)" ADRs "$UNREL"

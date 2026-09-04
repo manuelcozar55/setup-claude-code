@@ -120,3 +120,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [ ] doctor deja de reportar hooks desplegados como version antigua
   - [ ] los nueve huecos de 69db95d quedan cerrados en la maquina
 
+## T-009 · el CHANGELOG del kit deja de abstenerse justo cuando va por detras
+
+- estado: hecha
+- oráculo: `bash kit/test/test_doc_claims.sh | tail -1 | grep -q "0 failed =="`
+- riesgo: bajo
+- clase: sensor
+- timeout: 25min
+- criterios:
+  - [x] [Unreleased] vacia deja de ser skip cuando kit/ cambio despues del CHANGELOG
+  - [x] [Unreleased] recoge lo que la rama anade, con sus cifras reales
+  - [x] la suite deja de saltarse el bloque y el agregado puede dar veredicto
+

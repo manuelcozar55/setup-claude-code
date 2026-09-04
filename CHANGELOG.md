@@ -7,6 +7,61 @@ etiquetado.
 
 ## [Unreleased]
 
+Los guards dejan de depender de `jq` para poder decidir, y el harness deja de
+aprobar por omisión en cuatro sitios donde un check subía el contador sin medir
+nada. No hay superficie nueva: lo que cambia es qué puede afirmar el kit sobre
+sí mismo.
+
+Inventario del árbol que describe esta sección:
+
+- 30 suites de test
+- 11 ADRs
+- 20 tareas de eval
+- de ellas, 10 positivas
+- y otras 10 negativas
+- 32 mutantes
+
+### Added
+
+- **`doctor.sh` distingue una instalación rancia de una personalizada.** Antes
+  las juntaba, así que un desfase real quedaba tapado por la personalización
+  legítima del usuario.
+- **`doctor.sh` reporta el fork de la skill del harness**, que hasta ahora no
+  lo medía nada.
+- **El hook `Stop` consulta `mch task gate`**: el turno ya no puede cerrarse
+  contra el veredicto del motor del lazo.
+- **`make test` cierra con un total agregado** en vez de con el resumen de la
+  última suite, y ese total distingue **tres** veredictos, no dos: fallaron
+  aserciones, todo verde, y *no se pudo verificar*.
+
+### Changed
+
+- **Los hooks ya no necesitan `jq`.** Leen y emiten JSON con `jq` si está y con
+  `python3` si no, por el shim `hk-json`; sólo sin ninguno de los dos fallan
+  cerrado. Verificado por ejecución: con `jq` y sin `jq`, salida idéntica byte a
+  byte. `doctor.sh` sí lo sigue exigiendo, a propósito — es un diagnóstico, y un
+  diagnóstico que no puede mirar tiene que decirlo en vez de aprobar.
+- `kit/docs/02-install.md` deja de declarar `jq` como requisito duro, y un test
+  vigila que la doc no vuelva a adelantarse a lo medido.
+
+### Fixed
+
+- **Los cuatro guards `PreToolUse` PERMITÍAN en silencio** cuando no podían leer
+  su entrada. Un guard que no puede decidir tiene que fallar cerrado.
+- **El hook `Stop` dejaba pasar el turno que `mch` acababa de rechazar** si
+  faltaba `jq`: el camino rojo era justo el que fallaba abierto.
+- El árbol de diff de la instalación se escribía en el `cwd` —y acababa
+  commiteado— y después se fugaba en `/tmp`, un directorio por invocación.
+- El modo aviso dependía de un fichero de estado externo, y contradecía al motor
+  del lazo cuando el lazo estaba cerrado en verde.
+- **Cuatro copias de la misma clase de fallo**: comprobar una igualdad por
+  subcadena. Un `grep -q` sin anclar acepta cualquier valor que contenga al
+  esperado, y aprueba.
+- `test_doctor_drift.sh` no corría de verdad en CI: verde sin ejecutar.
+- Esta misma sección dejaba de comprobarse cuando estaba vacía. Ahora un
+  `[Unreleased]` vacío sólo se acepta si nada bajo `kit/` cambió después del
+  último cambio del CHANGELOG; si cambió, el fichero está rancio y se dice.
+
 ## [1.1.0] - 2026-09-02
 
 El repo pasa de ser solo un instalador endurecido a ser también un **harness**: guías
