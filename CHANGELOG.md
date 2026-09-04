@@ -203,6 +203,17 @@ por el que vigila la capa de permisos. Siguen 11 ADRs, y el conjunto de evals si
 - **Las tablas de `knowledge/` declaraban cinco de nueve ficheros.** Ahora están los nueve, en
   el README con su glosa y en `CLAUDE.md` como índice: el techo de tokens no daba para ambos.
 
+- **El fichero MIT pasa a llamarse `LICENSE`, y la CC BY a `LICENSE-DOCS`.** Medido, no
+  supuesto: `gh repo view --json licenseInfo` devolvía **`null`** y la barra lateral de GitHub
+  no anunciaba licencia alguna. GitHub deduce la licencia del fichero llamado `LICENSE`
+  exactamente, y ahí vivía la CC BY 4.0 con un preámbulo propio que su detector no reconoce,
+  así que el MIT que cubre `kit/` era invisible. Un repo que aparenta no tener licencia se lee
+  como *todos los derechos reservados*, que es lo contrario de lo que este repo quiere. El
+  reparto de fondo no cambia —software MIT, charlas CC BY 4.0—, solo qué fichero lleva cada
+  nombre; se actualizaron las cuatro referencias cruzadas (los dos preámbulos, la tabla del
+  README y `THIRD-PARTY.md`) y el README explica ahora por qué el nombre importa, para que
+  nadie lo «arregle» de vuelta.
+
 ### Testing
 
 - **Un sensor que mantiene honesto a `AGENTS.md`.** El valor entero de ese fichero está en su
