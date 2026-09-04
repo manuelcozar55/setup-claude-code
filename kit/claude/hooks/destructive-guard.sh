@@ -140,6 +140,7 @@ fi
 # propia alternativa: el resto exige un separador justo tras / ~ .., asi que
 # `find /home/usuario/docs -delete` no emparejaba ninguna.
 if echo "$COMMAND_SCAN" | grep -qE 'find\s+((\/|~|\.\.)\s|\/home\/).*-delete'; then
+  log_block "find -delete on broad path"
   echo "BLOCKED: find -delete on broad path (WSL2 junction risk)." >&2
   exit 2
 fi

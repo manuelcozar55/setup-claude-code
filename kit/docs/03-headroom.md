@@ -11,7 +11,7 @@ Versiones anteriores de este documento las trataban como una sola (titulaban "In
 | Qué es | proxy HTTP local entre Claude Code y la API de Anthropic | proxy de CLI que filtra la salida de los comandos |
 | Repo | [headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom) | [rtk-ai/rtk](https://github.com/rtk-ai/rtk) |
 | Se instala con | `pip install 'headroom-ai[proxy]'` (Python) | `cargo install` desde su repo (binario Rust) |
-| Cómo se cablea | `ANTHROPIC_BASE_URL` → `127.0.0.1:8787` | hook `PreToolUse` sobre `Bash`: `rtk hook claude` |
+| Cómo se cablea | `ANTHROPIC_BASE_URL` → `127.0.0.1:8787` | nada del kit lo cablea: se invoca a mano (`rtk proxy <comando>`) |
 | Dónde actúa | sobre las peticiones a la API | sobre la salida de `ls`, `grep`, `git`, `docker`… antes de que entre en contexto |
 | Se verifica con | `headroom --version` · `headroom doctor` | `rtk --version` · `rtk gain` |
 
@@ -89,9 +89,9 @@ Y una advertencia si tu instalación trae un subcomando tipo `install`/`deploy` 
 
 ## Cómo se cablea en `settings.json`
 
-Dos piezas conectan el kit con Headroom. La segunda viene siempre; la primera **ya no**, y el motivo es el fallo que corrigió este cambio: el kit distribuía `ANTHROPIC_BASE_URL` apuntando al proxy mientras Headroom seguía siendo un tercero que el kit no instala, así que quien clonaba en limpio se quedaba con Claude Code enrutado a un puerto donde no escuchaba nadie — sin API, y con un síntoma que no se parecía a un problema de configuración. Ahora la escribe `install.sh --with-headroom` tras comprobar `/readyz`, o la pones tú a mano.
+Una sola pieza conecta el kit con Headroom, y **ya no viene puesta**; el motivo es el fallo que corrigió ese cambio: el kit distribuía `ANTHROPIC_BASE_URL` apuntando al proxy mientras Headroom seguía siendo un tercero que el kit no instala, así que quien clonaba en limpio se quedaba con Claude Code enrutado a un puerto donde no escuchaba nadie — sin API, y con un síntoma que no se parecía a un problema de configuración. Ahora la escribe `install.sh --with-headroom` tras comprobar `/readyz`, o la pones tú a mano.
 
-1. **La variable de entorno** que redirige el cliente de Anthropic al proxy en vez de a la API real:
+**La variable de entorno** que redirige el cliente de Anthropic al proxy en vez de a la API real:
 
 ```json
 "env": {
@@ -103,18 +103,9 @@ El proxy recibe la llamada de Claude Code, comprime lo que corresponda, y reenv�
 
 **Tiene que ir en `settings.json`, no en tu `.bashrc`/`.profile`.** Parece equivalente y no lo es. Claude Code lee su entorno **una sola vez, al arrancar**, y las sesiones heredan un snapshot del shell: si el proxy no estaba arriba en ese instante exacto, la sesión entera se queda fuera del proxy, sin recuperación posible y **sin decir nada**. Es fácil llegar a ese estado si intentas hacer el export condicional (`solo si /readyz responde`) para que un proxy caído no te deje sin arrancar: el resultado medido es `headroom doctor` → `savings: no tokens saved yet`, cero tokens comprimidos durante toda la sesión mientras tú crees que está funcionando. Perder la función entera en silencio es peor que un error de conexión visible. La disponibilidad se resuelve en systemd (`Restart=always`), no con condicionales en el shell.
 
-2. **El hook `PreToolUse` sobre `Bash`**, que conecta el ciclo de vida de cada comando con el router:
+**La pieza que hubo y ya no hay: el hook `rtk hook claude`.** Hasta el 2026-09-02 el `settings.json` del kit cableaba un segundo hook `PreToolUse` sobre `Bash` que pasaba cada comando por `rtk`. Se retiró y no se ha repuesto: el filtro reescribía la salida del comando y eso fabricaba falsos negativos silenciosos — un `grep` con un paréntesis literal contestaba «0 matches», `head -N` entregaba la mitad de las líneas descartando el interior, `diff` a secas salía con 0 sobre ficheros distintos y `python3 -m pytest` acababa en un módulo `rtk` inexistente —, y el ahorro marginal medido era nulo. Un filtro que miente sobre la salida de un comando no ahorra: obliga a repetir la medición. Hoy ningún hook del kit invoca `rtk`; lo único que queda de él en `settings.json` es `Bash(rtk *)` en `permissions.allow`, para que puedas llamarlo tú (`rtk proxy <comando>`). Por eso `doctor.sh` solo comprueba su presencia, y con `WARN`, no con `FAIL`.
 
-```json
-{
-  "matcher": "Bash",
-  "hooks": [{ "type": "command", "command": "$HOME/.claude/hooks/optional-hook.sh rtk hook claude", "timeout": 10 }]
-}
-```
-
-`rtk hook claude` se ejecuta antes de cada llamada a Bash. No necesitas escribirlo tú: ya viene en el `settings.json` que instala `install.sh`. Recuerda que esta pieza es de `rtk`, no del proxy: son independientes, y tener una sin la otra es normal.
-
-La envoltura en `optional-hook.sh` es lo que hace que eso no duela: si no tienes `rtk`, el hook **no falla, no hace nada** (exit 0 y sin ruido). Antes se invocaba `rtk` a pelo y una máquina sin `rtk` se comía un exit 127 en cada llamada a Bash. Lo que el wrapper **no** hace es tragarse un bloqueo: si el programa envuelto sale con código 2, ese 2 se propaga tal cual, porque es así como un guard le dice a Claude Code "no ejecutes esto". Contrato en `kit/test/test_optional_hook.sh`.
+Lo que sí sigue en pie es `optional-hook.sh`, el envoltorio que nació de ese cableado: los hooks Python del kit (Sentinel, `smart_approve.py`, `stale-read-guard.py`, `write-guard.py` y `narthex-post-mcp.py`) se invocan a través de él, así que si el intérprete del venv no está, el hook **no falla, no hace nada** (exit 0 y sin ruido). Antes se invocaban a pelo y una máquina sin esa dependencia se comía un exit 127 en cada llamada a tool. Lo que el wrapper **no** hace es tragarse un bloqueo: si el programa envuelto sale con código 2, ese 2 se propaga tal cual, porque es así como un guard le dice a Claude Code "no ejecutes esto". Contrato en `kit/test/test_optional_hook.sh`.
 
 ## El precio oculto de `ANTHROPIC_BASE_URL`: lo que Claude Code apaga al ver un endpoint custom
 

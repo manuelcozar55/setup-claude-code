@@ -20,13 +20,41 @@
 >
 > Dos avisos concretos si vienes de Windows: clona **dentro** de WSL y no en `/mnt/c/` (el sistema de ficheros `9p` sobre el disco de Windows es mucho más lento y complica el bit de ejecución), y el `.gitattributes` de este repo ya fuerza `eol=lf` para que un clon con `core.autocrlf=true` no te convierta los scripts a CRLF y te los rompa con `bad interpreter: /bin/bash^M`.
 
+## En 30 segundos
+
+**Qué es.** Una configuración de Claude Code endurecida y *medible*: guards deterministas que
+bloquean comandos destructivos y fugas de secretos, agentes con tiering de modelo, y una suite
+que no se limita a afirmar que los guards funcionan — los **neutraliza** y exige que eso rompa
+casos conocidos.
+
+**Para quién es.** Para quien ya usa Claude Code a diario en WSL2 o Linux y quiere que su
+configuración esté verificada en vez de supuesta.
+
+**Para quién no es.** No es un tutorial de Claude Code, no funciona desde Windows nativo ni
+macOS (no hay CI que lo demuestre), y no es un framework del que dependas: se instala en tu
+`~/.claude` y se desinstala.
+
+```bash
+git clone https://github.com/manuelcozar55/setup-claude-code.git
+cd setup-claude-code
+bash kit/install.sh    # requiere jq O python3; FUSIONA tu settings.json, no lo pisa
+make test              # el oráculo de este repo: exit 0, o el trabajo no está hecho
+bash kit/doctor.sh     # diagnostico de lo que ya tienes instalado
+bash uninstall.sh      # SIMULA la reversion; con --apply la ejecuta (y hace backup antes)
+```
+
+**Cómo está organizado.** `kit/` es la instalación y la raíz es el harness. La documentación de
+referencia vive en [`kit/docs/`](kit/docs); `docs/` es **archivo de proceso** (specs, planes e
+informes de trabajos ya cerrados), no referencia. Si eres un agente, entra por
+[`AGENTS.md`](AGENTS.md).
+
 ## mcharness — guías y sensores
 
 Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 31 suites falsables | v1.1.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 32 suites falsables | v1.2.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -180,11 +208,13 @@ qué era "terminado".
 > **Un oráculo es un comando que devuelve 0 si el trabajo está bien hecho.**
 > No es una opinión, no es "revisar que funcione", no es el juicio del agente al terminar.
 
-El de este repo es `make test`. Y hay una trampa local que cuesta caro descubrir sola: el
-hook `PreToolUse/Bash` **sustituye el ejecutable en posición de comando** —`rg` ejecuta
-`grep`, `python3 -m pytest` ejecuta `python3 -m rtk`—, así que todo oráculo se invoca por
-**ruta absoluta**, con `rtk proxy …` o con `make …`. Un test lo verifica; no se deja a la
-memoria de nadie. Reproducción en [`knowledge/MISTAKES.md`](knowledge/MISTAKES.md) · M-001.
+El de este repo es `make test`. Y hay una trampa local que cuesta caro descubrir sola: hasta
+la 1.1.0, un hook `PreToolUse/Bash` **sustituía el ejecutable en posición de comando** —`rg`
+ejecutaba `grep`, `python3 -m pytest` acababa en un `python3 -m rtk` inexistente—. Se retiró
+por eso: un filtro que miente sobre la salida de un comando no ahorra, obliga a repetir la
+medición. El hábito se queda, porque el canal sigue siendo reescribible: todo oráculo se
+invoca por **ruta absoluta** o con `make …`. Un test lo verifica; no se deja a la memoria de
+nadie. Reproducción en [`knowledge/MISTAKES.md`](knowledge/MISTAKES.md) · M-001.
 
 ### Conocimiento vivo
 
@@ -199,6 +229,11 @@ mismo. La promoción de un hallazgo a regla siempre pasa por una puerta humana.
 | [`DECISIONS/`](knowledge/DECISIONS) | ADRs numerados, con fuente y fecha |
 | [`COST-LOG.md`](knowledge/COST-LOG.md) | KPIs con sello temporal |
 | [`SOURCES.md`](knowledge/SOURCES.md) | Allowlist de fuentes con ventana de frescura |
+| [`PROCEDURES.md`](knowledge/PROCEDURES.md) | Procedimientos repetibles, escritos para ejecutarse |
+| [`EVAL-CRITERIA.md`](knowledge/EVAL-CRITERIA.md) | Qué se mide en cada eval y con qué sensor |
+| [`PRE-MORTEM.md`](knowledge/PRE-MORTEM.md) | Fallos previstos antes de que ocurran |
+| [`SKILLS-REGISTRY.md`](knowledge/SKILLS-REGISTRY.md) | Skills instaladas y para qué sirve cada una |
+| [`AUDIT-CLAUDE-MD.md`](knowledge/AUDIT-CLAUDE-MD.md) | Auditoría línea a línea de un `CLAUDE.md` personal (KEEP/SKILL/HOOK/CUT). El método es reutilizable: es lo que fijó el ADR 002 |
 
 ### Adaptarlo a otra persona
 
@@ -219,7 +254,7 @@ en la configuración — todo cuelga de `$CLAUDE_PROJECT_DIR`.
 
 Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 8 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y no se limita a afirmar que los guards funcionan: lo **demuestra** con una suite falsable. `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **exactamente 10 casos `BLOCK` conocidos** — si neutralizarlo no rompiera nada, la suite no estaría midiendo nada. Reprodúcelo tú mismo en 5 segundos: `bash kit/test/test_guards_falsifiability.sh`.
 
-Y hay una segunda cosa que se demuestra en vez de prometerse: **que instalarlo en limpio no te rompe nada.** `test_clean_install_resilience.sh` monta el kit en una máquina simulada sin ninguno de los componentes de terceros (sin proxy, sin `rtk`, sin venv, sin `gitleaks`) y exige las dos mitades a la vez: que ningún hook falle, y que un comando destructivo siga bloqueado. Las dos mitades importan, porque la forma perezosa de arreglar la primera —envolver todo en `|| true`— rompe la segunda en silencio y te deja un kit de seguridad decorativo.
+Y hay una segunda cosa que se demuestra en vez de prometerse: **que instalarlo en limpio no te rompe nada.** `test_clean_install_resilience.sh` monta el kit en una máquina simulada sin ninguno de los componentes de terceros opcionales (sin proxy, sin venv, sin `gitleaks`) y exige las dos mitades a la vez: que ningún hook falle, y que un comando destructivo siga bloqueado. Las dos mitades importan, porque la forma perezosa de arreglar la primera —envolver todo en `|| true`— rompe la segunda en silencio y te deja un kit de seguridad decorativo.
 
 No son garantías absolutas: son defensa en profundidad, con sus límites documentados en [`SECURITY.md`](SECURITY.md), no escondidos.
 
@@ -227,7 +262,7 @@ No son garantías absolutas: son defensa en profundidad, con sus límites docume
 
 **Prerrequisitos** — el kit solo soporta **Linux o WSL2** (ver el aviso de arriba: en Windows, entra en WSL antes de nada y clona dentro de `~`, no en `/mnt/c/`).
 
-Además necesitas: `bash`, `git`, `make`, `python3` ≥ 3.10, `jq`. `gitleaks` (para la Capa 2 de secretos) es opcional — si no lo tienes, `install.sh` te ofrece instalarlo solo (binario oficial, verificado contra un checksum SHA-256 fijado en este repo, no descargado de la red; sin `curl | bash`), o puedes seguir sin él: la Capa 1 funciona igual. Lista completa y cómo comprobar cada una en [`kit/docs/02-install.md`](kit/docs/02-install.md).
+Además necesitas: `bash`, `git`, `make`, `python3` ≥ 3.10. `jq` ya no es dependencia dura de los guards —leen JSON con `jq` si está y con `python3` si no—, pero `doctor.sh` sí lo exige para autodiagnosticarse. `gitleaks` (para la Capa 2 de secretos) es opcional — si no lo tienes, `install.sh` te ofrece instalarlo solo (binario oficial, verificado contra un checksum SHA-256 fijado en este repo, no descargado de la red; sin `curl | bash`), o puedes seguir sin él: la Capa 1 funciona igual. Lista completa y cómo comprobar cada una en [`kit/docs/02-install.md`](kit/docs/02-install.md).
 
 ```bash
 git clone https://github.com/manuelcozar55/setup-claude-code.git
@@ -242,7 +277,7 @@ reciente que dejó `install.sh`. Por defecto es un *dry-run* que solo enseña qu
 falta `--apply` para escribir, y antes de escribir se hace a su vez un backup del estado
 actual. `bash uninstall.sh --list` enumera los backups disponibles.
 
-`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, `rtk`, el venv de tools, `gitleaks`): **nada del kit los da por supuestos**, y hay un test que lo demuestra en una máquina pelada (`test_clean_install_resilience.sh`). Guía completa en [`kit/README.md`](kit/README.md).
+`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, `rtk`, el venv de tools, `gitleaks`): **nada del kit los da por supuestos**, y hay un test que lo demuestra en una máquina pelada (`test_clean_install_resilience.sh`). La excepción es poder **leer JSON**, y es explícita: `install.sh` aborta si no encuentra ni `jq` ni `python3`, y sin ninguno de los dos los guards de Bash fallan en cerrado — deniegan en vez de permitir en silencio. Con `python3` a secas el kit protege igual; lo que pierde es el autodiagnóstico, porque `doctor.sh` sí usa `jq` y sin él da `FAIL · jq no instalado`. Ese mismo test lo demuestra. Guía completa en [`kit/README.md`](kit/README.md).
 
 Si quieres el proxy de contexto, es un flag — y se cablea solo si arranca de verdad:
 
@@ -356,8 +391,8 @@ Este repositorio tiene dos tipos de contenido y cada uno lleva su licencia:
 
 | Qué | Licencia | Fichero |
 |---|---|---|
-| **El software**: todo lo de `kit/` (scripts, hooks, guards, tests, evals, plantillas de config) y los scripts de `.github/` | **MIT** | [`LICENSE-CODE`](LICENSE-CODE) |
-| **Las charlas**: los decks "agentes-fundamentos" y "setup-claude-code-definitiva", sus guiones y diagramas originales | **CC BY 4.0** | [`LICENSE`](LICENSE) |
+| **El software**: todo lo de `kit/` (scripts, hooks, guards, tests, evals, plantillas de config) y los scripts de `.github/` | **MIT** | [`LICENSE`](LICENSE) |
+| **Las charlas**: los decks "agentes-fundamentos" y "setup-claude-code-definitiva", sus guiones y diagramas originales | **CC BY 4.0** | [`LICENSE-DOCS`](LICENSE-DOCS) |
 
 Se separan porque no son la misma cosa: CC BY 4.0 está pensada para obra creativa,
 no para código —no concede permisos de patente ni cubre bien la garantía y la
@@ -365,6 +400,19 @@ responsabilidad—, y usarla como licencia de software deja a quien instala el k
 una posición ambigua. MIT es la elección deliberada para el código: es la misma
 licencia del material del que derivan tres de los guards, así que no hay fricción de
 compatibilidad.
+
+El fichero **MIT es el que se llama `LICENSE`** a propósito: GitHub deduce la licencia
+del repositorio de ese nombre exacto, y mientras ahí vivió la CC BY 4.0 —con su preámbulo
+propio, que su detector no reconoce— la API respondía `license: null` y la barra lateral no
+anunciaba ninguna. Para quien evalúa si puede usar el kit, «sin licencia» se lee como todos
+los derechos reservados. El artefacto principal de este repo es software: su licencia es la
+que debe salir a la vista.
+
+Y por eso **`LICENSE` es el texto MIT literal, sin una línea de más**: renombrarlo no bastó
+—medido, la API pasó de `license: null` a `Other`, porque encontraba el fichero y no
+reconocía su contenido—. El detector compara el fichero con la plantilla y el preámbulo que
+llevaba (alcance y terceros, nueve líneas) lo alejaba lo suficiente. Esas precisiones no se
+han perdido: están en [`NOTICE`](NOTICE), que es donde no estorban.
 
 Parte del software deriva de proyectos de terceros. Sus avisos de copyright, y un
 punto de procedencia que sigue sin resolver, están en

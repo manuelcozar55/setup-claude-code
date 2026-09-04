@@ -14,7 +14,10 @@ pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 
 RESTRICTED="$tmp/restrictedbin"; mkdir -p "$RESTRICTED"
-for b in bash uname date cp mkdir chmod cmp dirname basename sed sha256sum tar install mktemp cat rm; do
+# `jq` va en la lista por la misma razon que en test_install_gitleaks.sh: install.sh lo exige en
+# una puerta de dependencia y sin el aborta a proposito. Lo que aqui se mide es un checksum de
+# gitleaks que no coincide, no la ausencia de jq.
+for b in bash uname date cp mkdir chmod cmp dirname basename sed sha256sum tar install mktemp cat rm jq; do
   p="$(command -v "$b" 2>/dev/null || true)"
   [ -n "$p" ] && ln -sf "$p" "$RESTRICTED/$b"
 done

@@ -86,7 +86,15 @@ if [[ "$HK_RC" -ne 0 ]]; then hk_ciego "branch-guard.sh" "$HK_RC"; fi
 # `cd /tmp && git push origin master` y exigir `git\s+push` dejaba pasar
 # `git -C /ruta push origin main`. El corte por [;&|] mantiene el patron dentro de un
 # solo comando, para que un "push" de otro segmento no active el guard.
-echo "$COMMAND" | grep -qE '\bgit\b[^;&|]*\bpush\b' || exit 0
+# rc=1 es "no es un push" y se sale; rc>=2 es "la regex no compila", que con `|| exit 0` era un
+# permiso silencioso. Se distinguen: si el filtro se rompe, el guard deniega en vez de callarse.
+echo "$COMMAND" | grep -qE '\bgit\b[^;&|]*\bpush\b'
+rc_filtro=$?
+if [ "$rc_filtro" -ge 2 ]; then
+  echo "BLOCKED: branch-guard no puede evaluar el comando (grep rc=$rc_filtro)." >&2
+  exit 2
+fi
+[ "$rc_filtro" -eq 0 ] || exit 0
 
 PROTECTED="${CC_PROTECT_BRANCHES:-main:master:production}"
 IFS=':' read -ra BRANCHES <<< "$PROTECTED"

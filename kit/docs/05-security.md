@@ -2,6 +2,17 @@
 
 La filosofía de esta capa en una frase: **barreras deterministas que acotan el radio de impacto (blast radius) de un fallo.** No es el modelo autolimitándose; son reglas fijas que se ejecutan siempre, antes de que la acción llegue a tocar el mundo.
 
+## Antes de todo hook: las reglas `permissions.deny`
+
+La primera barrera que instala el kit no es un hook. `claude/settings.json` trae un bloque `permissions.deny` que evalúa Claude Code **antes** de ejecutar la herramienta, así que lo que cae ahí no llega ni a Sentinel ni a los guards. Cubre los borrados de la raíz y de `$HOME`, el `git push --force` en sus distintas escrituras, los dos métodos del MCP de LinkedIn que escriben a terceros y —lo que más importa aquí— la configuración del propio kit: `Edit(/hooks/**)`, `Edit(/settings.json)`, `Edit(/settings.local.json)`, `Edit(/sentinel-allowlist.json)` y `Edit(/sentinel/**)`. Sin ellas, una sesión puede desarmar sus propias barreras simplemente editándolas.
+
+Cómo se escribe una regla de fichero, con las dos trampas que hay medidas hoy sobre Claude Code 2.1.259:
+
+- **Solo se consultan reglas `Edit(ruta)`.** `Edit` cubre también `Write`, `MultiEdit` y `NotebookEdit`. Una regla `Write(ruta)` se acepta como sintácticamente válida y **se ignora**: el propio binario lo avisa por `stderr` en cada arranque, nombrando la regla. Comprobación directa: arranca `claude` y lee el aviso. Duplicar la regla (`Write(...)` **y** `Edit(...)`) no protege más que la segunda sola; poner solo la `Write(...)` no protege nada y parece que sí.
+- **Una barra inicial no ancla en la raíz del filesystem, sino en el directorio del `settings.json`.** `Edit(/hooks/**)` resuelve a `~/.claude/hooks/**` cuando la regla vive en `~/.claude/settings.json`, que es justo lo que se quiere aquí. Para una ruta absoluta de verdad hacen falta **dos** barras: `Edit(//home/usuario/proyecto/**)`. Escribir una sola creyendo que apuntas a `/etc/...` deja una regla que no protege lo que crees.
+
+Y el límite, que es media razón de que existan los guards de la sección siguiente: **`Edit(...)` no frena a `Bash`**. `sed -i fichero`, `tee fichero`, un `> fichero` o un `cp otro fichero` llegan como llamadas a `Bash`, y esta capa no las mira. Ahí decide la Capa 1 (`block-dangerous-commands.sh` y compañía) junto a `smart_approve.py`, que parte los comandos compuestos para que una regla denegada no se cuele dentro de un `&&`. Ninguna de las dos capas cubre a la otra: con una sola, el fichero queda protegido por un lado y abierto por el otro. La política, en [`SECURITY.md`](../../SECURITY.md).
+
 ## Sentinel: la capa de IOCs (opcional)
 
 Sentinel (`sentinel/sentinel_preflight.py`) es un hook `PreToolUse` con `matcher` **vacío**, lo que significa que se ejecuta antes de cada llamada a **cualquier** tool, no solo `Bash`. Recibe por `stdin` el JSON de la tool call y decide.
@@ -38,6 +49,8 @@ Sentinel está envuelto en un `try/except` que, ante cualquier excepción o cras
 
 Cada decisión de deny/warn queda registrada en `$HOME/.claude/audit-logs/sentinel.jsonl`, con marca de tiempo, tool, decisión y motivo. Los falsos positivos se resuelven añadiendo la ruta/dominio/comando a `$HOME/.claude/sentinel-allowlist.json`, no desactivando el hook.
 
+**Y ojo con dónde se busca ese fichero**: `load_user_allowlist()` prueba primero `./.security/sentinel-allowlist.json` —el del **directorio de trabajo**— y solo si no existe usa el de tu `$HOME`. Se queda con el primero que encuentra; no los une. La consecuencia práctica es que abrir una sesión dentro de un repo clonado que traiga ese fichero sustituye tu allowlist por el suyo sin avisar (medido: con `paths: ["/"]` convertía en `allow` los denies de `~/.aws` y `~/.ssh`). Es deliberado —un proyecto declara sus falsos positivos una vez, no persona a persona— y el contrapeso es el suelo en código: `ALWAYS_DENY_PATHS` (el fichero de credenciales de Claude Code, la clave privada de SSH y las credenciales de AWS) se consulta **antes** que cualquier allowlist y ninguno lo puede levantar. En un repo ajeno, lee ese fichero antes de fiarte de esta capa.
+
 ## Los guards de Bash y git
 
 Junto a Sentinel, un segundo nivel de hooks `PreToolUse` sobre `Bash` (y, para dos de ellos, específicamente sobre `git`) endurece patrones concretos; a diferencia de Sentinel, estos guards llevan sus patrones embebidos y están activos desde el primer momento, sin fichero adicional:
@@ -52,7 +65,7 @@ Todos siguen el mismo patrón de diseño que Sentinel: reglas deterministas, pro
 
 **Límite conocido de `secret-guard.sh`**: el chequeo de `git add -A`/`git add .` funciona sobre el texto del comando, no sobre el índice real de git. Adivinar con certeza el efecto de una cadena de shell arbitraria (alias, subshells, pathspecs) exigiría, en el límite, un tokenizador de shell y un resolvedor de pathspecs completos, ejecutándose bajo el presupuesto de tiempo de un hook; y aun con eso, solo vería el árbol de trabajo, no lo que realmente queda staged para el commit. Un hook `PreToolUse` no es eso, y este no pretende serlo. Por eso esta capa se complementa con una segunda, más abajo.
 
-**Coste de la cadena, no solo su cobertura**: con la config que instala este kit, una llamada a `Bash` pasa por 7 hooks `PreToolUse` en serie (`rtk`, Sentinel, y los 4 guards, más `smart_approve.py`). Los que dependen de un tercero (`rtk` y los dos hooks Python) pasan por `optional-hook.sh`, que los convierte en no-op silencioso si la dependencia no está — así una instalación limpia no paga por lo que no tiene, y tampoco falla por ello. Lo que **no** hace el wrapper es tragarse un bloqueo: si el guard está instalado y sale con código 2, ese 2 se propaga tal cual. No es gratis: en pruebas sobre esta misma cadena se midió un overhead perceptible por llamada (varios cientos de ms; cada invocación de `jq` dentro de un hook añade lo suyo), que variará con tu máquina pero da el orden de magnitud. Merece la pena pagarlo por las barreras que compra, pero tenlo en cuenta antes de añadir un hook más encima.
+**Coste de la cadena, no solo su cobertura**: con la config que instala este kit, una llamada a `Bash` pasa por 6 hooks `PreToolUse` en serie (Sentinel, los 4 guards y `smart_approve.py`). Los dos que necesitan un intérprete de Python (Sentinel y `smart_approve.py`) pasan por `optional-hook.sh`, que los convierte en no-op silencioso si la dependencia no está — así una instalación limpia no paga por lo que no tiene, y tampoco falla por ello. Lo que **no** hace el wrapper es tragarse un bloqueo: si el guard está instalado y sale con código 2, ese 2 se propaga tal cual. No es gratis: en pruebas sobre esta misma cadena se midió un overhead perceptible por llamada (varios cientos de ms; cada invocación de `jq` dentro de un hook añade lo suyo), que variará con tu máquina pero da el orden de magnitud. Merece la pena pagarlo por las barreras que compra, pero tenlo en cuenta antes de añadir un hook más encima.
 
 ## Dos capas de secretos: por qué hacen falta las dos
 

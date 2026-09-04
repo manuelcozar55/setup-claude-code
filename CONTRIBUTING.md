@@ -3,6 +3,11 @@
 Gracias por el interés. Esto es sobre todo un kit personal que se comparte en
 abierto, pero las contribuciones (issues, PRs, correcciones) son bienvenidas.
 
+**Si quien contribuye es un agente**, el punto de entrada es [`AGENTS.md`](AGENTS.md): el mapa
+del repo —qué es cada árbol de documentación, y las cuatro cosas que no se pueden deducir
+leyendo el código— con `CLAUDE.md` como reglas vinculantes. Un humano puede leerlo también; es
+la ruta corta.
+
 ## Montar el entorno
 
 No hace falta nada exótico: `bash`, `git`, `python3`, `jq`. Para la Capa 2 de
@@ -55,11 +60,12 @@ Todo vive bajo `kit/test/`:
 - `test_exec_modes.sh` — los scripts versionados que se invocan como
   ejecutable (`./script.sh`) tienen el bit de ejecucion y un shebang correcto.
 - `test_optional_hook.sh` — `optional-hook.sh` degrada con aviso (no rotura)
-  cuando la dependencia que envuelve (`rtk`, venv) no esta instalada, y
-  propaga el exit code si el guard subyacente si esta instalado y bloquea.
+  cuando la dependencia que envuelve (el interprete del venv de tools) no
+  esta instalada, y propaga el exit code si el guard subyacente si esta
+  instalado y bloquea.
 - `test_clean_install_resilience.sh` — el kit instalado en una maquina
-  simulada sin ningun componente de terceros (sin proxy, sin `rtk`, sin venv,
-  sin `gitleaks`) no rompe ningun hook y sigue bloqueando comandos
+  simulada sin ningun componente de terceros (sin proxy, sin venv, sin
+  `gitleaks`) no rompe ningun hook y sigue bloqueando comandos
   destructivos: las dos mitades a la vez.
 - `test_doctor_base_url.sh` — `doctor.sh` consulta `/readyz` (no `/health`) y
   marca `FAIL` si algo enruta la API a un endpoint que no contesta.
@@ -99,6 +105,13 @@ Todo vive bajo `kit/test/`:
   grepeando el transcript crudo (el prompt se copia dentro, asi que ese grep
   acierta solo por el eco) y que cada modo de `grade.py` sepa fallar. Offline,
   sin una sola llamada a la API.
+- `test_install_settings_merge.sh` — la fusion del `settings.json` del usuario:
+  que respete lo que ya hubiera, que aborte sin ningun lector de JSON (ni `jq`
+  ni `python3`) en vez de reemplazarlo, y que entonces no deje backup.
+- `test_permisos_efectivos.sh` — que las reglas de permiso que el repo publica
+  hagan algo: ninguna `Write(...)` sin su gemela `Edit(...)` (las de `Write`
+  se ignoran en silencio), ningun consentimiento prefirmado, y que alguna regla
+  `deny` empareje cada grafia del push forzado.
 
 **Un `shellcheck` verde en local no es prueba.** El de CI se instala con `apt` y puede ser
 mas antiguo que el tuyo: sigue emitiendo checks de categoria `style` que las versiones
@@ -106,7 +119,7 @@ mas antiguo que el tuyo: sigue emitiendo checks de categoria `style` que las ver
 0.11.0 y CI en rojo. **El oraculo es CI**, no tu maquina.
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 31 suites listadas arriba).
+(las 32 suites listadas arriba).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -208,7 +221,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 31 suites y el escaner de secretos
+# 2. las 32 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 
@@ -218,19 +231,29 @@ CLAUDE_HOME="$T/h" bash kit/install.sh
 CLAUDE_HOME="$T/h" bash kit/doctor.sh   # exit 0, 0 FAIL
 rm -r "$T"
 
-# 4. rama para el CHANGELOG: mover [Unreleased] -> [X.Y.Z] - AAAA-MM-DD, dejar
-#    [Unreleased] vacio, y añadir los dos enlaces de comparacion del final
+# 4. rama de release. Son CUATRO ficheros, no solo el CHANGELOG: la version
+#    tiene una fuente legible por maquina (VERSION) y dos copias en prosa, y
+#    test_doc_claims.sh exige que las tres coincidan con la seccion mas nueva
+#    del CHANGELOG. Mover solo el CHANGELOG deja la suite en rojo.
 V=X.Y.Z
 git checkout -b "release/v$V"
-# ... editar CHANGELOG.md ...
-git status --porcelain   # solo CHANGELOG.md
-git add CHANGELOG.md
+# ... editar CHANGELOG.md: [Unreleased] -> [X.Y.Z] - AAAA-MM-DD, dejar
+#     [Unreleased] vacio y actualizar los dos enlaces de comparacion del final
+echo "$V" > VERSION
+# ... y la linea que declara el estado del kit ("vX.Y.Z, estable") en README.md
+#     y en CLAUDE.md: es a esa a la que se ancla el sensor
+git status --porcelain   # CHANGELOG.md, VERSION, README.md, CLAUDE.md
+make test                # aqui es donde falla el sensor de version, si falla
+git add CHANGELOG.md VERSION README.md CLAUDE.md
 git commit -m "docs: preparar CHANGELOG para v$V"
 git push -u origin "release/v$V"
 gh pr create --title "docs: preparar CHANGELOG para v$V" --body "Release v$V."
 
-# 5. mergear el PR y esperar CI en verde sobre main antes de seguir
-gh pr merge --squash --delete-branch
+# 5. mergear el PR y esperar CI en verde sobre main antes de seguir.
+#    Merge commit, no squash: es la convencion de este repo -por eso
+#    required_linear_history esta en false en la proteccion de main- y es lo
+#    que hicieron todos los PRs anteriores.
+gh pr merge --merge --delete-branch
 git checkout main && git pull --ff-only
 
 # 6. etiquetar y publicar (ahora si sobre el commit que ya tiene el CHANGELOG)

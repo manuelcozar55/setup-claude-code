@@ -1,6 +1,6 @@
 # 04 · superpowers, agentes y agent-browser
 
-Este documento cubre el método (el plugin superpowers y sus skills), quién lo ejecuta (los 8 agentes con tiering) y una herramienta que se apoya en ese método (agent-browser). Los tres son de terceros o se instalan por separado: el kit los documenta, no los redistribuye.
+Este documento cubre el método (el plugin superpowers y sus skills), quién lo ejecuta (los 8 agentes con tiering) y una herramienta que se apoya en ese método (agent-browser). superpowers y agent-browser son de terceros y se instalan por separado: el kit los documenta, no los redistribuye. Los agentes son la excepción: esos **sí** los reparte el kit, y la tabla de niveles de más abajo es el inventario.
 
 ## El plugin superpowers
 

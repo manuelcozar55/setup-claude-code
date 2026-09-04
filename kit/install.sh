@@ -44,6 +44,38 @@ if [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null
   echo "==> Detectado WSL2 (${WSL_DISTRO_NAME:-distro desconocida}). Soportado igual que Linux nativo."
 fi
 
+# --- Puerta de dependencia: un lector de JSON -------------------------------
+# El kit necesita PODER leer JSON, no necesita `jq` en concreto. Los cuatro
+# guards de Bash leen el comando del payload de PreToolUse por el shim
+# `hk-json`, que usa jq si esta y python3 si no; solo sin NINGUNO de los dos
+# quedan ciegos, y entonces fallan en CERRADO (deniegan en vez de permitir en
+# silencio). Instalar sin ninguno de los dos dejaria un kit que bloquea cada
+# comando de Bash, asi que se para aqui, antes de escribir nada.
+#
+# Esta puerta exigia jq a secas, con el argumento de que los guards lo
+# necesitaban. Dejo de ser cierto cuando los guards pasaron a leer con python3:
+# la puerta se quedo pidiendo mas de lo que el kit usa.
+if ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+  cat >&2 <<EOF2
+==> Falta jq y falta python3, y este kit necesita al menos uno.
+
+Los cuatro guards de Bash (block-dangerous-commands, branch-guard,
+destructive-guard, secret-guard) leen el comando con jq o, si no esta, con
+python3. Sin ninguno de los dos no pueden decidir, y fallan en cerrado:
+DENIEGAN todo comando de Bash. Instalarlo asi te dejaria Claude Code
+bloqueado, asi que no se instala nada.
+
+Instala uno de los dos y repite:
+
+  sudo apt install jq      # Debian / Ubuntu / WSL2
+  sudo dnf install jq      # Fedora
+  sudo pacman -S jq        # Arch
+
+python3 vale igual, y en la mayoria de distribuciones ya viene puesto.
+EOF2
+  exit 1
+fi
+
 # --- Subcomando: activar la Capa 2 de secretos en el repo actual ------------
 # core.hooksPath es config POR REPOSITORIO. install.sh nunca la toca por su
 # cuenta: modificar la config de git de un repo que el usuario no ha nombrado
@@ -85,8 +117,11 @@ if [ "${1:-}" = "--with-headroom" ]; then
     echo "==> Instala primero el kit:  bash $KIT/install.sh" >&2
     exit 1
   fi
+  # Aqui SI hace falta jq en concreto: el paso 4 reescribe settings.json con un
+  # filtro de jq. La puerta de dependencia de arriba ya no lo garantiza -- acepta
+  # python3 como alternativa para los guards y la fusion -- asi que se comprueba.
   if ! command -v jq >/dev/null 2>&1; then
-    echo "==> jq es necesario para cablear settings.json sin romperlo." >&2
+    echo "==> --with-headroom necesita jq (reescribe settings.json con un filtro de jq)." >&2
     exit 1
   fi
 
@@ -166,6 +201,15 @@ Environment=PATH=%h/.local/bin:%h/.venvs/tools/bin:/usr/local/bin:/usr/bin:/bin
 # heredado del entorno, kompress queda available:false EN SILENCIO: /readyz sigue
 # healthy y el proxy no comprime nada.
 Environment=HF_HUB_OFFLINE=0
+# El default de Headroom es escribir en proxy.log hasta 4096 chars de conversacion
+# literal por cada event=headroom_retrieve: _payload_preview_enabled() devuelve True
+# cuando la variable NO esta puesta. Con 0 solo registra recuentos de bytes. No se
+# puede cambiar en caliente: la clave no esta en _KNOBS_BY_ENV y el lector consulta
+# os.environ directo, asi que /admin/runtime-env no la ve.
+Environment=HEADROOM_LOG_PAYLOAD_PREVIEW=0
+# El proceso hereda Umask 0002 y por eso proxy.log nace en 664. Esto solo gobierna
+# los ficheros futuros, incluidas las rotaciones; lo ya escrito se arregla aparte.
+UMask=0077
 # El '-' es deliberado: si el shaper falla, la unidad NO debe quedar en failed.
 ExecStartPost=-${SHAPER}
 Restart=always
@@ -208,6 +252,8 @@ UNITEOF
     # savings_events.jsonl y, si alguien arranca con --log-messages, conversaciones
     # enteras en claro). Por defecto quedaba 0755.
     chmod 700 "$HOME/.headroom" 2>/dev/null || true
+    # logs/ aparte: se crea con el umask del proceso, no hereda el 700 de arriba.
+    chmod 700 "$HOME/.headroom/logs" 2>/dev/null || true
     systemctl --user daemon-reload
     systemctl --user enable --now headroom-proxy.service || true
     # linger: que el proxy arranque con la maquina y no al primer login.
@@ -429,7 +475,12 @@ run_diff_first() {
     out="${TMPDIR:-/tmp}/cckit-diff-$(id -u)"
   fi
   rm -rf "$out"
-  mkdir -m 700 -p "$out" || { echo "no se pudo crear $out" >&2; return 1; }
+  # `mkdir -m 700 -p` no vale (SC2174): con -p el modo solo se aplica al ultimo nivel, y
+  # si el directorio ya existiera no se tocaria. El chmod aparte no depende de ninguna de
+  # las dos cosas -- y este arbol lleva la config que se instalaria, asi que 700 no es
+  # decorativo.
+  mkdir -p "$out" || { echo "no se pudo crear $out" >&2; return 1; }
+  chmod 700 "$out" || { echo "no se pudo restringir $out a 700" >&2; return 1; }
   install_kit_files "$out"
 
   echo "==> $CLAUDE_HOME es un repositorio git con remoto configurado: no se escribe nada ahi."

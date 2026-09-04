@@ -19,7 +19,7 @@ cd "$(dirname "$0")/../.." || exit 1
 pass=0; fail=0; skipped=0
 
 # knowledge/PRE-MORTEM.md tampoco entra: es el mismo genero que los ADR, una foto fechada.
-DOCS=(README.md CLAUDE.md CONTRIBUTING.md kit/README.md kit/evals/README.md
+DOCS=(README.md AGENTS.md CLAUDE.md CONTRIBUTING.md kit/README.md kit/evals/README.md
       knowledge/ORACLES.md knowledge/PROCEDURES.md kit/docs/*.md)
 # Fuera de DOCS a proposito (el porque, en la seccion 4), pero sus filas nombran el
 # sensor de cada afirmacion, y esos nombres si son comprobables: citar un script que
@@ -43,6 +43,11 @@ CLAIM_SIN_CIFRA=
 # claim_flojo: lo mismo, pero sin exigir haber juzgado nada. Solo para las afirmaciones
 # que hoy no aparecen escritas con cifra en ningun documento; el motivo, en su llamada.
 claim_flojo() { CLAIM_SIN_CIFRA=1; claim "$@"; CLAIM_SIN_CIFRA=; }
+# claim_omiso: estricto con las cifras que estan, pero si no hay ninguna lo dice como
+# 'skip' en vez de aprobar. Es para el material donde una afirmacion puede legitimamente
+# no escribirse -[Unreleased] recien etiquetada, por ejemplo-: ahi un 'ok' seria un verde
+# mudo y un fallo seria enrojecer un fichero correcto. El skip se ve en el resumen.
+claim_omiso() { CLAIM_SIN_CIFRA=skip; claim "$@"; CLAIM_SIN_CIFRA=; }
 claim() {
   local real="$1" noun="$2"; shift 2
   local bad="" w f hit rest n vistas=0; w=$(word_for "$real")
@@ -70,6 +75,11 @@ claim() {
   if [ -n "$bad" ]; then
     echo "NOT ok - '$noun': el repo tiene $real y la doc dice otra cosa:$bad"
     fail=$((fail+1))
+  elif [ "$vistas" -eq 0 ] && [ "$CLAIM_SIN_CIFRA" = skip ]; then
+    # Ni 'ok' ni rojo: la afirmacion no esta escrita, y quien lea el resumen tiene que
+    # verlo. Un 'ok' aqui es el verde mudo que el caso de abajo existe para evitar.
+    echo "skip - '$noun': $* no escribe ninguna cifra delante; no se ha comprobado"
+    skipped=$((skipped+1))
   elif [ "$vistas" -eq 0 ] && [ -z "$CLAIM_SIN_CIFRA" ]; then
     # Sin esto un `claim` cuya frase se reescribe deja de encajar y sigue diciendo
     # 'ok' habiendo juzgado cero cifras: el sensor de un solo lado, que sabe
@@ -143,8 +153,16 @@ awk '/^## \[Unreleased\]/ {on=1} /^## \[[0-9]/ {on=0} {print (on ? $0 : "")}' \
 # Recien etiquetada una version, [Unreleased] se queda VACIA a proposito: es el paso 4
 # del procedimiento de release (CONTRIBUTING.md). Exigirle cifras entonces seria
 # enrojecer un fichero correcto, asi que se declara 'skip' y se ve en el resumen. Lo
-# que NO se hace es aflojar los claim de abajo a claim_flojo: mientras la seccion tenga
-# contenido, un claim que no juzgue ninguna cifra es un 'ok' que no mide.
+# que NO se hace es aflojar los claim de abajo a claim_flojo, que dice 'ok' habiendo
+# juzgado cero cifras.
+#
+# Que la seccion tenga contenido tampoco garantiza que hable del inventario, y eso lo
+# aprendio este sensor en carne propia: al cortar la 1.2.0, la primera entrada nueva de
+# [Unreleased] era de licencias -no menciona suites, ni ADRs, ni el eval- y las seis
+# lineas de abajo dieron seis fallos sobre un CHANGELOG correcto. De ahi claim_omiso:
+# estricto con la cifra que este escrita, 'skip' visible con la que no. La diferencia
+# con claim_flojo es justo la que importa aqui: no hay ningun camino que imprima 'ok'
+# sin haber juzgado nada.
 # El awk imprime tambien la linea de la cabecera, y de ahi sale la unica forma de
 # distinguir "la seccion esta vacia" de "el recorte se ha roto": si la cabecera NO
 # aparece en el recorte, el ancla ha dejado de casar y no hay nada que medir. Sin esta
@@ -183,19 +201,38 @@ elif [ "$(grep -c . "$UNREL")" -eq 1 ]; then
     skipped=$((skipped+1))
   fi
 else
-  claim "$SUITES" suites "$UNREL"
-  claim "$(count knowledge/DECISIONS/*.md)" ADRs "$UNREL"
+  claim_omiso "$SUITES" suites "$UNREL"
+  claim_omiso "$(count knowledge/DECISIONS/*.md)" ADRs "$UNREL"
   # El inventario del eval, que es lo que esta rama anade y lo que [Unreleased] anuncia.
   # Aqui si van estrictos -no como sobre DOCS-: las entradas nuevas escriben las cuatro
   # cifras, asi que hay algo que juzgar. Ojo al redactarlas: el sed de claim es GOLOSO y
   # solo juzga la ULTIMA aparicion de "<n> <sustantivo>" de cada linea, asi que un
   # recuento parcial cierto ("decide 3 tareas") enrojece si queda el ultimo de su linea.
-  claim "$(count kit/evals/tasks/*.yaml)" tareas "$UNREL"
-  claim "$(grep -l '^tipo: positiva' kit/evals/tasks/*.yaml | wc -l)" positivas "$UNREL"
-  claim "$(grep -l '^tipo: negativa' kit/evals/tasks/*.yaml | wc -l)" negativas "$UNREL"
-  claim "$(grep -cE '^    \("M[0-9]+' kit/evals/mutantes.py)" mutantes "$UNREL"
+  claim_omiso "$(count kit/evals/tasks/*.yaml)" tareas "$UNREL"
+  claim_omiso "$(grep -l '^tipo: positiva' kit/evals/tasks/*.yaml | wc -l)" positivas "$UNREL"
+  claim_omiso "$(grep -l '^tipo: negativa' kit/evals/tasks/*.yaml | wc -l)" negativas "$UNREL"
+  claim_omiso "$(grep -cE '^    \("M[0-9]+' kit/evals/mutantes.py)" mutantes "$UNREL"
 fi
 rm -f "$UNREL"; rmdir "$UNRELD"
+
+# Falsabilidad del modo 'skip' que estrena el bloque de arriba. Lo que hay que demostrar
+# no es que sepa omitir -eso se ve en el resumen- sino que omitir no le ha quitado el
+# juicio: con una cifra escrita y falsa tiene que seguir enrojeciendo. Las dos secciones
+# se fabrican, porque deformar la real no distinguiria un caso del otro.
+OMTMP=$(mktemp -d) || exit 1
+printf '## [Unreleased]\n\n- entrada de licencias, sin inventario.\n' > "$OMTMP/sin.md"
+printf '## [Unreleased]\n\n- ahora hay 99 suites de test.\n' > "$OMTMP/con.md"
+om_sin=$(claim_omiso "$SUITES" suites "$OMTMP/sin.md")
+om_con=$(claim_omiso "$SUITES" suites "$OMTMP/con.md")
+if [ "${om_sin#skip}" != "$om_sin" ] && [ "${om_con#NOT ok}" != "$om_con" ]; then
+  echo "ok - claim_omiso omite la cifra que no esta y sigue enrojeciendo una que miente"
+  pass=$((pass+1))
+else
+  echo "NOT ok - el modo 'skip' de claim no discrimina: sin cifra dijo '${om_sin%%$'\n'*}'"
+  echo "         y con una cifra falsa dijo '${om_con%%$'\n'*}'"
+  fail=$((fail+1))
+fi
+rm -f "$OMTMP/sin.md" "$OMTMP/con.md"; rmdir "$OMTMP"
 
 # --- 2. Todo script citado en la doc existe --------------------------------
 # Asi es como sobrevivio 'session-brief.sh' en tres documentos despues de borrarlo.
@@ -1226,9 +1263,14 @@ PLTMP=$(mktemp -d) || exit 1
   > "$PLTMP/p-mail.md"
 { cat kit/claude/CLAUDE.md; printf '# currentDate\nToday'"'"'s date is 2026-05-13.\n'; } \
   > "$PLTMP/p-fecha.md"
+# El pin de version se ANADE en vez de sustituir una frase de la plantilla. El ancla
+# anterior era su linea literal ("Installed globally as `agent-browser`") y se rompio al
+# retirar esa afirmacion -la plantilla decia en presente que el paquete ya estaba
+# instalado, y el kit no lo instala-, con lo que la deformacion dejo de deformar y la
+# sonda aprobaba sin medir. Medido: "1 de 5 averias fabricadas pasaron el comprobador".
 # shellcheck disable=SC2016 # los backticks son los del markdown de la plantilla, literales
-sed 's/Installed globally as `agent-browser`/Installed globally: `agent-browser 0.27.0`/' \
-  kit/claude/CLAUDE.md > "$PLTMP/p-version.md"
+{ cat kit/claude/CLAUDE.md; printf -- '- Pinned to `agent-browser 0.27.0`.\n'; } \
+  > "$PLTMP/p-version.md"
 { cat kit/claude/CLAUDE.md; seq 1 "$PLANTILLA_LINEAS" | sed 's/^/relleno /'; } > "$PLTMP/p-gordo.md"
 pl_malos=0
 for pl_caso in p-mail p-fecha p-version p-gordo no-existe; do
@@ -1399,6 +1441,255 @@ else
   fi
 fi
 rm -f "$JQTMP"/*; rmdir "$JQTMP"
+
+# --- 9. La cadena de hooks, el inventario de plugins y el hook que ya no se cablea ---
+# Tres afirmaciones publicadas que se pudrieron sin que nada se pusiera rojo, porque
+# `claim` solo sabe juzgar los sustantivos del inventario (suites, ADRs, agentes...):
+#   - "una llamada a Bash pasa por 7 hooks PreToolUse en serie": la cadena real es de 6.
+#   - "declara ocho plugins ... Cinco vienen del marketplace oficial": son 7 y 4, y la
+#     tabla mantenia una fila para github@claude-plugins-official, que ya no esta en el
+#     settings: un plugin fantasma que se lee como instrucción de instalación.
+#   - "el hook `rtk hook claude` de settings.json": el kit dejo de cablearlo, y la frase
+#     seguia en cuatro documentos, en el WARN de doctor.sh y en THIRD-PARTY.md.
+# Las tres se derivan de kit/claude/settings.json -lo que install.sh reparte- en vez de
+# escribirse a mano. Una cifra copiada es exactamente la averia que este fichero persigue.
+SETTINGS=kit/claude/settings.json
+SECDOC=kit/docs/05-security.md
+PLUGDOC=kit/docs/08-plugins-mcp-y-skills.md
+
+# La cadena que ve UNA LLAMADA A BASH: matcher vacio (corre antes de cualquier tool) o
+# matcher que casa con "Bash" como regex anclada, que es como Claude Code lo evalua. Los
+# hooks de `Read` y de `Write|Edit` existen y no cuentan aqui a proposito: la frase del
+# documento habla del coste de una llamada a Bash, no del total de hooks del fichero.
+cadena_bash() {
+  local s="$1"; shift
+  local real f l n vistas=0
+  real=$(jq '[.hooks.PreToolUse[] | . as $h
+              | select((($h.matcher // "") == "") or ("Bash" | test("^(" + $h.matcher + ")$")))
+              | .hooks[]] | length' "$s" 2>/dev/null)
+  case "$real" in
+    ''|0) echo "  no se puede contar la cadena PreToolUse de $s: no hay nada que juzgar"
+          return 0 ;;
+  esac
+  # shellcheck disable=SC2016 # los backticks son los del markdown del documento, literales
+  for f in "$@"; do
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      vistas=$((vistas+1))
+      n=$(printf '%s' "$l" | sed -E 's/.*[^0-9]([0-9]+) hooks `PreToolUse`.*/\1/')
+      [ "$n" = "$real" ] \
+        || echo "  $f publica $n hooks PreToolUse y jq cuenta $real en $s"
+    done <<< "$(grep -nE '[0-9]+ hooks `PreToolUse`' "$f" 2>/dev/null)"
+  done
+  [ "$vistas" -gt 0 ] \
+    || echo "  ningun documento de $* publica la cifra de la cadena PreToolUse: no hay nada que juzgar"
+}
+hr_check "la cifra de hooks PreToolUse de 05-security.md es la que cuenta jq en settings.json" \
+  cadena_bash "$SETTINGS" "$SECDOC"
+
+# El inventario de plugins, del mismo settings.json. `claim` vale tal cual para el total
+# ("siete plugins") y para los oficiales anclado a su frase ("cuatro del marketplace
+# oficial"): "oficiales" a secas no aparece con cifra delante en ningun documento. El numeral
+# va en minuscula en el documento a proposito: `claim` compara la palabra tal cual y "Cuatro"
+# le es invisible.
+PLUG_TOTAL=$(jq '.enabledPlugins | length' "$SETTINGS")
+PLUG_OFI=$(jq '[.enabledPlugins | keys[]
+                | select(endswith("@claude-plugins-official"))] | length' "$SETTINGS")
+claim "$PLUG_TOTAL" plugins "${DOCS[@]}"
+claim "$PLUG_OFI" 'del marketplace oficial' "$PLUGDOC"
+
+# Y que la doc no nombre un plugin que el settings no declara. La fila fantasma de
+# github@claude-plugins-official sobrevivio meses a que se quitara de enabledPlugins, y una
+# fila de esa tabla se lee como "esto lo tienes activo". Se excluye la forma `git@host` de
+# una URL SSH, que casa con el patron y no es una referencia de plugin.
+plugins_nombrados() {
+  local s="$1"; shift
+  local f p vistas=0
+  for f in "$@"; do
+    while IFS= read -r p; do
+      [ -n "$p" ] || continue
+      case "$p" in git@*) continue ;; esac
+      vistas=$((vistas+1))
+      jq -e --arg p "$p" '.enabledPlugins | has($p)' "$s" >/dev/null 2>&1 \
+        || echo "  $f nombra el plugin '$p' y $s no lo declara en enabledPlugins"
+    done <<< "$(grep -hoE '[a-z0-9][a-z0-9_-]*@[a-z0-9][a-z0-9_-]*' "$f" 2>/dev/null | sort -u)"
+  done
+  [ "$vistas" -gt 0 ] || echo "  ningun documento de $* nombra un plugin: no hay nada que juzgar"
+}
+hr_check "todo plugin que nombra la doc esta declarado en enabledPlugins de settings.json" \
+  plugins_nombrados "$SETTINGS" "$PLUGDOC" kit/docs/04-superpowers.md
+
+# Los 4 guards de Bash: los hooks con matcher Bash que NO pasan por optional-hook.sh, o sea
+# los que llevan sus patrones dentro. 10-onboarding.md publica la misma cifra para otro
+# hecho ("`jq` es dependencia dura de N guards"), y hoy coinciden por una razon
+# comprobable: los cuatro leen el payload con jq. Se comprueba que sigan coincidiendo antes
+# de juzgar con una sola cifra dos frases distintas; el dia que divergan, esto se queja en
+# vez de dejar una de las dos podrida.
+GUARDS=$(jq -r '[.hooks.PreToolUse[] | . as $h
+                 | select((($h.matcher // "") != "") and ("Bash" | test("^(" + $h.matcher + ")$")))
+                 | .hooks[].command | select(test("optional-hook") | not)] | length' "$SETTINGS")
+GUARDS_JQ=$(grep -lE '\bjq\b' kit/claude/hooks/*.sh 2>/dev/null | wc -l | tr -d ' ')
+if [ "$GUARDS" = "$GUARDS_JQ" ]; then
+  claim "$GUARDS" guards "$SECDOC" "$ONBDOC"
+else
+  echo "NOT ok - los guards de Bash del settings ($GUARDS) y los que dependen de jq"
+  echo "         ($GUARDS_JQ) ya no son los mismos: 05-security.md y 10-onboarding.md"
+  echo "         publican una sola cifra para dos hechos que han dejado de coincidir"
+  fail=$((fail+1))
+fi
+
+# `rtk hook claude`: el kit dejo de cablearlo, asi que la unica mencion honesta es en
+# pasado. Se juzgan dos cosas: (a) los comandos de hook del settings, donde no puede
+# aparecer, y (b) toda linea del arbol versionado que lo nombre, que tiene que decir a la
+# vez que se retiro. Quedan fuera CHANGELOG.md y knowledge/ por lo mismo que en §1: son
+# registros fechados y ahi la frase era cierta el dia que se escribio -docs/superpowers/ ya
+# esta fuera de DOCS por eso mismo-, y este propio fichero, que contiene la cadena porque es
+# quien la busca.
+#
+# A la mitad (b) NO se le exige haber juzgado alguna linea, y es la misma excepcion razonada
+# que hr_doctor_oraculo: que nadie lo nombre es el estado CORRECTO, no un sensor ciego. Lo
+# que sostiene la medicion es la sonda de falsabilidad, que le mete la frase retirada tal
+# como estaba escrita y exige queja.
+rtk_no_cableado() {
+  local s="$1"; shift
+  local f l cmds
+  cmds=$(jq -r '.hooks // {} | .. | .command? // empty' "$s" 2>/dev/null)
+  if [ -z "$cmds" ]; then
+    echo "  no se leen los comandos de hook de $s: no hay nada que juzgar"
+  else
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      case "$l" in
+        *rtk*) echo "  $s vuelve a cablear rtk en un hook: $(printf '%s' "$l" | cut -c1-58)" ;;
+      esac
+    done <<< "$cmds"
+  fi
+  for f in "$@"; do
+    while IFS= read -r l; do
+      [ -n "$l" ] || continue
+      printf '%s' "$l" \
+        | grep -qiE 'se retir|ya no|cableaba|invocaba|tra[ií]a|hubo|dej[oó] de|hasta el' \
+        || echo "  $f afirma en presente el hook 'rtk hook claude': $(printf '%s' "$l" | cut -c1-58)"
+    done <<< "$(grep -n 'rtk hook claude' "$f" 2>/dev/null)"
+  done
+}
+# La lista se calcula aqui y no dentro del comprobador, como el resto de §5: asi la sonda
+# de falsabilidad puede interrogarlo sobre copias deformadas. `grep -rl` y no `git grep`
+# para no depender de que el arbol sea un repo con indice. El precio de no usar el indice
+# es que el recorrido tambien ve `.superpowers/`, el andamio local de las ejecuciones con
+# subagentes: esta en .gitignore, no se publica nunca, y sus diffs de revision citan la
+# frase retirada tal como estaba el dia que se ejecuto el plan. Juzgarla ahi ponia rojo un
+# comprobador de contenido PUBLICADO por culpa de un scratch de una maquina, asi que sale
+# por la misma razon que docs/superpowers/: registro fechado, no afirmacion vigente.
+RTK_FICHEROS=$(grep -rl 'rtk hook claude' . --exclude-dir=.git 2>/dev/null \
+               | sed 's|^\./||' \
+               | grep -vE '^(CHANGELOG\.md|knowledge/|docs/superpowers/|\.superpowers/|kit/test/test_doc_claims\.sh)' \
+               | sort | tr '\n' ' ')
+# shellcheck disable=SC2086 # la lista de ficheros se parte a proposito
+hr_check "ningun hook del kit cablea 'rtk hook claude' y ninguna linea lo afirma en presente" \
+  rtk_no_cableado "$SETTINGS" $RTK_FICHEROS
+
+# Falsabilidad de los cuatro comprobadores de esta seccion: cada caso deforma una COPIA con
+# la averia exacta que su comprobador persigue -del lado del settings y del lado del
+# documento, que son los dos sitios donde se pudre-, y ademas se exige que el arbol real
+# salga limpio, porque un comprobador que se queja siempre no distingue nada.
+NUTMP=$(mktemp -d) || exit 1
+jq '.hooks.PreToolUse += [{"matcher":"Bash","hooks":[{"type":"command","command":"$HOME/.claude/hooks/optional-hook.sh rtk hook claude","timeout":10}]}]' \
+  "$SETTINGS" > "$NUTMP/s-mas-rtk.json"
+jq 'del(.enabledPlugins["codex@openai-codex"])' "$SETTINGS" > "$NUTMP/s-menos-plugin.json"
+# shellcheck disable=SC2016 # los backticks son los del markdown de 05-security.md, literales
+sed 's/6 hooks `PreToolUse`/9 hooks `PreToolUse`/' "$SECDOC"          > "$NUTMP/d-cadena.md"
+# shellcheck disable=SC2016 # idem
+sed 's/hooks `PreToolUse` en serie/hooks en serie/'  "$SECDOC"        > "$NUTMP/d-muda.md"
+# shellcheck disable=SC2016 # idem: es la fila fantasma, con sus backticks de markdown
+printf '%s\n' '| `github@claude-plugins-official` | flujos de GitHub | `/plugin` |' \
+                                                                      > "$NUTMP/d-fantasma.md"
+# La frase retirada, escrita tal como estaba en 03-headroom.md antes de este cambio.
+# shellcheck disable=SC2016 # los backticks son los del markdown, literales
+printf '%s\n' '`rtk hook claude` se ejecuta antes de cada llamada a Bash. No necesitas escribirlo tu: ya viene en el `settings.json` que instala `install.sh`.' \
+                                                                      > "$NUTMP/d-rtk-presente.md"
+# Y el contrapeso: la mencion en pasado, que es correcta y NO debe quejarse.
+# shellcheck disable=SC2016 # idem
+printf '%s\n' 'Hasta el 2026-09-02 el `settings.json` cableaba el hook `rtk hook claude`; se retiro.' \
+                                                                      > "$NUTMP/d-rtk-pasado.md"
+nu_malos=0
+if [ -n "$(rtk_no_cableado "$SETTINGS" "$NUTMP/d-rtk-pasado.md")" ]; then
+  nu_malos=$((nu_malos+1)); echo "     (se queja de una mencion en pasado, que es correcta)"
+fi
+for nu_caso in \
+  "cadena_bash $SETTINGS $NUTMP/d-cadena.md" \
+  "cadena_bash $SETTINGS $NUTMP/d-muda.md" \
+  "cadena_bash $NUTMP/s-mas-rtk.json $SECDOC" \
+  "plugins_nombrados $SETTINGS $NUTMP/d-fantasma.md" \
+  "plugins_nombrados $NUTMP/s-menos-plugin.json $PLUGDOC" \
+  "rtk_no_cableado $NUTMP/s-mas-rtk.json" \
+  "rtk_no_cableado $SETTINGS $NUTMP/d-rtk-presente.md"
+do
+  # shellcheck disable=SC2086 # la palabra es "<comprobador> <fichero...>": se parte a proposito
+  [ -n "$($nu_caso)" ] || { nu_malos=$((nu_malos+1)); echo "     (sin queja: $nu_caso)"; }
+done
+if [ "$nu_malos" -eq 0 ]; then
+  echo "ok - falsabilidad: acusa las siete averias fabricadas (la cadena con otra cifra y sin"
+  echo "     cifra, un hook de mas en el settings, el plugin fantasma, el plugin retirado del"
+  echo "     settings y la frase de rtk en presente) y aprueba la mencion en pasado"
+  pass=$((pass+1))
+else
+  echo "NOT ok - $nu_malos de 8 casos fabricados salieron al reves (tautologia)"
+  fail=$((fail+1))
+fi
+rm -f "$NUTMP"/*; rmdir "$NUTMP"
+
+# --- AGENTS.md: el mapa no puede citar rutas que no existen -----------------
+# POR QUE: AGENTS.md es lo primero que lee un agente en varios harness, y su valor
+# entero esta en la tabla de rutas. Una ruta que ya no existe no solo manda al agente
+# a leer nada: le hace creer que ya lo ha leido. Se comprueban los tokens entre
+# backticks que parecen rutas del repo -- se excluyen los que empiezan por '~', '/',
+# '$' o '.' (entorno del usuario, absolutas y extensiones sueltas como `.sh`), los que
+# llevan espacios (`make test`) y los que llevan glob.
+if [ -f AGENTS.md ]; then
+  am_malas=0
+  am_total=0
+  # shellcheck disable=SC2016  # el patron busca backticks LITERALES en AGENTS.md: con
+  # comillas dobles la shell intentaria ejecutar lo que hubiera entre ellos.
+  while read -r ruta; do
+    [ -n "$ruta" ] || continue
+    am_total=$((am_total+1))
+    if [ ! -e "$ruta" ]; then
+      echo "     AGENTS.md cita una ruta que no existe: $ruta"
+      am_malas=$((am_malas+1))
+    fi
+  done <<AM
+$(grep -oE '`[^`]+`' AGENTS.md | tr -d '`' \
+  | grep -vE '^[~/$.]|[*[:space:]]' \
+  | grep -E '/|\.md$' | sort -u)
+AM
+  if [ "$am_malas" -eq 0 ]; then
+    echo "ok - las $am_total rutas que cita AGENTS.md existen todas"; pass=$((pass+1))
+  else
+    echo "NOT ok - AGENTS.md cita $am_malas rutas inexistentes de $am_total"; fail=$((fail+1))
+  fi
+
+  # Falsabilidad del sensor de arriba: si una ruta inventada NO lo pusiera en rojo,
+  # el sensor no estaria mirando nada.
+  AMTMP=$(mktemp -d)
+  # shellcheck disable=SC2016  # idem: el fixture y su patron llevan backticks literales.
+  printf 'cita `kit/no/existe/jamas.md` y nada mas\n' > "$AMTMP/AGENTS.md"
+  # shellcheck disable=SC2016  # idem: backticks literales en el patron del fixture.
+  am_fake=$( (cd "$AMTMP" && grep -oE '`[^`]+`' AGENTS.md | tr -d '`' \
+    | grep -vE '^[~/$.]|[*[:space:]]' | grep -E '/|\.md$' \
+    | while read -r r; do [ -e "$r" ] || echo malo; done | wc -l) )
+  if [ "$am_fake" -eq 1 ]; then
+    echo "ok - el sensor de rutas de AGENTS.md detecta una ruta inventada (falsable)"
+    pass=$((pass+1))
+  else
+    echo "NOT ok - una ruta inventada no puso en rojo el sensor de AGENTS.md (tautologia)"
+    fail=$((fail+1))
+  fi
+  rm -f "$AMTMP"/*; rmdir "$AMTMP"
+else
+  echo "NOT ok - AGENTS.md no existe: el mapa que los harness buscan por ese nombre falta"
+  fail=$((fail+1))
+fi
 
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="

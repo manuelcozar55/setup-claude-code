@@ -14,7 +14,7 @@ sí mismo.
 
 Inventario del árbol que describe esta sección:
 
-- 31 suites de test
+- 32 suites de test
 - 11 ADRs
 - 20 tareas de eval
 - de ellas, 10 positivas
@@ -92,6 +92,351 @@ Inventario del árbol que describe esta sección:
 - Esta misma sección dejaba de comprobarse cuando estaba vacía. Ahora un
   `[Unreleased]` vacío sólo se acepta si nada bajo `kit/` cambió después del
   último cambio del CHANGELOG; si cambió, el fichero está rancio y se dice.
+- **Dos avisos de `shellcheck` que habrían roto CI en el primer push.** El
+  árbol de diff se creaba con `mkdir -m 700 -p`, donde el modo sólo se aplica
+  al último nivel y no se toca si el directorio ya existe (SC2174): ahora el
+  `chmod 700` va aparte y no depende de ninguna de las dos cosas. Y `g_err` en
+  `test_guards.sh` redirige `2>&1 >/dev/null` **a propósito** —quiere sólo
+  stderr—, así que lleva su `disable=SC2069` con el motivo escrito: con el
+  orden que sugiere la regla, las aserciones sobre el mensaje del guard
+  aprobarían también un texto emitido por stdout.
+- **El comprobador de `rtk hook claude` enrojecía por un scratch local.**
+  Recorre el árbol con `grep -r` para no depender del índice de git, y así
+  también veía `.superpowers/`, el andamio de las ejecuciones con subagentes:
+  está en `.gitignore`, no se publica nunca, y sus diffs de revisión citan la
+  frase retirada tal como estaba el día que se ejecutó el plan. Sale de la
+  lista por la misma razón que `docs/superpowers/`: registro fechado.
+
+### Documentation
+
+- **Tres afirmaciones sobre `jq` que la fusión con `main` dejó falsas.** El
+  `README` lo listaba como prerrequisito duro y decía que `install.sh` aborta
+  sin él; `10-onboarding.md` lo llamaba «dependencia dura de cuatro guards»;
+  `CONTRIBUTING.md` describía la suite de fusión como si abortara sin `jq`.
+  Desde Track M los guards leen con `jq` **o** `python3`, la puerta de
+  `install.sh` acepta cualquiera de los dos, y lo que se pierde sin `jq` es el
+  autodiagnóstico de `doctor.sh`, no la protección. Los cuatro sitios lo dicen
+  ahora en esos términos.
+
+- **`LICENSE` es ahora el texto MIT literal: renombrarlo no bastaba.** En la 1.2.0 se
+  intercambiaron los nombres para que el fichero que GitHub inspecciona fuese el del
+  software, y la API pasó de `license: null` a `Other` / `NOASSERTION`: encontraba el
+  fichero y no reconocía su contenido. La causa medida son las nueve líneas de preámbulo
+  en castellano (alcance y terceros) que llevaba delante del texto legal — el detector
+  compara el fichero con una plantilla, y esa prosa lo aleja lo bastante. El cuerpo MIT ya
+  era **byte a byte** el de la plantilla de GitHub (`gh api /licenses/mit`), así que el
+  arreglo es quitarle todo lo que no es licencia: `LICENSE` queda idéntico a esa plantilla
+  salvo el titular del copyright. Las precisiones no se pierden, se mudan a `NOTICE`
+  —alcance de la MIT frente a la CC BY 4.0 de las charlas, y la incorporación de
+  `THIRD-PARTY.md` a las condiciones—, que es un nombre que el detector ignora por
+  convención. `README.md` explica el porqué en el sitio donde alguien lo busca. No cambia
+  ninguna condición de licencia: cambia qué fichero las contiene.
+
+### Testing
+
+- **`test_clean_install_resilience.sh` exigía la avería que Track M arregló.** Su bloque 7
+  medía un solo escalón —«sin `jq`»— y pedía que los cuatro guards denegaran y que
+  `install.sh` abortara. Con el shim eso es pedir que el kit siga roto donde ya funciona.
+  Ahora los escalones son **dos**, y el contrato de cada uno es distinto: sin `jq` pero con
+  `python3` el kit funciona igual (los guards dejan pasar un `ls` y `install.sh` instala), y
+  sin ninguno de los dos se falla cerrado **y se dice** —no basta el `rc=2`: se exige que el
+  mensaje nombre lo que falta, porque un bloqueo mudo deja a quien lo sufre sin saber qué
+  instalar—. Las dos granjas de `PATH` se comprueban en las dos direcciones, incluida la de
+  que su `grep` ejecuta: uno roto convertiría cualquier medición en un `rc` mudo que se
+  leería como «deja pasar». De paso, `want_no()`: pasarle `!` a `want()` daba
+  `!: command not found` y contaba el caso como fallo sin haber medido nada.
+
+- **El sensor de `[Unreleased]` enrojecía un CHANGELOG correcto, y se vio al estrenar el
+  procedimiento de release.** `test_doc_claims.sh` juzga las cifras de inventario de esa
+  sección —suites, ADRs y las cuatro del eval— y lo hace estricto a propósito: un `claim`
+  que no llega a juzgar ninguna cifra aprobaría pase lo que pase. Contemplaba la sección
+  **vacía** (recién etiquetada una versión) como `skip`, pero no el caso siguiente: la
+  primera entrada nueva puede hablar de algo que no es el inventario. La de licencias de
+  arriba no menciona ninguna de las seis, y las seis dieron `NOT ok` sobre un fichero que
+  no tenía nada mal — el sensor exigía que cada entrada del changelog recitara el
+  inventario. Se añade a `claim` un tercer estado, `claim_omiso`: estricto con la cifra
+  que esté escrita, `skip` **visible en el resumen** con la que no. No se ha usado
+  `claim_flojo`, que existía ya, precisamente porque su camino silencioso imprime `ok`
+  habiendo juzgado cero. Y el modo nuevo trae su propia sonda de falsabilidad: sobre una
+  sección fabricada que escribe una cifra falsa, `claim_omiso` sigue enrojeciendo — lo que
+  había que demostrar no es que sepa omitir, sino que omitir no le quitó el juicio.
+
+## [1.2.0] - 2026-09-04
+
+Tres frentes con la misma forma: **protecciones que el repo declaraba y que no existían.** Por
+un lado se cierran los guards y el instalador, que fallaban en abierto cuando faltaba `jq`; por
+otro los sensores de Headroom, que vigilaban el fichero equivocado o no vigilaban del todo
+(`InaccessiblePaths`, el `UMask` de los logs); y por el tercero se retiran afirmaciones
+publicadas que dejaron de ser verdad cuando cambió el kit, y se escribe lo que no estaba
+escrito. Del inventario solo se mueve una cifra, y es la de los sensores: **27 → 28 suites**,
+por el que vigila la capa de permisos. Siguen 11 ADRs, y el conjunto de evals sigue en
+20 tareas —10 positivas y 10 negativas— con 32 mutantes.
+
+### Security
+
+- **Los cuatro guards de Bash fallaban en abierto sin `jq`.** `block-dangerous-commands.sh`,
+  `branch-guard.sh`, `destructive-guard.sh` y `secret-guard.sh` empezaban leyendo el comando
+  con `jq -r … 2>/dev/null` y salían con `exit 0` si el resultado venía vacío. En una máquina
+  sin `jq` los cuatro salían con rc=0 y sin imprimir nada: la Capa 1 entera quedaba
+  desactivada **en silencio**, que es el peor modo de fallo para un guard, porque el usuario
+  cree que está protegido. Ahora los cuatro tienen puerta de dependencia antes de parsear, y
+  un payload ilegible deniega en vez de permitir. Se respetan los dos protocolos que ya usaba
+  el kit: JSON con `permissionDecision: "deny"` en `block-dangerous-commands.sh` —emitido con
+  `printf` cuando no hay `jq`, porque su función `deny()` lo necesita— y stderr con `exit 2`
+  en los otros tres, que es el único código que bloquea. `CC_ALLOW_DESTRUCTIVE=1` se sigue
+  honrando antes de la puerta.
+- **`install.sh` reemplazaba tu `settings.json` cuando faltaba `jq`.** `install_settings()`
+  trataba «sin `jq`» igual que «no hay fichero previo»: sobrescribía con la plantilla y dejaba
+  un backup. Combinado con el punto anterior, una instalación sin `jq` producía una config con
+  los guards inertes. Ahora `install.sh` aborta al principio, con el mensaje y las órdenes de
+  `apt`/`dnf`/`pacman`, y no deja `CLAUDE_HOME` a medias.
+- **Cinco reglas `Write(...)` de `permissions.deny` eran peso muerto.** Las comprobaciones de
+  permisos de fichero solo consultan reglas `Edit(ruta)` —que ya cubren
+  Write/MultiEdit/NotebookEdit—; `Write(ruta)` se acepta como válida y se ignora, y el binario
+  lo avisa por `stderr` en cada arranque. En `kit/claude/settings.json` las cinco tenían
+  gemela `Edit`, así que no había agujero, solo peso, y se retiran las cinco. En
+  `config/settings.template.json` y en `.claude/settings.json` sí lo había: un `ask` sobre
+  `Write(**/settings.json)` **sin gemela**, es decir una protección que no existía; pasa a
+  escribirse `Edit(**/settings.json)`, que es la forma que sí se consulta.
+- **Tres de las ocho grafías del push forzado no las paraba ningún glob.** La plantilla y
+  `.claude/settings.json` llevaban cuatro globs de `push` contra los cinco del kit: les
+  faltaban los dos de banderas cortas agrupadas, así que `git push -uf origin main` caía en el
+  kit y pasaba en la plantilla —la que el README manda copiar—. Al escribir el sensor apareció
+  un tercer hueco que **ninguno de los tres** ficheros cubría: `git push origin main -fu`,
+  agrupadas en posición final con la `f` no última. `* -*f` exige que el token acabe en `f`
+  (cubre `-uf`) y `-f* *` solo vale delante del refspec; hacía falta el espejo `* -f*`. Los
+  tres ficheros cubren ahora las ocho grafías: dos posiciones —git acepta la bandera antes y
+  después del refspec— por larga, corta suelta y agrupada en los dos órdenes. Quedan 8 globs
+  en plantilla y proyecto y 6 en el kit.
+- **El borrado de una rama remota solo estaba cubierto en su forma larga.**
+  `block-dangerous-commands.sh` denegaba `git push --delete`, pero `git push -d` y
+  `git push origin :rama` pasaban los cinco guards. Medirlo contra `main` daba cobertura
+  completa donde no la había: ahí las tres grafías caen, pero por `branch-guard.sh`, que
+  bloquea por el **nombre** de la rama; contra una rama de feature no quedaba nada. Es la
+  misma trampa que dejaba pasar `git push -uf`. Cubiertas las tres —y la agrupada `-qd`— con
+  **diez** casos `ALLOW` de contrapeso, seis de ellos escritos porque la revisión demostró por
+  ejecución que la primera versión del patrón daba falsos positivos: la valla `[^;&|]*` dejaba
+  entrar una sustitución de órdenes, un comentario y unos dos puntos entrecomillados, y
+  bloqueaba `git branch push-notifications -d`, que no borra nada remoto. Se sustituyó por una
+  lista blanca de caracteres de refspec y por exigir que `push` sea un token suelto: 21 de 21
+  casos correctos. El precio se declara en el propio hook: una bandera que llegue por
+  sustitución —`git push $FLAGS`— sigue siendo invisible, porque el guard lee el literal del
+  comando y no `argv`.
+- **El kit dejaba de firmar el consentimiento por quien lo instala.** `kit/claude/settings.json`
+  viajaba con `skipAutoPermissionPrompt: true`, y `install.sh` lo copia a `~/.claude/`: el kit
+  aceptaba de antemano, en nombre de cada persona que lo instalase, el aviso que Claude Code
+  muestra antes de conceder permisos automáticos. En un kit cuya tesis son capas que bloquean,
+  eso no puede ser el default. Se retira de los tres `settings.json` y el sensor nuevo vigila
+  que no reaparezca. Quien lo quiera, lo pone en su config; ya no viene puesto.
+- **`doctor.sh` vigilaba el fichero equivocado.** El sensor de conversación en
+  claro solo miraba `~/.headroom/logs/proxy.jsonl` y su marca `request_messages`.
+  La fuga real la escribe `compression_store` en `proxy.log`, a nivel INFO y con
+  `--log-messages` **apagado**, en forma de `payload_preview` de hasta 4096
+  caracteres: 592 líneas solo del 2026-09-03, contando las seis franjas de rotación
+  (una medición contra una sola franja había dado 100). El sensor estaba verde.
+- **La unidad generada no tapaba las credenciales en las máquinas viejas.** La
+  plantilla declara `InaccessiblePaths` desde hace tiempo, pero nada re-aplica la
+  plantilla y `doctor.sh` solo inspeccionaba `ExecStart=`. Ahora avisa, y lee
+  también `headroom-proxy.service.d/*.conf` para no dar verde falso a una máquina
+  arreglada con drop-in ni rojo falso a la que lo tiene en la unidad.
+- **`UMask=0077` y `HEADROOM_LOG_PAYLOAD_PREVIEW=0` en la unidad.** El proceso
+  heredaba `Umask 0002`, así que los logs nacían en 664 y cada rotación los
+  volvía a crear así; `chmod` solo arregla el pasado. La variable no se puede
+  cambiar en caliente: no está en `_KNOBS_BY_ENV` y el lector consulta
+  `os.environ` directo, así que `/admin/runtime-env` no la ve.
+- `chmod 700` también a `~/.headroom/logs`, que el `700` del directorio padre no
+  cubría.
+
+### Fixed
+
+- **Retirado de la documentación el hook `rtk hook claude`, que el kit ya no cablea.** La
+  1.1.0 lo quitó de `settings.json` —reescribía el ejecutable en posición de comando, así que
+  `rg` acababa ejecutando `grep`— pero seis ficheros siguieron describiéndolo en presente:
+  `kit/docs/03-headroom.md` lo daba como una de las «dos piezas» que conectan el kit con
+  Headroom y explicaba su bloque JSON; `kit/docs/08-plugins-mcp-y-skills.md` lo listaba como
+  cableado por el kit y como prerrequisito; `kit/docs/10-onboarding.md` pedía `rtk` para que
+  los hooks no quedaran en no-op; `CONTRIBUTING.md` lo usaba de ejemplo vivo de
+  `optional-hook.sh`; `THIRD-PARTY.md` lo declaraba «envuelto por `optional-hook.sh`»; y
+  `kit/doctor.sh` avisaba de que «el hook de `settings.json` queda en no-op». De `rtk` solo
+  queda `Bash(rtk *)` en `permissions.allow`: ningún hook lo invoca, así que instalarlo no
+  cambia nada y no tenerlo no deja nada a medias. Cada mención pasa a tiempo pasado, con
+  fecha y motivo, y `optional-hook.sh` se documenta por lo que sí envuelve: los hooks que
+  necesitan el intérprete del venv de tools (Sentinel, `smart_approve.py`,
+  `stale-read-guard.py` y `write-guard.py`).
+- **Tres cifras publicadas no cuadraban con el `settings.json` que se reparte.**
+  `kit/docs/05-security.md` decía que una llamada a `Bash` atraviesa siete hooks `PreToolUse`,
+  contando el de `rtk`; son 6 (Sentinel, los cuatro guards y `smart_approve.py`).
+  `kit/docs/08-plugins-mcp-y-skills.md` anunciaba ocho plugins con cinco del marketplace
+  oficial, y su tabla traía además una fila que `enabledPlugins` no declara
+  (`github@claude-plugins-official`): son 7 con 4 oficiales, y la fila se va.
+  `kit/docs/10-onboarding.md` hablaba de cinco guards donde hay cuatro. Las tres las derivan
+  ahora aserciones nuevas de `kit/test/test_doc_claims.sh` con `jq` sobre
+  `kit/claude/settings.json`, en vez de estar escritas a mano. De paso, la cifra de suites que
+  arrastraban `CONTRIBUTING.md` y `kit/docs/10-onboarding.md` se pone al día.
+- **`kit/docs/04-superpowers.md` se contradecía consigo mismo sobre los agentes.** Su primer
+  párrafo metía a los agentes en el mismo saco que superpowers y agent-browser —«el kit los
+  documenta, no los redistribuye»— y cuarenta líneas más abajo la tabla de niveles los
+  inventaría uno por uno, porque el kit **sí** los reparte en `kit/claude/agents/`. Se acota
+  la frase a lo que es de terceros y se remite a esa tabla como el inventario que es.
+- **La plantilla `kit/claude/CLAUDE.md` afirmaba en presente dos cosas que no trae el kit.**
+  Daba `agent-browser` por «instalado globalmente» y el venv de herramientas por «ya creado»
+  —cierto en la máquina del autor, falso en una instalación limpia— y remitía a «los
+  subagentes de la tabla de arriba» sin que en el fichero haya ninguna tabla. Pasan a
+  instrucción (instálalo, créalo si falta) y a la ruta real, `~/.claude/agents/`.
+- **Cerrada la deuda declarada sobre `kit/docs/07-verify.md:84`.** La 1.1.0 dejó dicho que esa
+  fila seguía describiendo la fuente del check 5 como un `jq` sobre el `settings.json` del
+  usuario cuando el propio release ya había ampliado la fuente, y que ninguna suite grepeaba
+  la expresión. La fila describe ahora lo que hace `doctor.sh`: enumera `$PWD`, `$CLAUDE_HOME`
+  y cada proyecto de `~/.claude.json`, cruza `settings.json` con `settings.local.json`, suma
+  `$ANTHROPIC_BASE_URL` del entorno y falla también si la URL se declara en más de un fichero.
+- **Dos líneas de la «Deuda declarada» de la 1.1.0 no se sostienen al re-medirlas.** La
+  primera decía que en `block-dangerous-commands.sh` «una línea en el allowlist desactiva
+  **todo** el blocklist». Medido con un `$HOME` hermético y un allowlist de una sola entrada
+  (`ufw disable`): esa cadena exacta pasa a `allow` y el resto sigue denegado, incluida la
+  misma orden con un flag (`ufw disable --force`) y `git push --force origin main`. El alcance
+  real es *una cadena exacta exenta de todas las reglas del guard* —`index($cmd)` es igualdad
+  de cadena, no un patrón—, y sigue siendo deuda por eso: exime de todas las reglas a la vez
+  cuando lo que se quería era eximir un caso. La segunda daba por cerrado el borrado de rama
+  remota con el hueco de `--delete`, y medirlo bien destapó lo contrario: la cobertura era
+  asimétrica. Contra una rama protegida caen las cuatro escrituras —`--delete`, `-d`,
+  `origin :rama` y el `push` normal— con rc=2, pero las bloquea `branch-guard.sh` por nombrar
+  la rama, no la regla de `--delete`; contra una rama de feature, la misma acción tenía dos
+  decisiones opuestas según cómo se escribiera el flag. Ya no es deuda: se cierra en esta
+  misma entrega, arriba, en `Security`.
+- **`uninstall.sh --apply` podía escribir sobre el `~/.claude.json` real.** El fichero se
+  calculaba a partir de `$HOME` literal mientras todo lo demás se derivaba de `CLAUDE_HOME`,
+  así que con `CLAUDE_HOME` apuntando a otro sitio —una prueba, una instalación paralela— el
+  desinstalador tocaba la config viva del usuario. Ahora se deriva de `CLAUDE_HOME` y se
+  propaga al plan del `--dry-run`, al mensaje final y a `scripts/backup.sh`. En una
+  instalación normal el comportamiento es idéntico.
+- **El cuarto check de `destructive-guard.sh` bloqueaba sin auditar.** `find … -delete` sobre
+  ruta amplia salía con `exit 2` pero no llamaba a `log_block`, cuando los tres checks
+  anteriores sí: el log de auditoría mentía por omisión justo en el caso más destructivo.
+
+### Documentation
+
+- **Documentada la capa de permisos que corre antes de todos los hooks.** `SECURITY.md`
+  describía la Capa 1, la Capa 2 y Sentinel, pero no las reglas `permissions.deny` de
+  `settings.json`, que evalúa Claude Code **antes** de que ningún hook vea la llamada y son
+  las que impiden que una sesión desarme sus propias barreras editándolas. Se documentan las
+  tres familias que cubren (los borrados de la raíz y de `$HOME` más el `git push --force`,
+  los dos métodos de escritura del MCP de LinkedIn, y la configuración del propio kit), su
+  complemento en el `PROTECTED_CONFIG` de Sentinel, y las dos trampas medidas hoy sobre
+  Claude Code 2.1.259: las comprobaciones de fichero **solo** consultan reglas `Edit(ruta)`
+  —una regla `Write(ruta)` se acepta como válida y se ignora, y el propio binario lo avisa por
+  `stderr` en cada arranque— y una barra inicial ancla la ruta al fichero de settings, no a la
+  raíz del filesystem, así que una ruta absoluta necesita dos: `Edit(//home/usuario/...)`. Y
+  lo que la capa **no** cubre: una regla `Edit(...)` no frena a `Bash`, así que el `sed -i`,
+  el `tee` o la redirección sobre el mismo fichero los para la Capa 1, no esta. La política,
+  en `SECURITY.md`; el detalle operativo, en `kit/docs/05-security.md`.
+- **Documentada la precedencia del allowlist de Sentinel.** `load_user_allowlist()`
+  (`kit/sentinel/sentinel_preflight.py`) prueba el `.security/sentinel-allowlist.json` del
+  directorio de trabajo antes que el de `$HOME` y se queda con el primero que exista, sin
+  unirlos: abrir una sesión dentro de un repo clonado puede sustituir tu allowlist por el suyo
+  (medido: con `paths: ["/"]` convertía en `allow` los denies de `~/.aws` y `~/.ssh`). La
+  1.1.0 lo llevaba en la deuda declarada como «abierto y sin documentar»; queda escrito como
+  el compromiso que es —un proyecto declara sus falsos positivos una vez, no persona a
+  persona— con su contrapeso en código (`ALWAYS_DENY_PATHS`, que se consulta antes y ningún
+  fichero de datos levanta). La exención sigue abierta: el seguimiento n.º 1 no se cierra.
+
+- **`AGENTS.md`: el mapa que faltaba para un agente.** Varios harness buscan las instrucciones
+  del repo por ese nombre y no existía, y `CLAUDE.md` no podía absorberlo porque vivía a **un
+  token** de su techo de 900 (`test_harness_structure.sh` mide `wc -c / 4`: bytes, no
+  caracteres, y con acentos la diferencia decide si algo cabe). No repite las reglas: mapea lo
+  que un agente no puede deducir leyendo el código. Que hay **dos** `CLAUDE.md` con propósitos
+  opuestos —el de la raíz manda en este repo; `kit/claude/CLAUDE.md` es una plantilla que se
+  instala en el `~/.claude` de otra persona—, que `kit/docs/` es referencia y `docs/` es archivo
+  de proceso, que los guards bloquean por el **literal** del comando (nombrar una ruta de
+  credenciales aunque sea para excluirla dispara Sentinel, y la salida es reformular, nunca
+  ampliar la allowlist), y que `knowledge/` es memoria no-confiable por defecto.
+- **El README dice en 30 segundos qué es esto, para quién es y para quién no.** Su «Qué hace
+  esto» vivía en la línea 225, no contestaba nunca lo segundo, y su única frase-resumen
+  viajaba URL-encoded dentro del `src` de la imagen de cabecera, invisible en texto plano. Al
+  escribirlo se midieron sus dos promesas nuevas y **una salió falsa**: «`uninstall.sh`
+  revierte» es mentira —sin flags solo simula, revertir exige `--apply`— y se corrigió antes de
+  publicarla. La otra se sostiene: `install.sh` fusiona `settings.json` con `jq`, comprobado con
+  cinco marcas propias que sobreviven a la instalación.
+- **Las tablas de `knowledge/` declaraban cinco de nueve ficheros.** Ahora están los nueve, en
+  el README con su glosa y en `CLAUDE.md` como índice: el techo de tokens no daba para ambos.
+
+- **El fichero MIT pasa a llamarse `LICENSE`, y la CC BY a `LICENSE-DOCS`.** Medido, no
+  supuesto: `gh repo view --json licenseInfo` devolvía **`null`** y la barra lateral de GitHub
+  no anunciaba licencia alguna. GitHub deduce la licencia del fichero llamado `LICENSE`
+  exactamente, y ahí vivía la CC BY 4.0 con un preámbulo propio que su detector no reconoce,
+  así que el MIT que cubre `kit/` era invisible. Un repo que aparenta no tener licencia se lee
+  como *todos los derechos reservados*, que es lo contrario de lo que este repo quiere. El
+  reparto de fondo no cambia —software MIT, charlas CC BY 4.0—, solo qué fichero lleva cada
+  nombre; se actualizaron las cuatro referencias cruzadas (los dos preámbulos, la tabla del
+  README y `THIRD-PARTY.md`) y el README explica ahora por qué el nombre importa, para que
+  nadie lo «arregle» de vuelta.
+
+### Testing
+
+- **Un sensor que mantiene honesto a `AGENTS.md`.** El valor entero de ese fichero está en su
+  tabla de rutas, así que una ruta muerta no es un detalle de estilo: manda al agente a leer
+  nada y le hace creer que ya lo leyó. El check vive en `test_doc_claims.sh` —que ya es el
+  guardián de las afirmaciones— en vez de en una suite nueva, que habría cambiado el recuento
+  declarado en tres documentos; comprueba las rutas que el mapa cita y trae su propia
+  falsabilidad. Verificado contra el fichero **real**, no solo con un fixture: inyectando una
+  ruta inexistente la suite sale rc=1, y al restaurarla vuelve a verde.
+- **Doce hallazgos `SC2016` que tumbaban la CI, declarados uno a uno.** El job de `shellcheck`
+  corre con severidad por defecto, así que un `note` lo tumba igual que un error. Los doce
+  (medidos: 10 en `test_doc_claims.sh`, 2 en `test_guards.sh`) son casos donde las comillas
+  simples **son** el punto: el payload debe llegar literal al guard, o el patrón buscar
+  backticks de markdown, o el test deja de medir lo que dice medir. Se declaran con once
+  directivas por línea, cada una con su motivo, en vez de una exención de fichero: así un
+  `SC2016` futuro que sí sea un error no queda tapado. Colocarlas mal cuesta más que el
+  hallazgo — una entre un `done` y su heredoc rompió el parseo del fichero entero (`SC1123`
+  más `SC1009`/`SC1073`/`SC1072`): la directiva precede al **comando compuesto completo**.
+
+- **Siete aserciones nuevas en `kit/test/test_doc_claims.sh`.** Seis comprobaciones derivadas
+  del árbol en vez de escritas a mano: la longitud de la cadena `PreToolUse` sobre `Bash` que
+  publica `kit/docs/05-security.md`, el total de `enabledPlugins`, cuántos son del marketplace
+  oficial, que ningún plugin nombrado en la doc falte de `enabledPlugins` (así se cazó la fila
+  fantasma), el número de guards que citan dos documentos, y que ningún hook del kit cablee
+  `rtk hook claude` ni ninguna línea del árbol versionado lo afirme en presente —las menciones
+  históricas tienen que ir marcadas como tales—. La séptima es su sonda de falsabilidad:
+  deforma copias del `settings.json` y de los documentos con las siete averías que esas
+  comprobaciones persiguen —la cadena con otra cifra y sin cifra, un hook de más, el plugin
+  fantasma, el plugin retirado del settings, la frase de `rtk` en presente— y exige que se
+  queje de todas, más un contrapeso en pasado que debe aprobar. La suite pasa de 31 a 44
+  aserciones sin aflojar ninguna de las anteriores.
+
+- **Sensor nuevo para la capa de permisos: `kit/test/test_permisos_efectivos.sh`.** Ata las
+  tres cosas que la auditoría encontró sueltas, sobre los tres `settings.json` que el repo
+  publica: que ninguna regla `Write(...)` viva sin su gemela `Edit(...)` —o la protección no
+  existe—, que no reaparezca `skipAutoPermissionPrompt`, y que **alguna** regla `deny` empareje
+  cada una de las ocho grafías del push forzado. Esta tercera nació contando reglas —«que la
+  plantilla no tenga menos globs que el kit»— y así se quedaba verde con cinco reglas de las
+  que ninguna paraba `-uf`: un check que mide un literal en vez del comportamiento. Ahora
+  empareja de verdad, con el glob de bash sobre el comando, y por eso encontró el hueco de
+  `-fu` que arriba se cierra. Trae sus tres casos fabricados para demostrar que distingue el
+  par bien formado del huérfano; el del tercer check quita los dos globs de banderas agrupadas
+  y exige rojo en `-uf` y verde en `-f`, o sería el sensor que reemplazó. Probada en rojo dos
+  veces: mutando la plantilla al glob equivocado —`-f*` por `-*f`, **mismo número de reglas**,
+  el defecto que de verdad hubo— da 2 failed y `rc=1`, donde el recuento habría aprobado; y
+  escondiendo `config/settings.template.json`, 24 passed / 3 failed y `rc=1`. Los tres ficheros
+  son invariantes del repo, así que su ausencia **falla** en vez de pasar por vacío: un sensor
+  que aprueba cuando no encuentra su entrada es un sensor inerte. 34 aserciones.
+- **Los sensores de los cuatro arreglos, todos probados en rojo antes que en verde.**
+  `test_clean_install_resilience.sh` cambia un recuento ciego de reglas `deny` por un conjunto
+  comprobado entrada por entrada, y añade el caso que faltaba: un `PATH` sin `jq` donde los
+  cuatro guards tienen que denegar un comando inocente y el instalador tiene que abortar sin
+  dejar `CLAUDE_HOME` a medias (12 → 24 aserciones). `test_install_settings_merge.sh` reescribe
+  el caso de «sin `jq`» al comportamiento nuevo: aborta, tu `settings.json` queda intacto y no
+  hay backup (23 → 25). `test_guards.sh` cubre el bloqueo auditado del cuarto check y las
+  cuatro grafías del borrado remoto con sus diez contrapesos `ALLOW` (49 → 65); contra el
+  guard anterior, cuatro de esos casos pasaban, y seis de los `ALLOW` son falsos positivos que
+  la revisión encontró en la primera versión del patrón. `test_uninstall.sh` estrena un caso
+  con `HOME` y `CLAUDE_HOME` distintos, la única forma de ver el defecto (16 → 18).
+- **CI: lo que se medía a medias.** `shellcheck -x` pasa de 42 a 50 ficheros, porque la lista
+  se saca de `git ls-files` en vez de escribirse a mano. Se añade `compileall` sobre los 13
+  `.py` versionados: un `SyntaxError` en un hook sale con `exit 1`, y como solo `exit 2`
+  bloquea, un guard roto era un no-op silencioso. Se comprueba que el pin de `gitleaks`
+  —versión y sha256— coincide con el de `kit/install.sh`, y se retira el escaneo redundante.
+  `concurrency` cancela ejecuciones solapadas fuera de `main`. Los tres nombres de job se
+  conservan byte a byte: son los contextos que exige la protección de rama, y renombrarlos la
+  rompería en silencio.
 
 ## [1.1.0] - 2026-09-02
 
@@ -1020,5 +1365,7 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/manuelcozar55/setup-claude-code/releases/tag/v1.0.0

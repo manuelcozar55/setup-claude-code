@@ -240,6 +240,12 @@ if command -v gitleaks >/dev/null 2>&1; then
   ck "$gl_rc" "0" "gitleaks dir -c kit/claude/.gitleaks.toml sobre el repo completo sin hallazgos"
   [ "$gl_rc" -ne 0 ] && echo "$gl_out"
 else
+  # En CI la degradacion no vale: el paso que instala gitleaks corre antes en el mismo job, asi
+  # que si aqui falta es que alguien lo movio o lo borro -- y un grep de tres patrones no es el
+  # escaneo por contenido que este check promete. Fuera de CI si degrada (ver el else de abajo).
+  if [ "${CI:-}" = "true" ]; then
+    ck "n" "y" "gitleaks disponible en CI (sin el, el escaneo por contenido del repo se degrada en silencio)"
+  fi
   echo "  gitleaks no instalado: degradando a grep de patrones basico (no falla la suite por ausencia de la herramienta, ver test_install_gitleaks.sh)"
   set +e
   grep -rInE 'sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY' --exclude-dir=.git "$REPO" >/dev/null 2>&1

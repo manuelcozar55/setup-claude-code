@@ -24,8 +24,12 @@
       "Bash(rm -rf /)",
       "Bash(git push --force *)",
       "Bash(git push -f *)",
+      "Bash(git push -f* *)",
+      "Bash(git push -*f *)",
       "Bash(git push * --force)",
       "Bash(git push * -f)",
+      "Bash(git push * -f*)",
+      "Bash(git push * -*f)",
       "Bash(curl * | bash)",
       "Bash(curl * | sh)",
       "Bash(wget * | bash)",
@@ -41,7 +45,7 @@
       "Bash(git push *)",
       "Bash(gh pr merge *)",
       "Bash(gh release *)",
-      "Write(**/settings.json)"
+      "Edit(**/settings.json)"
     ]
   },
   "hooks": {

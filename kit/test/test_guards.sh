@@ -95,6 +95,37 @@ expect "branch-guard: master tras cd + && denegado" "$(run_branchguard 'cd /tmp 
 expect "branch-guard: -C antes de push a main denegado" "$(run_branchguard 'git -C /home/user/repo push origin main')" BLOCK
 expect "branch-guard: rama de feature NO denegada"  "$(run_branchguard 'git push origin feature/x')"             ALLOW
 
+# Las TRES grafias del borrado de una rama remota. Solo `--delete` estaba cubierta: contra rama
+# protegida las otras dos tambien caian, pero por branch-guard.sh (que bloquea por el nombre de
+# la rama), asi que medir solo contra `main` daba cobertura completa donde no la habia. Contra
+# una rama de feature, `-d` y `:rama` pasaban los cinco guards. Los cuatro ALLOW son el
+# contrapeso de los dos patrones nuevos: una d en flags cortos agrupados no puede bloquear
+# `--dry-run` ni `-v`, y un dos puntos no puede bloquear un refspec normal.
+expect "guard: -d de rama remota denegado"        "$(run_blockdc 'git push -d origin feature-x')"                BLOCK
+expect "guard: -qd agrupado denegado"             "$(run_blockdc 'git push -qd origin feature-x')"               BLOCK
+expect "guard: :rama (refspec vacio) denegado"    "$(run_blockdc 'git push origin :feature-x')"                  BLOCK
+expect "guard: --dry-run NO denegado"             "$(run_blockdc 'git push --dry-run origin feature-x')"         ALLOW
+expect "guard: --set-upstream NO denegado"        "$(run_blockdc 'git push --set-upstream origin mi-dev-branch')" ALLOW
+expect "guard: refspec HEAD:refs/ NO denegado"    "$(run_blockdc 'git push origin HEAD:refs/heads/feature-x')"   ALLOW
+expect "guard: rama llamada desarrollo NO denegada" "$(run_blockdc 'git push origin desarrollo')"                ALLOW
+# Falsos positivos medidos de la primera version de esos dos patrones, cuando la valla era la
+# misma de las reglas de force (`[^;&|]*`). Los seis se denegaban. Se conservan como sensor
+# porque `d` es una letra de flag frecuente y `:` aparece en cualquier refspec: si alguien
+# vuelve a ensanchar la valla, estos casos lo dicen. (Comillas simples, no dobles: run_blockdc
+# interpola en crudo dentro del JSON y unas dobles harian denegar por payload ilegible.)
+# shellcheck disable=SC2016  # las comillas simples son el punto: estos payloads llevan
+# $(...) y backticks LITERALES porque lo que se prueba es que el guard no los expanda.
+expect "guard: substitucion con -d tras 'push' NO denegada"  "$(run_blockdc 'git log --grep push --since=$(date -d yesterday +%F)')" ALLOW
+expect "guard: rama push-notifications con -d NO denegada"   "$(run_blockdc 'git branch push-notifications -d')"                    ALLOW
+expect "guard: ruta ../push-wt con -d NO denegada"           "$(run_blockdc 'git worktree add ../push-wt -d')"                      ALLOW
+# shellcheck disable=SC2016  # idem: el $(...) va literal a proposito.
+expect "guard: push con -o y substitucion NO denegado"       "$(run_blockdc 'git push origin main -o msg=$(date -d yesterday +%F)')" ALLOW
+expect "guard: dos puntos en un comentario NO denegado"      "$(run_blockdc 'git push origin main # nota :importante')"             ALLOW
+expect "guard: dos puntos entre comillas NO denegado"        "$(run_blockdc "git commit -m 'fix push :bug' && git push")"           ALLOW
+# Y que acotar la valla no haya reabierto el encadenado, que es lo que la version amplia si cubria.
+expect "guard: -d tras cd && sigue denegado"                 "$(run_blockdc 'cd /tmp && git push -d origin feature-x')"             BLOCK
+expect "guard: :rama tras ; sigue denegado"                  "$(run_blockdc 'echo ok; git push origin :feature-x')"                 BLOCK
+
 # Borrado recursivo en forma larga: `rm --recursive --force ruta` no lleva ninguna r ni f
 # agrupada tras un guion, y `find /home/... -delete` no emparejaba el patron de find (que
 # exigia un separador justo tras / ~ ..). Las dos capas fallaban por separado, asi que se
@@ -105,6 +136,20 @@ expect "guard: rm -r sin forzar NO denegado"      "$(run_blockdc 'rm -r node_mod
 expect "destructive: rm forma larga en /home denegado" "$(run_destructive 'rm --recursive --force /home/usuario/docs')" BLOCK
 expect "destructive: find -delete bajo /home denegado" "$(run_destructive 'find /home/usuario/docs -delete')"    BLOCK
 expect "destructive: find -delete en /tmp NO denegado" "$(run_destructive 'find /tmp/build -delete')"            ALLOW
+
+# El check 4 (find -delete) bloqueaba con exit 2 pero era el unico que no llamaba a
+# log_block: el bloqueo ocurria y no quedaba registrado, asi que el log de auditoria daba
+# una imagen falsa de lo que el guard habia hecho. Se mide el REGISTRO, no solo el bloqueo,
+# y en un log propio: sobre el log compartido este assert pasaria por la linea que deja
+# cualquier otro check.
+FIND_LOG="$GUARDS_TEST_HOME/find-delete.log"
+printf '{"tool_name":"Bash","tool_input":{"command":"find /home/usuario/docs -delete"}}' \
+  | CC_BLOCK_LOG="$FIND_LOG" bash "$KIT/claude/hooks/destructive-guard.sh" >/dev/null 2>&1
+if grep -q 'BLOCKED: find -delete' "$FIND_LOG" 2>/dev/null; then
+  pass=$((pass+1))
+else
+  fail=$((fail+1)); echo "FAIL: destructive: el bloqueo de find -delete queda en el log de auditoria"
+fi
 
 # Las 43 reglas del guard se evaluaban con 43 `echo | grep` (58 ms por llamada, medido);
 # ahora la union de todos los patrones se prueba con UN grep y el desglose regla a regla
@@ -338,6 +383,10 @@ PL_NO_BASH='{"tool_name":"Read","tool_input":{"file_path":"/etc/hosts"}}'
 
 g_rc()  { printf '%s' "$2" | env PATH="$3" HOME="$GUARD_HOME" CC_BLOCK_LOG="$GUARD_HOME/b.log" \
             bash "$KIT/claude/hooks/$1" >/dev/null 2>&1; echo $?; }
+# shellcheck disable=SC2069 # el orden es el correcto A PROPOSITO: g_err quiere SOLO stderr,
+# y para eso 2>&1 tiene que ir ANTES de mandar stdout a /dev/null. Con el orden que sugiere
+# SC2069 esta funcion devolveria las dos corrientes mezcladas y las aserciones sobre el
+# mensaje del guard aprobarian tambien cuando el texto saliera por stdout.
 g_err() { printf '%s' "$2" | env PATH="$3" HOME="$GUARD_HOME" CC_BLOCK_LOG="$GUARD_HOME/b.log" \
             bash "$KIT/claude/hooks/$1" 2>&1 >/dev/null; }
 g_out() { printf '%s' "$2" | env PATH="$3" HOME="$GUARD_HOME" CC_BLOCK_LOG="$GUARD_HOME/b.log" \

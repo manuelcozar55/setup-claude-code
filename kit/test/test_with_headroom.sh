@@ -66,6 +66,15 @@ if [ -f "$UNIT" ]; then
     ko "StartLimitIntervalSec=0 debe estar en la seccion [Unit], no en [Service]"
   fi
   want "la unidad debe reintentar (Restart=always)" grep -q 'Restart=always' "$UNIT"
+  # Higiene del log. El default de Headroom es ESCRIBIR hasta 4096 chars de
+  # conversacion literal en proxy.log por cada event=headroom_retrieve
+  # (_payload_preview_enabled devuelve True cuando la variable NO esta puesta), y el
+  # proceso hereda Umask 0002, que hace nacer los logs en 664. Ninguna de las dos se
+  # puede cambiar en caliente, asi que la unidad es el unico sitio donde ponerlas.
+  want "la unidad debe fijar HEADROOM_LOG_PAYLOAD_PREVIEW=0 (el default escribe conversacion en proxy.log)" \
+    grep -qx 'Environment=HEADROOM_LOG_PAYLOAD_PREVIEW=0' "$UNIT"
+  want "la unidad debe fijar UMask=0077 (el proceso hereda 0002 y los logs nacen en 664)" \
+    grep -qx 'UMask=0077' "$UNIT"
 fi
 
 # --- caso D: idempotente ---------------------------------------------------

@@ -98,7 +98,15 @@ if [[ "$HK_RC" -ne 0 ]]; then hk_ciego "secret-guard.sh" "$HK_RC"; fi
 
 # Anchored to (^|[;&|(]) so "cd x && git add key" and "(git add key)" don't
 # evade the guard — a bare "^" only catches git add at the very start.
-echo "$COMMAND" | grep -qE '(^|[;&|(])\s*git\s+add' || exit 0
+# rc=1 is "not a git add" and we exit; rc>=2 is "the regex did not compile", which `|| exit 0`
+# turned into a silent allow. Keep them apart: a broken filter must deny, not fall through.
+echo "$COMMAND" | grep -qE '(^|[;&|(])\s*git\s+add'
+rc_filter=$?
+if [ "$rc_filter" -ge 2 ]; then
+  echo "BLOCKED: secret-guard cannot evaluate the command (grep rc=$rc_filter)." >&2
+  exit 2
+fi
+[ "$rc_filter" -eq 0 ] || exit 0
 
 # Block .env files (allow known-safe template variants: .env.example, .env.template, .env.sample, .env.dist)
 if echo "$COMMAND" | grep -qiE 'git\s+add\s+.*\.env' && \

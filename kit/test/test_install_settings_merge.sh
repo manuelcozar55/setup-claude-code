@@ -9,8 +9,8 @@
 # la garantia se quedo casi sin sensor: lo unico que la vigilaba era una linea de test_install.sh
 # (`.statusLine.command` sobrevive). Fuera de esa clave y de ese camino no habia nada, asi que
 # el proximo refactor la rompe igual de callado. Aqui se mide el resto: el objeto entero, las
-# claves que el kit no conoce, los dos caminos degradados (JSON invalido y sin jq), la
-# idempotencia y el modo del fichero.
+# claves que el kit no conoce, el camino degradado (JSON invalido), la puerta que aborta sin
+# jq sin tocar tu fichero, la idempotencia y el modo del fichero.
 #
 # El contrato que se fija aqui, clave por clave (kit/install.sh, install_settings):
 #   statusLine y cualquier otra clave que el kit no conozca -> TUYAS, intactas
