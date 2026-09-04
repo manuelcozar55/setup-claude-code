@@ -183,7 +183,44 @@ por el que vigila la capa de permisos. Siguen 11 ADRs, y el conjunto de evals si
   persona— con su contrapeso en código (`ALWAYS_DENY_PATHS`, que se consulta antes y ningún
   fichero de datos levanta). La exención sigue abierta: el seguimiento n.º 1 no se cierra.
 
+- **`AGENTS.md`: el mapa que faltaba para un agente.** Varios harness buscan las instrucciones
+  del repo por ese nombre y no existía, y `CLAUDE.md` no podía absorberlo porque vivía a **un
+  token** de su techo de 900 (`test_harness_structure.sh` mide `wc -c / 4`: bytes, no
+  caracteres, y con acentos la diferencia decide si algo cabe). No repite las reglas: mapea lo
+  que un agente no puede deducir leyendo el código. Que hay **dos** `CLAUDE.md` con propósitos
+  opuestos —el de la raíz manda en este repo; `kit/claude/CLAUDE.md` es una plantilla que se
+  instala en el `~/.claude` de otra persona—, que `kit/docs/` es referencia y `docs/` es archivo
+  de proceso, que los guards bloquean por el **literal** del comando (nombrar una ruta de
+  credenciales aunque sea para excluirla dispara Sentinel, y la salida es reformular, nunca
+  ampliar la allowlist), y que `knowledge/` es memoria no-confiable por defecto.
+- **El README dice en 30 segundos qué es esto, para quién es y para quién no.** Su «Qué hace
+  esto» vivía en la línea 225, no contestaba nunca lo segundo, y su única frase-resumen
+  viajaba URL-encoded dentro del `src` de la imagen de cabecera, invisible en texto plano. Al
+  escribirlo se midieron sus dos promesas nuevas y **una salió falsa**: «`uninstall.sh`
+  revierte» es mentira —sin flags solo simula, revertir exige `--apply`— y se corrigió antes de
+  publicarla. La otra se sostiene: `install.sh` fusiona `settings.json` con `jq`, comprobado con
+  cinco marcas propias que sobreviven a la instalación.
+- **Las tablas de `knowledge/` declaraban cinco de nueve ficheros.** Ahora están los nueve, en
+  el README con su glosa y en `CLAUDE.md` como índice: el techo de tokens no daba para ambos.
+
 ### Testing
+
+- **Un sensor que mantiene honesto a `AGENTS.md`.** El valor entero de ese fichero está en su
+  tabla de rutas, así que una ruta muerta no es un detalle de estilo: manda al agente a leer
+  nada y le hace creer que ya lo leyó. El check vive en `test_doc_claims.sh` —que ya es el
+  guardián de las afirmaciones— en vez de en una suite nueva, que habría cambiado el recuento
+  declarado en tres documentos; comprueba las rutas que el mapa cita y trae su propia
+  falsabilidad. Verificado contra el fichero **real**, no solo con un fixture: inyectando una
+  ruta inexistente la suite sale rc=1, y al restaurarla vuelve a verde.
+- **Doce hallazgos `SC2016` que tumbaban la CI, declarados uno a uno.** El job de `shellcheck`
+  corre con severidad por defecto, así que un `note` lo tumba igual que un error. Los doce
+  (medidos: 10 en `test_doc_claims.sh`, 2 en `test_guards.sh`) son casos donde las comillas
+  simples **son** el punto: el payload debe llegar literal al guard, o el patrón buscar
+  backticks de markdown, o el test deja de medir lo que dice medir. Se declaran con once
+  directivas por línea, cada una con su motivo, en vez de una exención de fichero: así un
+  `SC2016` futuro que sí sea un error no queda tapado. Colocarlas mal cuesta más que el
+  hallazgo — una entre un `done` y su heredoc rompió el parseo del fichero entero (`SC1123`
+  más `SC1009`/`SC1073`/`SC1072`): la directiva precede al **comando compuesto completo**.
 
 - **Siete aserciones nuevas en `kit/test/test_doc_claims.sh`.** Seis comprobaciones derivadas
   del árbol en vez de escritas a mano: la longitud de la cadena `PreToolUse` sobre `Bash` que

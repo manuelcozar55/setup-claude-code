@@ -3,6 +3,11 @@
 Gracias por el interés. Esto es sobre todo un kit personal que se comparte en
 abierto, pero las contribuciones (issues, PRs, correcciones) son bienvenidas.
 
+**Si quien contribuye es un agente**, el punto de entrada es [`AGENTS.md`](AGENTS.md): el mapa
+del repo —qué es cada árbol de documentación, y las cuatro cosas que no se pueden deducir
+leyendo el código— con `CLAUDE.md` como reglas vinculantes. Un humano puede leerlo también; es
+la ruta corta.
+
 ## Montar el entorno
 
 No hace falta nada exótico: `bash`, `git`, `python3`, `jq`. Para la Capa 2 de

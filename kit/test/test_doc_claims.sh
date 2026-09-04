@@ -19,7 +19,7 @@ cd "$(dirname "$0")/../.." || exit 1
 pass=0; fail=0; skipped=0
 
 # knowledge/PRE-MORTEM.md tampoco entra: es el mismo genero que los ADR, una foto fechada.
-DOCS=(README.md CLAUDE.md CONTRIBUTING.md kit/README.md kit/evals/README.md
+DOCS=(README.md AGENTS.md CLAUDE.md CONTRIBUTING.md kit/README.md kit/evals/README.md
       knowledge/ORACLES.md knowledge/PROCEDURES.md kit/docs/*.md)
 # Fuera de DOCS a proposito (el porque, en la seccion 4), pero sus filas nombran el
 # sensor de cada afirmacion, y esos nombres si son comprobables: citar un script que
@@ -1519,6 +1519,58 @@ else
   fail=$((fail+1))
 fi
 rm -f "$NUTMP"/*; rmdir "$NUTMP"
+
+# --- AGENTS.md: el mapa no puede citar rutas que no existen -----------------
+# POR QUE: AGENTS.md es lo primero que lee un agente en varios harness, y su valor
+# entero esta en la tabla de rutas. Una ruta que ya no existe no solo manda al agente
+# a leer nada: le hace creer que ya lo ha leido. Se comprueban los tokens entre
+# backticks que parecen rutas del repo -- se excluyen los que empiezan por '~', '/',
+# '$' o '.' (entorno del usuario, absolutas y extensiones sueltas como `.sh`), los que
+# llevan espacios (`make test`) y los que llevan glob.
+if [ -f AGENTS.md ]; then
+  am_malas=0
+  am_total=0
+  # shellcheck disable=SC2016  # el patron busca backticks LITERALES en AGENTS.md: con
+  # comillas dobles la shell intentaria ejecutar lo que hubiera entre ellos.
+  while read -r ruta; do
+    [ -n "$ruta" ] || continue
+    am_total=$((am_total+1))
+    if [ ! -e "$ruta" ]; then
+      echo "     AGENTS.md cita una ruta que no existe: $ruta"
+      am_malas=$((am_malas+1))
+    fi
+  done <<AM
+$(grep -oE '`[^`]+`' AGENTS.md | tr -d '`' \
+  | grep -vE '^[~/$.]|[*[:space:]]' \
+  | grep -E '/|\.md$' | sort -u)
+AM
+  if [ "$am_malas" -eq 0 ]; then
+    echo "ok - las $am_total rutas que cita AGENTS.md existen todas"; pass=$((pass+1))
+  else
+    echo "NOT ok - AGENTS.md cita $am_malas rutas inexistentes de $am_total"; fail=$((fail+1))
+  fi
+
+  # Falsabilidad del sensor de arriba: si una ruta inventada NO lo pusiera en rojo,
+  # el sensor no estaria mirando nada.
+  AMTMP=$(mktemp -d)
+  # shellcheck disable=SC2016  # idem: el fixture y su patron llevan backticks literales.
+  printf 'cita `kit/no/existe/jamas.md` y nada mas\n' > "$AMTMP/AGENTS.md"
+  # shellcheck disable=SC2016  # idem: backticks literales en el patron del fixture.
+  am_fake=$( (cd "$AMTMP" && grep -oE '`[^`]+`' AGENTS.md | tr -d '`' \
+    | grep -vE '^[~/$.]|[*[:space:]]' | grep -E '/|\.md$' \
+    | while read -r r; do [ -e "$r" ] || echo malo; done | wc -l) )
+  if [ "$am_fake" -eq 1 ]; then
+    echo "ok - el sensor de rutas de AGENTS.md detecta una ruta inventada (falsable)"
+    pass=$((pass+1))
+  else
+    echo "NOT ok - una ruta inventada no puso en rojo el sensor de AGENTS.md (tautologia)"
+    fail=$((fail+1))
+  fi
+  rm -f "$AMTMP"/*; rmdir "$AMTMP"
+else
+  echo "NOT ok - AGENTS.md no existe: el mapa que los harness buscan por ese nombre falta"
+  fail=$((fail+1))
+fi
 
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="

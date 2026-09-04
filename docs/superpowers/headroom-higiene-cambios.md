@@ -377,6 +377,55 @@ Trabajo de repo: rama `harden/headroom-higiene-y-drift`, sin `push`. Rollback
 de repo = no fusionar la rama (o `git revert` de los commits, si ya se
 hubiera fusionado, que no es el caso).
 
+### Cierre de reparto — que el repo lo entienda una persona y un agente
+
+**Qué.** Cuatro entregas sobre la rama `docs/repo-compartible`, más el arreglo
+de CI que arrastró: `AGENTS.md` como mapa (con un sensor en
+`test_doc_claims.sh` que falla si cita una ruta muerta), un TL;DR de 30
+segundos al principio del README con las tablas de `knowledge/` completas,
+el anuncio en `CHANGELOG.md` `[Unreleased]`, y dos punteros de claridad —la
+glosa de `AUDIT-CLAUDE-MD.md` dice ahora para qué sirve, y `CONTRIBUTING.md`
+manda a un agente a `AGENTS.md`.
+
+**Por qué `AGENTS.md` es un fichero y no un párrafo.** `CLAUDE.md` en
+`origin/main` medía **899 aprox-tokens con el techo en 900**: un token de
+margen. Y el techo se mide en **bytes** (`test_harness_structure.sh:164` hace
+`wc -c / 4`), no en caracteres — medirlo con `len(str)//4` en Python daba 891
+frente a 908 y por eso el primer intento se pasó del límite. Estado tras la
+entrega: 898.
+
+**Lo que salió falso al medirlo.** Dos afirmaciones nuevas del README se
+comprobaron antes de publicarlas y **una era mentira**: «`uninstall.sh`
+revierte». Sin flags solo simula (`MODE="dry-run"`, `uninstall.sh:55`);
+revertir exige `--apply`. Corregida antes del commit. La otra se sostiene:
+`install.sh` fusiona `settings.json` con `jq` —cinco marcas propias
+(`statusLine`, `theme`, dos claves de `env`, una regla `permissions.deny`)
+sobreviven a una instalación de prueba, `rc=0` y con backup.
+
+**Cómo se verificó.** `make test` rc=0, 92 aserciones, 0 `NOT ok`;
+`shellcheck -x` rc=0 sobre los 50 `.sh` versionados; `gitleaks` con
+`-c kit/claude/.gitleaks.toml` sobre 304 commits, sin hallazgos; 43 enlaces
+relativos de `README.md`/`AGENTS.md`/`CLAUDE.md` comprobados, 0 muertos; y la
+CI verde en los **tres** PRs (#20, #21, #22) en sus tres jobs, incluido el
+smoke test que instala en un Debian limpio con usuario no root — que es la
+única prueba de que esto lo instala alguien de fuera.
+
+**El hallazgo de CI, con su cifra corregida.** El job de `shellcheck` corre a
+severidad por defecto, así que un `note` lo tumba igual que un error. La
+primera lectura contó **seis** `SC2016`; la medición —retirar las once
+directivas del árbol y volver a pasar `shellcheck 0.11.0`— da **doce**: 10 en
+`test_doc_claims.sh` y 2 en `test_guards.sh`. Once directivas por línea tapan
+doce hallazgos porque una línea puede llevar dos ocurrencias. Colocar una mal
+cuesta más que el hallazgo: entre un `done` y su heredoc rompió el parseo del
+fichero entero (`SC1123` más `SC1009`/`SC1073`/`SC1072`).
+
+**Corrección a un no-objetivo de más abajo.** El spec declaraba que el arreglo
+jq-merge del kit «todavía no está commiteado»; hoy `origin/main` ya trae
+`install_settings()` con el merge de `jq`, y lo que aporta la rama de P0 es la
+**puerta de dependencia** que sale con `rc=1` si falta `jq` en vez de
+reemplazar el fichero. El no-objetivo se deja citado tal cual porque es una
+cita del spec.
+
 ## Fuera de alcance
 
 Repetidos aquí los no-objetivos declarados en el spec (`20f5f26`, §5), sin
