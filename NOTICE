@@ -1,0 +1,26 @@
+Avisos que acompañan a la licencia
+==================================
+
+Este fichero existe porque `LICENSE` no puede contenerlo. El detector de
+licencias de GitHub compara el contenido de `LICENSE` con las plantillas
+conocidas, y cualquier prosa añadida —aunque sea esta— hace que el repositorio
+se anuncie como "Other" en vez de MIT. `LICENSE` es por tanto el texto MIT
+literal, y las precisiones viven aquí.
+
+Alcance
+-------
+
+La licencia MIT de `LICENSE` cubre el SOFTWARE de este repositorio — todo lo que
+vive bajo `kit/` (scripts, hooks, guards, tests, evals, plantillas de
+configuración) y los scripts de `.github/`. La documentación de las charlas (los
+decks "agentes-fundamentos" y "setup-claude-code-definitiva", sus guiones y
+diagramas originales) se distribuye por separado bajo CC BY 4.0: ver
+`LICENSE-DOCS`.
+
+Terceros
+--------
+
+Partes de este software derivan de proyectos de terceros con sus propios avisos
+de copyright, que se reproducen en `THIRD-PARTY.md`. Ese fichero forma parte de
+las condiciones de la licencia MIT de `LICENSE`: la propia MIT exige conservar
+el aviso de copyright y el de permiso de aquello de lo que se deriva.

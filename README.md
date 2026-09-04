@@ -408,6 +408,12 @@ anunciaba ninguna. Para quien evalúa si puede usar el kit, «sin licencia» se 
 los derechos reservados. El artefacto principal de este repo es software: su licencia es la
 que debe salir a la vista.
 
+Y por eso **`LICENSE` es el texto MIT literal, sin una línea de más**: renombrarlo no bastó
+—medido, la API pasó de `license: null` a `Other`, porque encontraba el fichero y no
+reconocía su contenido—. El detector compara el fichero con la plantilla y el preámbulo que
+llevaba (alcance y terceros, nueve líneas) lo alejaba lo suficiente. Esas precisiones no se
+han perdido: están en [`NOTICE`](NOTICE), que es donde no estorban.
+
 Parte del software deriva de proyectos de terceros. Sus avisos de copyright, y un
 punto de procedencia que sigue sin resolver, están en
 [`THIRD-PARTY.md`](THIRD-PARTY.md).

@@ -43,6 +43,11 @@ CLAIM_SIN_CIFRA=
 # claim_flojo: lo mismo, pero sin exigir haber juzgado nada. Solo para las afirmaciones
 # que hoy no aparecen escritas con cifra en ningun documento; el motivo, en su llamada.
 claim_flojo() { CLAIM_SIN_CIFRA=1; claim "$@"; CLAIM_SIN_CIFRA=; }
+# claim_omiso: estricto con las cifras que estan, pero si no hay ninguna lo dice como
+# 'skip' en vez de aprobar. Es para el material donde una afirmacion puede legitimamente
+# no escribirse -[Unreleased] recien etiquetada, por ejemplo-: ahi un 'ok' seria un verde
+# mudo y un fallo seria enrojecer un fichero correcto. El skip se ve en el resumen.
+claim_omiso() { CLAIM_SIN_CIFRA=skip; claim "$@"; CLAIM_SIN_CIFRA=; }
 claim() {
   local real="$1" noun="$2"; shift 2
   local bad="" w f hit rest n vistas=0; w=$(word_for "$real")
@@ -70,6 +75,11 @@ claim() {
   if [ -n "$bad" ]; then
     echo "NOT ok - '$noun': el repo tiene $real y la doc dice otra cosa:$bad"
     fail=$((fail+1))
+  elif [ "$vistas" -eq 0 ] && [ "$CLAIM_SIN_CIFRA" = skip ]; then
+    # Ni 'ok' ni rojo: la afirmacion no esta escrita, y quien lea el resumen tiene que
+    # verlo. Un 'ok' aqui es el verde mudo que el caso de abajo existe para evitar.
+    echo "skip - '$noun': $* no escribe ninguna cifra delante; no se ha comprobado"
+    skipped=$((skipped+1))
   elif [ "$vistas" -eq 0 ] && [ -z "$CLAIM_SIN_CIFRA" ]; then
     # Sin esto un `claim` cuya frase se reescribe deja de encajar y sigue diciendo
     # 'ok' habiendo juzgado cero cifras: el sensor de un solo lado, que sabe
@@ -143,8 +153,16 @@ awk '/^## \[Unreleased\]/ {on=1} /^## \[[0-9]/ {on=0} {print (on ? $0 : "")}' \
 # Recien etiquetada una version, [Unreleased] se queda VACIA a proposito: es el paso 4
 # del procedimiento de release (CONTRIBUTING.md). Exigirle cifras entonces seria
 # enrojecer un fichero correcto, asi que se declara 'skip' y se ve en el resumen. Lo
-# que NO se hace es aflojar los claim de abajo a claim_flojo: mientras la seccion tenga
-# contenido, un claim que no juzgue ninguna cifra es un 'ok' que no mide.
+# que NO se hace es aflojar los claim de abajo a claim_flojo, que dice 'ok' habiendo
+# juzgado cero cifras.
+#
+# Que la seccion tenga contenido tampoco garantiza que hable del inventario, y eso lo
+# aprendio este sensor en carne propia: al cortar la 1.2.0, la primera entrada nueva de
+# [Unreleased] era de licencias -no menciona suites, ni ADRs, ni el eval- y las seis
+# lineas de abajo dieron seis fallos sobre un CHANGELOG correcto. De ahi claim_omiso:
+# estricto con la cifra que este escrita, 'skip' visible con la que no. La diferencia
+# con claim_flojo es justo la que importa aqui: no hay ningun camino que imprima 'ok'
+# sin haber juzgado nada.
 # El awk imprime tambien la linea de la cabecera, y de ahi sale la unica forma de
 # distinguir "la seccion esta vacia" de "el recorte se ha roto": si la cabecera NO
 # aparece en el recorte, el ancla ha dejado de casar y no hay nada que medir. Sin esta
@@ -161,19 +179,38 @@ elif [ "$(grep -c . "$UNREL")" -eq 1 ]; then
   echo "       sus cifras NO se han comprobado"
   skipped=$((skipped+1))
 else
-  claim "$SUITES" suites "$UNREL"
-  claim "$(count knowledge/DECISIONS/*.md)" ADRs "$UNREL"
+  claim_omiso "$SUITES" suites "$UNREL"
+  claim_omiso "$(count knowledge/DECISIONS/*.md)" ADRs "$UNREL"
   # El inventario del eval, que es lo que esta rama anade y lo que [Unreleased] anuncia.
   # Aqui si van estrictos -no como sobre DOCS-: las entradas nuevas escriben las cuatro
   # cifras, asi que hay algo que juzgar. Ojo al redactarlas: el sed de claim es GOLOSO y
   # solo juzga la ULTIMA aparicion de "<n> <sustantivo>" de cada linea, asi que un
   # recuento parcial cierto ("decide 3 tareas") enrojece si queda el ultimo de su linea.
-  claim "$(count kit/evals/tasks/*.yaml)" tareas "$UNREL"
-  claim "$(grep -l '^tipo: positiva' kit/evals/tasks/*.yaml | wc -l)" positivas "$UNREL"
-  claim "$(grep -l '^tipo: negativa' kit/evals/tasks/*.yaml | wc -l)" negativas "$UNREL"
-  claim "$(grep -cE '^    \("M[0-9]+' kit/evals/mutantes.py)" mutantes "$UNREL"
+  claim_omiso "$(count kit/evals/tasks/*.yaml)" tareas "$UNREL"
+  claim_omiso "$(grep -l '^tipo: positiva' kit/evals/tasks/*.yaml | wc -l)" positivas "$UNREL"
+  claim_omiso "$(grep -l '^tipo: negativa' kit/evals/tasks/*.yaml | wc -l)" negativas "$UNREL"
+  claim_omiso "$(grep -cE '^    \("M[0-9]+' kit/evals/mutantes.py)" mutantes "$UNREL"
 fi
 rm -f "$UNREL"; rmdir "$UNRELD"
+
+# Falsabilidad del modo 'skip' que estrena el bloque de arriba. Lo que hay que demostrar
+# no es que sepa omitir -eso se ve en el resumen- sino que omitir no le ha quitado el
+# juicio: con una cifra escrita y falsa tiene que seguir enrojeciendo. Las dos secciones
+# se fabrican, porque deformar la real no distinguiria un caso del otro.
+OMTMP=$(mktemp -d) || exit 1
+printf '## [Unreleased]\n\n- entrada de licencias, sin inventario.\n' > "$OMTMP/sin.md"
+printf '## [Unreleased]\n\n- ahora hay 99 suites de test.\n' > "$OMTMP/con.md"
+om_sin=$(claim_omiso "$SUITES" suites "$OMTMP/sin.md")
+om_con=$(claim_omiso "$SUITES" suites "$OMTMP/con.md")
+if [ "${om_sin#skip}" != "$om_sin" ] && [ "${om_con#NOT ok}" != "$om_con" ]; then
+  echo "ok - claim_omiso omite la cifra que no esta y sigue enrojeciendo una que miente"
+  pass=$((pass+1))
+else
+  echo "NOT ok - el modo 'skip' de claim no discrimina: sin cifra dijo '${om_sin%%$'\n'*}'"
+  echo "         y con una cifra falsa dijo '${om_con%%$'\n'*}'"
+  fail=$((fail+1))
+fi
+rm -f "$OMTMP/sin.md" "$OMTMP/con.md"; rmdir "$OMTMP"
 
 # --- 2. Todo script citado en la doc existe --------------------------------
 # Asi es como sobrevivio 'session-brief.sh' en tres documentos despues de borrarlo.
