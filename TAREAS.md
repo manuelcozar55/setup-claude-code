@@ -180,3 +180,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] un nombre generico o corto no convierte la puerta en ruido, y se dice cuando no se comprueba
   - [x] el escaner demuestra que sabe decir que no
 
+## T-014 · las huellas del journal de mch enrojecen el gate de gitleaks
+
+- estado: hecha
+- oráculo: `bash kit/test/test_secret_content_gitleaks.sh`
+- riesgo: bajo
+- clase: sensor
+- timeout: 25min
+- criterios:
+  - [x] una huella sellada por mch task start no bloquea el commit
+  - [x] una clave real dentro del propio journal sigue bloqueando
+  - [x] el repo se mide con la config que el propio kit distribuye, no con la que haya instalada
+

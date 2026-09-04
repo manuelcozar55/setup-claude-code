@@ -251,6 +251,56 @@ printf 'las claves de Anthropic empiezan por %s\n' 'sk-ant-api03-' > "$D/notes.m
 (cd "$D" && git add notes.md)
 expect_commit "$D" "prefijo sk-ant- citado en prosa, sin clave detras, no bloquea" ALLOW
 
+# --- El journal de mch: huellas SHA-256 que parecen claves --------------------
+# `mch task start` sella una huella SHA-256 por cada fichero declarado como
+# `- sensor:`, y la escribe en .agents/journal.jsonl con la forma
+#   "ruta/al/fichero": "<64 hex>"
+# que es exactamente lo que busca generic-api-key (la regla POR DEFECTO, no una
+# nuestra). Medido: cada `mch task start` con sensor enrojecia el gate del propio
+# repo. El remedio documentado en 05-security.md -- fingerprint en .gitleaksignore --
+# no sirve aqui: el journal es append-only y crece, asi que cada tarea nueva
+# pediria una entrada nueva, para siempre.
+D="$BASE/journal-huellas"; newrepo "$D"
+mkdir -p "$D/.agents"
+# La ruta lleva "secret" a proposito: generic-api-key necesita una palabra clave
+# cerca para armarse, y en el journal real la aporta el NOMBRE del sensor
+# (kit/test/test_scan_secrets.sh). Con una ruta neutra este caso pasaria en verde
+# sin medir nada, que es justo el fallo que esta rama persigue.
+HUELLA=$(printf 'kit/test/test_scan_secrets.sh' | sha256sum | cut -d" " -f1)
+printf '{"ts":"2026-09-04T10:00:00Z","evento":"start","tarea":"T-001","huellas":{"kit/test/test_scan_secrets.sh": "%s"}}\n' "$HUELLA" > "$D/.agents/journal.jsonl"
+(cd "$D" && git add .agents/journal.jsonl)
+expect_commit "$D" "huella SHA-256 sellada por mch en el journal no bloquea el commit" ALLOW
+
+# Falsificabilidad: la excepcion es de forma, no de fichero. Una clave real
+# pegada en ese mismo journal -- el sitio donde un agente pega salida de comandos --
+# sigue cayendo.
+D="$BASE/journal-clave-real"; newrepo "$D"
+mkdir -p "$D/.agents"
+# Token de GitHub sintetico, compuesto en ejecucion: un literal aqui bloquearia
+# el commit que anade este test. Se usa ghp_ y no AKIA porque medido con gitleaks
+# 8.30.1 una clave AKIA suelta NO la detecta ni su ruleset por defecto.
+GH_FAKE="ghp_$(python3 -c "
+import random
+random.seed(3)
+c='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+print(''.join(random.choice(c) for _ in range(36)))
+")"
+printf '{"ts":"2026-09-04T10:00:00Z","evento":"nota","texto":"%s"}\n' "$GH_FAKE" > "$D/.agents/journal.jsonl"
+(cd "$D" && git add .agents/journal.jsonl)
+expect_commit "$D" "una clave real dentro del journal sigue bloqueando (la excepcion no es un agujero)" BLOCK
+# --- El repo se mide con la config que el propio kit distribuye ---------------
+# El hook prefiere $REPO_ROOT/.gitleaks.toml y, si no esta, cae en
+# $CLAUDE_HOME/.gitleaks.toml. Sin fichero en la raiz, los commits de ESTE repo se
+# juzgaban con la copia instalada en la maquina de quien comitea -- que puede ser
+# mas vieja que la que el repo publica, y de hecho lo era: la excepcion de las
+# huellas ya estaba en kit/claude/.gitleaks.toml y el hook seguia bloqueando.
+ROOT_CFG="$KIT/../.gitleaks.toml"
+if [ -e "$ROOT_CFG" ] && cmp -s "$ROOT_CFG" "$CONFIG_SRC"; then
+  pass=$((pass+1))
+else
+  fail=$((fail+1))
+  echo "FAIL: la raiz del repo no expone la config que el kit distribuye (.gitleaks.toml -> kit/claude/.gitleaks.toml)"
+fi
 rm -rf "$BASE"
 echo "PASS=$pass FAIL=$fail"
 [ $fail -eq 0 ]
