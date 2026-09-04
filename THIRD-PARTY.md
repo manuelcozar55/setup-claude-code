@@ -2,7 +2,7 @@
 
 Este fichero recoge el material de terceros del que deriva parte del software de
 este repositorio, con sus avisos de copyright. Forma parte de las condiciones de
-`LICENSE-CODE`.
+`LICENSE`.
 
 Se distingue a propósito entre **código derivado** (material de otro proyecto que
 este repositorio incorpora y redistribuye, con obligaciones de atribución) y

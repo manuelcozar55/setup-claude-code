@@ -54,7 +54,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 28 suites falsables | v1.1.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 28 suites falsables | v1.2.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -391,8 +391,8 @@ Este repositorio tiene dos tipos de contenido y cada uno lleva su licencia:
 
 | Qué | Licencia | Fichero |
 |---|---|---|
-| **El software**: todo lo de `kit/` (scripts, hooks, guards, tests, evals, plantillas de config) y los scripts de `.github/` | **MIT** | [`LICENSE-CODE`](LICENSE-CODE) |
-| **Las charlas**: los decks "agentes-fundamentos" y "setup-claude-code-definitiva", sus guiones y diagramas originales | **CC BY 4.0** | [`LICENSE`](LICENSE) |
+| **El software**: todo lo de `kit/` (scripts, hooks, guards, tests, evals, plantillas de config) y los scripts de `.github/` | **MIT** | [`LICENSE`](LICENSE) |
+| **Las charlas**: los decks "agentes-fundamentos" y "setup-claude-code-definitiva", sus guiones y diagramas originales | **CC BY 4.0** | [`LICENSE-DOCS`](LICENSE-DOCS) |
 
 Se separan porque no son la misma cosa: CC BY 4.0 está pensada para obra creativa,
 no para código —no concede permisos de patente ni cubre bien la garantía y la
@@ -400,6 +400,13 @@ responsabilidad—, y usarla como licencia de software deja a quien instala el k
 una posición ambigua. MIT es la elección deliberada para el código: es la misma
 licencia del material del que derivan tres de los guards, así que no hay fricción de
 compatibilidad.
+
+El fichero **MIT es el que se llama `LICENSE`** a propósito: GitHub deduce la licencia
+del repositorio de ese nombre exacto, y mientras ahí vivió la CC BY 4.0 —con su preámbulo
+propio, que su detector no reconoce— la API respondía `license: null` y la barra lateral no
+anunciaba ninguna. Para quien evalúa si puede usar el kit, «sin licencia» se lee como todos
+los derechos reservados. El artefacto principal de este repo es software: su licencia es la
+que debe salir a la vista.
 
 Parte del software deriva de proyectos de terceros. Sus avisos de copyright, y un
 punto de procedencia que sigue sin resolver, están en
