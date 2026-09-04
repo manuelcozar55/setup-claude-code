@@ -1323,6 +1323,61 @@ else
 fi
 rm -f "$VTMP"/*; rmdir "$VTMP"
 
+# -- 02-install.md y `jq`: el doc lo declara OPCIONAL desde Track M. Eso no se
+#    comprueba leyendo el doc, sino midiendo el comportamiento y exigiendo que el
+#    doc concuerde. Si alguien revierte los hooks a jq-only, o reescribe la tabla,
+#    esta asercion cae por el lado que corresponda.
+#
+#    B = un guard deja pasar lo inocuo SIN jq en el PATH  (medido, ejecutando)
+#    C = `jq --version` esta en la cadena obligatoria `&&` (estructural, no prosa)
+#    Invariante: B => no C. Si los hooks funcionan sin jq, jq no puede seguir
+#    figurando como requisito duro de la comprobacion de prerrequisitos.
+JQTMP=$(mktemp -d)
+for jqd in $(printf '%s' "$PATH" | tr ':' '\n'); do
+  [ -d "$jqd" ] || continue
+  for jqf in "$jqd"/*; do
+    jqb=$(basename "$jqf")
+    [ "$jqb" = "jq" ] && continue
+    [ -e "$JQTMP/$jqb" ] || ln -sf "$jqf" "$JQTMP/$jqb" 2>/dev/null
+  done
+done
+# falsabilidad del andamio: sin esto la granja podria tener jq (y medir el caso
+# equivocado) o carecer de grep (y dar un rc=0 mudo que pareceria "deja pasar").
+jq_andamio=ok
+env -i PATH="$JQTMP" /usr/bin/bash -c 'command -v jq >/dev/null' 2>/dev/null && jq_andamio="tiene jq"
+env -i PATH="$JQTMP" /usr/bin/bash -c 'echo x | grep -q x' 2>/dev/null || jq_andamio="grep no ejecuta"
+if [ "$jq_andamio" != ok ]; then
+  echo "NOT ok - andamio sin jq invalido ($jq_andamio): la medicion siguiente no valdria"
+  fail=$((fail+1))
+else
+  echo "ok - falsabilidad del andamio: la granja no tiene jq y su grep si ejecuta"
+  pass=$((pass+1))
+
+  jq_inocuo=$(printf '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' \
+    | env -i HOME="$HOME" PATH="$JQTMP" /usr/bin/bash kit/claude/hooks/destructive-guard.sh \
+      >/dev/null 2>&1; echo $?)
+  if [ "$jq_inocuo" = 0 ]; then
+    echo "ok - sin jq, el guard deja pasar lo inocuo (rc=0): funciona, no solo falla cerrado"
+    pass=$((pass+1))
+  else
+    echo "NOT ok - sin jq el guard bloquea lo inocuo (rc=$jq_inocuo): eso es fallo cerrado, no funcionar"
+    fail=$((fail+1))
+  fi
+  jq_en_cadena=no
+  grep -qE '^git --version &&.*jq --version' kit/docs/02-install.md && jq_en_cadena=si
+  if [ "$jq_inocuo" = 0 ] && [ "$jq_en_cadena" = si ]; then
+    echo "NOT ok - los hooks funcionan sin jq pero 02-install.md lo sigue encadenando como requisito duro"
+    fail=$((fail+1))
+  elif [ "$jq_inocuo" != 0 ] && [ "$jq_en_cadena" = no ]; then
+    echo "NOT ok - los hooks NO funcionan sin jq y 02-install.md ya no lo exige: el doc miente"
+    fail=$((fail+1))
+  else
+    echo "ok - 02-install.md concuerda con lo medido sobre jq (opcional para los hooks)"
+    pass=$((pass+1))
+  fi
+fi
+rm -f "$JQTMP"/*; rmdir "$JQTMP"
+
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
 else
