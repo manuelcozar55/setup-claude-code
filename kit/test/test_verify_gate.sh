@@ -231,4 +231,46 @@ ck "$(decision "$out_mut")" "block" "H-2 mutacion cercana: mch en contrato 3 sig
 ck "$(printf '%s' "$out_mut" | jq -r '.reason // ""' | grep -qi 'contrato' && echo y || echo n)" "y" \
    "H-2 mutacion cercana: contrato 3 SI dispara el aviso (el limite esta en 2, no en 99)"
 
+# --- L-1: sin jq, el camino ROJO tambien tiene que bloquear ----------------
+# El andamio de arriba solo medía el camino VERDE ("avisa pero no bloquea"), y por
+# eso la suite entera pasaba con `bloquear()` construyendo su veredicto con `jq -n`:
+# sin jq ese `jq -n` falla, stdout queda VACIO y el `exit 0` de la funcion PERMITE
+# el turno -- justo el que mch acababa de rechazar. La autoridad hablo y el que se
+# quedo mudo fue el hook.
+#
+# Sin jq el mecanismo ya NO puede ser el JSON por stdout, asi que aqui no se mide
+# `.decision`: se mide el CODIGO DE SALIDA, que es lo que el runtime honra en un
+# hook Stop -- "Exit code 2 - show stderr to model and continue conversation"
+# (documentacion del evento Stop embebida en el binario de claude 2.1.260; por
+# dentro el runtime lo convierte en el mismo {"decision":"block"}). Es el mismo
+# protocolo que J-1 dejo en kit/claude/hooks/destructive-guard.sh.
+#
+# El `cd` a $T/proj no es adorno: sin jq el hook no puede leer `.cwd` del payload y
+# cae a $PWD, asi que el directorio real del proceso es el unico cwd que ve.
+rc_sin_jq(){
+  ( cd "$T/proj" && printf '%s' "$(pl false)" \
+      | env PATH="$(sin_jq_path)" bash "$GATE" >"$T/out_sinjq" 2>"$T/err_sinjq" )
+  echo $?
+}
+
+fabrica_mch 1 "$ROJO"
+ck "$(rc_sin_jq)" "2" "L-1: rc=1 (lazo abierto) sin jq bloquea igual, por codigo de salida"
+
+fabrica_mch 9 ''
+ck "$(rc_sin_jq)" "2" "L-1: autoridad presente pero muda, sin jq, bloquea igual"
+# El motivo tiene que llegar por stderr, que es de donde el runtime lo saca para
+# el modelo cuando el hook sale con 2. Anclado por bordes: 'rc=9' como subcadena
+# emparejaria tambien un 'rc=91' de otro camino.
+ck "$(grep -qE '\brc=9\b' "$T/err_sinjq" && echo y || echo n)" "y" \
+   "L-1: el bloqueo sin jq lleva el motivo por stderr"
+
+# Regresion: la asimetria del OTRO lado se queda intacta. Sin mch no se bloquea, y
+# tampoco por no tener jq: el kit tiene que seguir sirviendo en los cientos de
+# repos que no usan mch. Sin este caso, "bloquear siempre" pasaria los dos de
+# arriba y seria indistinguible del arreglo.
+rm -f "$T/bin/mch"
+ck "$(PATH="$(sin_jq_path)" bash -c 'command -v mch' >/dev/null 2>&1 && echo encontrado || echo no)" "no" \
+   "falsabilidad del andamio: el PATH recortado no tiene ni jq ni mch"
+ck "$(rc_sin_jq)" "0" "L-1 regresion: sin mch y sin jq el hook NO bloquea"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
