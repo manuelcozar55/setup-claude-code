@@ -14,6 +14,8 @@
 #
 # Contrato Stop (code.claude.com/docs/en/hooks-guide, verificado 2026-08-21):
 #   bloquear = stdout {"decision":"block","reason":"..."}
+#   bloquear sin jq  = exit 2 con el motivo por stderr; el runtime lo traduce a
+#     ese mismo {"decision":"block"} (ver bloquear(), verificado en 2.1.260)
 #   'stop_hook_active' true => salir ya; Claude Code anula el hook tras 8 bloqueos
 #   seguidos sin progreso (cap ajustable con CLAUDE_CODE_STOP_HOOK_BLOCK_CAP).
 set -uo pipefail
@@ -55,7 +57,28 @@ fi
 # entre 1 y 2 -- comprobado contra _gate_estado()/_gate_alcance() en bin/mch.
 CONTRATO_SOPORTADO=2
 
-bloquear() { jq -n --arg r "$1" '{decision:"block", reason:$r}'; exit 0; }
+# Con jq, el veredicto va por stdout: es el contrato documentado del evento Stop.
+# Sin jq, `jq -n` fallaba, stdout quedaba VACIO y el `exit 0` de aqui PERMITIA el
+# turno -- justo el que mch acababa de rechazar. Autoridad presente que habla y
+# hook que se queda mudo: exactamente la asimetria que este fichero declara, al
+# reves. El repuesto no necesita nada instalado y es el mismo protocolo que J-1
+# dejo en kit/claude/hooks/destructive-guard.sh: salir con 2 y el motivo por
+# stderr. Verificado contra el binario que lo ejecuta (claude 2.1.260), no
+# supuesto: la doc del evento Stop que trae dentro dice "Exit code 2 - show
+# stderr to model and continue conversation", y su interprete de resultados
+# convierte ese 2 en el mismo {"decision":"block", reason:<stderr>} -- la
+# excepcion que Stop SI tiene (no bloquear con 2) es solo para hooks que anuncian
+# `async` por stdout, que no es el caso. Sin jq los campos que vienen del JSON de
+# mch salen vacios; el bloqueo no depende de ellos, y se dice en vez de presentar
+# huecos como si fueran la respuesta del gate.
+bloquear() {
+  if [ "$HAY_JQ" = 1 ]; then
+    jq -n --arg r "$1" '{decision:"block", reason:$r}'
+    exit 0
+  fi
+  printf '%s\n\n(sin jq: los campos leidos del JSON de mch salen vacios; el veredicto del gate, que es un codigo de salida, no.)\n' "$1" >&2
+  exit 2
+}
 
 if command -v mch >/dev/null 2>&1; then
   # 10 s es holgado: gate solo lee ficheros sellados, no ejecuta el oraculo.
