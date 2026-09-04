@@ -233,6 +233,38 @@ sesión). La fuga que el drop-in cierra
 este escrito: el proxy sigue escribiendo `payload_preview` en claro en
 `proxy.log` en cada `event=compression_store`.
 
+### Autorización recibida — precondiciones medidas, la fase destructiva la lanza la persona
+
+La persona autorizó la ejecución. Las precondiciones se midieron **antes** de
+tocar nada y el resultado es el que autoriza el borrado:
+
+| Medida | Exigido | Medido |
+|---|---|---|
+| Filas de datos en `~/.headroom/metrics/` | ≥ 11 700 | **13 717** (4285 de agosto + 9432 de septiembre) |
+| `req_id` duplicados en el archivo | 0 | **0** |
+| `ExecStart` conserva `--mode cache` | sí | sí, y sin `--budget` ni `--log-messages` |
+| Drop-in cargado por systemd | sí | sí (`DropInPaths` lo lista; solo falta reiniciar para aplicarlo) |
+
+**El dato que justifica todo el archivador:** las seis ranuras del log conservan
+**11 873** líneas `PERF`, y el archivo tiene **13 717** filas. La diferencia —1844
+registros— ya no existe en ningún log: la rotación se los llevó y `metrics/` es su
+única copia. El archivador no era una precaución teórica.
+
+**Por qué la fase destructiva no la ejecuta el agente.** El clasificador de
+auto-mode deniega el script: cambia el estado de un servicio (`systemctl stop` /
+`start`) y borra ficheros. Esa denegación es correcta y no se esquiva. La fase
+queda encapsulada en un script fail-closed que la persona lanza con `!`, y que
+aborta **sin borrar nada** si el pre-vuelo falla, si no hay 45 s de reposo en ~13
+minutos, si el archivador falla, si el recuento baja de 11 700 o si aparece un
+`req_id` duplicado.
+
+**Por qué la puerta de reposo solo abre con la sesión parada.** Medido:
+`silencio=0s` mientras el agente trabaja. Cada turno del agente es una petición
+`/v1/messages` por el proxy, así que la propia medición reinicia el contador. El
+script espera en bucle **dentro** de una sola invocación, y durante esa espera la
+sesión no emite tráfico: es lo que permite que el silencio se acumule. Lanzarlo y
+quedarse mirando turno a turno lo mantendría en `ESPERAR` para siempre.
+
 ## Premisa del spec que resultó falsa
 
 El spec (`20f5f26`) toma como origen de la vida de Headroom el 31-ago 19:36

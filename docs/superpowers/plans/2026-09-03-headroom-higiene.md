@@ -915,6 +915,27 @@ systemctl --user status headroom-perf-archive.service --no-pager | tail -5
 > definitivo. No se ejecuta sin autorización explícita de la persona, y solo
 > después de que la Task 7 haya demostrado que el archivado es idempotente.
 
+> **Cómo se ejecuta, aprendido al ejecutarla (2026-09-04).** Dos hechos que el
+> plan no preveía y que cambian el procedimiento, no el objetivo:
+>
+> 1. **La lanza la persona, no el agente.** El clasificador de auto-mode deniega
+>    un script que hace `systemctl stop`/`start` y borra ficheros, y esa
+>    denegación es correcta. Los pasos 2-5 van encapsulados en un único script
+>    fail-closed (`t8.sh`) que la persona invoca con `!`. Encapsularlo no es
+>    comodidad: entre el `stop` y el `start` no puede haber un turno del agente,
+>    porque el proxy estaría caído justo cuando el agente necesita hablar por él.
+> 2. **La puerta de reposo solo abre con la sesión parada.** Medido:
+>    `silencio=0s` en pleno trabajo. Cada turno del agente es una petición
+>    `/v1/messages` por el proxy, así que comprobar la puerta turno a turno la
+>    deja en `ESPERAR` indefinidamente. El script espera **en bucle dentro de una
+>    sola invocación** (hasta ~13 min), y durante esa espera la sesión calla y el
+>    silencio se acumula.
+>
+> El script añade un pre-vuelo que el plan no tenía: aborta si `ExecStart` ha
+> dejado de llevar `--mode cache`, o si lleva `--budget` o `--log-messages`. Un
+> reinicio **aplica** lo que haya en `ExecStart`, así que este paso es el momento
+> exacto en que una deriva ahí se volvería efectiva.
+
 - [ ] **Step 1: avisar a la sesión par que comparte el proxy**
 
   Hay al menos otra sesión activa enrutada (`ss -tnp | grep 8787`). Avisarla antes
