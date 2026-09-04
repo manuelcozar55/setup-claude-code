@@ -35,6 +35,7 @@ desktop.ini
 # mcharness
 config/profile.yaml
 .mcharness-out/
+.agents/.lock
 
 # Serena: cache e indice de simbolos, local a cada maquina
 .serena/

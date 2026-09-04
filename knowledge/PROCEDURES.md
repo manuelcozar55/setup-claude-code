@@ -87,8 +87,9 @@ verde no significa nada.
 por nombre suelto el hook `PreToolUse/Bash` sustituiría el ejecutable y el verde sería el de
 otro programa.
 
-Después: rama + PR, nunca commit directo a `main`. Los cambios en `knowledge/` van en
-commits aparte con prefijo `knowledge:`.
+Después: rama + PR, nunca commit directo a `main`. Los cambios en `knowledge/` van en el
+mismo commit de la tarea: la regla de commit aparte con prefijo `knowledge:` se retiró
+por insatisfiable junto a un commit por tarea (CLAUDE.md).
 
 ---
 

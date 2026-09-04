@@ -175,9 +175,31 @@ if [ "$(grep -c '^## \[Unreleased\]' "$UNREL")" -ne 1 ]; then
   echo "         casa con CHANGELOG.md, y sin ella el skip aprobaria sin medir nada"
   fail=$((fail+1))
 elif [ "$(grep -c . "$UNREL")" -eq 1 ]; then
-  echo "skip - CHANGELOG.md [Unreleased]: seccion vacia (version recien etiquetada);"
-  echo "       sus cifras NO se han comprobado"
-  skipped=$((skipped+1))
+  # Vacia es legitimo SOLO recien etiquetada una version. Eso se DISTINGUE midiendo, no
+  # se supone: si algo bajo kit/ cambio DESPUES del ultimo cambio de CHANGELOG.md,
+  # entonces la seccion no esta vacia porque acabe de salir una version -esta vacia
+  # porque el CHANGELOG se quedo atras-, y abstenerse ahi es justo lo que deja que se
+  # pudra. Medido en esta rama: 35 commits sobre v1.1.0 con [Unreleased] vacia, y el
+  # unico sintoma era este 'skip', que el agregado leia como "no se pudo verificar".
+  # Sin git no se puede medir: entonces se sigue declarando skip, pero con OTRO motivo,
+  # porque "no puedo mirar" y "he mirado y esta bien" no pueden imprimir lo mismo.
+  chg_ct=$(git log -1 --format=%ct -- CHANGELOG.md 2>/dev/null || true)
+  kit_ct=$(git log -1 --format=%ct -- kit 2>/dev/null || true)
+  if [ -n "$(git status --porcelain -- CHANGELOG.md 2>/dev/null)" ]; then chg_ct=$(date +%s); fi
+  if [ -z "$chg_ct" ] || [ -z "$kit_ct" ]; then
+    echo "skip - CHANGELOG.md [Unreleased]: sin historia de git no se puede saber si"
+    echo "       la seccion esta vacia por recien etiquetada o por rancia"
+    skipped=$((skipped+1))
+  elif [ "$kit_ct" -gt "$chg_ct" ]; then
+    echo "NOT ok - CHANGELOG.md [Unreleased] esta vacia y kit/ cambio despues del ultimo"
+    echo "         cambio del CHANGELOG: no es una version recien etiquetada, es un"
+    echo "         CHANGELOG que se quedo atras. Anota el cambio en [Unreleased]."
+    fail=$((fail+1))
+  else
+    echo "skip - CHANGELOG.md [Unreleased]: seccion vacia (version recien etiquetada);"
+    echo "       sus cifras NO se han comprobado"
+    skipped=$((skipped+1))
+  fi
 else
   claim_omiso "$SUITES" suites "$UNREL"
   claim_omiso "$(count knowledge/DECISIONS/*.md)" ADRs "$UNREL"
@@ -1365,6 +1387,61 @@ else
 fi
 rm -f "$VTMP"/*; rmdir "$VTMP"
 
+# -- 02-install.md y `jq`: el doc lo declara OPCIONAL desde Track M. Eso no se
+#    comprueba leyendo el doc, sino midiendo el comportamiento y exigiendo que el
+#    doc concuerde. Si alguien revierte los hooks a jq-only, o reescribe la tabla,
+#    esta asercion cae por el lado que corresponda.
+#
+#    B = un guard deja pasar lo inocuo SIN jq en el PATH  (medido, ejecutando)
+#    C = `jq --version` esta en la cadena obligatoria `&&` (estructural, no prosa)
+#    Invariante: B => no C. Si los hooks funcionan sin jq, jq no puede seguir
+#    figurando como requisito duro de la comprobacion de prerrequisitos.
+JQTMP=$(mktemp -d)
+for jqd in $(printf '%s' "$PATH" | tr ':' '\n'); do
+  [ -d "$jqd" ] || continue
+  for jqf in "$jqd"/*; do
+    jqb=$(basename "$jqf")
+    [ "$jqb" = "jq" ] && continue
+    [ -e "$JQTMP/$jqb" ] || ln -sf "$jqf" "$JQTMP/$jqb" 2>/dev/null
+  done
+done
+# falsabilidad del andamio: sin esto la granja podria tener jq (y medir el caso
+# equivocado) o carecer de grep (y dar un rc=0 mudo que pareceria "deja pasar").
+jq_andamio=ok
+env -i PATH="$JQTMP" /usr/bin/bash -c 'command -v jq >/dev/null' 2>/dev/null && jq_andamio="tiene jq"
+env -i PATH="$JQTMP" /usr/bin/bash -c 'echo x | grep -q x' 2>/dev/null || jq_andamio="grep no ejecuta"
+if [ "$jq_andamio" != ok ]; then
+  echo "NOT ok - andamio sin jq invalido ($jq_andamio): la medicion siguiente no valdria"
+  fail=$((fail+1))
+else
+  echo "ok - falsabilidad del andamio: la granja no tiene jq y su grep si ejecuta"
+  pass=$((pass+1))
+
+  jq_inocuo=$(printf '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' \
+    | env -i HOME="$HOME" PATH="$JQTMP" /usr/bin/bash kit/claude/hooks/destructive-guard.sh \
+      >/dev/null 2>&1; echo $?)
+  if [ "$jq_inocuo" = 0 ]; then
+    echo "ok - sin jq, el guard deja pasar lo inocuo (rc=0): funciona, no solo falla cerrado"
+    pass=$((pass+1))
+  else
+    echo "NOT ok - sin jq el guard bloquea lo inocuo (rc=$jq_inocuo): eso es fallo cerrado, no funcionar"
+    fail=$((fail+1))
+  fi
+  jq_en_cadena=no
+  grep -qE '^git --version &&.*jq --version' kit/docs/02-install.md && jq_en_cadena=si
+  if [ "$jq_inocuo" = 0 ] && [ "$jq_en_cadena" = si ]; then
+    echo "NOT ok - los hooks funcionan sin jq pero 02-install.md lo sigue encadenando como requisito duro"
+    fail=$((fail+1))
+  elif [ "$jq_inocuo" != 0 ] && [ "$jq_en_cadena" = no ]; then
+    echo "NOT ok - los hooks NO funcionan sin jq y 02-install.md ya no lo exige: el doc miente"
+    fail=$((fail+1))
+  else
+    echo "ok - 02-install.md concuerda con lo medido sobre jq (opcional para los hooks)"
+    pass=$((pass+1))
+  fi
+fi
+rm -f "$JQTMP"/*; rmdir "$JQTMP"
+
 # --- 9. La cadena de hooks, el inventario de plugins y el hook que ya no se cablea ---
 # Tres afirmaciones publicadas que se pudrieron sin que nada se pusiera rojo, porque
 # `claim` solo sabe juzgar los sustantivos del inventario (suites, ADRs, agentes...):
@@ -1498,10 +1575,20 @@ rtk_no_cableado() {
 }
 # La lista se calcula aqui y no dentro del comprobador, como el resto de §5: asi la sonda
 # de falsabilidad puede interrogarlo sobre copias deformadas. `grep -rl` y no `git grep`
-# para no depender de que el arbol sea un repo con indice.
+# para no depender de que el arbol sea un repo con indice. El precio de no usar el indice
+# es que el recorrido tambien ve `.superpowers/`, el andamio local de las ejecuciones con
+# subagentes: esta en .gitignore, no se publica nunca, y sus diffs de revision citan la
+# frase retirada tal como estaba el dia que se ejecuto el plan. Juzgarla ahi ponia rojo un
+# comprobador de contenido PUBLICADO por culpa de un scratch de una maquina, asi que sale
+# por la misma razon que docs/superpowers/: registro fechado, no afirmacion vigente.
+# Y los `*.log` (.gitignore:29) por otra peor: `kit/test/.make-test.log` guarda la salida
+# de la corrida anterior, en la que ESTE comprobador imprimio su propio titulo -- que
+# contiene la frase. Sin excluirlos, la suite pasaba dentro de `make test` (el log aun no
+# la tenia) y fallaba al correrla suelta despues. Un veredicto que depende del orden en
+# que se lanza no es un veredicto.
 RTK_FICHEROS=$(grep -rl 'rtk hook claude' . --exclude-dir=.git 2>/dev/null \
                | sed 's|^\./||' \
-               | grep -vE '^(CHANGELOG\.md|knowledge/|docs/superpowers/|kit/test/test_doc_claims\.sh)' \
+               | grep -vE '^(CHANGELOG\.md|knowledge/|docs/superpowers/|\.superpowers/|kit/test/test_doc_claims\.sh)|\.log$' \
                | sort | tr '\n' ' ')
 # shellcheck disable=SC2086 # la lista de ficheros se parte a proposito
 hr_check "ningun hook del kit cablea 'rtk hook claude' y ninguna linea lo afirma en presente" \

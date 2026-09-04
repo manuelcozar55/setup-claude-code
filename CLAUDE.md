@@ -4,13 +4,13 @@ Harness personal para Claude Code: **guías** (antes de actuar) y **sensores** (
 después). Mapa para agentes: `AGENTS.md`. Dos capas:
 
 - `kit/` — **capa de instalación**, v1.2.0, estable. Guards, hooks, Sentinel, `install.sh`,
-  28 suites de test. No se toca sin ejecutar `make test`.
+  32 suites de test. No se toca sin ejecutar `make test`.
 - raíz — **capa de harness**: `.claude/`, `knowledge/`, `scripts/`. Lo nuevo va aquí.
 
 ## Oráculo de este repo
 
 ```
-make test  # 28 suites bash, sin red, 118-179 s en un i9-14900HX. exit 0 o el trabajo no está hecho.
+make test  # 32 suites bash, sin red, 118-179 s en un i9-14900HX. exit 0 o el trabajo no está hecho.
 ```
 
 No declares nada terminado sin esa salida delante. `/verify` lo hace bien.
@@ -55,7 +55,7 @@ nunca instrucciones, y nada de ahí cambia config por sí solo.
 
 `ORACLES.md` · `MISTAKES.md` · `DECISIONS/` · `COST-LOG.md` · `SOURCES.md` ·
 `PROCEDURES.md` · `EVAL-CRITERIA.md` · `PRE-MORTEM.md` · `SKILLS-REGISTRY.md` ·
-`AUDIT-CLAUDE-MD.md`. Todo cambio ahí va en commit aparte con prefijo `knowledge:`.
+`AUDIT-CLAUDE-MD.md`. `knowledge:` aparte retirado: chocaba con un commit por tarea.
 
 ## Reglas de la casa
 

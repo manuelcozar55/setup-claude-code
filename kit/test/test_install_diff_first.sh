@@ -77,4 +77,43 @@ set -e
 ck "$rc5" "0" "repo git SIN remoto: install.sh sale 0"
 ck "$([ -f "$CLAUDE_HOME/CLAUDE.md" ] && echo y || echo n)" "y" "repo git SIN remoto NO activa el modo diff (escribe igual, falsabilidad del check)"
 
+# --- Caso 5: sin MCHARNESS_OUT, el arbol va a un temporal, no al cwd -------
+# La copia que se generaba en $PWD se quedaba ahi: una instantanea del arbol
+# instalable que envejece en el arbol de trabajo, con nueve divergencias en la
+# direccion peligrosa, y que despues se lee como si fuera fuente. El artefacto
+# de un diff es efimero: su sitio es un temporal.
+export CLAUDE_HOME="$tmp/dot-tmpout"
+mkdir -p "$tmp/cwd-limpio"
+set +e
+out5="$(cd "$tmp/cwd-limpio" && env -u MCHARNESS_OUT bash "$KIT/install.sh" --plan 2>&1)"; rc5b=$?
+set -e
+ck "$rc5b" "0" "--plan sin MCHARNESS_OUT: sale con exit 0"
+ck "$([ -e "$tmp/cwd-limpio/.mcharness-out" ] && echo existe || echo no)" "no" \
+   "--plan sin MCHARNESS_OUT NO deja .mcharness-out en el directorio de trabajo"
+ruta5="$(printf '%s\n' "$out5" | sed -n 's/.*generado en: //p' | head -1)"
+ck "$(case "$ruta5" in "$tmp/cwd-limpio"*) echo dentro ;; "") echo ninguna ;; *) echo fuera ;; esac)" "fuera" \
+   "el arbol se genera fuera del directorio de trabajo y la salida dice donde"
+
+# --- Caso 6: dos '--plan' seguidos no acumulan un arbol por invocacion ------
+# El primer arreglo (mktemp -d por invocacion) resolvio el cwd pero abrio una
+# fuga: cada '--plan' dejaba un cckit-diff.XXXXXX nuevo en /tmp y nada lo
+# limpiaba (sin trap). La correccion usa una ruta fija por uid, borrada y
+# recreada al INICIO de cada run: el arbol sobrevive a la ejecucion para que
+# el usuario copie de el a mano (asi lo dice el mensaje de cierre de la
+# funcion), pero nunca hay mas de uno acumulandose.
+export CLAUDE_HOME="$tmp/dot-tmpout6"
+tmpdir6="$tmp/tmpdir-fijo"
+mkdir -p "$tmpdir6"
+set +e
+TMPDIR="$tmpdir6" env -u MCHARNESS_OUT bash "$KIT/install.sh" --plan >/dev/null 2>&1; rc6a=$?
+TMPDIR="$tmpdir6" env -u MCHARNESS_OUT bash "$KIT/install.sh" --plan >/dev/null 2>&1; rc6b=$?
+set -e
+ck "$rc6a" "0" "--plan (1a pasada) sin MCHARNESS_OUT: sale con exit 0"
+ck "$rc6b" "0" "--plan (2a pasada) sin MCHARNESS_OUT: sale con exit 0"
+ck "$(find "$tmpdir6" -maxdepth 1 -name 'cckit-diff*' | wc -l | tr -d ' ')" "1" \
+   "dos '--plan' seguidos dejan un solo arbol cckit-diff, no uno por invocacion"
+dir6="$(find "$tmpdir6" -maxdepth 1 -name 'cckit-diff*' -print -quit)"
+ck "$([ -n "$dir6" ] && [ -d "$dir6" ] && echo y || echo n)" "y" \
+   "el arbol sigue existiendo tras salir el proceso (sobrevive para que el usuario copie de el)"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

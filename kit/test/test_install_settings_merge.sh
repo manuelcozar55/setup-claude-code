@@ -27,7 +27,7 @@ ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT 
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "skip - jq ausente: esta suite mide la fusion, que solo existe con jq"
-  echo "== 0 passed, 0 failed =="; exit 0
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
 fi
 
 # Todo ocurre en un HOME temporal: esta suite no puede acercarse al ~/.claude real.
@@ -98,34 +98,72 @@ ck "$(cmp -s "$KIT/claude/settings.json" "$S" && echo y || echo n)" "y" "JSON in
 ck "$(backups)" "1" "JSON invalido: tu fichero queda en backup"
 ck "$(grep -c mio "$(find "$CLAUDE_HOME/backups" -name settings.json)")" "1" "JSON invalido: el backup lleva tu contenido, no el del kit"
 
-# --- Caso g: sin jq en el PATH -> install.sh aborta sin tocar tu fichero ---
-# Este caso afirmaba lo contrario: sin jq, install.sh reemplazaba tu settings.json con la
-# plantilla del kit y confiaba en el backup. Ya no hay tal degradacion, hay una puerta de
-# dependencia: los cuatro guards de Bash leen el payload con jq y sin el fallan en CERRADO
-# (deniegan), asi que instalar en esa maquina dejaria Claude Code bloqueado. La garantia
-# nueva es mas fuerte que la vieja -- no se te toca el fichero, no hay backup que descubrir.
-# Un PATH sin jq y con todo lo demas: una granja de symlinks a cada binario del PATH real,
-# saltando jq. Es la unica forma de que `command -v jq` falle DE VERDAD dentro de install.sh
-# (un jq no ejecutable, o una funcion exportada, no lo consiguen).
-farm="$tmp/nojq"; mkdir -p "$farm"
-IFS=: read -ra dirs <<< "$PATH"
-for d in "${dirs[@]}"; do
-  [ -d "$d" ] || continue
-  for f in "$d"/*; do
-    b="${f##*/}"
-    [ -e "$f" ] && [ "$b" != jq ] && [ ! -e "$farm/$b" ] && ln -s "$f" "$farm/$b"
+# --- Granjas de PATH: un PATH real menos una herramienta -------------------
+# Symlinks a cada binario del PATH real, saltando los que se quieren ausentes. Es la
+# unica forma de que `command -v X` falle DE VERDAD dentro de install.sh (un binario no
+# ejecutable, o una funcion exportada, no lo consiguen). Se enlaza desde el listado del
+# directorio, NUNCA desde `command -v X`: con un alias o una funcion de shell por medio,
+# `command -v` devuelve el nombre a secas en vez de una ruta y el symlink sale
+# self-referencial -- una granja con un `grep` roto convierte cualquier `grep ... || :`
+# en un rc=0 mudo, y el caso aprueba sin haber ejecutado nada.
+granja(){ # $1 = destino, resto = binarios a EXCLUIR
+  local destino="$1"; shift; local excluidos=" $* "
+  mkdir -p "$destino"
+  local d f b
+  IFS=: read -ra dirs <<< "$PATH"
+  for d in "${dirs[@]}"; do
+    [ -d "$d" ] || continue
+    for f in "$d"/*; do
+      b="${f##*/}"
+      case "$excluidos" in *" $b "*) continue ;; esac
+      [ -e "$f" ] && [ ! -e "$destino/$b" ] && ln -s "$f" "$destino/$b"
+    done
   done
-done
+}
+
+# --- Caso g: sin jq pero con python3 -> FUSIONA, no reemplaza --------------
+# Antes de esto, la rama sin jq hacia un `cp` del fichero entero con backup. Era
+# destructivo y silencioso salvo por un aviso, y no habia alternativa: fusionar JSON sin
+# jq no era posible. Con python3 si lo es, y python3 no es una dependencia nueva -- el
+# kit ya distribuye cuatro hooks .py y los cablea en la misma cadena PreToolUse.
+farm="$tmp/nojq"; granja "$farm" jq
 seed g <<'EOF'
-{ "statusLine": { "command": "mio" } }
+{ "statusLine": { "command": "mio" }, "env": { "MIO": "1" } }
 EOF
 ck "$(PATH="$farm" bash -c 'command -v jq >/dev/null 2>&1 && echo y || echo n')" "n" "el PATH de la granja no tiene jq (falsabilidad del caso)"
-sha_g="$(sha256sum "$S" | cut -d' ' -f1)"
-set +e; out_g="$(PATH="$farm" bash "$KIT/install.sh" 2>&1)"; rc_g=$?; set -e
-ck "$([ "$rc_g" -ne 0 ] && echo y || echo n)" "y" "sin jq: install.sh aborta (rc=$rc_g)"
-ck "$(echo "$out_g" | grep -qi 'falta jq' && echo y || echo n)" "y" "sin jq: el mensaje dice que falta jq"
-ck "$(sha256sum "$S" | cut -d' ' -f1)" "$sha_g" "sin jq: tu settings.json queda intacto"
-ck "$(backups)" "0" "sin jq: no hay backup que descubrir, porque no se toco nada"
+ck "$(PATH="$farm" bash -c 'command -v python3 >/dev/null 2>&1 && echo y || echo n')" "y" "y su python3 SI ejecuta (falsabilidad en la otra direccion)"
+set +e; PATH="$farm" bash "$KIT/install.sh" >/dev/null 2>&1; set -e
+ck "$(jq -r '.statusLine.command // "AUSENTE"' "$S")" "mio" "sin jq: tu statusLine sobrevive, luego hubo fusion y no reemplazo"
+ck "$(jq -r '.env.MIO // "AUSENTE"' "$S")" "1" "sin jq: tu env sobrevive"
+ck "$(jq -r 'has("hooks")' "$S")" "true" "sin jq: los hooks del kit se cablean igual"
+
+# --- Caso i: ni jq ni python3 -> no se toca tu fichero ---------------------
+# El caso degenerado. Sin ningun motor no se puede fusionar, y entonces la unica salida
+# honesta es NO tocar el fichero: reemplazarlo destruye ajustes que solo tu tienes, y un
+# backup que hay que descubrir no es una salvaguarda, es una autopsia.
+farm2="$tmp/nada"; granja "$farm2" jq python3
+seed i <<'EOF'
+{ "statusLine": { "command": "solo-mio" } }
+EOF
+ck "$(PATH="$farm2" bash -c 'command -v jq >/dev/null 2>&1 && echo y || echo n')" "n" "la granja sin motores no tiene jq"
+ck "$(PATH="$farm2" bash -c 'command -v python3 >/dev/null 2>&1 && echo y || echo n')" "n" "ni python3"
+ck "$(PATH="$farm2" bash -c 'echo x | grep -q x && echo y || echo n')" "y" "y su grep SI ejecuta (si no, todo lo de abajo aprobaria sin medir)"
+sha_i="$(sha256sum "$S" | cut -d' ' -f1)"
+set +e; PATH="$farm2" bash "$KIT/install.sh" >/dev/null 2>&1; set -e
+ck "$(sha256sum "$S" | cut -d' ' -f1)" "$sha_i" "sin ningun motor: tu settings.json queda intacto, byte a byte"
+
+# --- Caso j: los dos motores producen el mismo resultado -------------------
+# La fusion esta escrita dos veces -filtro jq y script python3- y dos implementaciones de
+# la misma regla se separan sin que nadie lo note. Esto es lo que lo impide: misma entrada
+# por los dos caminos, y el objeto resultante tiene que ser el mismo.
+mezcla='{ "statusLine": { "command": "x" }, "model": "opus", "env": { "A": "1", "B": "2" },
+          "permissions": { "allow": ["Bash(ls:*)"], "deny": ["Read(./.env)"] }, "tui": "z" }'
+seed j1 <<<"$mezcla"; run; con_jq="$(jq -S . "$S")"
+seed j2 <<<"$mezcla"
+set +e; PATH="$farm" bash "$KIT/install.sh" >/dev/null 2>&1; set -e
+sin_jq="$(jq -S . "$S")"
+ck "$([ "$con_jq" = "$sin_jq" ] && echo y || echo n)" "y" "jq y python3 fusionan lo mismo sobre la misma entrada"
+ck "$([ -n "$con_jq" ] && [ "$con_jq" != "null" ] && echo y || echo n)" "y" "y lo comparado no esta vacio (si no, la igualdad de arriba seria gratis)"
 
 # --- Caso h: idempotencia (se reusa el HOME del caso a, ya fusionado) -----
 export CLAUDE_HOME="$tmp/a"; S="$CLAUDE_HOME/settings.json"

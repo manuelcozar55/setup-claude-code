@@ -8,8 +8,8 @@ HOOK="$PWD/.claude/hooks/auto-spec.sh"
 pass=0; fail=0
 
 if ! command -v jq >/dev/null 2>&1; then
-  echo "ok - jq no disponible: suite omitida (el hook tambien se auto-desactiva sin jq)"
-  echo "== 1 passed, 0 failed =="; exit 0
+  echo "skip - jq ausente: esta suite codifica cada prompt con jq antes de invocar el hook"
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
 fi
 
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT

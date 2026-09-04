@@ -40,16 +40,25 @@ echo "casos que caen al neutralizar el guard: $FLIPPED"
 
 if [ "$BASELINE_FAIL" -ne 0 ]; then
   echo "FAIL: la baseline no esta limpia (FAIL=$BASELINE_FAIL); arregla test_guards.sh antes."
+  echo "PASS=0 FAIL=1"
   exit 1
 fi
 if [ "$FLIPPED" -eq 0 ]; then
   echo "FAIL: la suite no detecto el guard neutralizado (posible tautologia)."
+  echo "PASS=0 FAIL=1"
   exit 1
 fi
 if [ "$FLIPPED" -ne "$STUB_BLOCK_CASES" ]; then
   echo "FAIL: caen $FLIPPED casos, se esperaban $STUB_BLOCK_CASES (STUB_BLOCK_CASES)."
   echo "      Si el cambio es intencionado, actualiza STUB_BLOCK_CASES aqui y la cifra de README.md."
+  echo "PASS=0 FAIL=1"
   exit 1
 fi
 echo "OK: la suite es falsable (un guard no-op rompe los $FLIPPED casos BLOCK esperados)."
+# Linea de tally real para kit/sumar-tests.sh: esta suite es un unico cheque
+# ("es falsable si y solo si $FLIPPED == STUB_BLOCK_CASES"), no una bateria de
+# casos, asi que declara 1 passed/failed segun ese resultado -- no un tally
+# fabricado de las corridas internas de test_guards.sh, que son fixtures, no
+# aserciones de esta suite.
+echo "PASS=1 FAIL=0"
 exit 0

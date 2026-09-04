@@ -66,5 +66,58 @@ else
   echo "skip - git ausente: no se prueba la enumeracion consciente de git"
 fi
 
+# --- El nombre de la cuenta A SECAS, sin ruta delante ----------------------
+# El patron /home/<cuenta>/ solo ve la cuenta cuando viene dentro de una ruta. En el
+# journal de mcharness el nombre iba suelto, en un campo `actor`, y por eso ese fichero
+# se dio por limpio 131 veces seguidas: el patron no PODIA coincidir. La ausencia de
+# coincidencias solo vale si el patron puede coincidir.
+CUENTA="$(id -un 2>/dev/null || echo "")"
+mkdir -p "$tmp/cuenta"; printf 'actor: %s\n' "$CUENTA" > "$tmp/cuenta/journal.txt"
+set +e; salida="$(bash "$SCAN" "$tmp/cuenta" 2>&1)"; rc=$?; set -e
+if [ "${#CUENTA}" -ge 8 ]; then
+  check "$rc" "1" "el nombre de la cuenta a secas se detecta"
+else
+  # Nombre corto: el escaner NO debe mirarlo (seria ruido), pero tampoco puede callarlo.
+  check "$(printf '%s' "$salida" | grep -qi 'no se ha comprobado' && echo y || echo n)" "y" \
+        "con una cuenta demasiado corta el escaner DICE que ese check no se ha hecho"
+fi
+
+# Falsabilidad, en la otra direccion: un nombre generico no puede enrojecer el arbol.
+# 'runner' es el caso real -es la cuenta de GitHub Actions- y aparece dentro de
+# kit/test-runner.sh: sin esta guarda, el gate saldria rojo en CI por un fichero propio.
+mkdir -p "$tmp/generico"; printf 'bash kit/test-runner.sh\nusuario: runner\n' > "$tmp/generico/x.txt"
+set +e; SCAN_SECRETS_CUENTA=runner bash "$SCAN" "$tmp/generico" >/dev/null 2>&1; rc=$?; set -e
+check "$rc" "0" "un nombre de cuenta generico (runner) no enrojece un arbol que lo menciona"
+
+# Y que el detector no aprueba por vacio: el mismo arbol con la cuenta real dentro si cae.
+mkdir -p "$tmp/generico2"; printf 'bash kit/test-runner.sh\nusuario: %s\n' "$CUENTA" > "$tmp/generico2/x.txt"
+set +e; bash "$SCAN" "$tmp/generico2" >/dev/null 2>&1; rc=$?; set -e
+if [ "${#CUENTA}" -ge 8 ]; then
+  check "$rc" "1" "falsabilidad: el mismo arbol con la cuenta real dentro SI cae"
+fi
+
+# --- El hueco que cede la excepcion de gitleaks -----------------------------
+# claude/.gitleaks.toml exime del generic-api-key cualquier secreto que sea 64
+# hex en minuscula, porque esa es la forma de las huellas que mch sella. El
+# comentario de esa config promete que este escaner cubre lo que alli se cede:
+# una credencial de 64 hex ASIGNADA en un fichero de config. Sin este caso, la
+# promesa seria una frase.
+HEX64=$(printf 'clave-sintetica-para-el-test' | sha256sum | cut -d" " -f1)
+mkdir -p "$tmp/hex64"; printf 'API_KEY = %s\n' "$HEX64" > "$tmp/hex64/config.yaml"
+set +e; bash "$SCAN" "$tmp/hex64" >/dev/null 2>&1; rc=$?; set -e
+check "$rc" "1" "API_KEY con un valor de 64 hex en un .yaml se detecta"
+
+# Control: la palabra sin valor detras es prosa, no una credencial.
+mkdir -p "$tmp/hex64b"; printf 'exporta API_KEY antes de arrancar\nAPI_KEY no lleva valor aqui\n' > "$tmp/hex64b/notas.md"
+set +e; bash "$SCAN" "$tmp/hex64b" >/dev/null 2>&1; rc=$?; set -e
+check "$rc" "0" "mencionar API_KEY sin valor detras no enrojece"
+
+# Y el journal de mch, que esta LLENO de 64 hex, no puede dispararlo: la clave
+# de esas lineas es una ruta de fichero, no un nombre de credencial.
+mkdir -p "$tmp/hex64c/.agents"
+printf '{"event":"start","sensor_hashes":{"kit/test/test_scan_secrets.sh": "%s"}}\n' "$HEX64" > "$tmp/hex64c/.agents/journal.jsonl"
+set +e; bash "$SCAN" "$tmp/hex64c" >/dev/null 2>&1; rc=$?; set -e
+check "$rc" "0" "las huellas selladas en el journal no disparan el check de 64 hex"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

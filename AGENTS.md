@@ -10,7 +10,7 @@ vigilado por `kit/test/test_harness_structure.sh`) y ahí no cabe.
 make test
 ```
 
-28 suites bash, sin red. `exit 0` o el trabajo no está hecho. No declares nada terminado sin
+32 suites bash, sin red. `exit 0` o el trabajo no está hecho. No declares nada terminado sin
 esa salida delante. **Invócalo por ruta absoluta o con `make`**: el canal de Bash de este
 harness es reescribible y ya hubo un hook que sustituía el ejecutable en posición de comando
 (`knowledge/MISTAKES.md` · M-001).

@@ -23,13 +23,59 @@ exec 3>&2 2>/dev/null   # cualquier ruido interno no debe ensuciar la sesion
 payload=$(cat 2>/dev/null) || exit 0
 [ -n "$payload" ] || exit 0
 
-if command -v jq >/dev/null 2>&1; then
-  prompt=$(printf '%s' "$payload" | jq -r '.prompt // empty' 2>/dev/null)
-  cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null)
-  sid=$(printf '%s' "$payload" | jq -r '.session_id // "unknown"' 2>/dev/null)
-else
-  exit 0   # sin jq no se parsea con fiabilidad; callar es mejor que adivinar
-fi
+# >>> hk-json ─────────────────────────────────────────────────────────────────
+# Leer JSON sin depender de jq. Cadena de tres eslabones, en este orden:
+#   1. jq si esta         -> el camino de siempre, sin cambiar un byte
+#   2. python3 si no      -> json de la stdlib, parseo de verdad
+#   3. ninguno de los dos -> fallo cerrado; quien llama decide como bloquear
+# python3 NO es una dependencia nueva: kit/install.sh aborta con exit 1 si no puede crear
+# el venv con `python3 -m venv`, y el kit ya distribuye cuatro hooks .py. jq, en cambio,
+# no esta declarado como requisito en ningun sitio.
+# PROHIBIDO parsear esto con grep/sed/awk: el payload lleva llaves, comillas y saltos de
+# linea DENTRO de los valores, y una igualdad por subcadena es exactamente el defecto que
+# este repo lleva media rama persiguiendo.
+# Este bloque esta DUPLICADO en los seis hooks que leen JSON, y kit/test/test_guards.sh
+# comprueba que los seis son identicos byte a byte. Se duplica en vez de compartirse
+# porque un hook es un ejecutable hoja que el runtime lanza por ruta absoluta: ninguno de
+# los 14 del kit hace `source` de nada, los cuatro guards se instalan en ~/.claude/hooks/
+# mientras que auto-spec y verify-gate viven en el repo (no hay ruta relativa comun), y
+# una libreria compartida anadiria a un control de seguridad un modo de fallo nuevo --
+# libreria ausente => bloquear TODO.
+if command -v jq >/dev/null 2>&1; then HK_JSON=jq
+elif command -v python3 >/dev/null 2>&1; then HK_JSON=py
+else HK_JSON=no; fi
+
+# hk_get <ruta.punteada> [defecto]  --  JSON por stdin, valor por stdout.
+# El contrato es el que ya tenia jq a solas, y de el depende todo lo de abajo:
+#   rc=0 con salida vacia -> el campo no esta (permitir es lo correcto)
+#   rc!=0                 -> no se ha podido leer la entrada (ciego: no puede autorizar)
+# El defecto viaja por --arg/argv, nunca interpolado dentro del programa.
+hk_get() {
+  case "$HK_JSON" in
+    jq) if [ $# -ge 2 ]; then jq -r --arg d "$2" ".$1 // \$d" 2>/dev/null
+        else jq -r ".$1 // empty" 2>/dev/null; fi ;;
+    py) python3 -c 'import json,sys
+try: d = json.load(sys.stdin)
+except Exception: sys.exit(5)
+for k in sys.argv[1].split("."):
+    if d is None: break
+    if not isinstance(d, dict): sys.exit(5)
+    d = d.get(k)
+if d is None or d is False: d = sys.argv[2] if len(sys.argv) > 2 else None
+if d is not None: print(d if isinstance(d, str) else json.dumps(d))' "$1" ${2+"$2"} 2>/dev/null ;;
+    *)  return 127 ;;
+  esac
+}
+# <<< hk-json ─────────────────────────────────────────────────────────────────
+
+prompt=$(printf '%s' "$payload" | hk_get prompt)
+cwd=$(printf '%s' "$payload" | hk_get cwd)
+sid=$(printf '%s' "$payload" | hk_get session_id unknown)
+# Sin jq NI python3 no se parsea con fiabilidad, y este hook se calla saliendo por la
+# linea de abajo con el prompt vacio. Ojo: aqui "fallar cerrado" NO puede ser exit 2.
+# En UserPromptSubmit ese codigo BORRA el prompt del usuario (contrato citado arriba),
+# asi que el unico fallo seguro es el silencio -- al reves que en los cuatro guards,
+# donde callar es autorizar. La asimetria del kit se aplica al evento, no al fichero.
 [ -n "$prompt" ] || exit 0
 [ -n "$cwd" ] || cwd="$PWD"
 

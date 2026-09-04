@@ -13,6 +13,18 @@ PY="${PYTHON3:-python3}"
 SG="${SECRET_GUARD_BIN:-$KIT/claude/hooks/secret-guard.sh}"
 pass=0; fail=0
 
+# Esta suite fabrica sus payloads JSON con `jq -n --arg` (es lo que escapa bien comillas
+# y saltos de linea) y ademas necesita un jq presente como CONTROL: el bloque 16 mide que
+# los guards se comportan distinto con y sin jq, y sin el no hay con-que-comparar. Sin
+# este guard la suite no se saltaba: fallaba duro con PASS=21 FAIL=28, 28 rojos que no
+# eran un defecto del kit sino la ausencia de una herramienta. Se omite declarandolo,
+# siguiendo a las otras diez suites del repo que ya lo hacen; kit/sumar-tests.sh cuenta
+# el skip y baja el veredicto agregado a "NO SE PUDO VERIFICAR", que es justo lo que es.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "skip - jq ausente: esta suite fabrica sus payloads con jq y lo necesita como control"
+  echo "PASS=0 FAIL=0 SKIP=1"; exit 0
+fi
+
 # smart_approve.py decide BLOCK/ALLOW leyendo permissions.deny de
 # $HOME/.claude/settings.json (ver kit/claude/hooks/smart_approve.py). Sin
 # ese fichero (p.ej. un runner de CI con HOME limpio) devuelve ALLOW siempre
@@ -283,6 +295,213 @@ if git -C "$KIT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 if [ "$mode_fail" -eq 0 ]; then pass=$((pass+1)); else fail=$((fail+1)); fi
 
+# --- 16) Los cuatro guards sin jq: primero FUNCIONAN, y solo si no pueden, bloquean.
+# Antes de J-1 los cuatro salian rc=0 y mudos ante un payload que con jq bloquean:
+# permitian en silencio, que es la inversion exacta del principio del kit (ausencia de
+# autoridad -> avisar; autoridad presente pero muda -> bloquear). J-1 lo arreglo fallando
+# cerrado, y Track M lo completa: sin jq se lee con python3 -- que NO es dependencia nueva
+# (kit/install.sh aborta si no puede crear el venv con el, y el kit ya distribuye cuatro
+# hooks .py) -- y el fallo cerrado pasa a ser el ULTIMO recurso, no el primero.
+#
+# Por eso hay DOS granjas y no una. Sin jq pero con python3 el guard tiene que comportarse
+# igual que con jq: bloquear lo peligroso Y DEJAR PASAR LO INOCUO -- esto ultimo es lo que
+# se olvida, y sin ello un guard que bloquea todo tambien "bloquea lo peligroso". Solo sin
+# ninguno de los dos aparece el bloqueo por no poder leer la entrada.
+#
+# Los PATH son REALES: granjas de symlinks a los binarios del PATH menos los excluidos. Un
+# alias, una funcion o un jq falso ejecutable no valen -- `command -v` los encontraria y la
+# medida diria "sin jq" midiendo un jq que si esta.
+NOJQ_ROOT=$(mktemp -d)
+granja() { # granja <dir> <binario a excluir>...
+  local dest="$1"; shift; local excl=" $* " _d _f _b
+  mkdir -p "$dest"
+  local _pathdirs; IFS=: read -ra _pathdirs <<< "$PATH"
+  for _d in "${_pathdirs[@]}"; do
+    [ -d "$_d" ] || continue
+    for _f in "$_d"/*; do
+      _b="${_f##*/}"
+      case "$excl" in *" $_b "*) continue ;; esac
+      [ -e "$dest/$_b" ] && continue
+      [ -x "$_f" ] && ln -sf "$_f" "$dest/$_b" 2>/dev/null
+    done
+  done
+  return 0
+}
+NOJQ_FARM="$NOJQ_ROOT/nojq"; granja "$NOJQ_FARM" jq
+# La segunda granja se DERIVA de la primera en vez de recorrer el PATH otra vez: son 6700
+# symlinks y reconstruirlos costaba 38 s en esta maquina (casi todo en los montajes 9P de
+# /mnt/c, que esta suite ya sufre). Copiarlos en local y quitar python3 cuesta
+# milisegundos, y las aserciones de falsabilidad de abajo comprueban que el recorte es real.
+NOPARSER_FARM="$NOJQ_ROOT/noparser"
+cp -a "$NOJQ_FARM" "$NOPARSER_FARM"
+rm -f "$NOPARSER_FARM/python3" "$NOPARSER_FARM/python"
+
+# Igualdad EXACTA, no subcadena: en este repo ya han caido cinco asserts que daban por
+# bueno un valor porque CONTENIA lo esperado. Aqui el rc importa al digito -- Claude Code
+# lee 2 como bloqueo y cualquier otro numero como "adelante", asi que "distinto de 0" no
+# seria la comprobacion correcta.
+ckq() { # ckq <obtenido> <esperado> <descripcion>
+  if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1))
+  else echo "NOT ok - $3 (obtenido: '$1' | esperado: '$2')"; fail=$((fail+1)); fi
+}
+
+# Falsabilidad de las DOS granjas, y no solo sobre jq. La granja heredada de J/L tenia
+# grep, find y printf como symlinks self-referenciales (rotos): cualquier hook que pasara
+# la puerta de jq moria en grep con 127 y el `|| exit 0` de los guards convertia eso en
+# PERMITIR. Un andamio que no se falsifica puede estar midiendo otra cosa.
+ckq "$(PATH="$NOJQ_FARM" bash -c 'command -v jq >/dev/null 2>&1 && echo si || echo no')" "no" \
+    "falsabilidad: la granja sin jq no tiene jq"
+ckq "$(PATH="$NOJQ_FARM" bash -c 'command -v python3 >/dev/null 2>&1 && echo si || echo no')" "si" \
+    "falsabilidad: la granja sin jq SI tiene python3 (es el eslabon que se esta midiendo)"
+ckq "$(PATH="$NOJQ_FARM" bash -c 'echo x | grep -q x && echo si || echo no')" "si" \
+    "falsabilidad: en la granja sin jq grep EJECUTA (roto, todo bloqueo seria un rc=0 mudo)"
+ckq "$(PATH="$NOPARSER_FARM" bash -c 'command -v jq >/dev/null 2>&1 && echo si || echo no')" "no" \
+    "falsabilidad: la granja sin parser no tiene jq"
+ckq "$(PATH="$NOPARSER_FARM" bash -c 'command -v python3 >/dev/null 2>&1 && echo si || echo no')" "no" \
+    "falsabilidad: la granja sin parser tampoco tiene python3"
+ckq "$(PATH="$NOPARSER_FARM" bash -c 'echo x | grep -q x && echo si || echo no')" "si" \
+    "falsabilidad: en la granja sin parser grep EJECUTA"
+
+GUARD_HOME=$(mktemp -d)
+# Un solo payload que los CUATRO guards bloquean con jq presente: git add de un .env
+# (secret-guard), push forzado a rama protegida (branch-guard) y borrado recursivo de
+# ruta sensible (destructive-guard y block-dangerous-commands). El verbo del borrado se
+# arma por trozos para que el guard INSTALADO no bloquee la edicion de este fichero.
+_V="r""m"
+PL_PELIGROSO=$(jq -n --arg c "git add .env && git push --force origin main && $_V -rf /home/victima" \
+  '{tool_name:"Bash",tool_input:{command:$c}}')
+PL_INOCUO=$(jq -n --arg c 'ls -la' '{tool_name:"Bash",tool_input:{command:$c}}')
+# El segundo protocolo de block-dangerous-commands: "ask", no "deny". Los dos se emiten
+# por JSON y el camino sin jq tiene que reproducir LOS DOS, no solo el que bloquea.
+PL_ASK=$(jq -n --arg c 'chmod 777 /tmp/x' '{tool_name:"Bash",tool_input:{command:$c}}')
+# Un evento que no es Bash no trae .tool_input.command: ahi permitir es correcto, y el
+# camino de python3 tiene que distinguirlo igual que jq de "no he podido leer".
+PL_NO_BASH='{"tool_name":"Read","tool_input":{"file_path":"/etc/hosts"}}'
+# Los payloads se fabrican AQUI, con jq presente: dentro del escenario sin jq no se
+# podrian construir, y hacerlo a mano con printf reintroduciria el escapado que
+# `jq -n --arg` resuelve.
+
+g_rc()  { printf '%s' "$2" | env PATH="$3" HOME="$GUARD_HOME" CC_BLOCK_LOG="$GUARD_HOME/b.log" \
+            bash "$KIT/claude/hooks/$1" >/dev/null 2>&1; echo $?; }
+# shellcheck disable=SC2069 # el orden es el correcto A PROPOSITO: g_err quiere SOLO stderr,
+# y para eso 2>&1 tiene que ir ANTES de mandar stdout a /dev/null. Con el orden que sugiere
+# SC2069 esta funcion devolveria las dos corrientes mezcladas y las aserciones sobre el
+# mensaje del guard aprobarian tambien cuando el texto saliera por stdout.
+g_err() { printf '%s' "$2" | env PATH="$3" HOME="$GUARD_HOME" CC_BLOCK_LOG="$GUARD_HOME/b.log" \
+            bash "$KIT/claude/hooks/$1" 2>&1 >/dev/null; }
+g_out() { printf '%s' "$2" | env PATH="$3" HOME="$GUARD_HOME" CC_BLOCK_LOG="$GUARD_HOME/b.log" \
+            bash "$KIT/claude/hooks/$1" 2>/dev/null; }
+
+# --- 16a) SIN jq, CON python3: tiene que ser INDISTINGUIBLE de con jq ---------------
+# Los tres guards que responden con exit 2. La comparacion no es "bloquea": es que el rc
+# y el motivo coincidan BYTE A BYTE con los que produce el camino de jq. Un mensaje
+# distinto seria un camino distinto, y el contrato es que no lo haya.
+for g in destructive-guard.sh secret-guard.sh branch-guard.sh; do
+  ckq "$(g_rc "$g" "$PL_PELIGROSO" "$NOJQ_FARM")" "$(g_rc "$g" "$PL_PELIGROSO" "$PATH")" \
+      "$g sin jq (con python3): mismo rc que con jq ante el payload peligroso"
+  ckq "$(g_rc "$g" "$PL_PELIGROSO" "$NOJQ_FARM")" "2" \
+      "$g sin jq (con python3): y ese rc es 2, es decir bloqueo de verdad"
+  ckq "$(g_err "$g" "$PL_PELIGROSO" "$NOJQ_FARM")" "$(g_err "$g" "$PL_PELIGROSO" "$PATH")" \
+      "$g sin jq (con python3): MISMO motivo por stderr, byte a byte, que con jq"
+  # Lo que se olvida: un hook que bloquea TODO tambien "bloquea lo peligroso". Sin estas
+  # dos aserciones, "salir 2 siempre" pasaria las de arriba y pareceria el arreglo.
+  ckq "$(g_rc "$g" "$PL_INOCUO" "$NOJQ_FARM")" "0" \
+      "$g sin jq (con python3): el comando inocuo SIGUE PASANDO (rc=0)"
+  ckq "$(g_out "$g" "$PL_INOCUO" "$NOJQ_FARM" | wc -c | tr -d ' ')" "0" \
+      "$g sin jq (con python3): el comando inocuo pasa EN SILENCIO"
+  ckq "$(g_rc "$g" "$PL_NO_BASH" "$NOJQ_FARM")" "0" \
+      "$g sin jq (con python3): evento que no es Bash sigue permitido (rc=0)"
+done
+
+# block-dangerous-commands NO usa exit 2 cuando puede leer la entrada: emite su veredicto
+# como JSON con rc=0. Son dos protocolos que el runtime honra de forma distinta y el
+# camino de python3 tiene que reproducir el suyo, no unificarlos.
+ckq "$(g_rc block-dangerous-commands.sh "$PL_PELIGROSO" "$NOJQ_FARM")" "0" \
+    "block-dangerous-commands sin jq (con python3): responde por JSON (rc=0), no por exit 2"
+ckq "$(g_out block-dangerous-commands.sh "$PL_PELIGROSO" "$NOJQ_FARM")" \
+    "$(g_out block-dangerous-commands.sh "$PL_PELIGROSO" "$PATH")" \
+    "block-dangerous-commands sin jq (con python3): JSON del veredicto identico byte a byte al de jq"
+ckq "$(g_out block-dangerous-commands.sh "$PL_PELIGROSO" "$NOJQ_FARM" \
+       | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["permissionDecision"])')" "deny" \
+    "block-dangerous-commands sin jq (con python3): la decision sigue siendo deny"
+ckq "$(g_out block-dangerous-commands.sh "$PL_ASK" "$NOJQ_FARM" \
+       | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["permissionDecision"])')" "ask" \
+    "block-dangerous-commands sin jq (con python3): el protocolo 'ask' tambien se reproduce"
+ckq "$(g_out block-dangerous-commands.sh "$PL_ASK" "$NOJQ_FARM")" \
+    "$(g_out block-dangerous-commands.sh "$PL_ASK" "$PATH")" \
+    "block-dangerous-commands sin jq (con python3): el JSON de 'ask' es identico byte a byte al de jq"
+ckq "$(g_rc block-dangerous-commands.sh "$PL_INOCUO" "$NOJQ_FARM")" "0" \
+    "block-dangerous-commands sin jq (con python3): el comando inocuo SIGUE PASANDO (rc=0)"
+ckq "$(g_out block-dangerous-commands.sh "$PL_INOCUO" "$NOJQ_FARM" | wc -c | tr -d ' ')" "0" \
+    "block-dangerous-commands sin jq (con python3): el comando inocuo pasa EN SILENCIO"
+ckq "$(g_rc block-dangerous-commands.sh "$PL_NO_BASH" "$NOJQ_FARM")" "0" \
+    "block-dangerous-commands sin jq (con python3): evento que no es Bash sigue permitido (rc=0)"
+
+# Y con jq el payload peligroso sigue bloqueando EXACTAMENTE como antes de J-1: mismo
+# mecanismo y mismo mensaje, anclado de ^ a $. Un `grep -F` del trozo central habria
+# dado por bueno tambien el mensaje nuevo de "no puedo leer la entrada", que es otra cosa.
+ckq "$(g_rc destructive-guard.sh "$PL_PELIGROSO" "$PATH")" "2" "destructive-guard con jq: sigue bloqueando (rc=2)"
+ckq "$(g_err destructive-guard.sh "$PL_PELIGROSO" "$PATH" \
+       | grep -qE '^BLOCKED: rm on sensitive path \(WSL2 risk: NTFS junctions can delete beyond target\)\.$' && echo si || echo no)" "si" \
+    "destructive-guard con jq: mismo mensaje exacto que antes de J-1"
+ckq "$(g_rc secret-guard.sh "$PL_PELIGROSO" "$PATH")" "2" "secret-guard con jq: sigue bloqueando (rc=2)"
+ckq "$(g_err secret-guard.sh "$PL_PELIGROSO" "$PATH" \
+       | grep -qE '^BLOCKED: Staging \.env file — add to \.gitignore instead\.$' && echo si || echo no)" "si" \
+    "secret-guard con jq: mismo mensaje exacto que antes de J-1"
+ckq "$(g_rc branch-guard.sh "$PL_PELIGROSO" "$PATH")" "2" "branch-guard con jq: sigue bloqueando (rc=2)"
+ckq "$(g_err branch-guard.sh "$PL_PELIGROSO" "$PATH" \
+       | grep -qE "^BLOCKED: Attempted push to protected branch 'main'\.$" && echo si || echo no)" "si" \
+    "branch-guard con jq: mismo mensaje exacto que antes de J-1"
+# block-dangerous-commands responde por JSON (rc=0), no por exit 2, cuando SI puede leer
+# la entrada. Se lee el campo con jq: igualdad exacta sobre el valor, sin greps sobre el
+# texto del JSON.
+ckq "$(g_rc block-dangerous-commands.sh "$PL_PELIGROSO" "$PATH")" "0" \
+    "block-dangerous-commands con jq: sigue respondiendo por JSON (rc=0)"
+ckq "$(g_out block-dangerous-commands.sh "$PL_PELIGROSO" "$PATH" | jq -r '.hookSpecificOutput.permissionDecision')" "deny" \
+    "block-dangerous-commands con jq: la decision sigue siendo deny"
+
+# El caso legitimo que NO puede cambiar: jq presente y sin comando que revisar (un evento
+# que no es Bash no trae .tool_input.command). Ahi permitir es correcto, y lo sigue siendo:
+# lo que distingue este caso del de arriba es el codigo de salida de jq, no que la salida
+# venga vacia.
+for g in destructive-guard.sh secret-guard.sh branch-guard.sh block-dangerous-commands.sh; do
+  ckq "$(g_rc "$g" "$PL_NO_BASH" "$PATH")" "0" "$g con jq: evento que no es Bash sigue permitido (rc=0)"
+done
+
+# --- 16b) SIN jq NI python3: ultimo recurso, el fallo cerrado de J-1 intacto --------
+for g in destructive-guard.sh secret-guard.sh branch-guard.sh block-dangerous-commands.sh; do
+  ckq "$(g_rc "$g" "$PL_PELIGROSO" "$NOPARSER_FARM")" "2" \
+      "$g sin jq NI python3: no permite lo que no ha podido leer (rc=2, fallo cerrado)"
+  ckq "$(g_err "$g" "$PL_PELIGROSO" "$NOPARSER_FARM" \
+         | grep -qE '^BLOCKED: cannot read the hook input: no JSON parser found \(rc=127: ' && echo si || echo no)" "si" \
+      "$g sin jq NI python3: dice por que no permite (motivo por stderr)"
+  # Sin parser el guard esta ciego tambien ante lo inocuo, y bloquearlo es lo correcto:
+  # no puede saber que lo es. Se afirma explicitamente para que el coste del ultimo
+  # recurso quede medido y no se confunda con el camino de python3 de mas arriba.
+  ckq "$(g_rc "$g" "$PL_INOCUO" "$NOPARSER_FARM")" "2" \
+      "$g sin jq NI python3: tambien bloquea lo inocuo (ciego: ese es el coste declarado)"
+done
+
+# --- 16c) El shim de JSON esta duplicado a proposito: se comprueba que no deriva ----
+# Los seis hooks que leen JSON llevan el MISMO bloque, no un `source` de una libreria.
+# Es deliberado: los hooks son ejecutables hoja que el runtime lanza por ruta absoluta,
+# ninguno de los 14 del kit hace `source` de nada, los cuatro guards se INSTALAN en
+# ~/.claude/hooks/ mientras que auto-spec y verify-gate viven en el repo (no hay ruta
+# relativa comun), y una libreria compartida anadiria a un control de seguridad un modo
+# de fallo nuevo: libreria ausente => bloquear TODO. El precio de duplicar es la deriva
+# silenciosa, y se paga con este test: identidad byte a byte de los seis.
+RAIZ_REPO="$(cd "$KIT/.." && pwd)"
+shim_de() { sed -n '/^# >>> hk-json/,/^# <<< hk-json/p' "$1"; }
+SHIM_REF="$(shim_de "$KIT/claude/hooks/destructive-guard.sh")"
+ckq "$([ "$(printf '%s' "$SHIM_REF" | wc -l)" -gt 10 ] && echo si || echo no)" "si" \
+    "falsabilidad: el bloque hk-json de referencia existe y no esta vacio (si no, los 5 de abajo compararian '' con '')"
+for h in "$KIT/claude/hooks/secret-guard.sh" "$KIT/claude/hooks/branch-guard.sh" \
+         "$KIT/claude/hooks/block-dangerous-commands.sh" \
+         "$RAIZ_REPO/.claude/hooks/auto-spec.sh" "$RAIZ_REPO/.claude/hooks/verify-gate.sh"; do
+  ckq "$(shim_de "$h")" "$SHIM_REF" "shim hk-json identico en $(basename "$h") (duplicado, pero sin deriva)"
+done
+
+rm -rf "$NOJQ_ROOT" "$GUARD_HOME"
 rm -rf "$SG_DIR"
 rm -rf "$GUARDS_TEST_HOME"
 echo "PASS=$pass FAIL=$fail"; [ $fail -eq 0 ]

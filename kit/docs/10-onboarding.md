@@ -30,7 +30,9 @@ pelada: `kit/test/test_clean_install_resilience.sh`.
 - **`git config core.autocrlf`**: si lo tienes en `true` (típico si vienes de Windows), el
   repo trae `.gitattributes` que fuerza LF en scripts y hooks. No lo desactives: un hook con
   CRLF no se ejecuta y el fallo se lee como "el hook no hace nada".
-- `bash`, `git`, `jq`, `curl`, `python3`. `jq` es dependencia dura de cuatro guards.
+- `bash`, `git`, `curl`, `python3`, y `jq` **o** `python3` para leer JSON. Los cuatro guards
+  ya no dependen de `jq` en concreto: leen con `jq` si está y con `python3` si no, y sólo
+  fallan cerrado sin ninguno de los dos. `doctor.sh` sí exige `jq` para autodiagnosticarse.
 
 ## 2 · El camino corto
 
@@ -59,7 +61,7 @@ del repo.
 ## 4 · Verificar de verdad
 
 ```bash
-make test          # 28 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
+make test          # 32 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
 bash kit/doctor.sh # estado de ESTA máquina
 ```
 

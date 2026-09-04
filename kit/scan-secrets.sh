@@ -19,6 +19,22 @@ PATTERNS=(
 found=0
 report() { echo "LEAK: $1"; found=1; }
 
+# El nombre de la cuenta A SECAS, sin ruta delante. El patron /home/<x>/ de mas abajo
+# solo lo ve dentro de una ruta: en el journal de mcharness el nombre iba suelto en un
+# campo `actor` y 131 lineas pasaron por limpias porque el patron no PODIA coincidir.
+# Un nombre corto o generico (root, runner, ci) haria saltar palabras normales, asi que
+# ahi el check NO se hace -- pero se dice al final, nunca se calla: omitir no es aprobar.
+CUENTA="${SCAN_SECRETS_CUENTA:-$(id -un 2>/dev/null || true)}"
+CUENTA_GENERICOS='root|user|users|usuario|ubuntu|debian|runner|admin|administrator|ci|build|builder|node|docker|test|guest|jenkins|vagrant|codespace|vscode|azureuser|ec2-user|pi|dev|home'
+cuenta_omitida=""
+if [ -z "$CUENTA" ]; then
+  cuenta_omitida="no se pudo leer el nombre de la cuenta local"
+elif [ "${#CUENTA}" -lt 8 ]; then
+  cuenta_omitida="el nombre de la cuenta local tiene menos de 8 caracteres y buscarlo daria falsos positivos"
+elif printf '%s' "$CUENTA" | grep -qiE "^($CUENTA_GENERICOS)$"; then
+  cuenta_omitida="el nombre de la cuenta local es un nombre generico"
+fi
+
 # Dentro de un repo git NO se escanea lo ignorado. Un fichero ignorado no se va a
 # commitear, asi que un hallazgo ahi es ruido -- y era ruido con consecuencias:
 # test_harness_structure.sh ejecuta este escaner sobre la raiz del repo, y daba ROJO en
@@ -52,6 +68,20 @@ while IFS= read -r -d '' f; do
     grep -InoE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$f" \
       | grep -viE '@example\.(com|org)|noreply@|you@example|manuelcozar55@gmail\.com' | head -2 || true
   fi
+  if [ -z "$cuenta_omitida" ] && grep -Fnw -e "$CUENTA" "$f" >/dev/null 2>&1; then
+    report "nombre de la cuenta local a secas en $f (usa un marcador de posicion)"
+    grep -Fnw -e "$CUENTA" "$f" | head -2 || true
+  fi
+  # Credencial de 64 hex ASIGNADA a un nombre de credencial. Existe porque
+  # claude/.gitleaks.toml exime esa forma del generic-api-key -- es la forma de las
+  # huellas que mch sella como `- sensor:` -- y ese comentario promete que este
+  # escaner cubre lo cedido. La clave esta en exigir el nombre pegado al valor: en
+  # el journal esos mismos 64 hex van indexados por una RUTA de fichero, no por un
+  # nombre de credencial, y por eso no caen aqui.
+  if grep -IniE '(password|passwd|secret|token|api_?key)[[:space:]]*[:=][[:space:]]*"?[a-f0-9]{64}"?' "$f" >/dev/null 2>&1; then
+    report "credencial de 64 hex asignada en $f"
+    grep -IniE '(password|passwd|secret|token|api_?key)[[:space:]]*[:=][[:space:]]*"?[a-f0-9]{64}"?' "$f" | head -2 || true
+  fi
   # Ruta del home de una persona concreta. No entra en PATTERNS porque necesita excluir
   # los marcadores de posicion legitimos, igual que el check de emails. Por que existe:
   # este kit vendoriza sentinel, y la copia de origen habia sustituido /root/ por el home
@@ -65,5 +95,8 @@ while IFS= read -r -d '' f; do
   fi
 done < <(list_files)
 
+if [ -n "$cuenta_omitida" ]; then
+  echo "NOTA: el nombre de la cuenta a secas no se ha comprobado: $cuenta_omitida"
+fi
 if [ "$found" -ne 0 ]; then echo "FAIL: secretos/PII detectados en $TARGET"; exit 1; fi
 echo "PASS: sin secretos/PII en $TARGET"

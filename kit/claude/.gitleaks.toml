@@ -70,3 +70,37 @@ id = "anthropic-api-key-prefix"
 description = "Clave de API de Anthropic por prefijo sk-ant-, en cualquier tipo de fichero (la regla por defecto solo cubre la forma <93 chars>AA)"
 regex = '''sk-ant-[a-zA-Z0-9\-_]{20,}'''
 keywords = ["sk-ant-"]
+
+# --- Excepcion: las huellas que mch sella en su journal -----------------------
+# `mch task start` sella una huella SHA-256 por cada fichero declarado como
+# `- sensor:` y la escribe en .agents/journal.jsonl con la forma
+#   "kit/test/test_scan_secrets.sh": "<64 hex>"
+# La regla POR DEFECTO generic-api-key se arma con la palabra clave que aporta el
+# NOMBRE del sensor ("secret", "token", "key") y da el hash por clave. Medido en
+# este repo: cada tarea con sensor enrojecia el gate y bloqueaba su propio commit.
+#
+# Aqui NO vale el remedio que 05-security.md documenta para los falsos positivos
+# (fingerprint en .gitleaksignore): el journal es append-only y crece, asi que
+# cada tarea nueva pediria una entrada nueva, para siempre.
+#
+# Por que la excepcion es por FORMA DEL SECRETO y no por ruta, que seria lo
+# obvio: medido con gitleaks 8.30.1, en un allowlist GLOBAL un `paths` que
+# coincide exime el fichero ENTERO antes de mirar el contenido, y
+# `matchCondition = "AND"` no lo impide -- un allowlist con `paths` del journal y
+# una regex imposible (^zzzimposible$) seguia dejando pasar un token ghp_ dentro
+# del journal. O sea: la version "acotada" que uno escribiria de primeras es la
+# mas ancha de las dos. Acotando por el secreto, un token real pegado en el
+# journal -- que es donde un agente pega salida de comandos -- sigue cayendo.
+#
+# Lo que esto cede, dicho sin adornos: una credencial que sea exactamente 64 hex
+# en minuscula deja de dispararle a generic-api-key en TODO el repo. Los formatos
+# con prefijo (ghp_, sk-ant-, xox., AKIA) tienen regla propia y siguen cayendo;
+# el hueco que queda -- API_KEY=<64 hex> en un fichero de config -- lo cubre
+# kit/scan-secrets.sh, que corre en `make test`.
+#
+# test_secret_content_gitleaks.sh prueba las dos direcciones: la huella pasa y
+# un token real en el mismo journal bloquea.
+[[allowlists]]
+description = "huellas SHA-256 (64 hex) selladas por mch como `- sensor:`; ver comentario de arriba"
+regexTarget = "secret"
+regexes = ['''^[a-f0-9]{64}$''']

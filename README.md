@@ -37,7 +37,7 @@ macOS (no hay CI que lo demuestre), y no es un framework del que dependas: se in
 ```bash
 git clone https://github.com/manuelcozar55/setup-claude-code.git
 cd setup-claude-code
-bash kit/install.sh    # requiere jq; FUSIONA tu settings.json con jq, no lo pisa
+bash kit/install.sh    # requiere jq O python3; FUSIONA tu settings.json, no lo pisa
 make test              # el oráculo de este repo: exit 0, o el trabajo no está hecho
 bash kit/doctor.sh     # diagnostico de lo que ya tienes instalado
 bash uninstall.sh      # SIMULA la reversion; con --apply la ejecuta (y hace backup antes)
@@ -54,7 +54,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 28 suites falsables | v1.2.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 32 suites falsables | v1.2.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -262,7 +262,7 @@ No son garantías absolutas: son defensa en profundidad, con sus límites docume
 
 **Prerrequisitos** — el kit solo soporta **Linux o WSL2** (ver el aviso de arriba: en Windows, entra en WSL antes de nada y clona dentro de `~`, no en `/mnt/c/`).
 
-Además necesitas: `bash`, `git`, `make`, `python3` ≥ 3.10, `jq`. `gitleaks` (para la Capa 2 de secretos) es opcional — si no lo tienes, `install.sh` te ofrece instalarlo solo (binario oficial, verificado contra un checksum SHA-256 fijado en este repo, no descargado de la red; sin `curl | bash`), o puedes seguir sin él: la Capa 1 funciona igual. Lista completa y cómo comprobar cada una en [`kit/docs/02-install.md`](kit/docs/02-install.md).
+Además necesitas: `bash`, `git`, `make`, `python3` ≥ 3.10. `jq` ya no es dependencia dura de los guards —leen JSON con `jq` si está y con `python3` si no—, pero `doctor.sh` sí lo exige para autodiagnosticarse. `gitleaks` (para la Capa 2 de secretos) es opcional — si no lo tienes, `install.sh` te ofrece instalarlo solo (binario oficial, verificado contra un checksum SHA-256 fijado en este repo, no descargado de la red; sin `curl | bash`), o puedes seguir sin él: la Capa 1 funciona igual. Lista completa y cómo comprobar cada una en [`kit/docs/02-install.md`](kit/docs/02-install.md).
 
 ```bash
 git clone https://github.com/manuelcozar55/setup-claude-code.git
@@ -277,7 +277,7 @@ reciente que dejó `install.sh`. Por defecto es un *dry-run* que solo enseña qu
 falta `--apply` para escribir, y antes de escribir se hace a su vez un backup del estado
 actual. `bash uninstall.sh --list` enumera los backups disponibles.
 
-`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, `rtk`, el venv de tools, `gitleaks`): **nada del kit los da por supuestos**, y hay un test que lo demuestra en una máquina pelada (`test_clean_install_resilience.sh`). La excepción es `jq`, y es explícita: el kit **sí** lo exige — `install.sh` aborta si falta, y sin él los guards de Bash fallan en cerrado, deniegan en vez de permitir en silencio —, y ese mismo test también lo demuestra. Guía completa en [`kit/README.md`](kit/README.md).
+`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, `rtk`, el venv de tools, `gitleaks`): **nada del kit los da por supuestos**, y hay un test que lo demuestra en una máquina pelada (`test_clean_install_resilience.sh`). La excepción es poder **leer JSON**, y es explícita: `install.sh` aborta si no encuentra ni `jq` ni `python3`, y sin ninguno de los dos los guards de Bash fallan en cerrado — deniegan en vez de permitir en silencio. Con `python3` a secas el kit protege igual; lo que pierde es el autodiagnóstico, porque `doctor.sh` sí usa `jq` y sin él da `FAIL · jq no instalado`. Ese mismo test lo demuestra. Guía completa en [`kit/README.md`](kit/README.md).
 
 Si quieres el proxy de contexto, es un flag — y se cablea solo si arranca de verdad:
 

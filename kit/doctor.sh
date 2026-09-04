@@ -40,24 +40,72 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   [ "$miss" -eq 0 ] && pass "hooks referenciados presentes y ejecutables  (fuente: jq .hooks + test -e/-x)"
 fi
 
-# 2c. Deriva entre lo que el kit trae y lo desplegado. Es WARN y no FAIL: personalizar un
-# hook es legitimo. Pero si divergen y no lo sabes, el kit deja de reproducir tu maquina, y
-# eso ya paso: dos guards llevaban meses distintos entre el kit y su copia de origen, con la
-# version endurecida en un lado y la antigua en el otro, y nadie lo noto.
-derivados=0; derivados_lista=""
+# 2c. hooks desplegados vs. los del kit -- y, si difieren, POR QUE difieren.
+#     Un WARN indiscriminado colapsa dos cosas opuestas: "el usuario lo personalizo"
+#     (suyo, correcto) y "la instalacion se quedo atras" (fallo). El discriminador es
+#     el sha del blob: si el contenido instalado aparece en el historial de git del kit
+#     para ESA ruta, ese fichero ES una version antigua del kit. Nueve huecos de guardas
+#     cerrados en 69db95d siguieron abiertos en la maquina con doctor saliendo 0.
+REPO="$(cd "$KIT/.." && pwd)"
+tiene_git=n
+if command -v git >/dev/null 2>&1 && git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1; then
+  tiene_git=y
+fi
+
+rancios=0; rancios_lista=""
+propios=0; propios_lista=""
 for src in "$KIT"/claude/hooks/*; do
   [ -f "$src" ] || continue
   nombre="$(basename "$src")"
   dst="$CLAUDE_HOME/hooks/$nombre"
   [ -f "$dst" ] || continue
-  if ! cmp -s "$src" "$dst"; then
-    derivados=$((derivados + 1)); derivados_lista="$derivados_lista $nombre"
+  cmp -s "$src" "$dst" && continue
+
+  # git rev-list HEAD solo ve lo que el historial disponible trae: un checkout
+  # superficial o una rama con squash/rebase pueden no traer la version vieja
+  # aunque exista. Eso empuja hacia "propio" (WARN) un caso que en realidad es
+  # "rancio" (FAIL) -- se equivoca del lado seguro, y es inherente a como git
+  # ve el historial, no algo que este check pueda arreglar por si solo.
+  encontrado=n
+  if [ "$tiene_git" = y ]; then
+    blob="$(git -C "$REPO" hash-object "$dst" 2>/dev/null)"
+    if [ -n "$blob" ]; then
+      for c in $(git -C "$REPO" rev-list HEAD -- "kit/claude/hooks/$nombre" 2>/dev/null); do
+        if [ "$(git -C "$REPO" rev-parse "$c:kit/claude/hooks/$nombre" 2>/dev/null)" = "$blob" ]; then
+          encontrado=y; break
+        fi
+      done
+    fi
+  fi
+
+  if [ "$encontrado" = y ]; then
+    rancios=$((rancios + 1)); rancios_lista="$rancios_lista $nombre"
+  else
+    propios=$((propios + 1)); propios_lista="$propios_lista $nombre"
   fi
 done
-if [ "$derivados" -gt 0 ]; then
-  warn "$derivados hook(s) desplegados difieren de los del kit ($derivados_lista): reinstala para alinearlos, o portalos al kit si el cambio es bueno"
+
+if [ "$rancios" -gt 0 ]; then
+  fail "$rancios hook(s) desplegados son una version ANTIGUA del kit ($rancios_lista): la instalacion se quedo atras y las correcciones posteriores NO estan puestas. Reinstala: bash kit/install.sh  (fuente: el sha del blob instalado aparece en el historial de git del kit)"
+elif [ "$propios" -gt 0 ]; then
+  warn "$propios hook(s) desplegados difieren del kit y no coinciden con ninguna version historica ($propios_lista): personalizacion local. Portalos al kit si el cambio es bueno  (fuente: git hash-object contra rev-list)"
 else
   pass "los hooks desplegados coinciden byte a byte con los del kit  (fuente: cmp -s por fichero)"
+fi
+
+# 2e. la skill 'harness' vive en dos copias sin dueno declarado. El kit NO instala
+#     skills, asi que ninguna de las dos es "la del kit": es un fork sin origen,
+#     divergente en ambas direcciones. Se avisa, no se falla: unificarla exige un
+#     paso de redaccion de PII que todavia no existe (spec fase 3), y publicar la
+#     copia mas completa sin ese paso seria peor que la divergencia.
+skill_repo="$KIT/../.claude/skills/harness/SKILL.md"
+skill_desp="$CLAUDE_HOME/skills/harness/SKILL.md"
+if [ -f "$skill_repo" ] && [ -f "$skill_desp" ] && ! cmp -s "$skill_repo" "$skill_desp"; then
+  n_repo="$(wc -l < "$skill_repo" | tr -d ' ')"
+  n_desp="$(wc -l < "$skill_desp" | tr -d ' ')"
+  warn "dos copias divergentes de la skill harness sin fuente unica: $skill_desp ($n_desp lineas) vs $skill_repo ($n_repo lineas)  (fuente: cmp -s)"
+else
+  pass "skill harness: sin fork detectable entre la copia del repo y la desplegada  (fuente: cmp -s)"
 fi
 
 # 2b. capa de IOCs de Sentinel (opcional -> WARN)

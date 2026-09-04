@@ -7,7 +7,130 @@ etiquetado.
 
 ## [Unreleased]
 
+Los guards dejan de depender de `jq` para poder decidir, y el harness deja de
+aprobar por omisión en cuatro sitios donde un check subía el contador sin medir
+nada. No hay superficie nueva: lo que cambia es qué puede afirmar el kit sobre
+sí mismo.
+
+Inventario del árbol que describe esta sección:
+
+- 32 suites de test
+- 11 ADRs
+- 20 tareas de eval
+- de ellas, 10 positivas
+- y otras 10 negativas
+- 32 mutantes
+
+### Added
+
+- **La puerta de PII ve el nombre de la cuenta aunque no lleve ruta delante.**
+  El patrón `/home/<cuenta>/` sólo lo reconocía dentro de una ruta; suelto en un
+  campo `actor` pasaba por limpio. Cuando el nombre es corto o genérico el
+  escáner **dice** que ese check no se ha hecho, en vez de callarlo.
+- **`.gitleaks.toml` en la raíz del repo.** El hook la prefiere sobre la copia
+  instalada en la máquina de quien commitea, así que hasta ahora este repo se
+  juzgaba con una config que podía ser más vieja que la que publica. Lo era.
+- **`doctor.sh` distingue una instalación rancia de una personalizada.** Antes
+  las juntaba, así que un desfase real quedaba tapado por la personalización
+  legítima del usuario.
+- **`doctor.sh` reporta el fork de la skill del harness**, que hasta ahora no
+  lo medía nada.
+- **El hook `Stop` consulta `mch task gate`**: el turno ya no puede cerrarse
+  contra el veredicto del motor del lazo.
+- **`make test` cierra con un total agregado** en vez de con el resumen de la
+  última suite, y ese total distingue **tres** veredictos, no dos: fallaron
+  aserciones, todo verde, y *no se pudo verificar*.
+
+### Changed
+
+- **Los hooks ya no necesitan `jq`.** Leen y emiten JSON con `jq` si está y con
+  `python3` si no, por el shim `hk-json`; sólo sin ninguno de los dos fallan
+  cerrado. Verificado por ejecución: con `jq` y sin `jq`, salida idéntica byte a
+  byte. `doctor.sh` sí lo sigue exigiendo, a propósito — es un diagnóstico, y un
+  diagnóstico que no puede mirar tiene que decirlo en vez de aprobar.
+- `kit/docs/02-install.md` deja de declarar `jq` como requisito duro, y un test
+  vigila que la doc no vuelva a adelantarse a lo medido.
+
+### Fixed
+
+- **Cuatro salidas por omisión imprimían «ok» y sumaban un aprobado.** Sin
+  checkout de git, sin un hook con dos versiones, sin `pyyaml` o sin `claude`
+  instalado, `test_doctor_drift.sh` y `test_evals.sh` reportaban un verde por
+  cero mediciones y el agregado
+  lo sumaba como tal. Ahora declaran `skip`, que es el estado que existe para
+  esto, y un check nuevo impide que vuelva a aparecer una quinta.
+- **El gate de gitleaks bloqueaba los commits del propio repo.** Cada
+  `mch task start` con `- sensor:` sella una huella SHA-256 en el journal, y
+  `generic-api-key` la tomaba por una clave. La excepción va por forma del
+  secreto y no por ruta: medido, un `paths` en un allowlist global exime el
+  fichero entero antes de mirar el contenido, y `matchCondition = "AND"` no lo
+  impide. Lo que la excepción cede — una credencial de exactamente 64 hex — lo
+  cubre `scan-secrets.sh`.
+- **`install.sh` reemplazaba tu `settings.json` cuando faltaba `jq`.** Ahora
+  fusiona con `python3` si `jq` no está, y si no hay ninguno de los dos **no
+  toca el fichero**: reemplazarlo destruye ajustes que sólo tú tienes, y un
+  backup que hay que descubrir no es una salvaguarda, es una autopsia. Las dos
+  implementaciones de la fusión no pueden separarse sin que salte: un caso
+  fusiona la misma entrada por los dos caminos y exige el mismo objeto.
+- **`make test` abortaba en la primera suite roja** y no llegaba nunca al
+  agregado: el total y su tercer veredicto eran inalcanzables justo en el caso
+  para el que se construyeron. Además, una suite que imprimía «0 failed» y
+  moría después se contaba como verde; ahora el runner anota su código de
+  salida y el agregado exige que las dos señales coincidan.
+- **Los cuatro guards `PreToolUse` PERMITÍAN en silencio** cuando no podían leer
+  su entrada. Un guard que no puede decidir tiene que fallar cerrado.
+- **El hook `Stop` dejaba pasar el turno que `mch` acababa de rechazar** si
+  faltaba `jq`: el camino rojo era justo el que fallaba abierto.
+- El árbol de diff de la instalación se escribía en el `cwd` —y acababa
+  commiteado— y después se fugaba en `/tmp`, un directorio por invocación.
+- El modo aviso dependía de un fichero de estado externo, y contradecía al motor
+  del lazo cuando el lazo estaba cerrado en verde.
+- **Cuatro copias de la misma clase de fallo**: comprobar una igualdad por
+  subcadena. Un `grep -q` sin anclar acepta cualquier valor que contenga al
+  esperado, y aprueba.
+- `test_doctor_drift.sh` no corría de verdad en CI: verde sin ejecutar.
+- Esta misma sección dejaba de comprobarse cuando estaba vacía. Ahora un
+  `[Unreleased]` vacío sólo se acepta si nada bajo `kit/` cambió después del
+  último cambio del CHANGELOG; si cambió, el fichero está rancio y se dice.
+- **Tres avisos de `shellcheck`, y el tercero enseñó que el linter local y el de
+  CI no son el mismo.** El árbol de diff se creaba con `mkdir -m 700 -p`, donde
+  el modo sólo se aplica al último nivel y no se toca si el directorio ya existe
+  (SC2174): ahora el `chmod 700` va aparte y no depende de ninguna de las dos
+  cosas. `g_err` en `test_guards.sh` redirige `2>&1 >/dev/null` **a propósito**
+  —quiere sólo stderr—, así que lleva su `disable=SC2069` con el motivo escrito:
+  con el orden que sugiere la regla, las aserciones sobre el mensaje del guard
+  aprobarían también un texto emitido por stdout. El tercero (SC2120 sobre un
+  parámetro opcional que ninguna de las cuatro llamadas pasaba, en
+  `test_verify_gate.sh`) **no lo ve el 0.11.0 de esta máquina y sí el que CI
+  instala por apt**: pasó el lint local y rompió el job. El parámetro se retira
+  —era flexibilidad que nadie usaba—, que es lo que deja el fichero limpio bajo
+  las dos versiones — comprobado corriendo la invocación exacta del job contra
+  los binarios estáticos de 0.9.0, 0.10.0 y 0.11.0, no sólo contra el de esta
+  máquina. La lección queda anotada aquí y en `CONTRIBUTING.md`, que ahora dice
+  cómo bajarse esas versiones en vez de limitarse a avisar: un `shellcheck`
+  local en verde **no** es evidencia de que CI vaya a estarlo.
+- **El comprobador de `rtk hook claude` enrojecía por un scratch local.**
+  Recorre el árbol con `grep -r` para no depender del índice de git, y así
+  también veía `.superpowers/`, el andamio de las ejecuciones con subagentes:
+  está en `.gitignore`, no se publica nunca, y sus diffs de revisión citan la
+  frase retirada tal como estaba el día que se ejecutó el plan. Sale de la
+  lista por la misma razón que `docs/superpowers/`: registro fechado. Los
+  `*.log` salen por otra peor: `kit/test/.make-test.log` guarda la corrida
+  anterior, en la que este mismo comprobador imprimió su título —que contiene
+  la frase—, así que la suite pasaba dentro de `make test` y fallaba al
+  correrla suelta después. Un veredicto que depende del orden en que se lanza
+  no es un veredicto.
+
 ### Documentation
+
+- **Tres afirmaciones sobre `jq` que la fusión con `main` dejó falsas.** El
+  `README` lo listaba como prerrequisito duro y decía que `install.sh` aborta
+  sin él; `10-onboarding.md` lo llamaba «dependencia dura de cuatro guards»;
+  `CONTRIBUTING.md` describía la suite de fusión como si abortara sin `jq`.
+  Desde Track M los guards leen con `jq` **o** `python3`, la puerta de
+  `install.sh` acepta cualquiera de los dos, y lo que se pierde sin `jq` es el
+  autodiagnóstico de `doctor.sh`, no la protección. Los cuatro sitios lo dicen
+  ahora en esos términos.
 
 - **`LICENSE` es ahora el texto MIT literal: renombrarlo no bastaba.** En la 1.2.0 se
   intercambiaron los nombres para que el fichero que GitHub inspecciona fuese el del
@@ -24,6 +147,18 @@ etiquetado.
   ninguna condición de licencia: cambia qué fichero las contiene.
 
 ### Testing
+
+- **`test_clean_install_resilience.sh` exigía la avería que Track M arregló.** Su bloque 7
+  medía un solo escalón —«sin `jq`»— y pedía que los cuatro guards denegaran y que
+  `install.sh` abortara. Con el shim eso es pedir que el kit siga roto donde ya funciona.
+  Ahora los escalones son **dos**, y el contrato de cada uno es distinto: sin `jq` pero con
+  `python3` el kit funciona igual (los guards dejan pasar un `ls` y `install.sh` instala), y
+  sin ninguno de los dos se falla cerrado **y se dice** —no basta el `rc=2`: se exige que el
+  mensaje nombre lo que falta, porque un bloqueo mudo deja a quien lo sufre sin saber qué
+  instalar—. Las dos granjas de `PATH` se comprueban en las dos direcciones, incluida la de
+  que su `grep` ejecuta: uno roto convertiría cualquier medición en un `rc` mudo que se
+  leería como «deja pasar». De paso, `want_no()`: pasarle `!` a `want()` daba
+  `!: command not found` y contaba el caso como fallo sin haber medido nada.
 
 - **El sensor de `[Unreleased]` enrojecía un CHANGELOG correcto, y se vio al estrenar el
   procedimiento de release.** `test_doc_claims.sh` juzga las cifras de inventario de esa

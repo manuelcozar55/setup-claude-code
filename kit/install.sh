@@ -44,26 +44,35 @@ if [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null
   echo "==> Detectado WSL2 (${WSL_DISTRO_NAME:-distro desconocida}). Soportado igual que Linux nativo."
 fi
 
-# --- Puerta de dependencia: jq ----------------------------------------------
-# jq no es opcional: los cuatro guards de Bash leen el comando del payload de
-# PreToolUse con jq, y fallan en CERRADO si no esta (deniegan en vez de permitir
-# en silencio). Instalar sin jq dejaria un kit que bloquea cada comando de Bash,
-# asi que se para aqui, antes de escribir nada, y con la orden que lo arregla.
-if ! command -v jq >/dev/null 2>&1; then
-  cat >&2 <<EOF
-==> Falta jq, y este kit lo necesita.
+# --- Puerta de dependencia: un lector de JSON -------------------------------
+# El kit necesita PODER leer JSON, no necesita `jq` en concreto. Los cuatro
+# guards de Bash leen el comando del payload de PreToolUse por el shim
+# `hk-json`, que usa jq si esta y python3 si no; solo sin NINGUNO de los dos
+# quedan ciegos, y entonces fallan en CERRADO (deniegan en vez de permitir en
+# silencio). Instalar sin ninguno de los dos dejaria un kit que bloquea cada
+# comando de Bash, asi que se para aqui, antes de escribir nada.
+#
+# Esta puerta exigia jq a secas, con el argumento de que los guards lo
+# necesitaban. Dejo de ser cierto cuando los guards pasaron a leer con python3:
+# la puerta se quedo pidiendo mas de lo que el kit usa.
+if ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+  cat >&2 <<EOF2
+==> Falta jq y falta python3, y este kit necesita al menos uno.
 
 Los cuatro guards de Bash (block-dangerous-commands, branch-guard,
-destructive-guard, secret-guard) leen el comando con jq. Sin jq no pueden
-decidir, y fallan en cerrado: DENIEGAN todo comando de Bash. Instalarlo asi
-te dejaria Claude Code bloqueado, asi que no se instala nada.
+destructive-guard, secret-guard) leen el comando con jq o, si no esta, con
+python3. Sin ninguno de los dos no pueden decidir, y fallan en cerrado:
+DENIEGAN todo comando de Bash. Instalarlo asi te dejaria Claude Code
+bloqueado, asi que no se instala nada.
 
-Instala jq y repite:
+Instala uno de los dos y repite:
 
   sudo apt install jq      # Debian / Ubuntu / WSL2
   sudo dnf install jq      # Fedora
   sudo pacman -S jq        # Arch
-EOF
+
+python3 vale igual, y en la mayoria de distribuciones ya viene puesto.
+EOF2
   exit 1
 fi
 
@@ -108,8 +117,13 @@ if [ "${1:-}" = "--with-headroom" ]; then
     echo "==> Instala primero el kit:  bash $KIT/install.sh" >&2
     exit 1
   fi
-  # Sin comprobar jq: la puerta de dependencia de arriba ya paro la ejecucion si
-  # falta, asi que aqui esta garantizado (lo usa el cableado del paso 4).
+  # Aqui SI hace falta jq en concreto: el paso 4 reescribe settings.json con un
+  # filtro de jq. La puerta de dependencia de arriba ya no lo garantiza -- acepta
+  # python3 como alternativa para los guards y la fusion -- asi que se comprueba.
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "==> --with-headroom necesita jq (reescribe settings.json con un filtro de jq)." >&2
+    exit 1
+  fi
 
   # 1. Paquete en el venv de tools (nunca pip del sistema).
   if [ "$DRY" != "1" ]; then
@@ -324,14 +338,82 @@ install_file() {  # src dst
 # contexto por sesion), ANTHROPIC_MODEL con el sufijo de la ventana de 1M,
 # CLAUDE_CODE_AUTO_COMPACT_WINDOW y tres limites mas. Habia backup, pero un backup que hay que
 # descubrir no es una salvaguarda: es una autopsia.
+_settings_valido() {  # motor fichero
+  case "$1" in
+    jq) jq empty "$2" 2>/dev/null ;;
+    py) python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$2" 2>/dev/null ;;
+  esac
+}
+
+# La MISMA regla de fusion, escrita dos veces. No se comparte porque cada motor habla su
+# idioma; lo que impide que las dos se separen sin que nadie lo note es el caso j de
+# kit/test/test_install_settings_merge.sh, que fusiona la misma entrada por los dos
+# caminos y exige el mismo objeto.
+_settings_fusiona() {  # motor src dst  -> el JSON fusionado por stdout
+  case "$1" in
+    jq)
+      jq -s '
+        .[0] as $kit | .[1] as $old |
+        ($kit + $old)
+        | .env = (($kit.env // {}) + ($old.env // {}))
+        | .hooks = ($kit.hooks // $old.hooks)
+        | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
+            | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
+            | .deny  = (($kit.permissions.deny  // []) + (($old.permissions.deny  // []) - ($kit.permissions.deny  // []))))
+      ' "$2" "$3"
+      ;;
+    py)
+      python3 - "$2" "$3" <<'PY'
+import json, sys
+
+with open(sys.argv[1], encoding="utf-8") as f: kit = json.load(f)
+with open(sys.argv[2], encoding="utf-8") as f: old = json.load(f)
+
+# $kit + $old: fusion superficial en la que gana lo TUYO, conservando el orden de claves
+# del kit y anadiendo al final las que solo tienes tu. Es lo mismo que hace jq.
+out = dict(kit); out.update(old)
+out["env"] = {**(kit.get("env") or {}), **(old.get("env") or {})}
+# `//` de jq cae al segundo operando tambien con false; aqui solo puede ser objeto o
+# ausente, asi que basta con distinguir None.
+out["hooks"] = kit.get("hooks") if kit.get("hooks") is not None else old.get("hooks")
+
+kp = kit.get("permissions") or {}
+op = old.get("permissions") or {}
+perm = dict(kp); perm.update(op)
+for lista in ("allow", "deny"):
+    del_kit = kp.get(lista) or []
+    # jq resta arrays quitando TODAS las apariciones; de ahi el filtro, no un set:
+    # un set perderia el orden, y el orden de los permisos se lee.
+    perm[lista] = del_kit + [x for x in (op.get(lista) or []) if x not in del_kit]
+out["permissions"] = perm
+
+json.dump(out, sys.stdout, ensure_ascii=False, indent=2)
+sys.stdout.write("\n")
+PY
+      ;;
+  esac
+}
+
 install_settings() {  # src dst
   local src="$1" dst="$2" tmp
-  # Sin fichero previo no hay nada que fusionar. El caso "sin jq" ya no llega hasta aqui:
-  # la puerta de dependencia del principio aborta antes, sin tocar tu settings.json.
-  if [ ! -f "$dst" ]; then
-    install_file "$src" "$dst"; return
+  if [ ! -f "$dst" ]; then install_file "$src" "$dst"; return; fi
+  # Motor de fusion, en este orden: jq si esta -el camino de siempre, sin cambiar un byte-
+  # y python3 si no. python3 no es una dependencia nueva: el kit ya distribuye cuatro hooks
+  # .py y los cablea en la misma cadena PreToolUse.
+  local motor=""
+  if command -v jq >/dev/null 2>&1; then motor=jq
+  elif command -v python3 >/dev/null 2>&1; then motor=py
+  else
+    # Sin ningun motor NO se reemplaza. Reemplazar destruye ajustes que solo tu tienes
+    # -medido en una maquina real: ENABLE_TOOL_SEARCH, el sufijo de la ventana de 1M,
+    # el limite de autocompact y tres mas-, y aunque quede backup, un backup que hay que
+    # descubrir no es una salvaguarda: es una autopsia. Callar y no tocar es peor que
+    # avisar y no tocar, asi que se avisa.
+    echo "   AVISO: sin jq ni python3 no se puede fusionar settings.json." >&2
+    echo "          NO se toca el tuyo. Instala jq o python3 y repite para cablear los hooks." >&2
+    return
   fi
-  if ! jq empty "$dst" 2>/dev/null; then
+  if ! _settings_valido "$motor" "$dst"; then
     echo "   AVISO: $dst no es JSON valido; se reemplaza con backup" >&2
     install_file "$src" "$dst"; return
   fi
@@ -339,15 +421,7 @@ install_settings() {  # src dst
   # atomico (no cruza sistemas de ficheros): un fallo a mitad del cp anterior dejaba tu
   # settings.json truncado, y no hay medio settings.json que valga.
   tmp="$(mktemp "$dst.XXXXXX")"
-  if jq -s '
-      .[0] as $kit | .[1] as $old |
-      ($kit + $old)
-      | .env = (($kit.env // {}) + ($old.env // {}))
-      | .hooks = ($kit.hooks // $old.hooks)
-      | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
-          | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
-          | .deny  = (($kit.permissions.deny  // []) + (($old.permissions.deny  // []) - ($kit.permissions.deny  // []))))
-    ' "$src" "$dst" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
+  if _settings_fusiona "$motor" "$src" "$dst" > "$tmp" && _settings_valido "$motor" "$tmp"; then
     if ! cmp -s "$tmp" "$dst"; then
       mkdir -p "$(dirname "$BK/${dst#"$CLAUDE_HOME"/}")"
       cp -p "$dst" "$BK/${dst#"$CLAUDE_HOME"/}"
@@ -390,8 +464,23 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
 }
 
 run_diff_first() {
-  local out="${MCHARNESS_OUT:-$PWD/.mcharness-out}"
+  # El artefacto de un diff es efimero, pero el arbol debe sobrevivir a la
+  # ejecucion: el mensaje de cierre le dice al usuario que copie a mano desde
+  # el. Un mktemp por invocacion resolvia el cwd pero abria una fuga (un
+  # directorio nuevo por '--plan', nada los limpiaba nunca). Ruta fija por
+  # uid en su lugar, borrada y recreada al INICIO de cada run: nunca hay mas
+  # de un arbol, y sigue ahi para inspeccionar despues de salir.
+  local out="${MCHARNESS_OUT:-}"
+  if [ -z "$out" ]; then
+    out="${TMPDIR:-/tmp}/cckit-diff-$(id -u)"
+  fi
   rm -rf "$out"
+  # `mkdir -m 700 -p` no vale (SC2174): con -p el modo solo se aplica al ultimo nivel, y
+  # si el directorio ya existiera no se tocaria. El chmod aparte no depende de ninguna de
+  # las dos cosas -- y este arbol lleva la config que se instalaria, asi que 700 no es
+  # decorativo.
+  mkdir -p "$out" || { echo "no se pudo crear $out" >&2; return 1; }
+  chmod 700 "$out" || { echo "no se pudo restringir $out a 700" >&2; return 1; }
   install_kit_files "$out"
 
   echo "==> $CLAUDE_HOME es un repositorio git con remoto configurado: no se escribe nada ahi."

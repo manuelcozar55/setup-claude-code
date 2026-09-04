@@ -39,6 +39,13 @@ Todo vive bajo `kit/test/`:
   `gitleaks` en `pre-commit`). Se salta sola (SKIP, no FAIL) si no encuentra
   el binario `gitleaks` en el sistema.
 - `test_install.sh`, `test_doctor.sh`, `test_scan_secrets.sh`.
+- `test_doctor_drift.sh` — distingue un hook desplegado que es una version
+  antigua del propio kit (FAIL, hay que reinstalar) de uno personalizado
+  localmente (WARN): el discriminador es el sha del blob contra el historial
+  de git del kit.
+- `test_skill_fork.sh` — la skill `harness` vive en dos copias sin dueno
+  declarado (repo y desplegada): `doctor.sh` avisa (WARN, no FAIL) cuando
+  divergen, hasta que la fase 3 las unifique.
 - `test_install_platform_gate.sh` — la puerta de plataforma de `install.sh`
   (solo Linux/WSL2) aborta en cualquier otra y no deja nada a medias.
 - `test_install_gitleaks.sh` — deteccion de `gitleaks` y degradacion con
@@ -79,10 +86,9 @@ Todo vive bajo `kit/test/`:
 - `test_auto_spec.sh` — el hook `UserPromptSubmit` que mete el harness solo.
   No comprueba que "produzca texto": comprueba que DISCRIMINE entre un encargo
   y una pregunta. Un clasificador que responde lo mismo a todo no clasifica.
-- `test_autonomy.sh` — `scripts/autonomy.sh` y el Stop hook `verify-gate.sh` en
-  los cuatro estados que deciden si un run desatendido es seguro: oraculo rojo
-  (bloquea), verde (libera), presupuesto agotado (libera y avisa) y cap de
-  Claude Code (`stop_hook_active`: se aparta).
+- `test_autonomy.sh` — `scripts/autonomy.sh` como herramienta manual: rechaza
+  un oraculo por nombre suelto (M-001) y el presupuesto de intentos. La
+  cobertura del Stop hook `verify-gate.sh` vive en `kit/test/test_verify_gate.sh`.
 - `test_detect_oracle.sh` — `scripts/detect-oracle.sh` contra proyectos
   sinteticos, nunca contra proyectos reales del usuario.
 - `test_metrics.sh` — `scripts/metrics.py` sobre transcripts sinteticos, con
@@ -100,8 +106,8 @@ Todo vive bajo `kit/test/`:
   acierta solo por el eco) y que cada modo de `grade.py` sepa fallar. Offline,
   sin una sola llamada a la API.
 - `test_install_settings_merge.sh` — la fusion del `settings.json` del usuario:
-  que respete lo que ya hubiera, que aborte sin `jq` en vez de reemplazarlo, y
-  que entonces no deje backup.
+  que respete lo que ya hubiera, que aborte sin ningun lector de JSON (ni `jq`
+  ni `python3`) en vez de reemplazarlo, y que entonces no deje backup.
 - `test_permisos_efectivos.sh` — que las reglas de permiso que el repo publica
   hagan algo: ninguna `Write(...)` sin su gemela `Edit(...)` (las de `Write`
   se ignoran en silencio), ningun consentimiento prefirmado, y que alguna regla
@@ -112,8 +118,21 @@ mas antiguo que el tuyo: sigue emitiendo checks de categoria `style` que las ver
 >= 0.11 retiraron (p. ej. `SC2002`, *useless cat*). Paso exactamente eso — local limpio con
 0.11.0 y CI en rojo. **El oraculo es CI**, no tu maquina.
 
+No hace falta gastar un ciclo de CI para averiguarlo. Los binarios estaticos de
+las versiones viejas se bajan sueltos, y la invocacion que hay que reproducir es
+la del job, no un `shellcheck *.sh` cualquiera:
+
+```bash
+v=v0.9.0   # la de ubuntu 24.04; prueba tambien v0.10.0
+curl -sSfL -o /tmp/sc.tar.xz \
+  "https://github.com/koalaman/shellcheck/releases/download/$v/shellcheck-$v.linux.x86_64.tar.xz"
+mkdir -p /tmp/sc && tar -xJf /tmp/sc.tar.xz -C /tmp/sc --strip-components=1
+mapfile -t scripts < <(git ls-files -- '*.sh' kit/claude/hooks/git/pre-commit)
+/tmp/sc/shellcheck -x -- "${scripts[@]}"
+```
+
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 28 suites de `kit/test/`).
+(las 32 suites listadas arriba).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -215,7 +234,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 28 suites y el escaner de secretos
+# 2. las 32 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 

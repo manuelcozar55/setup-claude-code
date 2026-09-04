@@ -11,6 +11,16 @@ ck() { # ck <obtenido> <esperado> <descripcion>
   else echo "NOT ok - $3 (obtenido: '$1' | esperado: '$2')"; fail=$((fail+1)); fi
 }
 
+# Esta suite no llama a jq, pero scripts/detect-oracle.sh si: lo usa para leer los
+# scripts de package.json. Sin jq, los tres casos de proyecto Node devolvian cadena
+# vacia en vez de "pnpm test"/"yarn test"/"npm test" -- tres rojos que solo decian que
+# faltaba una herramienta. Se omite declarandolo, como ya hacen otras diez suites
+# de este repo.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "skip - jq ausente: detect-oracle.sh lee los scripts de package.json con jq"
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
+fi
+
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 

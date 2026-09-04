@@ -12,14 +12,21 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 | `node` ≥ 20 + `pnpm` | runtime de Claude Code y de agent-browser | `node --version` · `pnpm --version` |
 | `python3` (≥ 3.10) + `venv` | Sentinel y los hooks Python corren sobre un venv propio, nunca sobre el Python del sistema | `python3 --version` |
 | `gh` (GitHub CLI) | flujo de PRs desde Claude Code | `gh --version` |
-| `jq` | `doctor.sh` y varios hooks parsean JSON con `jq`; sin él, `doctor.sh` falla explícitamente | `jq --version` |
+| `jq` **(opcional desde Track M)** | Los **hooks ya no lo necesitan**: leen y emiten JSON con `jq` si está y con `python3` si no, y sólo sin ninguno de los dos fallan cerrado. `doctor.sh` sí lo sigue exigiendo y falla explícitamente sin él (`FAIL · jq no instalado`). Es decir: sin `jq` el kit **protege igual**, pero no se autodiagnostica | `jq --version` |
 | `uv` | gestor de paquetes Python que usa el kit vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
 | `gitleaks` (opcional, versión fijada `8.30.1`) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Si no lo tienes, `install.sh` te ofrece instalarlo (release oficial, verificado contra un checksum SHA-256 fijado en este repo — no descargado de la red —, nunca `curl \| bash`): confirma con `y`, o exporta `GITLEAKS_AUTO_INSTALL=1` para saltarte el prompt en un entorno no interactivo. Si el checksum no coincide, la instalación de `gitleaks` no rompe el resto (degrada a la Capa 1), pero deja una marca en `$CLAUDE_HOME/.gitleaks-checksum-mismatch` que `doctor.sh` reporta como `FAIL`. Ver `docs/05-security.md` | `gitleaks version` |
 
 Comprueba todo de una vez:
 
 ```bash
-git --version && node --version && pnpm --version && python3 --version && gh --version && jq --version
+git --version && node --version && pnpm --version && python3 --version && gh --version
+```
+
+`jq` queda fuera de esa cadena a propósito: es opcional, y encadenarlo con `&&` haría
+fallar la comprobación entera por una herramienta que ya no hace falta. Compruébalo aparte:
+
+```bash
+jq --version || echo "sin jq: los hooks funcionan igual (usan python3); doctor.sh no"
 ```
 
 Si falta `pnpm`, actívalo con corepack (viene con Node ≥ 16.9, no hace falta instalar nada por pipe a shell):
@@ -102,3 +109,23 @@ bash doctor.sh
 Un caso **no** degrada con elegancia y por eso es `FAIL`: que `ANTHROPIC_BASE_URL` enrute la API a un proxy que no contesta. Ahí Claude Code se queda sin poder hablar con la API, y el síntoma no se parece a un problema de configuración. El `settings.json` que distribuye el kit no fija esa variable; la escribe `install.sh --with-headroom` y solo tras comprobar que el proxy responde (ver `03-headroom.md`).
 
 Detalle completo del significado de cada línea y de cómo reproducirla en `07-verify.md`.
+
+### Comprobar que los guards protegen aunque falte `jq`
+
+La tabla de prerrequisitos afirma que los hooks ya no necesitan `jq`. No te fíes de la
+tabla: es una afirmación comprobable, así que compruébala.
+
+```bash
+bash kit/test/test_guards.sh | tail -1
+```
+
+Debe terminar en `FAIL=0` (el número de `PASS` crece con la suite; lo que no puede
+cambiar es que no haya fallos). Esa suite incluye, para cada guard, el caso **sin `jq`
+y con `python3`** sobre un `PATH` real recortado —no simulado— y comprueba las **dos**
+mitades: que bloquea lo peligroso **y que deja pasar lo inocuo**. La segunda es la que se
+olvida, y sin ella un hook que bloqueara absolutamente todo también «bloquearía lo
+peligroso» y pasaría por bueno.
+
+Si no tienes ni `jq` ni `python3`, los guards bloquean **todo**, también lo inocuo. Es
+deliberado: un guard que no puede leer su entrada no puede autorizar nada. Instala
+cualquiera de los dos para salir de ahí.
