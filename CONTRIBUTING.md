@@ -32,9 +32,12 @@ Todo vive bajo `kit/test/`:
 
 - `test_guards.sh` — Capa 1 de secretos (por nombre de fichero) + guards de
   Bash/git.
-- `test_guards_falsifiability.sh` — demuestra que `test_guards.sh` mide algo
-  real: neutraliza `secret-guard.sh` y comprueba que eso rompe casos BLOCK
-  conocidos. Si no rompiera ninguno, la suite sería una tautología.
+ - `test_guards_falsifiability.sh` — demuestra que `test_guards.sh` mide algo
+   real: neutraliza `secret-guard.sh` y comprueba que eso rompe casos BLOCK
+   conocidos. Si no rompiera ninguno, la suite sería una tautología.
+ - `test_sentinel_critical_floor.sh` — un veredicto CRITICAL de Sentinel no lo
+   levanta la allowlist (ni la del usuario ni la que un repo clonado trae en
+   `$CWD/.security/`): un comando peligroso en `commands` seguía cayendo a allow.
 - `test_secret_content_gitleaks.sh` — Capa 2 (contenido real vía
   `gitleaks` en `pre-commit`). Se salta sola (SKIP, no FAIL) si no encuentra
   el binario `gitleaks` en el sistema.
@@ -135,7 +138,7 @@ mapfile -t scripts < <(git ls-files -- '*.sh' kit/claude/hooks/git/pre-commit)
 ```
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 35 suites listadas arriba).
+(las 36 suites listadas arriba).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -237,7 +240,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 35 suites y el escaner de secretos
+# 2. las 36 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 

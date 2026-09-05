@@ -14,7 +14,7 @@ sí mismo.
 
 Inventario del árbol que describe esta sección:
 
-- 35 suites de test
+- 36 suites de test
 - 11 ADRs
 - 20 tareas de eval
 - de ellas, 10 positivas

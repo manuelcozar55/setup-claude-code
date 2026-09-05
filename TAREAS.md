@@ -215,3 +215,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
   task-16 del plan provider-agnostic-agent-harness: kit/lib/txnwrite.py (4 primitivas cerradas + WAL + renameat2 + recovery); backup excluye secretos y ZIP 0600 (F-11); restore exige manifiesto (F-21)
 
+## T-017 · un veredicto CRITICAL de Sentinel no lo puede levantar la allowlist
+
+- estado: pendiente
+- oráculo: `bash kit/test/test_sentinel_critical_floor.sh`
+- riesgo: medio
+- clase: sensor
+- sensor: kit/test/test_sentinel_critical_floor.sh
+- timeout: 5min
+- criterios:
+
+  check_dangerous_commands consultaba allowlist.commands antes de casar el patron CRITICAL; un repo clonado con su .security/sentinel-allowlist.json convertia un comando de destruccion de disco o reverse-shell en allow. Boundary F-13 del todo 17.
+

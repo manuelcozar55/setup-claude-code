@@ -323,11 +323,13 @@ def check_suspicious_network(tool_input: dict, iocs: dict, allowlist: dict):
 
 def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
     patterns = iocs.get("dangerous_commands", {}).get("patterns", [])
-    allowed_cmds = allowlist.get("commands", [])
 
+    # Every dangerous_commands pattern is CRITICAL (reverse shells, mkfs, pipe-to-
+    # shell). A CRITICAL finding is by definition one no false positive justifies
+    # exempting, so the user/repo allowlist may NOT suppress it. Honoring
+    # allowlist.commands here let a cloned repo ship its own '.security/
+    # sentinel-allowlist.json' and turn a reverse-shell deny into allow.
     for text in collect_fields(tool_input, ["command"]):
-        if text in allowed_cmds:
-            continue
         for rx in patterns:
             if re.search(rx, text):
                 return (f"dangerous command pattern", "critical")
