@@ -108,10 +108,13 @@ Todo vive bajo `kit/test/`:
 - `test_install_settings_merge.sh` — la fusion del `settings.json` del usuario:
   que respete lo que ya hubiera, que aborte sin ningun lector de JSON (ni `jq`
   ni `python3`) en vez de reemplazarlo, y que entonces no deje backup.
-- `test_permisos_efectivos.sh` — que las reglas de permiso que el repo publica
-  hagan algo: ninguna `Write(...)` sin su gemela `Edit(...)` (las de `Write`
-  se ignoran en silencio), ningun consentimiento prefirmado, y que alguna regla
-  `deny` empareje cada grafia del push forzado.
+ - `test_permisos_efectivos.sh` — que las reglas de permiso que el repo publica
+   hagan algo: ninguna `Write(...)` sin su gemela `Edit(...)` (las de `Write`
+   se ignoran en silencio), ningun consentimiento prefirmado, y que alguna regla
+   `deny` empareje cada grafia del push forzado.
+ - `test_claude_characterization.sh` — la foto sellada del Claude que este arbol
+   proyecta (superficie `kit/claude`+`kit/sentinel` e install/doctor/uninstall) y
+   el ledger de los 42 hallazgos de auditoria; una deriva de un byte la pone roja.
 
 **Un `shellcheck` verde en local no es prueba.** El de CI se instala con `apt` y puede ser
 mas antiguo que el tuyo: sigue emitiendo checks de categoria `style` que las versiones
@@ -132,7 +135,7 @@ mapfile -t scripts < <(git ls-files -- '*.sh' kit/claude/hooks/git/pre-commit)
 ```
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 32 suites listadas arriba).
+(las 33 suites listadas arriba).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -234,7 +237,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 32 suites y el escaner de secretos
+# 2. las 33 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 

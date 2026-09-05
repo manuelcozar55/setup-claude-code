@@ -14,7 +14,7 @@ sí mismo.
 
 Inventario del árbol que describe esta sección:
 
-- 32 suites de test
+- 33 suites de test
 - 11 ADRs
 - 20 tareas de eval
 - de ellas, 10 positivas
@@ -23,6 +23,15 @@ Inventario del árbol que describe esta sección:
 
 ### Added
 
+- **Foto sellada del Claude que este árbol proyecta, con ledger de los 42
+  hallazgos de auditoría.** `kit/test/test_claude_characterization.sh` ata dos
+  cosas al corte actual: (1) `knowledge/CLAUDE-42-LEDGER.md`, que mapea los 42
+  hallazgos a `unresolved`/`fixed-at-59fee-with-regression`/`superseded`/
+  `residual-hypothesis` contra evidencia del árbol actual, y (2) una baseline
+  byte-a-byte de la superficie de Claude (`kit/claude`, `kit/sentinel`,
+  install/doctor/uninstall) generada por `scripts/claude-characterization.sh`.
+  Una deriva de un solo byte pone el sensor en rojo; es la referencia que los
+  refactors posteriores comparan.
 - **La puerta de PII ve el nombre de la cuenta aunque no lleve ruta delante.**
   El patrón `/home/<cuenta>/` sólo lo reconocía dentro de una ruta; suelto en un
   campo `actor` pasaba por limpio. Cuando el nombre es corto o genérico el

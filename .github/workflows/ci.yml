@@ -191,6 +191,9 @@ jobs:
       - name: "test_permisos_efectivos.sh (ninguna regla Write() inerte ni consentimiento prefirmado)"
         run: bash kit/test/test_permisos_efectivos.sh
 
+      - name: "test_claude_characterization.sh (foto sellada de Claude + ledger de 42 hallazgos)"
+        run: bash kit/test/test_claude_characterization.sh
+
       - name: "test_evals.sh (sensor offline del eval set; sin almacen declara skip, nunca ok)"
         run: bash kit/test/test_evals.sh
 
