@@ -54,6 +54,8 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	-bash kit/test-runner.sh kit/test/test_harness_structure.sh
 	-bash kit/test-runner.sh kit/test/test_install_diff_first.sh
 	-bash kit/test-runner.sh kit/test/test_uninstall.sh
+	-bash kit/test-runner.sh kit/test/test_txnwrite.sh
+	-bash kit/test-runner.sh kit/test/test_backup_integrity.sh
 	-bash kit/test-runner.sh kit/test/test_doc_claims.sh
 	-bash kit/test-runner.sh kit/test/test_make_test_verdict.sh
 	-bash kit/test-runner.sh kit/test/test_permisos_efectivos.sh

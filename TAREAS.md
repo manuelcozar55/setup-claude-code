@@ -204,3 +204,14 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] la mencion de API_KEY sin valor detras no enrojece
   - [x] las huellas del propio journal no lo disparan
 
+## T-016 · primitivas de instalador cerradas, WAL, recuperacion y backup con integridad
+
+- estado: pendiente
+- oráculo: `make test`
+- riesgo: medio
+- clase: sensor
+- timeout: 5min
+- criterios:
+
+  task-16 del plan provider-agnostic-agent-harness: kit/lib/txnwrite.py (4 primitivas cerradas + WAL + renameat2 + recovery); backup excluye secretos y ZIP 0600 (F-11); restore exige manifiesto (F-21)
+

@@ -144,13 +144,22 @@ extract_and_verify_zip() {
   unzip -qq "$zip" -d "$tmp" || { rm -rf "$tmp"; die "no se pudo extraer el ZIP: $zip"; }
   root="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -1)"
   [ -n "$root" ] || { rm -rf "$tmp"; die "el ZIP no tiene un directorio raiz: $zip"; }
-  if [ -f "$root/MANIFEST.sha256" ]; then
-    if ! ( cd "$root" && sha_chk MANIFEST.sha256 >/dev/null 2>&1 ); then
-      rm -rf "$tmp"
-      die "los checksums del ZIP NO coinciden ($zip): corrupto o manipulado, no se restaura"
-    fi
-    ok "checksums del ZIP verificados: $zip" >&2
+  # F-21: el manifiesto es OBLIGATORIO, no opcional. Un ZIP sin MANIFEST.sha256
+  # no ofrece ninguna comprobacion de integridad; antes se restauraba igual
+  # (verify-si-existe), asi que un archivo truncado o adulterado se copiaba
+  # encima de la config sin que nadie lo notara. Ahora falta => se rechaza en
+  # cerrado, sin escribir nada. NO es autenticacion (una firma): es integridad,
+  # y quien pueda reescribir el ZIP entero puede reescribir el manifiesto a
+  # juego. Detecta corrupcion y truncado, no un adversario con control del ZIP.
+  if [ ! -f "$root/MANIFEST.sha256" ]; then
+    rm -rf "$tmp"
+    die "el ZIP no trae MANIFEST.sha256 ($zip): sin manifiesto no hay comprobacion de integridad, no se restaura"
   fi
+  if ! ( cd "$root" && sha_chk MANIFEST.sha256 >/dev/null 2>&1 ); then
+    rm -rf "$tmp"
+    die "los checksums del ZIP NO coinciden ($zip): corrupto o manipulado, no se restaura"
+  fi
+  ok "checksums del ZIP verificados: $zip" >&2
   printf '%s\n' "$root"
 }
 

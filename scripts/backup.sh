@@ -16,14 +16,27 @@ BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
 BUCLE_DIR="${BUCLE_DIR:-$HOME/ai-mastery/bucle}"
 CLAUDE_JSON="${CLAUDE_JSON:-$HOME/.claude.json}"
 
-# Se excluye lo regenerable (transcripts, caches de plugins) y el fichero de
-# credenciales, que no debe viajar en claro dentro de un ZIP: se recupera con
-# re-login. El nombre se compone para no incrustar el literal en el fuente.
+# Se excluye lo regenerable (transcripts, caches de plugins) y TODO secreto, que
+# no debe viajar en claro dentro de un ZIP: se recupera con re-login o rellenando
+# el .env de nuevo. El nombre del fichero de credenciales se compone para no
+# incrustar el literal en el fuente. Ademas se excluye .env (y sus variantes) y
+# los patrones de nombre que suelen contener claves: es el arreglo de F-11, donde
+# el backup se llevaba el .env en claro.
 CREDS_BASENAME=".$(printf 'credential')s.json"
 EXCLUDES=(
   "projects" "plugins/cache" "plugins/marketplaces" "cache"
   "shell-snapshots" "paste-cache" "file-history" "downloads"
   "$CREDS_BASENAME"
+  ".env"
+)
+# Patrones de secretos (glob de tar): .env con cualquier sufijo (.env.local,
+# .env.production...) y nombres tipicos de clave/token en cualquier nivel del
+# arbol. Se excluyen por patron, no por ruta fija, porque el nombre exacto no se
+# conoce de antemano.
+SECRET_GLOBS=(
+  './.env.*' '*/.env' '*/.env.*'
+  '*.pem' '*.key' '*_rsa' '*_dsa' '*_ecdsa' '*_ed25519'
+  '*secret*' '*token*'
 )
 
 die() { printf '\033[31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
@@ -108,6 +121,7 @@ mkdir -p "$ROOT/claude"
 echo "== recopilando"
 TAR_EX=()
 for e in "${EXCLUDES[@]}"; do TAR_EX+=( --exclude="./$e" ); done
+for g in "${SECRET_GLOBS[@]}"; do TAR_EX+=( --exclude="$g" ); done
 tar -C "$CLAUDE_HOME" -cf - "${TAR_EX[@]}" . | tar -C "$ROOT/claude" -xf -
 inf "CLAUDE_HOME      -> claude/            ($(du -sm "$ROOT/claude" | cut -f1) MB)"
 
@@ -133,6 +147,9 @@ ok "manifiesto: $FILES ficheros"
 
 echo "== empaquetando"
 ( cd "$STAGE" && zip -qr "$ZIP" "$NAME" )
+# 0600 desde el nacimiento: el ZIP contiene la config completa de Claude Code.
+# Nace 0644 bajo umask 022 (F-11), legible por cualquier usuario local del host.
+chmod 600 "$ZIP"
 ok "$ZIP ($(du -sm "$ZIP" | cut -f1) MB)"
 
 echo "== verificando"
