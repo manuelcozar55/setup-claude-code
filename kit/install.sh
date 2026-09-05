@@ -6,7 +6,6 @@
 #      en el repo git DESDE el que se invoca; opt-in, por repositorio)
 set -euo pipefail
 KIT="$(cd "$(dirname "$0")" && pwd)"
-CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 GITLEAKS_VERSION="8.30.1"
 
 # --- SHA-256 de gitleaks, fijados en ESTE repo (no en la red) ---------------
@@ -74,6 +73,73 @@ Instala uno de los dos y repite:
 python3 vale igual, y en la mayoria de distribuciones ya viene puesto.
 EOF2
   exit 1
+fi
+
+# --- Parseo antes de escribir: ayuda, opciones y destino ---------------------
+# Se decide TODO -ayuda, validez de la opcion, destino de instalacion- antes de
+# tocar un solo fichero. Antes, `--help` o un typo caian al camino de instalacion
+# y mutaban configuracion real (F-05): una consulta no debe escribir nunca.
+usage() {  # canal
+  cat >"$1" <<USAGE
+Uso: [CLAUDE_CONFIG_DIR=DIR] bash install.sh [OPCION]
+
+Instala el kit saneado en el home del proveedor (idempotente, con backup).
+Sin opcion, instala o fusiona sobre el destino resuelto.
+
+Opciones:
+  --help, -h              Muestra esta ayuda y termina sin escribir nada.
+  --apply                 Escribe sobre CLAUDE_HOME aunque sea un repo git con remoto.
+  --plan                  Fuerza el modo diff-first (no escribe; muestra el arbol).
+  --enable-secrets-layer2 Activa la Capa 2 de secretos en el repo git actual.
+  --with-headroom         Instala y cablea el proxy Headroom (opt-in).
+
+Destino (precedencia): CLAUDE_CONFIG_DIR > CLAUDE_HOME > CODEX_HOME > \$HOME/.claude.
+El destino debe ser una ruta absoluta, propia del usuario actual, y no la raiz.
+USAGE
+}
+
+case "${1:-}" in
+  --help|-h)
+    usage /dev/stdout
+    exit 0
+    ;;
+  ""|--apply|--plan|--enable-secrets-layer2|--with-headroom) ;;
+  *)
+    echo "==> Opcion desconocida: $1" >&2
+    usage /dev/stderr
+    exit 2
+    ;;
+esac
+
+# Precedencia de destino: el override oficial de Claude Code es CLAUDE_CONFIG_DIR
+# (https://code.claude.com/docs/en/settings), asi que gana sobre el CLAUDE_HOME
+# heredado (legacy de este kit) y sobre CODEX_HOME. Se resuelve una sola vez aqui
+# y a partir de este punto solo se usa $CLAUDE_HOME: no hay escrituras a un HOME
+# ambiente despues de la resolucion (F-16/F-19).
+if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+  CLAUDE_HOME="$CLAUDE_CONFIG_DIR"
+elif [ -n "${CLAUDE_HOME:-}" ]; then
+  : "${CLAUDE_HOME:?}"
+elif [ -n "${CODEX_HOME:-}" ]; then
+  CLAUDE_HOME="$CODEX_HOME"
+else
+  CLAUDE_HOME="$HOME/.claude"
+fi
+
+# Confinamiento del destino, antes de escribir. Se rechaza como error de uso (rc=2):
+#   - ruta relativa: ambigua respecto al cwd, nunca un destino deliberado;
+#   - la raiz '/': jamas es un home de configuracion;
+#   - un directorio EXISTENTE cuyo dueno no es el usuario actual: no se escribe en
+#     casa ajena (evita que un enlace/dir preexistente redirija la instalacion).
+case "$CLAUDE_HOME" in
+  /) echo "==> CLAUDE_HOME no puede ser la raiz del sistema ('/')." >&2; exit 2 ;;
+  /*) ;;
+  *) echo "==> CLAUDE_HOME debe ser una ruta absoluta, no relativa: '$CLAUDE_HOME'." >&2; exit 2 ;;
+esac
+if [ -e "$CLAUDE_HOME" ] && [ ! -O "$CLAUDE_HOME" ]; then
+  echo "==> CLAUDE_HOME existe y no es tuyo (dueno distinto del usuario actual): '$CLAUDE_HOME'." >&2
+  echo "    No se instala en un directorio de otro usuario." >&2
+  exit 2
 fi
 
 # --- Subcomando: activar la Capa 2 de secretos en el repo actual ------------

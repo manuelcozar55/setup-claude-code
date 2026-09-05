@@ -72,6 +72,44 @@ ck "$(grep -c 'omitting directory' "$tmp/pyc.log" || true)" "0" "install.sh no i
 ck "$([ -f "$tmp/dot2/sentinel/sentinel_preflight.py" ] && echo y)" "y" "sentinel se instala con __pycache__ presente"
 ck "$([ -d "$tmp/dot2/sentinel/__pycache__" ] && echo y || echo n)" "n" "el __pycache__ no viaja a CLAUDE_HOME"
 
+# --- TODO 15: parseo antes de escribir, precedencia de home y confinamiento ---
+# F-05: `--help` (y cualquier consulta) NO debe mutar configuracion real. Antes salia
+# rc=0 tras instalar el kit entero en CLAUDE_HOME. Ahora: imprime ayuda, rc=0, cero escritura.
+h_help="$tmp/home-help"
+set +e; CLAUDE_HOME="$h_help" bash "$KIT/install.sh" --help >"$tmp/help.log" 2>&1; hrc=$?; set -e
+ck "$hrc" "0" "--help sale rc=0"
+ck "$([ -e "$h_help" ] && echo y || echo n)" "n" "--help NO escribe nada en CLAUDE_HOME"
+ck "$(grep -ciE 'uso|usage' "$tmp/help.log")" "1" "--help imprime una linea de uso"
+
+# F-05 (variante): una opcion desconocida es un error de uso (rc=2), no una instalacion.
+h_bogus="$tmp/home-bogus"
+set +e; CLAUDE_HOME="$h_bogus" bash "$KIT/install.sh" --opcion-que-no-existe >"$tmp/bogus.log" 2>&1; brc=$?; set -e
+ck "$brc" "2" "opcion desconocida sale rc=2 (uso)"
+ck "$([ -e "$h_bogus" ] && echo y || echo n)" "n" "opcion desconocida NO escribe nada en CLAUDE_HOME"
+
+# F-16: precedencia de home. El override oficial de Claude es CLAUDE_CONFIG_DIR; gana sobre el
+# CLAUDE_HOME heredado (legacy). Se instala en el destino oficial, nunca en el legacy.
+h_off="$tmp/home-oficial"; h_leg="$tmp/home-legacy"
+set +e; CLAUDE_CONFIG_DIR="$h_off" CLAUDE_HOME="$h_leg" bash "$KIT/install.sh" >"$tmp/prec.log" 2>&1; prc2=$?; set -e
+ck "$prc2" "0" "instalacion con CLAUDE_CONFIG_DIR sale rc=0"
+ck "$([ -f "$h_off/CLAUDE.md" ] && echo y || echo n)" "y" "CLAUDE_CONFIG_DIR (oficial) tiene precedencia y recibe la instalacion"
+ck "$([ -e "$h_leg" ] && echo y || echo n)" "n" "el CLAUDE_HOME legacy NO se toca cuando hay override oficial"
+
+# Confinamiento: una ruta relativa no es un destino valido (ambiguo respecto al cwd). Se
+# rechaza como error de uso (rc=2) sin escribir. Se ejecuta desde un cwd temporal para que,
+# si el rechazo fallara, el marcador cayera dentro de $tmp y la limpieza del trap lo barra.
+mkdir -p "$tmp/cwd"
+set +e
+( cd "$tmp/cwd" && CLAUDE_HOME="reldir-invalida" bash "$KIT/install.sh" >"$tmp/rel.log" 2>&1 ); rrc2=$?
+set -e
+ck "$rrc2" "2" "CLAUDE_HOME relativo se rechaza con rc=2"
+ck "$([ -e "$tmp/cwd/reldir-invalida" ] && echo y || echo n)" "n" "CLAUDE_HOME relativo no crea nada"
+
+# Confinamiento: la raiz del sistema nunca es un destino de instalacion. Se rechaza por
+# politica (rc=2) antes de intentar escribir, no por un error de permisos accidental.
+set +e; CLAUDE_HOME="/" bash "$KIT/install.sh" >"$tmp/root.log" 2>&1; rootrc=$?; set -e
+ck "$rootrc" "2" "CLAUDE_HOME=/ se rechaza con rc=2 (no por permisos)"
+
 # El campo skipped solo aparece cuando lo hay: asi la linea de una corrida normal no
 # cambia (mismo formato que ya leen kit/sumar-tests.sh y CI), y cuando algo se salta
 # se ve. Mismo criterio que test_doc_claims.sh.
