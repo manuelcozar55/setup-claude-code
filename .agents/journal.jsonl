@@ -69,3 +69,4 @@
 {"ts": "2026-09-05T13:51:16+00:00", "actor": "", "event": "add", "task": "T-016", "title": "primitivas de instalador cerradas, WAL, recuperacion y backup con integridad", "oracle_cmd": "make test"}
 {"ts": "2026-09-05T19:59:23+00:00", "actor": "", "event": "add", "task": "T-017", "title": "un veredicto CRITICAL de Sentinel no lo puede levantar la allowlist", "oracle_cmd": "bash kit/test/test_sentinel_critical_floor.sh"}
 {"ts": "2026-09-05T20:16:27+00:00", "actor": "", "event": "add", "task": "T-018", "title": "la CLAUDE.md proyectada declara opcionales las skills de terceros que prescribe", "oracle_cmd": "bash kit/test/test_optional_capabilities.sh"}
+{"ts": "2026-09-05T20:24:46+00:00", "actor": "", "event": "add", "task": "T-019", "title": "la doc atribuye shellcheck a la CI, no al oraculo local make test", "oracle_cmd": "bash kit/test/test_shellcheck_honest_gate.sh"}

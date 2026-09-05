@@ -107,6 +107,15 @@ jobs:
       - name: test_guards_falsifiability.sh (la suite anterior es falsable)
         run: bash kit/test/test_guards_falsifiability.sh
 
+      - name: test_sentinel_critical_floor.sh (un CRITICAL no lo levanta la allowlist)
+        run: bash kit/test/test_sentinel_critical_floor.sh
+
+      - name: test_optional_capabilities.sh (skills de terceros declaradas opcionales)
+        run: bash kit/test/test_optional_capabilities.sh
+
+      - name: test_shellcheck_honest_gate.sh (shellcheck lo corre la CI, no make test)
+        run: bash kit/test/test_shellcheck_honest_gate.sh
+
       - name: test_secret_content_gitleaks.sh (Capa 2, por contenido)
         run: bash kit/test/test_secret_content_gitleaks.sh
 

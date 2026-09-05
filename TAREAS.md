@@ -239,3 +239,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
   F-03: el kit vendoriza un CLAUDE.md que en Operating loop ordena la skill deep-change componiendo superpowers, sin declararlas terceros opcionales ni ofrecer camino cuando faltan. La base (guards, Sentinel, agentes) funciona sin ellas. Boundary del todo 17.
 
+## T-019 · la doc atribuye shellcheck a la CI, no al oraculo local make test
+
+- estado: pendiente
+- oráculo: `bash kit/test/test_shellcheck_honest_gate.sh`
+- riesgo: bajo
+- clase: sensor
+- sensor: kit/test/test_shellcheck_honest_gate.sh
+- timeout: 5min
+- criterios:
+
+  F-25: CLAUDE.md listaba shellcheck -x junto a make test en Antes de commitear, como si el oraculo verde lo ejecutara. make test no corre shellcheck; quien lo hace como puerta es ci.yml sobre todo .sh versionado. Se atribuye a la CI. Boundary del todo 17.
+

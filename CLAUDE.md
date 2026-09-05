@@ -4,13 +4,13 @@ Harness personal para Claude Code: **guías** (antes de actuar) y **sensores** (
 después). Mapa para agentes: `AGENTS.md`. Dos capas:
 
 - `kit/` — **capa de instalación**, v1.2.0, estable. Guards, hooks, Sentinel, `install.sh`,
-  37 suites de test. No se toca sin ejecutar `make test`.
+  38 suites de test. No se toca sin ejecutar `make test`.
 - raíz — **capa de harness**: `.claude/`, `knowledge/`, `scripts/`. Lo nuevo va aquí.
 
 ## Oráculo de este repo
 
 ```
-make test  # 37 suites bash, sin red, 118-179 s en un i9-14900HX. exit 0 o el trabajo no está hecho.
+make test  # 38 suites bash, sin red, 118-179 s en un i9-14900HX. exit 0 o el trabajo no está hecho.
 ```
 
 No declares nada terminado sin esa salida delante. `/verify` lo hace bien.
@@ -71,5 +71,5 @@ y el gate falla **en abierto**. `kit/` no computa (ADR 005). `make test` lo veri
 
 ## Antes de commitear
 
-Escaneo de secretos (`kit/scan-secrets.sh` + gitleaks con `-c kit/claude/.gitleaks.toml`),
-`shellcheck -x` sobre todo `.sh`, y `make test`. Rama + PR: nunca directo a `main`.
+Escaneo de secretos (`kit/scan-secrets.sh` + gitleaks con `-c kit/claude/.gitleaks.toml`)
+y `make test`. La CI corre `shellcheck -x` (no `make test`). Rama + PR: nunca a `main`.

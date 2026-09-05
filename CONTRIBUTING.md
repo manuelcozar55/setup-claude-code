@@ -41,6 +41,9 @@ Todo vive bajo `kit/test/`:
  - `test_optional_capabilities.sh` — la CLAUDE.md que el kit proyecta declara
    opcionales las skills de terceros (`deep-change`/`superpowers`) que prescribe,
    con un fallback: una máquina limpia puede no tenerlas y la base funciona igual.
+ - `test_shellcheck_honest_gate.sh` — donde la doc nombra `shellcheck -x` como
+   condición de entrega, atribuye la puerta a la CI (que sí lo corre sobre todo
+   `.sh` versionado), no al oráculo local `make test`, que no lo ejecuta.
 - `test_secret_content_gitleaks.sh` — Capa 2 (contenido real vía
   `gitleaks` en `pre-commit`). Se salta sola (SKIP, no FAIL) si no encuentra
   el binario `gitleaks` en el sistema.
@@ -141,7 +144,7 @@ mapfile -t scripts < <(git ls-files -- '*.sh' kit/claude/hooks/git/pre-commit)
 ```
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 37 suites listadas arriba).
+(las 38 suites listadas arriba).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -243,7 +246,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 37 suites y el escaner de secretos
+# 2. las 38 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 

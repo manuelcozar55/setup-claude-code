@@ -30,6 +30,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	-bash kit/test-runner.sh kit/test/test_guards_falsifiability.sh
 	-bash kit/test-runner.sh kit/test/test_sentinel_critical_floor.sh
 	-bash kit/test-runner.sh kit/test/test_optional_capabilities.sh
+	-bash kit/test-runner.sh kit/test/test_shellcheck_honest_gate.sh
 	-bash kit/test-runner.sh kit/test/test_secret_content_gitleaks.sh
 	-bash kit/test-runner.sh kit/test/test_scan_secrets.sh
 	-bash kit/test-runner.sh kit/test/test_install.sh
