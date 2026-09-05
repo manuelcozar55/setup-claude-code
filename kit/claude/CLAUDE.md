@@ -108,6 +108,10 @@ a **living change report** (`*-cambios.md`, one entry per edit: what / why / how
 separate, explicitly-confirmed step with a known rollback). Invoke it with `/deep-change`, or let
 it auto-engage on those conditions.
 
+The `deep-change` and `superpowers` skills are optional third-party capabilities the kit
+does not redistribute; a clean install may lack them. When absent, run the loop by hand —
+the base kit (guards, Sentinel, agents) works.
+
 **Match ceremony to risk** — skip the loop for trivial edits, lookups, and Q&A; do those directly.
 The design gate (IntentGate / brainstorming) runs *before* execution; once the design is approved,
 Never-Stop governs — drive to completion, no mid-run "should I continue?". Verify with evidence,

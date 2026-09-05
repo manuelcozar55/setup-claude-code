@@ -227,3 +227,15 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
   check_dangerous_commands consultaba allowlist.commands antes de casar el patron CRITICAL; un repo clonado con su .security/sentinel-allowlist.json convertia un comando de destruccion de disco o reverse-shell en allow. Boundary F-13 del todo 17.
 
+## T-018 · la CLAUDE.md proyectada declara opcionales las skills de terceros que prescribe
+
+- estado: pendiente
+- oráculo: `bash kit/test/test_optional_capabilities.sh`
+- riesgo: bajo
+- clase: sensor
+- sensor: kit/test/test_optional_capabilities.sh
+- timeout: 5min
+- criterios:
+
+  F-03: el kit vendoriza un CLAUDE.md que en Operating loop ordena la skill deep-change componiendo superpowers, sin declararlas terceros opcionales ni ofrecer camino cuando faltan. La base (guards, Sentinel, agentes) funciona sin ellas. Boundary del todo 17.
+
