@@ -206,48 +206,79 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
 ## T-016 · primitivas de instalador cerradas, WAL, recuperacion y backup con integridad
 
-- estado: pendiente
-- oráculo: `make test`
+- estado: hecha
+- oráculo: `bash kit/test/test_txnwrite.sh`
 - riesgo: medio
-- clase: sensor
+- clase: regresión
 - timeout: 5min
 - criterios:
+  - [x] kit/lib/txnwrite.py: 4 primitivas cerradas + WAL + renameat2 + recovery (test_txnwrite.sh 26/0, incluye `recover` con tercer hash bloqueando)
+  - [x] backup excluye secretos y el ZIP sale 0600 (F-11); restore exige manifiesto (F-21): test_backup_integrity.sh 12/0
+  - [x] suite S completa sin rojos: 827 passed, 0 failed, 3 saltos preexistentes
+  cierre retroactivo: el arreglo ya estaba commiteado cuando se cerro la tarea, asi que
+  la sonda inicial de `start` sale VERDE y la clase baja de `sensor` a `regresion` (la
+  salida que el propio mch prescribe). La prueba del ROJO no se pierde ni se inventa:
+  esta en .omo/evidence/provider-agnostic-agent-harness/task-16-*/red.log y fue
+  reproducida por el orquestador revirtiendo el arreglo en copia aislada.
 
   task-16 del plan provider-agnostic-agent-harness: kit/lib/txnwrite.py (4 primitivas cerradas + WAL + renameat2 + recovery); backup excluye secretos y ZIP 0600 (F-11); restore exige manifiesto (F-21)
 
 ## T-017 · un veredicto CRITICAL de Sentinel no lo puede levantar la allowlist
 
-- estado: pendiente
+- estado: hecha
 - oráculo: `bash kit/test/test_sentinel_critical_floor.sh`
 - riesgo: medio
-- clase: sensor
+- clase: regresión
 - sensor: kit/test/test_sentinel_critical_floor.sh
 - timeout: 5min
 - criterios:
+  - [x] un comando CRITICAL sigue denegado con allowlist.commands=[cmd] y con allowlist.paths=['/']
+  - [x] revertido el arreglo en copia aislada, el MISMO test da PASS=1 FAIL=1 rc=1: el sensor muerde
+  - [x] la supresion por `paths` sigue viva para hallazgos no criticos
+  cierre retroactivo: el arreglo ya estaba commiteado cuando se cerro la tarea, asi que
+  la sonda inicial de `start` sale VERDE y la clase baja de `sensor` a `regresion` (la
+  salida que el propio mch prescribe). La prueba del ROJO no se pierde ni se inventa:
+  esta en .omo/evidence/provider-agnostic-agent-harness/task-17-*/red-boundary1-sentinel.log y fue
+  reproducida por el orquestador revirtiendo el arreglo en copia aislada.
 
   check_dangerous_commands consultaba allowlist.commands antes de casar el patron CRITICAL; un repo clonado con su .security/sentinel-allowlist.json convertia un comando de destruccion de disco o reverse-shell en allow. Boundary F-13 del todo 17.
 
 ## T-018 · la CLAUDE.md proyectada declara opcionales las skills de terceros que prescribe
 
-- estado: pendiente
+- estado: hecha
 - oráculo: `bash kit/test/test_optional_capabilities.sh`
 - riesgo: bajo
-- clase: sensor
+- clase: regresión
 - sensor: kit/test/test_optional_capabilities.sh
 - timeout: 5min
 - criterios:
+  - [x] la CLAUDE.md proyectada declara opcionales deep-change/superpowers y da camino sin ellas
+  - [x] revertida al texto pre-arreglo (0 palabras de opcionalidad), el MISMO test da PASS=0 FAIL=1 rc=1
+  cierre retroactivo: el arreglo ya estaba commiteado cuando se cerro la tarea, asi que
+  la sonda inicial de `start` sale VERDE y la clase baja de `sensor` a `regresion` (la
+  salida que el propio mch prescribe). La prueba del ROJO no se pierde ni se inventa:
+  esta en .omo/evidence/provider-agnostic-agent-harness/task-17-*/red-boundary2-capabilities.log y fue
+  reproducida por el orquestador revirtiendo el arreglo en copia aislada.
 
   F-03: el kit vendoriza un CLAUDE.md que en Operating loop ordena la skill deep-change componiendo superpowers, sin declararlas terceros opcionales ni ofrecer camino cuando faltan. La base (guards, Sentinel, agentes) funciona sin ellas. Boundary del todo 17.
 
 ## T-019 · la doc atribuye shellcheck a la CI, no al oraculo local make test
 
-- estado: pendiente
+- estado: hecha
 - oráculo: `bash kit/test/test_shellcheck_honest_gate.sh`
 - riesgo: bajo
-- clase: sensor
+- clase: regresión
 - sensor: kit/test/test_shellcheck_honest_gate.sh
 - timeout: 5min
 - criterios:
+  - [x] make test NO invoca shellcheck; ci.yml SI lo corre como puerta; CLAUDE.md lo atribuye a la CI
+  - [x] revertida CLAUDE.md al texto pre-arreglo, el MISMO test da PASS=2 FAIL=1 rc=1
+  - [x] las 3 suites nuevas del todo 17 estan en ci.yml: paridad Makefile<->CI
+  cierre retroactivo: el arreglo ya estaba commiteado cuando se cerro la tarea, asi que
+  la sonda inicial de `start` sale VERDE y la clase baja de `sensor` a `regresion` (la
+  salida que el propio mch prescribe). La prueba del ROJO no se pierde ni se inventa:
+  esta en .omo/evidence/provider-agnostic-agent-harness/task-17-*/red-boundary3-shellcheck.log y fue
+  reproducida por el orquestador revirtiendo el arreglo en copia aislada.
 
   F-25: CLAUDE.md listaba shellcheck -x junto a make test en Antes de commitear, como si el oraculo verde lo ejecutara. make test no corre shellcheck; quien lo hace como puerta es ci.yml sobre todo .sh versionado. Se atribuye a la CI. Boundary del todo 17.
 
