@@ -284,14 +284,13 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
 ## T-020 · define provider capability contract v1 (schema runtime + coordinador S->M)
 
-- estado: en-curso
+- estado: hecha
 - oráculo: `bash kit/test/test_profile_coordinator.sh`
 - riesgo: bajo
 - clase: regresión
-- sensor: kit/test/test_profile_coordinator.sh
 - timeout: 10min
 - criterios:
-  - [ ] el schema v1 rechaza un ciclo degradado que reclama lifecycle-enforced (ver task-18/red.log)
-  - [ ] el coordinador S maneja prepare/apply/query/compensate contra M real sin escribir targets ni receipt de M (ver task-18/qa.log)
-  - [ ] make test: 39 suites, 858 passed, 0 failed, 3 skipped (ver task-18/affected.log)
+  - [x] el schema v1 rechaza un ciclo degradado que reclama lifecycle-enforced (ver task-18/red.log)
+  - [x] el coordinador S maneja prepare/apply/query/compensate contra M real sin escribir targets ni receipt de M (ver task-18/qa.log)
+  - [x] make test: 39 suites, 858 passed, 0 failed, 3 skipped (ver task-18/affected.log)
 
