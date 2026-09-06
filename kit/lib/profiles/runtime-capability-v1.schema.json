@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "runtime-capability-v1",
+  "title": "Runtime capability/profile schema v1 (S side)",
+  "description": "Contrato declarativo del runtime de un proveedor en el lado S. Describe QUE capacidades de ciclo de vida declara un perfil (tier, modos), no COMO se proyectan sus instrucciones (eso lo posee M via mch-projection-v1). S nunca escribe targets de M ni el receipt de M; solo coordina la transaccion de proyeccion de M y registra su propio WAL.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "provider", "surface", "tier", "modes", "lifecycle"],
+  "properties": {
+    "schema": {"const": "runtime-capability-v1"},
+    "provider": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+    "surface": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+    "tier": {
+      "type": "string",
+      "enum": ["structurally-conformant", "profile-certified", "lifecycle-enforced"]
+    },
+    "modes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "enum": ["interactive", "non-interactive"]}
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["native_stop", "enforcement"],
+      "properties": {
+        "native_stop": {"type": "boolean"},
+        "enforcement": {"type": "string", "enum": ["enforced", "degraded", "none"]},
+        "block_cap": {"type": ["integer", "null"], "minimum": 1}
+      }
+    }
+  }
+}

@@ -211,6 +211,9 @@ jobs:
       - name: "test_evals.sh (sensor offline del eval set; sin almacen declara skip, nunca ok)"
         run: bash kit/test/test_evals.sh
 
+      - name: "test_profile_coordinator.sh (schema de capacidad v1 y coordinador transaccional S->M con WAL propio)"
+        run: bash kit/test/test_profile_coordinator.sh
+
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
     runs-on: ubuntu-latest

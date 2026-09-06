@@ -282,3 +282,16 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
   F-25: CLAUDE.md listaba shellcheck -x junto a make test en Antes de commitear, como si el oraculo verde lo ejecutara. make test no corre shellcheck; quien lo hace como puerta es ci.yml sobre todo .sh versionado. Se atribuye a la CI. Boundary del todo 17.
 
+## T-020 · define provider capability contract v1 (schema runtime + coordinador S->M)
+
+- estado: en-curso
+- oráculo: `bash kit/test/test_profile_coordinator.sh`
+- riesgo: bajo
+- clase: regresión
+- sensor: kit/test/test_profile_coordinator.sh
+- timeout: 10min
+- criterios:
+  - [ ] el schema v1 rechaza un ciclo degradado que reclama lifecycle-enforced (ver task-18/red.log)
+  - [ ] el coordinador S maneja prepare/apply/query/compensate contra M real sin escribir targets ni receipt de M (ver task-18/qa.log)
+  - [ ] make test: 39 suites, 858 passed, 0 failed, 3 skipped (ver task-18/affected.log)
+

@@ -14,7 +14,7 @@ sí mismo.
 
 Inventario del árbol que describe esta sección:
 
-- 38 suites de test
+- 39 suites de test
 - 11 ADRs
 - 20 tareas de eval
 - de ellas, 10 positivas
@@ -23,6 +23,19 @@ Inventario del árbol que describe esta sección:
 
 ### Added
 
+- **Schema de capacidad/perfil de runtime v1 y su coordinador transaccional
+  S→M.** `kit/lib/profiles/runtime-capability-v1.schema.json` declara qué
+  capacidades de ciclo de vida anuncia el perfil de un proveedor (tier, modos,
+  enforcement) y `kit/lib/profile_coordinator.py` maneja, contra M
+  (`mch project`), el ciclo prepare/apply/query/compensate sin escribir jamás
+  los targets ni el receipt de M. S preasigna un UUID pero no lo persiste en su
+  propio WAL 0600 hasta que M ha respondido a `prepare`; tras cualquier crash
+  consulta a M el estado EXACTO y converge (NOT_FOUND reintenta, PREPARED
+  aplica-o-compensa, APPLIED guarda recibo y cierra, COMPENSATED restaura S,
+  BLOCKED para). La validación cierra la mentira del plan: un ciclo `degraded`
+  no puede reclamar `lifecycle-enforced`. Sensor:
+  `kit/test/test_profile_coordinator.sh` con un M falso determinista
+  (`kit/test/fixtures/fake_mch.py`).
 - **Foto sellada del Claude que este árbol proyecta, con ledger de los 42
   hallazgos de auditoría.** `kit/test/test_claude_characterization.sh` ata dos
   cosas al corte actual: (1) `knowledge/CLAUDE-42-LEDGER.md`, que mapea los 42
