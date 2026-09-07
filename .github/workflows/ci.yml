@@ -217,6 +217,9 @@ jobs:
       - name: "test_installer_core.sh (interprete de primitivas cerradas: install/doctor/diff/uninstall, conflicto de propiedad, recuperacion)"
         run: bash kit/test/test_installer_core.sh
 
+      - name: "test_migration_lifecycle.sh (ciclo de vida end-to-end del todo 26: migracion, update x2, crash/recuperacion, uninstall owned, rollback por backup, determinismo)"
+        run: bash kit/test/test_migration_lifecycle.sh
+
       - name: "test_claude_stop_bridge.sh (puente Stop endurecido del perfil de referencia de Claude contra el gate v2 real de M)"
         run: bash kit/test/test_claude_stop_bridge.sh
 
