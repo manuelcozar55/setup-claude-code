@@ -1,0 +1,12 @@
+{
+  "schema": "runtime-capability-v1",
+  "provider": "claude",
+  "surface": "interactive",
+  "tier": "lifecycle-enforced",
+  "modes": ["interactive"],
+  "lifecycle": {
+    "native_stop": true,
+    "enforcement": "enforced",
+    "block_cap": 8
+  }
+}

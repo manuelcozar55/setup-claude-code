@@ -1,0 +1,31 @@
+{
+  "schema": "installer-core-plan-v1",
+  "description": "Perfil de referencia de Claude (todo 20). Plantilla declarativa, NO wiring de install.sh. Este plan cubre SOLO los ficheros que el core POSEE en su totalidad (copy-owned/managed-text-block): el puente Stop endurecido y las dos capacidades de referencia. El ledger de propiedad de installer_core garantiza que update/uninstall no pisan ni huerfanizan lo ajeno. El MERGE de settings.json NO va aqui a proposito: installer_core reclama propiedad total de cada target de escritura y rechaza pre-escritura pisar un fichero ajeno preexistente, que es justo lo correcto para un fichero OWNED pero incompatible con MERGE-sobre-el-settings-manual-del-usuario. Ese merge lo hace su primitiva duena (txnwrite json-merge-owned-keys, policy claude-settings), descrita en settings_merge abajo, que conserva env/hooks/permissions del usuario. El consumidor resuelve 'src' (kit-relativo) a absoluto y rellena 'content' del bloque gestionado desde 'content_ref' antes de invocar.",
+  "settings_merge": {
+    "op": "json-merge-owned-keys",
+    "dst": "settings.json",
+    "kit_json": "kit/lib/profiles/claude-reference.settings.kit.json",
+    "policy": "claude-settings",
+    "note": "Se ejecuta con txnwrite directamente, NO por installer_core: es un merge sobre el settings.json manual del usuario, no un target de propiedad total. La policy claude-settings (sellada en task-16) conserva env (deep-merge, el usuario gana) y permissions (cola del usuario preservada) pero REEMPLAZA hooks EN BLOQUE cuando el kit trae alguno. Por eso este fragmento NO declara hooks: declararlos huerfanizaria los hooks manuales del usuario, que es justo lo que 'preserving settings/hooks' prohibe. El puente Stop se instala como fichero OWNED y su cableado en settings.json queda fuera de este merge (responsabilidad del wiring de instalacion de tasks posteriores, no del perfil de referencia)."
+  },
+  "operations": [
+    {
+      "op": "managed-text-block",
+      "dst": "hooks/claude_stop_bridge.sh",
+      "mode": "0755",
+      "content_ref": "kit/lib/claude_stop_bridge.sh"
+    },
+    {
+      "op": "copy-owned",
+      "dst": "profiles/claude-reference-interactive.runtime-capability-v1.json",
+      "mode": "0644",
+      "src": "kit/lib/profiles/claude-reference-interactive.runtime-capability-v1.json"
+    },
+    {
+      "op": "copy-owned",
+      "dst": "profiles/claude-reference-noninteractive.runtime-capability-v1.json",
+      "mode": "0644",
+      "src": "kit/lib/profiles/claude-reference-noninteractive.runtime-capability-v1.json"
+    }
+  ]
+}

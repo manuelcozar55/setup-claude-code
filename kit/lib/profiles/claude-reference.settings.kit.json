@@ -1,0 +1,5 @@
+{
+  "env": {
+    "CCKIT_CLAUDE_REFERENCE_PROFILE": "1"
+  }
+}

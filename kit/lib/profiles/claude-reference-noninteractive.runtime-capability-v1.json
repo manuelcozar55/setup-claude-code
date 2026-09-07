@@ -1,0 +1,12 @@
+{
+  "schema": "runtime-capability-v1",
+  "provider": "claude",
+  "surface": "non-interactive",
+  "tier": "profile-certified",
+  "modes": ["non-interactive"],
+  "lifecycle": {
+    "native_stop": false,
+    "enforcement": "degraded",
+    "block_cap": null
+  }
+}

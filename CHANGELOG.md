@@ -14,7 +14,7 @@ sí mismo.
 
 Inventario del árbol que describe esta sección:
 
-- 40 suites de test
+- 41 suites de test
 - 11 ADRs
 - 20 tareas de eval
 - de ellas, 10 positivas
@@ -23,6 +23,22 @@ Inventario del árbol que describe esta sección:
 
 ### Added
 
+- **Perfil de referencia de Claude y puente Stop verificado contra el gate v2
+  real de M.** `kit/lib/claude_stop_bridge.sh` es el Stop nativo ENDURECIDO del
+  perfil de referencia: consulta al productor real de M (`mch task gate --json`,
+  gate v2) por RUTA ABSOLUTA DE CONFIANZA (nunca `mch` del PATH), exige una
+  versión mínima del productor, hace UNA sola invocación con timeout y tope de
+  salida, fija el `evidence_schema` (`mch-gate-evidence-v2`) y aplica la tabla rc
+  cerrada del contrato (0/3 permiten, 1/2/otros/timeout bloquean). Es ADITIVO:
+  no toca `.claude/hooks/verify-gate.sh` ni su caracterización. El perfil se
+  declara de forma declarativa en `kit/lib/profiles/claude-reference-*.runtime-
+  capability-v1.json` (interactivo `lifecycle-enforced` con Stop nativo,
+  no-interactivo `profile-certified` degradado, ambos modos explícitos), con un
+  plan `installer-core-plan-v1` que instala los ficheros propios (puente +
+  capacidades) por `installer_core` y funde `settings.json` por su primitiva
+  dueña (`json-merge-owned-keys`) preservando el env/permissions/hooks del
+  usuario. Sensor: `kit/test/test_claude_stop_bridge.sh` contra el binario real
+  de M y productores de mentira para cada camino de fallo.
 - **Schema de capacidad/perfil de runtime v1 y su coordinador transaccional
   S→M.** `kit/lib/profiles/runtime-capability-v1.schema.json` declara qué
   capacidades de ciclo de vida anuncia el perfil de un proveedor (tier, modos,

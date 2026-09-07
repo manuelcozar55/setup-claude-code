@@ -1,0 +1,18 @@
+{
+  "schema": "claude-stop-bridge-consumed-contract-v1",
+  "description": "Contrato del gate v2 de M (mcharness, todo 9) que el puente Stop de referencia de Claude CONSUME. No es propiedad de S sobre los tests de M: es lo que S fija de la superficie que observa, para delatar una deriva silenciosa del productor. El puente verifica en tiempo de ejecucion que el mch real declara este evidence_schema y una version >= min_producer_version.",
+  "producer": "mch",
+  "min_producer_version": "0.2.0",
+  "gate_body_contract": 2,
+  "evidence_schema": "mch-gate-evidence-v2",
+  "rc_table": {
+    "0": "verified/ALLOW",
+    "1": "governed/BLOCK",
+    "2": "usage/BLOCK",
+    "3": "not_governed/ALLOW"
+  },
+  "unknown_rc": "BLOCK",
+  "timeout_rc": 124,
+  "timeout": "BLOCK",
+  "gate_max_bytes": 65536
+}

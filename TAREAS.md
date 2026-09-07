@@ -305,3 +305,11 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
   task-19 del plan provider-agnostic-agent-harness
 
+## T-022 · empaqueta el perfil de referencia de Claude y el puente Stop verificado contra el gate v2 real de M, sin cambiar a Claude
+
+- estado: hecha
+- oráculo: `["bash", "kit/test/test_claude_stop_bridge.sh"]`
+- riesgo: medio
+- timeout: 5min
+- criterios:
+
