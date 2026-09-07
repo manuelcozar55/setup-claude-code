@@ -387,11 +387,10 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
 ## T-030 · matriz de conformidad estructural y mutacion adversaria (todo 24): cobertura del productor real gobernado en los 3 puentes + retiro de la sonda schema-only superviviente
 
-- estado: en-curso
+- estado: hecha
 - oráculo: `bash .agents/oracles/task24_conformance.sh`
 - riesgo: medio
 - clase: sensor
-- sensor: .agents/oracles/task24_conformance.sh
 - timeout: 5min
 - criterios:
 
