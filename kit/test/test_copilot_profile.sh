@@ -251,6 +251,28 @@ if mrg_build_red "$R_DIR"; then
 else
   ck "no" "si" "no se pudo construir el proyecto gobernado ROJO con el productor real (git/mch ausente)"
 fi
+# AUTORIDAD ROTA (mutantes M2/M3): el productor real da rc1 tambien con la AUTORIDAD
+# del gate rota. Sin estos estados reales, suprimir authority_incompatible o
+# authority_untrusted en M sobrevive. Aqui el gate manual debe BLOQUEAR en ambos.
+AI_DIR="$T/real_authority_incompatible"; AU_DIR="$T/real_authority_untrusted"
+if mrg_build_authbreak "$AI_DIR"; then
+  ck "$(mrg_real_gate_rc "$AI_DIR")" "1" "productor REAL: autoridad incompatible devuelve gate rc1"
+  dai="$(printf '{"cwd":"%s"}' "$AI_DIR" | bash "$GATE" --mch "$MCH_REAL" 2>/dev/null)"
+  ck "$(decision "$dai")" "block" "gate manual rc1 REAL (authority_incompatible): BLOQUEA contra el productor real"
+  rc_ai="$(printf '{"cwd":"%s"}' "$AI_DIR" | bash "$GATE" --mch "$MCH_REAL" >/dev/null 2>&1; echo $?)"
+  ck "$rc_ai" "2" "gate manual rc1 REAL (authority_incompatible): exit 2 contra el productor real"
+else
+  ck "no" "si" "no se pudo construir el proyecto con autoridad incompatible con el productor real (git/mch ausente)"
+fi
+if mrg_build_untrusted "$AU_DIR"; then
+  ck "$(mrg_real_gate_rc "$AU_DIR")" "1" "productor REAL: autoridad no confiable devuelve gate rc1"
+  dau="$(printf '{"cwd":"%s"}' "$AU_DIR" | bash "$GATE" --mch "$MCH_REAL" 2>/dev/null)"
+  ck "$(decision "$dau")" "block" "gate manual rc1 REAL (authority_untrusted): BLOQUEA contra el productor real"
+  rc_au="$(printf '{"cwd":"%s"}' "$AU_DIR" | bash "$GATE" --mch "$MCH_REAL" >/dev/null 2>&1; echo $?)"
+  ck "$rc_au" "2" "gate manual rc1 REAL (authority_untrusted): exit 2 contra el productor real"
+else
+  ck "no" "si" "no se pudo construir el proyecto con autoridad no confiable con el productor real (git/mch ausente)"
+fi
 
 # Ligadura al todo 9: esquema + version minima embebidos EXACTOS.
 ck "$(jq -r '.evidence_schema' "$CONTRACT")" "mch-gate-evidence-v2" "contrato consumido fija el evidence_schema del gate v2"

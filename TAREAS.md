@@ -394,3 +394,23 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 - timeout: 5min
 - criterios:
 
+## T-031 · mata mutantes M2/M3: autoridad rota real en los 3 puentes
+
+- estado: bloqueada
+- oráculo: `bash .agents/oracles/task24_authbreak.sh`
+- riesgo: medio
+- clase: regresión
+- sensor: .agents/oracles/task24_authbreak.sh
+- timeout: 5min
+- criterios:
+
+## T-032 · mata mutantes M2/M3: autoridad rota real en los 3 puentes (TDD rojo-primero)
+
+- estado: en-curso
+- oráculo: `bash .agents/oracles/task24_authbreak.sh`
+- riesgo: medio
+- clase: sensor
+- sensor: .agents/oracles/task24_authbreak.sh
+- timeout: 5min
+- criterios:
+

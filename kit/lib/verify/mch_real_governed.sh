@@ -58,6 +58,39 @@ mrg_build_red() {
   )
 }
 
+# Construye un proyecto M gobernado VERDE y luego ROMPE la AUTORIDAD del gate
+# declarando gate_authority_version=99 en state.json: el productor real cae a
+# rc1/authority_incompatible (habla contrato 2, el estado declara 99).
+mrg_build_authbreak() {
+  local dir="$1"
+  mrg_build_green "$dir" || return 1
+  python3 - "$dir/.agents/state.json" <<'PY' || return 1
+import json,sys
+p=sys.argv[1]
+d=json.load(open(p))
+d["gate_authority_version"]=99
+json.dump(d,open(p,"w"))
+PY
+}
+
+# Construye un proyecto M gobernado VERDE y luego deja la sonda del oraculo SIN
+# sello VERDE (probe.ok=false): autoridad presente pero no confiable. El productor
+# real cae a rc1/authority_untrusted.
+mrg_build_untrusted() {
+  local dir="$1"
+  mrg_build_green "$dir" || return 1
+  python3 - "$dir/.agents/state.json" <<'PY' || return 1
+import json,sys
+p=sys.argv[1]
+d=json.load(open(p))
+pr=d.get("probe") or {}
+pr["ok"]=False
+pr["rc"]=1
+d["probe"]=pr
+json.dump(d,open(p,"w"))
+PY
+}
+
 # Verifica el rc CRUDO del productor real en un dir gobernado (sanity: sin esto
 # no sabriamos que M quedo en el estado esperado). Escribe el rc por stdout.
 mrg_real_gate_rc() {
