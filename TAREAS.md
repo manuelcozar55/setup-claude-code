@@ -465,11 +465,10 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
 ## T-038 · prueba end-to-end del ciclo de vida: migracion, update x2, crash/recuperacion, uninstall owned y rollback por backup (todo 26)
 
-- estado: en-curso
+- estado: hecha
 - oráculo: `bash kit/test/test_migration_lifecycle.sh`
 - riesgo: medio
 - clase: sensor
-- sensor: kit/test/test_migration_lifecycle.sh
 - timeout: 5min
 - criterios:
   - [ ] Wave 6 todo 26. Prueba la HISTORIA COMPLETA que el todo 26 pide como una sola secuencia determinista: migracion a perfiles sobre home endurecido Y limpio (mismo owned-digest canonico), update twice sin deriva, doctor owned-clean/owned-drifted, uninstall retira owned-clean y PRESERVA owned-drifted, NO unmanaged loss (fichero de usuario sobrevive bytes+modo), rollback por backup con hashes/modes exactos, crash por WAL corrupto (tercer estado) que bloquea en cerrado sin dejar el target a medias, y determinismo por repeticion (mismo ledger canonico y owned-digest en dos homes).
