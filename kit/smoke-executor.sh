@@ -123,8 +123,11 @@ if printf '%s' "$surface_out" | grep -qF "$CANARY"; then
   complete_flow=true
 fi
 
-RECEIPT="$HOME_DIR/.smoke-receipt.json"
-CHALLENGE="$(cat "$HOME_DIR/.smoke-challenge" 2>/dev/null)"
+# Recibo y desafio van POR SUPERFICIE: dos superficies comparten home efimero y
+# un unico recibo por home dejaba que la ejecucion de una certificara a su
+# hermana (PTY de Copilot certificado por un `-p` que nunca abrio un terminal).
+RECEIPT="$HOME_DIR/.smoke-receipt-$SURFACE.json"
+CHALLENGE="$(cat "$HOME_DIR/.smoke-challenge-$SURFACE" 2>/dev/null)"
 tmp="$(mktemp "$HOME_DIR/.smoke-receipt.XXXXXX")" || { echo "smoke-executor: no pude crear tmp del recibo" >&2; exit 2; }
 jq -n \
   --arg p "$PROVIDER" --arg s "$SURFACE" \

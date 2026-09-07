@@ -81,16 +81,26 @@ home_for() { case "$1" in
 # stale_challenge; y el desafio se consume al certificar en verde (un solo uso).
 mint_challenge() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 
+# GRANO POR SUPERFICIE: dos superficies del mismo proveedor comparten home
+# efimero. Con un unico recibo/desafio por home, la ejecucion de UNA superficie
+# certificaba a su hermana: tres ejecuciones del ejecutor devolvian seis PASS, y
+# `copilot/interactive` (que exige PTY real) quedaba certificado por un recibo de
+# `copilot -p`. El plan certifica *per mode/tier*, asi que recibo y desafio van
+# por superficie y cada modo solo se certifica con SU propia evidencia.
+chal_file_for()    { printf '%s/.smoke-challenge-%s' "$1" "$2"; }
+receipt_file_for() { printf '%s/.smoke-receipt-%s.json' "$1" "$2"; }
+
 if [ -n "$ISSUE_CHALLENGE" ]; then
   for cap in "$PROFILES_DIR"/*.runtime-capability-v1.json; do
     [ -f "$cap" ] || continue
     homename="$(home_for "$(jq -r '.provider' "$cap")")"
     [ -n "$homename" ] || continue
+    capsurface="$(jq -r '.surface' "$cap")"
     home="$ATTEMPT_DIR/$homename"
     [ -d "$home" ] || continue
     ch="$(mint_challenge)"
     tmp="$(mktemp "$home/.smoke-challenge.XXXXXX")" || { echo "real-certify-profiles: no pude crear el desafio en $home" >&2; exit 2; }
-    printf '%s' "$ch" > "$tmp" && mv -f "$tmp" "$home/.smoke-challenge"
+    printf '%s' "$ch" > "$tmp" && mv -f "$tmp" "$(chal_file_for "$home" "$capsurface")"
   done
   exit 0
 fi
@@ -116,7 +126,7 @@ freeze_identity() { # bin -> emite "realpath|version|sha256" o vacio si falla
 
 results_json="[]"
 any_fail=0; any_blocked=0
-passed_homes=""
+passed_challenges=""
 
 emit_row() { # provider surface tier verdict reason realpath version sha256
   results_json="$(printf '%s' "$results_json" | jq \
@@ -156,7 +166,15 @@ for cap in "$PROFILES_DIR"/*.runtime-capability-v1.json; do
   # provisto NO se llega aqui. Un home vacio no autentica: el smoke real fallaria
   # el canario -> se traduce a BLOCKED/auth_incomplete, NUNCA a PASS silencioso.
   # No se emite PASS sin canario observado.
-  if [ -z "$(ls -A "$home" 2>/dev/null)" ]; then
+  # El propio arnes escribe .smoke-challenge-* en el home al emitir el desafio:
+  # si contaran como contenido, su artefacto enmascararia un home sin autenticar.
+  home_poblado=0
+  for entry in "$home"/* "$home"/.[!.]*; do
+    [ -e "$entry" ] || continue
+    case "$entry" in *"/.smoke-challenge-"*) continue ;; esac
+    home_poblado=1; break
+  done
+  if [ "$home_poblado" -eq 0 ]; then
     emit_row "$provider" "$surface" "$tier" "BLOCKED" "auth_incomplete" "$rp" "$ver" "$sha"
     any_blocked=1; continue
   fi
@@ -164,7 +182,7 @@ for cap in "$PROFILES_DIR"/*.runtime-capability-v1.json; do
   # Home provisto y no vacio: el smoke real lo ejercita el flujo de QA con tope
   # de tiempo/turnos/coste. Este arnes no fabrica un PASS: si el smoke no se ha
   # ejecutado y sellado su canario, el modo queda BLOCKED/smoke_not_run.
-  smoke_receipt="$home/.smoke-receipt.json"
+  smoke_receipt="$(receipt_file_for "$home" "$surface")"
   if [ ! -f "$smoke_receipt" ]; then
     emit_row "$provider" "$surface" "$tier" "BLOCKED" "smoke_not_run" "$rp" "$ver" "$sha"
     any_blocked=1; continue
@@ -179,12 +197,21 @@ for cap in "$PROFILES_DIR"/*.runtime-capability-v1.json; do
     emit_row "$provider" "$surface" "$tier" "BLOCKED" "receipt_identity_mismatch" "$rp" "$ver" "$sha"
     any_blocked=1; continue
   fi
+  # SUPERFICIE: el recibo debe declarar la superficie que se ejecuto, y tiene que
+  # ser la de esta fila. La ruta por superficie ya lo separa, pero un recibo
+  # COPIADO al nombre de la hermana pasaria: solo la superficie sellada DENTRO lo
+  # delata. Motivo propio, no se recicla missing_challenge.
+  receipt_surface="$(jq -r '.surface // ""' "$smoke_receipt" 2>/dev/null)"
+  if [ "$receipt_surface" != "$surface" ]; then
+    emit_row "$provider" "$surface" "$tier" "BLOCKED" "receipt_surface_mismatch" "$rp" "$ver" "$sha"
+    any_blocked=1; continue
+  fi
   # FRESCURA: el recibo debe sellar el desafio VIGENTE emitido por el certificador
   # (--issue-challenge) en este home. Sin desafio en el recibo -> missing_challenge
   # (recibo de otra ejecucion o escrito a mano con el sha256 publico). Con un
   # desafio que no es el vigente -> stale_challenge (recibo rancio, o anterior al
   # desafio en curso). Ambos son BLOCKED con motivo PROPIO, nunca PASS.
-  chal_file="$home/.smoke-challenge"
+  chal_file="$(chal_file_for "$home" "$surface")"
   current_chal="$(cat "$chal_file" 2>/dev/null)"
   receipt_chal="$(jq -r '.challenge // ""' "$smoke_receipt" 2>/dev/null)"
   if [ -z "$receipt_chal" ] || [ -z "$current_chal" ]; then
@@ -200,7 +227,7 @@ for cap in "$PROFILES_DIR"/*.runtime-capability-v1.json; do
   flow_ok="$(jq -r '.complete_flow // false' "$smoke_receipt" 2>/dev/null)"
   if [ "$canary_ok" = "true" ] && [ "$flow_ok" = "true" ]; then
     emit_row "$provider" "$surface" "$tier" "PASS" "real_smoke_ok" "$rp" "$ver" "$sha"
-    passed_homes="$passed_homes $chal_file"
+    passed_challenges="$passed_challenges $chal_file"
   else
     emit_row "$provider" "$surface" "$tier" "FAIL" "canary_or_flow_failed" "$rp" "$ver" "$sha"
     any_fail=1
@@ -208,10 +235,10 @@ for cap in "$PROFILES_DIR"/*.runtime-capability-v1.json; do
 done
 
 # UN SOLO USO: el desafio que produjo un PASS se consume aqui, tras cerrar el
-# bucle (dos superficies comparten un home; ambas se certifican en la misma
-# ejecucion antes de consumir). Recertificar sin re-emitir y re-ejecutar el smoke
-# vuelve a caer en missing_challenge, nunca en un segundo PASS.
-for cf in $passed_homes; do rm -f "$cf" 2>/dev/null; done
+# bucle. Es el desafio de ESA superficie: gastar el de una no toca el de su
+# hermana. Recertificar sin re-emitir y re-ejecutar el smoke vuelve a caer en
+# missing_challenge, nunca en un segundo PASS.
+for cf in $passed_challenges; do rm -f "$cf" 2>/dev/null; done
 
 if [ "$JSON_OUT" = 1 ]; then
   printf '%s\n' "$results_json" | jq '.'
