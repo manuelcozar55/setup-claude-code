@@ -1,0 +1,279 @@
+#!/usr/bin/env bash
+# test_codex_profile.sh — el perfil nativo de Codex con LIMITES DE CICLO DE VIDA
+# HONESTOS (todo 21).
+#
+# QUE lo distingue del perfil de Claude (test_claude_stop_bridge.sh, que NO se
+# toca): Claude interactivo es lifecycle-enforced (Stop nativo). Codex NO tiene
+# un hard-stop nativo probado en esta rama, asi que el plan exige literalmente
+# "native hard-stop degraded unless proven": el tier de ambas superficies de
+# Codex (interactive y `exec`) es profile-certified y su lifecycle va DEGRADADO,
+# con la puerta de gobierno resuelta por un gate MANUAL explicito pre/post. Este
+# test ancla, caso por caso, cada clausula del "What/Must NOT" y del
+# "Acceptance/QA" del todo 21:
+#
+#   - AGENTS: la instruccion de Codex es un fichero OWNED por M (proyectado); S
+#     no lo escribe ni puede huerfanizarlo.
+#   - MANAGED TOML FRAGMENT/DIFF: el config.toml de Codex se toca por FRAGMENTO
+#     via diff-only (NUNCA escribe) -> preserva byte a byte lo no gestionado.
+#     Jamas se pisa el TOML.
+#   - GATE MANUAL: script explicito que consulta al productor REAL del gate v2 de
+#     M y traduce ALLOW/BLOCK a un rc de puerta manual; nunca se equipara a
+#     enforcement de ciclo de vida.
+#   - CERT SCRIPT OFFLINE: valida el perfil sin red y con matriz de fakes.
+#   - LIGADURA AL TODO 9: el contrato consumido fija evidence_schema y version
+#     minima del productor; ausente/futuro BLOQUEA.
+#   - AISLAMIENTO: todo va contra un CODEX_HOME temporal; el ~/.codex real nunca
+#     se toca.
+set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"; RAIZ="$(cd "$HERE/../.." && pwd)"
+GATE="$RAIZ/kit/lib/codex_manual_gate.sh"
+CERT="$RAIZ/kit/lib/codex_profile_cert.sh"
+# Binario real de M, derivado de la raiz del worktree SIN literal de la cuenta
+# (kit/scan-secrets.sh prohibe versionar el nombre de la cuenta local). El repo M
+# es hermano de este: .../<slug>/mcharness.
+MCH_REAL="$(cd "$RAIZ/../mcharness" 2>/dev/null && pwd)/bin/mch"
+pass=0; fail=0
+ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "skip - jq ausente: esta suite decodifica con jq la decision JSON del gate"
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
+fi
+if [ ! -x "$MCH_REAL" ]; then
+  echo "skip - el binario real de M no esta junto a este worktree (contrato entre repos no verificable aqui)"
+  echo "== 0 passed, 0 failed, 1 skipped =="; exit 0
+fi
+
+T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+mkdir -p "$T/bin" "$T/ungoverned"
+
+decision(){ if [ -n "$1" ]; then printf '%s' "$1" | jq -r '.decision // "ninguna"' 2>/dev/null
+            else echo "ninguna"; fi; }
+
+PC="$RAIZ/kit/lib/profile_coordinator.py"
+IC="$RAIZ/kit/lib/installer_core.py"
+CAP_I="$RAIZ/kit/lib/profiles/codex-interactive.runtime-capability-v1.json"
+CAP_E="$RAIZ/kit/lib/profiles/codex-exec.runtime-capability-v1.json"
+PLAN="$RAIZ/kit/lib/profiles/codex.installer-core-plan-v1.json"
+CONTRACT="$RAIZ/kit/lib/profiles/codex-manual-gate.consumed-contract-v1.json"
+AGENTS_SRC="$RAIZ/kit/lib/profiles/codex-AGENTS.md"
+TOML_FRAG="$RAIZ/kit/lib/profiles/codex-config.fragment.toml"
+HEADROOM_OPT="$RAIZ/kit/lib/profiles/codex-headroom-wave0.declared-not-certified-v1.json"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. LAS DOS CAPACIDADES: tier profile-certified, lifecycle DEGRADADO (honesto).
+#    El plan dice literal "native hard-stop degraded unless proven". No probado
+#    aqui -> degraded, nunca lifecycle-enforced.
+# ─────────────────────────────────────────────────────────────────────────────
+ck "$(python3 "$PC" validate --capability "$CAP_I" >/dev/null 2>&1 && echo ok || echo no)" "ok" \
+   "capacidad codex interactive valida contra el schema v1 real"
+ck "$(python3 "$PC" validate --capability "$CAP_E" >/dev/null 2>&1 && echo ok || echo no)" "ok" \
+   "capacidad codex exec valida contra el schema v1 real"
+ck "$(jq -r '.provider' "$CAP_I")" "codex" "interactive: provider codex"
+ck "$(jq -r '.surface' "$CAP_I")" "interactive" "interactive: surface interactive"
+ck "$(jq -r '.tier' "$CAP_I")" "profile-certified" "interactive: tier profile-certified (NUNCA lifecycle-enforced)"
+ck "$(jq -r '.lifecycle.native_stop' "$CAP_I")" "false" "interactive: sin hard-stop nativo (no probado)"
+ck "$(jq -r '.lifecycle.enforcement' "$CAP_I")" "degraded" "interactive: enforcement DEGRADADO, honesto"
+ck "$(jq -r '.surface' "$CAP_E")" "exec" "exec: surface exec"
+ck "$(jq -r '.tier' "$CAP_E")" "profile-certified" "exec: tier profile-certified"
+ck "$(jq -r '.lifecycle.enforcement' "$CAP_E")" "degraded" "exec: enforcement DEGRADADO (gate manual pre/post)"
+# Falsabilidad: NINGUNA de las dos declara lifecycle-enforced.
+ck "$(jq -r 'select(.tier=="lifecycle-enforced") | .surface' "$CAP_I" "$CAP_E" 2>/dev/null | wc -l | tr -d ' ')" "0" \
+   "falsabilidad: ninguna superficie de Codex se declara lifecycle-enforced"
+# El motivo del degradado queda ESCRITO (no es un valor mudo). El schema v1 de M
+# (todo 18) es CERRADO -- no admite un campo extra en la capacidad --, asi que el
+# motivo vive en el contrato consumido de S, junto a la razon del gate manual.
+ck "$(jq -r '.degraded_reason | length > 0' "$CONTRACT")" "true" "el degradado de Codex lleva motivo escrito (en el contrato consumido de S)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. GATE MANUAL contra el productor REAL de M: proyecto NO gobernado -> rc3 ->
+#    la puerta manual PERMITE (como en ausencia de autoridad). Y NUNCA cae a un
+#    `mch` del PATH.
+# ─────────────────────────────────────────────────────────────────────────────
+# mch trampa en el PATH: si el gate lo ejecutara escribiria un centinela.
+cat > "$T/bin/mch" <<EOF
+#!/usr/bin/env bash
+touch "$T/centinela_trampa"
+printf '%s\n' '{"contrato":2,"gobierna":true,"veredicto":"BLOCK","motivo_codigo":"governed_red","motivo":"TRAMPA","tarea":"T-999","evidencia":{"schema":"mch-gate-evidence-v2","state_sha256":null,"journal_sha256":null,"oracle_sha256":null}}'
+exit 1
+EOF
+chmod +x "$T/bin/mch"
+rm -f "$T/centinela_trampa"
+out_rc3="$( (cd "$T/ungoverned" && env PATH="$T/bin:$PATH" CCKIT_MCH_BRIDGE_PATH="$MCH_REAL" bash "$GATE") 2>/dev/null )"
+ck "$(decision "$out_rc3")" "allow" "gate manual rc3 (M no gobierna): PERMITE via productor real"
+ck "$([ -e "$T/centinela_trampa" ] && echo si || echo no)" "no" "el mch de mentira del PATH NO se ejecuto (ruta absoluta de confianza)"
+
+# sin ruta de confianza -> BLOCK (no cae al PATH)
+rm -f "$T/centinela_trampa"
+sin_ruta="$( (cd "$T/ungoverned" && env PATH="$T/bin:$PATH" bash "$GATE") 2>/dev/null )"
+ck "$(decision "$sin_ruta")" "block" "gate manual sin ruta de confianza: BLOQUEA"
+ck "$([ -e "$T/centinela_trampa" ] && echo si || echo no)" "no" "sin ruta: el mch del PATH sigue sin ejecutarse"
+
+# ruta relativa -> BLOCK
+ck "$(decision "$( (cd "$T/ungoverned" && CCKIT_MCH_BRIDGE_PATH="bin/mch" env PATH="$T/bin:$PATH" bash "$GATE") 2>/dev/null )")" "block" \
+   "gate manual ruta relativa: BLOQUEA (solo absoluta)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. Matriz de fakes del gate manual (SOLO caminos de fallo via --mch).
+# ─────────────────────────────────────────────────────────────────────────────
+fabrica_fake(){
+  local nom="$1" ver="$2" grc="$3" body="$4" slp="${5:-}"
+  cat > "$T/bin/$nom" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = "--version" ]; then printf '%s\n' "$ver"; exit 0; fi
+${slp:+sleep $slp}
+printf '%s\n' '$body'
+exit $grc
+EOF
+  chmod +x "$T/bin/$nom"
+}
+EVOK='{"contrato":2,"gobierna":true,"veredicto":"ALLOW","motivo_codigo":"verified","motivo":"ok","tarea":"T-1","evidencia":{"schema":"mch-gate-evidence-v2","state_sha256":null,"journal_sha256":null,"oracle_sha256":null}}'
+ROJO='{"contrato":2,"gobierna":true,"veredicto":"BLOCK","motivo_codigo":"governed_red","motivo":"no hay VERDE","tarea":"T-7","evidencia":{"schema":"mch-gate-evidence-v2","state_sha256":null,"journal_sha256":null,"oracle_sha256":null}}'
+FUTURO='{"contrato":9,"gobierna":true,"veredicto":"ALLOW","motivo_codigo":"verified","motivo":"ok","tarea":"T-1","evidencia":{"schema":"mch-gate-evidence-v99","state_sha256":null,"journal_sha256":null,"oracle_sha256":null}}'
+corre(){ printf '{"cwd":"%s"}' "$T/ungoverned" | bash "$GATE" --mch "$1" 2>/dev/null; }
+rc_de(){ printf '{"cwd":"%s"}' "$T/ungoverned" | bash "$GATE" --mch "$1" >/dev/null 2>&1; echo $?; }
+
+fabrica_fake mch_ok "mch 0.2.0" 0 "$EVOK"
+ck "$(decision "$(corre "$T/bin/mch_ok")")" "allow" "gate manual rc0 (verified) esquema fijado: PERMITE"
+fabrica_fake mch_rojo "mch 0.2.0" 1 "$ROJO"
+ck "$(decision "$(corre "$T/bin/mch_rojo")")" "block" "gate manual rc1 (governed_red): BLOQUEA"
+ck "$(rc_de "$T/bin/mch_rojo")" "2" "gate manual rc1: exit 2"
+fabrica_fake mch_viejo "mch 0.1.9" 0 "$EVOK"
+ck "$(decision "$(corre "$T/bin/mch_viejo")")" "block" "gate manual version 0.1.9 < 0.2.0: BLOQUEA"
+fabrica_fake mch_nuevo "mch 1.4.0" 0 "$EVOK"
+ck "$(decision "$(corre "$T/bin/mch_nuevo")")" "allow" "gate manual version 1.4.0 >= 0.2.0: PERMITE (falsabilidad)"
+fabrica_fake mch_usage "mch 0.2.0" 2 ""
+ck "$(decision "$(corre "$T/bin/mch_usage")")" "block" "gate manual rc2 (usage): BLOQUEA"
+fabrica_fake mch_raro "mch 0.2.0" 7 ""
+ck "$(decision "$(corre "$T/bin/mch_raro")")" "block" "gate manual rc desconocido: BLOQUEA"
+fabrica_fake mch_futuro "mch 0.2.0" 0 "$FUTURO"
+ck "$(decision "$(corre "$T/bin/mch_futuro")")" "block" "gate manual esquema v99 en rc0: BLOQUEA"
+fabrica_fake mch_vacio "mch 0.2.0" 0 ""
+ck "$(decision "$(corre "$T/bin/mch_vacio")")" "block" "gate manual rc0 gobernado con stdout vacio: BLOQUEA"
+fabrica_fake mch_malo "mch 0.2.0" 0 '{"contrato":2,"evidencia":{"schema":'
+ck "$(decision "$(corre "$T/bin/mch_malo")")" "block" "gate manual rc0 malformado: BLOQUEA"
+big="$(head -c 70000 /dev/zero | tr '\0' 'x')"
+fabrica_fake mch_grande "mch 0.2.0" 0 "{\"contrato\":2,\"pad\":\"$big\",\"evidencia\":{\"schema\":\"mch-gate-evidence-v2\"}}"
+ck "$(decision "$(corre "$T/bin/mch_grande")")" "block" "gate manual overflow (>64KiB): BLOQUEA"
+fabrica_fake mch_lento "mch 0.2.0" 0 "$EVOK" 12
+rc_to="$(timeout 20 bash -c 'printf "{\"cwd\":\"'"$T/ungoverned"'\"}" | bash "'"$GATE"'" --mch "'"$T/bin/mch_lento"'" >/dev/null 2>&1; echo $?')"
+ck "$rc_to" "2" "gate manual timeout (>10s): BLOQUEA"
+
+# El contrato consumido fija esquema + version minima (ligadura al todo 9), y el
+# gate embebe EXACTAMENTE esos valores (no derivan).
+ck "$(jq -r '.evidence_schema' "$CONTRACT")" "mch-gate-evidence-v2" "contrato consumido fija el evidence_schema del gate v2"
+ck "$(jq -r '.min_producer_version' "$CONTRACT")" "0.2.0" "contrato consumido fija la version minima del productor"
+ck "$(grep -c 'mch-gate-evidence-v2' "$GATE")" "1" "el gate embebe el evidence_schema fijado"
+ck "$(grep -cE 'MIN_MAJOR=0; MIN_MINOR=2; MIN_PATCH=0' "$GATE")" "1" "el gate embebe la version minima 0.2.0"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. AISLAMIENTO: install/diff/uninstall contra un CODEX_HOME temporal, con
+#    bytes AJENOS en el config.toml -> deben sobrevivir byte a byte tras cada
+#    operacion. El TOML NUNCA se pisa (fragmento via diff-only).
+# ─────────────────────────────────────────────────────────────────────────────
+CODEX_HOME_T="$T/codex_home"; mkdir -p "$CODEX_HOME_T"
+# bytes AJENOS del usuario en el TOML (config no gestionado)
+cat > "$CODEX_HOME_T/config.toml" <<'EOF'
+# config personal del usuario, intocable
+model = "o3"
+[mcp_servers.mio]
+command = "mi-server"
+EOF
+toml_ajeno_sha="$(sha256sum "$CODEX_HOME_T/config.toml" | cut -d' ' -f1)"
+
+# Resolver el plan: kit-relativo -> absoluto; content_ref -> content inline.
+PLAN_ABS="$T/plan.abs.json"
+python3 - "$PLAN" "$RAIZ" "$PLAN_ABS" <<'PY'
+import json,sys,os
+plan_path, raiz, out = sys.argv[1], sys.argv[2], sys.argv[3]
+plan = json.load(open(plan_path))
+for op in plan["operations"]:
+    for k in ("src","kit_json"):
+        if k in op and not os.path.isabs(op[k]):
+            op[k] = os.path.join(raiz, op[k])
+    if "content_ref" in op:
+        ref = op.pop("content_ref")
+        if not os.path.isabs(ref): ref = os.path.join(raiz, ref)
+        op["content"] = open(ref, encoding="utf-8").read()
+json.dump(plan, open(out,"w"))
+PY
+ck "$([ -s "$PLAN_ABS" ] && echo y || echo n)" "y" "plan de Codex resuelto a rutas absolutas + content inline"
+
+# El plan del TOML NO escribe: solo diff-only (nunca pisa el TOML).
+ck "$(jq -r '[.operations[] | select(.dst=="config.toml") | .op] | .[0] // "no"' "$PLAN")" "diff-only" \
+   "el config.toml de Codex va por diff-only (fragmento/diff, NUNCA se pisa)"
+
+# install de los ficheros OWNED (AGENTS + capacidades) preservando lo ajeno.
+python3 "$IC" install --root "$CODEX_HOME_T" --plan "$PLAN_ABS" >/dev/null 2>&1
+ck "$?" "0" "installer_core instala los OWNED del perfil Codex (install rc0)"
+ck "$(sha256sum "$CODEX_HOME_T/config.toml" | cut -d' ' -f1)" "$toml_ajeno_sha" "install: el config.toml AJENO queda byte-identico (no se piso)"
+ck "$([ -f "$CODEX_HOME_T/AGENTS.md" ] && echo y || echo n)" "y" "el AGENTS de Codex queda instalado (OWNED)"
+ck "$([ -f "$CODEX_HOME_T/profiles/codex-interactive.runtime-capability-v1.json" ] && echo y || echo n)" "y" \
+   "la capacidad interactive queda instalada como fichero propio"
+
+# diff del fragmento TOML: NUNCA escribe -> el TOML ajeno queda intacto.
+python3 "$IC" diff --root "$CODEX_HOME_T" --plan "$PLAN_ABS" >/dev/null 2>&1
+ck "$?" "0" "installer_core diff del perfil Codex (rc0)"
+ck "$(sha256sum "$CODEX_HOME_T/config.toml" | cut -d' ' -f1)" "$toml_ajeno_sha" "diff: el config.toml AJENO sigue byte-identico"
+
+# update (reinstall) idempotente: no huerfaniza ni pisa lo ajeno.
+python3 "$IC" install --root "$CODEX_HOME_T" --plan "$PLAN_ABS" >/dev/null 2>&1
+ck "$?" "0" "reinstall (update) idempotente (rc0)"
+ck "$(sha256sum "$CODEX_HOME_T/config.toml" | cut -d' ' -f1)" "$toml_ajeno_sha" "update: el config.toml AJENO sigue byte-identico"
+
+# uninstall: retira SOLO lo propio, preserva el TOML ajeno.
+python3 "$IC" uninstall --root "$CODEX_HOME_T" --plan "$PLAN_ABS" >/dev/null 2>&1
+ck "$?" "0" "uninstall rc0"
+ck "$([ -f "$CODEX_HOME_T/AGENTS.md" ] && echo si || echo no)" "no" "uninstall retira el AGENTS propio"
+ck "$([ -f "$CODEX_HOME_T/config.toml" ] && echo si || echo no)" "si" "uninstall PRESERVA el config.toml ajeno del usuario"
+ck "$(sha256sum "$CODEX_HOME_T/config.toml" | cut -d' ' -f1)" "$toml_ajeno_sha" "uninstall: el config.toml ajeno queda byte-identico"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. M ALONE OWNS AGENTS y S no puede huerfanizarlo: un target ajeno preexistente
+#    en la ruta del AGENTS propio NO se pisa (conflicto de propiedad).
+# ─────────────────────────────────────────────────────────────────────────────
+HOME_C="$T/home_conflicto"; mkdir -p "$HOME_C"
+echo "AGENTS ajeno preexistente" > "$HOME_C/AGENTS.md"
+ajeno_sha="$(sha256sum "$HOME_C/AGENTS.md" | cut -d' ' -f1)"
+python3 "$IC" install --root "$HOME_C" --plan "$PLAN_ABS" >/dev/null 2>&1
+ck "$?" "1" "conflicto de propiedad: install rechaza pisar un AGENTS ajeno (rc1)"
+ck "$(sha256sum "$HOME_C/AGENTS.md" | cut -d' ' -f1)" "$ajeno_sha" "el AGENTS ajeno queda intacto (no se piso)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. CERT SCRIPT OFFLINE + matriz de fakes: valida el perfil sin red.
+# ─────────────────────────────────────────────────────────────────────────────
+ck "$([ -x "$CERT" ] && echo y || echo n)" "y" "el script de certificacion offline existe y es ejecutable"
+cert_out="$(bash "$CERT" --profile-dir "$RAIZ/kit/lib/profiles" 2>&1)"; cert_rc=$?
+ck "$cert_rc" "0" "cert offline pasa sobre el perfil Codex del repo (rc0)"
+ck "$(printf '%s' "$cert_out" | grep -c 'profile-certified')" "2" "cert offline reporta las dos superficies profile-certified"
+# Fake: un perfil que MIENTE (lifecycle-enforced) DEBE ser rechazado por el cert.
+FAKE_DIR="$T/fake_profiles"; mkdir -p "$FAKE_DIR"
+cp "$RAIZ/kit/lib/profiles"/codex-*.runtime-capability-v1.json "$FAKE_DIR/" 2>/dev/null
+jq '.tier="lifecycle-enforced" | .lifecycle.enforcement="enforced" | .lifecycle.native_stop=true' \
+   "$CAP_I" > "$FAKE_DIR/codex-interactive.runtime-capability-v1.json"
+cert_fake_rc=0
+bash "$CERT" --profile-dir "$FAKE_DIR" >/dev/null 2>&1 || cert_fake_rc=$?
+ck "$([ "$cert_fake_rc" -ne 0 ] && echo y || echo n)" "y" \
+   "cert offline RECHAZA un perfil Codex que miente (lifecycle-enforced): no se certifica de mas"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. AGENTS payload + fragmento TOML son coherentes con Codex (Responses/sandbox).
+# ─────────────────────────────────────────────────────────────────────────────
+ck "$([ -f "$AGENTS_SRC" ] && echo y || echo n)" "y" "el payload AGENTS.md de Codex existe"
+ck "$(grep -qi 'sandbox' "$AGENTS_SRC" && echo y || echo n)" "y" "AGENTS.md menciona el sandbox (read-only)"
+ck "$([ -f "$TOML_FRAG" ] && echo y || echo n)" "y" "el fragmento config.toml de Codex existe"
+ck "$(grep -qi 'responses\|model_provider\|base_url' "$TOML_FRAG" && echo y || echo n)" "y" \
+   "el fragmento TOML declara el provider Responses/base_url (Wave 0 Headroom, opcional)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Perfil opcional Wave-0 Headroom: DECLARADO y NO CERTIFICADO (no hay login de
+#    Codex en esta rama; el plan prohibe simularlo). Debe existir y marcarse como
+#    no certificado, honesto.
+# ─────────────────────────────────────────────────────────────────────────────
+ck "$([ -f "$HEADROOM_OPT" ] && echo y || echo n)" "y" "el perfil opcional Wave-0 Headroom existe (declarado)"
+ck "$(jq -r '.certification' "$HEADROOM_OPT")" "not-certified" \
+   "el perfil Wave-0 Headroom queda NO CERTIFICADO (sin login de Codex en esta rama)"
+ck "$(jq -r '.certification_blocker | length > 0' "$HEADROOM_OPT")" "true" \
+   "el perfil Wave-0 Headroom lleva escrito por que no esta certificado"
+
+echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

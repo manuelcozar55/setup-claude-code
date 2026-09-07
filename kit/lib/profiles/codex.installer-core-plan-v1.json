@@ -1,0 +1,30 @@
+{
+  "schema": "installer-core-plan-v1",
+  "description": "Perfil nativo de Codex (todo 21). Plantilla declarativa, NO wiring de install.sh. Los ficheros OWNED por el core (AGENTS proyectado + las dos capacidades runtime) van por copy-owned/managed-text-block: el ledger de propiedad garantiza que update/uninstall no pisan ni huerfanizan lo ajeno, y M es el unico dueno del AGENTS (S no lo huerfaniza). El config.toml de Codex NO es OWNED: lleva bytes del usuario que hay que preservar byte a byte. Por eso se toca por FRAGMENTO via diff-only, la UNICA primitiva que NUNCA escribe -> nunca se pisa el TOML y lo no gestionado sobrevive intacto. No hay escritor TOML casero (las cuatro primitivas cerradas de task-16 bastan: managed-text-block para el AGENTS OWNED, diff-only para el fragmento TOML). El consumidor resuelve 'src' (kit-relativo) a absoluto y rellena 'content' del bloque gestionado desde 'content_ref' antes de invocar.",
+  "operations": [
+    {
+      "op": "managed-text-block",
+      "dst": "AGENTS.md",
+      "mode": "0644",
+      "content_ref": "kit/lib/profiles/codex-AGENTS.md"
+    },
+    {
+      "op": "copy-owned",
+      "dst": "profiles/codex-interactive.runtime-capability-v1.json",
+      "mode": "0644",
+      "src": "kit/lib/profiles/codex-interactive.runtime-capability-v1.json"
+    },
+    {
+      "op": "copy-owned",
+      "dst": "profiles/codex-exec.runtime-capability-v1.json",
+      "mode": "0644",
+      "src": "kit/lib/profiles/codex-exec.runtime-capability-v1.json"
+    },
+    {
+      "op": "diff-only",
+      "dst": "config.toml",
+      "src": "kit/lib/profiles/codex-config.fragment.toml",
+      "label": "codex config.toml (fragmento gestionado; NUNCA se pisa)"
+    }
+  ]
+}

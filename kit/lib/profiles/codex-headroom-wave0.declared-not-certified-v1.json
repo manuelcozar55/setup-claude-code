@@ -1,0 +1,14 @@
+{
+  "schema": "runtime-capability-v1",
+  "provider": "codex",
+  "surface": "headroom-wave0",
+  "tier": "structurally-conformant",
+  "modes": ["non-interactive"],
+  "lifecycle": {
+    "native_stop": false,
+    "enforcement": "none",
+    "block_cap": null
+  },
+  "certification": "not-certified",
+  "certification_blocker": "El perfil opcional Wave-0 Headroom->Codex NO se puede certificar en esta rama: los todos 3-6 (Wave 0) siguen SIN hacer porque exigen una accion humana que no ha ocurrido (CODEX_HOME=<home efimero> codex login). No hay credencial de Codex disponible y el plan prohibe simular el login, inspeccionar o copiar credenciales. Consecuencia obligatoria: este perfil queda DECLARADO y NO CERTIFICADO. Prohibido llamarlo probado. La matriz normativa (task 25/Wave 0) lo cerraria como BLOCKED_PRECHECK hasta que exista el login efimero."
+}

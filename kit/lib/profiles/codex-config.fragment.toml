@@ -1,0 +1,19 @@
+# FRAGMENTO gestionado del config.toml de Codex (perfil nativo, todo 21).
+#
+# Este fragmento se aplica por DIFF (diff-only): el instalador NUNCA pisa tu
+# config.toml. Lo muestra como diff propuesto para que TU decidas fusionarlo; los
+# bytes no gestionados de tu TOML se preservan intactos. No hay escritor TOML
+# casero: la unica operacion sobre este fichero es diff-only, que nunca escribe.
+#
+# Declara el provider Responses de Codex. El base_url apunta al provider directo;
+# para el perfil OPCIONAL de Wave-0 Headroom (declarado y NO certificado en esta
+# rama) se sustituiria por el endpoint local del proxy, pero eso exige un login de
+# Codex que no ha ocurrido aqui, asi que se deja documentado, no activo.
+
+[model_providers.openai-responses]
+name = "OpenAI (Responses)"
+base_url = "https://api.openai.com/v1"
+wire_api = "responses"
+
+# Sandbox de lectura por defecto para sondas y exploracion.
+sandbox_mode = "read-only"

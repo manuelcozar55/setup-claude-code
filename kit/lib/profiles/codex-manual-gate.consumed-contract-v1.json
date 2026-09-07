@@ -1,0 +1,19 @@
+{
+  "schema": "codex-manual-gate-consumed-contract-v1",
+  "description": "Contrato del gate v2 de M (mcharness, todo 9) que el gate MANUAL de Codex CONSUME, mas la razon del ciclo de vida degradado. No es propiedad de S sobre los tests de M: fija lo que S observa de la superficie del productor para delatar una deriva silenciosa. El gate manual verifica en tiempo de ejecucion que el mch real declara este evidence_schema y una version >= min_producer_version. El schema v1 de la capacidad (todo 18) es CERRADO y no admite un campo extra, asi que la razon del degradado vive aqui.",
+  "producer": "mch",
+  "min_producer_version": "0.2.0",
+  "gate_body_contract": 2,
+  "evidence_schema": "mch-gate-evidence-v2",
+  "rc_table": {
+    "0": "verified/ALLOW",
+    "1": "governed/BLOCK",
+    "2": "usage/BLOCK",
+    "3": "not_governed/ALLOW"
+  },
+  "unknown_rc": "BLOCK",
+  "timeout_rc": 124,
+  "timeout": "BLOCK",
+  "gate_max_bytes": 65536,
+  "degraded_reason": "Codex no expone un hard-stop nativo probado en esta rama (el plan exige 'native hard-stop degraded unless proven'). La puerta de gobierno se resuelve con un gate MANUAL explicito pre/post (kit/lib/codex_manual_gate.sh); ese gate manual NUNCA se equipara a enforcement de ciclo de vida. Por eso ambas superficies de Codex son tier=profile-certified con lifecycle degradado, jamas lifecycle-enforced."
+}

@@ -14,7 +14,7 @@ sí mismo.
 
 Inventario del árbol que describe esta sección:
 
-- 41 suites de test
+- 42 suites de test
 - 11 ADRs
 - 20 tareas de eval
 - de ellas, 10 positivas
@@ -22,6 +22,32 @@ Inventario del árbol que describe esta sección:
 - 32 mutantes
 
 ### Added
+
+- **Perfil nativo de Codex con límites de ciclo de vida HONESTOS.** A diferencia
+  de Claude interactivo (`lifecycle-enforced`, Stop nativo), Codex no expone un
+  hard-stop nativo probado en esta rama, así que ambas superficies
+  (`interactive` y `exec`) se declaran `profile-certified` con lifecycle
+  `degraded` en `kit/lib/profiles/codex-{interactive,exec}.runtime-capability-v1.json`;
+  ninguna reclama `lifecycle-enforced` (el plan exige «native hard-stop degraded
+  unless proven» y no está probado). La puerta de gobierno la resuelve un gate
+  MANUAL explícito pre/post, `kit/lib/codex_manual_gate.sh`, que consulta al
+  productor real de M (`mch task gate --json`, gate v2) por RUTA ABSOLUTA DE
+  CONFIANZA (nunca `mch` del PATH), exige versión mínima del productor, hace UNA
+  sola invocación con timeout y tope de salida, fija el `evidence_schema`
+  (`mch-gate-evidence-v2`) y aplica la tabla rc cerrada; ese gate manual NUNCA se
+  equipara a enforcement de ciclo de vida. El `AGENTS.md` de Codex es un fichero
+  OWNED (M lo posee; S no lo huerfaniza) y el `config.toml` se toca por FRAGMENTO
+  vía `diff-only` —la única primitiva que nunca escribe—, de modo que los bytes no
+  gestionados del TOML del usuario se preservan byte a byte tras install, diff y
+  uninstall; jamás se pisa el TOML. Cert offline `kit/lib/codex_profile_cert.sh`
+  rechaza cualquier perfil de Codex que mienta declarándose `lifecycle-enforced`.
+  El perfil opcional Wave-0 Headroom→Codex queda DECLARADO y NO CERTIFICADO
+  (`kit/lib/profiles/codex-headroom-wave0.declared-not-certified-v1.json`) porque
+  la Wave 0 exige un `codex login` humano que no ha ocurrido y el plan prohíbe
+  simularlo. Sensor: `kit/test/test_codex_profile.sh` contra el binario real de M
+  y una matriz de productores de mentira. Corrige de paso un defecto de
+  `installer_core`: `diff-only` ya no exige propiedad del target (nunca escribe),
+  así que un `diff` sobre un `config.toml` ajeno preexistente ya no falla en falso.
 
 - **Perfil de referencia de Claude y puente Stop verificado contra el gate v2
   real de M.** `kit/lib/claude_stop_bridge.sh` es el Stop nativo ENDURECIDO del

@@ -144,7 +144,7 @@ mapfile -t scripts < <(git ls-files -- '*.sh' kit/claude/hooks/git/pre-commit)
 ```
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 41 suites listadas arriba).
+(las 42 suites listadas arriba).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -246,7 +246,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 41 suites y el escaner de secretos
+# 2. las 42 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 

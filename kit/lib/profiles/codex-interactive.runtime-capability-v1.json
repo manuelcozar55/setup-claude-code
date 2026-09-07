@@ -1,0 +1,12 @@
+{
+  "schema": "runtime-capability-v1",
+  "provider": "codex",
+  "surface": "interactive",
+  "tier": "profile-certified",
+  "modes": ["interactive"],
+  "lifecycle": {
+    "native_stop": false,
+    "enforcement": "degraded",
+    "block_cap": null
+  }
+}

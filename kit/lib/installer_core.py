@@ -217,7 +217,9 @@ def _load_plan(path):
 def _prevalidate(root, ops, ledger, *, writing_only):
     """Valida TODO el plan ANTES de tocar el primer target. Falla en cerrado por:
     operacion desconocida, ruta insegura o conflicto de propiedad. writing_only
-    limita el chequeo de conflicto a las primitivas que escriben."""
+    limita el chequeo de conflicto a las primitivas que escriben. diff-only NUNCA
+    escribe, asi que nunca se le exige propiedad (solo seguridad de ruta): un
+    target ajeno preexistente es exactamente lo que un diff propone mostrar."""
     owned = ledger["owned"]
     for op in ops:
         if not isinstance(op, dict) or "op" not in op or "dst" not in op:
@@ -232,6 +234,8 @@ def _prevalidate(root, ops, ledger, *, writing_only):
         if link_in_path:
             _die(f"ruta con symlink o componente no-directorio: {op['dst']!r}")
         if not exists_reg:
+            continue
+        if name not in WRITING_PRIMITIVES:
             continue
         # Existe un fichero regular. Solo es nuestro si el ledger lo registra
         # Y su sha on-disk coincide con el que sellamos. Cualquier otra cosa es

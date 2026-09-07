@@ -313,3 +313,12 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 - timeout: 5min
 - criterios:
 
+## T-023 · empaqueta el perfil nativo de Codex con limites de ciclo de vida honestos (profile-certified/degraded), AGENTS proyectado por M, fragmento TOML por diff-only, gate manual verificado contra el gate v2 real de M y cert offline (task-21)
+
+- estado: hecha
+- oráculo: `bash kit/test/test_codex_profile.sh`
+- riesgo: medio
+- clase: sensor
+- timeout: 5min
+- criterios:
+

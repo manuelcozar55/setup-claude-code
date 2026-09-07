@@ -220,6 +220,9 @@ jobs:
       - name: "test_claude_stop_bridge.sh (puente Stop endurecido del perfil de referencia de Claude contra el gate v2 real de M)"
         run: bash kit/test/test_claude_stop_bridge.sh
 
+      - name: "test_codex_profile.sh (perfil nativo de Codex: profile-certified/degradado, AGENTS OWNED, fragmento TOML por diff-only, gate manual contra el gate v2 real de M, cert offline)"
+        run: bash kit/test/test_codex_profile.sh
+
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
     runs-on: ubuntu-latest

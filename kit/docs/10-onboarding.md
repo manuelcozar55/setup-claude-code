@@ -61,7 +61,7 @@ del repo.
 ## 4 · Verificar de verdad
 
 ```bash
-make test          # 41 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
+make test          # 42 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
 bash kit/doctor.sh # estado de ESTA máquina
 ```
 
