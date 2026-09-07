@@ -433,3 +433,14 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
   Wave 5 todo 25. Arnes real-certify-profiles.sh consume la matriz normativa, congela realpath+version+sha256, limpia el proxy en el hijo, y sin home efimero cierra BLOCKED/missing_auth_home (cierre global bloqueado, honesto). Seccion 9 lo ejercita con binarios de mentira: cero coste, cero credenciales.
 
+## T-035 · liga el recibo de smoke a la identidad congelada del binario: rechaza sha256 divergente (BLOCKED/receipt_identity_mismatch, nunca PASS)
+
+- estado: hecha
+- oráculo: `bash kit/test/test_codex_profile.sh`
+- riesgo: medio
+- clase: sensor
+- timeout: 5min
+- criterios:
+
+  Wave 5 todo 25 cierre. El recibo de smoke hoy es falsificable: un JSON escrito a mano con canary_observed:true y un binary_sha256 CUALQUIERA sale PASS. Se anade el productor (smoke_executor.sh: canario+flujo con tope de tiempo/turnos/coste, ruta explicita de Codex, PTY+-p de Copilot) que ESCRIBE el recibo ligado a binary_sha256/realpath/version, y real-certify-profiles.sh RECHAZA un recibo cuya identidad no coincida con la que acaba de congelar: BLOCKED/receipt_identity_mismatch, jamas PASS.
+
