@@ -1,0 +1,20 @@
+{
+  "schema": "copilot-manual-gate-consumed-contract-v1",
+  "description": "Contrato del gate v2 de M (mcharness, todo 9) que el gate MANUAL de Copilot CONSUME, mas la razon del ciclo de vida degradado por el TOPE DE 8 BLOQUEOS. No es propiedad de S sobre los tests de M: fija lo que S observa de la superficie del productor para delatar una deriva silenciosa. El gate manual verifica en tiempo de ejecucion que el mch real declara este evidence_schema y una version >= min_producer_version. El schema v1 de la capacidad (todo 18) es CERRADO salvo por block_cap, asi que la razon completa del degradado vive aqui.",
+  "producer": "mch",
+  "min_producer_version": "0.2.0",
+  "gate_body_contract": 2,
+  "evidence_schema": "mch-gate-evidence-v2",
+  "rc_table": {
+    "0": "verified/ALLOW",
+    "1": "governed/BLOCK",
+    "2": "usage/BLOCK",
+    "3": "not_governed/ALLOW"
+  },
+  "unknown_rc": "BLOCK",
+  "timeout_rc": 124,
+  "timeout": "BLOCK",
+  "gate_max_bytes": 65536,
+  "block_cap": 8,
+  "degraded_reason": "El ciclo de vida nativo de Copilot (agentStop/subagentStop) SI existe y bloquea, pero es ACOTADO: tras 8 respuestas de bloqueo consecutivas Copilot FUERZA la parada pase lo que pase (bounded enforcement, block_cap=8). Por eso el enforcement es DEGRADADO, no enforced, y ambas superficies (interactive PTY, prompt -p) son tier=profile-certified, JAMAS lifecycle-enforced: el plan solo permitiria lifecycle-enforced con un 'separately approved outer runner' que en esta rama NO existe. La puerta de gobierno se refuerza ademas con un gate MANUAL explicito pre/post (kit/lib/copilot_manual_gate.sh) que NUNCA se equipara a enforcement de ciclo de vida."
+}

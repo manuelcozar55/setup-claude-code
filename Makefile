@@ -68,6 +68,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	-bash kit/test-runner.sh kit/test/test_installer_core.sh
 	-bash kit/test-runner.sh kit/test/test_claude_stop_bridge.sh
 	-bash kit/test-runner.sh kit/test/test_codex_profile.sh
+	-bash kit/test-runner.sh kit/test/test_copilot_profile.sh
 	bash kit/sumar-tests.sh
 
 doctor: ## Verifica una instalacion existente del kit

@@ -333,3 +333,23 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] invocado con stdin abierto (terminal), devuelve veredicto en tiempo acotado
   - [x] no cambia el veredicto en ninguno de los casos ya cubiertos
 
+## T-025 · empaqueta el perfil de Copilot (interactive PTY + -p) con ciclo de vida degradado por el tope de 8 bloqueos
+
+- estado: bloqueada
+- oráculo: `bash kit/test/test_copilot_profile.sh`
+- riesgo: medio
+- clase: regresión
+- sensor: kit/test/test_copilot_profile.sh
+- timeout: 5min
+- criterios:
+
+## T-026 · empaqueta el perfil de Copilot (interactive PTY + -p) con ciclo de vida degradado por el tope de 8 bloqueos
+
+- estado: en-curso
+- oráculo: `bash kit/test/test_copilot_profile.sh`
+- riesgo: medio
+- clase: sensor
+- sensor: kit/test/test_copilot_profile.sh
+- timeout: 5min
+- criterios:
+

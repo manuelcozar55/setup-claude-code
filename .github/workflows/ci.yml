@@ -223,6 +223,9 @@ jobs:
       - name: "test_codex_profile.sh (perfil nativo de Codex: profile-certified/degradado, AGENTS OWNED, fragmento TOML por diff-only, gate manual contra el gate v2 real de M, cert offline)"
         run: bash kit/test/test_codex_profile.sh
 
+      - name: "test_copilot_profile.sh (perfil nativo de Copilot: interactive PTY + prompt -p, profile-certified/degradado con block_cap=8, gate de ciclo de vida acotado con reset, instruccion OWNED, gate manual contra el gate v2 real de M, cert offline)"
+        run: bash kit/test/test_copilot_profile.sh
+
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
     runs-on: ubuntu-latest

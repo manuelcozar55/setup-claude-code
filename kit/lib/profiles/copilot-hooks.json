@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "hooks": {
+    "agentStop": [
+      {
+        "type": "command",
+        "exec": "copilot_lifecycle_gate.sh",
+        "args": ["--from-hook", "agentStop"],
+        "timeoutSec": 15
+      }
+    ],
+    "subagentStop": [
+      {
+        "type": "command",
+        "exec": "copilot_lifecycle_gate.sh",
+        "args": ["--from-hook", "subagentStop"],
+        "timeoutSec": 15
+      }
+    ]
+  }
+}

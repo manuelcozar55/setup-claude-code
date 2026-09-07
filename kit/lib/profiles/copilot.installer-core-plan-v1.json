@@ -1,0 +1,30 @@
+{
+  "schema": "installer-core-plan-v1",
+  "description": "Perfil nativo de Copilot (todo 22). Plantilla declarativa, NO wiring de install.sh. Los ficheros OWNED por el core (instruccion nativa proyectada + las dos capacidades runtime + los hooks trust-gated) van por copy-owned/managed-text-block: el ledger de propiedad garantiza que update/uninstall no pisan ni huerfanizan lo ajeno, y M es el unico dueno de la instruccion (S no la huerfaniza). El config.json del usuario NO es OWNED y este plan no lo toca: sus bytes personales sobreviven intactos porque ninguna operacion los nombra. El consumidor resuelve 'src' (kit-relativo) a absoluto y rellena 'content' del bloque gestionado desde 'content_ref' antes de invocar.",
+  "operations": [
+    {
+      "op": "managed-text-block",
+      "dst": "copilot-instructions.md",
+      "mode": "0644",
+      "content_ref": "kit/lib/profiles/copilot-instructions.md"
+    },
+    {
+      "op": "copy-owned",
+      "dst": "profiles/copilot-interactive.runtime-capability-v1.json",
+      "mode": "0644",
+      "src": "kit/lib/profiles/copilot-interactive.runtime-capability-v1.json"
+    },
+    {
+      "op": "copy-owned",
+      "dst": "profiles/copilot-prompt.runtime-capability-v1.json",
+      "mode": "0644",
+      "src": "kit/lib/profiles/copilot-prompt.runtime-capability-v1.json"
+    },
+    {
+      "op": "copy-owned",
+      "dst": "hooks/copilot-hooks.json",
+      "mode": "0644",
+      "src": "kit/lib/profiles/copilot-hooks.json"
+    }
+  ]
+}

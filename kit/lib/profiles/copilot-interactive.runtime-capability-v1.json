@@ -1,0 +1,12 @@
+{
+  "schema": "runtime-capability-v1",
+  "provider": "copilot",
+  "surface": "interactive",
+  "tier": "profile-certified",
+  "modes": ["interactive"],
+  "lifecycle": {
+    "native_stop": true,
+    "enforcement": "degraded",
+    "block_cap": 8
+  }
+}

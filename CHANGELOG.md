@@ -14,7 +14,7 @@ sí mismo.
 
 Inventario del árbol que describe esta sección:
 
-- 42 suites de test
+- 43 suites de test
 - 11 ADRs
 - 20 tareas de eval
 - de ellas, 10 positivas
@@ -48,6 +48,33 @@ Inventario del árbol que describe esta sección:
   y una matriz de productores de mentira. Corrige de paso un defecto de
   `installer_core`: `diff-only` ya no exige propiedad del target (nunca escribe),
   así que un `diff` sobre un `config.toml` ajeno preexistente ya no falla en falso.
+
+- **Perfil nativo de GitHub Copilot para interactivo (PTY) y prompt (`-p`), con
+  ciclo de vida ACOTADO por el tope de 8 bloqueos.** Copilot SÍ expone un ciclo
+  de vida nativo (`agentStop`/`subagentStop`: un `decision:"block"` fuerza otro
+  turno), pero es ACOTADO: tras 8 respuestas de bloqueo consecutivas Copilot
+  fuerza la parada pase lo que pase. Por eso ambas superficies se declaran
+  `profile-certified` con lifecycle `degraded` y `block_cap: 8` en
+  `kit/lib/profiles/copilot-{interactive,prompt}.runtime-capability-v1.json`;
+  ninguna reclama `lifecycle-enforced` (el plan solo lo permitiría con un «outer
+  runner» aprobado por separado que aquí no existe). El gate de ciclo de vida
+  `kit/lib/copilot_lifecycle_gate.sh` modela ese enforcement acotado sobre un
+  contador persistente: bloquea 1..8, al 9.º ciclo AGOTA el tope y devuelve una
+  parada `forced`, y RESETEA el contador en cuanto un turno cierra en verde. El
+  arnés `kit/lib/copilot_stop_harness.sh` ejerce ambas superficies (PTY vía
+  `script(1)` y `-p`) sin asumir el binario: sin `copilot` presente reporta
+  `missing_binary` y BLOQUEA, nunca un verde ni un salto, y jamás copia
+  credenciales de GitHub. La puerta de gobierno se refuerza con un gate MANUAL
+  explícito pre/post, `kit/lib/copilot_manual_gate.sh`, con el mismo contrato
+  endurecido que Codex/Claude (ruta absoluta de confianza, versión mínima, UNA
+  invocación con timeout/tope, `evidence_schema` fijado, tabla rc cerrada) que
+  NUNCA se equipara a enforcement de ciclo de vida. La instrucción nativa
+  `copilot-instructions.md` es OWNED por M (S no la huérfaniza) y los hooks
+  trust-gated `copilot-hooks.json` cablean `agentStop`/`subagentStop`. Cert
+  offline `kit/lib/copilot_profile_cert.sh` rechaza cualquier perfil que mienta
+  declarándose `lifecycle-enforced` o borrando el `block_cap: 8`. Sensor:
+  `kit/test/test_copilot_profile.sh` contra el binario real de M y una matriz de
+  fakes.
 
 - **Perfil de referencia de Claude y puente Stop verificado contra el gate v2
   real de M.** `kit/lib/claude_stop_bridge.sh` es el Stop nativo ENDURECIDO del
