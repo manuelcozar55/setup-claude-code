@@ -454,3 +454,12 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 - criterios:
   - [ ] Wave 5 todo 25 cierre 2. El recibo de smoke era falsificable por frescura: un JSON a mano con canary_observed:true y el binary_sha256 PUBLICO correcto salia PASS sin ejecutar nada. Se anade --issue-challenge a real-certify-profiles.sh (emite un desafio fresco e impredecible por ejecucion en cada home efimero); smoke-executor.sh lo consume y lo sella en el recibo; y la certificacion exige el desafio VIGENTE: sin el -> BLOCKED/missing_challenge, con uno rancio -> BLOCKED/stale_challenge, nunca PASS. El desafio es de un solo uso (se consume al certificar en verde). Se corrige la cabecera de smoke-executor.sh que afirmaba en falso que el recibo no es falsificable.
 
+## T-037 · certifica por SUPERFICIE, no por proveedor: recibo y desafio por modo, receipt_surface_mismatch para el recibo de la hermana
+
+- estado: hecha
+- oráculo: `bash kit/test/test_codex_profile.sh`
+- riesgo: medio
+- timeout: 5min
+- criterios:
+  - [x] Wave 5 todo 25 cierre. Medido: TRES ejecuciones del ejecutor devolvian SEIS PASS porque el recibo era por HOME y dos superficies comparten home. copilot/interactive (PTY real) quedaba certificado por un recibo de copilot -p. Se pasa el grano a por superficie: recibo .smoke-receipt-<surface>.json, desafio .smoke-challenge-<surface> consumido por superficie, y receipt_surface_mismatch cuando la superficie sellada no es la de la fila.
+
