@@ -352,3 +352,27 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 - timeout: 5min
 - criterios:
 
+## T-027 · verificacion read-only del gate cross-repo (todo 23): los 3 puentes S ligan el gate v2 del productor real M
+
+- estado: bloqueada
+- oráculo: `bash kit/test/task23_verdict_probe.sh`
+- riesgo: bajo
+- clase: regresión
+- sensor: kit/test/task23_verdict_probe.sh
+- timeout: 5min
+- criterios:
+
+  Dictamen de solo lectura. Verifica que claude-stop-bridge/codex-manual-gate/copilot-manual-gate fijan evidence_schema=mch-gate-evidence-v2, gate_body_contract=2, min_producer_version=0.2.0 coherente con el productor real. Commit: N en el plan.
+
+## T-028 · verificacion read-only del gate cross-repo (todo 23): los 3 puentes S ligan el gate v2 del productor real M
+
+- estado: en-curso
+- oráculo: `bash kit/lib/verify/task23_gate_contract_probe.sh`
+- riesgo: bajo
+- clase: regresión
+- sensor: kit/lib/verify/task23_gate_contract_probe.sh
+- timeout: 5min
+- criterios:
+
+  Dictamen de solo lectura. Verifica que claude-stop-bridge/codex-manual-gate/copilot-manual-gate fijan evidence_schema=mch-gate-evidence-v2, gate_body_contract=2, min_producer_version=0.2.0 coherente con el productor real M. Commit: N en el plan.
+
