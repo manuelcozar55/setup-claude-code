@@ -245,6 +245,30 @@ if mrg_build_untrusted "$AU_DIR"; then
 else
   ck "no" "si" "no se pudo construir el proyecto con autoridad no confiable con el productor real (git/mch ausente)"
 fi
+# ESTADO INVALIDO (mutante M5) y AUTORIDAD AUSENTE (mutante M7): el productor real
+# produce rc1 tambien con mas de una tarea en-curso (invalid_state) y con la tarea
+# en-curso sin oraculo (authority_missing). Sin estos estados reales, suprimir
+# invalid_state o authority_missing en M sobrevive (0 assertions en rojo). Se
+# construye cada estado REAL y se exige que el puente BLOQUEE.
+IS_DIR="$T/real_invalid_state"; AM_DIR="$T/real_authority_missing"
+if mrg_build_invalid_state "$IS_DIR"; then
+  ck "$(mrg_real_gate_rc "$IS_DIR")" "1" "productor REAL: estado invalido (2 en-curso) devuelve gate rc1"
+  dis="$(printf '{"cwd":"%s","stop_hook_active":false}' "$IS_DIR" | bash "$BRIDGE" --mch "$MCH_REAL" 2>/dev/null)"
+  ck "$(decision "$dis")" "block" "rc1 REAL (invalid_state): el puente BLOQUEA contra el productor real"
+  rc_is="$(printf '{"cwd":"%s","stop_hook_active":false}' "$IS_DIR" | bash "$BRIDGE" --mch "$MCH_REAL" >/dev/null 2>&1; echo $?)"
+  ck "$rc_is" "2" "rc1 REAL (invalid_state): exit 2 (BLOCK) contra el productor real"
+else
+  ck "no" "si" "no se pudo construir el proyecto en estado invalido con el productor real (git/mch ausente)"
+fi
+if mrg_build_authority_missing "$AM_DIR"; then
+  ck "$(mrg_real_gate_rc "$AM_DIR")" "1" "productor REAL: autoridad ausente (en-curso sin oraculo) devuelve gate rc1"
+  dam="$(printf '{"cwd":"%s","stop_hook_active":false}' "$AM_DIR" | bash "$BRIDGE" --mch "$MCH_REAL" 2>/dev/null)"
+  ck "$(decision "$dam")" "block" "rc1 REAL (authority_missing): el puente BLOQUEA contra el productor real"
+  rc_am="$(printf '{"cwd":"%s","stop_hook_active":false}' "$AM_DIR" | bash "$BRIDGE" --mch "$MCH_REAL" >/dev/null 2>&1; echo $?)"
+  ck "$rc_am" "2" "rc1 REAL (authority_missing): exit 2 (BLOCK) contra el productor real"
+else
+  ck "no" "si" "no se pudo construir el proyecto con autoridad ausente con el productor real (git/mch ausente)"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PERFIL DE REFERENCIA (declarativo) + su consumo por installer_core.

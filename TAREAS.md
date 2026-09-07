@@ -413,3 +413,12 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 - timeout: 5min
 - criterios:
 
+## T-033 · mata mutantes M5/M7 (invalid_state, authority_missing) reales en los 3 puentes
+
+- estado: en-curso
+- oráculo: `bash .agents/oracles/task24_missing_invalid.sh`
+- riesgo: bajo
+- clase: sensor
+- timeout: 5min
+- criterios:
+
