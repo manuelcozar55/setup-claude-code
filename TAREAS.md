@@ -444,3 +444,13 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
   Wave 5 todo 25 cierre. El recibo de smoke hoy es falsificable: un JSON escrito a mano con canary_observed:true y un binary_sha256 CUALQUIERA sale PASS. Se anade el productor (smoke_executor.sh: canario+flujo con tope de tiempo/turnos/coste, ruta explicita de Codex, PTY+-p de Copilot) que ESCRIBE el recibo ligado a binary_sha256/realpath/version, y real-certify-profiles.sh RECHAZA un recibo cuya identidad no coincida con la que acaba de congelar: BLOCKED/receipt_identity_mismatch, jamas PASS.
 
+## T-036 · certifica frescura del recibo de smoke: el desafio lo emite el certificador, no el productor (missing_challenge/stale_challenge, un solo uso)
+
+- estado: hecha
+- oráculo: `bash kit/test/test_codex_profile.sh`
+- riesgo: medio
+- clase: sensor
+- timeout: 5min
+- criterios:
+  - [ ] Wave 5 todo 25 cierre 2. El recibo de smoke era falsificable por frescura: un JSON a mano con canary_observed:true y el binary_sha256 PUBLICO correcto salia PASS sin ejecutar nada. Se anade --issue-challenge a real-certify-profiles.sh (emite un desafio fresco e impredecible por ejecucion en cada home efimero); smoke-executor.sh lo consume y lo sella en el recibo; y la certificacion exige el desafio VIGENTE: sin el -> BLOCKED/missing_challenge, con uno rancio -> BLOCKED/stale_challenge, nunca PASS. El desafio es de un solo uso (se consume al certificar en verde). Se corrige la cabecera de smoke-executor.sh que afirmaba en falso que el recibo no es falsificable.
+
