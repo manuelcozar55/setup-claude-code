@@ -413,8 +413,11 @@ ck "$proxy_leak" "0" "el proxy Headroom se limpia en el HIJO (identidad = provee
 #     recibo con canario fallido -> FAIL; home poblado sin recibo -> BLOCKED.
 #     Prueba que el arnes distingue "certificable" de "certificado" de verdad.
 mkdir -p "$RC_T/codex-home" "$RC_T/copilot-home" "$RC_T/claude-home"
-echo '{"canary_observed":true,"complete_flow":true}'  > "$RC_T/codex-home/.smoke-receipt.json"
-echo '{"canary_observed":false,"complete_flow":true}' > "$RC_T/copilot-home/.smoke-receipt.json"
+# Recibos LIGADOS: el binary_sha256 coincide con el binario de mentira congelado.
+sha_codex="$(sha256sum "$(realpath "$RC_T/bin/codex")" | cut -d' ' -f1)"
+sha_copilot="$(sha256sum "$(realpath "$RC_T/bin/copilot")" | cut -d' ' -f1)"
+printf '{"canary_observed":true,"complete_flow":true,"binary_sha256":"%s"}\n'  "$sha_codex"   > "$RC_T/codex-home/.smoke-receipt.json"
+printf '{"canary_observed":false,"complete_flow":true,"binary_sha256":"%s"}\n' "$sha_copilot" > "$RC_T/copilot-home/.smoke-receipt.json"
 echo 'auth-placeholder' > "$RC_T/claude-home/config"   # poblado pero sin recibo
 out_mix="$(bash "$RCERT" --attempt-dir "$RC_T" --bin-dir "$RC_T/bin" --json 2>/dev/null)"
 codex_pass="$(printf '%s' "$out_mix" | jq -r '[.[]|select(.provider=="codex" and .verdict=="PASS")]|length')"
@@ -429,5 +432,80 @@ RC_NB="$T/rcert_nobin"; mkdir -p "$RC_NB/bin"   # bin-dir vacio y PATH minimo si
 out_nb="$(PATH=/usr/bin bash "$RCERT" --attempt-dir "$RC_NB" --bin-dir "$RC_NB/bin" --json 2>/dev/null)"
 nb_missing="$(printf '%s' "$out_nb" | jq -r '[.[]|select(.verdict=="BLOCKED" and .reason=="missing_binary")]|length' 2>/dev/null)"
 ck "$nb_missing" "6" "binario ausente: BLOCKED/missing_binary en los 6 modos (motivo exacto)"
+
+# 9d. LIGADURA DE IDENTIDAD (todo 25 cierre): el recibo de smoke debe ir LIGADO
+#     al binario con el que se ejecuto el smoke. Un recibo con canario OK pero un
+#     binary_sha256 que NO coincide con la identidad que el arnes acaba de congelar
+#     es un recibo FALSIFICADO: NO puede salir PASS. Debe salir
+#     BLOCKED/receipt_identity_mismatch. Sin esto, cualquiera certifica los 6 modos
+#     escribiendo un JSON a mano, que es justo el fraude que este repo persigue.
+RC_ID="$T/rcert_ident"; mkdir -p "$RC_ID/bin" "$RC_ID/codex-home"
+cat > "$RC_ID/bin/codex"   <<'FAKE'
+#!/usr/bin/env bash
+echo "codex-cli 9.9.9"
+FAKE
+cat > "$RC_ID/bin/claude"  <<'FAKE'
+#!/usr/bin/env bash
+echo "9.9.9 (Fake Claude)"
+FAKE
+cat > "$RC_ID/bin/copilot" <<'FAKE'
+#!/usr/bin/env bash
+echo "GitHub Copilot CLI 9.9.9"
+FAKE
+chmod +x "$RC_ID/bin/codex" "$RC_ID/bin/claude" "$RC_ID/bin/copilot"
+# Recibo con canario OK pero sha256 FORJADO (no es el del binario codex real).
+echo '{"canary_observed":true,"complete_flow":true,"binary_sha256":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}' \
+  > "$RC_ID/codex-home/.smoke-receipt.json"
+out_id="$(bash "$RCERT" --attempt-dir "$RC_ID" --bin-dir "$RC_ID/bin" --json 2>/dev/null)"
+id_pass="$(printf '%s' "$out_id" | jq -r '[.[]|select(.provider=="codex" and .verdict=="PASS")]|length')"
+ck "$id_pass" "0" "recibo con sha256 forjado: NUNCA PASS (recibo ligado a la identidad congelada)"
+id_mism="$(printf '%s' "$out_id" | jq -r '[.[]|select(.provider=="codex" and .verdict=="BLOCKED" and .reason=="receipt_identity_mismatch")]|length')"
+ck "$id_mism" "2" "recibo con sha256 forjado: BLOCKED/receipt_identity_mismatch en codex/exec e interactive"
+
+# 9e. El recibo LEGITIMO (sha256 == el que el arnes congela para ese binario) sigue
+#     dando PASS: la ligadura no rompe el camino honesto, solo el falsificado.
+RC_OK="$T/rcert_ident_ok"; mkdir -p "$RC_OK/bin" "$RC_OK/codex-home"
+cp "$RC_ID/bin/codex" "$RC_OK/bin/codex"
+cp "$RC_ID/bin/claude" "$RC_OK/bin/claude"
+cp "$RC_ID/bin/copilot" "$RC_OK/bin/copilot"
+chmod +x "$RC_OK/bin"/*
+real_codex_sha="$(sha256sum "$(realpath "$RC_OK/bin/codex")" | cut -d' ' -f1)"
+printf '{"canary_observed":true,"complete_flow":true,"binary_sha256":"%s"}\n' "$real_codex_sha" \
+  > "$RC_OK/codex-home/.smoke-receipt.json"
+out_ok="$(bash "$RCERT" --attempt-dir "$RC_OK" --bin-dir "$RC_OK/bin" --json 2>/dev/null)"
+ok_pass="$(printf '%s' "$out_ok" | jq -r '[.[]|select(.provider=="codex" and .verdict=="PASS")]|length')"
+ck "$ok_pass" "2" "recibo con sha256 correcto + canario OK: codex PASS (la ligadura no rompe el camino honesto)"
+
+# 9f. PRODUCTOR: el ejecutor del smoke (kit/smoke-executor.sh) escribe un recibo
+#     LIGADO a la identidad del binario, con binarios de mentira y CERO coste. Es el
+#     lado productor que faltaba: hoy nadie ESCRIBE un recibo genuino.
+SEXEC="$RAIZ/kit/smoke-executor.sh"
+ck "$([ -x "$SEXEC" ] && echo y || echo n)" "y" "el ejecutor del smoke (productor del recibo) existe y es ejecutable"
+RC_PROD="$T/rcert_prod"; mkdir -p "$RC_PROD/bin" "$RC_PROD/codex-home"
+# Binario codex de mentira que emite el canario esperado por su STDOUT (ruta exec).
+cat > "$RC_PROD/bin/codex" <<'FAKE'
+#!/usr/bin/env bash
+# emula `codex exec`: devuelve el token canario que se le pasa en el prompt
+for a in "$@"; do :; done
+echo "CANARY-OK-$SMOKE_CANARY"
+FAKE
+chmod +x "$RC_PROD/bin/codex"
+# El productor ejecuta el smoke (canario+flujo) y ESCRIBE el recibo ligado.
+bash "$SEXEC" --provider codex --surface exec \
+  --bin "$RC_PROD/bin/codex" --home "$RC_PROD/codex-home" \
+  --timeout 10 --max-turns 1 --max-cost 0 --json >/dev/null 2>&1
+prod_rc=$?
+ck "$prod_rc" "0" "el productor ejecuta canario+flujo con topes y sale 0 (binario de mentira, coste 0)"
+ck "$([ -f "$RC_PROD/codex-home/.smoke-receipt.json" ] && echo y || echo n)" "y" \
+   "el productor ESCRIBE el recibo de smoke en el home efimero"
+prod_sha="$(jq -r '.binary_sha256' "$RC_PROD/codex-home/.smoke-receipt.json" 2>/dev/null)"
+frozen_sha="$(sha256sum "$(realpath "$RC_PROD/bin/codex")" | cut -d' ' -f1)"
+ck "$prod_sha" "$frozen_sha" "el recibo LIGA binary_sha256 al binario con el que se ejecuto el smoke"
+prod_canary="$(jq -r '.canary_observed' "$RC_PROD/codex-home/.smoke-receipt.json" 2>/dev/null)"
+ck "$prod_canary" "true" "el productor sella canary_observed=true solo tras observar el canario"
+# El recibo que ESCRIBE el productor es aceptado por el consumidor como PASS.
+out_e2e="$(bash "$RCERT" --attempt-dir "$RC_PROD" --bin-dir "$RC_PROD/bin" --json 2>/dev/null)"
+e2e_pass="$(printf '%s' "$out_e2e" | jq -r '[.[]|select(.provider=="codex" and .surface=="exec" and .verdict=="PASS")]|length')"
+ck "$e2e_pass" "1" "recibo producido por el ejecutor -> consumidor lo certifica PASS (contrato productor-consumidor cerrado)"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

@@ -142,7 +142,17 @@ for cap in "$PROFILES_DIR"/*.runtime-capability-v1.json; do
     emit_row "$provider" "$surface" "$tier" "BLOCKED" "smoke_not_run" "$rp" "$ver" "$sha"
     any_blocked=1; continue
   fi
-  # Recibo de smoke presente: exige canario observado y flujo completo.
+  # Ligadura de identidad: el recibo debe declarar el binary_sha256 del binario
+  # con el que se ejecuto el smoke, y tiene que coincidir con la identidad que
+  # ACABAMOS de congelar. Un recibo con sha256 divergente esta escrito para OTRO
+  # binario (o a mano): es falsificable, y no puede certificar este. Sin esta
+  # comprobacion, cualquiera certifica los 6 modos escribiendo un JSON a mano.
+  receipt_sha="$(jq -r '.binary_sha256 // ""' "$smoke_receipt" 2>/dev/null)"
+  if [ -z "$receipt_sha" ] || [ "$receipt_sha" != "$sha" ]; then
+    emit_row "$provider" "$surface" "$tier" "BLOCKED" "receipt_identity_mismatch" "$rp" "$ver" "$sha"
+    any_blocked=1; continue
+  fi
+  # Recibo de smoke presente y LIGADO: exige canario observado y flujo completo.
   canary_ok="$(jq -r '.canary_observed // false' "$smoke_receipt" 2>/dev/null)"
   flow_ok="$(jq -r '.complete_flow // false' "$smoke_receipt" 2>/dev/null)"
   if [ "$canary_ok" = "true" ] && [ "$flow_ok" = "true" ]; then
