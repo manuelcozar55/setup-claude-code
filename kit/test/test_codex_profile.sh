@@ -167,6 +167,32 @@ ck "$rc_to" "2" "gate manual timeout (>10s): BLOQUEA"
 rc_stdin="$( (cd "$T/ungoverned" && timeout 8 bash "$GATE" --mch "$MCH_REAL" >/dev/null 2>&1 < <(sleep 25); echo $?) )"
 ck "$rc_stdin" "0" "gate manual con stdin abierto: decide sin colgarse"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PRODUCTOR REAL, ESTADO GOBERNADO (hallazgo 2): las clausulas gobernadas (rc0
+# verde, rc1 rojo) se probaban solo con fakes. Aqui el gate manual se ejerce
+# contra el PRODUCTOR REAL de M en un proyecto GOBERNADO llevado a VERDE y ROJO
+# por el propio `mch`. El fake y el real deben coincidir.
+# ─────────────────────────────────────────────────────────────────────────────
+# shellcheck source=/dev/null
+. "$RAIZ/kit/lib/verify/mch_real_governed.sh"
+G_DIR="$T/real_governed_green"; R_DIR="$T/real_governed_red"
+if mrg_build_green "$G_DIR"; then
+  ck "$(mrg_real_gate_rc "$G_DIR")" "0" "productor REAL: proyecto gobernado en VERDE devuelve gate rc0"
+  dg="$(printf '{"cwd":"%s"}' "$G_DIR" | bash "$GATE" --mch "$MCH_REAL" 2>/dev/null)"
+  ck "$(decision "$dg")" "allow" "gate manual rc0 REAL (verified): PERMITE contra el productor real (no un fake)"
+else
+  ck "no" "si" "no se pudo construir el proyecto gobernado VERDE con el productor real (git/mch ausente)"
+fi
+if mrg_build_red "$R_DIR"; then
+  ck "$(mrg_real_gate_rc "$R_DIR")" "1" "productor REAL: proyecto gobernado en ROJO devuelve gate rc1"
+  dr="$(printf '{"cwd":"%s"}' "$R_DIR" | bash "$GATE" --mch "$MCH_REAL" 2>/dev/null)"
+  ck "$(decision "$dr")" "block" "gate manual rc1 REAL (governed_red): BLOQUEA contra el productor real (no un fake)"
+  rc_r="$(printf '{"cwd":"%s"}' "$R_DIR" | bash "$GATE" --mch "$MCH_REAL" >/dev/null 2>&1; echo $?)"
+  ck "$rc_r" "2" "gate manual rc1 REAL: exit 2 contra el productor real"
+else
+  ck "no" "si" "no se pudo construir el proyecto gobernado ROJO con el productor real (git/mch ausente)"
+fi
+
 # El contrato consumido fija esquema + version minima (ligadura al todo 9), y el
 # gate embebe EXACTAMENTE esos valores (no derivan).
 ck "$(jq -r '.evidence_schema' "$CONTRACT")" "mch-gate-evidence-v2" "contrato consumido fija el evidence_schema del gate v2"

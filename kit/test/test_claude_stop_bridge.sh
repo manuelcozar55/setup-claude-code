@@ -192,6 +192,38 @@ ck "$(decision "$(printf '{"cwd":"%s"}' "$T/ungoverned" | bash "$BRIDGE" --mch "
    "productor de M ausente en su ruta: BLOQUEA (no cae a un mch del PATH)"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PRODUCTOR REAL, ESTADO GOBERNADO (hallazgo 2): hasta aqui las clausulas
+# gobernadas (rc0 verde, rc1 rojo) se probaban solo con fakes. Ahora se ejerce el
+# puente contra el PRODUCTOR REAL de M en un proyecto GOBERNADO de verdad, llevado
+# a VERDE y a ROJO por el propio `mch`. Cierra el bucle productor↔consumidor entre
+# repos: el fake y el real deben coincidir. Respeta la rama de skip: si M no esta
+# al lado, esta seccion ni siquiera se alcanza (el skip de arriba ya salio).
+# ─────────────────────────────────────────────────────────────────────────────
+# shellcheck source=/dev/null
+. "$RAIZ/kit/lib/verify/mch_real_governed.sh"
+G_DIR="$T/real_governed_green"; R_DIR="$T/real_governed_red"
+if mrg_build_green "$G_DIR"; then
+  ck "$(mrg_real_gate_rc "$G_DIR")" "0" "productor REAL: proyecto gobernado en VERDE devuelve gate rc0"
+  dg="$(printf '{"cwd":"%s","stop_hook_active":false}' "$G_DIR" | bash "$BRIDGE" --mch "$MCH_REAL" 2>/dev/null)"
+  ck "$(decision "$dg")" "allow" "rc0 REAL (verified): el puente PERMITE contra el productor real (no un fake)"
+  rc_g="$(printf '{"cwd":"%s","stop_hook_active":false}' "$G_DIR" | bash "$BRIDGE" --mch "$MCH_REAL" >/dev/null 2>&1; echo $?)"
+  ck "$rc_g" "0" "rc0 REAL: exit 0 (ALLOW por contrato Stop) contra el productor real"
+else
+  ck "no" "si" "no se pudo construir el proyecto gobernado VERDE con el productor real (git/mch ausente)"
+fi
+if mrg_build_red "$R_DIR"; then
+  ck "$(mrg_real_gate_rc "$R_DIR")" "1" "productor REAL: proyecto gobernado en ROJO devuelve gate rc1"
+  dr="$(printf '{"cwd":"%s","stop_hook_active":false}' "$R_DIR" | bash "$BRIDGE" --mch "$MCH_REAL" 2>/dev/null)"
+  ck "$(decision "$dr")" "block" "rc1 REAL (governed_red): el puente BLOQUEA contra el productor real (no un fake)"
+  rc_r="$(printf '{"cwd":"%s","stop_hook_active":false}' "$R_DIR" | bash "$BRIDGE" --mch "$MCH_REAL" >/dev/null 2>&1; echo $?)"
+  ck "$rc_r" "2" "rc1 REAL: exit 2 (BLOCK por contrato Stop) contra el productor real"
+  razon_r="$(printf '%s' "$dr" | jq -r '.reason // ""')"
+  ck "$(printf '%s' "$razon_r" | grep -qE '\bT-001\b' && echo y || echo n)" "y" "rc1 REAL: el bloqueo nombra la tarea real gobernada (T-001)"
+else
+  ck "no" "si" "no se pudo construir el proyecto gobernado ROJO con el productor real (git/mch ausente)"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PERFIL DE REFERENCIA (declarativo) + su consumo por installer_core.
 # ─────────────────────────────────────────────────────────────────────────────
 PC="$RAIZ/kit/lib/profile_coordinator.py"

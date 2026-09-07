@@ -375,3 +375,23 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
   Dictamen de solo lectura. Verifica que claude-stop-bridge/codex-manual-gate/copilot-manual-gate fijan evidence_schema=mch-gate-evidence-v2, gate_body_contract=2, min_producer_version=0.2.0 coherente con el productor real M. Commit: N en el plan.
 
+## T-029 · matriz de conformidad estructural y mutacion adversaria (todo 24): cobertura del productor real gobernado + retiro de la sonda schema-only superviviente
+
+- estado: bloqueada
+- oráculo: `bash .agents/oracles/task24_conformance.sh`
+- riesgo: medio
+- clase: regresión
+- sensor: .agents/oracles/task24_conformance.sh
+- timeout: 5min
+- criterios:
+
+## T-030 · matriz de conformidad estructural y mutacion adversaria (todo 24): cobertura del productor real gobernado en los 3 puentes + retiro de la sonda schema-only superviviente
+
+- estado: en-curso
+- oráculo: `bash .agents/oracles/task24_conformance.sh`
+- riesgo: medio
+- clase: sensor
+- sensor: .agents/oracles/task24_conformance.sh
+- timeout: 5min
+- criterios:
+
