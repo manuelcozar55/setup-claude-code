@@ -324,12 +324,12 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
 ## T-024 · el gate manual de Codex decide con stdin abierto en vez de colgarse leyendo hasta EOF
 
-- estado: en-curso
+- estado: hecha
 - oráculo: `bash kit/test/test_codex_profile.sh`
 - riesgo: bajo
 - clase: sensor
 - timeout: 5min
 - criterios:
-  - [ ] invocado con stdin abierto (terminal), devuelve veredicto en tiempo acotado
-  - [ ] no cambia el veredicto en ninguno de los casos ya cubiertos
+  - [x] invocado con stdin abierto (terminal), devuelve veredicto en tiempo acotado
+  - [x] no cambia el veredicto en ninguno de los casos ya cubiertos
 
