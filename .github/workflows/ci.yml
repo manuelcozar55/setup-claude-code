@@ -214,6 +214,9 @@ jobs:
       - name: "test_profile_coordinator.sh (schema de capacidad v1 y coordinador transaccional S->M con WAL propio)"
         run: bash kit/test/test_profile_coordinator.sh
 
+      - name: "test_installer_core.sh (interprete de primitivas cerradas: install/doctor/diff/uninstall, conflicto de propiedad, recuperacion)"
+        run: bash kit/test/test_installer_core.sh
+
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
     runs-on: ubuntu-latest

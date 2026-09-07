@@ -294,3 +294,14 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
   - [x] el coordinador S maneja prepare/apply/query/compensate contra M real sin escribir targets ni receipt de M (ver task-18/qa.log)
   - [x] make test: 39 suites, 858 passed, 0 failed, 3 skipped (ver task-18/affected.log)
 
+## T-021 · extrae installer-core: interprete de primitivas cerradas con envoltura install/doctor/diff/uninstall y recuperacion de conflicto de propiedad, sin cambiar a Claude
+
+- estado: hecha
+- oráculo: `bash kit/test/test_installer_core.sh`
+- riesgo: medio
+- clase: sensor
+- timeout: 5min
+- criterios:
+
+  task-19 del plan provider-agnostic-agent-harness
+
