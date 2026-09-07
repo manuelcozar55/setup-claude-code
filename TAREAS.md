@@ -415,7 +415,7 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
 ## T-033 · mata mutantes M5/M7 (invalid_state, authority_missing) reales en los 3 puentes
 
-- estado: en-curso
+- estado: hecha
 - oráculo: `bash .agents/oracles/task24_missing_invalid.sh`
 - riesgo: bajo
 - clase: sensor
