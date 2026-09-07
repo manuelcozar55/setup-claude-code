@@ -366,11 +366,10 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
 ## T-028 · verificacion read-only del gate cross-repo (todo 23): los 3 puentes S ligan el gate v2 del productor real M
 
-- estado: en-curso
+- estado: hecha
 - oráculo: `bash kit/lib/verify/task23_gate_contract_probe.sh`
 - riesgo: bajo
 - clase: regresión
-- sensor: kit/lib/verify/task23_gate_contract_probe.sh
 - timeout: 5min
 - criterios:
 
