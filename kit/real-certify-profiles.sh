@@ -38,6 +38,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 PROFILES_DIR="$HERE/lib/profiles"
 ATTEMPT_DIR=""
 JSON_OUT=""
+ISSUE_CHALLENGE=""
 # Permite al test inyectar binarios de mentira y un attemptDir temporal sin tocar
 # el entorno real. El perfil de produccion no pasa --bin-dir.
 BIN_DIR=""
@@ -50,10 +51,12 @@ while [ $# -gt 0 ]; do
     --profiles-dir=*) PROFILES_DIR="${1#--profiles-dir=}"; shift ;;
     --bin-dir) BIN_DIR="${2:-}"; shift 2 ;;
     --bin-dir=*) BIN_DIR="${1#--bin-dir=}"; shift ;;
+    --issue-challenge) ISSUE_CHALLENGE=1; shift ;;
     --json) JSON_OUT=1; shift ;;
     -h|--help)
-      printf 'uso: real-certify-profiles.sh --attempt-dir DIR [--profiles-dir DIR] [--bin-dir DIR] [--json]\n' >&2
+      printf 'uso: real-certify-profiles.sh --attempt-dir DIR [--profiles-dir DIR] [--bin-dir DIR] [--issue-challenge] [--json]\n' >&2
       printf '  Certifica REALMENTE cada modo/tier de la matriz normativa. BLOCKED si falta el home efimero.\n' >&2
+      printf '  --issue-challenge: emite un desafio fresco e impredecible en cada home efimero y NO certifica.\n' >&2
       exit 0 ;;
     *) shift ;;
   esac
@@ -68,6 +71,29 @@ bin_for() { case "$1" in
   claude) echo claude ;; codex) echo codex ;; copilot) echo copilot ;; *) echo "" ;; esac; }
 home_for() { case "$1" in
   claude) echo claude-home ;; codex) echo codex-home ;; copilot) echo copilot-home ;; *) echo "" ;; esac; }
+
+# FRESCURA: el desafio lo emite el CERTIFICADOR, no el productor. binary_sha256 es
+# un valor PUBLICO; ligar el recibo a el impide servir el recibo de OTRO binario,
+# pero NO prueba que el smoke ocurriera DESPUES de que alguien lo pidiera. El
+# desafio es un valor fresco e impredecible por ejecucion que el productor debe
+# consumir y sellar; la certificacion exige el desafio VIGENTE. Recibo sin
+# desafio -> missing_challenge; recibo con un desafio que no es el vigente ->
+# stale_challenge; y el desafio se consume al certificar en verde (un solo uso).
+mint_challenge() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+
+if [ -n "$ISSUE_CHALLENGE" ]; then
+  for cap in "$PROFILES_DIR"/*.runtime-capability-v1.json; do
+    [ -f "$cap" ] || continue
+    homename="$(home_for "$(jq -r '.provider' "$cap")")"
+    [ -n "$homename" ] || continue
+    home="$ATTEMPT_DIR/$homename"
+    [ -d "$home" ] || continue
+    ch="$(mint_challenge)"
+    tmp="$(mktemp "$home/.smoke-challenge.XXXXXX")" || { echo "real-certify-profiles: no pude crear el desafio en $home" >&2; exit 2; }
+    printf '%s' "$ch" > "$tmp" && mv -f "$tmp" "$home/.smoke-challenge"
+  done
+  exit 0
+fi
 
 # Localiza el binario: --bin-dir tiene prioridad (inyeccion del test), luego PATH.
 resolve_bin() {
@@ -90,6 +116,7 @@ freeze_identity() { # bin -> emite "realpath|version|sha256" o vacio si falla
 
 results_json="[]"
 any_fail=0; any_blocked=0
+passed_homes=""
 
 emit_row() { # provider surface tier verdict reason realpath version sha256
   results_json="$(printf '%s' "$results_json" | jq \
@@ -152,16 +179,39 @@ for cap in "$PROFILES_DIR"/*.runtime-capability-v1.json; do
     emit_row "$provider" "$surface" "$tier" "BLOCKED" "receipt_identity_mismatch" "$rp" "$ver" "$sha"
     any_blocked=1; continue
   fi
-  # Recibo de smoke presente y LIGADO: exige canario observado y flujo completo.
+  # FRESCURA: el recibo debe sellar el desafio VIGENTE emitido por el certificador
+  # (--issue-challenge) en este home. Sin desafio en el recibo -> missing_challenge
+  # (recibo de otra ejecucion o escrito a mano con el sha256 publico). Con un
+  # desafio que no es el vigente -> stale_challenge (recibo rancio, o anterior al
+  # desafio en curso). Ambos son BLOCKED con motivo PROPIO, nunca PASS.
+  chal_file="$home/.smoke-challenge"
+  current_chal="$(cat "$chal_file" 2>/dev/null)"
+  receipt_chal="$(jq -r '.challenge // ""' "$smoke_receipt" 2>/dev/null)"
+  if [ -z "$receipt_chal" ] || [ -z "$current_chal" ]; then
+    emit_row "$provider" "$surface" "$tier" "BLOCKED" "missing_challenge" "$rp" "$ver" "$sha"
+    any_blocked=1; continue
+  fi
+  if [ "$receipt_chal" != "$current_chal" ]; then
+    emit_row "$provider" "$surface" "$tier" "BLOCKED" "stale_challenge" "$rp" "$ver" "$sha"
+    any_blocked=1; continue
+  fi
+  # Recibo de smoke presente, LIGADO y FRESCO: exige canario observado y flujo.
   canary_ok="$(jq -r '.canary_observed // false' "$smoke_receipt" 2>/dev/null)"
   flow_ok="$(jq -r '.complete_flow // false' "$smoke_receipt" 2>/dev/null)"
   if [ "$canary_ok" = "true" ] && [ "$flow_ok" = "true" ]; then
     emit_row "$provider" "$surface" "$tier" "PASS" "real_smoke_ok" "$rp" "$ver" "$sha"
+    passed_homes="$passed_homes $chal_file"
   else
     emit_row "$provider" "$surface" "$tier" "FAIL" "canary_or_flow_failed" "$rp" "$ver" "$sha"
     any_fail=1
   fi
 done
+
+# UN SOLO USO: el desafio que produjo un PASS se consume aqui, tras cerrar el
+# bucle (dos superficies comparten un home; ambas se certifican en la misma
+# ejecucion antes de consumir). Recertificar sin re-emitir y re-ejecutar el smoke
+# vuelve a caer en missing_challenge, nunca en un segundo PASS.
+for cf in $passed_homes; do rm -f "$cf" 2>/dev/null; done
 
 if [ "$JSON_OUT" = 1 ]; then
   printf '%s\n' "$results_json" | jq '.'

@@ -413,11 +413,16 @@ ck "$proxy_leak" "0" "el proxy Headroom se limpia en el HIJO (identidad = provee
 #     recibo con canario fallido -> FAIL; home poblado sin recibo -> BLOCKED.
 #     Prueba que el arnes distingue "certificable" de "certificado" de verdad.
 mkdir -p "$RC_T/codex-home" "$RC_T/copilot-home" "$RC_T/claude-home"
-# Recibos LIGADOS: el binary_sha256 coincide con el binario de mentira congelado.
+# El certificador emite el desafio fresco en cada home efimero (frescura).
+bash "$RCERT" --attempt-dir "$RC_T" --bin-dir "$RC_T/bin" --issue-challenge >/dev/null 2>&1
+chal_cx="$(cat "$RC_T/codex-home/.smoke-challenge" 2>/dev/null)"
+chal_cp="$(cat "$RC_T/copilot-home/.smoke-challenge" 2>/dev/null)"
+# Recibos LIGADOS: el binary_sha256 coincide con el binario de mentira congelado,
+# y sellan el desafio VIGENTE del home (frescura).
 sha_codex="$(sha256sum "$(realpath "$RC_T/bin/codex")" | cut -d' ' -f1)"
 sha_copilot="$(sha256sum "$(realpath "$RC_T/bin/copilot")" | cut -d' ' -f1)"
-printf '{"canary_observed":true,"complete_flow":true,"binary_sha256":"%s"}\n'  "$sha_codex"   > "$RC_T/codex-home/.smoke-receipt.json"
-printf '{"canary_observed":false,"complete_flow":true,"binary_sha256":"%s"}\n' "$sha_copilot" > "$RC_T/copilot-home/.smoke-receipt.json"
+printf '{"canary_observed":true,"complete_flow":true,"binary_sha256":"%s","challenge":"%s"}\n'  "$sha_codex" "$chal_cx"   > "$RC_T/codex-home/.smoke-receipt.json"
+printf '{"canary_observed":false,"complete_flow":true,"binary_sha256":"%s","challenge":"%s"}\n' "$sha_copilot" "$chal_cp" > "$RC_T/copilot-home/.smoke-receipt.json"
 echo 'auth-placeholder' > "$RC_T/claude-home/config"   # poblado pero sin recibo
 out_mix="$(bash "$RCERT" --attempt-dir "$RC_T" --bin-dir "$RC_T/bin" --json 2>/dev/null)"
 codex_pass="$(printf '%s' "$out_mix" | jq -r '[.[]|select(.provider=="codex" and .verdict=="PASS")]|length')"
@@ -470,7 +475,9 @@ cp "$RC_ID/bin/claude" "$RC_OK/bin/claude"
 cp "$RC_ID/bin/copilot" "$RC_OK/bin/copilot"
 chmod +x "$RC_OK/bin"/*
 real_codex_sha="$(sha256sum "$(realpath "$RC_OK/bin/codex")" | cut -d' ' -f1)"
-printf '{"canary_observed":true,"complete_flow":true,"binary_sha256":"%s"}\n' "$real_codex_sha" \
+bash "$RCERT" --attempt-dir "$RC_OK" --bin-dir "$RC_OK/bin" --issue-challenge >/dev/null 2>&1
+chal_ok="$(cat "$RC_OK/codex-home/.smoke-challenge" 2>/dev/null)"
+printf '{"canary_observed":true,"complete_flow":true,"binary_sha256":"%s","challenge":"%s"}\n' "$real_codex_sha" "$chal_ok" \
   > "$RC_OK/codex-home/.smoke-receipt.json"
 out_ok="$(bash "$RCERT" --attempt-dir "$RC_OK" --bin-dir "$RC_OK/bin" --json 2>/dev/null)"
 ok_pass="$(printf '%s' "$out_ok" | jq -r '[.[]|select(.provider=="codex" and .verdict=="PASS")]|length')"
@@ -490,6 +497,8 @@ for a in "$@"; do :; done
 echo "CANARY-OK-$SMOKE_CANARY"
 FAKE
 chmod +x "$RC_PROD/bin/codex"
+# El certificador emite el desafio fresco; el productor lo consumira y sellara.
+bash "$RCERT" --attempt-dir "$RC_PROD" --bin-dir "$RC_PROD/bin" --issue-challenge >/dev/null 2>&1
 # El productor ejecuta el smoke (canario+flujo) y ESCRIBE el recibo ligado.
 bash "$SEXEC" --provider codex --surface exec \
   --bin "$RC_PROD/bin/codex" --home "$RC_PROD/codex-home" \
@@ -507,5 +516,130 @@ ck "$prod_canary" "true" "el productor sella canary_observed=true solo tras obse
 out_e2e="$(bash "$RCERT" --attempt-dir "$RC_PROD" --bin-dir "$RC_PROD/bin" --json 2>/dev/null)"
 e2e_pass="$(printf '%s' "$out_e2e" | jq -r '[.[]|select(.provider=="codex" and .surface=="exec" and .verdict=="PASS")]|length')"
 ck "$e2e_pass" "1" "recibo producido por el ejecutor -> consumidor lo certifica PASS (contrato productor-consumidor cerrado)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9g. FRESCURA (todo 25 cierre 2): el DESAFIO lo emite el CERTIFICADOR, no el
+#     productor. binary_sha256 es un valor PUBLICO: ligarlo no prueba que el
+#     smoke ocurriera DESPUES de que alguien lo pidiera. El certificador emite un
+#     desafio fresco e impredecible por ejecucion en cada home efimero; el
+#     productor DEBE consumirlo y sellarlo; y la certificacion DEBE exigir el
+#     desafio VIGENTE. Sin esto, un recibo escrito a mano (con el sha256 publico
+#     correcto) certifica sin ejecutar nada -- el sensor mentiroso que este
+#     programa ya retiro una vez.
+# ─────────────────────────────────────────────────────────────────────────────
+# 9g.0 SONDA: recibo forjado a mano (sha256 CORRECTO, canario+flujo true) SIN
+#       desafio vigente NO puede salir PASS. Este es el rojo inicial del cierre 2.
+RC_FR="$T/rcert_fresh"; mkdir -p "$RC_FR/bin" "$RC_FR/codex-home"
+cat > "$RC_FR/bin/codex"   <<'FAKE'
+#!/usr/bin/env bash
+echo "CANARY-OK-$SMOKE_CANARY"
+FAKE
+cat > "$RC_FR/bin/claude"  <<'FAKE'
+#!/usr/bin/env bash
+echo "9.9.9 (Fake Claude)"
+FAKE
+cat > "$RC_FR/bin/copilot" <<'FAKE'
+#!/usr/bin/env bash
+echo "GitHub Copilot CLI 9.9.9"
+FAKE
+chmod +x "$RC_FR/bin"/*
+fr_sha="$(sha256sum "$(realpath "$RC_FR/bin/codex")" | cut -d' ' -f1)"
+# Recibo a mano con el sha256 PUBLICO correcto, canario OK, pero SIN desafio.
+printf '{"canary_observed":true,"complete_flow":true,"binary_sha256":"%s"}\n' "$fr_sha" \
+  > "$RC_FR/codex-home/.smoke-receipt.json"
+out_fr0="$(bash "$RCERT" --attempt-dir "$RC_FR" --bin-dir "$RC_FR/bin" --json 2>/dev/null)"
+fr0_pass="$(printf '%s' "$out_fr0" | jq -r '[.[]|select(.provider=="codex" and .verdict=="PASS")]|length')"
+ck "$fr0_pass" "0" "recibo a mano sin desafio vigente: NUNCA PASS (el sha256 publico no prueba frescura)"
+fr0_reason="$(printf '%s' "$out_fr0" | jq -r '[.[]|select(.provider=="codex" and .verdict=="BLOCKED" and .reason=="missing_challenge")]|length')"
+ck "$fr0_reason" "2" "recibo sin desafio: BLOCKED/missing_challenge (motivo propio, no receipt_identity_mismatch)"
+
+# 9g.1 EMISION: el certificador emite un desafio fresco e impredecible en cada
+#       home efimero existente y NO certifica en ese modo.
+mkdir -p "$RC_FR/claude-home" "$RC_FR/copilot-home"
+bash "$RCERT" --attempt-dir "$RC_FR" --bin-dir "$RC_FR/bin" --issue-challenge >/dev/null 2>&1
+iss_rc=$?
+ck "$iss_rc" "0" "--issue-challenge sale 0 (emite, no certifica)"
+ck "$([ -f "$RC_FR/codex-home/.smoke-challenge" ] && echo y || echo n)" "y" "emite el desafio en el home efimero de codex"
+chal_codex="$(cat "$RC_FR/codex-home/.smoke-challenge" 2>/dev/null)"
+ck "$([ "${#chal_codex}" -ge 32 ] && echo y || echo n)" "y" "el desafio es suficientemente largo/impredecible (>=32 chars)"
+# Impredecible: dos emisiones consecutivas dan desafios DISTINTOS.
+bash "$RCERT" --attempt-dir "$RC_FR" --bin-dir "$RC_FR/bin" --issue-challenge >/dev/null 2>&1
+chal_codex2="$(cat "$RC_FR/codex-home/.smoke-challenge" 2>/dev/null)"
+ck "$([ "$chal_codex" != "$chal_codex2" ] && echo y || echo n)" "y" "cada emision produce un desafio fresco DISTINTO (impredecible por ejecucion)"
+# Desafios de dos homes distintos NO son iguales.
+chal_claude="$(cat "$RC_FR/claude-home/.smoke-challenge" 2>/dev/null)"
+ck "$([ "$chal_codex2" != "$chal_claude" ] && echo y || echo n)" "y" "homes distintos reciben desafios distintos"
+
+# 9g.2 CAMINO HONESTO: emitir -> ejecutor consume el desafio y lo sella ->
+#       certificar = PASS.
+RC_HN="$T/rcert_honest"; mkdir -p "$RC_HN/bin" "$RC_HN/codex-home"
+cat > "$RC_HN/bin/codex"   <<'FAKE'
+#!/usr/bin/env bash
+echo "CANARY-OK-$SMOKE_CANARY"
+FAKE
+cat > "$RC_HN/bin/claude"  <<'FAKE'
+#!/usr/bin/env bash
+echo "9.9.9 (Fake Claude)"
+FAKE
+cat > "$RC_HN/bin/copilot" <<'FAKE'
+#!/usr/bin/env bash
+echo "GitHub Copilot CLI 9.9.9"
+FAKE
+chmod +x "$RC_HN/bin"/*
+bash "$RCERT" --attempt-dir "$RC_HN" --bin-dir "$RC_HN/bin" --issue-challenge >/dev/null 2>&1
+hn_chal="$(cat "$RC_HN/codex-home/.smoke-challenge" 2>/dev/null)"
+ck "$([ -n "$hn_chal" ] && echo y || echo n)" "y" "camino honesto: hay desafio vigente emitido por el certificador"
+# El productor ejecuta el smoke y sella el desafio vigente en el recibo.
+bash "$SEXEC" --provider codex --surface exec \
+  --bin "$RC_HN/bin/codex" --home "$RC_HN/codex-home" \
+  --timeout 10 --max-turns 1 --max-cost 0 --json >/dev/null 2>&1
+hn_seal="$(jq -r '.challenge // ""' "$RC_HN/codex-home/.smoke-receipt.json" 2>/dev/null)"
+ck "$hn_seal" "$hn_chal" "el productor consume y SELLA el desafio vigente en el recibo"
+out_hn="$(bash "$RCERT" --attempt-dir "$RC_HN" --bin-dir "$RC_HN/bin" --json 2>/dev/null)"
+hn_pass="$(printf '%s' "$out_hn" | jq -r '[.[]|select(.provider=="codex" and .surface=="exec" and .verdict=="PASS")]|length')"
+ck "$hn_pass" "1" "emitir -> ejecutor -> certificar = PASS (el camino honesto sigue verde)"
+
+# 9g.3 UN SOLO USO: recertificar SIN volver a ejecutar el smoke NO puede dar PASS
+#      otra vez (el desafio se consume al certificar en verde).
+out_hn2="$(bash "$RCERT" --attempt-dir "$RC_HN" --bin-dir "$RC_HN/bin" --json 2>/dev/null)"
+hn2_pass="$(printf '%s' "$out_hn2" | jq -r '[.[]|select(.provider=="codex" and .surface=="exec" and .verdict=="PASS")]|length')"
+ck "$hn2_pass" "0" "recertificar sin re-ejecutar el smoke: ya NO da PASS (desafio de un solo uso)"
+
+# 9g.4 DESAFIO RANCIO: un recibo que sella un desafio que NO es el vigente (p.ej.
+#      se emite uno NUEVO despues de sellar) NO puede dar PASS: es un recibo de
+#      otra ejecucion / anterior al desafio vigente.
+RC_ST="$T/rcert_stale"; mkdir -p "$RC_ST/bin" "$RC_ST/codex-home"
+cat > "$RC_ST/bin/codex"   <<'FAKE'
+#!/usr/bin/env bash
+echo "CANARY-OK-$SMOKE_CANARY"
+FAKE
+cat > "$RC_ST/bin/claude"  <<'FAKE'
+#!/usr/bin/env bash
+echo "9.9.9 (Fake Claude)"
+FAKE
+cat > "$RC_ST/bin/copilot" <<'FAKE'
+#!/usr/bin/env bash
+echo "GitHub Copilot CLI 9.9.9"
+FAKE
+chmod +x "$RC_ST/bin"/*
+bash "$RCERT" --attempt-dir "$RC_ST" --bin-dir "$RC_ST/bin" --issue-challenge >/dev/null 2>&1
+bash "$SEXEC" --provider codex --surface exec \
+  --bin "$RC_ST/bin/codex" --home "$RC_ST/codex-home" \
+  --timeout 10 --max-turns 1 --max-cost 0 --json >/dev/null 2>&1
+# Ahora se emite un desafio NUEVO: el recibo sellado queda rancio.
+bash "$RCERT" --attempt-dir "$RC_ST" --bin-dir "$RC_ST/bin" --issue-challenge >/dev/null 2>&1
+out_st="$(bash "$RCERT" --attempt-dir "$RC_ST" --bin-dir "$RC_ST/bin" --json 2>/dev/null)"
+st_pass="$(printf '%s' "$out_st" | jq -r '[.[]|select(.provider=="codex" and .verdict=="PASS")]|length')"
+ck "$st_pass" "0" "recibo con desafio rancio (se emitio uno nuevo despues): NUNCA PASS"
+st_reason="$(printf '%s' "$out_st" | jq -r '[.[]|select(.provider=="codex" and .verdict=="BLOCKED" and .reason=="stale_challenge")]|length')"
+ck "$st_reason" "2" "recibo con desafio que no es el vigente: BLOCKED/stale_challenge (motivo propio)"
+
+# 9g.5 HONESTIDAD DEL ARTEFACTO: la cabecera de smoke-executor.sh NO puede
+#      afirmar que el recibo es infalsificable. Con acceso de escritura al home
+#      efimero no hay raiz de confianza firmada por el proveedor.
+ck "$(grep -c 'el recibo no es falsificable\|el recibo sea infalsificable\|recibo local infalsificable"' "$SEXEC")" "0" \
+   "smoke-executor.sh NO afirma que el recibo sea infalsificable (seria mentira)"
+ck "$(grep -c 'FUERA DE ALCANCE\|no existe un recibo local infalsificable\|NO existe un recibo local infalsificable' "$SEXEC")" "1" \
+   "smoke-executor.sh declara HONESTAMENTE que sin raiz de confianza no hay recibo local infalsificable"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

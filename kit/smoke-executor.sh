@@ -5,9 +5,23 @@
 # lee un recibo y decide PASS/FAIL/BLOCKED, pero hasta ahora nadie ESCRIBIA un
 # recibo genuino, asi que un JSON a mano podia certificar los 6 modos. Este
 # ejecutor corre el canario + el flujo completo contra el binario, con tope de
-# tiempo/turnos/coste, y ESCRIBE el recibo LIGADO a la identidad del binario
-# (binary_sha256/realpath/version). El consumidor rechaza cualquier recibo cuyo
-# sha256 no coincida con el que el congela: por eso el recibo no es falsificable.
+# tiempo/turnos/coste, ESCRIBE el recibo LIGADO a la identidad del binario
+# (binary_sha256/realpath/version) y SELLA en el el DESAFIO fresco que el
+# certificador emitio en el home (--issue-challenge).
+#
+# QUE ATAQUES MATA la combinacion recibo-ligado + desafio-fresco, y CUAL NO:
+#   - Recibo de OTRO binario (sha256 divergente): rechazado. El certificador
+#     congela el sha256 del binario real y exige que el recibo lo declare igual.
+#   - Recibo RANCIO / de otra ejecucion / anterior al desafio: rechazado. El
+#     desafio lo emite el certificador, es impredecible por ejecucion y de un solo
+#     uso; un recibo que no sella el desafio VIGENTE nunca certifica.
+#   - FUERA DE ALCANCE: con acceso de ESCRITURA al home efimero NO existe un
+#     recibo local infalsificable. binary_sha256 es un valor PUBLICO y, una vez
+#     conocido el desafio vigente, quien pueda escribir el home puede fabricar un
+#     recibo. No hay raiz de confianza firmada por el proveedor: este recibo no
+#     autentica al proveedor, solo evidencia frescura+identidad frente a un
+#     escritor honesto. La defensa real de coste/credenciales es que sin un home
+#     de auth provisto no se llega a un proveedor de pago.
 #
 # Rutas de proveedor:
 #   codex/exec         -> `codex exec` (ruta explicita, sandbox read-only)
@@ -110,14 +124,15 @@ if printf '%s' "$surface_out" | grep -qF "$CANARY"; then
 fi
 
 RECEIPT="$HOME_DIR/.smoke-receipt.json"
+CHALLENGE="$(cat "$HOME_DIR/.smoke-challenge" 2>/dev/null)"
 tmp="$(mktemp "$HOME_DIR/.smoke-receipt.XXXXXX")" || { echo "smoke-executor: no pude crear tmp del recibo" >&2; exit 2; }
 jq -n \
   --arg p "$PROVIDER" --arg s "$SURFACE" \
   --arg rp "$RP" --arg ver "$VER" --arg sha "$SHA" \
-  --arg canary "$CANARY" \
+  --arg canary "$CANARY" --arg chal "$CHALLENGE" \
   --argjson co "$canary_observed" --argjson cf "$complete_flow" \
   --argjson to "$TIMEOUT" --argjson mt "$MAX_TURNS" --argjson mc "$MAX_COST" \
-  '{provider:$p,surface:$s,binary_realpath:$rp,binary_version:$ver,binary_sha256:$sha,canary:$canary,canary_observed:$co,complete_flow:$cf,caps:{timeout_s:$to,max_turns:$mt,max_cost:$mc}}' \
+  '{provider:$p,surface:$s,binary_realpath:$rp,binary_version:$ver,binary_sha256:$sha,canary:$canary,challenge:$chal,canary_observed:$co,complete_flow:$cf,caps:{timeout_s:$to,max_turns:$mt,max_cost:$mc}}' \
   > "$tmp" || { rm -f "$tmp"; echo "smoke-executor: jq fallo al escribir el recibo" >&2; exit 2; }
 mv -f "$tmp" "$RECEIPT"
 
