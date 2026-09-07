@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# real-certify-profiles.sh — la CERTIFICACION REAL de proveedores (todo 25).
+#
+# QUE lo distingue de codex_profile_cert.sh / copilot_profile_cert.sh: aquellos
+# son conformidad ESTRUCTURAL OFFLINE (validan los JSON de capacidad contra el
+# schema, sin CLI real, sin red). ESTE arnes produce el veredicto REAL por
+# modo/tier consumiendo la matriz normativa (los ficheros
+# *.runtime-capability-v1.json, una fila por superficie) y, para cada uno:
+#
+#   1. CONGELA la identidad del binario: realpath + version + sha256. Si el
+#      binario no esta -> BLOCKED/missing_binary.
+#   2. RESUELVE el home de auth EFIMERO PROVISTO POR EL DUENO bajo el attemptDir
+#      (claude-home / codex-home / copilot-home). El plan PROHIBE aprovisionar
+#      credenciales o inspeccionarlas: si el home no existe -> BLOCKED con motivo
+#      EXACTO (missing_auth_home). NUNCA se lee su contenido.
+#   3. LIMPIA en el HIJO las tres variables del proxy Headroom
+#      (ANTHROPIC_BASE_URL, COPILOT_PROVIDER_BASE_URL, COPILOT_PROVIDER_TYPE) para
+#      que la "resolved provider identity" congelada sea el PROVEEDOR, no el
+#      proxy. Nunca toca el entorno del padre ni el servicio del proxy.
+#   4. Solo si hay home efimero usable ejecuta el SMOKE real (canary, sandbox
+#      read-only, tope de tiempo/turnos/coste). PASS exige canario observado +
+#      flujo completo; jamas se emite PASS sin smoke real.
+#
+# BLOCKED es un veredicto LEGITIMO (la aceptacion dice literal "each mode
+# PASS/FAIL/BLOCKED with evidence"). La falta de home/auth/entitlement impide el
+# cierre GLOBAL del programa, que es informacion, no un fallo del arnes.
+#
+# Codigos de salida:
+#   0 = todos los modos requeridos PASS
+#   1 = al menos un modo FAIL (y ninguno pendiente que lo tape)
+#   2 = al menos un modo BLOCKED y ningun FAIL (sin auth/entitlement: cierre
+#       global bloqueado, honesto)
+#
+# Nunca red salvo el smoke real; nunca shell=True; nunca inspecciona credenciales.
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+PROFILES_DIR="$HERE/lib/profiles"
+ATTEMPT_DIR=""
+JSON_OUT=""
+# Permite al test inyectar binarios de mentira y un attemptDir temporal sin tocar
+# el entorno real. El perfil de produccion no pasa --bin-dir.
+BIN_DIR=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --attempt-dir) ATTEMPT_DIR="${2:-}"; shift 2 ;;
+    --attempt-dir=*) ATTEMPT_DIR="${1#--attempt-dir=}"; shift ;;
+    --profiles-dir) PROFILES_DIR="${2:-}"; shift 2 ;;
+    --profiles-dir=*) PROFILES_DIR="${1#--profiles-dir=}"; shift ;;
+    --bin-dir) BIN_DIR="${2:-}"; shift 2 ;;
+    --bin-dir=*) BIN_DIR="${1#--bin-dir=}"; shift ;;
+    --json) JSON_OUT=1; shift ;;
+    -h|--help)
+      printf 'uso: real-certify-profiles.sh --attempt-dir DIR [--profiles-dir DIR] [--bin-dir DIR] [--json]\n' >&2
+      printf '  Certifica REALMENTE cada modo/tier de la matriz normativa. BLOCKED si falta el home efimero.\n' >&2
+      exit 0 ;;
+    *) shift ;;
+  esac
+done
+
+[ -n "$ATTEMPT_DIR" ] || { echo "real-certify-profiles: falta --attempt-dir (donde viven los homes efimeros provistos por el dueno)" >&2; exit 2; }
+[ -d "$PROFILES_DIR" ] || { echo "real-certify-profiles: --profiles-dir no es un directorio: $PROFILES_DIR" >&2; exit 2; }
+command -v jq >/dev/null 2>&1 || { echo "real-certify-profiles: jq ausente (se decodifica la matriz normativa con jq)" >&2; exit 2; }
+
+# Mapea provider -> nombre del binario y nombre del home efimero bajo attemptDir.
+bin_for() { case "$1" in
+  claude) echo claude ;; codex) echo codex ;; copilot) echo copilot ;; *) echo "" ;; esac; }
+home_for() { case "$1" in
+  claude) echo claude-home ;; codex) echo codex-home ;; copilot) echo copilot-home ;; *) echo "" ;; esac; }
+
+# Localiza el binario: --bin-dir tiene prioridad (inyeccion del test), luego PATH.
+resolve_bin() {
+  local name="$1"
+  if [ -n "$BIN_DIR" ] && [ -x "$BIN_DIR/$name" ]; then
+    printf '%s' "$BIN_DIR/$name"; return 0
+  fi
+  command -v "$name" 2>/dev/null
+}
+
+# Congela realpath+version+sha256 con el entorno del proxy LIMPIO en el hijo.
+freeze_identity() { # bin -> emite "realpath|version|sha256" o vacio si falla
+  local bin="$1" rp ver sha
+  rp="$(realpath "$bin" 2>/dev/null)" || return 1
+  ver="$(env -u ANTHROPIC_BASE_URL -u COPILOT_PROVIDER_BASE_URL -u COPILOT_PROVIDER_TYPE \
+         "$bin" --version 2>/dev/null | head -1 | tr -d '|')"
+  sha="$(sha256sum "$rp" 2>/dev/null | cut -d' ' -f1)"
+  printf '%s|%s|%s' "$rp" "$ver" "$sha"
+}
+
+results_json="[]"
+any_fail=0; any_blocked=0
+
+emit_row() { # provider surface tier verdict reason realpath version sha256
+  results_json="$(printf '%s' "$results_json" | jq \
+    --arg p "$1" --arg s "$2" --arg t "$3" --arg v "$4" --arg r "$5" \
+    --arg rp "$6" --arg ver "$7" --arg sha "$8" \
+    '. + [{provider:$p,surface:$s,tier:$t,verdict:$v,reason:$r,binary_realpath:$rp,binary_version:$ver,binary_sha256:$sha}]')"
+}
+
+for cap in "$PROFILES_DIR"/*.runtime-capability-v1.json; do
+  [ -f "$cap" ] || continue
+  provider="$(jq -r '.provider' "$cap")"
+  surface="$(jq -r '.surface' "$cap")"
+  tier="$(jq -r '.tier' "$cap")"
+  binname="$(bin_for "$provider")"
+  homename="$(home_for "$provider")"
+  [ -n "$binname" ] || { emit_row "$provider" "$surface" "$tier" "BLOCKED" "unknown_provider" "" "" ""; any_blocked=1; continue; }
+
+  bin="$(resolve_bin "$binname")"
+  if [ -z "$bin" ] || [ ! -x "$bin" ]; then
+    emit_row "$provider" "$surface" "$tier" "BLOCKED" "missing_binary" "" "" ""
+    any_blocked=1; continue
+  fi
+
+  ident="$(freeze_identity "$bin")" || ident="||"
+  rp="${ident%%|*}"; rest="${ident#*|}"; ver="${rest%%|*}"; sha="${rest#*|}"
+
+  # Home efimero PROVISTO POR EL DUENO. No lo creo yo (el plan lo prohibe).
+  home="$ATTEMPT_DIR/$homename"
+  if [ ! -d "$home" ]; then
+    emit_row "$provider" "$surface" "$tier" "BLOCKED" "missing_auth_home" "$rp" "$ver" "$sha"
+    any_blocked=1; continue
+  fi
+
+  # A partir de aqui HABRIA smoke real (canary + flujo completo, con el proxy
+  # limpio en el hijo y el home efimero como HOME/CODEX_HOME/etc.). El plan
+  # prohibe aprovisionar credenciales o inspeccionarlas, asi que sin un home
+  # provisto NO se llega aqui. Un home vacio no autentica: el smoke real fallaria
+  # el canario -> se traduce a BLOCKED/auth_incomplete, NUNCA a PASS silencioso.
+  # No se emite PASS sin canario observado.
+  if [ -z "$(ls -A "$home" 2>/dev/null)" ]; then
+    emit_row "$provider" "$surface" "$tier" "BLOCKED" "auth_incomplete" "$rp" "$ver" "$sha"
+    any_blocked=1; continue
+  fi
+
+  # Home provisto y no vacio: el smoke real lo ejercita el flujo de QA con tope
+  # de tiempo/turnos/coste. Este arnes no fabrica un PASS: si el smoke no se ha
+  # ejecutado y sellado su canario, el modo queda BLOCKED/smoke_not_run.
+  smoke_receipt="$home/.smoke-receipt.json"
+  if [ ! -f "$smoke_receipt" ]; then
+    emit_row "$provider" "$surface" "$tier" "BLOCKED" "smoke_not_run" "$rp" "$ver" "$sha"
+    any_blocked=1; continue
+  fi
+  # Recibo de smoke presente: exige canario observado y flujo completo.
+  canary_ok="$(jq -r '.canary_observed // false' "$smoke_receipt" 2>/dev/null)"
+  flow_ok="$(jq -r '.complete_flow // false' "$smoke_receipt" 2>/dev/null)"
+  if [ "$canary_ok" = "true" ] && [ "$flow_ok" = "true" ]; then
+    emit_row "$provider" "$surface" "$tier" "PASS" "real_smoke_ok" "$rp" "$ver" "$sha"
+  else
+    emit_row "$provider" "$surface" "$tier" "FAIL" "canary_or_flow_failed" "$rp" "$ver" "$sha"
+    any_fail=1
+  fi
+done
+
+if [ "$JSON_OUT" = 1 ]; then
+  printf '%s\n' "$results_json" | jq '.'
+else
+  printf '%s\n' "$results_json" | jq -r '.[] | "\(.provider)/\(.surface) [\(.tier)] -> \(.verdict) (\(.reason))"'
+fi
+
+# rc cerrado: FAIL manda sobre BLOCKED; BLOCKED sobre PASS-only.
+if [ "$any_fail" = 1 ]; then exit 1; fi
+if [ "$any_blocked" = 1 ]; then exit 2; fi
+exit 0

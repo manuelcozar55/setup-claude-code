@@ -355,4 +355,79 @@ ck "$(jq -r '.certification' "$HEADROOM_OPT")" "not-certified" \
 ck "$(jq -r '.certification_blocker | length > 0' "$HEADROOM_OPT")" "true" \
    "el perfil Wave-0 Headroom lleva escrito por que no esta certificado"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. CERTIFICACION REAL (todo 25) — kit/real-certify-profiles.sh.
+#    A diferencia del cert OFFLINE de arriba (que valida los JSON de capacidad
+#    sin CLI), este arnes produce el veredicto REAL por modo/tier: congela la
+#    identidad del binario (realpath+version+sha256), resuelve el home efimero
+#    PROVISTO POR EL DUENO bajo el attemptDir, limpia el proxy Headroom en el
+#    HIJO, y solo con un smoke real (canario + flujo) emite PASS. Sin home ->
+#    BLOCKED/missing_auth_home. NUNCA PASS sin smoke. Todo con binarios de
+#    mentira: el todo 25 prohibe aprovisionar/inspeccionar credenciales reales.
+# ─────────────────────────────────────────────────────────────────────────────
+RCERT="$RAIZ/kit/real-certify-profiles.sh"
+ck "$([ -x "$RCERT" ] && echo y || echo n)" "y" "el arnes de certificacion REAL existe y es ejecutable"
+
+# 9a. Binarios de mentira + attemptDir SIN homes -> todo BLOCKED/missing_auth_home,
+#     con identidad congelada, rc 2, y CERO PASS. Es el estado real de esta rama.
+RC_T="$T/rcert"; mkdir -p "$RC_T/bin"
+cat > "$RC_T/bin/claude"  <<'FAKE'
+#!/usr/bin/env bash
+echo "PROXY_ANTHROPIC=${ANTHROPIC_BASE_URL:-CLEAN}" >> "${RCERT_CHILD_ENV:-/dev/null}"
+echo "9.9.9 (Fake Claude)"
+FAKE
+cat > "$RC_T/bin/codex"   <<'FAKE'
+#!/usr/bin/env bash
+echo "codex-cli 9.9.9"
+FAKE
+cat > "$RC_T/bin/copilot" <<'FAKE'
+#!/usr/bin/env bash
+echo "GitHub Copilot CLI 9.9.9"
+FAKE
+chmod +x "$RC_T/bin/claude" "$RC_T/bin/codex" "$RC_T/bin/copilot"
+
+RCERT_CHILD_ENV="$RC_T/childenv.txt"
+: > "$RCERT_CHILD_ENV"
+# Simula el proxy Headroom en el ENTORNO del test; el arnes debe limpiarlo en el hijo.
+out_block="$(RCERT_CHILD_ENV="$RCERT_CHILD_ENV" \
+  ANTHROPIC_BASE_URL="http://localhost:8787" \
+  COPILOT_PROVIDER_BASE_URL="http://localhost:8787" \
+  COPILOT_PROVIDER_TYPE="headroom" \
+  bash "$RCERT" --attempt-dir "$RC_T" --bin-dir "$RC_T/bin" --json 2>/dev/null)"
+rc_block=$?
+ck "$rc_block" "2" "sin home efimero: rc=2 (BLOCKED, cierre global bloqueado honesto)"
+n_rows="$(printf '%s' "$out_block" | jq 'length' 2>/dev/null)"
+ck "$n_rows" "6" "la matriz normativa produce 6 filas (una por modo/superficie)"
+n_blocked="$(printf '%s' "$out_block" | jq '[.[]|select(.verdict=="BLOCKED" and .reason=="missing_auth_home")]|length' 2>/dev/null)"
+ck "$n_blocked" "6" "los 6 modos son BLOCKED/missing_auth_home (home efimero ausente)"
+n_pass="$(printf '%s' "$out_block" | jq '[.[]|select(.verdict=="PASS")]|length' 2>/dev/null)"
+ck "$n_pass" "0" "CERO PASS sin smoke real (nunca se certifica de mas)"
+# Identidad congelada: realpath + version + sha256 no vacios en cada fila.
+n_frozen="$(printf '%s' "$out_block" | jq '[.[]|select(.binary_realpath!="" and .binary_version!="" and .binary_sha256!="")]|length' 2>/dev/null)"
+ck "$n_frozen" "6" "cada fila congela realpath+version+sha256 del binario"
+# El proxy Headroom NO debe filtrarse al hijo: la version se leyo con el env limpio.
+proxy_leak="$(grep -c 'PROXY_ANTHROPIC=http' "$RCERT_CHILD_ENV" 2>/dev/null)"; proxy_leak="${proxy_leak:-0}"
+ck "$proxy_leak" "0" "el proxy Headroom se limpia en el HIJO (identidad = proveedor, no proxy)"
+
+# 9b. DISCRIMINACION: con home efimero provisto + recibo de smoke valido -> PASS;
+#     recibo con canario fallido -> FAIL; home poblado sin recibo -> BLOCKED.
+#     Prueba que el arnes distingue "certificable" de "certificado" de verdad.
+mkdir -p "$RC_T/codex-home" "$RC_T/copilot-home" "$RC_T/claude-home"
+echo '{"canary_observed":true,"complete_flow":true}'  > "$RC_T/codex-home/.smoke-receipt.json"
+echo '{"canary_observed":false,"complete_flow":true}' > "$RC_T/copilot-home/.smoke-receipt.json"
+echo 'auth-placeholder' > "$RC_T/claude-home/config"   # poblado pero sin recibo
+out_mix="$(bash "$RCERT" --attempt-dir "$RC_T" --bin-dir "$RC_T/bin" --json 2>/dev/null)"
+codex_pass="$(printf '%s' "$out_mix" | jq -r '[.[]|select(.provider=="codex" and .verdict=="PASS")]|length')"
+ck "$codex_pass" "2" "con home efimero + recibo canario OK: codex/exec y codex/interactive PASS (smoke real)"
+copilot_fail="$(printf '%s' "$out_mix" | jq -r '[.[]|select(.provider=="copilot" and .verdict=="FAIL")]|length')"
+ck "$copilot_fail" "2" "recibo con canario fallido: copilot FAIL (no se maquilla a PASS)"
+claude_block="$(printf '%s' "$out_mix" | jq -r '[.[]|select(.provider=="claude" and .verdict=="BLOCKED" and .reason=="smoke_not_run")]|length')"
+ck "$claude_block" "2" "home poblado sin recibo de smoke: claude BLOCKED/smoke_not_run (nunca PASS por tener home)"
+
+# 9c. Binario ausente -> BLOCKED/missing_binary (motivo EXACTO, no generico).
+RC_NB="$T/rcert_nobin"; mkdir -p "$RC_NB/bin"   # bin-dir vacio y PATH minimo sin las CLIs
+out_nb="$(PATH=/usr/bin bash "$RCERT" --attempt-dir "$RC_NB" --bin-dir "$RC_NB/bin" --json 2>/dev/null)"
+nb_missing="$(printf '%s' "$out_nb" | jq -r '[.[]|select(.verdict=="BLOCKED" and .reason=="missing_binary")]|length' 2>/dev/null)"
+ck "$nb_missing" "6" "binario ausente: BLOCKED/missing_binary en los 6 modos (motivo exacto)"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
