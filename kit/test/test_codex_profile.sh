@@ -159,6 +159,14 @@ fabrica_fake mch_lento "mch 0.2.0" 0 "$EVOK" 12
 rc_to="$(timeout 20 bash -c 'printf "{\"cwd\":\"'"$T/ungoverned"'\"}" | bash "'"$GATE"'" --mch "'"$T/bin/mch_lento"'" >/dev/null 2>&1; echo $?')"
 ck "$rc_to" "2" "gate manual timeout (>10s): BLOQUEA"
 
+# stdin ABIERTO: este gate es MANUAL -- se invoca a mano antes/despues de un
+# turno, no lo alimenta el runtime como a un hook. Si se queda leyendo stdin
+# hasta EOF, una invocacion desde una terminal no vuelve nunca y la puerta de
+# gobierno de Codex es inusable justo como esta documentada. Debe decidir en
+# tiempo acotado con el cwd del proceso.
+rc_stdin="$( (cd "$T/ungoverned" && timeout 8 bash "$GATE" --mch "$MCH_REAL" >/dev/null 2>&1 < <(sleep 25); echo $?) )"
+ck "$rc_stdin" "0" "gate manual con stdin abierto: decide sin colgarse"
+
 # El contrato consumido fija esquema + version minima (ligadura al todo 9), y el
 # gate embebe EXACTAMENTE esos valores (no derivan).
 ck "$(jq -r '.evidence_schema' "$CONTRACT")" "mch-gate-evidence-v2" "contrato consumido fija el evidence_schema del gate v2"

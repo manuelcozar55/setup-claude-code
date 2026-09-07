@@ -114,7 +114,12 @@ elif [ "$vM" -eq "$MIN_MAJOR" ] 2>/dev/null; then
 fi
 [ "$compat" -eq 0 ] || block "Gate manual Codex: el productor de M declara version '$ver_raw', por debajo del minimo compatible ${MIN_MAJOR}.${MIN_MINOR}.${MIN_PATCH}. No confio en un gate incompatible."
 
-payload="$(cat 2>/dev/null)" || payload=""
+# Lectura ACOTADA de stdin. A un hook lo alimenta el runtime y cierra; a este
+# gate lo invoca una persona a mano, y ahi stdin es la terminal: un `cat` sin
+# tope no vuelve nunca y la puerta de gobierno de Codex queda inusable justo
+# como esta documentada. Con tope, un payload entubado se lee entero igual (cat
+# termina en EOF) y sin payload se decide con el cwd del proceso.
+payload="$(timeout 1 cat 2>/dev/null)" || payload=""
 cwd=""
 [ -n "$payload" ] && [ "$HK_JSON" != no ] && cwd="$(json_get "$payload" cwd)"
 [ -n "$cwd" ] || cwd="$PWD"
