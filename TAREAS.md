@@ -345,11 +345,10 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 
 ## T-026 · empaqueta el perfil de Copilot (interactive PTY + -p) con ciclo de vida degradado por el tope de 8 bloqueos
 
-- estado: en-curso
+- estado: hecha
 - oráculo: `bash kit/test/test_copilot_profile.sh`
 - riesgo: medio
 - clase: sensor
-- sensor: kit/test/test_copilot_profile.sh
 - timeout: 5min
 - criterios:
 
