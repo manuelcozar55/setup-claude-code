@@ -422,3 +422,14 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 - timeout: 5min
 - criterios:
 
+## T-034 · certifica real Claude/Codex/Copilot por modo/tier: identidad congelada + gate de home efimero, BLOCKED honesto sin homes provistos
+
+- estado: hecha
+- oráculo: `bash kit/test/test_codex_profile.sh`
+- riesgo: medio
+- clase: sensor
+- timeout: 5min
+- criterios:
+
+  Wave 5 todo 25. Arnes real-certify-profiles.sh consume la matriz normativa, congela realpath+version+sha256, limpia el proxy en el hijo, y sin home efimero cierra BLOCKED/missing_auth_home (cierre global bloqueado, honesto). Seccion 9 lo ejercita con binarios de mentira: cero coste, cero credenciales.
+
