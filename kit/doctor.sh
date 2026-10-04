@@ -425,5 +425,84 @@ fi
 # 6. gate de secretos sobre el kit
 if bash "$KIT/scan-secrets.sh" "$KIT" >/dev/null 2>&1; then pass "kit sin secretos  (fuente: scan-secrets.sh)"; else fail "scan-secrets detectó material sensible en el kit"; fi
 
+# 7. Estado de la MAQUINA que tumbo sesiones en WSL (2/4-oct-2026) sin que ningun
+#    check lo viera: /tmp es tmpfs con nr_inodes fijo y, agotado, falla toda
+#    herramienta que crea ficheros ahi -el Bash de Claude Code el primero-. Todo WARN:
+#    no es la instalacion del kit, y doctor debe seguir dando 0 en una maquina sana.
+#    DOCTOR_* existen solo para que test_doctor.sh pueda fabricar cada caso.
+PROC="${DOCTOR_PROC:-/proc}"
+TMPD="${DOCTOR_TMP:-/tmp}"
+a_num(){ # sufijo k/m/g de mount(8) -> numero: 1m -> 1048576
+  case "$1" in
+    *[kK]) echo $(( ${1%?} * 1024 )) ;;
+    *[mM]) echo $(( ${1%?} * 1048576 )) ;;
+    *[gG]) echo $(( ${1%?} * 1073741824 )) ;;
+    *) echo "$1" ;;
+  esac
+}
+
+# 7a. inodos de /tmp (itotal 0 = el fs no los limita: nada que vigilar)
+read -r iu it <<< "${DOCTOR_TMP_INODOS:-$(df --output=iused,itotal "$TMPD" 2>/dev/null | tail -1)}"
+if [ "${it:-0}" -gt 0 ] 2>/dev/null; then
+  pct=$(( iu * 100 / it ))
+  if [ "$pct" -ge 70 ]; then
+    warn "$TMPD al ${pct}% de inodos ($iu/$it): al 100% falla todo lo que cree ficheros ahi; busca mktemp -d sin trap"
+  else
+    pass "$TMPD al ${pct}% de inodos  (fuente: df --output=iused,itotal)"
+  fi
+fi
+
+# 7b. un remount a mano (nr_inodes=4m) arregla la sesion y se pierde al reiniciar.
+#     `systemctl show -p Options` NO sirve para verlo: ensena el montaje vivo.
+vivo="$(awk '$2=="/tmp" && $3=="tmpfs" {print $4}' "$PROC/mounts" 2>/dev/null | tail -1 \
+        | grep -oE 'nr_inodes=[0-9]+[kKmMgG]?' | cut -d= -f2)"
+if [ -n "$vivo" ]; then
+  opts="${DOCTOR_TMPMOUNT_OPTS-$(systemctl cat tmp.mount 2>/dev/null | grep '^Options=' | tail -1)}"
+  unidad="$(printf '%s' "$opts" | grep -oE 'nr_inodes=[0-9]+[kKmMgG]?' | cut -d= -f2)"
+  if [ -n "$unidad" ] && [ "$(a_num "$vivo")" != "$(a_num "$unidad")" ]; then
+    warn "/tmp montado con nr_inodes=$vivo pero tmp.mount dice $unidad: se pierde al reiniciar (drop-in en /etc/systemd/system/tmp.mount.d/, ver docs/10-onboarding.md)"
+  fi
+fi
+
+# 7c. WSL sin interop: cmd.exe, code o un docker de Windows fallan con "MZ...: not found"
+if grep -qi microsoft "$PROC/version" 2>/dev/null && [ -d "$PROC/sys/fs/binfmt_misc" ]; then
+  if ls "$PROC/sys/fs/binfmt_misc"/WSLInterop* >/dev/null 2>&1; then
+    pass "WSL: interop con Windows registrado  (fuente: binfmt_misc/WSLInterop*)"
+  else
+    warn "WSL sin interop registrado (binfmt_misc/WSLInterop): los .exe no arrancan. Sin reiniciar WSL: sudo systemctl restart systemd-binfmt"
+  fi
+fi
+
+# 7d. pnpm atado a una version de nvm (shim de corepack o npm -g) desaparece al
+#     cambiar `nvm alias default`, y Node >= 25 ya no trae corepack.
+if p="$(command -v pnpm 2>/dev/null)"; then
+  real="$(readlink -f "$p")"
+  case "$real" in
+    */.nvm/versions/*|*/corepack/*)
+      warn "pnpm depende de una version concreta de Node ($real): cambiar de Node lo borra del PATH. Independiente: ver docs/02-install.md" ;;
+    *) pass "pnpm no depende de la version de Node activa  (fuente: readlink -f de command -v pnpm)" ;;
+  esac
+else
+  warn "pnpm no esta en el PATH (lo usa agent-browser; ver docs/02-install.md)"
+fi
+
+# 7e. proyectos con sesiones recientes sobre el disco de Windows (DrvFs): git status
+#     medido en 2,7 s en un repo de 688 ficheros, frente a milisegundos en ext4.
+if [ -d "$CLAUDE_HOME/projects" ]; then
+  en_mnt="$(find "$CLAUDE_HOME/projects" -mindepth 2 -maxdepth 2 -path '*/-mnt-*/*' -name '*.jsonl' -mtime -14 2>/dev/null \
+            | sed 's#/[^/]*$##' | sort -u | wc -l)"
+  if [ "$en_mnt" -gt 0 ]; then
+    warn "$en_mnt proyecto(s) con sesiones en los ultimos 14 dias viven en /mnt/*: en WSL ese disco es ordenes de magnitud mas lento; muevelos a ext4 (ver docs/10-onboarding.md)"
+  fi
+fi
+
+# 7f. restos que se acumulan en /tmp: mktemp -d sin trap, y el .so que un binario Bun
+#     (opencode) extrae en cada arranque y nunca borra: 299 ficheros, 1,8 GB de RAM.
+viejos="$(find "$TMPD" -maxdepth 1 -type d -name 'tmp.*' -user "$(id -u)" -mtime +0 2>/dev/null | wc -l)"
+sos="$(find "$TMPD" -maxdepth 1 -type f -name '.*-00000000.so' -user "$(id -u)" 2>/dev/null | wc -l)"
+if [ "$viejos" -ge 20 ] || [ "$sos" -ge 10 ]; then
+  warn "restos en $TMPD: $viejos dirs tmp.* de mas de 1 dia y $sos .so extraidos; antes de borrarlos comprueba que ningun proceso los use (/proc/*/maps, /proc/*/cwd)"
+fi
+
 echo "== $( [ "$fails" -eq 0 ] && echo 'OK (0 FAIL)' || echo "$fails FAIL" ) =="
 [ "$fails" -eq 0 ]

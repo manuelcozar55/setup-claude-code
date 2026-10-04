@@ -88,4 +88,62 @@ else
   ck n y "con iocs.json junto al preflight, doctor lo encuentra y lo dice"
 fi
 
+# Sensores de maquina (seccion 7 de doctor). Cada uno se prueba en rojo Y en verde: un
+# sensor que solo se ha visto callar no ha demostrado que sepa hablar. Se fabrican /proc
+# y /tmp falsos, asi el resultado no depende de la maquina que corre la suite.
+fproc="$tmp/proc"; ftmp="$tmp/faketmp"; mkdir -p "$fproc/sys/fs/binfmt_misc" "$ftmp"
+doc(){ env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
+       DOCTOR_PROC="$fproc" DOCTOR_TMP="$ftmp" "$@" bash "$KIT/doctor.sh" 2>&1; }
+tiene(){ if echo "$out" | grep -qE "$1"; then ck y "$2" "$3"; else ck n "$2" "$3"; fi; }
+
+set +e; out="$(doc DOCTOR_TMP_INODOS="980 1000")"; rc=$?; set -e
+tiene '^WARN .*al 98% de inodos' y "inodos de /tmp al 98%: WARN"
+ck "$rc" "0" "los sensores de maquina avisan, no suspenden (rc=0)"
+out="$(doc DOCTOR_TMP_INODOS="100 1000")"
+tiene '^PASS .*al 10% de inodos' y "inodos de /tmp al 10%: PASS"
+
+echo 'tmpfs /tmp tmpfs rw,nosuid,nr_inodes=4194304 0 0' > "$fproc/mounts"
+out="$(doc DOCTOR_TMPMOUNT_OPTS='Options=mode=1777,size=50%%,nr_inodes=1m')"
+tiene '^WARN .*nr_inodes=4194304 pero tmp.mount dice 1m' y "remount sin drop-in (vivo 4m, unidad 1m): WARN"
+out="$(doc DOCTOR_TMPMOUNT_OPTS='Options=mode=1777,size=50%%,nr_inodes=4m')"
+tiene 'pero tmp.mount dice' n "drop-in persistente (4m = 4194304): sin aviso"
+rm -f "$fproc/mounts"
+
+echo 'Linux version 6.6 (microsoft-standard-WSL2)' > "$fproc/version"
+out="$(doc)"
+tiene '^WARN .*WSL sin interop' y "WSL sin WSLInterop en binfmt_misc: WARN"
+: > "$fproc/sys/fs/binfmt_misc/WSLInterop-late"
+out="$(doc)"
+tiene '^PASS .*interop con Windows registrado' y "WSL con WSLInterop-late registrado: PASS"
+echo 'Linux version 6.6 (generic)' > "$fproc/version"
+out="$(doc)"
+tiene 'interop' n "fuera de WSL el sensor de interop calla"
+
+mkdir -p "$tmp/fbin" "$tmp/nvm/.nvm/versions/node/v24/bin"
+printf '#!/bin/sh\n' > "$tmp/nvm/.nvm/versions/node/v24/bin/pnpm"; chmod +x "$tmp/nvm/.nvm/versions/node/v24/bin/pnpm"
+ln -sf "$tmp/nvm/.nvm/versions/node/v24/bin/pnpm" "$tmp/fbin/pnpm"
+out="$(doc PATH="$tmp/fbin:$PATH")"
+tiene '^WARN .*pnpm depende de una version concreta de Node' y "pnpm resuelto dentro de nvm: WARN"
+rm -f "$tmp/fbin/pnpm"; printf '#!/bin/sh\n' > "$tmp/fbin/pnpm"; chmod +x "$tmp/fbin/pnpm"
+out="$(doc PATH="$tmp/fbin:$PATH")"
+tiene '^PASS .*pnpm no depende' y "pnpm independiente de nvm: PASS"
+
+mkdir -p "$CLAUDE_HOME/projects/-mnt-c-Users-x-repo"
+: > "$CLAUDE_HOME/projects/-mnt-c-Users-x-repo/s.jsonl"
+out="$(doc)"
+tiene '^WARN .*1 proyecto\(s\) con sesiones .* /mnt/' y "proyecto activo en /mnt/c: WARN"
+touch -d '30 days ago' "$CLAUDE_HOME/projects/-mnt-c-Users-x-repo/s.jsonl"
+out="$(doc)"
+tiene 'viven en /mnt/' n "proyecto en /mnt/c sin sesiones en 14 dias: sin aviso"
+
+for i in $(seq 1 20); do mkdir "$ftmp/tmp.$i"; touch -d '2 days ago' "$ftmp/tmp.$i"; done
+out="$(doc)"
+tiene '^WARN .*restos en .*20 dirs tmp' y "20 dirs tmp.* de mas de un dia: WARN"
+touch "$ftmp"/tmp.*
+out="$(doc)"
+tiene 'restos en' n "los mismos dirs recien creados (un test en curso): sin aviso"
+for i in $(seq 1 10); do : > "$ftmp/.ab$i-00000000.so"; done
+out="$(doc)"
+tiene '^WARN .*restos en .*10 \.so' y "10 .so extraidos por binarios Bun: WARN"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
