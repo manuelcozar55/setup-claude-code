@@ -13,6 +13,13 @@
 # un fallo real.
 set -o pipefail
 suite="$1"
+# Todo mktemp de la suite (y de lo que lance) cae bajo este TMPDIR, que se
+# borra al salir: /tmp es tmpfs con nr_inodes fijo y seis suites dejaban sus
+# directorios temporales; corridas repetidas en bucle agotan los inodos y con
+# ellos cualquier comando que necesite crear un fichero en /tmp.
+TMPDIR="$(mktemp -d)"
+export TMPDIR
+trap 'rm -rf "$TMPDIR"' EXIT
 printf '### %s\n' "$suite" >> kit/test/.make-test.log
 bash "$suite" 2>&1 | tee -a kit/test/.make-test.log
 rc=$?
