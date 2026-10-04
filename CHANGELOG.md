@@ -35,6 +35,12 @@ Inventario del árbol que describe esta sección:
   legítima del usuario.
 - **`doctor.sh` reporta el fork de la skill del harness**, que hasta ahora no
   lo medía nada.
+- **`doctor.sh` vigila el estado de la máquina que tumbó sesiones en WSL**: los
+  inodos de `/tmp`, que un remount de `/tmp` hecho a mano no sobrevive al
+  reinicio, el interop de WSL sin registrar, que `pnpm` dependa de una versión
+  de Node de nvm, que haya proyectos activos en `/mnt/*` y los restos que se
+  acumulan en `/tmp`. Son seis avisos (`WARN`), nunca `FAIL`: son estado de la
+  máquina, no de la instalación.
 - **El hook `Stop` consulta `mch task gate`**: el turno ya no puede cerrarse
   contra el veredicto del motor del lazo.
 - **`make test` cierra con un total agregado** en vez de con el resumen de la

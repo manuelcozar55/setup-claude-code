@@ -140,6 +140,22 @@ byte— arranca la sesión sin proxy: `ANTHROPIC_BASE_URL= claude`.
 | Sentinel bloquea algo legítimo | Reformula el comando. **No amplíes la allowlist para esquivarlo**: los guards bloquean por el literal, así que nombrar un fichero de credenciales —aunque sea para excluirlo— dispara. |
 | El proxy comprime 0 tokens y aun así `/readyz` dice healthy | Falta el modelo ONNX. La unidad fija `HF_HUB_OFFLINE=0` por esto; si lo heredas en 1, el motor queda `available:false` en silencio. |
 | `unable to open database file (code 14)` cada 60 s | La unidad no da escritura a `~/.local/share/rtk`. La que genera el kit ya la da. |
+| Falla **todo** comando Bash, incluso `df`, y quedan GB libres | `/tmp` (tmpfs) se ha quedado sin inodos: Claude Code crea `/tmp/claude-<uid>/…` antes de cada comando. Desde otra terminal: `sudo mount -o remount,nr_inodes=4m /tmp` desbloquea sin borrar nada. Después haz el ajuste permanente (abajo) y busca el `mktemp -d` sin `trap` que lo llenó. |
+| `cmd.exe`, `code` o `docker` fallan con `MZ…: not found` | El interop de WSL no está registrado en `binfmt_misc`. `sudo systemctl restart systemd-binfmt` lo vuelve a registrar sin cerrar ninguna sesión. |
+
+**WSL: los inodos de `/tmp` deben sobrevivir al reinicio.** systemd monta `/tmp` con `nr_inodes=1m`, y un remount hecho a mano se pierde al reiniciar. Para que el ajuste sea permanente, crea un drop-in que copia la línea de la unidad cambiando solo `1m` por `4m`:
+
+```bash
+sudo mkdir -p /etc/systemd/system/tmp.mount.d
+printf '%s\n' '[Mount]' 'Options=mode=1777,strictatime,nosuid,nodev,size=50%%,nr_inodes=4m,x-systemd.graceful-option=usrquota' \
+  | sudo tee /etc/systemd/system/tmp.mount.d/inodos.conf
+sudo systemctl daemon-reload
+systemctl cat tmp.mount | grep '^Options=' | tail -1   # debe decir nr_inodes=4m
+```
+
+Compruébalo con `systemctl cat`, no con `systemctl show -p Options`: este último enseña el montaje en vivo, así que da por bueno un remount que se perderá al reiniciar.
+
+**WSL: trabaja en ext4, no en `/mnt/c`.** `git status` tardó 2,7 s en un repo de 688 ficheros en `/mnt/c`, frente a milisegundos en `~/repos`. Para mover un repo, cópialo con `rsync -aH` y luego ejecuta `git worktree repair`. No lo clones: perderías los commits sin subir, los cambios sin confirmar y los worktrees.
 
 ## 7 · Desinstalar
 

@@ -29,12 +29,13 @@ fallar la comprobación entera por una herramienta que ya no hace falta. Compru�
 jq --version || echo "sin jq: los hooks funcionan igual (usan python3); doctor.sh no"
 ```
 
-Si falta `pnpm`, actívalo con corepack (viene con Node ≥ 16.9, no hace falta instalar nada por pipe a shell):
+Si falta `pnpm`, instálalo como binario independiente en `$PNPM_HOME/bin`. No hace falta ningún pipe a shell, y deja de depender de la versión de Node:
 
 ```bash
-corepack enable
-corepack prepare pnpm@latest --activate
+PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}" npm exec -y --package=pnpm@latest -- pnpm self-update
 ```
+
+No uses `corepack`: Node ≥ 25 ya no lo incluye. Con nvm, además, el shim vive dentro del `bin` de una versión concreta de Node, así que un `nvm alias default` a otra versión hace desaparecer `pnpm` del `PATH` sin dar ningún error. `doctor.sh` avisa de ambos casos.
 
 **Aviso conocido (pnpm ≥ 11)**: desde la v11, pnpm movió el directorio de binarios globales de `$PNPM_HOME` a `$PNPM_HOME/bin`. Si tu `.bashrc`/`.zshrc` lo generó un `pnpm setup` de una versión anterior, solo tendrás en el `PATH` la ruta vieja, y todo lo que instales después con `pnpm add -g` (incluido `agent-browser`, ver `04-superpowers.md`) quedará invisible para el shell aunque la instalación termine sin ningún error. Comprueba que la ruta activa está en tu `PATH`:
 
