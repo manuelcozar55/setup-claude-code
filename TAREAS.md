@@ -473,3 +473,14 @@ medio o alto — alto exige confirmación humana antes de ejecutar.)
 - criterios:
   - [ ] Wave 6 todo 26. Prueba la HISTORIA COMPLETA que el todo 26 pide como una sola secuencia determinista: migracion a perfiles sobre home endurecido Y limpio (mismo owned-digest canonico), update twice sin deriva, doctor owned-clean/owned-drifted, uninstall retira owned-clean y PRESERVA owned-drifted, NO unmanaged loss (fichero de usuario sobrevive bytes+modo), rollback por backup con hashes/modes exactos, crash por WAL corrupto (tercer estado) que bloquea en cerrado sin dejar el target a medias, y determinismo por repeticion (mismo ledger canonico y owned-digest en dos homes).
 
+
+## T-039 · el salto del rollback fabricaba dos aprobados: sin zip/unzip la suite salia 24/0 sin ejecutar la clausula
+
+- estado: hecha
+- oráculo: `sed "s|^if command -v zip .*|if false; then|" kit/test/test_migration_lifecycle.sh > kit/test/.probe-sinzip.sh && bash kit/test/.probe-sinzip.sh; rc=$?; rm -f kit/test/.probe-sinzip.sh; [ $rc -ne 0 ]`
+- riesgo: medio
+- clase: sensor
+- timeout: 5min
+- criterios:
+
+  Defecto en el entregable del todo 26 (T-038). La rama `else` del bloque de rollback imprimia dos lineas "ok - ..." y sumaba dos a `pass`: en una maquina sin zip/unzip la suite declaraba "24 passed, 0 failed" habiendo SALTADO justo la clausula que el todo 26 exige ("restore backup", "exact rollback hashes/modes"), y el total no lo delataba. Es la misma clase de sensor mentiroso que el plan entero persigue, dentro de la prueba que debia demostrar el rollback. Se sustituye por dos aserciones que FALLAN: un salto no es un aprobado, se declara en rojo. Sonda: desactivar la rama con `if false` y exigir que la suite salga distinto de 0.

@@ -174,8 +174,13 @@ if command -v zip >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
   ck "$(stat -c '%a' "$CLAUDE_HOME/settings.json")" "$set_mode" "rollback por backup: modo exacto restaurado"
   unset HOME CLAUDE_HOME BACKUP_DIR
 else
-  echo "ok - (rollback por backup omitido: falta zip/unzip) — installer_core cubre el ciclo owned"
-  pass=$((pass+1)); pass=$((pass+1))
+  # Sin zip/unzip el rollback por backup NO se puede probar. Antes esta rama
+  # imprimia dos lineas "ok -" y sumaba dos a `pass`: el suite salia
+  # "24 passed, 0 failed" habiendo saltado justo la clausula que el todo 26
+  # exige ("restore backup", "exact rollback hashes/modes"), y el total no lo
+  # delataba. Un salto no es un aprobado: se declara en ROJO.
+  ck "no" "si" "zip/unzip presentes: sin ellos el rollback por backup no se ejecuta y no puede darse por pasado"
+  ck "no" "si" "rollback por backup ejecutado (bytes y modo exactos)"
 fi
 
 # ============================================================================
