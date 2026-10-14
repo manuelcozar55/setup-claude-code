@@ -59,7 +59,7 @@ Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`. Las tarj
 ```bash
 cd kit/mods/cockpit
 claude plugin validate .                          # Validation passed
-claude plugin test .                              # 20 pass, 0 fail
+claude plugin test .                              # 28 pass, 0 fail
 pnpm dlx --package=typescript@5 tsc -p .          # rc=0
 bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin red ni claude
 ```

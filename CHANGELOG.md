@@ -14,6 +14,8 @@ etiquetado.
   contadores en una sola línea y misión plegada de verdad por defecto (el `Button` no
   acotaba el truncado de su hijo; ahora se corta a mano). Los tests miden el texto
   dibujado, no las props.
+  La misión solo la fija un prompt de la persona: una notificación de tarea en segundo plano
+  ya no la pisa con su texto `<task-notification>`.
 - **El kit instala las skills del método de trabajo.** `kit/claude/skills/` trae
   `deep-change` (bucle operativo: plan, informe vivo de cambios, contención de riesgo) y
   cinco skills de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su
