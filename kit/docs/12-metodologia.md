@@ -21,7 +21,7 @@ flowchart TD
     SA --> VE["<b>Verificar con evidencia</b><br/>rojo → verde"]
     VE -->|"rojo"| SA
     VE -->|"verde"| CO["<b>Contención</b><br/>copia aislada → producción aparte"]
-    CO --> CL["Informe vivo <code>*-cambios.md</code>"]
+    CO --> CL["Commits con su porqué<br/>+ <code>nucleo.md</code> al día"]
     CL --> CI{"¿cambio de<br/>sesión?"}
     CI -->|"sí"| HO(["<b>/handoff</b>"])
     CI -->|"no"| RT(["<b>/retro</b>"])
@@ -79,8 +79,9 @@ o toca seguridad o producción. Sus fases:
 
 Dos hábitos que el tooling no hace por ti:
 
-- **Informe vivo `<tema>-cambios.md`**: una entrada por modificación, escrita sobre la marcha,
-  con *qué cambió · por qué · cómo se verificó*. Se abre antes de la primera edición.
+- **Registro = commits + `nucleo.md`**: cada commit dice qué y por qué; cada `[x]` del Plan en
+  `.claude/estado/nucleo.md` nombra el comando que lo verificó. Sin `*-cambios.md` aparte: quedó
+  vacío en dos sesiones seguidas. El hook Stop bloquea una vez si commiteas y nucleo no se movió.
 - **Libro de contención**: en todo momento queda dicho qué está hecho en la copia aislada y qué
   está ya en producción. Si ya existe una instrucción explícita de aplicar lo revisado, no se
   vuelve a preguntar.

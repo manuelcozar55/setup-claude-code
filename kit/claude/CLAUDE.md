@@ -103,7 +103,7 @@ Clarify *before* starting (IntentGate). Once execution begins: no mid-task "shou
 For substantial / ambiguous / irreversible / security- or production-touching work, run the
 **`deep-change`** skill (`~/.claude/skills/deep-change/SKILL.md`): brainstorm → plan → execute →
 verify, composing the `superpowers` skills, plus two habits that make the result trustworthy —
-a **living change report** (`*-cambios.md`, one entry per edit: what / why / how verified) and
+a **change record** (commits with their why + `nucleo.md` plan ticked with the verifying command) and
 **risk containment** (build and validate in an isolated copy; apply to production only as a
 separate, explicitly-confirmed step with a known rollback). Invoke it with `/deep-change`, or let
 it auto-engage on those conditions.
