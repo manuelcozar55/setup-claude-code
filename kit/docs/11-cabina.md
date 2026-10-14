@@ -37,10 +37,10 @@ flowchart LR
   B --> C["Redacción de secretos"]
   C --> D["Fichero en TMPDIR<br/>handoff-proyecto-AAAAMMDD-HHMM.md"]
   D --> E{"¿solo?"}
-  E -- sí --> F["Fin: ruta en pantalla"]
-  E -- no --> G["/clear"]
+  E -->|"sí"| F["Fin: ruta en pantalla"]
+  E -->|"no"| G["/clear"]
   G --> H["Retomar: prompt que lee el documento"]
-  G -. falla .-> I["Prompt rellenado, escribe /clear a mano"]
+  G -.->|"falla"| I["Prompt rellenado, escribe /clear a mano"]
 ```
 
 ## Agent Dock
