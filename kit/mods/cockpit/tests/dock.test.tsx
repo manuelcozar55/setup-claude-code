@@ -79,3 +79,10 @@ test('dock: la misión nace plegada en una línea y un clic la despliega y la pl
   await ui.press({ key: 'mission' })
   expect(await ui.find({ text: LONG })).toBeFalsy()
 })
+
+test('dock: una notificación de tarea no pisa la misión de la persona', async ($, on) => {
+  const ui = await mountDock($ as never, on as never, 56, 'Revisar el checkout')
+  await ($ as any).prompt.submit({ text: '<task-notification>done</task-notification>', wait: false, origin: { kind: 'task-notification' } })
+  expect(await ui.find({ text: /task-notification/ })).toBeFalsy()
+  expect(await ui.find({ text: /Revisar el checkout/ })).toBeTruthy()
+})

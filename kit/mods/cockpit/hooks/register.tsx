@@ -274,7 +274,8 @@ export const register: Register = on => {
   // Notes ride the prompt as hidden context, so toggling a mode never rewrites the cached system prompt.
   on('prompt.submit', async ($, e, next) => {
     if (e.isMeta || e.command) return next(e)
-    if (e.turnId === undefined) {
+    // Only the person's own prompts set the mission; a task notification is not one.
+    if (e.turnId === undefined && ['composer', 'bridge', 'sdk'].includes(e.origin.kind)) {
       const mission = e.text.split('\n').find(l => l.trim())?.trim() ?? ''
       await update($, turn, t => ({ ...t, mission }))
       await update($, tasks, () => [])
