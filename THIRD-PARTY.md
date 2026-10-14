@@ -109,8 +109,12 @@ este repositorio; se listan por transparencia.
 | [gitleaks](https://github.com/gitleaks/gitleaks) | MIT | lo descarga el usuario o el CI, con versión y checksum fijados; ver `kit/docs/02-install.md` |
 | [Headroom](https://github.com/headroomlabs-ai/headroom) | Apache-2.0 | componente de terceros opcional; el kit no lo instala, ver `kit/docs/03-headroom.md` |
 | [rtk](https://github.com/rtk-ai/rtk) | Apache-2.0 | opcional; el kit no lo cablea ni lo invoca — solo lo deja permitido en `permissions.allow` |
+| [ponytail](https://github.com/DietrichGebert/ponytail) | MIT | plugin; lo instala `kit/install-plugins.sh --apply` desde su marketplace |
+| [ui-ux-pro-max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | MIT | plugin; lo instala `kit/install-plugins.sh --apply` desde su marketplace |
+| [impeccable](https://github.com/pbakaus/impeccable) | Apache-2.0 | plugin opcional; `kit/install-plugins.sh --apply --with-optional` |
+| [find-skills](https://github.com/vercel-labs/skills) | MIT | skill opcional; `kit/install-plugins.sh --apply --with-optional` vía `npx skills add` |
 
-Las tres licencias de esta tabla se comprobaron contra la API de GitHub, no contra
+Las licencias de esta tabla se comprobaron contra la API de GitHub, no contra
 la documentación de cada proyecto.
 
 ---

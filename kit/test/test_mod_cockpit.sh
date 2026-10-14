@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# test_mod_cabina.sh — estructura y saneado del mod `cabina` (kit/mods/cabina).
+# test_mod_cockpit.sh — estructura y saneado del mod `cockpit` (kit/mods/cockpit).
 # Sin red y sin el CLI `claude`: si esta en PATH ademas corre `plugin validate`,
 # si no imprime SKIP. Los terminos privados se construyen por concatenacion para
 # que ni esta suite los contenga como literal.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-MOD="$HERE/../mods/cabina"
+MOD="$HERE/../mods/cockpit"
 tmp="$(mktemp -d)"; trap 'rm -r "$tmp"' EXIT
 pass=0; fail=0
 check() { if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 (got $1 want $2)"; fail=$((fail+1)); fi; }
@@ -18,7 +18,7 @@ leaks() { find "$1" \( -name node_modules -o -path '*/.claude-plugin/types' \) -
 name="$(jq -r '.name // empty' "$MOD/.claude-plugin/plugin.json" 2>/dev/null || true)"
 check "${name:+ok}" "ok" "plugin.json es JSON valido y tiene name"
 for f in hooks/register.tsx hooks/hooks.json tsconfig.json .gitignore types/index.d.ts \
-         tests/cabina.test.tsx tests/dock.test.tsx tests/handoff.test.tsx; do exists "$f"; done
+         tests/cockpit.test.tsx tests/dock.test.tsx tests/handoff.test.tsx; do exists "$f"; done
 check "$(jq -r '.modules[0]' "$MOD/hooks/hooks.json")" "./register.tsx" "hooks.json apunta a register.tsx"
 check "$(grep -c 'claude-plugin/types' "$MOD/.gitignore")" "1" "tipos generados por Claude Code gitignorados"
 check "$(find "$MOD" -name node_modules -prune -o -path '*/.claude/*' -print | wc -l | tr -d ' ')" "0" "sin estado privado (.claude/)"

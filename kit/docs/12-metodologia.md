@@ -117,7 +117,7 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
 
 ## 6 · Cambiar de sesión y cerrar el ciclo
 
-- **`/handoff`** (mod [`cabina`](11-cabina.md)) escribe un documento de traspaso —objetivo,
+- **`/handoff`** (mod [`cockpit`](11-cockpit.md)) escribe un documento de traspaso —objetivo,
   invariantes, plan, paso actual, pendientes, comandos de verificación—, limpia el contexto y
   retoma desde él. Con `solo` guarda el documento y no limpia nada.
 - **`/retro`** cierra el ciclo: revisa una sesión y propone mejoras al **entorno** del agente
@@ -155,7 +155,7 @@ Por eso `CLAUDE.md` de este repo tiene un techo de tamaño que vigila
 |---|---|
 | Skills `deep-change`, `grilling`, `domain-modeling`, `writing-for-agents`, `retro`, `to-questionnaire` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
 | Agentes | `install.sh` los copia a `$CLAUDE_HOME/agents/` |
-| Mod `cabina` (`/handoff`, Agent Dock) | **No** lo instala `install.sh`: se carga con `--plugin-dir` ([doc 11](11-cabina.md)) |
+| Mod `cockpit` (`/handoff`, Agent Dock) | **No** lo instala `install.sh`: se carga con `--plugin-dir` ([doc 11](11-cockpit.md)) |
 
 Las skills `grilling`, `writing-for-agents`, `domain-modeling`, `retro` y `to-questionnaire`
 derivan de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su licencia en
