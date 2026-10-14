@@ -1451,7 +1451,12 @@ hr_check "todo plugin que nombra la doc esta declarado en enabledPlugins de sett
 GUARDS=$(jq -r '[.hooks.PreToolUse[] | . as $h
                  | select((($h.matcher // "") != "") and ("Bash" | test("^(" + $h.matcher + ")$")))
                  | .hooks[].command | select(test("optional-hook") | not)] | length' "$SETTINGS")
-GUARDS_JQ=$(grep -lE '\bjq\b' kit/claude/hooks/*.sh 2>/dev/null | wc -l | tr -d ' ')
+# Solo los ficheros de esos guards: otros hooks (session-start-clear.sh) tambien leen con jq
+# y no son guards; contarlos tumbaba la frase de 10-onboarding.md, que sigue siendo cierta.
+GUARDS_JQ=$(jq -r '.hooks.PreToolUse[] | . as $h
+                   | select((($h.matcher // "") != "") and ("Bash" | test("^(" + $h.matcher + ")$")))
+                   | .hooks[].command | select(test("optional-hook") | not)' "$SETTINGS" \
+            | sed 's|.*/hooks/|kit/claude/hooks/|; s| .*||' | xargs grep -lE '\bjq\b' 2>/dev/null | wc -l | tr -d ' ')
 if [ "$GUARDS" = "$GUARDS_JQ" ]; then
   claim "$GUARDS" guards "$SECDOC" "$ONBDOC"
 else
