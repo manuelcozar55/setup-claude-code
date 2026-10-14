@@ -12,10 +12,7 @@ Alcance
 
 La licencia MIT de `LICENSE` cubre el SOFTWARE de este repositorio — todo lo que
 vive bajo `kit/` (scripts, hooks, guards, tests, evals, plantillas de
-configuración) y los scripts de `.github/`. La documentación de las charlas (los
-decks "agentes-fundamentos" y "setup-claude-code-definitiva", sus guiones y
-diagramas originales) se distribuye por separado bajo CC BY 4.0: ver
-`LICENSE-DOCS`.
+configuración) y los scripts de `.github/`.
 
 Terceros
 --------

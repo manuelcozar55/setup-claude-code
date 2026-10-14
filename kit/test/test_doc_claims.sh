@@ -5,8 +5,8 @@
 # excepcion: decia "16 suites" con 23 en el Makefile, "8 documentos" con 9, y citaba
 # hooks borrados. Nada se ponia rojo porque nadie medía el texto. Esto lo mide.
 #
-# Cubre solo documentos que hablan en PRESENTE del estado del repo. Quedan fuera a
-# proposito knowledge/DECISIONS/ y docs/superpowers/: son registros fechados, y una
+# Cubre solo documentos que hablan en PRESENTE del estado del repo. Queda fuera a
+# proposito knowledge/DECISIONS/: son registros fechados, y una
 # cifra de 2026-08 ahi es correcta aunque hoy sea otra. De CHANGELOG.md entra solo la
 # seccion [Unreleased], que describe el arbol de HOY; sus secciones publicadas quedan
 # fuera por lo mismo que los ADR, y el porque esta abajo, junto al recorte.
@@ -1465,8 +1465,7 @@ fi
 # pasado. Se juzgan dos cosas: (a) los comandos de hook del settings, donde no puede
 # aparecer, y (b) toda linea del arbol versionado que lo nombre, que tiene que decir a la
 # vez que se retiro. Quedan fuera CHANGELOG.md y knowledge/ por lo mismo que en §1: son
-# registros fechados y ahi la frase era cierta el dia que se escribio -docs/superpowers/ ya
-# esta fuera de DOCS por eso mismo-, y este propio fichero, que contiene la cadena porque es
+# registros fechados y ahi la frase era cierta el dia que se escribio, y este propio fichero, que contiene la cadena porque es
 # quien la busca.
 #
 # A la mitad (b) NO se le exige haber juzgado alguna linea, y es la misma excepcion razonada
@@ -1501,7 +1500,7 @@ rtk_no_cableado() {
 # para no depender de que el arbol sea un repo con indice.
 RTK_FICHEROS=$(grep -rl 'rtk hook claude' . --exclude-dir=.git 2>/dev/null \
                | sed 's|^\./||' \
-               | grep -vE '^(CHANGELOG\.md|knowledge/|docs/superpowers/|kit/test/test_doc_claims\.sh)' \
+               | grep -vE '^(CHANGELOG\.md|knowledge/|kit/test/test_doc_claims\.sh)' \
                | sort | tr '\n' ' ')
 # shellcheck disable=SC2086 # la lista de ficheros se parte a proposito
 hr_check "ningun hook del kit cablea 'rtk hook claude' y ninguna linea lo afirma en presente" \

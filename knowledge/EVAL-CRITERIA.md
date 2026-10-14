@@ -445,7 +445,8 @@ fallo peligroso— se confirma en los tres transcripts que sobreviven.
   correr en los tres brazos con los checks reparados (6 llamadas). Lo que sigue pendiente
   no es el lift: es **una fila**, la tirada 12/`on`/08:20, retirada por `excluded`, y la
   cierra una sola llamada de pago. El plan está en
-  `docs/superpowers/plans/2026-08-27-en-vez-de-migrar.md`.
+  `docs/superpowers/plans/2026-08-27-en-vez-de-migrar.md` (retirado del árbol en la limpieza
+  final; sigue en el historial de git).
 
 - **`sin-skills` y `sin-mcp` no medían nada.** En las 26 tiradas del brazo completo hubo
   **cero** invocaciones de `Skill` y cero de MCP: el agente corre en un `mktemp -d` y las

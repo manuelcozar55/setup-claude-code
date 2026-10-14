@@ -27,6 +27,13 @@ etiquetado.
   Doc: `kit/docs/08-plugins-mcp-y-skills.md`. Sensor: `kit/test/test_install_plugins.sh`,
   sin red (dobles de `claude`/`npx`/`pnpm`), falsable.
 
+### Removed
+
+- **`charlas/` y `docs/superpowers/` salen del árbol.** Las charlas tenían su propia
+  audiencia y `docs/superpowers/` eran planes y registros de proceso ya ejecutados; el repo
+  queda centrado en el kit y el harness. Con las charlas se va `LICENSE-DOCS` (CC BY 4.0, que
+  solo las cubría): el repo queda bajo MIT. Todo sigue en el historial de git.
+
 ### Documentation
 
 - **`LICENSE` es ahora el texto MIT literal: renombrarlo no bastaba.** En la 1.2.0 se
