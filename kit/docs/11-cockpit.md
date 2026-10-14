@@ -1,21 +1,27 @@
 # 11 · Cockpit: handoff y Agent Dock
 
-`kit/mods/cockpit/` es un mod de Claude Code (plugin de *function hooks*, superficie de acceso temprano: puede cambiar entre versiones). Aporta dos cosas y es opt-in: nada del kit lo carga por ti.
+`kit/mods/cockpit/` es un mod de Claude Code (plugin de *function hooks*, superficie de acceso temprano: puede cambiar entre versiones). Aporta dos cosas y es opt-in: `install.sh` no lo carga.
 
 ## Qué hace
 
 - **`/handoff`**: pide al modelo un documento de traspaso, lo guarda en el directorio temporal del SO, limpia el contexto (`/clear`) y retoma desde el documento.
-- **Agent Dock**: un panel lateral con una tarjeta por subagente (estado, actividad, tiempo), a una columna. También lleva el vigía de contexto con handoff sobre el prompt y `/simple` (modo de pasos con resumen corto).
+- **Agent Dock**: un panel lateral con una tarjeta por subagente (estado, actividad, tiempo), a dos columnas. También lleva el vigía de contexto con handoff sobre el prompt y `/simple` (modo de pasos con resumen corto).
 
 ## Cómo se carga
 
-```bash
-claude --plugin-dir <ruta>/kit/mods/cockpit
-# o, para todas las sesiones de ese entorno:
-export CLAUDE_CODE_PLUGIN_DIRS=<ruta>/kit/mods/cockpit
+Este repo es un marketplace (`.claude-plugin/marketplace.json`). Para todas tus sesiones, en scope user, desde el prompt de una sesión de terminal:
+
+```
+/plugin install cockpit --marketplace manuelcozar55/setup-claude-code
 ```
 
-`CLAUDE_CODE_PLUGIN_DIRS` está citada por el propio binario de Claude Code. Para dejar de cargarlo, quita la variable (o la entrada del bloque `env` de settings que la define).
+o desde la shell: `claude plugin install cockpit --marketplace manuelcozar55/setup-claude-code` (también lo hace `kit/install-plugins.sh --apply`). Se actualiza con `claude plugin update cockpit@setup-claude-code` y se quita con `claude plugin uninstall cockpit@setup-claude-code`.
+
+Para desarrollarlo desde una copia de trabajo, sin instalar:
+
+```bash
+claude --plugin-dir <ruta>/kit/mods/cockpit
+```
 
 ## `/handoff`
 
@@ -45,14 +51,14 @@ flowchart LR
 
 ## Agent Dock
 
-Se abre solo al iniciar sesión (columna de 58 de ancho) y con `/dock`. Cada subagente tiene su tarjeta con descripción, estado, última actividad y cuenta de herramientas; el panel resume además el equipo y deja elegir el tamaño de equipo, que viaja al modelo como contexto oculto del prompt. Los tests lo renderizan a 24, 28 y 56 columnas comprobando que no se corta ningún control.
+Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`. Las tarjetas van a dos columnas desde 44 de ancho útil (a una por debajo): cabecera con `T<n>`, descripción y tiempo, una línea de estado y una barra fina con el porcentaje o la cuenta de herramientas (`5h`). La misión se pliega en una línea; un clic (o Enter con el foco) la despliega entera. Los contadores trabajando · en cola · hechos · atascados van en una sola línea. El tamaño de equipo viaja al modelo como contexto oculto del prompt. Los tests lo renderizan a 24, 28, 56 y 62 columnas.
 
 ## Tests
 
 ```bash
 cd kit/mods/cockpit
 claude plugin validate .                          # Validation passed
-claude plugin test .                              # 16 pass, 0 fail
+claude plugin test .                              # 18 pass, 0 fail
 pnpm dlx --package=typescript@5 tsc -p .          # rc=0
 bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin red ni claude
 ```

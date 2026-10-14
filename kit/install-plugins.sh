@@ -20,6 +20,7 @@ RECOMMENDED=(
   "- frontend-design@claude-plugins-official"
   "DietrichGebert/ponytail ponytail@ponytail"
   "nextlevelbuilder/ui-ux-pro-max-skill ui-ux-pro-max@ui-ux-pro-max-skill"
+  "manuelcozar55/setup-claude-code cockpit@setup-claude-code"
 )
 # impeccable descarga un binario y lo ejecuta desde hooks en cada edicion: solo a peticion.
 OPTIONAL=(

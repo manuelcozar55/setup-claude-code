@@ -1,0 +1,12 @@
+{
+  "name": "setup-claude-code",
+  "owner": { "name": "setup-claude-code" },
+  "description": "Mods del kit setup-claude-code",
+  "plugins": [
+    {
+      "name": "cockpit",
+      "source": "./kit/mods/cockpit",
+      "description": "Vigía de contexto con /handoff sobre el prompt, Agent Dock a la derecha y modo simple de pasos"
+    }
+  ]
+}

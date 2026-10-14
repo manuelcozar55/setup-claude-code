@@ -43,6 +43,7 @@ declare module 'claude-code' {
       handoff: Handoff
       turn: Turn
       now: number
+      isMissionOpen: boolean
     }
   }
 }

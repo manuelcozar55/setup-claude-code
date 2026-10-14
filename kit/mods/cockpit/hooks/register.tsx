@@ -15,6 +15,7 @@ const summary = atom({ plugin: 'cockpit', key: 'summary' } as const, '')
 const handoff = atom({ plugin: 'cockpit', key: 'handoff' } as const, { phase: 'idle' } as Handoff)
 const turn = atom({ plugin: 'cockpit', key: 'turn' } as const, { isRunning: false, startedAt: 0, activity: '', mission: '' } as Turn)
 const now = atom({ plugin: 'cockpit', key: 'now' } as const, 0)
+const isMissionOpen = atom({ plugin: 'cockpit', key: 'isMissionOpen' } as const, false)
 
 const PINK = '#ff4f9a'
 const DONE = new Set(['completed', 'failed', 'killed'])
@@ -75,6 +76,8 @@ const scanner = (tick: number, width: number) => {
   const at = Math.floor(tick / 1500) % Math.max(1, width - 2)
   return '░'.repeat(at) + '███' + '░'.repeat(Math.max(0, width - at - 3))
 }
+// The dock draws its bars as a thin line; the band keeps the solid block.
+const thin = (s: string) => s.replace(/█/g, '━').replace(/░/g, '─')
 const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}K` : String(n))
 const clock = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000))
@@ -234,12 +237,12 @@ export const register: Register = on => {
     })
     $.clock.every(1500, () => void syncAgents($).catch(() => undefined))
     softRefresh($, true)
-    void $.ui.open({ id: DOCK, title: 'Agent Dock', columns: 58 })
+    void $.ui.open({ id: DOCK, title: 'Agent Dock', columns: 66 })
     return next(e)
   })
 
   on('command.run', { command: 'dock' }, async $ => {
-    await $.ui.open({ id: DOCK, title: 'Agent Dock', columns: 58, focus: true })
+    await $.ui.open({ id: DOCK, title: 'Agent Dock', columns: 66, focus: true })
     return { text: 'Agent Dock abierto.' }
   })
 
@@ -515,7 +518,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: DOCK }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const cols = Math.max(24, e.props.bodyColumns)
-    const [ag, ts, tn, size, t] = await Promise.all([read($, agents), read($, tasks), read($, turn), read($, team), read($, now)])
+    const [ag, ts, tn, size, t, isOpen] = await Promise.all([read($, agents), read($, tasks), read($, turn), read($, team), read($, now), read($, isMissionOpen)])
     const tick = Math.max(t, tn.startedAt)
     const isStuck = (a: AgentRow) => !DONE.has(a.status) && a.status !== 'pending' && tick - a.lastActiveAt > STUCK_MS
     const working = ag.filter(a => a.status === 'running' || a.status === 'waiting' || a.status === 'idle').filter(a => !isStuck(a))
@@ -531,21 +534,21 @@ export const register: Register = on => {
         ? Math.round((missionAgents.filter(a => DONE.has(a.status)).length / missionAgents.length) * 100)
         : tn.isRunning ? undefined : 100
 
-    const cardW = cols
+    const cardW = cols >= 44 ? Math.floor((cols - 1) / 2) : cols
     const badges = ['claude', 'permission', 'success', 'warning', 'suggestion', 'autoAccept'] as const
     const card = (a: AgentRow, n: number) => {
       const isDone = a.status === 'completed'
       const isBad = isStuck(a) || a.status === 'failed' || a.status === 'killed'
       const color = isDone ? 'success' : isBad ? 'error' : a.status === 'pending' ? 'inactive' : 'permission'
-      const barW = Math.max(6, cardW - 14)
+      const barW = Math.max(6, cardW - 10)
       return (
         <Box key={a.id} width={cardW} flexDirection="column" borderStyle="round" borderColor={color} paddingX={1}>
-          <Box justifyContent="space-between">
+          <Box gap={1}>
             <Text inverse color={badges[n % badges.length]}> T{n + 1} </Text>
+            <Box flexGrow={1} flexShrink={1}><Text bold wrap="truncate-end">{a.description || a.type}</Text></Box>
             <Text dimColor>{clock((a.endedAt ?? tick) - a.startedAt)}</Text>
           </Box>
-          <Text bold wrap="wrap">{a.description || a.type}</Text>
-          <Text wrap="wrap">
+          <Text wrap="truncate-end">
             {isDone ? <Text color="success">✓ Hecho</Text>
               : a.status === 'failed' ? <Text color="error">✗ Falló</Text>
               : a.status === 'killed' ? <Text color="error">■ Detenido</Text>
@@ -554,8 +557,8 @@ export const register: Register = on => {
               : <Text><Text color="permission">● Trabajando</Text> <Text dimColor>{a.activity}</Text></Text>}
           </Text>
           <Text>
-            <Text color={color}>{isDone ? bar(100, barW) : DONE.has(a.status) || a.status === 'pending' ? bar(0, barW) : scanner(tick, barW)}</Text>{' '}
-            <Text dimColor>{isDone ? '100%' : `${a.tools} herr.`}</Text>
+            <Text color={color}>{thin(isDone ? bar(100, barW) : DONE.has(a.status) || a.status === 'pending' ? bar(0, barW) : scanner(tick, barW))}</Text>{' '}
+            <Text dimColor>{isDone ? '100%' : `${a.tools}h`}</Text>
           </Text>
         </Box>
       )
@@ -591,22 +594,24 @@ export const register: Register = on => {
               <Text dimColor>{tn.isRunning ? clock(tick - tn.startedAt) : ''}</Text>
             </Text>
           </Box>
-          <Text bold wrap="wrap">{tn.mission || '—'}</Text>
-          <Text color="claude">{missionPct === undefined ? scanner(tick, cols) : bar(missionPct, cols)}</Text>
+          <Button key="mission" plain onPress={() => update($, isMissionOpen, v => !v)}>
+            <Text bold wrap={isOpen ? 'wrap' : 'truncate-end'}>{isOpen ? '▾ ' : '▸ '}{tn.mission || '—'}</Text>
+          </Button>
+          <Text color="claude">{thin(missionPct === undefined ? scanner(tick, cols) : bar(missionPct, cols))}</Text>
         </Box>
-        <Box flexWrap="wrap" columnGap={2}>
-          <Text color="permission">● {working.length} trabajando</Text>
-          <Text dimColor>○ {queued.length} en cola</Text>
-          <Text color="success">✓ {finished.length} hechos</Text>
+        <Text wrap="truncate-end">
+          <Text color="permission">● {working.length} trabajando</Text>{'  '}
+          <Text dimColor>○ {queued.length} en cola</Text>{'  '}
+          <Text color="success">✓ {finished.length} hechos</Text>{'  '}
           <Text color={stuck.length ? 'error' : 'inactive'}>× {stuck.length} atascados</Text>
-        </Box>
+        </Text>
         {tn.isRunning && (
           <Text dimColor wrap="wrap">principal · {tn.activity}</Text>
         )}
         {shown.length === 0 ? (
           <Text dimColor>Ningún subagente en esta sesión. Elige un tamaño de equipo para que Claude reparta el trabajo.</Text>
         ) : (
-          <Box flexDirection="column">{shown.map(a => card(a, order.get(a.id) ?? 0))}</Box>
+          <Box flexWrap="wrap" columnGap={1}>{shown.map(a => card(a, order.get(a.id) ?? 0))}</Box>
         )}
       </Box>
     )

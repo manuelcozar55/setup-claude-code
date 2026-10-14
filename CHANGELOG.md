@@ -26,6 +26,11 @@ etiquetado.
   `--with-optional` `impeccable` y `find-skills`. Opt-in y diff-first; no copia nada al repo.
   Doc: `kit/docs/08-plugins-mcp-y-skills.md`. Sensor: `kit/test/test_install_plugins.sh`,
   sin red (dobles de `claude`/`npx`/`pnpm`), falsable.
+- **Cockpit instalable para todas las sesiones y Agent Dock a dos columnas.** El repo es un
+  marketplace (`.claude-plugin/marketplace.json`): `/plugin install cockpit --marketplace
+  manuelcozar55/setup-claude-code`, y `install-plugins.sh` lo incluye. El dock pasa a dos
+  columnas con barra fina, contadores en una línea y misión plegable con un clic; test
+  falsable en `tests/dock.test.tsx`.
 
 ### Removed
 
