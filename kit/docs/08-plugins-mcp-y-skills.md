@@ -22,6 +22,28 @@ Los cuatro primeros se activan (o reinstalan si hiciera falta) con el comando in
 /plugin
 ```
 
+## Plugins de terceros recomendados: `install-plugins.sh`
+
+Lo que no viene en `settings.json` lo instala `kit/install-plugins.sh` desde su marketplace de origen, en scope `user`. Es opt-in y diff-first, como `install.sh`: sin `--apply` solo imprime los comandos. Nada de esto se copia al repo; licencias en `THIRD-PARTY.md`.
+
+```bash
+bash kit/install-plugins.sh                          # ver qué haría
+bash kit/install-plugins.sh --apply                  # recomendados
+bash kit/install-plugins.sh --apply --with-optional  # + impeccable y find-skills
+```
+
+| Plugin / skill | Origen · licencia | Para qué | Riesgo que asumes |
+|---|---|---|---|
+| `superpowers` · `frontend-design` | `claude-plugins-official` · MIT / Apache-2.0 | el método y diseño de interfaces | ninguno nuevo: ya están en `enabledPlugins` |
+| `ponytail` | `DietrichGebert/ponytail` · MIT | modo «senior perezoso»: el cambio mínimo completo, respuestas cortas | instala hooks globales (`SessionStart`, `UserPromptSubmit`, `SubagentStart`) que cambian el estilo de todas las sesiones; se apaga con «stop ponytail» |
+| `ui-ux-pro-max` | `nextlevelbuilder/ui-ux-pro-max-skill` · MIT | catálogo de estilos, paletas y tipografías para UI | scripts Python que solo leen sus CSV locales |
+| `impeccable` (opcional) | `pbakaus/impeccable` · Apache-2.0 | diseño, crítica y pulido de interfaces | descarga un binario de GitHub Releases y sus hooks lo ejecutan en cada edición |
+| `find-skills` (opcional) | `vercel-labs/skills` · MIT | buscar e instalar skills del ecosistema | habilita instalar código ajeno con `npx skills add`; revísalo antes de aceptar |
+
+Con `--apply` das tu consentimiento: `--yes` aprueba sin preguntar los comandos que declare cada marketplace. Límite honesto: `claude plugin install` no fija versión (instala la cabeza del marketplace y `plugin update` la mueve). El commit queda registrado en `~/.claude/plugins/installed_plugins.json`. Si necesitas reproducibilidad estricta, clona el repo al commit que quieras y regístralo con `claude plugin marketplace add <ruta-local>`.
+
+Descartados: las skills `docx`/`pdf`/`xlsx`/`pptx` de Anthropic (licencia propietaria, no redistribuibles) y `webapp-testing` (duplica `agent-browser`).
+
 ## Servidores MCP
 
 Capacidades externas que Claude Code invoca vía el protocolo MCP. Conocidos en este setup:

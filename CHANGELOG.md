@@ -19,6 +19,13 @@ etiquetado.
   redactados, luego `/clear` y retomar) y el pane *Agent Dock*. Se carga con
   `--plugin-dir` o `CLAUDE_CODE_PLUGIN_DIRS`; no lo instala `install.sh`. Doc:
   `kit/docs/11-cockpit.md`. Sensor: `kit/test/test_mod_cockpit.sh`, sin red ni CLI.
+  Al retomar, la sesión nueva ejecuta los comandos de verificación del handoff y responde
+  con un resumen corto antes de seguir: el handoff puede estar desfasado.
+- **`kit/install-plugins.sh`: plugins de terceros por referencia.** Instala desde su
+  marketplace `ponytail` y `ui-ux-pro-max` (más `superpowers` y `frontend-design`), y con
+  `--with-optional` `impeccable` y `find-skills`. Opt-in y diff-first; no copia nada al repo.
+  Doc: `kit/docs/08-plugins-mcp-y-skills.md`. Sensor: `kit/test/test_install_plugins.sh`,
+  sin red (dobles de `claude`/`npx`/`pnpm`), falsable.
 
 ### Documentation
 

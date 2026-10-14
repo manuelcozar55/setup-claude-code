@@ -80,6 +80,8 @@ test('el prompt de retoma exige verificar el estado real y un resumen corto ante
   const p = resumePrompt('/tmp/h.md')
   expect(p).toContain('verifica el estado real')
   expect(p).toContain('Comandos de verificación')
+  expect(p).toContain('solo los de lectura')
+  expect(p).toContain('pídeme confirmación')
   expect(p).toContain('resumen corto')
   expect(p.indexOf('resumen corto')).toBeLessThan(p.indexOf('Paso actual'))
 })

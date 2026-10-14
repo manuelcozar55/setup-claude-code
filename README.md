@@ -73,7 +73,7 @@ flowchart LR
             SK["6 skills<br/>del método"]
             MO["Mod cockpit<br/>/handoff · Agent Dock"]
             EV["evals/<br/>20 tareas"]
-            TS["test/<br/>30 suites falsables"]
+            TS["test/<br/>31 suites falsables"]
         end
     end
     INS{{"install.sh<br/>diff-first"}}
@@ -198,7 +198,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 30 suites falsables | v1.2.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 31 suites falsables | v1.2.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -437,6 +437,7 @@ bash install.sh --with-headroom    # instala, arranca, verifica /readyz, y solo 
 | Sentinel | motor de políticas `PreToolUse` (IOCs), opcional, capa adicional sobre cualquier tool | [`kit/sentinel/`](kit/sentinel/) |
 | 8 agentes con tiering | `orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker` | [`kit/claude/agents/`](kit/claude/agents/) |
 | 6 skills del método | `deep-change`, `grilling`, `domain-modeling`, `writing-for-agents` y las manuales `retro` y `to-questionnaire`; `install.sh` las copia a `~/.claude/skills/` por el camino diff-first | [`kit/claude/skills/`](kit/claude/skills/) · [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) |
+| Plugins de terceros | `ponytail`, `ui-ux-pro-max` y, opcionales, `impeccable` y `find-skills`, instalados por referencia desde su marketplace con `kit/install-plugins.sh` (diff-first) | [`kit/docs/08-plugins-mcp-y-skills.md`](kit/docs/08-plugins-mcp-y-skills.md) |
 | Mod `cockpit` | `/handoff` (traspaso de sesión) y el panel Agent Dock; opt-in, se carga con `--plugin-dir` y no lo instala `install.sh` | [`kit/mods/cockpit/`](kit/mods/cockpit/) · [`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md) |
 | Dos capas de secretos | Capa 1 (`secret-guard.sh`, por nombre de fichero, activa desde el primer `install.sh`) + Capa 2 (`gitleaks` en `pre-commit`, por contenido real, opt-in por repo) | [`kit/docs/05-security.md`](kit/docs/05-security.md) |
 | Eval set | 20 tareas reales (mitad negativas: miden lo que cuesta un falso positivo), dos brazos (con harness y sin el) y agregado con intervalo de confianza; opt-in, cuesta llamadas reales a `claude -p`, nunca corre en CI | [`kit/evals/`](kit/evals/) |
