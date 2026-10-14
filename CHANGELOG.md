@@ -7,6 +7,15 @@ etiquetado.
 
 ## [Unreleased]
 
+### Changed
+
+- **`/handoff` del mod `cockpit` escribe `.claude/estado/nucleo.md`** en la raíz git (o el cwd)
+  en vez de un fichero en `$TMPDIR`: el tmpfs se pierde al reiniciar y duplicaba el
+  `nucleo.md`, que se quedaba desfasado. Con uno previo lo copia a `nucleo.prev.md` y se lo
+  pasa al fork para conservar «Encargo original» e «Invariantes». Secciones nuevas: Encargo
+  original, Siguiente acción, No repetir. Tras `/clear` la sesión ejecuta la «Siguiente
+  acción» en vez de devolver preguntas.
+
 ### Added
 
 - **Agent Dock rediseñado.** Tarjetas sin borde con barra de estado, actividad del agente

@@ -29,20 +29,20 @@ claude --plugin-dir <ruta>/kit/mods/cockpit
 /handoff [solo] [foco de la próxima sesión]
 ```
 
-- Sin argumentos: guarda el documento, hace `/clear` y envía un prompt de retoma: la sesión nueva lee el handoff, verifica el estado real (ejecuta sus comandos de verificación y comprueba que lo «hecho» sigue siéndolo), responde con un resumen corto y después continúa por «Paso actual».
+- Sin argumentos: guarda el documento, hace `/clear` y envía un prompt de retoma: la sesión nueva lee `nucleo.md`, verifica el estado real (ejecuta sus comandos de verificación de solo lectura y comprueba que lo «hecho» sigue siéndolo), resume en ≤5 líneas y ejecuta la «Siguiente acción»; solo pregunta si una sección marca algo como decisión de la persona.
 - `solo`: guarda el documento y no limpia nada.
 - El resto del texto es el **foco**: el documento se adapta a lo que hará la próxima sesión.
 - En la banda sobre el prompt, el botón `handoff` (`h`) pide confirmación con tres acciones: `guardar + /clear` (`y`), `solo guardar` (`g`) y `no guardar + /clear` (`n`: limpia el contexto sin escribir handoff). Las teclas siguen activas aunque no se dibujen. Para cancelar, vuelve a pulsar `handoff`. Durante un turno en marcha solo queda `solo guardar`.
 
-El fichero se escribe en `$TMPDIR`, si no `$TEMP`, si no `/tmp`, con el nombre `handoff-<proyecto>-AAAAMMDD-HHMM.md` (hora UTC; `<proyecto>` es el último segmento del cwd). Antes de escribirlo se redactan claves conocidas (`sk-`, `ghp_`, `AKIA`, `xox*`, JWT) y asignaciones tipo `password=`/`token:` como `[REDACTADO]`. También cubre `Bearer …`, bloques `PRIVATE KEY`, credenciales en URLs (`esquema://usuario:clave@`), `github_pat_`/`glpat-` y valores entrecomillados (incluido JSON). Es una red de seguridad parcial y no garantiza nada: la redacción principal la hace el prompt de handoff, y el filtro solo recoge lo que el modelo deje pasar.
+El documento es `.claude/estado/nucleo.md` de la raíz git del cwd (si no es repo, del cwd): la convención de estado que ya leen CLAUDE.md, los hooks PreCompact y la re-inyección tras compactar. Si ya existe, se copia antes a `nucleo.prev.md` (rollback) y se pasa al fork, con la orden de conservar literal «Encargo original» e «Invariantes» y actualizar el resto. Antes de escribirlo se redactan claves conocidas (`sk-`, `ghp_`, `AKIA`, `xox*`, JWT) y asignaciones tipo `password=`/`token:` como `[REDACTADO]`. También cubre `Bearer …`, bloques `PRIVATE KEY`, credenciales en URLs (`esquema://usuario:clave@`), `github_pat_`/`glpat-` y valores entrecomillados (incluido JSON). Es una red de seguridad parcial y no garantiza nada: la redacción principal la hace el prompt de handoff, y el filtro solo recoge lo que el modelo deje pasar.
 
-Secciones del documento: Objetivo · Invariantes y decisiones (con su porqué) · Plan (`[x]`/`[ ]`) · Paso actual · Pendientes y riesgos · Ficheros clave · Comandos de verificación · Lo que NO hay que repetir · Skills sugeridas. No duplica specs, planes, issues ni commits: los referencia por ruta o URL.
+Secciones del documento: Encargo original (literal) · Invariantes y decisiones (con su porqué) · Plan (`[x]`/`[ ]`) · Paso actual · Siguiente acción · Pendientes y riesgos · Ficheros clave · Comandos de verificación · No repetir · Skills sugeridas. No duplica specs, planes, issues ni commits: los referencia por ruta o URL.
 
 ```mermaid
 flowchart LR
   A["/handoff [solo] [foco]"] --> B["Generación<br/>(fork del modelo)"]
   B --> C["Redacción de secretos"]
-  C --> D["Fichero en TMPDIR<br/>handoff-proyecto-AAAAMMDD-HHMM.md"]
+  C --> D[".claude/estado/nucleo.md<br/>(copia previa en nucleo.prev.md)"]
   D --> E{"¿solo?"}
   E -->|"sí"| F["Fin: ruta en pantalla"]
   E -->|"no"| G["/clear"]
@@ -73,5 +73,5 @@ bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin r
 - **`/clear` lanzado desde el mod no está verificado en una sesión interactiva.** Se comprobó de punta a punta con el arnés de tests, no a mano. Si falla, el mod deja el documento guardado y rellena el prompt de retoma; escribe `/clear` y envía ese texto.
 - **Los estados `failed`, `killed` y `stuck` de las tarjetas del dock no se han probado en el render**; solo los estados en curso y completado.
 - El redactor de secretos es un último recurso parcial; revisa el documento antes de compartirlo.
-- **El fichero de handoff no es privado**: su nombre es predecible (`handoff-<proyecto>-AAAAMMDD-HHMM.md`) y se crea con los permisos por defecto, no 0600, ni en exclusiva. La API del mod (`$.fs.write(path, text)`) no admite modo ni creación exclusiva, así que no se puede endurecer desde el mod. En un equipo compartido, apunta `TMPDIR` a un directorio tuyo con permisos 0700.
+- **El documento hereda los permisos del directorio del proyecto**: se crea con los permisos por defecto, no 0600, y sin creación exclusiva (la API `$.fs.write(path, text)` no admite modo). Está en el árbol del proyecto: decide si `.claude/estado/` va a `.gitignore` antes de hacer commit.
 - El prompt de retoma indica al modelo que el handoff es información y no órdenes, pero eso mitiga la inyección de instrucciones arrastradas de la sesión anterior, no la elimina.
