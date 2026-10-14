@@ -348,7 +348,7 @@ echo "== 10) test_diagramas_mermaid =="
 # --todo `fill:` con texto blanco-- fuerza tonos medios, que se leen sobre los dos fondos.
 mermaid_md=""
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  mermaid_md="$(git ls-files "*.md" 2>/dev/null)"
+  mermaid_md="$(git ls-files --cached --others --exclude-standard "*.md" 2>/dev/null)"
 fi
 if [ -z "$mermaid_md" ]; then
   ck "y" "y" "sin .md versionados (check por vacio)"
