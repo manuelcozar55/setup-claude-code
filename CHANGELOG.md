@@ -9,6 +9,13 @@ etiquetado.
 
 ### Added
 
+- **Tema oscuro y statusline del kit.** `kit/claude/settings.json` pasa de `light-ansi` a
+  `dark` y declara `statusLine` con `bash $HOME/.claude/statusline-command.sh`, que `install.sh`
+  copia y deja ejecutable: dos líneas en bash + `jq` (modelo, ruta, repo, rama y cambios;
+  contexto y límites 5h/7d), se parte por los `|` según el ancho del TTY sin recortar nada.
+  Sustituye a ccstatusline (~300 ms por refresco, node y un bundle de 3,3 MB). La fusión de
+  `settings.json` no cambia: quien ya tenía `theme` o `statusLine` conserva los suyos. Sensor
+  nuevo `test_statusline.sh` (26 casos) y `doctor` exige PASS de la barra en una instalación limpia.
 - **Agent Dock v3 (cockpit 0.3.0): misión en dos líneas y agentes por secciones.** La misión
   muestra siempre sus dos primeras líneas (envueltas a mano al ancho del pane) y el botón
   `▸ más` / `▾ menos` (tecla `m` con el pane enfocado) despliega el resto. Antes el clic

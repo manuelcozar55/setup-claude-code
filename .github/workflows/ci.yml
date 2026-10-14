@@ -188,6 +188,9 @@ jobs:
       - name: "test_mod_cockpit.sh (mod cockpit: manifiesto valido, ficheros completos, sin datos privados)"
         run: bash kit/test/test_mod_cockpit.sh
 
+      - name: "test_statusline.sh (statusline del kit: ruta completa, dos lineas, se parte sin recortar)"
+        run: bash kit/test/test_statusline.sh
+
       - name: "test_install_plugins.sh (plugins de terceros por referencia: diff-first, ids esperados, opcionales aparte)"
         run: bash kit/test/test_install_plugins.sh
 

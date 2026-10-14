@@ -5,7 +5,7 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 
-export CLAUDE_HOME="$tmp/dot"
+export CLAUDE_HOME="$tmp/home/.claude"  # = $HOME/.claude: la statusLine del kit apunta ahi
 
 # doctor.sh mira estado de MAQUINA, no solo de CLAUDE_HOME: la unidad systemd en
 # XDG_CONFIG_HOME y ~/.headroom/logs/proxy.jsonl. Sin aislar HOME, este test aprueba o

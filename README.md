@@ -43,6 +43,11 @@ bash kit/doctor.sh     # diagnostico de lo que ya tienes instalado
 bash uninstall.sh      # SIMULA la reversion; con --apply la ejecuta (y hace backup antes)
 ```
 
+**Aspecto.** Una instalación limpia trae el tema oscuro (`"theme": "dark"`) y una barra de estado
+en dos líneas (`~/.claude/statusline-command.sh`, bash + `jq`): modelo, ruta completa, repo, rama
+y cambios arriba; contexto y límites de 5 h y 7 d abajo. Si ya tenías `theme` o `statusLine`, se
+respetan los tuyos; para adoptar los del kit, borra esas dos claves de tu `settings.json` y reinstala.
+
 **Cómo está organizado.** `kit/` es la instalación y la raíz es el harness. La documentación de
 referencia vive en [`kit/docs/`](kit/docs); `docs/` es **archivo de proceso** (specs, planes e
 informes de trabajos ya cerrados), no referencia. Si eres un agente, entra por
@@ -73,7 +78,7 @@ flowchart LR
             SK["6 skills<br/>del método"]
             MO["Mod cockpit<br/>/handoff · Agent Dock"]
             EV["evals/<br/>20 tareas"]
-            TS["test/<br/>31 suites falsables"]
+            TS["test/<br/>32 suites falsables"]
         end
     end
     INS{{"install.sh<br/>diff-first"}}
@@ -198,7 +203,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 31 suites falsables | v1.2.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 32 suites falsables | v1.2.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),

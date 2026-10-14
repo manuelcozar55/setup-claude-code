@@ -3,7 +3,7 @@
 #
 # El incidente que cierra esta suite, medido el 2026-09-02 a las 11:34:24: install.sh
 # instalaba settings.json con install_file() -- un `cp` del fichero entero -- y la plantilla
-# publica del kit NO puede llevar `statusLine`, porque la ruta del script es de cada maquina.
+# publica del kit no llevaba entonces `statusLine`.
 # Al reinstalar, la clave desaparecio del settings.json de una maquina real y la statusline
 # estuvo 15 minutos muerta sin un solo aviso. La fusion con jq lo arreglo el mismo dia, pero
 # la garantia se quedo casi sin sensor: lo unico que la vigilaba era una linea de test_install.sh
@@ -47,7 +47,7 @@ seed a <<'EOF'
 EOF
 antes="$(jq -Sc .statusLine "$S")"
 run
-ck "$(jq -r 'has("statusLine")' "$KIT/claude/settings.json")" "false" "la plantilla del kit NO lleva statusLine (por eso el cp la borraba: falsabilidad del caso)"
+ck "$([ "$(jq -Sc '.statusLine // "AUSENTE"' "$KIT/claude/settings.json")" != "$antes" ] && echo y || echo n)" "y" "la statusLine de la plantilla es otra (un cp pisaria la tuya: falsabilidad del caso)"
 ck "$(jq -Sc '.statusLine // "AUSENTE"' "$S")" "$antes" "statusLine sigue ahi y byte-identica tras reinstalar"
 ck "$(jq -r '.model' "$S")" "opus[1m]" "tu model sigue ahi"
 ck "$(stat -c %a "$S")" "644" "la escritura atomica preserva el modo del original (el mktemp nace en 600)"
