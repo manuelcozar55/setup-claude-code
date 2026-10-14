@@ -9,6 +9,13 @@ etiquetado.
 
 ### Added
 
+- **Agent Dock rediseñado.** Tarjetas sin borde con barra de estado, actividad del agente
+  visible, barra fina y contador en la misma línea (antes el `Nh` caía a otra línea),
+  contadores en una sola línea y misión plegada de verdad por defecto (el `Button` no
+  acotaba el truncado de su hijo; ahora se corta a mano). Los tests miden el texto
+  dibujado, no las props.
+  La misión solo la fija un prompt de la persona: una notificación de tarea en segundo plano
+  ya no la pisa con su texto `<task-notification>`.
 - **El kit instala las skills del método de trabajo.** `kit/claude/skills/` trae
   `deep-change` (bucle operativo: plan, informe vivo de cambios, contención de riesgo) y
   cinco skills de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su
@@ -31,6 +38,15 @@ etiquetado.
   manuelcozar55/setup-claude-code`, y `install-plugins.sh` lo incluye. El dock pasa a dos
   columnas con barra fina, contadores en una línea y misión plegable con un clic; test
   falsable en `tests/dock.test.tsx`.
+
+### Changed
+
+- **Banda de handoff del cockpit (0.2.1).** Los botones pierden la letra delante (`guardar
+  + /clear`, `solo guardar`; las teclas `y`/`g` siguen activas) y «n cancelar» pasa a ser
+  `no guardar + /clear`, que limpia sin escribir handoff (cancelar es pulsar `handoff` otra
+  vez). La fila amarilla usa `columnGap`: `gap` también separa las líneas partidas por
+  `flexWrap` y dejaba una fila en blanco en anchos estrechos. Test falsable en
+  `tests/cockpit.test.tsx`.
 
 ### Removed
 

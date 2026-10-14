@@ -32,6 +32,7 @@ claude --plugin-dir <ruta>/kit/mods/cockpit
 - Sin argumentos: guarda el documento, hace `/clear` y envía un prompt de retoma: la sesión nueva lee el handoff, verifica el estado real (ejecuta sus comandos de verificación y comprueba que lo «hecho» sigue siéndolo), responde con un resumen corto y después continúa por «Paso actual».
 - `solo`: guarda el documento y no limpia nada.
 - El resto del texto es el **foco**: el documento se adapta a lo que hará la próxima sesión.
+- En la banda sobre el prompt, el botón `handoff` (`h`) pide confirmación con tres acciones: `guardar + /clear` (`y`), `solo guardar` (`g`) y `no guardar + /clear` (`n`: limpia el contexto sin escribir handoff). Las teclas siguen activas aunque no se dibujen. Para cancelar, vuelve a pulsar `handoff`. Durante un turno en marcha solo queda `solo guardar`.
 
 El fichero se escribe en `$TMPDIR`, si no `$TEMP`, si no `/tmp`, con el nombre `handoff-<proyecto>-AAAAMMDD-HHMM.md` (hora UTC; `<proyecto>` es el último segmento del cwd). Antes de escribirlo se redactan claves conocidas (`sk-`, `ghp_`, `AKIA`, `xox*`, JWT) y asignaciones tipo `password=`/`token:` como `[REDACTADO]`. También cubre `Bearer …`, bloques `PRIVATE KEY`, credenciales en URLs (`esquema://usuario:clave@`), `github_pat_`/`glpat-` y valores entrecomillados (incluido JSON). Es una red de seguridad parcial y no garantiza nada: la redacción principal la hace el prompt de handoff, y el filtro solo recoge lo que el modelo deje pasar.
 
@@ -51,14 +52,14 @@ flowchart LR
 
 ## Agent Dock
 
-Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`. Las tarjetas van a dos columnas desde 44 de ancho útil (a una por debajo): cabecera con `T<n>`, descripción y tiempo, una línea de estado y una barra fina con el porcentaje o la cuenta de herramientas (`5h`). La misión se pliega en una línea; un clic (o Enter con el foco) la despliega entera. Los contadores trabajando · en cola · hechos · atascados van en una sola línea. El tamaño de equipo viaja al modelo como contexto oculto del prompt. Los tests lo renderizan a 24, 28, 56 y 62 columnas.
+Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`. Las tarjetas no llevan borde: una barra de color a la izquierda marca el estado y tres líneas fijas dicen todo: `T<n>`, descripción y tiempo; en qué trabaja el agente (`● Bash: make test`, o `○ En cola`, `✓ Hecho`, `✗ Falló`, `◌ Atascado`); y la barra fina con el contador (`5h` o `100%`) en la misma línea. Van a dos columnas desde 50 de ancho útil (a una por debajo). La misión nace plegada en una línea (`▸ texto…`); un clic (o Enter con el foco) la despliega entera (`▾`) y otro la pliega. Los contadores van en una sola línea y abrevian en estrecho (`●2 ○1 ✓3 ×0`). El tamaño de equipo viaja al modelo como contexto oculto del prompt. Los tests miden el texto dibujado a 24, 30, 44, 56 y 66 columnas.
 
 ## Tests
 
 ```bash
 cd kit/mods/cockpit
 claude plugin validate .                          # Validation passed
-claude plugin test .                              # 18 pass, 0 fail
+claude plugin test .                              # 28 pass, 0 fail
 pnpm dlx --package=typescript@5 tsc -p .          # rc=0
 bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin red ni claude
 ```
