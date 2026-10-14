@@ -1,6 +1,6 @@
 ---
 name: deep-change
-description: Plan, execute and verify substantial code or configuration changes with a change report and isolated validation. Use for cross-module changes, migrations, security or production changes, or an explicit /deep-change request. Skip trivial edits, read-only audits and pure Q&A; scale the workflow to the actual risk.
+description: Plan, execute and verify substantial code or configuration changes with an approved plan in nucleo.md, evidence-backed commits and isolated validation. Use for cross-module changes, migrations, security or production changes, or an explicit /deep-change request. Skip trivial edits, read-only audits and pure Q&A; scale the workflow to the actual risk.
 user-invocable: true
 argument-hint: "[what you want built or changed]"
 ---
@@ -33,19 +33,24 @@ user's package-manager, browser and approval preferences over generic skill defa
    When several open decisions hang off each other, run the `grilling` skill until its
    frontier is empty (decisions to the person, facts to subagents). A resolved term or a
    hard-to-reverse trade-off goes to `GLOSSARY.md` / an ADR via `domain-modeling`.
+   **Plan gate:** if the request bundles more than one objective, or touches config /
+   production, and the person has not seen the plan, end the turn with the plan (≤ 8 lines:
+   objective, "done when", out of scope, steps) and wait for their OK. A generic "sí, hazlo"
+   given before the plan existed does not count. One clear objective → proceed.
 2. **Investigate the affected paths.** Use independent subagents when delegation is available,
    authorized and helps separate substantial work; otherwise investigate directly. Give each
    worker explicit ownership and collect evidence, not raw file dumps.
-3. **Plan as an artifact.** Reuse and update an existing approved plan, or create
-   `<topic>-plan.md` when none exists: bite-
+3. **Plan as an artifact.** Reuse an existing approved plan, or write it in the `## Plan`
+   section of `.claude/estado/nucleo.md`, under `## Encargo original (literal)`: bite-
    sized, independently verifiable tasks, each with the exact files, the change, and how it
    is tested. The plan is a durable spec, not chat.
 4. **Execute.** Work
-   task by task. After each task: verify, then append to the change report (below). Do not
-   advance on red.
+   task by task. After each task: verify, mark it `[x]` in nucleo with the command that
+   proved it, and commit with the why. Do not advance on red.
 5. **Verify empirically.** Reproduce the
-   problem first, then prove the fix. Run the real tests / drive the real path. **Evidence
-   before "done"** — never claim success from a plausible read.
+   problem first, then prove the fix. Run the real tests / drive the real path, on what CI
+   will see (untracked files included). **Evidence before "done"**: the oracle's exit code,
+   not its last lines.
 6. **Contain risk.** Build and validate in an **isolated copy** (a `/final`-style folder, a
    branch, a worktree). Applying to production / live config / shared state is a **separate,
    authorized step**. An existing explicit instruction to apply the reviewed changes satisfies
@@ -55,10 +60,11 @@ user's package-manager, browser and approval preferences over generic skill defa
 
 ## Two non-negotiable habits (the part tooling won't do for you)
 
-**Living change report — `<topic>-cambios.md`.** One entry per modification, written as you
-go, each with: *what changed · why (justification) · how it was verified.* Start it before the
-first edit; keep it current. It is the audit trail that lets a reviewer (or future-you) trust
-the work without re-deriving it.
+**Change record = commits + nucleo, nothing else.** Each commit says what and why; each `[x]`
+in nucleo's Plan names the command that verified it; the PR description summarises both. No
+separate `*-cambios.md`: two sessions in a row left it empty (measured 2026-10-14). The Stop
+hook blocks once if you commit and leave nucleo stale. Outside git (live config), keep the
+record in the apply script and its backup folder.
 
 **Containment ledger.** State plainly, at all times, what is done *in the isolated copy* vs
 what is *live in production*. When work is validated, apply it if that step is already authorized;
@@ -77,14 +83,15 @@ otherwise request approval for the concrete result. Record a rollback path to th
 - **IntentGate** is satisfied by the existing task opening plus any necessary decision in phase 1.
 - **Never-Stop** governs *execution*: once approved, drive to completion without "should I
   continue?"; if ambiguity appears mid-run, take the most conservative **reversible** choice
-  and note it in the change report. The approval gate is *before* execution — no contradiction.
+  and note it in nucleo's Pendientes. The approval gate is *before* execution — no contradiction.
 - Delegate substantial independent work using available roles when it improves the result.
 
 ## Definition of done
 
 - [ ] Scope and consequential design decisions resolved; existing authorizations honored.
-- [ ] The approved plan exists and every task is checked off.
-- [ ] Every change has a `<topic>-cambios.md` entry (what / why / verified).
+- [ ] The approved plan exists in nucleo and every task is checked off with its verifying command.
+- [ ] Every change is in a commit with its why (or, for live config, in the apply script).
+- [ ] Phase closed with `/handoff` if context passed the Stop hook's soft line.
 - [ ] Claims are backed by evidence (tests run, path driven) — recorded, not asserted.
 - [ ] Risk contained: isolated copy validated; production apply is a separate authorized step
       with a known rollback.
