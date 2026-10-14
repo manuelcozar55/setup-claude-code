@@ -11,7 +11,7 @@ traspaso de sesión) vivía solo en la máquina de quien la inventó.
 ## Decisión
 
 `kit/` distribuye también **skills** (`kit/claude/skills/`, seis) y un **mod**
-(`kit/mods/cabina/`). Son la capa de instalación del método, documentado en
+(`kit/mods/cockpit/`). Son la capa de instalación del método, documentado en
 `kit/docs/12-metodologia.md`. `kit/` no computa en el presupuesto de complejidad (ADR 005).
 
 - Las skills las copia `install.sh` por el camino diff-first, como los agentes (ADR 008).
