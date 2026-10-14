@@ -116,6 +116,29 @@ export function condense(text: string): string {
   return `${dot > 120 ? cut.slice(0, dot + 1) : cut} …`
 }
 
+// Word wrap by hand: the mission clamps to two lines, which Text wrap="wrap" cannot do.
+// shortcut: counts code units, so wide glyphs (emoji, CJK) overflow a cell; upgrade if a mission shows them.
+export function wrapLines(text: string, width: number): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (let word of text.split(' ')) {
+    while (word.length > width) {
+      if (line) lines.push(line)
+      lines.push(word.slice(0, width))
+      line = ''
+      word = word.slice(width)
+    }
+    if (!line) line = word
+    else if (line.length + 1 + word.length <= width) line += ` ${word}`
+    else {
+      lines.push(line)
+      line = word
+    }
+  }
+  if (line) lines.push(line)
+  return lines
+}
+
 // The plain usage call is free; the local breakdown estimate runs at turn ends for the autocompact limit and the "eating" row.
 let lastCtxAt = 0
 async function refreshCtx($: $, withBreakdown: boolean) {
@@ -177,7 +200,6 @@ async function syncAgents($: $) {
       lastActiveAt: prev?.lastActiveAt ?? t,
       endedAt: DONE.has(a.status) ? (prev?.endedAt ?? t) : undefined,
       activity: prev?.activity ?? pendingActivity.get(a.id) ?? 'arrancando…',
-      tools: prev?.tools ?? 0,
     }
     if (i < 0) next.push(row)
     else next[i] = row
@@ -287,6 +309,7 @@ export const register: Register = on => {
       const mission = e.text.split('\n').find(l => l.trim())?.trim() ?? ''
       await update($, turn, t => ({ ...t, mission }))
       await update($, tasks, () => [])
+      await update($, isMissionOpen, () => false)
     }
     const notes = [(await read($, isSimple)) ? SIMPLE_NOTE : '', (n => (n > 0 ? teamNote(n) : ''))(await read($, team))].filter(Boolean)
     return notes.length ? next({ ...e, context: [...(e.context ?? []), ...notes] }) : next(e)
@@ -335,7 +358,7 @@ export const register: Register = on => {
       const id = e.agentId
       const t = await $.clock.now()
       pendingActivity.set(id, what)
-      await update($, agents, rows => rows.map(r => (r.id === id ? { ...r, activity: what, tools: r.tools + 1, lastActiveAt: t } : r)))
+      await update($, agents, rows => rows.map(r => (r.id === id ? { ...r, activity: what, lastActiveAt: t } : r)))
     }
     softRefresh($)
     return next(e)
@@ -541,7 +564,8 @@ export const register: Register = on => {
     const [ag, ts, tn, size, t, isOpen] = await Promise.all([read($, agents), read($, tasks), read($, turn), read($, team), read($, now), read($, isMissionOpen)])
     const tick = Math.max(t, tn.startedAt)
     const isStuck = (a: AgentRow) => !DONE.has(a.status) && a.status !== 'pending' && tick - a.lastActiveAt > STUCK_MS
-    const working = ag.filter(a => a.status === 'running' || a.status === 'waiting' || a.status === 'idle').filter(a => !isStuck(a))
+    // Working is the leftover, so a status this code does not know still shows somewhere.
+    const working = ag.filter(a => !DONE.has(a.status) && a.status !== 'pending' && !isStuck(a))
     const queued = ag.filter(a => a.status === 'pending')
     const finished = ag.filter(a => a.status === 'completed')
     const stuck = ag.filter(a => isStuck(a) || a.status === 'failed' || a.status === 'killed')
@@ -551,69 +575,86 @@ export const register: Register = on => {
     const missionPct = ts.length
       ? Math.round((ts.filter(x => x.status === 'completed').length / ts.length) * 100)
       : missionAgents.length
-        ? Math.round((missionAgents.filter(a => DONE.has(a.status)).length / missionAgents.length) * 100)
+        ? Math.round((missionAgents.filter(a => a.status === 'completed').length / missionAgents.length) * 100)
         : tn.isRunning ? undefined : 100
 
-    // Two columns only when each card keeps >= 24 columns; the card is a 1-col status gutter + 1 space + body.
-    const isTwoCol = cols >= 50
-    const cardW = isTwoCol ? Math.floor((cols - 2) / 2) : cols
-    const inner = cardW - 2
-    const badges = ['claude', 'permission', 'success', 'warning', 'suggestion', 'autoAccept'] as const
-    const card = (a: AgentRow, n: number) => {
-      const isDone = a.status === 'completed'
-      const isBad = isStuck(a) || a.status === 'failed' || a.status === 'killed'
-      const color = isDone ? 'success' : isBad ? 'error' : a.status === 'pending' ? 'inactive' : 'permission'
-      // Bar + counter share one line: the counter has a fixed width, the bar takes exactly what is left.
-      const count = (isDone ? '100%' : `${a.tools}h`).padStart(4)
-      const barW = Math.max(4, inner - count.length - 1)
-      const line = isDone ? bar(100, barW) : DONE.has(a.status) || a.status === 'pending' ? bar(0, barW) : scanner(tick, barW)
+    // One column at any width. A row is `glyph T<n>  description  time` with the time pinned right;
+    // live agents add a second line with what they are doing. The 6-space indent is the row's prefix width.
+    const order = new Map(ag.map((a, i) => [a.id, i]))
+    const INDENT = '      '
+    const row = (a: AgentRow, glyph: string, color: string, note?: string) => {
+      const isDone = DONE.has(a.status)
       return (
-        <Box key={a.id} width={cardW} flexShrink={0} gap={1}>
-          <Text color={color}>{'▎\n▎\n▎'}</Text>
-          <Box flexDirection="column" width={inner}>
-            <Box gap={1} width={inner}>
-              <Text inverse color={badges[n % badges.length]}> T{n + 1} </Text>
-              <Box flexGrow={1} flexShrink={1}><Text bold wrap="truncate-end">{a.description || a.type}</Text></Box>
-              <Text dimColor>{clock((a.endedAt ?? tick) - a.startedAt)}</Text>
+        <Box key={a.id} flexDirection="column">
+          <Box gap={1}>
+            <Text color={color}>{glyph} {`T${(order.get(a.id) ?? 0) + 1}`.padEnd(3)}</Text>
+            <Box flexGrow={1} flexShrink={1}>
+              <Text bold={!isDone && a.status !== 'pending'} dimColor={isDone} wrap="truncate-end">{a.description || a.type}</Text>
             </Box>
-            <Text wrap="truncate-end">
-              {isDone ? <Text color="success">✓ Hecho</Text>
-                : a.status === 'failed' ? <Text color="error">✗ Falló</Text>
-                : a.status === 'killed' ? <Text color="error">■ Detenido</Text>
-                : isStuck(a) ? <Text color="error">◌ Atascado {clock(tick - a.lastActiveAt)} sin actividad</Text>
-                : a.status === 'pending' ? <Text dimColor>○ En cola</Text>
-                : <Text><Text color="permission">● </Text>{a.activity}</Text>}
-            </Text>
-            <Text wrap="truncate-end"><Text color={color}>{thin(line)}</Text><Text dimColor> {count}</Text></Text>
+            {a.status !== 'pending' && <Text dimColor>{clock((a.endedAt ?? tick) - a.startedAt)}</Text>}
           </Box>
+          {note !== undefined && (
+            <Text color={color === 'error' ? 'error' : undefined} dimColor={color !== 'error'} wrap="truncate-end">{INDENT}{note}</Text>
+          )}
         </Box>
       )
     }
-    const shown = [...ag.filter(a => !DONE.has(a.status)), ...ag.filter(a => DONE.has(a.status)).slice(-6)]
-    const order = new Map(ag.map((a, i) => [a.id, i]))
+    // The four states always show, with their count, so the pane reads the same at any size; empty ones dim.
+    const section = (label: string, color: string, list: AgentRow[], glyph: (a: AgentRow) => string, note: (a: AgentRow) => string | undefined, cap = Infinity) => {
+      const shown = list.slice(-cap)
+      return (
+        <Box key={label} flexDirection="column">
+          <Text bold color={list.length ? color : 'inactive'}>{label} · {list.length}</Text>
+          {shown.map(a => row(a, glyph(a), color, note(a)))}
+          {shown.length < list.length && <Text dimColor>{INDENT}… y {list.length - shown.length} más</Text>}
+        </Box>
+      )
+    }
+    const stopNote = (a: AgentRow) => (a.status === 'failed' ? 'falló' : a.status === 'killed' ? 'detenido' : `${clock(tick - a.lastActiveAt)} sin actividad`)
+    const stopGlyph = (a: AgentRow) => (a.status === 'failed' ? '✗' : a.status === 'killed' ? '■' : '◌')
 
-    // Counters on ONE line at any width: wording shrinks before anything can wrap.
-    const tier = cols >= 54 ? 0 : cols >= 34 ? 1 : 2
-    const counters = [
-      { icon: '●', n: working.length, color: 'permission', label: ['trabajando', 'en curso', ''] },
-      { icon: '○', n: queued.length, color: 'inactive', label: ['en cola', 'cola', ''] },
-      { icon: '✓', n: finished.length, color: 'success', label: ['hechos', '', ''] },
-      { icon: '×', n: stuck.length, color: 'error', label: ['atascados', '', ''] },
-    ]
-    const flat = (s: string) => s.replace(/\s+/g, ' ').trim()
-    const mission = flat(tn.mission || '—')
-    const head = isOpen ? '▾ ' : '▸ '
-    const missionText = isOpen || head.length + mission.length <= cols ? mission : mission.slice(0, Math.max(1, cols - head.length - 1)).trimEnd() + '…'
+    // Mission: the first two lines always, the rest behind «más» (a click, or `m` with the pane focused).
+    // The text lives outside the Button: a Button does not bound its child, so nothing wraps inside it.
+    const lines = wrapLines(tn.mission.replace(/\s+/g, ' ').trim() || '—', cols)
+    const hasMore = lines.length > 2
+    const clipped = (l: string) => `${l.length < cols ? l : l.slice(0, cols - 1).trimEnd()}…`
+    const missionLines = isOpen || !hasMore ? lines : lines.slice(0, 2).map((l, i) => (i ? clipped(l) : l))
 
     return (
       <Box flexDirection="column" gap={1}>
+        <Box justifyContent="space-between">
+          <Text bold color="claude">◆ Agent Dock</Text>
+          <Text color={isLive ? 'success' : 'inactive'}>{isLive ? '● LIVE' : '○ IDLE'}</Text>
+        </Box>
         <Box flexDirection="column">
           <Box justifyContent="space-between">
-            <Text bold color="claude">◆ Agent Dock</Text>
-            <Text color={isLive ? 'success' : 'inactive'}>{isLive ? '● LIVE' : '○ IDLE'}</Text>
+            <Box gap={1}>
+              <Text bold color="claude">Misión</Text>
+              {hasMore && <Button key="mission" hotkey="m" plain label={isOpen ? '▾ menos' : '▸ más'} onPress={() => update($, isMissionOpen, v => !v)} />}
+            </Box>
+            <Text>
+              {missionPct === undefined ? '' : <Text color="claude">{missionPct}%</Text>}
+              <Text dimColor>{tn.isRunning ? ` ${clock(tick - tn.startedAt)}` : ''}</Text>
+            </Text>
           </Box>
+          {missionLines.map((l, i) => <Text key={`mission-${i}`} wrap="truncate-end">{l}</Text>)}
+          <Text color="claude" wrap="truncate-end">{thin(missionPct === undefined ? scanner(tick, cols) : bar(missionPct, cols))}</Text>
+          {tn.isRunning && <Text dimColor wrap="truncate-end">principal · {tn.activity}</Text>}
+        </Box>
+        {ag.length === 0 ? (
+          <Text dimColor wrap="wrap">Ningún subagente todavía. Elige un tamaño de equipo para que Claude reparta el trabajo.</Text>
+        ) : (
+          <Box flexDirection="column">
+            {section('Trabajando', 'permission', working, () => '●', a => a.activity)}
+            {section('En cola', 'inactive', queued, () => '○', () => undefined)}
+            {section('Parados', 'error', stuck, stopGlyph, stopNote)}
+            {section('Hechos', 'success', finished, () => '✓', () => undefined, 8)}
+          </Box>
+        )}
+        {/* Controls last: the mission and the live agents own the first rows at any pane height. */}
+        <Box flexDirection="column">
           <Box flexWrap="wrap" gap={1}>
-            <Text bold color="claude">Equipo</Text>
+            <Text bold>Equipo</Text>
             {TEAM_SIZES.map(n => (
               <Button key={`team-${n}`} plain={n === size ? undefined : true} variant={n === size ? 'primary' : undefined} label={String(n)}
                 onPress={() => update($, team, () => n)} />
@@ -625,33 +666,6 @@ export const register: Register = on => {
             {size > 0 ? `Reparte cada petición entre ${size} ayudantes · ${size} a la vez · haiku para lo sencillo` : 'Auto: Claude decide cuándo lanzar subagentes'}
           </Text>
         </Box>
-        <Box flexDirection="column">
-          <Box justifyContent="space-between">
-            <Text bold color="claude">Misión</Text>
-            <Text>
-              {missionPct === undefined ? '' : <Text color="claude">{missionPct}% </Text>}
-              <Text dimColor>{tn.isRunning ? clock(tick - tn.startedAt) : ''}</Text>
-            </Text>
-          </Box>
-          {/* Cut by hand: a Button does not bound its child, so wrap="truncate-end" never fired inside it. */}
-          <Button key="mission" plain onPress={() => update($, isMissionOpen, v => !v)}>
-            <Text bold wrap="wrap">{head}{missionText}</Text>
-          </Button>
-          <Text color="claude" wrap="truncate-end">{thin(missionPct === undefined ? scanner(tick, cols) : bar(missionPct, cols))}</Text>
-        </Box>
-        <Box flexDirection="column">
-          <Text wrap="truncate-end">
-            {counters.map((c, i) => (
-              <Text key={c.icon} color={c.n ? c.color : 'inactive'}>{i ? '  ' : ''}{c.icon}{tier === 2 ? '' : ' '}{c.n}{c.label[tier] ? ` ${c.label[tier]}` : ''}</Text>
-            ))}
-          </Text>
-          {tn.isRunning && <Text dimColor wrap="truncate-end">principal · {tn.activity}</Text>}
-        </Box>
-        {shown.length === 0 ? (
-          <Text dimColor wrap="wrap">Ningún subagente todavía. Elige un tamaño de equipo para que Claude reparta el trabajo.</Text>
-        ) : (
-          <Box flexWrap="wrap" columnGap={2} rowGap={1}>{shown.map(a => card(a, order.get(a.id) ?? 0))}</Box>
-        )}
       </Box>
     )
   })

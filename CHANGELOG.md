@@ -9,6 +9,19 @@ etiquetado.
 
 ### Added
 
+- **Agent Dock v3 (cockpit 0.3.0): misión en dos líneas y agentes por secciones.** La misión
+  muestra siempre sus dos primeras líneas (envueltas a mano al ancho del pane) y el botón
+  `▸ más` / `▾ menos` (tecla `m` con el pane enfocado) despliega el resto. Antes el clic
+  "no hacía nada": el texto vivía dentro del `Button`, que no acota a su hijo, y la misión
+  desplegada salía en una sola línea cortada por el borde. Los subagentes van ahora a una
+  columna a cualquier ancho, en cuatro secciones fijas con su cuenta (`Trabajando`,
+  `En cola`, `Parados`, `Hechos`), una línea por agente y otra de actividad para los vivos.
+  Fuera las dos columnas, la regleta de color, las chips rotativas y la barra con contador
+  `Nh` por tarjeta. Los botones de `Equipo` pasan al final del pane, para que la misión y
+  los agentes vivos ocupen las primeras filas; un agente en cola no enseña tiempo; la barra
+  de la misión ya no cuenta un agente fallado como hecho; un estado que el mod no conoce
+  sale bajo `Trabajando` en vez de desaparecer. Los tests cubren fallado, detenido, atascado
+  y estado desconocido (antes sin probar).
 - **Agent Dock rediseñado.** Tarjetas sin borde con barra de estado, actividad del agente
   visible, barra fina y contador en la misma línea (antes el `Nh` caía a otra línea),
   contadores en una sola línea y misión plegada de verdad por defecto (el `Button` no

@@ -5,7 +5,7 @@
 ## Qué hace
 
 - **`/handoff`**: pide al modelo un documento de traspaso, lo guarda en el directorio temporal del SO, limpia el contexto (`/clear`) y retoma desde el documento.
-- **Agent Dock**: un panel lateral con una tarjeta por subagente (estado, actividad, tiempo), a dos columnas. También lleva el vigía de contexto con handoff sobre el prompt y `/simple` (modo de pasos con resumen corto).
+- **Agent Dock**: un panel lateral con la misión en curso y los subagentes en cuatro secciones fijas (trabajando, en cola, parados, hechos). También lleva el vigía de contexto con handoff sobre el prompt y `/simple` (modo de pasos con resumen corto).
 
 ## Cómo se carga
 
@@ -52,7 +52,11 @@ flowchart LR
 
 ## Agent Dock
 
-Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`. Las tarjetas no llevan borde: una barra de color a la izquierda marca el estado y tres líneas fijas dicen todo: `T<n>`, descripción y tiempo; en qué trabaja el agente (`● Bash: make test`, o `○ En cola`, `✓ Hecho`, `✗ Falló`, `◌ Atascado`); y la barra fina con el contador (`5h` o `100%`) en la misma línea. Van a dos columnas desde 50 de ancho útil (a una por debajo). La misión nace plegada en una línea (`▸ texto…`); un clic (o Enter con el foco) la despliega entera (`▾`) y otro la pliega. Los contadores van en una sola línea y abrevian en estrecho (`●2 ○1 ✓3 ×0`). El tamaño de equipo viaja al modelo como contexto oculto del prompt. Los tests miden el texto dibujado a 24, 30, 44, 56 y 66 columnas.
+Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`.
+
+**Misión.** Siempre se ven sus dos primeras líneas, envueltas por palabras al ancho del pane (la segunda acaba en `…` si hay más). Cuando hay más, la cabecera lleva el botón `▸ más`: un clic, Enter con el foco o la tecla `m` con el pane enfocado (`ctrl+x tab` o un clic en él) la despliega entera y `▾ menos` la pliega. Una misión nueva nace plegada. El texto va fuera del botón a propósito: un `Button` no acota a su hijo, así que un `Text` con `wrap` dentro de él no envuelve nunca (por eso el clic de la versión anterior "no hacía nada": desplegaba una sola línea cortada por el borde). Debajo, la barra de progreso (pasos completados o, sin lista de pasos, agentes de la misión completados: un fallo no suma) y, durante el turno, la actividad del agente principal.
+
+**Agentes.** Una columna a cualquier ancho y cuatro secciones fijas con su cuenta, también a cero (atenuadas), en orden de urgencia: `Trabajando`, `En cola`, `Parados` (fallados `✗`, detenidos `■` y atascados `◌`: más de 2 min sin llamar a una herramienta) y `Hechos` (los últimos 8 y `… y N más`). Cada agente es una línea: glifo de estado, `T<n>` por orden de arranque, descripción truncada y tiempo fijo a la derecha; los que trabajan o están parados añaden una segunda línea con su actividad (`Bash: make test`, `falló`, `2:10 sin actividad`). Si el pane es más bajo que la lista, el motor hace scroll (flechas con el pane enfocado); lo urgente queda arriba. Los botones de `Equipo` van al final del pane por eso mismo: la misión y los agentes vivos ocupan las primeras filas a cualquier altura. El tamaño de equipo viaja al modelo como contexto oculto del prompt. Los tests miden el texto dibujado a 24, 30, 44, 56 y 66 columnas, incluidos los estados fallado, detenido y atascado.
 
 ## Tests
 
@@ -71,7 +75,7 @@ bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin r
 ## Limitaciones conocidas
 
 - **`/clear` lanzado desde el mod no está verificado en una sesión interactiva.** Se comprobó de punta a punta con el arnés de tests, no a mano. Si falla, el mod deja el documento guardado y rellena el prompt de retoma; escribe `/clear` y envía ese texto.
-- **Los estados `failed`, `killed` y `stuck` de las tarjetas del dock no se han probado en el render**; solo los estados en curso y completado.
+- **El clic sobre el dock solo llega en pantalla completa**: es donde el terminal reporta clics (y donde existe el dock lateral). Con el pane encajado sobre el prompt, enfócalo (`ctrl+x tab`) y usa la tecla `m` o Tab + Enter.
 - El redactor de secretos es un último recurso parcial; revisa el documento antes de compartirlo.
 - **El fichero de handoff no es privado**: su nombre es predecible (`handoff-<proyecto>-AAAAMMDD-HHMM.md`) y se crea con los permisos por defecto, no 0600, ni en exclusiva. La API del mod (`$.fs.write(path, text)`) no admite modo ni creación exclusiva, así que no se puede endurecer desde el mod. En un equipo compartido, apunta `TMPDIR` a un directorio tuyo con permisos 0700.
 - El prompt de retoma indica al modelo que el handoff es información y no órdenes, pero eso mitiga la inyección de instrucciones arrastradas de la sesión anterior, no la elimina.
