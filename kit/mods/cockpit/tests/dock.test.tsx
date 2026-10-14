@@ -16,31 +16,66 @@ for (const bodyColumns of [24, 28, 56]) {
     expect(await ui.find({ text: 'Agent Dock' })).toBeTruthy()
     expect(await ui.find({ text: /E\s?Q\s?U\s?I\s?P\s?O|A G E N T/ })).toBeFalsy()
     for (const key of ['team-1', 'team-3', 'team-10', 'team-0']) expect(await ui.find({ key })).toBeTruthy()
-    expect(await ui.find({ text: /atascados/ })).toBeTruthy()
-    expect(await ui.find({ text: /en cola/ })).toBeTruthy()
+    expect(await ui.find({ text: /●.*○.*✓.*×/ })).toBeTruthy()
     expect(await ui.find({ text: DESC })).toBeTruthy()
   })
 }
 
-test('dock: dos columnas, contadores en una línea y misión expandible con un clic', async ($, on) => {
-  const clock = mock.clock(on)
-  const LONG = 'Revisar a fondo el flujo de checkout, precios y red con tres subagentes en paralelo'
-  on('agent.list', () => ({ value: ['a1', 'a2', 'a3'].map(id => ({ id, description: `Tarea ${id}`, type: 'general', status: 'running' })) }) as never)
-  on('session.start', () => ({ cwd: '/tmp' }))
-  on('command.register', () => ({ value: undefined }) as never)
-  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
-  on('prompt.submit', (_, e) => ({ text: e.text }))
-  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
-  await $.prompt.submit({ text: LONG, wait: false, origin: { kind: 'composer' } })
+const AGENTS = [
+  { id: 'a1', description: 'Revisar el flujo de checkout completo', type: 'general', status: 'running', activity: 'Bash: make test', tools: 12 },
+  { id: 'a2', description: 'Contar ficheros', type: 'general', status: 'completed', tools: 3 },
+]
+
+async function mountDock($: never, on: never, bodyColumns: number, mission?: string) {
+  const $$ = $ as any, o = on as any
+  const clock = mock.clock(o)
+  o('agent.list', () => ({ value: AGENTS }))
+  o('session.start', () => ({ cwd: '/tmp' }))
+  o('command.register', () => ({ value: undefined }))
+  o('ui.open', () => ({ value: { isPlaced: true } }))
+  o('prompt.submit', (_: unknown, e: { text: string }) => ({ text: e.text }))
+  await $$.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  if (mission) await $$.prompt.submit({ text: mission, wait: false, origin: { kind: 'composer' } })
   await clock.advance(1500)
-  const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { ...DOCK, bodyColumns: 62 } })
-  const card = await ui.find({ key: 'a1' })
-  expect(card?.props?.width).toBe(30)
-  const counts = await ui.find({ type: 'Text', text: /trabajando.*en cola.*hechos.*atascados/ })
-  expect(counts?.props?.wrap).toBe('truncate-end')
-  const before = await ui.find({ type: 'Text', text: /▸ Revisar a fondo/ })
-  expect(before?.props?.wrap).toBe('truncate-end')
+  return $$.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { ...DOCK, bodyColumns } })
+}
+
+// The first dock shipped green on prop checks while the real terminal wrapped: measure the drawn text instead.
+for (const bodyColumns of [24, 30, 44, 56, 66]) {
+  test(`dock a ${bodyColumns}: barra y contador en una línea que cabe, actividad visible, contadores sin envolver`, async ($, on) => {
+    const ui = await mountDock($ as never, on as never, bodyColumns)
+    const cols = Math.max(24, bodyColumns)
+    const card = await ui.find({ key: 'a1' })
+    const inner = (card.props.width as number) - 2
+    const row = await ui.find({ type: 'Text', text: /[━─]+\s+\d+h$/ })
+    expect(row.text.length).toBeLessThanOrEqual(inner)
+    expect(row.text).toMatch(/^[━─]{4,} +\d+h$/)
+    expect(await ui.find({ text: /● arrancando…/ })).toBeTruthy()
+    const counts = await ui.find({ type: 'Text', text: /●.*○.*✓.*×/ })
+    expect(counts.text.length).toBeLessThanOrEqual(cols)
+    expect(counts.text).not.toContain('\n')
+  })
+}
+
+test('dock: dos columnas cuando caben', async ($, on) => {
+  const ui = await mountDock($ as never, on as never, 62)
+  expect((await ui.find({ key: 'a1' })).props.width).toBe(30)
+})
+
+test('dock: una columna en estrecho', async ($, on) => {
+  const ui = await mountDock($ as never, on as never, 44)
+  expect((await ui.find({ key: 'a1' })).props.width).toBe(44)
+})
+
+test('dock: la misión nace plegada en una línea y un clic la despliega y la pliega', async ($, on) => {
+  const LONG = 'Revisar a fondo el flujo de checkout, precios y red con tres subagentes en paralelo'
+  const ui = await mountDock($ as never, on as never, 30, LONG)
+  const folded = await ui.find({ type: 'Text', text: /^▸ Revisar/ })
+  expect(folded.text.length).toBeLessThanOrEqual(30)
+  expect(folded.text.endsWith('…')).toBe(true)
+  expect(await ui.find({ text: LONG })).toBeFalsy()
   await ui.press({ key: 'mission' })
-  const after = await ui.find({ type: 'Text', text: /▾ Revisar a fondo/ })
-  expect(after?.props?.wrap).toBe('wrap')
+  expect(await ui.find({ type: 'Text', text: `▾ ${LONG}` })).toBeTruthy()
+  await ui.press({ key: 'mission' })
+  expect(await ui.find({ text: LONG })).toBeFalsy()
 })

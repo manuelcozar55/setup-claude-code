@@ -51,7 +51,7 @@ flowchart LR
 
 ## Agent Dock
 
-Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`. Las tarjetas van a dos columnas desde 44 de ancho útil (a una por debajo): cabecera con `T<n>`, descripción y tiempo, una línea de estado y una barra fina con el porcentaje o la cuenta de herramientas (`5h`). La misión se pliega en una línea; un clic (o Enter con el foco) la despliega entera. Los contadores trabajando · en cola · hechos · atascados van en una sola línea. El tamaño de equipo viaja al modelo como contexto oculto del prompt. Los tests lo renderizan a 24, 28, 56 y 62 columnas.
+Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`. Las tarjetas no llevan borde: una barra de color a la izquierda marca el estado y tres líneas fijas dicen todo: `T<n>`, descripción y tiempo; en qué trabaja el agente (`● Bash: make test`, o `○ En cola`, `✓ Hecho`, `✗ Falló`, `◌ Atascado`); y la barra fina con el contador (`5h` o `100%`) en la misma línea. Van a dos columnas desde 50 de ancho útil (a una por debajo). La misión nace plegada en una línea (`▸ texto…`); un clic (o Enter con el foco) la despliega entera (`▾`) y otro la pliega. Los contadores van en una sola línea y abrevian en estrecho (`●2 ○1 ✓3 ×0`). El tamaño de equipo viaja al modelo como contexto oculto del prompt. Los tests miden el texto dibujado a 24, 30, 44, 56 y 66 columnas.
 
 ## Tests
 

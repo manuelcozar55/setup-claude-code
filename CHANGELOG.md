@@ -9,6 +9,11 @@ etiquetado.
 
 ### Added
 
+- **Agent Dock rediseñado.** Tarjetas sin borde con barra de estado, actividad del agente
+  visible, barra fina y contador en la misma línea (antes el `Nh` caía a otra línea),
+  contadores en una sola línea y misión plegada de verdad por defecto (el `Button` no
+  acotaba el truncado de su hijo; ahora se corta a mano). Los tests miden el texto
+  dibujado, no las props.
 - **El kit instala las skills del método de trabajo.** `kit/claude/skills/` trae
   `deep-change` (bucle operativo: plan, informe vivo de cambios, contención de riesgo) y
   cinco skills de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su
