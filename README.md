@@ -48,13 +48,157 @@ referencia vive en [`kit/docs/`](kit/docs); `docs/` es **archivo de proceso** (s
 informes de trabajos ya cerrados), no referencia. Si eres un agente, entra por
 [`AGENTS.md`](AGENTS.md).
 
+## Mapa visual
+
+Cuatro diagramas, de lo general a lo concreto. Si solo tienes dos minutos, lee estos y salta a [Quick start](#quick-start).
+
+### a) Arquitectura: qué hay y dónde acaba
+
+```mermaid
+flowchart LR
+    subgraph REPO["Este repo"]
+        direction TB
+        subgraph RAIZ["Raíz · capa de harness"]
+            direction TB
+            RH[".claude/<br/>comandos · hook auto-spec · verify-gate"]
+            RK["knowledge/<br/>ORACLES · MISTAKES · ADRs"]
+            RS["scripts/ · config/"]
+        end
+        subgraph KIT["kit/ · capa de instalación"]
+            direction TB
+            G["Guards de Bash/git<br/>+ Capa 1 de secretos"]
+            HK["Hooks de sesión<br/>preflight · pre-compact"]
+            SE["Sentinel<br/>IOCs"]
+            AG["8 agentes<br/>con tiering"]
+            SK["6 skills<br/>del método"]
+            MO["Mod cabina<br/>/handoff · Agent Dock"]
+            EV["evals/<br/>20 tareas"]
+            TS["test/<br/>30 suites falsables"]
+        end
+    end
+    INS{{"install.sh<br/>diff-first"}}
+    subgraph HOME["~/.claude tras install.sh"]
+        direction TB
+        H1["hooks/ · sentinel/"]
+        H2["agents/ · skills/"]
+        H3["settings.json fusionado<br/>CLAUDE.md"]
+    end
+    PD["--plugin-dir<br/>(opt-in, sin install.sh)"]
+
+    G --> INS
+    HK --> INS
+    SE --> INS
+    AG --> INS
+    SK --> INS
+    INS --> H1
+    INS --> H2
+    INS --> H3
+    MO -.-> PD
+    TS -->|"verifica"| INS
+
+    classDef harness fill:#3B4CCA,stroke:#2A379B,color:#FFFFFF
+    classDef kitc fill:#475569,stroke:#334155,color:#FFFFFF
+    classDef metodo fill:#A34A2C,stroke:#8F4026,color:#FFFFFF
+    classDef destino fill:#1F7A38,stroke:#166534,color:#FFFFFF
+    classDef accion fill:#8F5E00,stroke:#6B4600,color:#FFFFFF
+    class RH,RK,RS harness
+    class G,HK,SE,AG,EV,TS kitc
+    class SK,MO metodo
+    class H1,H2,H3,PD destino
+    class INS accion
+```
+
+> **Lo que muestra:** `kit/` es lo único que viaja a tu máquina; la raíz es el harness con el que se trabaja *en* este repo. Las skills salen por `install.sh`; el mod se carga a mano.
+
+### b) Ciclo de vida de una sesión: los hooks reales
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor T as Tú
+    participant CC as Claude Code
+    participant H as Hooks
+    participant X as Herramienta
+
+    CC->>H: SessionStart · session-start.sh, preflight.sh
+    T->>CC: prompt
+    CC->>H: UserPromptSubmit · auto-spec.sh (harness)
+    H-->>CC: oráculo + «declara cuándo estará hecho»
+    loop cada herramienta
+        CC->>H: PreToolUse · Sentinel y guards de Bash
+        Note over H: Read: stale-read-guard · Write/Edit: write-guard
+        H-->>CC: permitir o bloquear
+        CC->>X: ejecuta
+        X-->>CC: resultado
+        CC->>H: PostToolUse · oracle-log.sh (Bash), narthex-post-mcp (MCP)
+    end
+    CC->>H: PreCompact · pre-compact.sh
+    CC->>H: Stop · verify-gate.sh
+    alt oráculo en rojo
+        H-->>CC: bloquea el cierre con la salida real
+    else verde
+        H-->>CC: deja terminar
+    end
+    CC->>H: SessionEnd · stop-session-summary.sh
+```
+
+> **Lo que muestra:** los eventos y scripts son los de `kit/claude/settings.json` (instalación) y `.claude/settings.json` (harness del repo: `auto-spec`, `oracle-log`, `verify-gate`). El `Stop` es el único que puede impedir que el turno termine.
+
+### c) El bucle de trabajo
+
+```mermaid
+flowchart LR
+    A(["Encargo"]) --> B["IntentGate"]
+    B --> C["grilling<br/>+ domain-modeling"]
+    C --> D["Plan<br/>en fichero"]
+    D --> E["Subagentes<br/>en paralelo"]
+    E --> F{"Verificar<br/>rojo → verde"}
+    F -->|"rojo"| E
+    F -->|"verde"| G["Copia aislada<br/>→ producción aparte"]
+    G --> H(["/handoff o /retro"])
+
+    classDef gate fill:#3B4CCA,stroke:#2A379B,color:#FFFFFF
+    classDef work fill:#475569,stroke:#334155,color:#FFFFFF
+    classDef ok fill:#1F7A38,stroke:#166534,color:#FFFFFF
+    class B,C gate
+    class D,E,G work
+    class F,H ok
+```
+
+> **Lo que muestra:** la metodología resumida; cada caja tiene su sección en [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md). La regla: la ceremonia se ajusta al riesgo, y un cambio trivial se hace directo.
+
+### d) Instalación: diff-first frente a `--apply`
+
+```mermaid
+flowchart TD
+    S(["bash kit/install.sh"]) --> Q1{"¿flag?"}
+    Q1 -->|"--apply"| W
+    Q1 -->|"--plan"| DF
+    Q1 -->|"ninguno"| Q2{"¿$CLAUDE_HOME es repo git<br/>con remoto?"}
+    Q2 -->|"sí"| DF
+    Q2 -->|"no"| W
+    DF["<b>Modo diff</b><br/>genera el árbol en .mcharness-out<br/>nuevos · idénticos · modificados + diff -u"]
+    DF --> N(["No escribe nada · exit 0<br/>tú copias lo que quieras"])
+    W["<b>Escritura real</b><br/>backup de cada fichero que cambia<br/>settings.json se FUSIONA, no se pisa<br/>un symlink no se toca"]
+    W --> OK(["Instalado · bash kit/doctor.sh"])
+
+    classDef seguro fill:#1F7A38,stroke:#166534,color:#FFFFFF
+    classDef accion fill:#A34A2C,stroke:#8F4026,color:#FFFFFF
+    classDef decide fill:#3B4CCA,stroke:#2A379B,color:#FFFFFF
+    class DF,N seguro
+    class W,OK accion
+    class Q1,Q2 decide
+```
+
+> **Lo que muestra:** si tu `~/.claude` es un repo propio con remoto, el instalador no escribe sin que lo veas ([ADR 008](knowledge/DECISIONS/008-install-diff-first.md)). `--apply` fuerza la escritura, siempre con backup.
+
 ## mcharness — guías y sensores
 
 Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, `install.sh`, 28 suites falsables | v1.2.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, 6 skills del método, el mod `cabina`, `install.sh`, 30 suites falsables | v1.2.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -292,6 +436,8 @@ bash install.sh --with-headroom    # instala, arranca, verifica /readyz, y solo 
 | Guards de Bash/git | bloquean en duro `rm -rf`, `git push --force` a ramas protegidas, fugas de `.env`/claves por nombre de fichero, exfiltración por red, y más | [`kit/claude/hooks/`](kit/claude/hooks/) |
 | Sentinel | motor de políticas `PreToolUse` (IOCs), opcional, capa adicional sobre cualquier tool | [`kit/sentinel/`](kit/sentinel/) |
 | 8 agentes con tiering | `orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker` | [`kit/claude/agents/`](kit/claude/agents/) |
+| 6 skills del método | `deep-change`, `grilling`, `domain-modeling`, `writing-for-agents` y las manuales `retro` y `to-questionnaire`; `install.sh` las copia a `~/.claude/skills/` por el camino diff-first | [`kit/claude/skills/`](kit/claude/skills/) · [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) |
+| Mod `cabina` | `/handoff` (traspaso de sesión) y el panel Agent Dock; opt-in, se carga con `--plugin-dir` y no lo instala `install.sh` | [`kit/mods/cabina/`](kit/mods/cabina/) · [`kit/docs/11-cabina.md`](kit/docs/11-cabina.md) |
 | Dos capas de secretos | Capa 1 (`secret-guard.sh`, por nombre de fichero, activa desde el primer `install.sh`) + Capa 2 (`gitleaks` en `pre-commit`, por contenido real, opt-in por repo) | [`kit/docs/05-security.md`](kit/docs/05-security.md) |
 | Eval set | 20 tareas reales (mitad negativas: miden lo que cuesta un falso positivo), dos brazos (con harness y sin el) y agregado con intervalo de confianza; opt-in, cuesta llamadas reales a `claude -p`, nunca corre en CI | [`kit/evals/`](kit/evals/) |
 | Suite de test falsable | `test_guards_falsifiability.sh`: neutraliza un guard real y comprueba que caen casos `BLOCK` conocidos | [`kit/test/`](kit/test/) |
@@ -329,7 +475,9 @@ Además del kit, este repo trae dos charlas autocontenidas (HTML + guion, sin in
 ## Más allá del quick start
 
 - [`kit/README.md`](kit/README.md) — guía completa del kit.
-- [`kit/docs/`](kit/docs/) — overview, install, Headroom, superpowers, seguridad, rutina, verificación, plugins/MCP/skills.
+- [`kit/docs/`](kit/docs/) — overview, install, Headroom, superpowers, seguridad, rutina, verificación, plugins/MCP/skills, onboarding, cabina y metodología.
+- [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) — el método de trabajo de punta a punta: IntentGate, grilling, deep-change, subagentes, handoff y retro.
+- [`kit/docs/11-cabina.md`](kit/docs/11-cabina.md) — el mod `cabina`: `/handoff` y el Agent Dock.
 - [`kit/docs/09-ssh-y-gitlab-privado.md`](kit/docs/09-ssh-y-gitlab-privado.md) — clave SSH desde WSL2 y alta en un GitLab autoalojado, paso a paso: útil por sí sola aunque no uses el kit, y necesaria si tu equipo tiene un marketplace de plugins privado.
 - [`kit/docs/10-onboarding.md`](kit/docs/10-onboarding.md) — la ruta de un companero nuevo: `make bootstrap`, qué acaba de pasar, cómo verificarlo de verdad, y por qué Headroom es opt-in y no default.
 - [`SECURITY.md`](SECURITY.md) — qué protegen los guards y qué no (defensa en profundidad, no un límite duro), y cómo reportar una vulnerabilidad.
