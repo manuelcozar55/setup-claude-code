@@ -4,7 +4,7 @@
 
 ## Qué hace
 
-- **`/handoff`**: pide al modelo un documento de traspaso, lo guarda en el directorio temporal del SO, limpia el contexto (`/clear`) y retoma desde el documento.
+- **`/handoff`**: pide al modelo las secciones del estado que cambian, las fusiona en `.claude/estado/nucleo.md` y limpia el contexto (`/clear`); la sesión nueva lo recibe del hook `SessionStart`.
 - **Agent Dock**: un panel lateral con una tarjeta por subagente (estado, actividad, tiempo), a dos columnas. También lleva el vigía de contexto con handoff sobre el prompt y `/simple` (modo de pasos con resumen corto).
 
 ## Cómo se carga
@@ -29,25 +29,25 @@ claude --plugin-dir <ruta>/kit/mods/cockpit
 /handoff [solo] [foco de la próxima sesión]
 ```
 
-- Sin argumentos: guarda el documento, hace `/clear` y envía un prompt de retoma: la sesión nueva lee `nucleo.md`, verifica el estado real (ejecuta sus comandos de verificación de solo lectura y comprueba que lo «hecho» sigue siéndolo), resume en ≤5 líneas y ejecuta la «Siguiente acción»; solo pregunta si una sección marca algo como decisión de la persona.
+- Sin argumentos: guarda el documento y hace `/clear`. El mod no envía ningún prompt: el hook `kit/claude/hooks/session-start-clear.sh` (SessionStart `startup|clear`) entrega `nucleo.md` a la sesión nueva como datos, con el protocolo de arranque (`git log --oneline -5`, `git status`, oráculo rápido; si el estado contradice a git, manda git; la «Siguiente acción» solo corre sin preguntar si es de lectura o reversible). Escribe «sigue» para retomar. Así un mensaje tuyo enviado durante el `/clear` no compite con un prompt del mod.
 - `solo`: guarda el documento y no limpia nada.
 - El resto del texto es el **foco**: el documento se adapta a lo que hará la próxima sesión.
 - En la banda sobre el prompt, el botón `handoff` (`h`) pide confirmación con tres acciones: `guardar + /clear` (`y`), `solo guardar` (`g`) y `no guardar + /clear` (`n`: limpia el contexto sin escribir handoff). Las teclas siguen activas aunque no se dibujen. Para cancelar, vuelve a pulsar `handoff`. Durante un turno en marcha solo queda `solo guardar`.
 
-El documento es `.claude/estado/nucleo.md` de la raíz git del cwd (si no es repo, del cwd): la convención de estado que ya leen CLAUDE.md, los hooks PreCompact y la re-inyección tras compactar. Si ya existe, se copia antes a `nucleo.prev.md` (rollback) y se pasa al fork, con la orden de conservar literal «Encargo original» e «Invariantes» y actualizar el resto. Antes de escribirlo se redactan claves conocidas (`sk-`, `ghp_`, `AKIA`, `xox*`, JWT) y asignaciones tipo `password=`/`token:` como `[REDACTADO]`. También cubre `Bearer …`, bloques `PRIVATE KEY`, credenciales en URLs (`esquema://usuario:clave@`), `github_pat_`/`glpat-` y valores entrecomillados (incluido JSON). Es una red de seguridad parcial y no garantiza nada: la redacción principal la hace el prompt de handoff, y el filtro solo recoge lo que el modelo deje pasar.
+El documento es `.claude/estado/nucleo.md` de la raíz git del cwd (si no es repo, del cwd): la convención de estado que ya leen CLAUDE.md, los hooks PreCompact y la re-inyección tras compactar. El fork devuelve solo las secciones que cambian y el código las fusiona: «Encargo original» e «Invariantes» se conservan byte a byte aunque el modelo las devuelva, y las secciones que el fork no trae se quedan como estaban. Si no existe, el fork extrae además el encargo y los invariantes para crear el esqueleto. La versión anterior se copia a `nucleo.prev-<sello UTC>.md` y se guardan las 3 últimas. Si la respuesta no trae ninguna sección `## `, no se escribe nada. En un repo git, si `.claude/estado/` no está ignorado se añade a `.git/info/exclude`. Antes de escribirlo se redactan claves conocidas (`sk-`, `ghp_`, `AKIA`, `xox*`, JWT) y asignaciones tipo `password=`/`token:` como `[REDACTADO]`. También cubre `Bearer …`, bloques `PRIVATE KEY`, credenciales en URLs (`esquema://usuario:clave@`), `github_pat_`/`glpat-` y valores entrecomillados (incluido JSON). Es una red de seguridad parcial y no garantiza nada: la redacción principal la hace el prompt de handoff, y el filtro solo recoge lo que el modelo deje pasar.
 
-Secciones del documento: Encargo original (literal) · Invariantes y decisiones (con su porqué) · Plan (`[x]`/`[ ]`) · Paso actual · Siguiente acción · Pendientes y riesgos · Ficheros clave · Comandos de verificación · No repetir · Skills sugeridas. No duplica specs, planes, issues ni commits: los referencia por ruta o URL.
+Secciones fijas (las escribe el fork una sola vez): Encargo original (literal) · Invariantes. Secciones que actualiza cada handoff: Plan (`[x]` con el comando que lo verificó / `[ ]`) · Paso actual · Siguiente acción · Pendientes y riesgos · Ficheros tocados (los de fuera de git con su copia de seguridad) · Comandos de verificación · No repetir. No duplica specs, planes, issues ni commits: los referencia por ruta o URL.
 
 ```mermaid
 flowchart LR
   A["/handoff [solo] [foco]"] --> B["Generación<br/>(fork del modelo)"]
   B --> C["Redacción de secretos"]
-  C --> D[".claude/estado/nucleo.md<br/>(copia previa en nucleo.prev.md)"]
+  C --> D[".claude/estado/nucleo.md<br/>(fusión por secciones; copias nucleo.prev-*.md)"]
   D --> E{"¿solo?"}
   E -->|"sí"| F["Fin: ruta en pantalla"]
   E -->|"no"| G["/clear"]
-  G --> H["Retomar: prompt que lee el documento"]
-  G -.->|"falla"| I["Prompt rellenado, escribe /clear a mano"]
+  G --> H["Hook SessionStart(clear):<br/>nucleo.md como datos"]
+  G -.->|"falla"| I["Escribe /clear a mano"]
 ```
 
 ## Agent Dock
@@ -59,7 +59,7 @@ Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`. Las tarj
 ```bash
 cd kit/mods/cockpit
 claude plugin validate .                          # Validation passed
-claude plugin test .                              # 28 pass, 0 fail
+claude plugin test .                              # 30 pass, 0 fail
 pnpm dlx --package=typescript@5 tsc -p .          # rc=0
 bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin red ni claude
 ```
@@ -70,8 +70,8 @@ bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin r
 
 ## Limitaciones conocidas
 
-- **`/clear` lanzado desde el mod no está verificado en una sesión interactiva.** Se comprobó de punta a punta con el arnés de tests, no a mano. Si falla, el mod deja el documento guardado y rellena el prompt de retoma; escribe `/clear` y envía ese texto.
+- **`/clear` lanzado desde el mod no está verificado en una sesión interactiva.** Se comprobó de punta a punta con el arnés de tests, no a mano. Si falla, el mod deja el documento guardado; escribe `/clear` y luego «sigue».
 - **Los estados `failed`, `killed` y `stuck` de las tarjetas del dock no se han probado en el render**; solo los estados en curso y completado.
 - El redactor de secretos es un último recurso parcial; revisa el documento antes de compartirlo.
-- **El documento hereda los permisos del directorio del proyecto**: se crea con los permisos por defecto, no 0600, y sin creación exclusiva (la API `$.fs.write(path, text)` no admite modo). Está en el árbol del proyecto: decide si `.claude/estado/` va a `.gitignore` antes de hacer commit.
-- El prompt de retoma indica al modelo que el handoff es información y no órdenes, pero eso mitiga la inyección de instrucciones arrastradas de la sesión anterior, no la elimina.
+- **El documento hereda los permisos del directorio del proyecto**: se crea con los permisos por defecto, no 0600, y sin creación exclusiva (la API `$.fs.write(path, text)` no admite modo). Está en el árbol del proyecto; si git no lo ignora ya, el mod lo añade a `.git/info/exclude` (local, no se versiona).
+- El hook de arranque entrega `nucleo.md` envuelto como datos y exige confirmar lo irreversible, pero eso mitiga la inyección de instrucciones escritas en el fichero, no la elimina.

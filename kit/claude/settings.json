@@ -147,6 +147,16 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/session-start-clear.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PreCompact": [
