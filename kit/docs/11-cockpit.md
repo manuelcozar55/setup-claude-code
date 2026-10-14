@@ -32,6 +32,7 @@ claude --plugin-dir <ruta>/kit/mods/cockpit
 - Sin argumentos: guarda el documento, hace `/clear` y envía un prompt de retoma: la sesión nueva lee el handoff, verifica el estado real (ejecuta sus comandos de verificación y comprueba que lo «hecho» sigue siéndolo), responde con un resumen corto y después continúa por «Paso actual».
 - `solo`: guarda el documento y no limpia nada.
 - El resto del texto es el **foco**: el documento se adapta a lo que hará la próxima sesión.
+- En la banda sobre el prompt, el botón `handoff` (`h`) pide confirmación con tres acciones: `guardar + /clear` (`y`), `solo guardar` (`g`) y `no guardar + /clear` (`n`: limpia el contexto sin escribir handoff). Las teclas siguen activas aunque no se dibujen. Para cancelar, vuelve a pulsar `handoff`. Durante un turno en marcha solo queda `solo guardar`.
 
 El fichero se escribe en `$TMPDIR`, si no `$TEMP`, si no `/tmp`, con el nombre `handoff-<proyecto>-AAAAMMDD-HHMM.md` (hora UTC; `<proyecto>` es el último segmento del cwd). Antes de escribirlo se redactan claves conocidas (`sk-`, `ghp_`, `AKIA`, `xox*`, JWT) y asignaciones tipo `password=`/`token:` como `[REDACTADO]`. También cubre `Bearer …`, bloques `PRIVATE KEY`, credenciales en URLs (`esquema://usuario:clave@`), `github_pat_`/`glpat-` y valores entrecomillados (incluido JSON). Es una red de seguridad parcial y no garantiza nada: la redacción principal la hace el prompt de handoff, y el filtro solo recoge lo que el modelo deje pasar.
 
@@ -58,7 +59,7 @@ Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`. Las tarj
 ```bash
 cd kit/mods/cockpit
 claude plugin validate .                          # Validation passed
-claude plugin test .                              # 18 pass, 0 fail
+claude plugin test .                              # 20 pass, 0 fail
 pnpm dlx --package=typescript@5 tsc -p .          # rc=0
 bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin red ni claude
 ```

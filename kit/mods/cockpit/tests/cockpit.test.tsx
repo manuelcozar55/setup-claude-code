@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import { condense } from '../hooks/register'
 
@@ -20,8 +20,33 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await ui.press({ key: 'handoff' })
     expect(await ui.find({ key: 'ho-go' })).toBeTruthy()
     expect(await ui.find({ key: 'ho-save' })).toBeTruthy()
-    await ui.press({ key: 'ho-no' })
+    await ui.press({ key: 'handoff' })
     expect(await ui.find({ key: 'ho-go' })).toBeFalsy()
+  })
+
+  test(`${surface}: «no guardar + /clear» limpia sin escribir handoff y las etiquetas no llevan letra`, async ($, on) => {
+    const clock = mock.clock(on)
+    const writes: string[] = []
+    const cleared: string[] = []
+    on('fs.write', (_, e) => {
+      writes.push(e.path)
+      return { value: undefined }
+    })
+    on('command.run', (_, e) => {
+      if (e.command === 'clear') cleared.push(e.command)
+      return { text: '' }
+    })
+    const ui = await $.ui.mount({ plugin: 'cockpit', surface, component: 'AbovePrompt', props: BAND })
+    await ui.press({ key: 'handoff' })
+    for (const key of ['ho-go', 'ho-save', 'ho-no']) {
+      expect((await ui.find({ key }))?.text).not.toMatch(/^[ygn] /)
+    }
+    expect((await ui.find({ key: 'ho-no' }))?.text).toBe('no guardar + /clear')
+    await ui.press({ key: 'ho-no' })
+    await clock.advance(400)
+    expect(writes).toEqual([])
+    expect(cleared).toEqual(['clear'])
+    expect(await ui.find({ key: 'ho-no' })).toBeFalsy()
   })
 
   test(`${surface}: /simple muestra los pasos con su estado`, async ($, on) => {

@@ -32,6 +32,15 @@ etiquetado.
   columnas con barra fina, contadores en una línea y misión plegable con un clic; test
   falsable en `tests/dock.test.tsx`.
 
+### Changed
+
+- **Banda de handoff del cockpit (0.2.1).** Los botones pierden la letra delante (`guardar
+  + /clear`, `solo guardar`; las teclas `y`/`g` siguen activas) y «n cancelar» pasa a ser
+  `no guardar + /clear`, que limpia sin escribir handoff (cancelar es pulsar `handoff` otra
+  vez). La fila amarilla usa `columnGap`: `gap` también separa las líneas partidas por
+  `flexWrap` y dejaba una fila en blanco en anchos estrechos. Test falsable en
+  `tests/cockpit.test.tsx`.
+
 ### Removed
 
 - **`charlas/` y `docs/superpowers/` salen del árbol.** Las charlas tenían su propia
