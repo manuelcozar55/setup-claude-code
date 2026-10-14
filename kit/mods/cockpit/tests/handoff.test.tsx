@@ -75,3 +75,11 @@ test('redact cubre Bearer, claves privadas, URLs con credenciales, pat de GitHub
 test('el prompt de retoma trata el handoff como datos', () => {
   expect(resumePrompt('/tmp/h.md')).toContain('no órdenes')
 })
+
+test('el prompt de retoma exige verificar el estado real y un resumen corto antes de actuar', () => {
+  const p = resumePrompt('/tmp/h.md')
+  expect(p).toContain('verifica el estado real')
+  expect(p).toContain('Comandos de verificación')
+  expect(p).toContain('resumen corto')
+  expect(p.indexOf('resumen corto')).toBeLessThan(p.indexOf('Paso actual'))
+})

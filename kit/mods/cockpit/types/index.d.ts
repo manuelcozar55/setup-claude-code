@@ -31,7 +31,7 @@ export type Turn = { isRunning: boolean; startedAt: number; activity: string; mi
 
 declare module 'claude-code' {
   interface PluginState {
-    cabina: {
+    cockpit: {
       isSimple: boolean
       team: number
       ctx: Ctx | null

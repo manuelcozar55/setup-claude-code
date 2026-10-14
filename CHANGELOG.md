@@ -15,10 +15,10 @@ etiquetado.
   `LICENSE`): `grilling`, `writing-for-agents`, `domain-modeling`, y las manuales `retro` y
   `to-questionnaire`. `install.sh` las copia por el mismo camino diff-first que los agentes.
   Sensor: `kit/test/test_skills.sh`, falsable (planta un dato privado y exige rojo).
-- **Mod `cabina` en `kit/mods/cabina/`:** `/handoff` (documento de traspaso con secretos
+- **Mod `cockpit` en `kit/mods/cockpit/`:** `/handoff` (documento de traspaso con secretos
   redactados, luego `/clear` y retomar) y el pane *Agent Dock*. Se carga con
   `--plugin-dir` o `CLAUDE_CODE_PLUGIN_DIRS`; no lo instala `install.sh`. Doc:
-  `kit/docs/11-cabina.md`. Sensor: `kit/test/test_mod_cabina.sh`, sin red ni CLI.
+  `kit/docs/11-cockpit.md`. Sensor: `kit/test/test_mod_cockpit.sh`, sin red ni CLI.
 
 ### Documentation
 

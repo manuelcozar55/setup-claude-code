@@ -1,6 +1,6 @@
-# 11 · Cabina: handoff y Agent Dock
+# 11 · Cockpit: handoff y Agent Dock
 
-`kit/mods/cabina/` es un mod de Claude Code (plugin de *function hooks*, superficie de acceso temprano: puede cambiar entre versiones). Aporta dos cosas y es opt-in: nada del kit lo carga por ti.
+`kit/mods/cockpit/` es un mod de Claude Code (plugin de *function hooks*, superficie de acceso temprano: puede cambiar entre versiones). Aporta dos cosas y es opt-in: nada del kit lo carga por ti.
 
 ## Qué hace
 
@@ -10,9 +10,9 @@
 ## Cómo se carga
 
 ```bash
-claude --plugin-dir <ruta>/kit/mods/cabina
+claude --plugin-dir <ruta>/kit/mods/cockpit
 # o, para todas las sesiones de ese entorno:
-export CLAUDE_CODE_PLUGIN_DIRS=<ruta>/kit/mods/cabina
+export CLAUDE_CODE_PLUGIN_DIRS=<ruta>/kit/mods/cockpit
 ```
 
 `CLAUDE_CODE_PLUGIN_DIRS` está citada por el propio binario de Claude Code. Para dejar de cargarlo, quita la variable (o la entrada del bloque `env` de settings que la define).
@@ -23,7 +23,7 @@ export CLAUDE_CODE_PLUGIN_DIRS=<ruta>/kit/mods/cabina
 /handoff [solo] [foco de la próxima sesión]
 ```
 
-- Sin argumentos: guarda el documento, hace `/clear` y envía un prompt de retoma.
+- Sin argumentos: guarda el documento, hace `/clear` y envía un prompt de retoma: la sesión nueva lee el handoff, verifica el estado real (ejecuta sus comandos de verificación y comprueba que lo «hecho» sigue siéndolo), responde con un resumen corto y después continúa por «Paso actual».
 - `solo`: guarda el documento y no limpia nada.
 - El resto del texto es el **foco**: el documento se adapta a lo que hará la próxima sesión.
 
@@ -50,11 +50,11 @@ Se abre solo al iniciar sesión (columna de 58 de ancho) y con `/dock`. Cada sub
 ## Tests
 
 ```bash
-cd kit/mods/cabina
+cd kit/mods/cockpit
 claude plugin validate .                          # Validation passed
 claude plugin test .                              # 16 pass, 0 fail
 pnpm dlx --package=typescript@5 tsc -p .          # rc=0
-bash ../../test/test_mod_cabina.sh                # estructura y saneado; sin red ni claude
+bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin red ni claude
 ```
 
 `tsconfig.json` extiende `.claude-plugin/types/tsconfig.json`, que **no se versiona**: lo escribe Claude Code junto al mod cuando lo carga desde una carpeta propia (versión TypeScript 5.4 o superior) y su contenido es de Claude Code, no nuestro. Si falta, `tsc` falla con `Cannot find module 'claude-code/testing'`. Para regenerarlo, carga el mod una vez, por ejemplo `claude -p --plugin-dir "$PWD" "ok"`; si en tu versión no aparece, copia la carpeta `.claude-plugin/types/` de otro mod ya cargado. Está en `.gitignore`. `validate` y `test` no lo necesitan. Sin esos tipos `tsc` pierde el `noEmit` heredado y escribe `.js` junto a las fuentes: bórralos si pasa.

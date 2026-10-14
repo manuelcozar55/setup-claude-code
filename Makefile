@@ -54,7 +54,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_permisos_efectivos.sh
 	bash kit/test/test_evals.sh
 	bash kit/test/test_skills.sh
-	bash kit/test/test_mod_cabina.sh
+	bash kit/test/test_mod_cockpit.sh
 
 doctor: ## Verifica una instalacion existente del kit
 	bash kit/doctor.sh

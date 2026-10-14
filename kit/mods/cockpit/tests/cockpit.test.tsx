@@ -14,7 +14,7 @@ const TODOS = [
 
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`${surface}: la banda de contexto tiene handoff con confirmación`, async $ => {
-    const ui = await $.ui.mount({ plugin: 'cabina', surface, component: 'AbovePrompt', props: BAND })
+    const ui = await $.ui.mount({ plugin: 'cockpit', surface, component: 'AbovePrompt', props: BAND })
     expect(await ui.find({ text: /CONTEXTO/ })).toBeTruthy()
     expect(await ui.find({ key: 'ho-go' })).toBeFalsy()
     await ui.press({ key: 'handoff' })
@@ -29,7 +29,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await $.tool.call({ tool: 'TodoWrite', todos: TODOS })
     await $.command.run({ ...RUN, command: 'simple' })
 
-    const ui = await $.ui.mount({ plugin: 'cabina', surface, component: 'AbovePrompt', props: BAND })
+    const ui = await $.ui.mount({ plugin: 'cockpit', surface, component: 'AbovePrompt', props: BAND })
     expect(await ui.find({ text: /Paso 2 de 3/ })).toBeTruthy()
     expect(await ui.find({ text: 'Escribiendo el mod' })).toBeTruthy()
     expect(await ui.find({ text: 'Hecho' })).toBeTruthy()
@@ -37,7 +37,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
   })
 
   test(`${surface}: el dock elige tamaño de equipo`, async $ => {
-    const ui = await $.ui.mount({ plugin: 'cabina', surface, component: 'Pane', requestId: 'cockpit', props: DOCK })
+    const ui = await $.ui.mount({ plugin: 'cockpit', surface, component: 'Pane', requestId: 'cockpit', props: DOCK })
     expect(await ui.find({ text: /Auto: Claude decide/ })).toBeTruthy()
     await ui.press({ key: 'team-10' })
     expect(await ui.find({ text: /entre 10 ayudantes/ })).toBeTruthy()
@@ -50,7 +50,7 @@ test('el tamaño de equipo y el modo simple viajan como contexto oculto del prom
     seen = e.context ?? []
     return { text: e.text }
   })
-  const ui = await $.ui.mount({ plugin: 'cabina', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: DOCK })
+  const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: DOCK })
   await ui.press({ key: 'team-3' })
   await $.command.run({ ...RUN, command: 'simple' })
   await $.prompt.submit({ text: 'Revisa el checkout', wait: false, origin: { kind: 'composer' } })

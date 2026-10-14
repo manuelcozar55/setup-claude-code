@@ -1,5 +1,5 @@
 {
-  "name": "cabina",
+  "name": "cockpit",
   "version": "0.1.0",
   "description": "Tres mods: vigía de contexto con handoff sobre el prompt, Agent Dock a la derecha y modo simple de pasos",
   "author": { "name": "setup-claude-code" },

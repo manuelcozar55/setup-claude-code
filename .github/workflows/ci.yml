@@ -185,8 +185,8 @@ jobs:
       - name: "test_skills.sh (skills del metodo: frontmatter, LICENSE MIT, sin datos privados, install las copia)"
         run: bash kit/test/test_skills.sh
 
-      - name: "test_mod_cabina.sh (mod cabina: manifiesto valido, ficheros completos, sin datos privados)"
-        run: bash kit/test/test_mod_cabina.sh
+      - name: "test_mod_cockpit.sh (mod cockpit: manifiesto valido, ficheros completos, sin datos privados)"
+        run: bash kit/test/test_mod_cockpit.sh
 
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
