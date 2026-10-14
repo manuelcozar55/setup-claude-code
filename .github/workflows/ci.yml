@@ -182,6 +182,12 @@ jobs:
       - name: "test_evals.sh (sensor offline del eval set; sin almacen declara skip, nunca ok)"
         run: bash kit/test/test_evals.sh
 
+      - name: "test_skills.sh (skills del metodo: frontmatter, LICENSE MIT, sin datos privados, install las copia)"
+        run: bash kit/test/test_skills.sh
+
+      - name: "test_mod_cabina.sh (mod cabina: manifiesto valido, ficheros completos, sin datos privados)"
+        run: bash kit/test/test_mod_cabina.sh
+
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
     runs-on: ubuntu-latest

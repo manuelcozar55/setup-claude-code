@@ -52,6 +52,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+### mattpocock/skills — MIT
+
+Repositorio: <https://github.com/mattpocock/skills>, commit `49dd158`.
+
+Directorios de este repositorio que derivan de ese proyecto, cada uno con su
+`LICENSE` original (`Copyright (c) 2026 Matt Pocock`, texto MIT):
+
+- `kit/claude/skills/grilling/`
+- `kit/claude/skills/writing-for-agents/`
+- `kit/claude/skills/domain-modeling/`
+- `kit/claude/skills/retro/`
+- `kit/claude/skills/to-questionnaire/`
+
+Adaptación: en `retro` y `to-questionnaire` se sustituyó la sección final de
+adaptación local por una versión genérica (sin referencias a ninguna
+organización concreta). El resto se copia sin cambios. La skill `deep-change`
+de la misma carpeta es propia y no deriva de ese proyecto.
+
 ### randomdreft/claude-code-security-hook — situación de licencia SIN RESOLVER
 
 Fichero afectado: `kit/claude/hooks/block-dangerous-commands.sh`, cuya cabecera

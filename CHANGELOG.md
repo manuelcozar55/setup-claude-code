@@ -7,6 +7,19 @@ etiquetado.
 
 ## [Unreleased]
 
+### Added
+
+- **El kit instala las skills del método de trabajo.** `kit/claude/skills/` trae
+  `deep-change` (bucle operativo: plan, informe vivo de cambios, contención de riesgo) y
+  cinco skills de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su
+  `LICENSE`): `grilling`, `writing-for-agents`, `domain-modeling`, y las manuales `retro` y
+  `to-questionnaire`. `install.sh` las copia por el mismo camino diff-first que los agentes.
+  Sensor: `kit/test/test_skills.sh`, falsable (planta un dato privado y exige rojo).
+- **Mod `cabina` en `kit/mods/cabina/`:** `/handoff` (documento de traspaso con secretos
+  redactados, luego `/clear` y retomar) y el pane *Agent Dock*. Se carga con
+  `--plugin-dir` o `CLAUDE_CODE_PLUGIN_DIRS`; no lo instala `install.sh`. Doc:
+  `kit/docs/11-cabina.md`. Sensor: `kit/test/test_mod_cabina.sh`, sin red ni CLI.
+
 ### Documentation
 
 - **`LICENSE` es ahora el texto MIT literal: renombrarlo no bastaba.** En la 1.2.0 se

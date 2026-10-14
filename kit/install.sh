@@ -306,6 +306,11 @@ esac
 
 install_file() {  # src dst
   local src="$1" dst="$2"
+  # Un symlink suele apuntar a otro repo (skills proyectadas): cp escribiria a traves de el.
+  if [ -L "$dst" ]; then
+    echo "   omitido (symlink, no se toca): ${dst#"$CLAUDE_HOME"/}"
+    return 0
+  fi
   if [ -f "$dst" ] && ! cmp -s "$src" "$dst"; then
     mkdir -p "$(dirname "$BK/${dst#"$CLAUDE_HOME"/}")"
     cp -p "$dst" "$BK/${dst#"$CLAUDE_HOME"/}"
@@ -375,13 +380,18 @@ install_claude_md() {  # src dst
 }
 
 install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
-  local base="$1"
+  local base="$1" f rel
   mkdir -p "$base/hooks" "$base/agents" "$base/sentinel"
   install_claude_md "$KIT/claude/CLAUDE.md"       "$base/CLAUDE.md"
   install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
   install_file "$KIT/claude/sentinel-allowlist.json" "$base/sentinel-allowlist.json"
   install_file "$KIT/claude/.gitleaks.toml"       "$base/.gitleaks.toml"
   for f in "$KIT"/claude/agents/*; do [ -f "$f" ] && install_file "$f" "$base/agents/$(basename "$f")"; done
+  while IFS= read -r -d '' f; do
+    rel="${f#"$KIT"/claude/skills/}"
+    mkdir -p "$base/skills/$(dirname "$rel")"
+    install_file "$f" "$base/skills/$rel"
+  done < <(find "$KIT/claude/skills" -type f -print0 2>/dev/null)
   for f in "$KIT"/claude/hooks/*;  do [ -f "$f" ] && install_file "$f" "$base/hooks/$(basename "$f")"; done
   for f in "$KIT"/sentinel/*;      do [ -f "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
   mkdir -p "$base/hooks/git"
