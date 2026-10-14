@@ -20,15 +20,15 @@ run(){ : > "$log"; PATH="$tmp/bin" "$BASH" "$SCRIPT" "$@" > "$tmp/out" 2>&1; }
 
 run; ck "$?" "0" "modo diff: exit 0"
 ck "$(wc -l < "$log" | tr -d ' ')" "0" "modo diff: no ejecuta ningun comando"
-ck "$(grep -c '^claude plugin install' "$tmp/out")" "4" "modo diff: imprime 4 instalaciones recomendadas"
+ck "$(grep -c '^claude plugin install' "$tmp/out")" "5" "modo diff: imprime 5 instalaciones recomendadas"
 
 run --apply; ck "$?" "0" "--apply: exit 0"
-for id in superpowers@claude-plugins-official frontend-design@claude-plugins-official ponytail@ponytail ui-ux-pro-max@ui-ux-pro-max-skill; do
+for id in superpowers@claude-plugins-official frontend-design@claude-plugins-official ponytail@ponytail ui-ux-pro-max@ui-ux-pro-max-skill cockpit@setup-claude-code; do
   ck "$(grep -c "^claude plugin install $id --scope user --yes$" "$log")" "1" "--apply instala $id en scope user"
 done
 ck "$(grep -c 'marketplace add DietrichGebert/ponytail --scope user' "$log")" "1" "--apply registra el marketplace de ponytail"
 ck "$(grep -c 'impeccable\|find-skills' "$log")" "0" "sin --with-optional no entra lo opcional"
-ck "$(grep -c '^claude plugin marketplace add' "$log")" "2" "solo registra los 2 marketplaces de terceros (el oficial ya viene)"
+ck "$(grep -c '^claude plugin marketplace add' "$log")" "3" "solo registra los 3 marketplaces externos (el oficial ya viene)"
 
 run --apply --with-optional; ck "$?" "0" "--with-optional: exit 0"
 ck "$(grep -c '^claude plugin install impeccable@impeccable' "$log")" "1" "--with-optional instala impeccable"

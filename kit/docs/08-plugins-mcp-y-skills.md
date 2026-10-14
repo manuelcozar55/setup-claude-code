@@ -36,6 +36,7 @@ bash kit/install-plugins.sh --apply --with-optional  # + impeccable y find-skill
 |---|---|---|---|
 | `superpowers` · `frontend-design` | `claude-plugins-official` · MIT / Apache-2.0 | el método y diseño de interfaces | ninguno nuevo: ya están en `enabledPlugins` |
 | `ponytail` | `DietrichGebert/ponytail` · MIT | modo «senior perezoso»: el cambio mínimo completo, respuestas cortas | instala hooks globales (`SessionStart`, `UserPromptSubmit`, `SubagentStart`) que cambian el estilo de todas las sesiones; se apaga con «stop ponytail» |
+| `cockpit` | este repo (`setup-claude-code`) · MIT | `/handoff`, Agent Dock y modo simple (ver `11-cockpit.md`) | hooks de sesión propios; el código está en `kit/mods/cockpit/` |
 | `ui-ux-pro-max` | `nextlevelbuilder/ui-ux-pro-max-skill` · MIT | catálogo de estilos, paletas y tipografías para UI | scripts Python que solo leen sus CSV locales |
 | `impeccable` (opcional) | `pbakaus/impeccable` · Apache-2.0 | diseño, crítica y pulido de interfaces | descarga un binario de GitHub Releases y sus hooks lo ejecutan en cada edición |
 | `find-skills` (opcional) | `vercel-labs/skills` · MIT | buscar e instalar skills del ecosistema | habilita instalar código ajeno con `npx skills add`; revísalo antes de aceptar |

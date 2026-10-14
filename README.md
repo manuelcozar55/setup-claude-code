@@ -83,7 +83,7 @@ flowchart LR
         H2["agents/ · skills/"]
         H3["settings.json fusionado<br/>CLAUDE.md"]
     end
-    PD["--plugin-dir<br/>(opt-in, sin install.sh)"]
+    PD["/plugin install cockpit<br/>(opt-in, sin install.sh)"]
 
     G --> INS
     HK --> INS
@@ -438,7 +438,7 @@ bash install.sh --with-headroom    # instala, arranca, verifica /readyz, y solo 
 | 8 agentes con tiering | `orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker` | [`kit/claude/agents/`](kit/claude/agents/) |
 | 6 skills del método | `deep-change`, `grilling`, `domain-modeling`, `writing-for-agents` y las manuales `retro` y `to-questionnaire`; `install.sh` las copia a `~/.claude/skills/` por el camino diff-first | [`kit/claude/skills/`](kit/claude/skills/) · [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) |
 | Plugins de terceros | `ponytail`, `ui-ux-pro-max` y, opcionales, `impeccable` y `find-skills`, instalados por referencia desde su marketplace con `kit/install-plugins.sh` (diff-first) | [`kit/docs/08-plugins-mcp-y-skills.md`](kit/docs/08-plugins-mcp-y-skills.md) |
-| Mod `cockpit` | `/handoff` (traspaso de sesión) y el panel Agent Dock; opt-in, se carga con `--plugin-dir` y no lo instala `install.sh` | [`kit/mods/cockpit/`](kit/mods/cockpit/) · [`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md) |
+| Mod `cockpit` | `/handoff` (traspaso de sesión) y el panel Agent Dock; opt-in: `/plugin install cockpit --marketplace manuelcozar55/setup-claude-code` (no lo instala `install.sh`) | [`kit/mods/cockpit/`](kit/mods/cockpit/) · [`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md) |
 | Dos capas de secretos | Capa 1 (`secret-guard.sh`, por nombre de fichero, activa desde el primer `install.sh`) + Capa 2 (`gitleaks` en `pre-commit`, por contenido real, opt-in por repo) | [`kit/docs/05-security.md`](kit/docs/05-security.md) |
 | Eval set | 20 tareas reales (mitad negativas: miden lo que cuesta un falso positivo), dos brazos (con harness y sin el) y agregado con intervalo de confianza; opt-in, cuesta llamadas reales a `claude -p`, nunca corre en CI | [`kit/evals/`](kit/evals/) |
 | Suite de test falsable | `test_guards_falsifiability.sh`: neutraliza un guard real y comprueba que caen casos `BLOCK` conocidos | [`kit/test/`](kit/test/) |
