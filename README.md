@@ -447,7 +447,7 @@ bash install.sh --with-headroom    # instala, arranca, verifica /readyz, y solo 
 
 ## Por qué existe
 
-No es una config que se copia y ya: es un bucle que se instala, se diagnostica y se corrige a sí mismo (`install.sh` → `doctor.sh` → editar/reinstalar), con TDD detrás de cada pieza en vez de "funciona en mi máquina". El porqué completo, con el modelo mental y los diez pilares de ingeniería detrás, está en las dos charlas de este repo (ver más abajo) y en [`kit/docs/01-overview.md`](kit/docs/01-overview.md).
+No es una config que se copia y ya: es un bucle que se instala, se diagnostica y se corrige a sí mismo (`install.sh` → `doctor.sh` → editar/reinstalar), con TDD detrás de cada pieza en vez de "funciona en mi máquina". El porqué completo, con el modelo mental y los diez pilares de ingeniería detrás, está en [`kit/docs/01-overview.md`](kit/docs/01-overview.md).
 
 ## Configuración
 
@@ -461,17 +461,6 @@ Tras `install.sh`, personaliza en `$CLAUDE_HOME` (`$HOME/.claude` por defecto):
 - **`sentinel-allowlist.json`** — para falsos positivos de los guards, en vez de desactivarlos.
 
 Detalle de cada opción en [`kit/docs/02-install.md`](kit/docs/02-install.md) y [`kit/docs/05-security.md`](kit/docs/05-security.md).
-
-## Las dos charlas
-
-Además del kit, este repo trae dos charlas autocontenidas (HTML + guion, sin instalar nada) que explican el método detrás: **el mapa** (modelo mental de Karpathy y los diez pilares de ingeniería de agentes) y **el territorio** (esta misma máquina, con cifras reales).
-
-| Charla | Fichero | Guion | Para quién |
-|--------|---------|-------|------------|
-| **Fundamentos** · el mapa | [`agentes-fundamentos.html`](charlas/agentes-fundamentos.html) | [`agentes-fundamentos-guion.md`](charlas/agentes-fundamentos-guion.md) | Manager técnico |
-| **Setup** · el territorio | [`setup-claude-code-definitiva.html`](charlas/setup-claude-code-definitiva.html) | [`setup-claude-code-definitiva-guion.md`](charlas/setup-claude-code-definitiva-guion.md) | Desarrolladores |
-
-Ábrelas directamente en el navegador (doble clic, o `xdg-open`/`open`/`start`), no hace falta servidor.
 
 ## Más allá del quick start
 
@@ -522,10 +511,8 @@ Nada del mapa es opinión. Combina un modelo mental y un cuerpo de ingeniería q
 
 ## Notas de experto
 
-- **Honestidad de fuentes.** Cada afirmación de las charlas y del kit está citada y verificada; lo que no se pudo verificar, se cortó. Las cifras que el repo afirma sobre sí mismo (suites, agentes, comandos, ADRs, documentos) las comprueba un test contra el propio árbol: `kit/test/test_doc_claims.sh`. Si el README miente, `make test` se pone rojo.
-- **Cifras del deck de setup.** Son una foto ilustrativa de mi máquina en un momento dado, no una garantía ni un dato tuyo: reprodúcelas con tus propios logs (el deck trae la tabla "cifra a fuente a comando"). `~/.ssh`, `id_rsa` o `ANTHROPIC_API_KEY` aparecen solo como objetivos de demostración de la puerta de seguridad; el repo no contiene ninguna clave real.
+- **Honestidad de fuentes.** Cada afirmación del kit está citada y verificada; lo que no se pudo verificar, se cortó. Las cifras que el repo afirma sobre sí mismo (suites, agentes, comandos, ADRs, documentos) las comprueba un test contra el propio árbol: `kit/test/test_doc_claims.sh`. Si el README miente, `make test` se pone rojo.
 - **El kit se verifica a sí mismo.** Instalar, diagnosticar, corregir: un bucle, no un volcado. `doctor.sh` da evidencia por componente y `scan-secrets.sh` corta las fugas que sabe reconocer — sus límites están en [`SECURITY.md`](SECURITY.md), no escondidos.
-- **Casi autocontenido, y accesible.** Las charlas llevan CSS/JS inline, contraste AA en claro y oscuro, `prefers-reduced-motion`, y sin JS o al imprimir se ve todo. La única dependencia externa es la tipografía de Google Fonts: sin red, el navegador cae a la fuente del sistema y la charla se ve igual de bien.
 
 ## Autor
 
@@ -536,32 +523,9 @@ Nada del mapa es opinión. Combina un modelo mental y un cuerpo de ingeniería q
 
 ## Licencia
 
-Este repositorio tiene dos tipos de contenido y cada uno lleva su licencia:
-
-| Qué | Licencia | Fichero |
-|---|---|---|
-| **El software**: todo lo de `kit/` (scripts, hooks, guards, tests, evals, plantillas de config) y los scripts de `.github/` | **MIT** | [`LICENSE`](LICENSE) |
-| **Las charlas**: los decks "agentes-fundamentos" y "setup-claude-code-definitiva", sus guiones y diagramas originales | **CC BY 4.0** | [`LICENSE-DOCS`](LICENSE-DOCS) |
-
-Se separan porque no son la misma cosa: CC BY 4.0 está pensada para obra creativa,
-no para código —no concede permisos de patente ni cubre bien la garantía y la
-responsabilidad—, y usarla como licencia de software deja a quien instala el kit en
-una posición ambigua. MIT es la elección deliberada para el código: es la misma
-licencia del material del que derivan tres de los guards, así que no hay fricción de
-compatibilidad.
-
-El fichero **MIT es el que se llama `LICENSE`** a propósito: GitHub deduce la licencia
-del repositorio de ese nombre exacto, y mientras ahí vivió la CC BY 4.0 —con su preámbulo
-propio, que su detector no reconoce— la API respondía `license: null` y la barra lateral no
-anunciaba ninguna. Para quien evalúa si puede usar el kit, «sin licencia» se lee como todos
-los derechos reservados. El artefacto principal de este repo es software: su licencia es la
-que debe salir a la vista.
-
-Y por eso **`LICENSE` es el texto MIT literal, sin una línea de más**: renombrarlo no bastó
-—medido, la API pasó de `license: null` a `Other`, porque encontraba el fichero y no
-reconocía su contenido—. El detector compara el fichero con la plantilla y el preámbulo que
-llevaba (alcance y terceros, nueve líneas) lo alejaba lo suficiente. Esas precisiones no se
-han perdido: están en [`NOTICE`](NOTICE), que es donde no estorban.
+**MIT**, en [`LICENSE`](LICENSE). Es el texto MIT literal, sin una línea de más, para que GitHub
+la detecte: en cuanto el fichero lleva prosa añadida, la API la anuncia como `Other`. El
+alcance de la licencia vive en [`NOTICE`](NOTICE).
 
 Parte del software deriva de proyectos de terceros. Sus avisos de copyright, y un
 punto de procedencia que sigue sin resolver, están en
