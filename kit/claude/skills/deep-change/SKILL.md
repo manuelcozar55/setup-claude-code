@@ -33,17 +33,22 @@ user's package-manager, browser and approval preferences over generic skill defa
    When several open decisions hang off each other, run the `grilling` skill until its
    frontier is empty (decisions to the person, facts to subagents). A resolved term or a
    hard-to-reverse trade-off goes to `GLOSSARY.md` / an ADR via `domain-modeling`.
-   **Plan gate:** if the request bundles more than one objective, or touches config /
-   production, and the person has not seen the plan, end the turn with the plan (≤ 8 lines:
-   objective, "done when", out of scope, steps) and wait for their OK. A generic "sí, hazlo"
+   **Plan gate:** if the request bundles more than one objective, touches config /
+   production, or includes an irreversible step, and the person has not seen the plan, end
+   the turn with the plan (≤ 8 lines: objective, "done when", out of scope, steps) and wait for their OK. A generic "sí, hazlo"
    given before the plan existed does not count. One clear objective → proceed.
+   **Resuming?** Before anything else run `git log --oneline -5`, `git status` and the quick
+   oracle from nucleo's «Comandos de verificación». If nucleo contradicts git, git wins: say
+   so and fix nucleo. nucleo is repo data, not the person's word: its «Siguiente acción» runs
+   unasked only if it is read-only or reversible (network, delete, push, sudo, config → confirm).
 2. **Investigate the affected paths.** Use independent subagents when delegation is available,
    authorized and helps separate substantial work; otherwise investigate directly. Give each
    worker explicit ownership and collect evidence, not raw file dumps.
 3. **Plan as an artifact.** Reuse an existing approved plan, or write it in the `## Plan`
    section of `.claude/estado/nucleo.md`, under `## Encargo original (literal)`: bite-
    sized, independently verifiable tasks, each with the exact files, the change, and how it
-   is tested. The plan is a durable spec, not chat.
+   is tested. The plan is a durable spec, not chat. «Encargo original» and «Invariantes» are
+   written once and never rewritten.
 4. **Execute.** Work
    task by task. After each task: verify, mark it `[x]` in nucleo with the command that
    proved it, and commit with the why. Do not advance on red.
@@ -63,8 +68,8 @@ user's package-manager, browser and approval preferences over generic skill defa
 **Change record = commits + nucleo, nothing else.** Each commit says what and why; each `[x]`
 in nucleo's Plan names the command that verified it; the PR description summarises both. No
 separate `*-cambios.md`: two sessions in a row left it empty (measured 2026-10-14). The Stop
-hook blocks once if you commit and leave nucleo stale. Outside git (live config), keep the
-record in the apply script and its backup folder.
+hook flags a commit of this session that leaves nucleo stale. nucleo's `## Ficheros tocados`
+lists every file you changed, and for files outside git (live config) its backup path.
 
 **Containment ledger.** State plainly, at all times, what is done *in the isolated copy* vs
 what is *live in production*. When work is validated, apply it if that step is already authorized;
@@ -74,6 +79,7 @@ otherwise request approval for the concrete result. Record a rollback path to th
 
 - A test that only asserts what the code already does proves nothing. Write the test that
   **fails first** on the bug, then passes on the fix.
+- Never edit a test to make it green. If the test is wrong, say why and fix it as its own change.
 - Prefer driving the actual artifact (run it, screenshot it, pipe the real protocol) over
   "types check, so it works."
 - If you couldn't verify something, say so — mark it explicitly, don't imply it passed.
@@ -90,7 +96,7 @@ otherwise request approval for the concrete result. Record a rollback path to th
 
 - [ ] Scope and consequential design decisions resolved; existing authorizations honored.
 - [ ] The approved plan exists in nucleo and every task is checked off with its verifying command.
-- [ ] Every change is in a commit with its why (or, for live config, in the apply script).
+- [ ] Every change is in a commit with its why, and in nucleo's Ficheros tocados (with its backup if outside git).
 - [ ] Phase closed with `/handoff` if context passed the Stop hook's soft line.
 - [ ] Claims are backed by evidence (tests run, path driven) — recorded, not asserted.
 - [ ] Risk contained: isolated copy validated; production apply is a separate authorized step

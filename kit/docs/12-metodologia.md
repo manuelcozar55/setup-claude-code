@@ -81,7 +81,7 @@ Dos hábitos que el tooling no hace por ti:
 
 - **Registro = commits + `nucleo.md`**: cada commit dice qué y por qué; cada `[x]` del Plan en
   `.claude/estado/nucleo.md` nombra el comando que lo verificó. Sin `*-cambios.md` aparte: quedó
-  vacío en dos sesiones seguidas. El hook Stop bloquea una vez si commiteas y nucleo no se movió.
+  vacío en dos sesiones seguidas. Un hook Stop puede señalar un commit de la sesión que deja nucleo atrás.
 - **Libro de contención**: en todo momento queda dicho qué está hecho en la copia aislada y qué
   está ya en producción. Si ya existe una instrucción explícita de aplicar lo revisado, no se
   vuelve a preguntar.
