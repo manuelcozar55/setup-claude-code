@@ -192,12 +192,19 @@ etiquetado.
   `.jks`, `.keystore`) miraban subcadenas y en la instalación real dieron 245 denegaciones
   falsas en un día; una regex intermedia que exigía un nombre delante dejaba pasar el oculto
   (`.server.key`) y los sufijos de copia (`x.key~`), porque `cat .server.key` y el filtro
-  `jq '.data.key'` son el mismo texto. Ahora `sentinel_preflight.py` parte el comando con
-  `shlex` (comillas, `$( )`, acento grave, redirecciones, `{a,b}`) y compara cada componente
-  de ruta con `key_file_extensions` de `iocs.json`, que sustituye a la regex. Se exime el
-  patrón de `grep`/`rg`, el filtro de `jq` y el mensaje de `git commit|tag|merge -m`; del
-  código de `node -e`/`python -c` solo se miran los literales de cadena, y una sustitución
-  `$( )` dentro de un papel exento se mira igual. **Se deniegan**, como en `main`: rutas,
+  `jq '.data.key'` son el mismo texto. Ahora `sentinel_preflight.py` parte el comando con un
+  lexer propio (comillas, escapes, redirecciones; `$( )` y acento grave se leen como comando
+  aparte) y compara cada componente de ruta con `key_file_extensions` de `iocs.json`, que
+  sustituye a la regex; si la lista falta, el código usa las seis extensiones por defecto y
+  el motivo del deny lo dice. Las llaves `{a,b}` sin comillas se expanden sin repetidos
+  hasta 64 por palabra y 256 por comando, y pasado el tope se deniega (`brace expansion too
+  large`); entre comillas no se expanden, como en bash. Se exime el patrón de `grep`/`rg`,
+  el filtro de `jq` y el mensaje de `git commit|tag|merge -m`, con la aridad de sus
+  opciones (`-e`, `-f`, `--files` y `--type-list` anulan la exención); del código de
+  `node -e`/`python -c` solo se miran los literales de cadena, y solo si el flag va antes
+  del script (`python3 x.py -c …` no exime). El cuerpo de una sustitución `$( )` dentro de
+  un papel exento se lee como comando propio: el commit con heredoc
+  (`-m "$(cat <<'EOF' … EOF)"`) deja de dar falso positivo. **Se deniegan**, como en `main`: rutas,
   comillas, el oculto (`.server.key`, `.env.key`, `.tls.pem`), los sufijos de copia (`~`,
   `#`, `+`, `-old`, `.bak`), globs (`*.key`, `[s]erver.key`), `'x'.key`, `server.{key,pem}`,
   acento grave, `$( )`, `bash -c '…'`, directorios (`dir.p12/x`) y las rutas de Windows.
@@ -206,14 +213,16 @@ etiquetado.
   `node -e "console.log(o.key)"`, `a.key.json`, `config.key.ts` y la prosa que nombra la
   extensión. **Límite declarado**: el oculto a secas sin barra (`cat .key`), indistinguible
   de la prosa; donde el papel de una palabra no se clasifica (`sudo grep`, `git -C x commit`)
-  se deniega de más, nunca de menos. 25 sondas nuevas en `test_guards.sh` (17 fallaban con la
-  regex). Además, `test_guards.sh` escribía sus deny en el `sentinel.jsonl` del HOME real;
+  se deniega de más, nunca de menos. 41 sondas nuevas en `test_guards.sh` (25 de la regex,
+  17 fallaban con ella; 16 de la segunda revisión, 11 fallaban antes de su ronda de fix).
+  Además, `test_guards.sh` escribía sus deny en el `sentinel.jsonl` del HOME real;
   `test_guards_falsifiability.sh` lo impide ahora con un HOME simulado.
 - **`pre-compact.sh` rota los checkpoints de más de 14 días, después de publicar el nuevo.**
   Escribe uno por sesión, con los últimos prompts de la persona, y nadie los borraba. La
   rotación va tras el `mv` y excluye el recién escrito: si generar o publicar falla, el
   checkpoint anterior se conserva de verdad. `nucleo-freshness.log` (una línea por
-  compactación) se acota a las últimas 1 000 al pasar de 2 000. Nuevo caso que fija que un
+  compactación) se acota a las últimas 1 000 al pasar de 2 000, con un temporal de `mktemp`
+  que se borra si el `tail` o el `mv` fallan. Nuevo caso que fija que un
   directorio sin git ni `.claude/estado` no gana un `.claude/` (una instalación anterior a
   3917835 dejó 47 bajo un home).
 - **Sentinel ya no lee el allowlist del directorio de trabajo.** Un repo clonado con
