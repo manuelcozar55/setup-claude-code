@@ -63,7 +63,7 @@ Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`.
 ```bash
 cd kit/mods/cockpit
 claude plugin validate .                          # Validation passed
-claude plugin test .                              # 30 pass, 0 fail
+claude plugin test .                              # 33 pass, 0 fail
 pnpm dlx --package=typescript@5 tsc -p .          # rc=0
 bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin red ni claude
 ```
