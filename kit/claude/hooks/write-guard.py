@@ -93,11 +93,14 @@ def main() -> None:
         }))
     else:
         print(json.dumps({
-            "additionalContext": (
-                f"⚠ [WRITE-GUARD ADVISORY] Writing to '{path}' matches potential "
-                f"secret patterns: {', '.join(labels)}. "
-                "Verify these are not real credentials before proceeding."
-            )
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "additionalContext": (
+                    f"⚠ [WRITE-GUARD ADVISORY] Writing to '{path}' matches potential "
+                    f"secret patterns: {', '.join(labels)}. "
+                    "Verify these are not real credentials before proceeding."
+                ),
+            }
         }))
 
 

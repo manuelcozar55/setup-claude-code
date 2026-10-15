@@ -268,6 +268,16 @@ else
   fail=$((fail+1)); echo "FAIL: la Capa 2 (hooks/git/pre-commit + .gitleaks.toml) se distribuye en el kit"
 fi
 
+# 14b) additionalContext fuera de hookSpecificOutput lo ignora Claude Code: los avisos de
+# write-guard (PreToolUse) y narthex (PostToolUse) llegaban al vacio. Se exige el esquema oficial.
+# La frase de jailbreak se monta por trozos para no disparar el propio Sentinel al editar la suite.
+ctx_wg=$(printf '%s' '{"tool_name":"Write","tool_input":{"file_path":"/tmp/x.py","content":"password = \"hunter2hunter2\""}}' \
+  | "$PY" "$KIT/claude/hooks/write-guard.py" | jq -r '.hookSpecificOutput.additionalContext // empty')
+ctx_nx=$(printf '{"tool_name":"mcp__x__y","tool_response":{"text":"%s%s"}}' jail break \
+  | HOME="$GUARDS_TEST_HOME" "$PY" "$KIT/claude/hooks/narthex-post-mcp.py" | jq -r '.hookSpecificOutput.additionalContext // empty')
+[ -n "$ctx_wg" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: write-guard avisa fuera de hookSpecificOutput.additionalContext"; }
+[ -n "$ctx_nx" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: narthex avisa fuera de hookSpecificOutput.additionalContext"; }
+
 # 15) modo de los hooks: settings.json los invoca por RUTA DIRECTA, asi que un *.sh
 # versionado como 100644 devuelve rc=126 en cada arranque de sesion de cualquier
 # instalacion de terceros. Le paso a preflight.sh, el unico de los nueve sin el bit, y

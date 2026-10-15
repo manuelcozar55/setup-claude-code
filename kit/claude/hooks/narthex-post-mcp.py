@@ -166,7 +166,7 @@ def main() -> None:
         "Surface this finding to the user in your next reply."
     )
 
-    print(json.dumps({"additionalContext": advisory}))
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": advisory}}))
 
 
 if __name__ == "__main__":
