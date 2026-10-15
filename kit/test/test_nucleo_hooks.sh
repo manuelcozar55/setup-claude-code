@@ -153,6 +153,18 @@ ok "pre-compact: el log acotado conserva lo último y la línea nueva" "$(tail -
 seq 1 2500 >"$FLOG"
 ev "$R" s1 "$TP" | PATH="$T/mvfalso:$PATH" bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: un mv fallido no deja temporal del log" "$(find "$(dirname "$FLOG")" -type f -name 'nucleo-freshness.log?*' | wc -l)" 0
+# mktemp crea 0600: sin copiar el modo, la rotación cambiaba el del log.
+seq 1 2500 >"$FLOG"; chmod 640 "$FLOG"
+ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: la rotación conserva el modo del log" "$(stat -c %a "$FLOG")" 640
+# Un TERM entre el mktemp y el mv (aquí, durante el tail de la rotación) no deja el temporal.
+mkdir -p "$T/tailterm"
+# shellcheck disable=SC2016  # $2 y $PPID los expande el stub
+printf '#!/bin/sh\n[ "$2" = 1000 ] && kill -TERM "$PPID"\nexec %s "$@"\n' "$(command -v tail)" >"$T/tailterm/tail"
+chmod +x "$T/tailterm/tail"
+seq 1 2500 >"$FLOG"
+ev "$R" s1 "$TP" | PATH="$T/tailterm:$PATH" bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: un TERM durante la rotación no deja temporal del log" "$(find "$(dirname "$FLOG")" -type f -name 'nucleo-freshness.log?*' | wc -l)" 0
 
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
 exit $FAIL
