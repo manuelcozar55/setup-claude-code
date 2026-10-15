@@ -86,8 +86,10 @@ DENY_RULES=(
   # ── NETWORK / REMOTE CODE EXECUTION ────────────────────────────────────────
   '\biptables\s+-F'                   "BLOCKED: iptables -F (flush firewall)"
   '\bufw\s+disable'                   "BLOCKED: ufw disable"
-  '\bcurl\b.*\|\s*(ba)?sh'            "BLOCKED: curl piped to shell (RCE)"
-  '\bwget\b.*\|\s*(ba)?sh'            "BLOCKED: wget piped to shell (RCE)"
+  '\bcurl\b.*\|\s*(sudo\s+)?(env\s+)?(xargs\s+)?(\S*/)?(ba|z)?sh\b'  "BLOCKED: curl piped to shell (RCE)"
+  '\bwget\b.*\|\s*(sudo\s+)?(env\s+)?(xargs\s+)?(\S*/)?(ba|z)?sh\b'  "BLOCKED: wget piped to shell (RCE)"
+  # Sustitucion de comando/proceso: `sh -c "$(curl ..)"`, `eval "$(curl ..)"`, `bash < <(curl ..)`.
+  '\b((ba|z)?sh|eval|source|python[0-9.]*|perl|ruby|node)\b.*(\$\(|<\(|`)\s*(curl|wget)\b'  "BLOCKED: curl/wget output executed by an interpreter (RCE)"
   '\bnc\s+-[a-z]*l'                   "BLOCKED: netcat listener (reverse shell)"
   '/dev/tcp/'                         "BLOCKED: /dev/tcp (reverse shell)"
   '/dev/udp/'                         "BLOCKED: /dev/udp (reverse shell)"
@@ -160,6 +162,9 @@ ASK_RULES=(
   # ── DOCKER DESTRUCTIVE (ASK — HITL) ────────────────────────────────────────
   '\bdocker\s+system\s+prune'  "Confirm: docker system prune — removes all unused containers/images"
   '\bdocker\s+volume\s+rm'     "Confirm: docker volume rm — permanent volume data loss"
+
+  # ── DOWNLOAD AND EXECUTE (ASK — HITL) ──────────────────────────────────────
+  '\b(curl|wget)\b[^|]*(&&|;)\s*(sudo\s+)?(ba|z)?sh\b'  "Confirm: download then run a script — review it before executing"
 
   # ── PACKAGE PUBLISH / INSTALL FROM URL (ASK — HITL) ────────────────────────
   '\bnpm\s+publish'             "Confirm: npm publish — will publish to public npm registry"
