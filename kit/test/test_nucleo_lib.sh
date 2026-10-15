@@ -79,6 +79,7 @@ printf '%s\n' '# Estado' '## Plan' '### Fase 1' '- [ ] FASE-A' '### Fase 2' '- [
 S=$(nucleo_emitir "$F")
 ok "### bajo ## Plan: las cuatro líneas llegan" "$(command grep -c '^### Fase [12]$\|FASE-[AB]' <<<"$S")" 4
 ok "### bajo ## Plan: no es fuera de forma" "$(command grep -c 'fuera de forma' <<<"$S")" 0
+ok "### bajo ## Plan: no pide leer el fichero" "$(command grep -c '^\[LEE ' <<<"$S")" 0
 # Cercas: una línea ```x``` no abre bloque, y una cerca sin cerrar no se traga las secciones siguientes.
 # Tragadas, llegaban como cuerpo del Objetivo: lo delata la sección ajena del final, que se cuela.
 F=$T/cerca1.md
@@ -108,6 +109,14 @@ printf '%s\n' '# Estado' '## TAREA ACTUAL' '### Pendientes' '- P-PEND' '### Hech
 S=$(nucleo_emitir "$F")
 ok "### Hecho tras Pendientes: no se cuela" "$(command grep -c 'P-PEND\|HECHO-AJENO' <<<"$S")" 1
 ok "### Hecho tras Pendientes: avisa fuera de forma" "$(command grep -c '^\[fuera de forma: 2 secciones' <<<"$S")" 1
+# Lo mismo con un subapartado («### Fase 1» tras «### Plan»): solo el nombre lo distingue de «### Hecho», así
+# que también cierra, pero la pérdida se ve: la salida pide leer el fichero y sugiere ####.
+F=$T/fase-perdida.md
+printf '%s\n' '# E' '## TAREA ACTUAL' '### Plan' '- p' '### Fase 1' '- FASE-A' '### Pendientes' '- P' >"$F"
+S=$(nucleo_emitir "$F")
+ok "### sin clave tras Plan bajo TAREA ACTUAL: no llega" "$(command grep -c FASE-A <<<"$S")" 0
+ok "### sin clave cierra una sección: pide leer el fichero" "$(command grep -c '^\[LEE ' <<<"$S")" 1
+ok "### sin clave cierra una sección: sugiere ####" "$(command grep -c 'escríbelo con ####)\]$' <<<"$S")" 1
 # Cercas equilibradas: un «## Plan» citado en un bloque es inerte y el Plan real llega como sección.
 F=$T/cerca-citada.md
 # shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
@@ -127,13 +136,21 @@ F=$T/cerca4.md
 printf '%s\n' '# Estado' '## Comandos de verificación' '````' '# comentario' 'make CMD-CUATRO' '````' \
   '## Pendientes' '  ```sh' '# otro' '  ```' '- Q-SANGRIA' >"$F"
 ok "cerca de cuatro y con sangría: los comandos llegan" "$(nucleo_emitir "$F" | command grep -c 'CMD-CUATRO\|Q-SANGRIA')" 2
-# Con cuatro espacios de sangría ``` es un bloque sangrado (CommonMark), no una cerca: no cuenta en la paridad.
+# Cuatro espacios también son cerca: en un nucleo lo común es un paso numerado con su bloque sangrado, y si
+# no contara su # comentario cortaría los comandos.
+F=$T/cerca-paso.md
+# shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
+printf '%s\n' '## Plan' '1. correr' '    ```sh' '# c' 'make X' '    ```' '- Q' '## Pendientes' '- r' >"$F"
+ok "cerca sangrada cuatro espacios: el Plan sigue y Pendientes llega" "$(nucleo_emitir "$F" | command grep -c '^make X$\|^- Q$\|^## Pendientes$\|^- r$')" 4
+# Límite declarado: un ``` dentro de un bloque sangrado de CommonMark cuenta como cerca; aquí deja la paridad
+# impar, y se avisa.
 F=$T/cerca-sangrada.md
 # shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
 printf '%s\n' '# Estado' '## Objetivo' '    ```' '## Comandos de verificación' '```sh' '# comentario' 'make CMD-SANGRADA' '```' \
   '## Plan' '- [ ] P-SANGRADA' >"$F"
-ok "cuatro espacios no son cerca: el bloque real conmuta" "$(nucleo_emitir "$F" | command grep -c 'CMD-SANGRADA\|P-SANGRADA')" 2
+ok "cuatro espacios cuentan: entran en la paridad" "$(nucleo_emitir "$F" | command grep -c '^\[cercas sin equilibrar')" 1
 # Cercas impares: se ignoran, pero no en silencio.
 ok "cerca sin cerrar: avisa" "$(nucleo_emitir "$T/cerca2.md" | command grep -c '^\[cercas sin equilibrar: se ignoran')" 1
+ok "cerca sin cerrar: pide leer el fichero" "$(nucleo_emitir "$T/cerca2.md" | command grep -c '^\[LEE ')" 1
 ok "cercas equilibradas: sin aviso" "$(nucleo_emitir "$T/cerca4.md" | command grep -c 'cercas sin equilibrar')" 0
 exit $FAIL
