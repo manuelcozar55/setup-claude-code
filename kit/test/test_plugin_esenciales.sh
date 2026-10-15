@@ -46,7 +46,7 @@ for n in '../../../x' '1.*'; do
   ck "$rc" "2" "task-brief rechaza N='$n' (exit 2)"
 done
 (cd "$tmp" && bash "$TB" "$tmp/plan.md" 1 "$tmp/brief.md" >/dev/null 2>&1) || true
-ck "$(cat "$tmp/brief.md" 2>/dev/null | tr '\n' ' ')" "## Task 1 uno " "task-brief con N entero extrae solo esa tarea"
+ck "$(tr '\n' ' ' < "$tmp/brief.md" 2>/dev/null)" "## Task 1 uno " "task-brief con N entero extrae solo esa tarea"
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
