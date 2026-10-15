@@ -31,6 +31,11 @@ etiquetado.
   Sustituye a ccstatusline (~300 ms por refresco, node y un bundle de 3,3 MB). La fusión de
   `settings.json` no cambia: quien ya tenía `theme` o `statusLine` conserva los suyos. Sensor
   nuevo `test_statusline.sh` (26 casos) y `doctor` exige PASS de la barra en una instalación limpia.
+- **Agent Dock sin cortes y con la actividad de cada agente (cockpit 0.3.2).** `Hechos` ya no
+  se queda en los 8 últimos con `… y N más`, ni el estado en los 40 últimos agentes (eso
+  renumeraba los `T<n>`): se dibujan todos y el pane hace scroll. La segunda línea de un agente
+  que trabaja (su última herramienta) ya no la pisa el sondeo de 1,5 s, que escribía filas
+  leídas antes de un `tool.call`; y de una ruta enseña la cola (`checkout/precio.ts`), no la raíz.
 - **Agent Dock legible en un pane estrecho (cockpit 0.3.1).** La misión nace plegada en una
   sola línea con `…` (antes dos), así que los agentes suben al principio del pane. El tiempo
   de cada agente, el de la misión y el de «sin actividad» llevan unidades (`45s`, `10m42s`,
