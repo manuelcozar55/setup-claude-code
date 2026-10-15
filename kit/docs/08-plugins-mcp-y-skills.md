@@ -33,7 +33,8 @@ bash kit/install-plugins.sh --apply --with-optional  # + impeccable y find-skill
 
 | Plugin / skill | Origen · licencia | Para qué | Riesgo que asumes |
 |---|---|---|---|
-| `superpowers` · `frontend-design` | `claude-plugins-official` · MIT / Apache-2.0 | el método y diseño de interfaces | ninguno nuevo: ya están en `enabledPlugins` |
+| `frontend-design` | `claude-plugins-official` · Apache-2.0 | diseño de interfaces | ninguno nuevo: ya está en `enabledPlugins` |
+| `esenciales` | este repo (`setup-claude-code`) · MIT, derivado de superpowers | las seis skills del método (ver `04-superpowers.md`) | ninguno nuevo: solo skills, sin hooks; el código está en `kit/plugins/esenciales/` |
 | `ponytail` | `DietrichGebert/ponytail` · MIT | modo «senior perezoso»: el cambio mínimo completo, respuestas cortas | instala hooks globales (`SessionStart`, `UserPromptSubmit`, `SubagentStart`) que cambian el estilo de todas las sesiones; se apaga con «stop ponytail» |
 | `cockpit` | este repo (`setup-claude-code`) · MIT | `/handoff`, Agent Dock y modo simple (ver `11-cockpit.md`) | hooks de sesión propios; el código está en `kit/mods/cockpit/` |
 | `ui-ux-pro-max` | `nextlevelbuilder/ui-ux-pro-max-skill` · MIT | catálogo de estilos, paletas y tipografías para UI | scripts Python que solo leen sus CSV locales |
@@ -118,7 +119,7 @@ El `CLAUDE.md` que instala este kit invoca varias skills que viven en `$HOME/.cl
 | `ultrawork` | `/ultrawork` | modo de máxima potencia: todos los agentes, en paralelo, sin paradas |
 | `agent-browser` | se carga antes de cualquier tarea de navegador | estándar de automatización de navegador (ya cubierta en `04-superpowers.md`) |
 
-Instálalas desde su origen o adáptalas a tu propio setup. Nota honesta: el `CLAUDE.md` las invoca como si estuvieran siempre disponibles, pero son herramientas, no leyes de hierro (esas son las cuatro de superpowers, ver `04-superpowers.md`): si una de estas skills no está instalada en tu máquina, el setup degrada con elegancia, no se rompe.
+Instálalas desde su origen o adáptalas a tu propio setup. Nota honesta: el `CLAUDE.md` las invoca como si estuvieran siempre disponibles, pero son herramientas, no leyes de hierro (esas son las tres de `04-superpowers.md`): si una de estas skills no está instalada en tu máquina, el setup degrada con elegancia, no se rompe.
 
 Verifica qué tienes instalado con:
 

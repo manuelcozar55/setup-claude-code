@@ -23,9 +23,10 @@ ck "$(wc -l < "$log" | tr -d ' ')" "0" "modo diff: no ejecuta ningun comando"
 ck "$(grep -c '^claude plugin install' "$tmp/out")" "5" "modo diff: imprime 5 instalaciones recomendadas"
 
 run --apply; ck "$?" "0" "--apply: exit 0"
-for id in superpowers@claude-plugins-official frontend-design@claude-plugins-official ponytail@ponytail ui-ux-pro-max@ui-ux-pro-max-skill cockpit@setup-claude-code; do
+for id in esenciales@setup-claude-code frontend-design@claude-plugins-official ponytail@ponytail ui-ux-pro-max@ui-ux-pro-max-skill cockpit@setup-claude-code; do
   ck "$(grep -c "^claude plugin install $id --scope user --yes$" "$log")" "1" "--apply instala $id en scope user"
 done
+ck "$(grep -c 'superpowers@' "$log")" "0" "--apply ya no instala superpowers (lo sustituye esenciales)"
 ck "$(grep -c 'marketplace add DietrichGebert/ponytail --scope user' "$log")" "1" "--apply registra el marketplace de ponytail"
 ck "$(grep -c 'impeccable\|find-skills' "$log")" "0" "sin --with-optional no entra lo opcional"
 ck "$(grep -c '^claude plugin marketplace add' "$log")" "3" "solo registra los 3 marketplaces externos (el oficial ya viene)"

@@ -1,0 +1,7 @@
+{
+  "name": "esenciales",
+  "version": "0.1.0",
+  "description": "Las seis skills del método con uso real (diseñar, planificar, ejecutar con subagentes, depurar, cerrar rama, paralelizar), adaptadas a nucleo.md y sin hook de arranque",
+  "author": { "name": "setup-claude-code" },
+  "license": "MIT"
+}

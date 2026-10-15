@@ -7,6 +7,11 @@
       "name": "cockpit",
       "source": "./kit/mods/cockpit",
       "description": "Vigía de contexto con /handoff sobre el prompt, Agent Dock a la derecha y modo simple de pasos"
+    },
+    {
+      "name": "esenciales",
+      "source": "./kit/plugins/esenciales",
+      "description": "Las seis skills del método con uso real, derivadas de superpowers (MIT), sin hook de arranque"
     }
   ]
 }

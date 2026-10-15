@@ -34,7 +34,7 @@ De ahí el principio que gobierna este kit: **design the loop, not the prompt.**
 
 El mapa de arriba no es teoría suelta: cada pieza que instala este kit tapa un hueco concreto.
 
-- **superpowers** (`docs/04-superpowers.md`) pone el **método**: el bucle operativo de cuatro fases (brainstorm, plan, execute, verify), la orquestación de agentes con tiering, y las puertas de humano. Cubre los pilares de loop, orquestación y human-in-the-loop.
+- **esenciales** (`docs/04-superpowers.md`), el plugin de skills del kit, pone el **método**: el bucle operativo de cuatro fases (brainstorm, plan, execute, verify), la orquestación de agentes con tiering, y las puertas de humano. Cubre los pilares de loop, orquestación y human-in-the-loop.
 - **Sentinel** (`docs/05-security.md`) pone las **barreras**: un motor de políticas determinista que se ejecuta antes de cada acción, sin depender de que el modelo decida autolimitarse. Cubre el pilar de guardrails.
 - **Headroom** (`docs/03-headroom.md`) cuida el **contexto y el coste**: un proxy local que comprime los resultados de herramienta antes de que lleguen al modelo, para que la ventana no se llene a mitad de una tarea larga. Cubre el pilar de contexto.
 - **El venv de tools** (`docs/02-install.md`) da las **herramientas**: CLIs curados, aislados del Python del sistema, invocables por los propios hooks del kit. Cubre el pilar de tools.
@@ -53,7 +53,7 @@ flowchart LR
     end
     subgraph TERR["El territorio · este kit"]
         direction TB
-        SP["superpowers<br/>método · loop · orquestación · humano"]
+        SP["esenciales<br/>método · loop · orquestación · humano"]
         SE["Sentinel<br/>barreras deterministas"]
         HR["Headroom<br/>compresión de contexto"]
         VE["venv de tools<br/>CLIs aislados"]
@@ -78,7 +78,7 @@ flowchart LR
 
 - **`02-install.md`**: prerrequisitos y los pasos exactos para instalar la config saneada de este kit en `CLAUDE_HOME`.
 - **`03-headroom.md`**: qué es Headroom, cómo se instala y cómo se cablea el proxy.
-- **`04-superpowers.md`**: el plugin superpowers, sus skills, los 8 agentes con tiering, y agent-browser.
+- **`04-superpowers.md`**: el plugin esenciales, sus seis skills, los 8 agentes con tiering, y agent-browser.
 - **`05-security.md`**: Sentinel, los guards de Bash/git, y el manejo de secretos.
 - **`06-routine.md`**: la rutina diaria (tiering, ping de las 6:00, `/compact`, opus[1m], worktrees).
 - **`07-verify.md`**: cómo comprobar, con evidencia, que todo lo anterior funciona de verdad.

@@ -470,7 +470,7 @@ Detalle de cada opción en [`kit/docs/02-install.md`](kit/docs/02-install.md) y 
 ## Más allá del quick start
 
 - [`kit/README.md`](kit/README.md) — guía completa del kit.
-- [`kit/docs/`](kit/docs/) — overview, install, Headroom, superpowers, seguridad, rutina, verificación, plugins/MCP/skills, onboarding, cockpit y metodología.
+- [`kit/docs/`](kit/docs/) — overview, install, Headroom, método (esenciales), seguridad, rutina, verificación, plugins/MCP/skills, onboarding, cockpit y metodología.
 - [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) — el método de trabajo de punta a punta: IntentGate, grilling, deep-change, subagentes, handoff y retro.
 - [`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md) — el mod `cockpit`: `/handoff` y el Agent Dock.
 - [`kit/docs/09-ssh-y-gitlab-privado.md`](kit/docs/09-ssh-y-gitlab-privado.md) — clave SSH desde WSL2 y alta en un GitLab autoalojado, paso a paso: útil por sí sola aunque no uses el kit, y necesaria si tu equipo tiene un marketplace de plugins privado.

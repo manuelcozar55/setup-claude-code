@@ -66,6 +66,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_recall.sh
 	bash kit/test/test_scripts_audit.sh
 	bash kit/test/test_guia.sh
+	bash kit/test/test_plugin_esenciales.sh
 
 doctor: ## Verifica una instalacion existente del kit
 	bash kit/doctor.sh
