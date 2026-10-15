@@ -1,3 +1,8 @@
+> **ADR · Retirado 2026-10.** Medido sobre 12 322 peticiones reales: ahorro propio 0,2-0,6 %
+> del coste, latencia añadida p50 40 ms; el 89 % del "ahorro" que mostraba su medidor era la
+> búsqueda nativa de herramientas de Claude Code. No compensa un proxy en la ruta de la API.
+> `install.sh --with-headroom` y sus tests se retiraron con él. Lo que sigue es histórico.
+
 # 03 · Headroom: el proxy de contexto y coste
 
 Headroom es de terceros: este kit **no** lo redistribuye. No hay binario, no hay base de datos de ahorro en este repo. Lo que sigue es cómo instalarlo y, sobre todo, cómo se cablea con la config que sí instala este kit.

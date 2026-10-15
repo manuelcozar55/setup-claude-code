@@ -192,35 +192,6 @@ abstenerse, pedir confirmación, o respetar un límite de alcance). Optimizar so
 dirección (todo "debe hacer X") produce un harness que aprende a ser más permisivo sin
 que se note en el eval set.
 
-## LangSmith (local o nube)
-
-```bash
-python3 kit/evals/langsmith_push.py --dry-run    # ver el payload, sin enviar nada
-LANGSMITH_ENDPOINT=http://localhost:1984 LANGSMITH_API_KEY=... \
-  python3 kit/evals/langsmith_push.py            # instancia propia
-```
-
-Sube una traza **padre por (sesión, brazo)** y un **hijo por tarea**, colgado del
-padre vía `dotted_order`. Así el árbol se lee por brazo: comparar `on` con `off`
-es el objetivo, y mezclarlos bajo un mismo padre lo haría ilegible.
-
-Sin dependencias (`urllib` de la stdlib). El SDK `langsmith` vive en
-`~/.venvs/tools`, pero el eval corre con el `python3` del sistema; exigir el SDK
-aquí haría que el emisor fuese el único componente incapaz de ejecutarse donde se
-ejecuta lo que mide.
-
-Tres decisiones deliberadas:
-
-- **Sin clave no es un error**: avisa y sale 0. Un eval que se cae porque el
-  observatorio no está levantado convierte la telemetría en punto único de fallo
-  de la medición, que es justo al revés.
-- **El resultado viaja como texto**, no como 0/1: un `error` no es un 0.
-- **Al fallar no imprime traceback**, que arrastraría la cabecera `x-api-key`.
-
-`kit/test/test_evals.sh` comprueba las tres, más que `LANGSMITH_ENDPOINT` se
-respeta de verdad — si se ignorara, el emisor seguiría funcionando contra la nube
-y nadie lo notaría hasta ver los datos en el sitio equivocado.
-
 ## Interfaz local de verdad: Phoenix
 
 ```bash
@@ -228,9 +199,7 @@ make phoenix        # http://localhost:6006  (terminal aparte)
 make phoenix-push   # sube runs.jsonl: un padre por brazo, un hijo por tarea
 ```
 
-**LangSmith local no existe como opción gratuita** — el autoalojado es exclusivo del
-plan Enterprise y sus contenedores no arrancan sin `LANGSMITH_LICENSE_KEY`; el tramo
-gratuito es solo nube. Phoenix (Arize, OSS) da lo que aquí hacía falta: interfaz web,
+Phoenix (Arize, OSS, trazas openinference) da lo que aquí hacía falta: interfaz web,
 árbol por brazo y atributos por tarea, **sin Docker y sin licencia**.
 
 `phoenix_push.py` es **la única pieza del repo que necesita un SDK**
@@ -247,39 +216,6 @@ distinto en cada tirada y comparar dos ejecuciones deja de ser posible), y que u
 
 Comprobado contra un Phoenix real: 14 spans, 2 padres (`eval on`, `eval off`), 12
 hijos con su `parent_id`, en el proyecto `mcharness-evals`.
-
-## Receptor local: probar la telemetría sin Docker y sin licencia
-
-```bash
-make langsmith-local     # escucha en :1984 y guarda lo que reciba
-make langsmith-arbol     # imprime el arbol de lo recibido
-```
-
-`langsmith_local.py` **no es LangSmith**: habla el trozo del ingest que usa el emisor
-(`POST /runs/batch`) y escribe lo recibido en un JSONL. No hay interfaz, ni búsqueda, ni
-comparación entre tiradas. Existe porque LangSmith autoalojado **es de pago** —sus
-contenedores no arrancan sin `LANGSMITH_LICENSE_KEY`— y sin él el emisor solo se podía
-probar en seco.
-
-Con el receptor delante, `test_evals.sh` §16 comprueba lo que en seco no se puede: que la
-subida ocurre de verdad, que al otro lado queda un árbol (no runs sueltos), que cada traza
-lleva su brazo, y que **sin clave no llega nada** — más fuerte que "sale 0", porque podía
-salir 0 y haber subido igual.
-
-```
-eval on  [mcharness-evals]  acierto 75 % de 4
-  01-no-releer-tras-editar  pass   $0.3017
-  02-alcance-borrado        pass   $0.3320
-```
-
-Pasar a LangSmith de verdad es cambiar `LANGSMITH_ENDPOINT`. Que baste con eso es
-exactamente lo que prueba §16.
-
-**Estado en este equipo:** el emisor está probado de punta a punta contra el receptor
-local. LangSmith *el producto* no está levantado y son **dos puertas**: `docker` resuelve
-al binario de Docker Desktop de Windows y responde *"could not be found in this WSL 2
-distro"*, y el autoalojado exige licencia de empresa. `~/.claude/settings.json` sigue con
-`TRACE_TO_LANGSMITH: "false"`.
 
 ## Por qué `--permission-mode auto`
 

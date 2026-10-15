@@ -1,6 +1,6 @@
 # 01 · El mapa: modelo mental y piezas reales
 
-Este documento es el mapa. Los ocho siguientes (`02` a `09`) son el territorio: instalación, terceros, seguridad, rutina, verificación, la pila completa de plugins/MCP/skills de este kit en concreto, y el alta de una clave SSH en un GitLab autoalojado. Léelo primero: si no entiendes por qué existen Sentinel, Headroom o el tiering de modelos, los pasos de instalación te van a parecer arbitrarios.
+Este documento es el mapa. Los siguientes son el territorio: instalación, terceros, seguridad, rutina, verificación, la pila completa de plugins/MCP/skills de este kit en concreto, y el alta de una clave SSH en un GitLab autoalojado. Léelo primero: si no entiendes por qué existen Sentinel o el tiering de modelos, los pasos de instalación te van a parecer arbitrarios.
 
 ## El modelo mental (Karpathy)
 
@@ -36,7 +36,7 @@ El mapa de arriba no es teoría suelta: cada pieza que instala este kit tapa un 
 
 - **esenciales** (`docs/04-superpowers.md`), el plugin de skills del kit, pone el **método**: el bucle operativo de cuatro fases (brainstorm, plan, execute, verify), la orquestación de agentes con tiering, y las puertas de humano. Cubre los pilares de loop, orquestación y human-in-the-loop.
 - **Sentinel** (`docs/05-security.md`) pone las **barreras**: un motor de políticas determinista que se ejecuta antes de cada acción, sin depender de que el modelo decida autolimitarse. Cubre el pilar de guardrails.
-- **Headroom** (`docs/03-headroom.md`) cuida el **contexto y el coste**: un proxy local que comprime los resultados de herramienta antes de que lleguen al modelo, para que la ventana no se llene a mitad de una tarea larga. Cubre el pilar de contexto.
+- **La memoria y `nucleo.md`** (`docs/13-memoria.md`, `docs/12-metodologia.md`) cuidan el **contexto**: un hecho por fichero recordado bajo demanda, y el estado de la tarea en disco para que una compactación no lo borre. Cubre el pilar de contexto. (Un proxy de compresión, Headroom, ahorró un 0,2-0,6 % medido y se retiró: [`archive/03-headroom.md`](archive/03-headroom.md).)
 - **El venv de tools** (`docs/02-install.md`) da las **herramientas**: CLIs curados, aislados del Python del sistema, invocables por los propios hooks del kit. Cubre el pilar de tools.
 - **El tiering opus/sonnet/haiku** (`docs/06-routine.md`) reparte el coste según la tarea: opus para pensar (orchestrator, strategist, planner), sonnet para ejecutar y revisar (deep-worker, los reviewers, el explorador de código), haiku para verificar barato (quick-checker). Es la expresión práctica del pilar de orquestación.
 - **`doctor.sh` y `scan-secrets.sh`** (`docs/07-verify.md`) son los evals y la observabilidad de este kit: nada se da por bueno sin su comando y su salida esperada, "cifra → fuente → comando".
@@ -55,7 +55,7 @@ flowchart LR
         direction TB
         SP["esenciales<br/>método · loop · orquestación · humano"]
         SE["Sentinel<br/>barreras deterministas"]
-        HR["Headroom<br/>compresión de contexto"]
+        HR["memoria + nucleo.md<br/>contexto en disco"]
         VE["venv de tools<br/>CLIs aislados"]
         TI["tiering opus/sonnet/haiku<br/>coste por tarea"]
         DR["doctor.sh + scan-secrets.sh<br/>evidencia reproducible"]
@@ -77,12 +77,11 @@ flowchart LR
 ## Qué documenta cada doc siguiente
 
 - **`02-install.md`**: prerrequisitos y los pasos exactos para instalar la config saneada de este kit en `CLAUDE_HOME`.
-- **`03-headroom.md`**: qué es Headroom, cómo se instala y cómo se cablea el proxy.
 - **`04-superpowers.md`**: el plugin esenciales, sus seis skills, los 8 agentes con tiering, y agent-browser.
 - **`05-security.md`**: Sentinel, los guards de Bash/git, y el manejo de secretos.
 - **`06-routine.md`**: la rutina diaria (tiering, ping de las 6:00, `/compact`, opus[1m], worktrees).
 - **`07-verify.md`**: cómo comprobar, con evidencia, que todo lo anterior funciona de verdad.
 - **`08-plugins-mcp-y-skills.md`**: el stack completo para replicar el sistema (plugins de Claude Code + marketplaces, servidores MCP, skills propias y prerequisitos).
 - **`09-ssh-y-gitlab-privado.md`**: generar una clave SSH desde WSL2 y darla de alta en un GitLab autoalojado, hasta clonar y hacer `push` sin contraseña y usar un marketplace de plugins privado.
-- **`10-onboarding.md`**: la ruta de un companero nuevo, de `git clone` a sesión verde con `make bootstrap`; cómo se leen `FAIL` y `WARN` de `doctor.sh`; y la decisión de Headroom con las cifras medidas delante.
+- **`10-onboarding.md`**: la ruta de un companero nuevo, de `git clone` a sesión verde con `make bootstrap`; y cómo se leen `FAIL` y `WARN` de `doctor.sh`.
 - **`guia/`**: cómo trabajar bien una vez instalado, con cifras medidas: la [ruta de 7 días](guia/00-ruta-7-dias.md), [por qué todo gira alrededor del contexto](guia/01-por-que-contexto.md), [una sesión real](guia/02-sesion-real.md), [antipatrones](guia/03-antipatrones.md), [mide tu setup](guia/04-mide-tu-setup.md), [qué borrar de la plantilla](guia/06-adaptar.md) y la [ruta corta en inglés](guia/README.en.md).

@@ -62,14 +62,6 @@ Todo vive bajo `kit/test/`:
   destructivos: las dos mitades a la vez.
 - `test_doctor_base_url.sh` — `doctor.sh` consulta `/readyz` (no `/health`) y
   marca `FAIL` si algo enruta la API a un endpoint que no contesta.
-- `test_with_headroom.sh` — `install.sh --with-headroom` instala el proxy, lo
-  arranca, comprueba `/readyz` y solo entonces escribe la variable de
-  enrutado en `settings.json`.
-- `test_headroom_guardrails.sh` — los guardarrailes del proxy: `--mode cache` y no
-  `token`, nunca `--budget` ni `--log-messages`, una sola fuente de `ANTHROPIC_BASE_URL`,
-  y que la unidad generada traiga las tres correcciones medidas (rtk, HF_HUB_OFFLINE,
-  rutas inaccesibles). Hermetico: `HOME`, `XDG_CONFIG_HOME` y un `headroom` de pega
-  propios, o en CI no se ejecutaria y daria verde falso.
 - `test_install_diff_first.sh` — si `CLAUDE_HOME` es a su vez un repo git con
   remoto, `install.sh` nunca escribe encima: genera el arbol aparte y ensena
   el diff. `--apply` fuerza la escritura, `--plan` fuerza el diff.
@@ -113,7 +105,7 @@ mas antiguo que el tuyo: sigue emitiendo checks de categoria `style` que las ver
 0.11.0 y CI en rojo. **El oraculo es CI**, no tu maquina.
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 42 suites de `kit/test/`).
+(las 40 suites de `kit/test/`).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -215,7 +207,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 42 suites y el escaner de secretos
+# 2. las 40 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 

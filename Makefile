@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install bootstrap test doctor mutantes langsmith-local langsmith-arbol phoenix phoenix-push evals-dryrun evals-paid evals-ablacion-paid
+.PHONY: help install bootstrap test doctor mutantes phoenix phoenix-push evals-dryrun evals-paid evals-ablacion-paid
 
 help: ## Lista los targets disponibles
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*##"}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -19,10 +19,6 @@ bootstrap: ## De cero a sesion verde: perfil, kit, doctor y oraculo. El comando 
 	@echo ""
 	@echo "==> Harness levantado y verificado."
 	@echo "    Un FAIL de doctor.sh es un hallazgo de tu maquina, no del kit: leelo y actua."
-	@echo "    Headroom NO se instala aqui a proposito: es opt-in, y en el perfil de uso"
-	@echo "    medido rinde un 0,8 % de tokens a cambio de 512 ms por peticion. Lee"
-	@echo "    kit/docs/10-onboarding.md antes de decidir; si lo quieres:"
-	@echo "        bash kit/install.sh --with-headroom"
 
 test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_guards.sh
@@ -41,8 +37,6 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_optional_hook.sh
 	bash kit/test/test_clean_install_resilience.sh
 	bash kit/test/test_doctor_base_url.sh
-	bash kit/test/test_with_headroom.sh
-	bash kit/test/test_headroom_guardrails.sh
 	bash kit/test/test_metrics.sh
 	bash kit/test/test_detect_oracle.sh
 	bash kit/test/test_auto_spec.sh
@@ -73,12 +67,6 @@ doctor: ## Verifica una instalacion existente del kit
 
 mutantes: ## Rompe cada sensor del eval a proposito y exige que la suite se ponga roja (gratis, ~4 min)
 	python3 kit/evals/mutantes.py
-
-langsmith-local: ## Levanta el receptor local de trazas en :1984 (gratis, sin Docker ni licencia)
-	python3 kit/evals/langsmith_local.py
-
-langsmith-arbol: ## Imprime el arbol de trazas que ya ha recibido el receptor local
-	python3 kit/evals/langsmith_local.py --tree
 
 phoenix: ## Levanta Phoenix en local (interfaz web en :6006). Sin Docker y sin licencia.
 	~/.venvs/tools/bin/phoenix serve

@@ -199,85 +199,6 @@ case "$rep2" in
   *) echo "NOT ok - report.py no calcula el lift con dos brazos: $(echo "$rep2" | tr '\n' ' ')"; fail=$((fail+1));;
 esac
 
-# --- 7. El emisor a LangSmith -----------------------------------------------
-# Tres cosas, y la tercera es la que importa para "LangSmith LOCAL": si el
-# emisor ignorara LANGSMITH_ENDPOINT, seguiria funcionando contra la nube y
-# nadie lo notaria hasta que los datos aparecieran en el sitio equivocado.
-P="$E/langsmith_push.py"
-pay=$("$PY" "$P" --store "$S" --dry-run 2>/dev/null)
-shape=$(printf '%s' "$pay" | "$PY" -c "
-import json,sys
-p=json.load(sys.stdin)['post']
-par=[r for r in p if 'parent_run_id' not in r]
-chi=[r for r in p if 'parent_run_id' in r]
-ok=bool(par) and bool(chi) and all(
-    c['dotted_order'].startswith(next(x['dotted_order'] for x in par if x['id']==c['parent_run_id'])+'.')
-    for c in chi)
-print('anidado' if ok else 'suelto')
-" 2>/dev/null)
-ck "$shape" "anidado" "langsmith_push: cada tarea cuelga de la traza de su brazo"
-
-# Sin clave no puede ser un error: el eval ya midio, esto solo publica. Si
-# reventara, el observatorio caido tumbaria la medicion entera.
-env -u LANGSMITH_API_KEY -u CC_LANGSMITH_API_KEY \
-  "$PY" "$P" --store "$S" >/dev/null 2>&1
-ck "$?" 0 "langsmith_push: sin clave sale 0, no tumba el eval"
-
-# Endpoint local inalcanzable: tiene que intentarlo AHI (no en la nube), fallar
-# limpio y no escupir un traceback, que llevaria la cabecera x-api-key a stdout.
-out=$(LANGSMITH_ENDPOINT=http://127.0.0.1:1 LANGSMITH_API_KEY=clave-de-mentira \
-  "$PY" "$P" --store "$S" 2>&1); rc=$?
-case "$out" in
-  *Traceback*|*clave-de-mentira*)
-    echo "NOT ok - langsmith_push filtra traceback o la clave al fallar"; fail=$((fail+1));;
-  *127.0.0.1:1*)
-    if [ "$rc" -eq 1 ]; then
-      echo "ok - langsmith_push respeta LANGSMITH_ENDPOINT y falla limpio"; pass=$((pass+1))
-    else
-      echo "NOT ok - langsmith_push no senala fallo de subida (rc=$rc)"; fail=$((fail+1))
-    fi;;
-  *) echo "NOT ok - langsmith_push ignora LANGSMITH_ENDPOINT: $out"; fail=$((fail+1));;
-esac
-
-# Y la fila retirada del computo tampoco se publica aqui. report.py la deja fuera
-# de TODO computo; si el observatorio la ensenara como un fail normal, el dato
-# retirado volveria por la puerta de atras y las dos vistas del mismo almacen
-# dirian cosas distintas. Dos aserciones y ninguna vale sola: la primera compara
-# los dos sentidos (con la clave se publica una menos, sin ella se publica), la
-# segunda exige que la retirada no sea muda.
-X=$(mktemp -d) || exit 1
-"$PY" - "$X/con.jsonl" "$X/sin.jsonl" <<'PYEOF'
-import json, sys
-def r(task, arm, res, **k):
-    d = {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": "positiva",
-         "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
-         "duration_api_ms": 5, "input_tokens": 1}
-    d.update(k)
-    return d
-# El mismo almacen dos veces, y la unica diferencia entre los dos es la clave
-# 'excluded': asi la asercion mide la retirada y no otra cosa.
-rows = [r("01-a", "on", "pass"), r("02-b", "on", "fail"), r("01-a", "off", "pass")]
-open(sys.argv[2], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
-rows[1]["excluded"] = "instrumento averiado (E28)"
-open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
-PYEOF
-ls_hijos() {
-  "$PY" "$P" --store "$1" --dry-run 2>/dev/null | "$PY" -c "
-import json, sys
-print(sum(1 for r in json.load(sys.stdin)['post'] if 'parent_run_id' in r))" 2>/dev/null
-}
-ck "$(ls_hijos "$X/con.jsonl") $(ls_hijos "$X/sin.jsonl")" "2 3" \
-   "langsmith_push: la fila retirada no se publica, y sin retirar si se publicaria"
-# El aviso va a stderr a proposito: stdout es el payload y tiene que seguir siendo
-# JSON puro, como comprueba la asercion de arriba de esta seccion.
-avi=$("$PY" "$P" --store "$X/con.jsonl" --dry-run 2>&1 >/dev/null)
-case "$avi" in
-  *"no se publican 1 fila"*02-b*)
-    echo "ok - langsmith_push dice que retiro una fila, no la calla"; pass=$((pass+1));;
-  *) echo "NOT ok - langsmith_push retira la fila en silencio: $avi"; fail=$((fail+1));;
-esac
-rm -f "$X"/*.jsonl; rmdir "$X" 2>/dev/null
-
 # --- 8. EVAL-CRITERIA.md no puede mentir sobre el numero de tareas ----------
 # E12 (20-50 tareas) es el criterio incumplido que mas limita al resto. Si el doc
 # dice "hay 6" cuando ya hay 20, el hueco declarado desaparece de la vista sin que
@@ -622,87 +543,8 @@ else
   echo "ok - con la maquina igual de tranquila en los dos brazos no hay aviso"; pass=$((pass+1))
 fi
 
-# --- 16. LangSmith local de verdad: el emisor contra algo que escucha -------
-# El bloque 7 comprueba la FORMA del payload en seco. Aqui el payload viaja por
-# red hasta un receptor que habla el ingest de LangSmith, y se mira lo que queda
-# guardado al otro lado. Sin esto, "medible en LangSmith local" era una
-# afirmacion sin sensor: LangSmith autoalojado exige licencia de pago, asi que
-# nunca se habia enviado una traza a nada y el emisor solo se probaba en seco.
-L=$(mktemp -d) || exit 1
-
-espera_puerto() {  # $1 = log del receptor -> imprime el puerto, vacio si no arranco
-  for _ in $(seq 1 60); do
-    p=$(sed -n 's#.*127\.0\.0\.1:\([0-9]*\).*#\1#p' "$1" 2>/dev/null | head -1)
-    [ -n "$p" ] && { printf '%s' "$p"; return 0; }
-    sleep 0.2
-  done
-  return 1
-}
-
-"$PY" "$E/langsmith_local.py" --port 0 --store "$L/rx.jsonl" --max-requests 1 \
-  > "$L/srv.log" 2>&1 &
-srv=$!
-if ! port=$(espera_puerto "$L/srv.log"); then
-  echo "NOT ok - el receptor local no llego a escuchar; los 3 checks de red no corren"
-  fail=$((fail+1)); kill "$srv" 2>/dev/null
-else
-  LANGSMITH_ENDPOINT="http://127.0.0.1:$port" LANGSMITH_API_KEY=local \
-    CC_LANGSMITH_PROJECT=prueba "$PY" "$P" --store "$S" >/dev/null 2>&1
-  ck "$?" 0 "langsmith: el emisor sube de verdad contra un receptor local que escucha"
-  wait "$srv" 2>/dev/null
-
-  # Lo que importa no es que llegue, es que llegue ARBOL. Una lista plana de
-  # runs sueltos se sube igual de bien y no se puede leer por brazo.
-  forma=$("$PY" - "$L/rx.jsonl" <<'PYEOF'
-import json, sys
-runs = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
-par = [r for r in runs if not r.get("parent_run_id")]
-chi = [r for r in runs if r.get("parent_run_id")]
-byid = {r["id"]: r for r in par}
-ok = (len(par) >= 1 and len(chi) >= 1
-      and all(c["parent_run_id"] in byid for c in chi)
-      and all(c["dotted_order"].startswith(byid[c["parent_run_id"]]["dotted_order"] + ".")
-              for c in chi)
-      and all(r.get("session_name") == "prueba" for r in runs))
-print("arbol" if ok else "roto")
-PYEOF
-)
-  ck "$forma" "arbol" "langsmith: al otro lado queda un arbol por brazo, no una lista suelta"
-
-  # Y cada traza tiene que decir de que brazo viene: comparar on con off es el
-  # objetivo entero. Trazas sin brazo son bonitas y no responden a nada.
-  brazos=$("$PY" - "$L/rx.jsonl" <<'PYEOF'
-import json, sys
-runs = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
-print(",".join(sorted({((r.get("extra") or {}).get("metadata") or {}).get("arm") or "?"
-                       for r in runs})))
-PYEOF
-)
-  ck "$brazos" "off,on" "langsmith: cada traza llega etiquetada con su brazo"
-fi
-
-# "Sin clave sale 0" no basta: podria salir 0 y haber subido igual. Con un
-# receptor delante se comprueba lo unico que importa, que no llego nada.
-"$PY" "$E/langsmith_local.py" --port 0 --store "$L/vacio.jsonl" --max-requests 1 \
-  > "$L/srv2.log" 2>&1 &
-srv2=$!
-if port2=$(espera_puerto "$L/srv2.log"); then
-  env -u LANGSMITH_API_KEY -u CC_LANGSMITH_API_KEY \
-    LANGSMITH_ENDPOINT="http://127.0.0.1:$port2" \
-    "$PY" "$P" --store "$S" >/dev/null 2>&1
-fi
-kill "$srv2" 2>/dev/null; wait "$srv2" 2>/dev/null
-if [ -s "$L/vacio.jsonl" ]; then
-  echo "NOT ok - sin clave el emisor subio igual: la traza salio a un sitio sin autenticar"
-  fail=$((fail+1))
-else
-  echo "ok - sin clave no llega nada al receptor, no solo 'sale 0'"; pass=$((pass+1))
-fi
-rm -rf "$L"
-
 # --- 17. El puente a Phoenix (interfaz local de verdad) ---------------------
-# Phoenix es la unica via a "medible en local" con interfaz: LangSmith autoalojado
-# es de pago y no tiene tramo gratuito. El emisor necesita SDK y vive en el venv de
+# Phoenix es la via a "medible en local" con interfaz. El emisor necesita SDK y vive en el venv de
 # herramientas, pero su --dry-run no necesita nada, y es ahi donde se comprueba lo
 # que puede romperse en silencio: la forma del arbol y las etiquetas.
 F=$(mktemp -d) || exit 1
@@ -756,8 +598,8 @@ PYEOF
 )
 ck "$err" "error/error" "phoenix: un 'error' viaja como error, no como suspenso"
 
-# Lo mismo que en la seccion 7 y por lo mismo: report.py deja la fila fuera de todo
-# computo y este puente la publicaba como un fail normal.
+# report.py deja la fila retirada fuera de todo computo, y este puente la publicaba
+# como un fail normal: el dato retirado volvia por la puerta de atras.
 X=$(mktemp -d) || exit 1
 "$PY" - "$X/con.jsonl" "$X/sin.jsonl" <<'PYEOF'
 import json, sys
