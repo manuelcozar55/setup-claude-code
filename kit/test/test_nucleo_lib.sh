@@ -73,4 +73,20 @@ ok "### bajo TAREA ACTUAL: el encargo llega" "$(command grep -c ENCARGO-ANIDADO 
 ok "### bajo TAREA ACTUAL: el plan llega" "$(command grep -c PLAN-ANIDADO <<<"$S")" 1
 ok "### bajo TAREA ACTUAL: verificación llega" "$(command grep -c '^make test' <<<"$S")" 1
 ok "### fuera de plantilla: no llega" "$(command grep -c HECHO-AJENO <<<"$S")" 0
+# Bajo un ## de plantilla, ### es contenido: «### Fase 1» dentro de «## Plan» cortaba el resto del plan.
+F=$T/fases.md
+printf '%s\n' '# Estado' '## Plan' '### Fase 1' '- [ ] FASE-A' '### Fase 2' '- [ ] FASE-B' >"$F"
+S=$(nucleo_emitir "$F")
+ok "### bajo ## Plan: las cuatro líneas llegan" "$(command grep -c '^### Fase [12]$\|FASE-[AB]' <<<"$S")" 4
+ok "### bajo ## Plan: no es fuera de forma" "$(command grep -c 'fuera de forma' <<<"$S")" 0
+# Cercas: una línea ```x``` no abre bloque, y una cerca sin cerrar no se traga las secciones siguientes.
+# Tragadas, llegaban como cuerpo del Objetivo: lo delata la sección ajena del final, que se cuela.
+F=$T/cerca1.md
+# shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
+printf '%s\n' '# Estado' '## Objetivo' '```x```' '## Plan' '- [ ] PLAN-TRAS-CERCA' '## Hecho' 'HECHO-AJENO' >"$F"
+ok "cerca de una línea: el Plan llega y lo ajeno no" "$(nucleo_emitir "$F" | command grep -c 'PLAN-TRAS-CERCA\|HECHO-AJENO')" 1
+F=$T/cerca2.md
+printf '%s\n' '# Estado' '## Objetivo' '```' 'código sin cerrar' '## Comandos de verificación' 'make CMD-TRAS-CERCA' \
+  '## Hecho' 'HECHO-AJENO' >"$F"
+ok "cerca sin cerrar: los comandos llegan y lo ajeno no" "$(nucleo_emitir "$F" | command grep -c 'CMD-TRAS-CERCA\|HECHO-AJENO')" 1
 exit $FAIL
