@@ -179,10 +179,11 @@ expect "ack con patron opts.key permitido"       "$(run_sentinel "ack 'opts.key'
 expect "clave: fichero de ag denegado"           "$(run_sentinel 'ag BEGIN server.key')"                  "$IOCS_WANT"
 expect "clave: ack -C sin numero no lleva valor" "$(run_sentinel 'ack -C BEGIN server.key')"              "$IOCS_WANT"
 expect "clave: ack -f lista ficheros, sin patron" "$(run_sentinel 'ack -f server.key')"                  "$IOCS_WANT"
-# Secuencias {x..y[..n]} con el mismo tope que las listas.
+# Secuencias {x..y[..n]}: las de letras con el mismo tope que las listas; una numerica no aporta letras,
+# asi que no forma una extension: cuenta como su primer valor y no gasta tope ni presupuesto.
 expect "clave: secuencia de letras denegada"     "$(run_sentinel 'cat s.{k..k}ey')"                       "$IOCS_WANT"
 expect "secuencia corta permitida"               "$(run_sentinel 'echo {1..5}')"                          ALLOW
-expect "secuencia sobre el tope denegada"        "$(run_sentinel 'echo {1..1000}')"                       "$IOCS_WANT"
+expect "secuencia numerica grande permitida"     "$(run_sentinel 'echo {1..1000}')"                       ALLOW
 # Comentarios y operadores: un # que abre palabra comenta hasta fin de linea; un operador corta la
 # redireccion pendiente (antes, la primera palabra del comando siguiente pasaba por su destino).
 expect "comentario con server.key permitido"     "$(run_sentinel 'echo done # see server.key')"           ALLOW
@@ -191,8 +192,68 @@ expect "clave: tras redireccion vacia denegada"  "$(run_sentinel 'cmd > ; cat se
 expect "grep tras redireccion vacia es grep"     "$(run_sentinel 'cmd > ; grep "event.key" src/')"        ALLOW
 # Presupuesto de llaves: uno solo para todo el comando, sustituciones incluidas, de 4096 resultados.
 expect "200 palabras {a,b} permitidas"           "$(run_sentinel "git add $(for i in $(seq 1 200); do printf 'src/m%d.{ts,js} ' "$i"; done)")" ALLOW
-S1=$(for i in $(seq 1 50); do printf 'w%d{1..60} ' "$i"; done)
+L60=$(seq -s, -f 'x%g' 1 60)
+S1=$(for i in $(seq 1 50); do printf 'w%d{%s} ' "$i" "$L60"; done)
 expect "dos \$( ) de 3000 superan el presupuesto" "$(run_sentinel "echo \$(echo $S1) \$(echo $S1)")"     "$IOCS_WANT"
+# Ronda 3. El cuerpo de un heredoc se lee como comandos salvo que su consumidor (la primera palabra de
+# comando del comando simple que lleva el <<, sin sudo/env/nice/time/command/exec) sea un sumidero de
+# datos conocido; un interprete lo lee como codigo. Si la tuberia sigue hacia algo que no es un
+# sumidero, gana eso. Antes, ssh, sudo -s, fish o php recibian el cuerpo como datos.
+expect "clave: heredoc a ssh denegado"           "$(run_sentinel $'ssh h <<EOF\ncat server.key\nEOF')"   "$IOCS_WANT"
+expect "clave: heredoc a sudo -s denegado"       "$(run_sentinel $'sudo -s <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: heredoc a nodejs denegado"        "$(run_sentinel $'nodejs - <<EOF\nrequire("fs").readFileSync("server.key")\nEOF')" "$IOCS_WANT"
+expect "clave: heredoc a fish denegado"          "$(run_sentinel $'fish <<EOF\ncat server.key\nEOF')"    "$IOCS_WANT"
+expect "clave: heredoc a php denegado"           "$(run_sentinel $'php <<EOF\n<?php readfile(\'server.key\');\nEOF')" "$IOCS_WANT"
+expect "heredoc a ssh con echo hola permitido"   "$(run_sentinel $'ssh h <<\'EOF\'\necho hola\nEOF')"   ALLOW
+# El consumidor es el comando que lleva el <<, no cualquier palabra de la linea.
+expect "heredoc a cat && bash run.sh permitido"  "$(run_sentinel $'cat <<\'EOF\' >out.txt && bash run.sh\nsee server.key\nEOF')" ALLOW
+expect "heredoc a man sh permitido"              "$(run_sentinel $'man sh <<\'EOF\'\nsee server.key\nEOF')" ALLOW
+expect "clave: heredoc a sudo bash denegado"     "$(run_sentinel $'sudo bash <<\'EOF\'\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: heredoc por tuberia a bash"       "$(run_sentinel $'cat <<\'EOF\' | bash\ncat server.key\nEOF')" "$IOCS_WANT"
+# Solo un racimo de flags cortos se lee letra a letra; el valor de una opcion no (antes, typescript,
+# read o golang contaban como -e, -f o -g y anulaban el patron).
+expect "rg -t typescript con patron permitido"   "$(run_sentinel "rg -t typescript 'event.key' src/")"  ALLOW
+expect "rg -g glob con patron permitido"         "$(run_sentinel "rg -g '*.test.ts' 'opts.key'")"        ALLOW
+expect "grep -D read con patron permitido"       "$(run_sentinel "grep -D read 'event.key'")"            ALLOW
+expect "ack -t golang con patron permitido"      "$(run_sentinel "ack -t golang 'opts.key'")"            ALLOW
+expect "ag -G typescript con patron permitido"   "$(run_sentinel "ag -G typescript 'event.key' src/")"   ALLOW
+expect "clave: rg -e con fichero denegado"       "$(run_sentinel 'rg -e BEGIN server.key')"              "$IOCS_WANT"
+expect "clave: rg -tf, racimo con f, sin patron" "$(run_sentinel 'rg -tf server.key')"                   "$IOCS_WANT"
+# Secuencias numericas: un representante, sin tope.
+expect "secuencia {1..100} permitida"            "$(run_sentinel 'echo {1..100}')"                        ALLOW
+expect "for con {1..1000} permitido"             "$(run_sentinel 'for i in {1..1000}; do :; done')"      ALLOW
+expect "cat s.{1..3} permitido"                  "$(run_sentinel 'cat s.{1..3}')"                         ALLOW
+expect "clave: copia numerada x.key.{1..3}"      "$(run_sentinel 'cat x.key.{1..3}')"                     "$IOCS_WANT"
+# La barra-salto de un cuerpo sin comillas solo cuenta para hallar la linea del delimitador.
+expect "heredoc sin comillas con barra-salto permitido" "$(run_sentinel $'cat <<EOF\nline one \\\nopts.key\nEOF')" ALLOW
+# Por stdin: 5000 lineas pasan del tope de un argumento de jq.
+t0=$(date +%s%N)
+out=$({ printf 'cat > big.jsonl <<EOF\nprimera \\\n'; for i in $(seq 1 5000); do printf '{"id":%d,"name":"n%d"}\n' "$i" "$i"; done
+        printf 'EOF'; } | jq -Rsc '{tool_name:"Bash",tool_input:{command:.}}' \
+  | HOME="$GUARDS_TEST_HOME" timeout 5 "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1)
+ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+expect "cuerpo de 5000 lineas con barra-salto permitido" "$out"                                           ALLOW
+[ "$ms" -lt 1000 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: cuerpo de 5000 lineas con barra-salto tarda ${ms} ms (tope 1000)"; }
+# En codigo solo cuenta el ultimo componente de un tramo con barra (opts.key/2 es una division); las
+# formas de cita exigen su letra, q/qq/qw solo en perl/ruby, y una forma sin cierre no se traga nada.
+expect "node -e opts.key/2 permitido"            "$(run_sentinel "node -e 'console.log(opts.key/2)'")"   ALLOW
+expect "python3 -c a.key/b permitido"            "$(run_sentinel "python3 -c 'print(a.key/b)'")"         ALLOW
+expect "ruby modulo 10 % (3) permitido"          "$(run_sentinel "ruby -e 'puts 10 % (3)'")"             ALLOW
+expect "python %{ no abre forma de cita"         "$(run_sentinel "python3 -c 'print(\"%{\"); print(opts.key)'")" ALLOW
+expect "ruby %q{ sin cierre no se traga nada"    "$(run_sentinel "ruby -e 'puts \"%q{\"; puts opts.key'")" ALLOW
+expect "clave: ruby %() pegado sigue denegado"   "$(run_sentinel "ruby -e 'File.read(%(server.key))'")"  "$IOCS_WANT"
+expect "clave: node literal con ruta denegado"   "$(run_sentinel "node -e 'fs.readFileSync(\"/tmp/x/server.key\")'")" "$IOCS_WANT"
+# Literales de codigo sin repetir; si agotan el presupuesto se miran sin expandir, no se deniega.
+PYDOC=$(for i in $(seq 1 300); do printf "x%d = '{\"a\":%d,\"b\":%d}'\n" "$i" "$i" "$i"; done)
+t0=$(date +%s%N)
+out=$(jq -nc --arg c $'python3 - <<\'EOF\'\n'"$PYDOC"$'\nEOF' '{tool_name:"Bash",tool_input:{command:$c}}' \
+  | HOME="$GUARDS_TEST_HOME" timeout 5 "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1)
+ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+expect "python heredoc con 300 cadenas JSON permitido" "$out"                                             ALLOW
+[ "$ms" -lt 1000 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: python heredoc con 300 cadenas JSON tarda ${ms} ms (tope 1000)"; }
+PYDOC=$(for i in $(seq 1 300); do printf "x%d = '{a,b,c,d}/{e,f,g,h}%d'\n" "$i" "$i"; done)
+expect "python heredoc que agota el presupuesto permitido" "$(run_sentinel $'python3 - <<\'EOF\'\n'"$PYDOC"$'\nEOF')" ALLOW
+expect "clave: os.system con llaves en python -c" "$(run_sentinel "python3 -c \"import os; os.system('cat s.{k,x}ey')\"")" "$IOCS_WANT"
 expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK
 expect "force push compuesto denegado" "$(run_smart 'echo ok && git push -f origin main')"   BLOCK
 expect "comando normal en smart"       "$(run_smart 'git status')"                           ALLOW

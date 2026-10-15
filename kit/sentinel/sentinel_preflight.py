@@ -246,9 +246,10 @@ def collect_fields(tool_input: dict, keys: list[str]) -> list[str]:
 # skipped, interpreter code is checked only in its string literals, quote forms
 # and slashed runs, and every other word is checked by its path components against
 # key_file_extensions. The body of a $( ) or backtick is read as a command of its
-# own, whatever the role of the word around it; a heredoc body is data unless a
-# shell or an interpreter on its line reads it. Whatever cannot be classified is
-# checked: this guard may deny more, never less.
+# own, whatever the role of the word around it; a heredoc body is read as commands
+# unless the command that carries its << is a known data sink (code for an
+# interpreter). Whatever cannot be classified is checked: this guard may deny more,
+# never less.
 DEFAULT_KEY_EXTS = ["pem", "key", "p12", "pfx", "jks", "keystore"]
 _BRACE_CAP, _BRACE_BUDGET = 64, 4096  # brace expansions per word / per whole command
 _GREP_LONG = {"--regexp": 1, "--file": 1, "--max-count": 1, "--after-context": 1,
@@ -288,8 +289,25 @@ _SKIP_VALUE = {"grep": {"-e", "--regexp"}, "egrep": {"-e", "--regexp"}, "fgrep":
                "rg": {"-e", "--regexp"}, "ack": {"--match"}, "git-message": {"-m", "--message"}}
 _CODE_VALUE = {"node": {"-e", "-p", "--eval", "--print"}, "perl": {"-e", "-E"},
                "ruby": {"-e"}, "python": {"-c"}}
-_SHELLS, _EVALS = {"bash", "sh", "zsh", "dash", "ksh"}, {"eval", "source", "."}
-_OPS = ("&&", "||", ";;", "|&", ">>", "<<<", "<<", "&>", ">&", "<&", ">|", "|", "&", ";", "(", ")",
+# Who reads a heredoc body. Only these sinks make it data, and git, curl, wget, sed and awk only
+# when their arguments say so (_stdin_role); interpreters read it as code; anything else (ssh,
+# sudo -s, fish, xargs, psql, unknown) as commands. psql, mysql and sqlite3 run shell escapes
+# (\!, system, .shell) and mailx ~! ones, so they are not sinks.
+_SINKS = {"cat", "tee", "head", "tail", "wc", "sort", "uniq", "tr", "cut", "sed", "awk", "grep", "egrep",
+          "fgrep", "rg", "ag", "ack", "jq", "yq", "base64", "md5sum", "sha1sum", "sha224sum", "sha256sum",
+          "sha384sum", "sha512sum", "gzip", "xz", "git", "curl", "wget", "man"}
+_GIT_SINKS = {"commit", "tag", "notes", "apply", "am"}
+_INTERPRETERS = {"python", "node", "deno", "bun", "perl", "ruby", "php", "lua", "rscript"}
+# Prefixes that run the next word: short options and long options that take a value.
+_PREFIXES = {"sudo": ("ugpChDRrTU", {"--user", "--group", "--host", "--prompt", "--chdir", "--role",
+                                     "--type", "--other-user", "--close-from", "--command-timeout"}),
+             "env": ("uCS", {"--unset", "--chdir", "--split-string"}), "nice": ("n", {"--adjustment"}),
+             "time": ("fo", {"--format", "--output"}), "command": ("", set()), "exec": ("a", set())}
+_KEYWORDS = {"!", "{", "if", "then", "else", "elif", "while", "until", "do"}
+_OPENERS, _CLOSERS = {"{", "if", "while", "until", "for", "case", "select"}, {"}", "fi", "done", "esac"}
+_NO_STDIN = _CLOSERS | {"for", "case", "select", "function"}
+_RANK = {None: 0, "data": 0, "code": 1, "qcode": 1, "shell": 2}
+_OPS =("&&", "||", ";;", "|&", ">>", "<<<", "<<", "&>", ">&", "<&", ">|", "|", "&", ";", "(", ")",
         "<", ">")
 _MASK = str.maketrans("{},", "\ue000\ue001\ue002")  # quoted braces do not expand
 _UNMASK = str.maketrans("\ue000\ue001\ue002", "{},")
@@ -300,8 +318,11 @@ _QUOTED = re.compile(r"'[^']*'|\"(?:\\.|[^\"\\])*\"")
 _BACKTICK_BODY = re.compile(r"(?:\\.|[^`\\])*")
 # The delimiter must end the word: with `<<EOF.x` bash waits for an EOF.x line.
 _HEREDOC_OP = re.compile(r"<<(-?)[ \t]*(['\"]?)(\\?)(\w+)\2(?=[\s;&|<>()]|$)")
-# Interpreter code: perl/ruby quote forms (q() qq{} qw[] %q() %Q{} %w<> %() and / | delimiters).
-_QUOTE_FORM = re.compile(r"(?:(?<![\w$@%&])q[qw]?\s*|%[qQwW]?)([(\[{<|/])")
+# Interpreter code: quote forms %q() %Q{} %w<> %i[] %x() with () {} [] <> / | delimiters, the
+# letter required (in python a %( is a modulo); only in perl/ruby, q() qq{} qw[] qx() after a
+# start, space, bracket, comma or operator, and ruby's bare %() glued to its delimiter.
+_QUOTE_FORM = re.compile(r"%[qQwWiIx]([(\[{<|/])")
+_PERL_QUOTE = re.compile(r"(?:(?:^|(?<=[\s(,=!~<>|+*/^?:;.{\[-]))q[qwx]?\s*|%)([(\[{<|/])")
 _PAIRS = {"(": ")", "[": "]", "{": "}", "<": ">"}
 _PATH_RUN = re.compile(r"[\w./~@%#+$*?{}\[\]-]+")
 # $(cat <<'EOF' ... EOF) outputs the heredoc as is: Claude Code's commit message.
@@ -376,15 +397,38 @@ def _lex_char(text: str, i: int, quoted: bool, cur: str, subs: list) -> tuple[st
     return cur + (c.translate(_MASK) if quoted else c), i + 1
 
 
+def _joined_delim(text: str, i: int, d: dict) -> tuple[int, int] | None:
+    """Span of the delimiter line of an unquoted heredoc, whose lines bash joins at a
+    backslash-newline before comparing (EO\\ + newline + F ends an EOF heredoc)."""
+    start, line, n = i, "", len(text)
+    while True:
+        e = text.find("\n", i)
+        e = n if e < 0 else e
+        seg = text[i:e]
+        if e < n and (len(seg) - len(seg.rstrip("\\"))) % 2:
+            line, i = line + seg[:-1], e + 1
+            continue
+        line += seg
+        if (line.lstrip("\t") if d["strip"] else line) == d["delim"]:
+            return start, e
+        if e >= n:
+            return None
+        start, line, i = e + 1, "", e + 1
+
+
 def _heredoc_bodies(text: str, i: int, docs: list) -> int:
     """Fill the bodies of the heredocs opened on the line that ends at i; the index after them.
-    Without its delimiter line a body stays None and the rest is lexed as commands."""
+    Without its delimiter line a body stays None and the rest is lexed as commands. The join
+    of a backslash-newline only finds the delimiter: the body keeps the role of its reader."""
     for d in docs:
         tabs = "\\t*" if d["strip"] else ""
         end = re.compile(rf"^{tabs}{d['delim']}$", re.M).search(text, i)
-        if not end:
+        span = end.span() if end else None
+        if not d["quoted"] and "\\\n" in text[i:span[0] if span else len(text)]:
+            span = _joined_delim(text, i, d)
+        if not span:
             return i
-        d["body"], i = text[i:end.start()], end.end()
+        d["body"], i = text[i:span[0]], span[1]
     return i
 
 
@@ -471,13 +515,13 @@ def _parse(args: list[str], short: str, long: dict, stop: bool, ends: set) -> li
 
 
 def _command_roles(cmd: list) -> list:
-    """(word, role) for one simple command; role is path, code or skip."""
+    """(word, role) for one simple command; role is path, code (qcode in perl/ruby) or skip."""
     roles = []
     while cmd and re.match(r"\w+=", cmd[0][0]):
         roles.append((cmd.pop(0), "path"))
     if not cmd:
         return roles
-    name = re.sub(r"[\d.]+$", "", os.path.basename(cmd[0][0]).lower())
+    name = _cmd_name(cmd[0][0])
     roles.append((cmd[0], "path"))
     args = cmd[1:]
     if name == "git" and args and args[0][0] in ("grep", "commit", "tag", "merge"):
@@ -486,16 +530,18 @@ def _command_roles(cmd: list) -> list:
     if name not in _OPTS:
         return roles + [(a, "path") for a in args]
     parsed = _parse([a[0] for a in args], *_OPTS[name])
-    # Short flags too (ack -f): every letter of a cluster counts, which only denies more.
+    # Short flags too (ack -f): every letter of a short-option word counts, an attached value
+    # included (rg -tf), which only denies more; a value in a word of its own (-t golang) does not.
     seen = {o for _, o in parsed} | {"-" + ch for a, (kind, _) in zip(args, parsed)
-                                     if kind != "pos" and not a[0].startswith("--") for ch in a[0][1:]}
+                                     if kind in ("opt", "optval") and not a[0].startswith("--")
+                                     for ch in a[0][1:]}
     first = name in _NO_PATTERN and not seen & _NO_PATTERN[name]
     for a, (kind, opt) in zip(args, parsed):
         role = "path"
         if kind in ("val", "optval") and opt in _SKIP_VALUE.get(name, ()):
             role = "skip"
         elif kind in ("val", "optval") and opt in _CODE_VALUE.get(name, ()):
-            role = "code"
+            role = "qcode" if name in ("perl", "ruby") else "code"
         elif kind == "pos" and first:
             role, first = "skip", False
         roles.append((a, role))
@@ -503,54 +549,105 @@ def _command_roles(cmd: list) -> list:
 
 
 def _cmd_name(word: str) -> str:
+    """Command name without directory, case and trailing version: python3.12 is python."""
     base = os.path.basename(word).lower()
-    return re.sub(r"[\d.]+$", "", base) or base
+    name = re.sub(r"[\d.]+$", "", base) or base
+    return "node" if name == "nodejs" else name
 
 
-def _word_roles(toks: list) -> list:
-    """(word, role) per word, role path, code or skip; and (heredoc, role) per body, role
-    shell, code or data. A body is read by whatever its line runs, pipes and prefixes
-    included (`cat <<EOF | sh`, `sudo bash <<EOF`): any shell or interpreter word on the
-    line, or eval/source/. as a command, makes it commands or code."""
-    out, cmd, redirect, docs, names = [], [], False, [], set()
+def _stdin_role(words: list[str]) -> str | None:
+    """How a simple command reads its stdin: data (a known sink), code or qcode (an
+    interpreter), shell (anything else, also a prefix left without command: sudo -s).
+    None without a command word."""
+    i, n, prefixed = 0, len(words), False
+    while i < n and (words[i] in _KEYWORDS or re.match(r"\w+=", words[i])):
+        i += 1
+    while i < n and _cmd_name(words[i]) in _PREFIXES:
+        short, long = _PREFIXES[_cmd_name(words[i])]
+        i, prefixed = i + 1, True
+        while i < n and (re.match(r"\w+=", words[i]) or words[i].startswith("-") and words[i] != "-"):
+            w, i = words[i], i + 1
+            if w == "--":
+                break
+            if w.startswith("--"):
+                i += "=" not in w and w in long
+            elif w.startswith("-"):
+                i += next((j for j, ch in enumerate(w[1:], 1) if ch in short), 0) == len(w) - 1
+    if i >= n:
+        return "shell" if prefixed else None
+    base, name, args = os.path.basename(words[i]).lower(), _cmd_name(words[i]), words[i + 1:]
+    if name in _NO_STDIN:
+        return None
+    if name in _INTERPRETERS:
+        if name == "python" and args[:2] == ["-m", "json.tool"]:
+            return "data"
+        return "qcode" if name in ("perl", "ruby") else "code"
+    prog = "\n".join(a for a in args if not a.startswith("-"))
+    runs = (base not in _SINKS and name not in _SINKS
+            or name == "git" and (not args or args[0] not in _GIT_SINKS)
+            or name in ("curl", "wget") and not any(a.endswith("@-") for a in args)
+            # Their program is an argument, unless -f reads it from the heredoc; awk's
+            # system/getline/| and sed's e command or s///e flag run what they read.
+            or name in ("sed", "awk") and any(re.match(r"-[^-]*f|--file", a) for a in args)
+            or name == "awk" and re.search(r"system|getline|\|", prog)
+            or name == "sed" and re.search(r"e[gpiImMw\d]*(?:$|[\s;}])", prog, re.M)
+            or name == "yq" and "load" in prog)
+    return "shell" if runs else "data"
+
+
+def _word_roles(toks: list, sink: str = "data") -> list:
+    """(word, role) per word, role path, code, qcode or skip; and (heredoc, role) per body,
+    role shell, code, qcode or data. A body is read by the command that carries its <<
+    (_stdin_role); if that is a sink, by the first other reader down its pipeline, and
+    past the pipeline by sink (what reads the output: the role of the word around a $( )).
+    Inside a group, loop or condition, or on its closing word, the worst reader of the
+    whole text counts: the output may go anywhere."""
+    out, cmd, redirect, docs, stages = [], [], False, [], []
+    pipe, pdepth, kdepth, closed, prev = 0, 0, 0, False, None
     for t in toks + ["\n"]:
         if isinstance(t, dict):
-            docs.append(t)
+            docs.append((t, len(stages)))
         elif isinstance(t, str) and ("<" in t or ">" in t):
             redirect = True
         elif isinstance(t, str):
-            words = [w[0] for w in cmd if not re.match(r"\w+=", w[0])]
-            names |= {_cmd_name(w) for w in words} | ({"eval"} if words and words[0] in _EVALS else set())
+            words = [w[0] for w in cmd if not re.match(r"\w+=", w[0]) and w[0] != "!"]
+            first = words[0] if words else ""
+            group = pdepth or kdepth or closed or first in _OPENERS | _CLOSERS
+            stages.append((_stdin_role([w[0] for w in cmd]), pipe, bool(group)))
+            kdepth = max(0, kdepth + (first in _OPENERS) - (first in _CLOSERS))
+            pdepth = max(0, pdepth + (t == "(") - (t == ")"))
+            closed = t == ")"
+            # A newline after | (the heredoc body comes in between) does not end the pipeline.
+            if t == "\n" and prev in ("|", "|&"):
+                t = prev
+            pipe += t not in ("|", "|&", "(", ")")
             out += _command_roles(cmd)
-            cmd, redirect = [], False
-            if t == "\n":
-                kinds = (["shell"] if names & (_SHELLS | {"eval"}) else []) \
-                    + (["code"] if names & _CODE_VALUE.keys() else [])
-                out += [(d, k) for d in docs if d["body"] is not None for k in kinds or ["data"]]
-                docs, names = [], set()
+            cmd, redirect, prev = [], False, t
         elif redirect:
             out.append((t, "path"))
             redirect = False
         else:
             cmd.append(t)
+    worst = max((s[0] for s in stages), key=_RANK.get, default=None)
+    for doc, k in docs:
+        if doc["body"] is None:
+            continue
+        _, line, group = stages[k]
+        role = worst if group else next((s[0] for s in stages[k:] if s[1] == line and _RANK[s[0]]), None)
+        out.append((doc, role if _RANK[role] else sink))
     return out
 
 
-def _alts(m) -> list[str] | None:
-    """Distinct alternatives of one {a,b}, {1..9..2} or {a..z} group; None for a longer sequence."""
+def _alts(m) -> list[str]:
+    """Distinct alternatives of one {a,b} or {a..z} group. A numeric sequence brings no letter,
+    so it cannot form an extension: its first value stands for all of them, outside the caps."""
     if m.group(1) is not None:
         return list(dict.fromkeys(m.group(1).split(",")))
-    num = m.group(2) is not None
-    x, y, n = m.group(2, 3, 4) if num else m.group(5, 6, 7)
-    a, b = (int(x), int(y)) if num else (ord(x), ord(y))
-    step = abs(int(n or 1)) or 1
-    if abs(b - a) // step + 1 > _BRACE_CAP:
-        return None
-    seq = range(a, b + 1, step) if a <= b else range(a, b - 1, -step)
-    if not num:
-        return [chr(v) for v in seq]
-    pad = max(len(x), len(y)) if re.match(r"-?0\d", x) or re.match(r"-?0\d", y) else 0
-    return [f"{v:0{pad}d}" for v in seq]
+    if m.group(2) is not None:
+        return [m.group(2)]
+    a, b = ord(m.group(5)), ord(m.group(6))
+    step = abs(int(m.group(7) or 1)) or 1
+    return [chr(v) for v in (range(a, b + 1, step) if a <= b else range(a, b - 1, -step))]
 
 
 def _brace_expand(form: str) -> list[str] | None:
@@ -562,10 +659,7 @@ def _brace_expand(form: str) -> list[str] | None:
         if not m:
             done.append(w)
             continue
-        alts = _alts(m)
-        if alts is None:
-            return None
-        for alt in alts:
+        for alt in _alts(m):
             x = w[:m.start()] + alt + w[m.end():]
             if x not in seen:
                 seen.add(x)
@@ -586,7 +680,7 @@ def _brace_linear(form: str) -> list[str] | None:
             out.append(w)
             continue
         alts = [_alts(g) for g in groups]
-        if len(groups) > _BRACE_CAP or None in alts:
+        if len(groups) > _BRACE_CAP:
             return None
         for k in range(len(groups)):
             for alt in alts[k]:
@@ -610,12 +704,13 @@ def _key_file_word(word: str, rx) -> bool:
     return False
 
 
-def _code_strings(code: str) -> list[str]:
-    """What interpreter code may name a file with: quoted literals, perl/ruby quote forms
-    (nested brackets and escapes followed) and any run of path characters with a slash.
+def _code_strings(code: str, perl: bool = False) -> list[str]:
+    """What interpreter code may name a file with, each text once: quoted literals, quote
+    forms (nested brackets and escapes followed; one never closed is dropped, not swallowed)
+    and the last component of any run of path characters with a slash (opts.key/2 divides).
     A name without slash or quoting (o.key) is a property access and is not returned."""
     out = [s for lit in re.findall(r"'([^']*)'|\"([^\"]*)\"|`([^`]*)`", code) for s in lit if s]
-    for m in _QUOTE_FORM.finditer(code):
+    for m in list(_QUOTE_FORM.finditer(code)) + (list(_PERL_QUOTE.finditer(code)) if perl else []):
         o = m.group(1)
         c, depth, i = _PAIRS.get(o, o), 1, m.end()
         while i < len(code):
@@ -624,10 +719,11 @@ def _code_strings(code: str) -> list[str]:
                 continue
             depth += (code[i] == o and o != c) - (code[i] == c)
             if depth == 0:
+                out.append(code[m.end():i])
                 break
             i += 1
-        out.append(code[m.end():i])
-    return out + [r for r in _PATH_RUN.findall(code) if "/" in r]
+    out += [r.rsplit("/", 1)[1] for r in _PATH_RUN.findall(code) if "/" in r]
+    return list(dict.fromkeys(s for s in out if s))
 
 
 def _doc_subs(body: str) -> list[str]:
@@ -644,47 +740,54 @@ def _doc_subs(body: str) -> list[str]:
     return out
 
 
-def _expanded_hit(form: str, rx, real: bool, budget: list) -> str | None:
+def _expanded_hit(form: str, rx, real: bool, budget: list, code: bool) -> str | None:
     words = _brace_expand(form)
     if words is None and not real:
         words = _brace_linear(form)
+    if words is not None and len(words) > 1:
+        budget[0] += len(words)
+        words = words if budget[0] <= _BRACE_BUDGET else None
+    if words is None and code:
+        words = [form]  # a code literal past the caps is checked as written, not expanded
     if words is None:
         return "brace expansion too large"
-    if len(words) > 1:
-        budget[0] += len(words)
-        if budget[0] > _BRACE_BUDGET:
-            return "brace expansion too large"
     return "key file name" if any(_key_file_word(w.translate(_UNMASK), rx) for w in words) else None
 
 
-def key_file_hit(text: str, rx, real: bool = True, depth: int = 0, budget: list | None = None) -> str | None:
+def key_file_hit(text: str, rx, real: bool = True, depth: int = 0, budget: list | None = None,
+                 code: bool = False, sink: str = "data") -> str | None:
     """Why text names a key file, or None. real: text the shell runs as is (not a quoted
     string read again as a command), where an expansion past the cap denies; read again,
     the expansion goes group by group and only past that cap denies. budget: brace
-    expansions spent by the whole command, substitutions and strings read again included."""
+    expansions spent by the whole command, substitutions and strings read again included.
+    code: text from an interpreter's literals, checked unexpanded past the caps. sink: who
+    reads the output of a heredoc that only goes through data sinks (_word_roles)."""
     budget = [0] if budget is None else budget
     if depth > 4:
         return "key file name" if _key_file_word(text, rx) else None
-    for item, role in _word_roles(_lex(text, real)):
+    for item, role in _word_roles(_lex(text, real), sink):
         reason = None
         if isinstance(item, dict):
             body, unquoted = item["body"], not item["quoted"]
-            # Unquoted, bash joins a backslash-newline, also into the delimiter line.
-            if role == "shell" or unquoted and "\\\n" in body:
-                reason = key_file_hit(body, rx, real, depth + 1, budget)
-            for s in (_doc_subs(body) if unquoted else []) + (_code_strings(body) if role == "code" else []):
-                reason = reason or key_file_hit(s, rx, False, depth + 1, budget)
+            if role == "shell":
+                reason = key_file_hit(body, rx, real, depth + 1, budget, code)
+            for s in _doc_subs(body) if unquoted else []:
+                reason = reason or key_file_hit(s, rx, False, depth + 1, budget, code, role)
+            for s in _code_strings(body, role == "qcode") if role in ("code", "qcode") else []:
+                reason = reason or key_file_hit(s, rx, False, depth + 1, budget, True)
         else:
             word, form, subs = item
             for body in subs:
-                reason = reason or key_file_hit(body, rx, real, depth + 1, budget)
-            if role == "code":
-                for s in _code_strings(word):
-                    reason = reason or key_file_hit(s, rx, False, depth + 1, budget)
+                # The output lands in this word: a skipped one is data, any other is read.
+                out_role = "data" if role == "skip" else role if role in ("code", "qcode") else "shell"
+                reason = reason or key_file_hit(body, rx, real, depth + 1, budget, code, out_role)
+            if role in ("code", "qcode"):
+                for s in _code_strings(word, role == "qcode"):
+                    reason = reason or key_file_hit(s, rx, False, depth + 1, budget, True)
             elif role == "path" and _SHELL_META.search(word):
-                reason = reason or key_file_hit(word, rx, False, depth + 1, budget)
+                reason = reason or key_file_hit(word, rx, False, depth + 1, budget, code)
             elif role == "path":
-                reason = reason or _expanded_hit(form, rx, real, budget)
+                reason = reason or _expanded_hit(form, rx, real, budget, code)
         if reason:
             return reason
     return None
