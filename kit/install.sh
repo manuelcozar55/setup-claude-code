@@ -560,7 +560,7 @@ if [ "$gl_rc" -eq 2 ]; then
   echo "==> Revisa \$CLAUDE_HOME/.gitleaks-checksum-mismatch y kit/docs/05-security.md antes de reintentar. doctor.sh tambien lo reporta."
 fi
 
-echo "==> Config instalada. Terceros (ver docs/): superpowers, Headroom, agent-browser, venv de tools."
+echo "==> Config instalada. Terceros (ver docs/): Headroom, agent-browser, venv de tools. Plugins: install-plugins.sh."
 echo "==> Rellena tus claves:  cp $KIT/.env.example \$HOME/.claude/.env  &&  editar"
 echo "==> Capa 2 de secretos (gitleaks pre-commit) es opt-in, por repositorio. Actívala DONDE QUIERAS con:"
 echo "       bash $KIT/install.sh --enable-secrets-layer2   # ejecútalo dentro del repo a proteger"

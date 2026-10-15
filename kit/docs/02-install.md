@@ -1,6 +1,6 @@
 # 02 · Instalación
 
-Este documento cubre la instalación de la parte que el kit sí redistribuye: la config saneada de `~/.claude` (`CLAUDE.md`, `settings.json`, agentes, hooks, Sentinel) y el venv de herramientas. Los terceros (Headroom, el plugin superpowers, agent-browser) se documentan aparte en `03-headroom.md` y `04-superpowers.md`: el kit no lleva sus binarios.
+Este documento cubre la instalación de la parte que el kit sí redistribuye: la config saneada de `~/.claude` (`CLAUDE.md`, `settings.json`, agentes, hooks, Sentinel) y el venv de herramientas. Los terceros (Headroom, agent-browser) se documentan aparte en `03-headroom.md` y `04-superpowers.md`: el kit no lleva sus binarios. El plugin `esenciales` es del kit y lo instala `install-plugins.sh` (ver `04-superpowers.md`).
 
 ## Prerrequisitos
 
@@ -87,7 +87,7 @@ ln -sf $HOME/.venvs/tools/bin/ruff $HOME/.local/bin/ruff
 El kit no instala esto por ti; solo lo documenta:
 
 - **Headroom** (proxy local de contexto/coste): ver `docs/03-headroom.md`.
-- **superpowers, los 8 agentes, y agent-browser**: ver `docs/04-superpowers.md`.
+- **esenciales, los 8 agentes, y agent-browser**: ver `docs/04-superpowers.md`.
 
 Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, servidores MCP, skills adicionales como `graphify` o `deep-change`), ver `docs/08-plugins-mcp-y-skills.md`.
 

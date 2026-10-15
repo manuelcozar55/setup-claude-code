@@ -102,7 +102,7 @@ Clarify *before* starting (IntentGate). Once execution begins: no mid-task "shou
 ## Operating loop
 For substantial / ambiguous / irreversible / security- or production-touching work, run the
 **`deep-change`** skill (`~/.claude/skills/deep-change/SKILL.md`): brainstorm → plan → execute →
-verify, composing the `superpowers` skills, plus two habits that make the result trustworthy —
+verify, composing the `esenciales` skills, plus two habits that make the result trustworthy —
 a **change record** (commits with their why + `nucleo.md` plan ticked with the verifying command) and
 **risk containment** (build and validate in an isolated copy; apply to production only as a
 separate, explicitly-confirmed step with a known rollback). Invoke it with `/deep-change`, or let
@@ -111,5 +111,5 @@ it auto-engage on those conditions.
 **Match ceremony to risk** — skip the loop for trivial edits, lookups, and Q&A; do those directly.
 The design gate (IntentGate / brainstorming) runs *before* execution; once the design is approved,
 Never-Stop governs — drive to completion, no mid-run "should I continue?". Verify with evidence,
-not claims. Prefer the `superpowers` skills over ad-hoc process; delegate specialist work to the
+not claims. Prefer the `esenciales` skills over ad-hoc process; delegate specialist work to the
 subagents this kit installs in `~/.claude/agents/`.
