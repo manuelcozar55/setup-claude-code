@@ -196,6 +196,9 @@ jobs:
       - name: "test_install_plugins.sh (plugins de terceros por referencia: diff-first, ids esperados, opcionales aparte)"
         run: bash kit/test/test_install_plugins.sh
 
+      - name: "test_plugin_esenciales.sh (plugin esenciales: 6 skills, sin hooks, sin restos de las excluidas, en el marketplace)"
+        run: bash kit/test/test_plugin_esenciales.sh
+
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
     runs-on: ubuntu-latest

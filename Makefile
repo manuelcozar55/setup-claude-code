@@ -58,6 +58,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_statusline.sh
 	bash kit/test/test_session_start_clear.sh
 	bash kit/test/test_install_plugins.sh
+	bash kit/test/test_plugin_esenciales.sh
 
 doctor: ## Verifica una instalacion existente del kit
 	bash kit/doctor.sh
