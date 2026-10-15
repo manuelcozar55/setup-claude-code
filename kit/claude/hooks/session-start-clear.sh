@@ -6,9 +6,8 @@
 # nucleo.md es un fichero del repo, escribible por terceros: va envuelto como DATOS y nada de lo que
 # propone (oráculo, «Siguiente acción») corre sin que la persona lo confirme.
 # Fail-open: sin nucleo (o con stdin roto) no inyecta contexto y sale 0; el aviso de /handoff depende
-# solo de los campos del evento y sale aunque no haya nucleo. El aviso sale al retomar (resume); el
-# filtro admite también fork, que el matcher del kit no lanza a propósito: una sesión bifurcada ya trae
-# su contexto y el nucleo inyectado lo duplicaría.
+# solo de los campos del evento y sale aunque no haya nucleo. El aviso sale con resume; la doc envía los
+# mismos campos en fork, pero el matcher del kit no lo lanza porque una sesión bifurcada ya trae su contexto.
 set -u
 IN=$(cat)
 CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
@@ -20,7 +19,7 @@ CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 # o fork y alguna respuesta en el transcript llegan context_tokens (entero) y prompt_cache_likely_expired
 # (booleano), desde Claude Code v2.1.251; antes faltan y el aviso no sale. `numbers`: en jq una cadena
 # ordena por encima de cualquier número y «>= 100000» sería siempre cierto.
-AVISO=$(jq -r 'select((.source=="resume" or .source=="fork") and .prompt_cache_likely_expired==true and ((.context_tokens | numbers) // 0) >= 100000)
+AVISO=$(jq -r 'select(.source=="resume" and .prompt_cache_likely_expired==true and ((.context_tokens | numbers) // 0) >= 100000)
   | "Retomas con \(.context_tokens) tok y la caché caducada: el próximo turno reescribe todo el contexto. Si la fase está cerrada, /handoff ahora cuesta casi lo mismo y retoma limpio."' <<<"$IN" 2>/dev/null)
 sale() { jq -cn --arg c "$1" --arg m "$AVISO" \
   '(if $c != "" then {hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}} else {} end)
