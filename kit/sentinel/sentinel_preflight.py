@@ -296,7 +296,7 @@ _CODE_VALUE = {"node": {"-e", "-p", "--eval", "--print"}, "perl": {"-e", "-E"},
 # (\!, system, .shell) and mailx ~! ones, so they are not sinks.
 _SINKS = {"cat", "tee", "head", "tail", "wc", "sort", "uniq", "tr", "cut", "sed", "awk", "grep", "egrep",
           "fgrep", "rg", "ag", "ack", "jq", "yq", "base64", "md5sum", "sha1sum", "sha224sum", "sha256sum",
-          "sha384sum", "sha512sum", "gzip", "xz", "git", "curl", "wget", "man"}
+          "sha384sum", "sha512sum", "gzip", "xz", "git", "curl", "wget", "man", "sponge"}
 _GIT_SINKS = {"commit", "tag", "notes", "apply", "am"}
 # curl reads data from stdin with @- (-d @-, -F f=@-) and -T -, wget with -i -. A config from
 # stdin (-K -, --config -) wins: it may say upload-file = <key>.
@@ -304,21 +304,23 @@ _STDIN_DATA = {"curl": re.compile(r"@-$|^(?:-T|--upload-file)(?:\n|=)?-$", re.M)
                "wget": re.compile(r"^(?:-i|--input-file)(?:\n|=)?-$", re.M)}
 _STDIN_CONFIG = re.compile(r"^(?:-K|--config)(?:\n|=)?-$", re.M)
 # Inline code that runs what it reads (perl -ne 'system $_', open P,"|sh"): the body is commands.
-_RUNS_INPUT = re.compile(r"\b(?:eval|exec(?:l|lp|le|v|vp|vpe|Sync|File|FileSync)?|system|popen|spawn(?:Sync)?"
-                         r"|fork|subprocess|passthru|shell_exec|proc_open|qx|child_process|os\.execute"
-                         r"|io\.popen)\b|`|\bopen\b[^;]*\||\|\s*['\"]?(?:sh|bash|zsh|dash)\b")
-# Inline code options per interpreter; one without a table has all its arguments checked.
+# Any word with exec or spawn counts (posix_spawnp, pcntl_exec; execution too, which only denies more).
+_RUNS_INPUT = re.compile(r"\w*(?:exec|spawn)\w*|\b(?:eval|system2?|popen|fork|subprocess|passthru|proc_open|qx"
+                         r"|child_process|os\.execute|io\.popen|Deno\.(?:Command|run))\b|`|\bopen\b[^;]*\|"
+                         r"|\|\s*['\"]?(?:sh|bash|zsh|dash)\b")
+# Inline code options per interpreter (deno: what follows eval); one without a table has all its
+# arguments checked.
 _INLINE = {**{n: (_OPTS[n], _CODE_VALUE[n]) for n in ("python", "node", "perl", "ruby")},
            "php": (("r", {}, True, set()), {"-r"}), "lua": (("el", {}, True, set()), {"-e"}),
            "rscript": (("e", {}, True, set()), {"-e"}),
            "bun": (("ep", {"--eval": 1, "--print": 1}, True, set()), {"-e", "-p", "--eval", "--print"})}
-# What runs a program or a file a sink just wrote (_executes): these commands, find/fd with
-# their exec options, and a command word with a slash outside the standard binary directories.
+# What runs a program or a file (_executes): these commands, find/fd with their exec options
+# (also attached: fd -xsh, --exec=sh), and a command word with a slash outside the system's
+# binary directories.
 _EXECUTORS = {"bash", "sh", "zsh", "dash", "ksh", "fish", "source", ".", "eval", "chmod", "xargs", "su"}
 _EXEC_FLAGS = {"find": {"-exec", "-execdir", "-ok", "-okdir"},
                "fd": {"-x", "--exec", "-X", "--exec-batch"}, "fdfind": {"-x", "--exec", "-X", "--exec-batch"}}
-_BIN_DIRS = {"/bin/", "/sbin/", "/usr/bin/", "/usr/sbin/", "/usr/local/bin/", "/usr/local/sbin/",
-             "/opt/homebrew/bin/", "/snap/bin/"}
+_BIN_DIRS = {"/bin/", "/sbin/", "/usr/bin/", "/usr/sbin/"}
 _INTERPRETERS = {"python", "node", "deno", "bun", "perl", "ruby", "php", "lua", "rscript"}
 _RUNNERS = _EXECUTORS | _INTERPRETERS
 # Prefixes that run the next word: short options and long options that take a value.
@@ -326,14 +328,16 @@ _PREFIXES = {"sudo": ("ugpChDRrTU", {"--user", "--group", "--host", "--prompt", 
                                      "--type", "--other-user", "--close-from", "--command-timeout"}),
              "env": ("uCS", {"--unset", "--chdir", "--split-string"}), "nice": ("n", {"--adjustment"}),
              "time": ("fo", {"--format", "--output"}), "command": ("", set()), "exec": ("a", set()),
-             "timeout": ("sk", {"--signal", "--kill-after"}), "flock": ("wE", {"--wait", "--timeout",
-             "--conflict-exit-code"}), "stdbuf": ("ioe", {"--input", "--output", "--error"}),
+             "timeout": ("sk", {"--signal", "--kill-after"}), "flock": ("wEc", {"--wait", "--timeout",
+             "--conflict-exit-code", "--command"}), "stdbuf": ("ioe", {"--input", "--output", "--error"}),
              "busybox": ("", set()), "nohup": ("", set()), "setsid": ("", set()),
              "ionice": ("cnp", {"--class", "--classdata", "--pid"}), "chroot": ("", {"--userspec", "--groups"}),
-             "unshare": ("", set()), "strace": ("abeEIoOpPsSuX", set()), "ltrace": ("aeEFlnopsuwx", set()),
+             "unshare": ("RwSG", {"--root", "--wd", "--setuid", "--setgid",
+             "--map-user", "--map-group"}), "strace": ("abeEIoOpPsSuX", set()), "ltrace": ("aeEFlnopsuwx", set()),
              "watch": ("n", {"--interval"}), "doas": ("uC", set()), "chrt": ("TPD", set()),
              "taskset": ("", set())}
-# Prefixes with positional arguments before the command: timeout 5 cmd, flock lockfile cmd.
+# Prefixes with positional arguments before the command, options around them: timeout 5 cmd,
+# flock lockfile -c cmd (a prefix whose -c leaves no command word runs it: _executes).
 _PREFIX_ARGS = {"timeout": 1, "flock": 1, "chroot": 1, "taskset": 1, "chrt": 1}
 _KEYWORDS = {"!", "{", "if", "then", "else", "elif", "while", "until", "do"}
 _OPENERS, _CLOSERS = {"{", "if", "while", "until", "for", "case", "select"}, {"}", "fi", "done", "esac"}
@@ -600,16 +604,18 @@ def _command_word(words: list[str]) -> tuple[int, bool]:
     while i < n and _cmd_name(words[i]) in _PREFIXES:
         name = _cmd_name(words[i])
         short, long = _PREFIXES[name]
-        i, prefixed = i + 1, True
-        while i < n and (re.match(r"\w+=", words[i]) or words[i].startswith("-") and words[i] != "-"):
+        i, prefixed, pos = i + 1, True, _PREFIX_ARGS.get(name, 0)
+        while i < n and (re.match(r"\w+=", words[i]) or words[i].startswith("-") and words[i] != "-" or pos):
             w, i = words[i], i + 1
             if w == "--":
+                i += pos
                 break
             if w.startswith("--"):
                 i += "=" not in w and w in long
-            elif w.startswith("-"):
+            elif w.startswith("-") and w != "-":
                 i += next((j for j, ch in enumerate(w[1:], 1) if ch in short), 0) == len(w) - 1
-        i += _PREFIX_ARGS.get(name, 0)
+            elif not re.match(r"\w+=", w):
+                pos -= 1
     return min(i, n), prefixed
 
 
@@ -618,18 +624,6 @@ def _program(args: list[str]) -> str:
     --expression=e, --source='{...}'."""
     return "\n".join(a.partition("=")[2] if a.startswith("--") else a.partition("e")[2]
                      if a.startswith("-") else a for a in args)
-
-
-def _sink_writes(words: list[str]) -> bool:
-    """Whether a simple command writes a file by its own means: tee, sort -o, sed's w
-    command or s///w flag, an awk program with > (redirections are seen apart)."""
-    i = _command_word(words)[0]
-    if i >= len(words):
-        return False
-    name, args = _cmd_name(words[i]), words[i + 1:]
-    return bool(name == "tee" or name == "sort" and any(re.match(r"-[^-]*o|--output", a) for a in args)
-                or name == "sed" and re.search(r"(?:^|[;{}\s])[wW]\s|/[gpiImMe\d]*w\s", _program(args), re.M)
-                or name == "awk" and ">" in _program(args))
 
 
 def _stdin_role(words: list[str]) -> str | None:
@@ -646,7 +640,9 @@ def _stdin_role(words: list[str]) -> str | None:
         if name == "python" and args[:2] == ["-m", "json.tool"]:
             return "data"
         inline = args
-        if name in _INLINE:
+        if name == "deno":
+            inline = args[args.index("eval") + 1:] if "eval" in args else []
+        elif name in _INLINE:
             (short, long, stop, ends), values = _INLINE[name]
             inline = [a for a, (kind, opt) in zip(args, _parse(args, short, long, stop, ends))
                       if kind in ("val", "optval") and opt in values]
@@ -686,15 +682,17 @@ def _simple_commands(toks: list) -> list:
 def _executes(cmd: list, depth: int = 0) -> bool:
     """Whether a simple command (lexed words) runs a program or a file: a shell, an
     interpreter, source, eval, chmod, xargs, su, find/fd with -exec/-x, a command word with a
-    slash outside _BIN_DIRS (./run.sh, /tmp/x), or a prefix without command (sudo -s); also
-    inside its $( ) and backtick bodies."""
+    slash outside _BIN_DIRS (./run.sh, /usr/local/bin/x), or a prefix without command
+    (sudo -s, flock -c cmd lockfile); also inside its $( ) and backtick bodies."""
     words = [w[0] for w in cmd]
     i, prefixed = _command_word(words)
     if i >= len(words):
         runs = prefixed
     else:
         w, name = words[i], _cmd_name(words[i])
-        runs = (name in _RUNNERS or bool(_EXEC_FLAGS.get(name, set()) & set(words[i + 1:]))
+        flags = _EXEC_FLAGS.get(name, set())
+        runs = (name in _RUNNERS or any(a.partition("=")[0] in flags or a[:2] in flags and a[1] != "-"
+                                        for a in words[i + 1:])
                 or "/" in w and os.path.dirname(w) + "/" not in _BIN_DIRS)
     if runs:
         return True
@@ -708,23 +706,21 @@ def _word_roles(toks: list, sink: str = "data") -> list:
     (_stdin_role) and by the rest of its pipeline: the worst of them counts, and if all
     are sinks, sink (what reads the output: the role of the word around a $( )). Inside a
     group, loop or condition, on its closing word, or with a group down its pipeline, the
-    worst reader of the whole text counts: the output may go anywhere. A pipeline that
-    writes a file (> x, >> x, tee x) followed by any executor (_executes) makes the body
-    commands, whatever file that runs: names are not followed."""
-    out, cmd, redirect, docs, stages, cmds, writes = [], [], False, [], [], [], False
+    worst reader of the whole text counts: the output may go anywhere. Any executor
+    (_executes) after its pipeline makes the body commands, whether its readers wrote a file
+    or not: writers and names are not followed."""
+    out, cmd, redirect, docs, stages, cmds = [], [], False, [], [], []
     pipe, pdepth, kdepth, closed, prev = 0, 0, 0, False, None
     for t in toks + ["\n"]:
         if isinstance(t, dict):
             docs.append((t, len(stages)))
         elif isinstance(t, str) and ("<" in t or ">" in t):
-            redirect, writes = True, writes or t in (">", ">>", ">|", "&>")
+            redirect = True
         elif isinstance(t, str):
             words = [w[0] for w in cmd if not re.match(r"\w+=", w[0]) and w[0] != "!"]
             first = words[0] if words else ""
             group = pdepth or kdepth or closed or first in _OPENERS | _CLOSERS
-            texts = [w[0] for w in cmd]
-            writes = writes or _sink_writes(texts)
-            stages.append((_stdin_role(texts), pipe, bool(group), writes))
+            stages.append((_stdin_role([w[0] for w in cmd]), pipe, bool(group)))
             cmds.append(cmd)
             kdepth = max(0, kdepth + (first in _OPENERS) - (first in _CLOSERS))
             pdepth = max(0, pdepth + (t == "(") - (t == ")"))
@@ -734,7 +730,7 @@ def _word_roles(toks: list, sink: str = "data") -> list:
                 t = prev
             pipe += t not in ("|", "|&", "(", ")")
             out += _command_roles(cmd)
-            cmd, redirect, writes, prev = [], False, False, t
+            cmd, redirect, prev = [], False, t
         elif redirect:
             out.append((t, "path"))
             redirect = False
@@ -749,9 +745,8 @@ def _word_roles(toks: list, sink: str = "data") -> list:
         pipeline = [j for j in range(k, len(stages)) if stages[j][1] == line]
         role = worst if any(stages[j][2] for j in pipeline) else max(
             (stages[j][0] for j in pipeline), key=_RANK.get)
-        if any(stages[j][3] for j in pipeline):
-            execs = execs if execs is not None else [_executes(c) for c in cmds]
-            role = "shell" if any(execs[k + 1:]) else role
+        execs = execs if execs is not None else [_executes(c) for c in cmds]
+        role = "shell" if any(execs[pipeline[-1] + 1:]) else role
         out.append((doc, role if _RANK[role] else sink))
     return out
 
