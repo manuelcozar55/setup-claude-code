@@ -16,6 +16,8 @@ fi
 
 plan=$1
 n=$2
+# N goes into a file name and an awk regex: only a plain integer.
+[[ $n =~ ^[0-9]+$ ]] || { echo "TASK_NUMBER must be an integer: $n" >&2; exit 2; }
 [ -f "$plan" ] || { echo "no such plan file: $plan" >&2; exit 2; }
 
 if [ $# -eq 3 ]; then

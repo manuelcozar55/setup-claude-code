@@ -38,5 +38,15 @@ ck "$(restos "$tmp/p")" "2" "falsabilidad: referencia plantada detectada"
 printf 'logo https://%s/x.png\n' "ejemplo.invalid" >> "$tmp/p/README.md"
 ck "$(urls_ajenas "$tmp/p")" "1" "falsabilidad: URL de tercero plantada detectada"
 
+# task-brief: N va a un nombre de fichero y a una regex de awk; solo se acepta un entero.
+printf '# Plan\n## Task 1\nuno\n## Task 10\ndiez\n' > "$tmp/plan.md"
+TB="$P/skills/subagent-driven-development/scripts/task-brief"
+for n in '../../../x' '1.*'; do
+  rc=0; (cd "$tmp" && bash "$TB" "$tmp/plan.md" "$n" "$tmp/brief.md" >/dev/null 2>&1) || rc=$?
+  ck "$rc" "2" "task-brief rechaza N='$n' (exit 2)"
+done
+(cd "$tmp" && bash "$TB" "$tmp/plan.md" 1 "$tmp/brief.md" >/dev/null 2>&1) || true
+ck "$(cat "$tmp/brief.md" 2>/dev/null | tr '\n' ' ')" "## Task 1 uno " "task-brief con N entero extrae solo esa tarea"
+
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
