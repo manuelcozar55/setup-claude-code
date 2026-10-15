@@ -131,4 +131,13 @@ ok "pre-compact: el .gitignore previo conserva lo suyo" "$(cat "$R5/.claude/esta
 checkpoint-compact-*"
 
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
+# --- nucleo_emitir: un «# comentario» dentro de un bloque ``` no es cabecera (cortaba la sección) ---
+NF=$T/fence.md
+{ echo '# Estado'; echo '## Comandos de verificación'; echo '```bash'; echo '# correr los tests'; echo 'make test'; echo '```'
+  echo '## Pendientes'; echo '- [ ] P-FENCE'; } >"$NF"
+# shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
+E=$(. "$H/lib/nucleo.sh"; nucleo_emitir "$NF")
+ok "emitir: comentario en bloque de código no corta la sección" "$(command grep -c 'make test\|P-FENCE' <<<"$E")" 2
+ok "emitir: el comentario no cuenta como sección fuera de forma" "$(command grep -c 'fuera de forma' <<<"$E")" 0
+
 exit $FAIL

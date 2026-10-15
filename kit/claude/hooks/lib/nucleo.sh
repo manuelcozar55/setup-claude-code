@@ -49,7 +49,9 @@ nucleo_emitir() {
     BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|") }
     function sale(s) { out = out s "\n"; usado += length(s) + 1 }
     # ### también: las sesiones escriben la tarea como «## TAREA ACTUAL» con sus secciones en ###.
-    /^#(#|##)? / {
+    # Dentro de un bloque ``` nada es cabecera: un «# comentario» cerraba la sección y perdía los comandos.
+    /^```/ { cerca = !cerca }
+    /^#(#|##)? / && !cerca {
       viva = 0; dentro = 0
       if ($0 ~ /^# /) { if (!titulo) { titulo = 1; sale(substr($0, 1, 200)) } else fuera++; next }
       t = $0; sub(/^#+ /, "", t); c = ""
