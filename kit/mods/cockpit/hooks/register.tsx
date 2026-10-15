@@ -139,7 +139,9 @@ function describe(e: { tool: string }): string {
   const arg = [i.description, i.command, i.file_path, i.pattern, i.query, i.url, i.skill, i.subject].find(
     v => typeof v === 'string' && v.length > 0,
   )
-  return `${e.tool} ${String(arg ?? '').split('\n')[0]}`.trim().slice(0, 140)
+  // The row truncates at its end: a whole path would leave only its root in view, so keep its tail.
+  const text = arg !== undefined && arg === i.file_path ?String(arg).split('/').slice(-2).join('/') : String(arg ?? '')
+  return `${e.tool} ${text.split('\n')[0]}`.trim().slice(0, 140)
 }
 
 export function condense(text: string): string {
@@ -219,7 +221,9 @@ async function refreshCtx($: $, withBreakdown: boolean) {
 }
 const softRefresh = ($: $, full = false) => void refreshCtx($, full).catch(() => undefined)
 
-const pendingActivity = new Map<string, string>()
+// A subagent's last tool call, by agent id. The poll below writes rows it read before awaiting,
+// so a tool.call landing in between was overwritten; this map lets the next poll put it back.
+const lastCall = new Map<string, { what: string; at: number }>()
 let lastIdleTick = 0
 async function syncAgents($: $) {
   const list = await $.agent.list()
@@ -230,20 +234,23 @@ async function syncAgents($: $) {
   for (const a of list) {
     const i = next.findIndex(r => r.id === a.id)
     const prev = i < 0 ? undefined : next[i]
+    const call = lastCall.get(a.id)
     const row: AgentRow = {
       id: a.id,
       description: a.description,
       type: a.type,
       status: a.status,
       startedAt: prev?.startedAt ?? t,
-      lastActiveAt: prev?.lastActiveAt ?? t,
+      lastActiveAt: Math.max(prev?.lastActiveAt ?? t, call?.at ?? 0),
       endedAt: DONE.has(a.status) ? (prev?.endedAt ?? t) : undefined,
-      activity: prev?.activity ?? pendingActivity.get(a.id) ?? 'arrancando…',
+      activity: call?.what ?? prev?.activity ?? 'arrancando…',
     }
     if (i < 0) next.push(row)
     else next[i] = row
   }
-  if (JSON.stringify(next) !== JSON.stringify(rows)) await update($, agents, () => next.slice(-40))
+  // Every agent of the session stays listed: the pane scrolls, and dropping old rows renumbered the T<n>.
+  // shortcut: unbounded in a session; cap it again if a session ever reaches thousands of agents.
+  if (JSON.stringify(next) !== JSON.stringify(rows)) await update($, agents, () => next)
   const isBusy = (await read($, turn)).isRunning || next.some(r => !DONE.has(r.status)) || (await read($, handoff)).phase === 'working'
   // Busy: tick every poll for timers; idle: every 15 s, enough for the cache countdown.
   if (isBusy || t - lastIdleTick >= 15_000) {
@@ -416,7 +423,7 @@ export const register: Register = on => {
     } else {
       const id = e.agentId
       const t = await $.clock.now()
-      pendingActivity.set(id, what)
+      lastCall.set(id, { what, at: t })
       await update($, agents, rows => rows.map(r => (r.id === id ? { ...r, activity: what, lastActiveAt: t } : r)))
     }
     softRefresh($)
@@ -660,16 +667,13 @@ export const register: Register = on => {
       )
     }
     // The four states always show, with their count, so the pane reads the same at any size; empty ones dim.
-    const section = (label: string, color: string, list: AgentRow[], glyph: (a: AgentRow) => string, note: (a: AgentRow) => string | undefined, cap = Infinity) => {
-      const shown = list.slice(-cap)
-      return (
-        <Box key={label} flexDirection="column">
-          <Text bold color={list.length ? color : 'inactive'}>{label} · {list.length}</Text>
-          {shown.map(a => row(a, glyph(a), color, note(a)))}
-          {shown.length < list.length && <Text dimColor>{INDENT}… y {list.length - shown.length} más</Text>}
-        </Box>
-      )
-    }
+    // Every agent is drawn: the pane body scrolls, so a cap only hid rows («… y 1 más»).
+    const section = (label: string, color: string, list: AgentRow[], glyph: (a: AgentRow) => string, note: (a: AgentRow) => string | undefined) => (
+      <Box key={label} flexDirection="column">
+        <Text bold color={list.length ? color : 'inactive'}>{label} · {list.length}</Text>
+        {list.map(a => row(a, glyph(a), color, note(a)))}
+      </Box>
+    )
     const stopNote = (a: AgentRow) => (a.status === 'failed' ? 'falló' : a.status === 'killed' ? 'detenido' : `${elapsed(tick - a.lastActiveAt)} sin actividad`)
     const stopGlyph = (a: AgentRow) => (a.status === 'failed' ? '✗' : a.status === 'killed' ? '■' : '◌')
 
@@ -708,7 +712,7 @@ export const register: Register = on => {
             {section('Trabajando', 'permission', working, () => '●', a => a.activity)}
             {section('En cola', 'inactive', queued, () => '○', () => undefined)}
             {section('Parados', 'error', stuck, stopGlyph, stopNote)}
-            {section('Hechos', 'success', finished, () => '✓', () => undefined, 8)}
+            {section('Hechos', 'success', finished, () => '✓', () => undefined)}
           </Box>
         )}
         {/* Controls last: the mission and the live agents own the first rows at any pane height. */}
