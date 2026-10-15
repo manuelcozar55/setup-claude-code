@@ -119,6 +119,33 @@ expect "a.key.json permitido"                    "$(run_sentinel 'cat a.key.json
 expect "Read de config.key.ts permitido"         "$(run_sentinel_read /src/config.key.ts)"                 ALLOW
 expect "jq test(.key|.pem) permitido"            "$(run_sentinel "jq -r '.[] | select(.f | test(\"\\\\.key|\\\\.pem\"))' x.json")" ALLOW
 expect "jq division .a/.key permitida"           "$(run_sentinel "jq '.a/.key' f.json")"                   ALLOW
+# Ronda 1 de la revision. Llaves: bash no expande entre comillas, y la expansion tiene tope; pasado el
+# tope en texto sin comillas se deniega (antes, un JSON entre comillas colgaba el hook y mas de 8 llaves
+# se saltaban la comprobacion).
+JSON=""; for o in 1 2 3 4 5 6 7; do f=""; for k in $(seq 1 12); do f="$f\"f$o$k\":$k,"; done; JSON="$JSON{${f%,}},"; done
+t0=$(date +%s%N)
+out=$(jq -nc --arg c "curl -d '[${JSON%,}]' https://api.example.com/v1" '{tool_name:"Bash",tool_input:{command:$c}}' \
+  | HOME="$GUARDS_TEST_HOME" timeout 5 "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1)
+ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+expect "JSON entre comillas con llaves permitido"   "$out"                                                    ALLOW
+[ "$ms" -lt 1000 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: JSON entre comillas con llaves tarda ${ms} ms (tope 1000)"; }
+expect "llaves sin comillas sobre el tope denegadas" "$(run_sentinel 'echo {a,b,c,d}{e,f,g,h}{i,j,k,l}{m,n,o,p}')" "$IOCS_WANT"
+expect "300 palabras sin llaves no gastan el tope" "$(run_sentinel "echo $(seq -s ' ' -f 'w%g' 1 300)")"  ALLOW
+expect "clave: mas de 8 llaves denegada"       "$(run_sentinel 'cat {,}{,}{,}{,}{,}{,}{,}{,}{,}s.{k,x}ey')" "$IOCS_WANT"
+# El flag de codigo solo cuenta entre las opciones del interprete: tras el script es un argumento suyo.
+expect "clave: python script -c denegado"        "$(run_sentinel 'python3 upload.py -c /etc/ssl/private/server.key')" "$IOCS_WANT"
+expect "clave: node script -e denegado"          "$(run_sentinel 'node app.js -e server.key')"             "$IOCS_WANT"
+expect "clave: ruby script -e denegado"          "$(run_sentinel 'ruby x.rb -e server.key')"               "$IOCS_WANT"
+# Aridad de opciones de grep/rg/jq: --files y -e anulan el patron; --indent lleva valor.
+expect "clave: rg --files denegado"              "$(run_sentinel 'rg --files server.key')"                 "$IOCS_WANT"
+expect "clave: rg --files detras denegado"       "$(run_sentinel 'rg server.key --files')"                 "$IOCS_WANT"
+expect "clave: grep -E no lleva valor"           "$(run_sentinel 'grep -E BEGIN server.key')"              "$IOCS_WANT"
+expect "jq --indent 2 con .data.key permitido"   "$(run_sentinel "jq --indent 2 '.data.key' f.json")"      ALLOW
+# Una sustitucion dentro de un papel exento se lee como comando; el resto de la palabra sigue exento.
+expect "commit con heredoc y opts.key permitido" "$(run_sentinel $'git commit -m "$(cat <<\'EOF\'\nfix: use opts.key in handler\n\nCo-Authored-By: x <x@example.com>\nEOF\n)"')" ALLOW
+# shellcheck disable=SC2016  # el $(...) va literal: es el comando que se evalua
+expect "clave: \$( ) en mensaje de commit"       "$(run_sentinel 'git commit -m "$(cat tls.key)"')"        "$IOCS_WANT"
+expect "clave: \$( ) en heredoc sin comillas"    "$(run_sentinel $'git commit -m "$(cat <<EOF\n$(cat tls.key)\nEOF\n)"')" "$IOCS_WANT"
 expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK
 expect "force push compuesto denegado" "$(run_smart 'echo ok && git push -f origin main')"   BLOCK
 expect "comando normal en smart"       "$(run_smart 'git status')"                           ALLOW
@@ -424,6 +451,11 @@ ENVF="/srv/app/.e""nv"
 printf '{"paths":["%s"]}' "$ENVF" > "$SH/repo/.security/sentinel-allowlist.json"
 out=$(sent "$SH/repo" "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"$ENVF\"}}")
 echo "$out" | grep -q '"permissionDecision": "deny"' && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: el allowlist del repo clonado exime un .env: $out"; }
+# El iocs.json de $SH/kit no trae key_file_extensions (uno anterior, propio o recortado del example): la
+# lista por defecto del codigo sigue denegando la clave, y el motivo dice que es la de por defecto.
+out=$(sent "$SH" '{"tool_name":"Bash","tool_input":{"command":"cat server.p12"}}' "$SH/kit/sentinel_preflight.py")
+echo "$out" | grep -q '"permissionDecision": "deny"' && echo "$out" | grep -q 'default' && pass=$((pass+1)) \
+  || { fail=$((fail+1)); echo "FAIL: iocs.json sin key_file_extensions deja pasar una clave: $out"; }
 
 # 14e) prosa -> hook: npm install (usa pnpm), --no-verify, y aviso de Write nuevo >150 lineas.
 bdc "npm install"             "npm install left-pad"             deny

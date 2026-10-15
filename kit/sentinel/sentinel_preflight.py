@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shlex
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -242,14 +241,55 @@ def collect_fields(tool_input: dict, keys: list[str]) -> list[str]:
 # ── Key files by name ────────────────────────────────────────────────────────
 # A regex over the whole command cannot tell `cat .server.key` from the jq filter
 # '.data.key', nor `cat x.key` from `grep "event.key"`: the difference is the
-# role of the argument, not its text. So the command is split into shell words,
+# role of the argument, not its text. So the command is lexed into shell words,
 # the words that name no file (grep pattern, jq filter, commit message) are
 # skipped, interpreter code is checked only in its string literals, and every
 # other word is checked by its path components against key_file_extensions.
-# A skipped word that carries $( ) or a backtick is checked anyway.
-_GREP = {"grep", "egrep", "fgrep", "rg", "ag", "ack"}
-_GREP_VALUE_OPTS = {"-A", "-B", "-C", "-m", "-d", "-D", "-g", "-t", "-T"}
-_CODE_FLAGS = {"node": "ep", "perl": "eE", "ruby": "e", "python": "c"}
+# The body of a $( ) or backtick is read as a command of its own, whatever the
+# role of the word around it. Whatever cannot be classified is checked: this
+# guard may deny more, never less.
+DEFAULT_KEY_EXTS = ["pem", "key", "p12", "pfx", "jks", "keystore"]
+_BRACE_CAP, _BRACE_BUDGET = 64, 256  # brace expansions per word / per command
+_GREP_LONG = {"--regexp": 1, "--file": 1, "--max-count": 1, "--after-context": 1,
+              "--before-context": 1, "--context": 1}
+# Per tool: short options with a value, long options with N values, whether options
+# end at the first positional (interpreters: the script), options after whose value
+# they end. A flag listed here by mistake would move the pattern onto a file and skip
+# it; a missing option only denies more. So only options known to take a value.
+_OPTS = {
+    "grep": ("efmABCdD", {**_GREP_LONG, "--include": 1, "--exclude": 1, "--exclude-dir": 1,
+                          "--exclude-from": 1, "--label": 1}, False, set()),
+    "rg": ("efmABCtTgjMdEr", {**_GREP_LONG, "--type": 1, "--type-not": 1, "--glob": 1,
+                              "--iglob": 1, "--max-depth": 1, "--replace": 1, "--encoding": 1,
+                              "--threads": 1}, False, set()),
+    "jq": ("fL", {"--from-file": 1, "--indent": 1, "--arg": 2, "--argjson": 2,
+                  "--slurpfile": 2, "--rawfile": 2}, False, set()),
+    "git-message": ("mFCct", {"--message": 1, "--file": 1, "--author": 1, "--date": 1,
+                              "--template": 1, "--reuse-message": 1, "--reedit-message": 1},
+                    False, set()),
+    "python": ("cmWX", {}, True, {"-c", "-m"}),
+    "node": ("eprC", {"--eval": 1, "--print": 1, "--require": 1, "--import": 1}, True,
+             {"-e", "-p", "--eval", "--print"}),
+    "perl": ("eE", {}, True, {"-e", "-E"}),
+    "ruby": ("erI", {}, True, {"-e"}),
+}
+_OPTS["egrep"] = _OPTS["fgrep"] = _OPTS["grep"]
+_GREP_NO_PATTERN = {"-e", "--regexp", "-f", "--file", "--files", "--type-list"}
+_NO_PATTERN = {"grep": _GREP_NO_PATTERN, "egrep": _GREP_NO_PATTERN, "fgrep": _GREP_NO_PATTERN,
+               "rg": _GREP_NO_PATTERN, "jq": {"-f", "--from-file"}}
+_SKIP_VALUE = {"grep": {"-e", "--regexp"}, "egrep": {"-e", "--regexp"}, "fgrep": {"-e", "--regexp"},
+               "rg": {"-e", "--regexp"}, "git-message": {"-m", "--message"}}
+_CODE_VALUE = {"node": {"-e", "-p", "--eval", "--print"}, "perl": {"-e", "-E"},
+               "ruby": {"-e"}, "python": {"-c"}}
+_OPS = ("&&", "||", ";;", "|&", ">>", "<<", "&>", ">&", "<&", ">|", "|", "&", ";", "(", ")", "<", ">")
+_MASK = str.maketrans("{},", "\ue000\ue001\ue002")  # quoted braces do not expand
+_UNMASK = str.maketrans("\ue000\ue001\ue002", "{},")
+_BRACE = re.compile(r"\{([^{}]*,[^{}]*)\}")
+_QUOTED = re.compile(r"'[^']*'|\"(?:\\.|[^\"\\])*\"")
+_BACKTICK_BODY = re.compile(r"(?:\\.|[^`\\])*")
+_HEREDOC_OP = re.compile(r"<<-?[ \t]*(['\"]?)\\?(\w+)\1")
+# $(cat <<'EOF' ... EOF) outputs the heredoc as is: Claude Code's commit message.
+_CAT_HEREDOC = re.compile(r"\s*cat\s*<<-?[ \t]*(['\"]?)(\w+)\1[ \t]*\n(.*?)\n\t*\2\n?\s*", re.S)
 _SHELL_META = re.compile(r"[\s()|;&<>\"'`]")
 _NAME_CHAR = re.compile(r"[\w@+~*?${}\[\]-]")
 
@@ -264,113 +304,249 @@ def _key_file_rx(exts: list[str]):
     )
 
 
-def _shell_words(text: str) -> list[str]:
-    lex = shlex.shlex(text, posix=True, punctuation_chars=True)
-    lex.whitespace_split = True
-    lex.commenters = ""
-    try:
-        return list(lex)
-    except ValueError:  # unbalanced quote or trailing backslash
-        return re.split(r"[\s;|&()<>]+", re.sub(r"[\"'\\]", "", text))
+def _subst_end(text: str, i: int) -> int:
+    """Index of the ) that closes a $( opened just before i: past quotes, nesting and heredocs."""
+    depth, n, docs = 1, len(text), []
+    while i < n:
+        c = text[i]
+        m = _HEREDOC_OP.match(text, i) if text.startswith("<<", i) and not text.startswith("<<<", i) else None
+        if m:
+            docs.append(m.group(2))
+            i = m.end()
+        elif c == "\n" and docs:
+            for d in docs:
+                end = re.compile(rf"^\t*{d}$", re.M).search(text, i + 1)
+                i = end.end() if end else n
+            docs = []
+        elif c == "\\":
+            i += 2
+        elif c in "'\"":
+            q = _QUOTED.match(text, i)
+            i = q.end() if q else n
+        else:
+            depth += c == "("
+            depth -= c == ")"
+            if depth == 0:
+                return i
+            i += 1
+    return n
 
 
-def _command_roles(cmd: list[str]) -> list[tuple[str, str]]:
+def _substitution(text: str, i: int) -> tuple[str, int]:
+    """Body of the $( ) or backtick at i, and the index after it."""
+    if text[i] == "`":
+        body = _BACKTICK_BODY.match(text, i + 1).group(0)
+        return body, i + 2 + len(body)
+    end = _subst_end(text, i + 2)
+    return text[i + 2:end], end + 1
+
+
+def _lex_char(text: str, i: int, quoted: bool, cur: str, subs: list) -> tuple[str, int]:
+    """One character, escape or substitution of a word: the word so far and the next index."""
+    c, nxt = text[i], text[i + 1:i + 2]
+    if c == "\\":
+        if quoted and nxt not in ("$", "`", '"', "\\", "\n"):
+            return cur + "\\", i + 1
+        return cur + ("" if nxt == "\n" else nxt.translate(_MASK)), i + 2
+    if text.startswith("$(", i) or c == "`":
+        body, i = _substitution(text, i)
+        lit = _CAT_HEREDOC.fullmatch(body)
+        # Literal only if the heredoc ends at its first delimiter line and, unquoted, expands nothing.
+        if (lit and not re.search(rf"^\t*{lit.group(2)}$", lit.group(3), re.M)
+                and (lit.group(1) or not re.search(r"\$\(|`", lit.group(3)))):
+            return cur + lit.group(3).translate(_MASK), i
+        subs.append(body)
+        return cur + "$", i
+    return cur + (c.translate(_MASK) if quoted else c), i + 1
+
+
+def _lex(text: str) -> list:
+    """Operators as str; words as (text, brace form, substitution bodies).
+
+    Quotes are dropped from the text; in the brace form quoted braces are masked,
+    since bash does not expand them. A substitution leaves a "$" in the word and
+    its body in the list, except $(cat <<'EOF' ...) whose output is the heredoc."""
+    toks, cur, subs, i, n = [], None, [], 0, len(text)
+    while i < n:
+        c = text[i]
+        op = None if c in " \t\n" else next((o for o in _OPS if text.startswith(o, i)), None)
+        if c in " \t\n" or op:
+            if cur is not None:
+                toks.append((cur.translate(_UNMASK), cur, subs))
+                cur, subs = None, []
+            if op:
+                toks.append(op)
+            elif c == "\n":
+                toks.append(";")
+            i += len(op) if op else 1
+            continue
+        cur = cur or ""
+        if c == "'":
+            j = text.find("'", i + 1)
+            j = n if j < 0 else j
+            cur, i = cur + text[i + 1:j].translate(_MASK), j + 1
+        elif c == '"':
+            i += 1
+            while i < n and text[i] != '"':
+                cur, i = _lex_char(text, i, True, cur, subs)
+            i += 1
+        else:
+            cur, i = _lex_char(text, i, False, cur, subs)
+    if cur is not None:
+        toks.append((cur.translate(_UNMASK), cur, subs))
+    return toks
+
+
+def _parse(args: list[str], short: str, long: dict, stop: bool, ends: set) -> list[tuple[str, str | None]]:
+    """(kind, option) per word: kind is opt, optval (value inside the word), val or pos."""
+    out, pending, opt, opts = [], 0, None, True
+    for a in args:
+        if pending:
+            out.append(("val", opt))
+            pending -= 1
+            opts = opts and not (pending == 0 and opt in ends)
+        elif opts and a == "--":
+            out.append(("opt", None))
+            opts = False
+        elif opts and a.startswith("-") and len(a) > 1:
+            if a.startswith("--"):
+                opt, attached = a.split("=", 1)[0], "=" in a
+                pending = 0 if attached else long.get(opt, 0)
+            else:
+                k = next((j for j, ch in enumerate(a[1:], 1) if ch in short), 0)
+                opt, attached = ("-" + a[k] if k else None), 0 < k < len(a) - 1
+                pending = int(bool(k) and not attached)
+            out.append(("optval" if attached else "opt", opt))
+            opts = opts and not (pending == 0 and opt in ends)
+        else:
+            out.append(("pos", None))
+            opts = opts and not stop
+    return out
+
+
+def _command_roles(cmd: list) -> list:
     """(word, role) for one simple command; role is path, code or skip."""
     roles = []
-    while cmd and re.match(r"\w+=", cmd[0]):
+    while cmd and re.match(r"\w+=", cmd[0][0]):
         roles.append((cmd.pop(0), "path"))
     if not cmd:
         return roles
-    name = re.sub(r"[\d.]+$", "", os.path.basename(cmd[0]).lower())
-    args = cmd[1:]
+    name = re.sub(r"[\d.]+$", "", os.path.basename(cmd[0][0]).lower())
     roles.append((cmd[0], "path"))
-    if name == "git" and args[:1] == ["grep"]:
+    args = cmd[1:]
+    if name == "git" and args and args[0][0] in ("grep", "commit", "tag", "merge"):
+        name = "grep" if args[0][0] == "grep" else "git-message"
         roles.append((args.pop(0), "path"))
-        name = "grep"
-    message = name == "git" and args[:1] in (["commit"], ["tag"], ["merge"])
-    first_skipped = name in _GREP or name == "jq"
-    pending: list[str] = []
-    for a in args:
+    if name not in _OPTS:
+        return roles + [(a, "path") for a in args]
+    parsed = _parse([a[0] for a in args], *_OPTS[name])
+    first = name in _NO_PATTERN and not {o for _, o in parsed} & _NO_PATTERN[name]
+    for a, (kind, opt) in zip(args, parsed):
         role = "path"
-        if pending:
-            role = pending.pop(0)
-        elif a.startswith("-") and len(a) > 1:
-            if message and (a == "--message" or re.fullmatch(r"-[a-zA-Z]*m", a)):
-                pending = ["skip"]
-            elif message and a.startswith(("--message=", "-m")):
-                role = "skip"
-            elif name in _GREP and (a == "--regexp" or re.fullmatch(r"-[a-zA-Z]*e", a)):
-                pending, first_skipped = ["skip"], False
-            elif name in _GREP and (a == "--file" or re.fullmatch(r"-[a-zA-Z]*f", a)):
-                pending, first_skipped = ["path"], False
-            elif name in _GREP and a.startswith(("--regexp=", "-e")):
-                role, first_skipped = "skip", False
-            elif name in _GREP and a in _GREP_VALUE_OPTS:
-                pending = ["path"]
-            elif name == "jq" and a in ("-f", "--from-file"):
-                pending, first_skipped = ["path"], False
-            elif name == "jq" and a in ("--arg", "--argjson", "--slurpfile", "--rawfile"):
-                pending = ["path", "path"]
-            elif name in _CODE_FLAGS and (
-                a in ("--eval", "--print") or re.fullmatch(rf"-[a-zA-Z]*[{_CODE_FLAGS[name]}]", a)
-            ):
-                pending = ["code"]
-        elif first_skipped:
-            role, first_skipped = "skip", False
-        if role != "path" and ("$(" in a or "`" in a):
-            role = "path"
+        if kind in ("val", "optval") and opt in _SKIP_VALUE.get(name, ()):
+            role = "skip"
+        elif kind in ("val", "optval") and opt in _CODE_VALUE.get(name, ()):
+            role = "code"
+        elif kind == "pos" and first:
+            role, first = "skip", False
         roles.append((a, role))
     return roles
 
 
-def _word_roles(words: list[str]) -> list[tuple[str, str]]:
+def _word_roles(toks: list) -> list:
     out, cmd, redirect = [], [], False
-    for w in words + [";"]:
-        if w and set(w) <= set("|&;()<>"):
-            if "<" in w or ">" in w:
+    for t in toks + [";"]:
+        if isinstance(t, str):
+            if "<" in t or ">" in t:
                 redirect = True
                 continue
             out += _command_roles(cmd)
             cmd = []
         elif redirect:
-            out.append((w, "path"))
+            out.append((t, "path"))
             redirect = False
         else:
-            cmd.append(w)
+            cmd.append(t)
     return out
 
 
-def _brace_expand(word: str) -> list[str]:
-    m = re.search(r"\{([^{}]*,[^{}]*)\}", word)
-    if not m or word.count("{") > 8:
-        return [word]
-    return [x for alt in m.group(1).split(",") for x in _brace_expand(word[:m.start()] + alt + word[m.end():])]
+def _brace_expand(form: str) -> list[str] | None:
+    """Distinct expansions of the unmasked {a,b} groups, or None past the cap."""
+    done, todo, seen = [], [form], {form}
+    while todo:
+        w = todo.pop()
+        m = _BRACE.search(w)
+        if not m:
+            done.append(w)
+            continue
+        for alt in m.group(1).split(","):
+            x = w[:m.start()] + alt + w[m.end():]
+            if x not in seen:
+                seen.add(x)
+                todo.append(x)
+        if len(seen) > 4 * _BRACE_CAP:
+            return None
+    return done if len(done) <= _BRACE_CAP else None
+
+
+def _brace_linear(form: str) -> list[str]:
+    """One group at a time, the others at their first alternative: bounded, not exhaustive."""
+    groups = list(_BRACE.finditer(form))[:_BRACE_CAP]
+    firsts = [g.group(1).split(",")[0] for g in groups]
+    out = []
+    for k, g in enumerate(groups):
+        for alt in list(dict.fromkeys(g.group(1).split(",")))[:_BRACE_CAP]:
+            parts, last = [], 0
+            for j, h in enumerate(groups):
+                parts += [form[last:h.start()], alt if j == k else firsts[j]]
+                last = h.end()
+            out.append("".join(parts) + form[last:])
+            if len(out) >= _BRACE_BUDGET:
+                return out
+    return out or [form]
 
 
 def _key_file_word(word: str, rx) -> bool:
-    for w in _brace_expand(word):
-        for piece in re.split(r"[\s=:,;|&()<>\"'`]+", w):
-            for i, comp in enumerate(piece.split("/")):
-                m = rx.fullmatch(comp)
-                # A bare .key needs a slash before it (./.key): in prose or jq it is a field.
-                if m and (_NAME_CHAR.search(m.group(1)) or (i > 0 and not m.group(1))):
-                    return True
+    for piece in re.split(r"[\s=:,;|&()<>\"'`]+", word):
+        for i, comp in enumerate(piece.split("/")):
+            m = rx.fullmatch(comp)
+            # A bare .key needs a slash before it (./.key): in prose or jq it is a field.
+            if m and (_NAME_CHAR.search(m.group(1)) or (i > 0 and not m.group(1))):
+                return True
     return False
 
 
-def key_file_hit(text: str, rx, depth: int = 0) -> bool:
-    for word, role in _word_roles(_shell_words(text)):
+def key_file_hit(text: str, rx, real: bool = True, depth: int = 0) -> str | None:
+    """Why text names a key file, or None. real: text the shell runs as is (not a
+    quoted string read again as a command), where an expansion past the cap denies."""
+    if depth > 4:
+        return "key file name" if _key_file_word(text, rx) else None
+    spent = 0
+    for (word, form, subs), role in _word_roles(_lex(text)):
+        for body in subs:
+            reason = key_file_hit(body, rx, real, depth + 1)
+            if reason:
+                return reason
         if role == "code":
-            literals = re.findall(r"'([^']*)'|\"([^\"]*)\"|`([^`]*)`", word)
-            if any(key_file_hit(s, rx, depth + 1) for lit in literals for s in lit if s):
-                return True
+            for lit in re.findall(r"'([^']*)'|\"([^\"]*)\"|`([^`]*)`", word):
+                for s in lit:
+                    reason = s and key_file_hit(s, rx, False, depth + 1)
+                    if reason:
+                        return reason
+        elif role == "path" and _SHELL_META.search(word):
+            reason = key_file_hit(word, rx, False, depth + 1)
+            if reason:
+                return reason
         elif role == "path":
-            if depth < 4 and _SHELL_META.search(word):
-                if key_file_hit(word, rx, depth + 1):
-                    return True
-            elif _key_file_word(word, rx):
-                return True
-    return False
+            words = _brace_expand(form)
+            if words is None or len(words) > 1 and spent + len(words) > _BRACE_BUDGET:
+                if real:
+                    return "brace expansion too large"
+                words = _brace_linear(form)
+            spent += len(words) if len(words) > 1 else 0
+            if any(_key_file_word(w.translate(_UNMASK), rx) for w in words):
+                return "key file name"
+    return None
 
 
 # ── Checks ───────────────────────────────────────────────────────────────────
@@ -379,9 +555,13 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
     patterns = iocs.get("sensitive_paths", {}).get("patterns", [])
     regexes = iocs.get("sensitive_paths", {}).get("regex_patterns", [])
     allowed = (allowlist.get("paths") or []) + iocs.get("allowlist", {}).get("paths", [])
+    # The extension regex left regex_patterns for this list: an iocs.json without it (older,
+    # own, trimmed from the example) must not turn the check off, so the code has a default
+    # and the deny reason says it was used.
     exts = iocs.get("sensitive_paths", {}).get("key_file_extensions")
-    exts = [e for e in exts if isinstance(e, str) and e] if isinstance(exts, list) else []
-    key_rx = _key_file_rx(exts) if exts else None
+    valid = isinstance(exts, list) and exts and all(isinstance(e, str) and e for e in exts)
+    key_rx = _key_file_rx(exts if valid else DEFAULT_KEY_EXTS)
+    key_note = "" if valid else " (default extensions: iocs.json has no valid key_file_extensions)"
 
     for text in collect_fields(tool_input, PATH_FIELDS):
         for rx in ALWAYS_DENY_PATHS:
@@ -397,8 +577,9 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
         for rx in regexes:
             if _search(rx, text):
                 return (f"sensitive path pattern", "critical")
-        if key_rx and key_file_hit(text, key_rx):
-            return ("sensitive key file name", "critical")
+        key_reason = key_file_hit(text, key_rx)
+        if key_reason:
+            return (f"sensitive {key_reason}{key_note}", "critical")
     return (None, None)
 
 
