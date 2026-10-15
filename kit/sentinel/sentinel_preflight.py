@@ -291,16 +291,26 @@ _CODE_VALUE = {"node": {"-e", "-p", "--eval", "--print"}, "perl": {"-e", "-E"},
                "ruby": {"-e"}, "python": {"-c"}}
 # Who reads a heredoc body. Only these sinks make it data, and git, curl, wget, sed and awk only
 # when their arguments say so (_stdin_role); interpreters read it as code (as commands if their
-# arguments run what they read: perl -ne 'system $_'); anything else (ssh,
+# inline code runs what it reads: perl -ne 'system $_'); anything else (ssh,
 # sudo -s, fish, xargs, psql, unknown) as commands. psql, mysql and sqlite3 run shell escapes
 # (\!, system, .shell) and mailx ~! ones, so they are not sinks.
 _SINKS = {"cat", "tee", "head", "tail", "wc", "sort", "uniq", "tr", "cut", "sed", "awk", "grep", "egrep",
           "fgrep", "rg", "ag", "ack", "jq", "yq", "base64", "md5sum", "sha1sum", "sha224sum", "sha256sum",
           "sha384sum", "sha512sum", "gzip", "xz", "git", "curl", "wget", "man"}
 _GIT_SINKS = {"commit", "tag", "notes", "apply", "am"}
-# curl and wget read data from stdin: @- (--data @-), -i/-T - and their long forms. Not -K -:
-# a config may say upload-file = <key>.
-_STDIN_DATA = re.compile(r"@-$|^(?:-[iT]|--(?:input-file|upload-file))(?:\n|=)?-$", re.M)
+# curl reads data from stdin with @- (-d @-, -F f=@-) and -T -, wget with -i -. A config from
+# stdin (-K -, --config -) wins: it may say upload-file = <key>.
+_STDIN_DATA = {"curl": re.compile(r"@-$|^(?:-T|--upload-file)(?:\n|=)?-$", re.M),
+               "wget": re.compile(r"^(?:-i|--input-file)(?:\n|=)?-$", re.M)}
+_STDIN_CONFIG = re.compile(r"^(?:-K|--config)(?:\n|=)?-$", re.M)
+# Inline code that runs what it reads (perl -ne 'system $_', open P,"|sh"): the body is commands.
+_RUNS_INPUT = re.compile(r"system|exec|popen|spawn|subprocess|`|\bqx|eval|passthru|proc_open"
+                         r"|\bopen\b[^;]*\||\|\s*['\"]?(?:sh|bash|zsh|dash)\b")
+_INLINE = {**{n: (_OPTS[n], _CODE_VALUE[n]) for n in ("python", "node", "perl", "ruby")},
+           "php": (("r", {}, True, {"-r"}), {"-r"})}
+# What runs a program or a file a sink just wrote (_executes).
+_EXECUTORS = {"bash", "sh", "zsh", "dash", "ksh", "fish", "source", ".", "eval", "chmod", "xargs",
+              "nohup", "setsid", "su"}
 _INTERPRETERS = {"python", "node", "deno", "bun", "perl", "ruby", "php", "lua", "rscript"}
 # Prefixes that run the next word: short options and long options that take a value.
 _PREFIXES = {"sudo": ("ugpChDRrTU", {"--user", "--group", "--host", "--prompt", "--chdir", "--role",
@@ -310,7 +320,7 @@ _PREFIXES = {"sudo": ("ugpChDRrTU", {"--user", "--group", "--host", "--prompt", 
 _KEYWORDS = {"!", "{", "if", "then", "else", "elif", "while", "until", "do"}
 _OPENERS, _CLOSERS = {"{", "if", "while", "until", "for", "case", "select"}, {"}", "fi", "done", "esac"}
 _NO_STDIN = _CLOSERS | {"for", "case", "select", "function"}
-_RANK = {None: 0, "data": 0, "code": 1, "qcode": 1, "shell": 2}
+_RANK = {None: 0, "data": 0, "code": 1, "qcode": 2, "shell": 3}  # qcode also sees q() forms
 _OPS =("&&", "||", ";;", "|&", ">>", "<<<", "<<", "&>", ">&", "<&", ">|", "|", "&", ";", "(", ")",
         "<", ">")
 _MASK = str.maketrans("{},", "\ue000\ue001\ue002")  # quoted braces do not expand
@@ -563,10 +573,9 @@ def _cmd_name(word: str) -> str:
     return "node" if name == "nodejs" else name
 
 
-def _stdin_role(words: list[str]) -> str | None:
-    """How a simple command reads its stdin: data (a known sink), code or qcode (an
-    interpreter), shell (anything else, also a prefix left without command: sudo -s).
-    None without a command word."""
+def _command_word(words: list[str]) -> tuple[int, bool]:
+    """Index of the command word past assignments, keywords and prefixes with their options
+    (len(words) if none), and whether a prefix was skipped."""
     i, n, prefixed = 0, len(words), False
     while i < n and (words[i] in _KEYWORDS or re.match(r"\w+=", words[i])):
         i += 1
@@ -581,7 +590,15 @@ def _stdin_role(words: list[str]) -> str | None:
                 i += "=" not in w and w in long
             elif w.startswith("-"):
                 i += next((j for j, ch in enumerate(w[1:], 1) if ch in short), 0) == len(w) - 1
-    if i >= n:
+    return i, prefixed
+
+
+def _stdin_role(words: list[str]) -> str | None:
+    """How a simple command reads its stdin: data (a known sink), code or qcode (an
+    interpreter), shell (anything else, also a prefix left without command: sudo -s).
+    None without a command word."""
+    i, prefixed = _command_word(words)
+    if i >= len(words):
         return "shell" if prefixed else None
     base, name, args = os.path.basename(words[i]).lower(), _cmd_name(words[i]), words[i + 1:]
     if name in _NO_STDIN:
@@ -589,16 +606,20 @@ def _stdin_role(words: list[str]) -> str | None:
     if name in _INTERPRETERS:
         if name == "python" and args[:2] == ["-m", "json.tool"]:
             return "data"
-        # Code that runs what it reads (perl -ne 'system $_') reads commands, as awk's system.
-        if re.search(r"system|exec|popen|spawn|subprocess|`|\bqx", "\n".join(args)):
-            return "shell"
+        if name in _INLINE:
+            (short, long, stop, ends), values = _INLINE[name]
+            inline = [a for a, (kind, opt) in zip(args, _parse(args, short, long, stop, ends))
+                      if kind in ("val", "optval") and opt in values]
+            if _RUNS_INPUT.search("\n".join(inline)):
+                return "shell"
         return "qcode" if name in ("perl", "ruby") else "code"
     # The program may come attached to its option: -e1e, --expression=e, --source='{...}'.
     prog = "\n".join(a.partition("=")[2] if a.startswith("--") else a.partition("e")[2]
                      if a.startswith("-") else a for a in args)
     runs = (base not in _SINKS and name not in _SINKS
             or name == "git" and (not args or args[0] not in _GIT_SINKS)
-            or name in ("curl", "wget") and not _STDIN_DATA.search("\n".join(args))
+            or name in _STDIN_DATA and (not _STDIN_DATA[name].search("\n".join(args))
+                                        or _STDIN_CONFIG.search("\n".join(args)))
             # Their program is an argument, unless -f reads it from the heredoc; awk's
             # system/getline/| and sed's e command or s///e flag run what they read.
             or name in ("sed", "awk") and any(re.match(r"-[^-]*f|--file", a) for a in args)
@@ -608,30 +629,60 @@ def _stdin_role(words: list[str]) -> str | None:
     return "shell" if runs else "data"
 
 
+def _simple_commands(toks: list) -> list:
+    """The words of each simple command of lexed text, without redirection targets."""
+    out, cmd, redirect = [], [], False
+    for t in toks:
+        if isinstance(t, str):
+            redirect = "<" in t or ">" in t
+            if not redirect:
+                out.append(cmd)
+                cmd = []
+        elif isinstance(t, tuple) and not redirect:
+            cmd.append(t)
+        elif isinstance(t, tuple):
+            redirect = False
+    return out + [cmd]
+
+
+def _executes(cmd: list, depth: int = 0) -> bool:
+    """Whether a simple command (lexed words) runs a program or a file: a shell, an
+    interpreter, source, eval, chmod, xargs..., a command word with a slash (./run.sh), or a
+    prefix without command (sudo -s); also inside its $( ) and backtick bodies."""
+    words = [w[0] for w in cmd]
+    i, prefixed = _command_word(words)
+    if (i >= len(words) and prefixed or i < len(words)
+            and (_cmd_name(words[i]) in _EXECUTORS | _INTERPRETERS or "/" in words[i])):
+        return True
+    return depth < 4 and any(_executes(c, depth + 1) for w in cmd for body in w[2]
+                             for c in _simple_commands(_lex(body)))
+
+
 def _word_roles(toks: list, sink: str = "data") -> list:
     """(word, role) per word, role path, code, qcode or skip; and (heredoc, role) per body,
     role shell, code, qcode or data. A body is read by the command that carries its <<
     (_stdin_role) and by the rest of its pipeline: the worst of them counts, and if all
     are sinks, sink (what reads the output: the role of the word around a $( )). Inside a
     group, loop or condition, on its closing word, or with a group down its pipeline, the
-    worst reader of the whole text counts: the output may go anywhere. Sinks that write a
-    file (> x, tee x) that a later command runs or hands to a non-sink (chmod, bash) make
-    the body commands: a script. Read again by a sink (cat x) it stays data."""
-    out, cmd, redirect, docs, stages, outs, later = [], [], False, [], [], set(), []
+    worst reader of the whole text counts: the output may go anywhere. A pipeline that
+    writes a file (> x, >> x, tee x) followed by any executor (_executes) makes the body
+    commands, whatever file that runs: names are not followed."""
+    out, cmd, redirect, docs, stages, cmds, writes = [], [], False, [], [], [], False
     pipe, pdepth, kdepth, closed, prev = 0, 0, 0, False, None
     for t in toks + ["\n"]:
         if isinstance(t, dict):
             docs.append((t, len(stages)))
         elif isinstance(t, str) and ("<" in t or ">" in t):
-            redirect = t
+            redirect, writes = True, writes or t in (">", ">>", ">|", "&>")
         elif isinstance(t, str):
             words = [w[0] for w in cmd if not re.match(r"\w+=", w[0]) and w[0] != "!"]
             first = words[0] if words else ""
             group = pdepth or kdepth or closed or first in _OPENERS | _CLOSERS
-            if first == "tee":
-                outs |= {(len(stages), w[0].removeprefix("./")) for w in cmd[1:] if not w[0].startswith("-")}
-            stages.append((_stdin_role([w[0] for w in cmd]), pipe, bool(group)))
-            later += [(len(stages) - 1, w[0].removeprefix("./")) for w in cmd]
+            texts = [w[0] for w in cmd]
+            c = _command_word(texts)[0]
+            writes = writes or c < len(texts) and _cmd_name(texts[c]) == "tee"
+            stages.append((_stdin_role(texts), pipe, bool(group), writes))
+            cmds.append(cmd)
             kdepth = max(0, kdepth + (first in _OPENERS) - (first in _CLOSERS))
             pdepth = max(0, pdepth + (t == "(") - (t == ")"))
             closed = t == ")"
@@ -640,29 +691,24 @@ def _word_roles(toks: list, sink: str = "data") -> list:
                 t = prev
             pipe += t not in ("|", "|&", "(", ")")
             out += _command_roles(cmd)
-            cmd, redirect, prev = [], False, t
+            cmd, redirect, writes, prev = [], False, False, t
         elif redirect:
             out.append((t, "path"))
-            if redirect in (">", ">>", ">|", "&>"):
-                outs.add((len(stages), t[0].removeprefix("./")))
-            later.append((len(stages), t[0].removeprefix("./")))
             redirect = False
         else:
             cmd.append(t)
     worst = max((s[0] for s in stages), key=_RANK.get, default=None)
+    execs = None
     for doc, k in docs:
         if doc["body"] is None:
             continue
         line = stages[k][1]
         pipeline = [j for j in range(k, len(stages)) if stages[j][1] == line]
-        last = pipeline[-1]
-        files = {f for j, f in outs if j in pipeline}
-        if any(stages[j][2] for j in pipeline):
-            role = worst
-        elif files & {w for j, w in later if j > last and _RANK[stages[j][0]]}:
-            role = "shell"
-        else:
-            role = max((stages[j][0] for j in pipeline), key=_RANK.get)
+        role = worst if any(stages[j][2] for j in pipeline) else max(
+            (stages[j][0] for j in pipeline), key=_RANK.get)
+        if any(stages[j][3] for j in pipeline):
+            execs = execs if execs is not None else [_executes(c) for c in cmds]
+            role = "shell" if any(execs[k + 1:]) else role
         out.append((doc, role if _RANK[role] else sink))
     return out
 
