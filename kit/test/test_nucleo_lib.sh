@@ -127,4 +127,13 @@ F=$T/cerca4.md
 printf '%s\n' '# Estado' '## Comandos de verificación' '````' '# comentario' 'make CMD-CUATRO' '````' \
   '## Pendientes' '  ```sh' '# otro' '  ```' '- Q-SANGRIA' >"$F"
 ok "cerca de cuatro y con sangría: los comandos llegan" "$(nucleo_emitir "$F" | command grep -c 'CMD-CUATRO\|Q-SANGRIA')" 2
+# Con cuatro espacios de sangría ``` es un bloque sangrado (CommonMark), no una cerca: no cuenta en la paridad.
+F=$T/cerca-sangrada.md
+# shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
+printf '%s\n' '# Estado' '## Objetivo' '    ```' '## Comandos de verificación' '```sh' '# comentario' 'make CMD-SANGRADA' '```' \
+  '## Plan' '- [ ] P-SANGRADA' >"$F"
+ok "cuatro espacios no son cerca: el bloque real conmuta" "$(nucleo_emitir "$F" | command grep -c 'CMD-SANGRADA\|P-SANGRADA')" 2
+# Cercas impares: se ignoran, pero no en silencio.
+ok "cerca sin cerrar: avisa" "$(nucleo_emitir "$T/cerca2.md" | command grep -c '^\[cercas sin equilibrar: se ignoran')" 1
+ok "cercas equilibradas: sin aviso" "$(nucleo_emitir "$T/cerca4.md" | command grep -c 'cercas sin equilibrar')" 0
 exit $FAIL

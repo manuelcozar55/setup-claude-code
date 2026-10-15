@@ -53,10 +53,13 @@ nucleo_emitir() {
     # en «## Plan»); bajo otro ## cierra y cuenta en fuera, para que «### Hecho» no se cuele en Pendientes.
     # La clave va por prefijo también en ###: «### Plan de migración» reclama Plan, como ya lo hacía con ##.
     # Dentro de un bloque ``` nada es cabecera: un «# comentario» cerraba la sección y perdía los comandos.
-    # Primera pasada: cuenta las cercas; si quedan impares se ignoran todas, para que una sin cerrar no se
-    # trague el resto del fichero. No se contemplan cercas anidadas (```` con ``` dentro) ni ~~~.
-    NR == FNR { if ($0 ~ /^[ \t]*```+[^`]*$/) cercas++; next }
-    /^[ \t]*```+[^`]*$/ && cercas % 2 == 0 { cerca = !cerca }
+    # Primera pasada: cuenta las cercas; si quedan impares se ignoran todas (y se avisa), para que una sin
+    # cerrar no se trague el resto del fichero. Hasta 3 espacios de sangría: con 4 es un bloque sangrado.
+    # Límites: no se casa el cierre con la longitud ni el info string del apertor; ni cercas anidadas
+    # (```` con ``` dentro) ni ~~~; y si otra sesión escribe el fichero entre las dos lecturas, la paridad
+    # puede no ser la del texto emitido.
+    NR == FNR { if ($0 ~ /^ ? ? ?```+[^`]*$/) cercas++; next }
+    /^ ? ? ?```+[^`]*$/ && cercas % 2 == 0 { cerca = !cerca }
     /^#(#|##)? / && !cerca {
       t = $0; sub(/^#(#|##)? /, "", t); c = ""
       for (i = 1; i <= n; i++) if (index(t, k[i]) == 1) c = (k[i] == "Encargo original") ? "Objetivo" : k[i]
@@ -77,6 +80,7 @@ nucleo_emitir() {
     }
     END {
       printf "%s", out
+      if (cercas % 2) print "[cercas sin equilibrar: se ignoran; un # comentario dentro de un bloque puede cortar su sección]"
       if (omitidas != "") print "[recortado por tope: se omiten" omitidas ".]"
       if (recortes || omitidas != "") print "[LEE " f " antes de actuar: lo inyectado está incompleto.]"
       if (fuera || kb > 12) print "[fuera de forma: " fuera + 0 " secciones / " kb " KB → muévelas a diario.md, que nunca se inyecta]"
