@@ -254,6 +254,44 @@ expect "python heredoc con 300 cadenas JSON permitido" "$out"                   
 PYDOC=$(for i in $(seq 1 300); do printf "x%d = '{a,b,c,d}/{e,f,g,h}%d'\n" "$i" "$i"; done)
 expect "python heredoc que agota el presupuesto permitido" "$(run_sentinel $'python3 - <<\'EOF\'\n'"$PYDOC"$'\nEOF')" ALLOW
 expect "clave: os.system con llaves en python -c" "$(run_sentinel "python3 -c \"import os; os.system('cat s.{k,x}ey')\"")" "$IOCS_WANT"
+# Ronda 3-bis. Un grupo que recibe la tuberia cuenta con su peor consumidor, y de la tuberia cuenta
+# la etapa de mayor rango, no la primera que no es sumidero.
+expect "clave: tuberia a { cat; sh; }"           "$(run_sentinel $'cat <<EOF | { cat; sh; }\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: tuberia a (cat; sh)"              "$(run_sentinel $'cat <<EOF | (cat; sh)\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "tuberia a { cat; wc -l; } permitida"     "$(run_sentinel $'cat <<\'EOF\' | { cat; wc -l; }\nserver.key\nEOF')" ALLOW
+expect "clave: python -c por tuberia a sh"       "$(run_sentinel $'cat <<EOF | python3 -c \'import sys;print(sys.stdin.read())\' | sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: python -c y perl system \$_"      "$(run_sentinel $'cat <<EOF | python3 -c \'import sys;print(sys.stdin.read())\' | perl -ne \'system $_\'\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: python3 por tuberia a sh"         "$(run_sentinel $'cat <<EOF | python3 | sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "tuberia a python -c que solo cuenta"     "$(run_sentinel $'cat <<\'EOF\' | python3 -c \'import sys;print(len(sys.stdin.read()))\'\nopts.key\nEOF')" ALLOW
+# sed/awk: el programa tambien en argumentos pegados.
+expect "clave: sed -e1e denegado"                "$(run_sentinel $'sed -e1e <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: sed --expression=e denegado"      "$(run_sentinel $'sed --expression=e <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: awk --source con system denegado" "$(run_sentinel $'awk --source=\'{system($0)}\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "sed -e s/a/b/ con opts.key permitido"    "$(run_sentinel $'sed -e \'s/a/b/\' <<\'EOF\'\nopts.key\nEOF')" ALLOW
+# Por stdin: 100 000 lineas con barra final y sin delimitador. Fija la regresion cuadratica de la
+# union barra-salto (13,4 s antes del fix; 1,1 s despues en un i9-14900HX); el tope de 5 s es
+# holgado porque los runners de CI son 2-3 veces mas lentos.
+t0=$(date +%s%N)
+out=$({ printf 'cat <<EOF\n'; seq -f "linea %g \\" 1 100000; } | jq -Rsc '{tool_name:"Bash",tool_input:{command:.}}' \
+  | HOME="$GUARDS_TEST_HOME" timeout 10 "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1)
+ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+expect "100000 lineas con barra final permitidas" "$out"                                                  ALLOW
+[ "$ms" -lt 5000 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: 100000 lineas con barra final tardan ${ms} ms (tope 5000)"; }
+# Un sumidero que escribe un fichero que despues ejecuta o recibe algo que no es sumidero: el cuerpo
+# son comandos. Si solo lo relee un sumidero (cat notas.md), siguen siendo datos.
+expect "clave: cat >run.sh; bash run.sh"         "$(run_sentinel $'cat <<EOF >run.sh; bash run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: tee run.sh; sh run.sh"            "$(run_sentinel $'tee run.sh <<EOF >/dev/null; sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: cat >out && bash out"             "$(run_sentinel $'cat <<EOF >out && bash out\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: chmod +x run.sh; ./run.sh"        "$(run_sentinel $'cat <<\'EOF\' >run.sh; chmod +x run.sh; ./run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "notas a out.txt y bash run.sh permitido" "$(run_sentinel $'cat <<\'EOF\' >out.txt && bash run.sh\nsee server.key\nEOF')" ALLOW
+expect "notas.md releido por cat permitido"      "$(run_sentinel $'cat <<\'EOF\' > notas.md && cat notas.md\nopts.key\nEOF')" ALLOW
+# curl/wget que leen datos de stdin: -i -, -T - y @-. Un config (-K -) son comandos: puede subir un fichero.
+expect "wget -i - con URL .pem permitido"        "$(run_sentinel $'wget -i - <<\'EOF\'\nhttps://host/certs/file.pem\nEOF')" ALLOW
+expect "curl -T - con opts.key permitido"        "$(run_sentinel $'curl -T - h <<\'EOF\'\nopts.key\nEOF')" ALLOW
+expect "clave: curl sin leer stdin es comandos"  "$(run_sentinel $'curl h <<\'EOF\'\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: curl -K - con upload-file"        "$(run_sentinel $'curl -K - <<\'EOF\'\nupload-file = server.key\nEOF')" "$IOCS_WANT"
+# En codigo, un tramo con forma de ruta (/, ./, ../, ~/) se mira entero.
+expect "clave: dir.p12 en ruta de codigo"        "$(run_sentinel "node -e 'fs.readdirSync(/etc/ssl/dir.p12/x)'")" "$IOCS_WANT"
 expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK
 expect "force push compuesto denegado" "$(run_smart 'echo ok && git push -f origin main')"   BLOCK
 expect "comando normal en smart"       "$(run_smart 'git status')"                           ALLOW

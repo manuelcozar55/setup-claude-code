@@ -290,13 +290,17 @@ _SKIP_VALUE = {"grep": {"-e", "--regexp"}, "egrep": {"-e", "--regexp"}, "fgrep":
 _CODE_VALUE = {"node": {"-e", "-p", "--eval", "--print"}, "perl": {"-e", "-E"},
                "ruby": {"-e"}, "python": {"-c"}}
 # Who reads a heredoc body. Only these sinks make it data, and git, curl, wget, sed and awk only
-# when their arguments say so (_stdin_role); interpreters read it as code; anything else (ssh,
+# when their arguments say so (_stdin_role); interpreters read it as code (as commands if their
+# arguments run what they read: perl -ne 'system $_'); anything else (ssh,
 # sudo -s, fish, xargs, psql, unknown) as commands. psql, mysql and sqlite3 run shell escapes
 # (\!, system, .shell) and mailx ~! ones, so they are not sinks.
 _SINKS = {"cat", "tee", "head", "tail", "wc", "sort", "uniq", "tr", "cut", "sed", "awk", "grep", "egrep",
           "fgrep", "rg", "ag", "ack", "jq", "yq", "base64", "md5sum", "sha1sum", "sha224sum", "sha256sum",
           "sha384sum", "sha512sum", "gzip", "xz", "git", "curl", "wget", "man"}
 _GIT_SINKS = {"commit", "tag", "notes", "apply", "am"}
+# curl and wget read data from stdin: @- (--data @-), -i/-T - and their long forms. Not -K -:
+# a config may say upload-file = <key>.
+_STDIN_DATA = re.compile(r"@-$|^(?:-[iT]|--(?:input-file|upload-file))(?:\n|=)?-$", re.M)
 _INTERPRETERS = {"python", "node", "deno", "bun", "perl", "ruby", "php", "lua", "rscript"}
 # Prefixes that run the next word: short options and long options that take a value.
 _PREFIXES = {"sudo": ("ugpChDRrTU", {"--user", "--group", "--host", "--prompt", "--chdir", "--role",
@@ -316,6 +320,7 @@ _BRACE = re.compile(r"\{(?:([^{}]*,[^{}]*)|(-?\d+)\.\.(-?\d+)(?:\.\.(-?\d+))?"
                     r"|([A-Za-z])\.\.([A-Za-z])(?:\.\.(-?\d+))?)\}")
 _QUOTED = re.compile(r"'[^']*'|\"(?:\\.|[^\"\\])*\"")
 _BACKTICK_BODY = re.compile(r"(?:\\.|[^`\\])*")
+_PLAIN = re.compile(r"[^ \t\n&|;()<>'\"\\`$]+")  # unquoted characters the word keeps as they are
 # The delimiter must end the word: with `<<EOF.x` bash waits for an EOF.x line.
 _HEREDOC_OP = re.compile(r"<<(-?)[ \t]*(['\"]?)(\\?)(\w+)\2(?=[\s;&|<>()]|$)")
 # Interpreter code: quote forms %q() %Q{} %w<> %i[] %x() with () {} [] <> / | delimiters, the
@@ -400,20 +405,21 @@ def _lex_char(text: str, i: int, quoted: bool, cur: str, subs: list) -> tuple[st
 def _joined_delim(text: str, i: int, d: dict) -> tuple[int, int] | None:
     """Span of the delimiter line of an unquoted heredoc, whose lines bash joins at a
     backslash-newline before comparing (EO\\ + newline + F ends an EOF heredoc)."""
-    start, line, n = i, "", len(text)
+    start, parts, n = i, [], len(text)
     while True:
         e = text.find("\n", i)
         e = n if e < 0 else e
         seg = text[i:e]
         if e < n and (len(seg) - len(seg.rstrip("\\"))) % 2:
-            line, i = line + seg[:-1], e + 1
+            parts.append(seg[:-1])
+            i = e + 1
             continue
-        line += seg
+        line = "".join(parts) + seg
         if (line.lstrip("\t") if d["strip"] else line) == d["delim"]:
             return start, e
         if e >= n:
             return None
-        start, line, i = e + 1, "", e + 1
+        start, parts, i = e + 1, [], e + 1
 
 
 def _heredoc_bodies(text: str, i: int, docs: list) -> int:
@@ -448,7 +454,7 @@ def _lex(text: str, comments: bool = True) -> list:
             i = text.find("\n", i)
             i = n if i < 0 else i
             continue
-        op = None if c in " \t\n" else next((o for o in _OPS if text.startswith(o, i)), None)
+        op = next((o for o in _OPS if text.startswith(o, i)), None) if c in "&|;()<>" else None
         if c in " \t\n" or op:
             if cur is not None:
                 toks.append((cur.translate(_UNMASK), cur, subs))
@@ -480,6 +486,8 @@ def _lex(text: str, comments: bool = True) -> list:
             while i < n and text[i] != '"':
                 cur, i = _lex_char(text, i, True, cur, subs)
             i += 1
+        elif m := _PLAIN.match(text, i):
+            cur, i = cur + m.group(), m.end()
         else:
             cur, i = _lex_char(text, i, False, cur, subs)
     if cur is not None:
@@ -581,11 +589,16 @@ def _stdin_role(words: list[str]) -> str | None:
     if name in _INTERPRETERS:
         if name == "python" and args[:2] == ["-m", "json.tool"]:
             return "data"
+        # Code that runs what it reads (perl -ne 'system $_') reads commands, as awk's system.
+        if re.search(r"system|exec|popen|spawn|subprocess|`|\bqx", "\n".join(args)):
+            return "shell"
         return "qcode" if name in ("perl", "ruby") else "code"
-    prog = "\n".join(a for a in args if not a.startswith("-"))
+    # The program may come attached to its option: -e1e, --expression=e, --source='{...}'.
+    prog = "\n".join(a.partition("=")[2] if a.startswith("--") else a.partition("e")[2]
+                     if a.startswith("-") else a for a in args)
     runs = (base not in _SINKS and name not in _SINKS
             or name == "git" and (not args or args[0] not in _GIT_SINKS)
-            or name in ("curl", "wget") and not any(a.endswith("@-") for a in args)
+            or name in ("curl", "wget") and not _STDIN_DATA.search("\n".join(args))
             # Their program is an argument, unless -f reads it from the heredoc; awk's
             # system/getline/| and sed's e command or s///e flag run what they read.
             or name in ("sed", "awk") and any(re.match(r"-[^-]*f|--file", a) for a in args)
@@ -598,22 +611,27 @@ def _stdin_role(words: list[str]) -> str | None:
 def _word_roles(toks: list, sink: str = "data") -> list:
     """(word, role) per word, role path, code, qcode or skip; and (heredoc, role) per body,
     role shell, code, qcode or data. A body is read by the command that carries its <<
-    (_stdin_role); if that is a sink, by the first other reader down its pipeline, and
-    past the pipeline by sink (what reads the output: the role of the word around a $( )).
-    Inside a group, loop or condition, or on its closing word, the worst reader of the
-    whole text counts: the output may go anywhere."""
-    out, cmd, redirect, docs, stages = [], [], False, [], []
+    (_stdin_role) and by the rest of its pipeline: the worst of them counts, and if all
+    are sinks, sink (what reads the output: the role of the word around a $( )). Inside a
+    group, loop or condition, on its closing word, or with a group down its pipeline, the
+    worst reader of the whole text counts: the output may go anywhere. Sinks that write a
+    file (> x, tee x) that a later command runs or hands to a non-sink (chmod, bash) make
+    the body commands: a script. Read again by a sink (cat x) it stays data."""
+    out, cmd, redirect, docs, stages, outs, later = [], [], False, [], [], set(), []
     pipe, pdepth, kdepth, closed, prev = 0, 0, 0, False, None
     for t in toks + ["\n"]:
         if isinstance(t, dict):
             docs.append((t, len(stages)))
         elif isinstance(t, str) and ("<" in t or ">" in t):
-            redirect = True
+            redirect = t
         elif isinstance(t, str):
             words = [w[0] for w in cmd if not re.match(r"\w+=", w[0]) and w[0] != "!"]
             first = words[0] if words else ""
             group = pdepth or kdepth or closed or first in _OPENERS | _CLOSERS
+            if first == "tee":
+                outs |= {(len(stages), w[0].removeprefix("./")) for w in cmd[1:] if not w[0].startswith("-")}
             stages.append((_stdin_role([w[0] for w in cmd]), pipe, bool(group)))
+            later += [(len(stages) - 1, w[0].removeprefix("./")) for w in cmd]
             kdepth = max(0, kdepth + (first in _OPENERS) - (first in _CLOSERS))
             pdepth = max(0, pdepth + (t == "(") - (t == ")"))
             closed = t == ")"
@@ -625,6 +643,9 @@ def _word_roles(toks: list, sink: str = "data") -> list:
             cmd, redirect, prev = [], False, t
         elif redirect:
             out.append((t, "path"))
+            if redirect in (">", ">>", ">|", "&>"):
+                outs.add((len(stages), t[0].removeprefix("./")))
+            later.append((len(stages), t[0].removeprefix("./")))
             redirect = False
         else:
             cmd.append(t)
@@ -632,8 +653,16 @@ def _word_roles(toks: list, sink: str = "data") -> list:
     for doc, k in docs:
         if doc["body"] is None:
             continue
-        _, line, group = stages[k]
-        role = worst if group else next((s[0] for s in stages[k:] if s[1] == line and _RANK[s[0]]), None)
+        line = stages[k][1]
+        pipeline = [j for j in range(k, len(stages)) if stages[j][1] == line]
+        last = pipeline[-1]
+        files = {f for j, f in outs if j in pipeline}
+        if any(stages[j][2] for j in pipeline):
+            role = worst
+        elif files & {w for j, w in later if j > last and _RANK[stages[j][0]]}:
+            role = "shell"
+        else:
+            role = max((stages[j][0] for j in pipeline), key=_RANK.get)
         out.append((doc, role if _RANK[role] else sink))
     return out
 
@@ -695,6 +724,8 @@ def _brace_linear(form: str) -> list[str] | None:
 
 
 def _key_file_word(word: str, rx) -> bool:
+    if "." not in word:  # every name with an extension has one, after expansion too
+        return False
     for piece in re.split(r"[\s=:,;|&()<>\"'`]+", word):
         for i, comp in enumerate(piece.split("/")):
             m = rx.fullmatch(comp)
@@ -722,7 +753,8 @@ def _code_strings(code: str, perl: bool = False) -> list[str]:
                 out.append(code[m.end():i])
                 break
             i += 1
-    out += [r.rsplit("/", 1)[1] for r in _PATH_RUN.findall(code) if "/" in r]
+    out += [r if r.startswith(("/", "./", "../", "~/")) else r.rsplit("/", 1)[1]
+            for r in _PATH_RUN.findall(code) if "/" in r]
     return list(dict.fromkeys(s for s in out if s))
 
 
