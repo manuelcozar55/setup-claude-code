@@ -57,8 +57,8 @@ expect "IP publica ($([ "$IOCS_WANT" = BLOCK ] && echo con || echo sin) iocs.jso
 expect "credentials ($([ "$IOCS_WANT" = BLOCK ] && echo con || echo sin) iocs.json)" \
   "$(run_sentinel 'cat ~/.claude/.credentials.json')" "$IOCS_WANT"
 
-# Ficheros de clave por NOMBRE: la regex exige un nombre de fichero delante de la extension
-# (inicio, espacio, comilla, = o /) y un final de nombre detras. Solo con el lookahead de detras,
+# Ficheros de clave por NOMBRE: Sentinel parte el comando en palabras de shell y mira cada componente
+# de ruta (key_file_extensions en iocs.json), no la subcadena. Solo con el lookahead de detras,
 # un filtro jq sobre un campo `key` o la prosa que nombra la extension se denegaban: 245 deny en un
 # dia medido en la instalacion real. Los ALLOW son esos falsos positivos; los BLOCK, el contrapeso.
 expect "clave: ruta absoluta denegada"           "$(run_sentinel 'cp /etc/ssl/private/server.key /srv/x')" "$IOCS_WANT"
@@ -88,6 +88,37 @@ expect "jq (.key) y [.key] permitidos"           "$(run_sentinel "jq '[.items[] 
 expect "jq .data.key permitido"                  "$(run_sentinel "jq -r '.data.key' f.json")"              ALLOW
 expect "prosa con .key y .pem permitida"         "$(run_sentinel "echo 'la extension .key, o un .pem, son claves'")" ALLOW
 expect "identificador foo.keys permitido"        "$(run_sentinel 'grep -n foo.keys src/')"                 ALLOW
+# Revision del PR #39: la valla por regex dejo pasar el oculto a secas y los sufijos de copia, y seguia
+# denegando patrones, mensajes y codigo que solo NOMBRAN una propiedad `key`. Los BLOCK son lo que main
+# denegaba; los ALLOW, falsos positivos medidos (uno bloqueo un jq de solo lectura en la auditoria).
+expect "clave: oculto .server.key denegado"      "$(run_sentinel 'cat .server.key')"                       "$IOCS_WANT"
+expect "clave: oculto .env.key denegado"         "$(run_sentinel 'cat .env.key')"                          "$IOCS_WANT"
+expect "clave: oculto .tls.pem denegado"         "$(run_sentinel 'cp .tls.pem /tmp/')"                     "$IOCS_WANT"
+expect "clave: sufijo ~ denegado"                "$(run_sentinel 'cat x.key~')"                            "$IOCS_WANT"
+expect "clave: sufijo # denegado"                "$(run_sentinel 'cat x.key#')"                            "$IOCS_WANT"
+expect "clave: sufijo -old denegado"             "$(run_sentinel 'cat x.key-old')"                         "$IOCS_WANT"
+expect "clave: sufijo + denegado"                "$(run_sentinel 'cat x.key+')"                            "$IOCS_WANT"
+expect "clave: nombre entrecomillado a trozos"   "$(run_sentinel "cat 'x'.key")"                           "$IOCS_WANT"
+expect "clave: llaves en la extension denegadas" "$(run_sentinel 'cat server.{key,pem}')"                  "$IOCS_WANT"
+expect "clave: clase de glob delante denegada"   "$(run_sentinel 'cat [s]erver.key')"                      "$IOCS_WANT"
+expect "clave: Read de ruta Windows denegado"    "$(run_sentinel_read 'C:\certs\x.key')"                   "$IOCS_WANT"
+# Contrapeso de los papeles que no son ruta (patron de grep, filtro de jq, mensaje, codigo): el resto
+# de argumentos se sigue mirando, y una sustitucion dentro de un papel exento no lo exime.
+expect "clave: fichero de grep denegado"         "$(run_sentinel 'grep -r BEGIN server.key')"              "$IOCS_WANT"
+expect "clave: grep -f de una clave denegado"    "$(run_sentinel 'grep -f server.key notas.txt')"          "$IOCS_WANT"
+expect "clave: fichero de jq denegado"           "$(run_sentinel 'jq -R . server.key')"                    "$IOCS_WANT"
+# shellcheck disable=SC2016  # el $(...) va literal: es el comando que se evalua
+expect "clave: \$( ) en patron de grep denegada" "$(run_sentinel 'grep "$(cat tls.key)" f.txt')"           "$IOCS_WANT"
+expect "clave: git show -m no es mensaje"        "$(run_sentinel 'git show -m HEAD:tls.key')"              "$IOCS_WANT"
+expect "clave: literal en python -c denegado"    "$(run_sentinel "python3 -c \"print(open('x.key').read())\"")" "$IOCS_WANT"
+expect "clave: dentro de bash -c denegada"       "$(run_sentinel "bash -c 'cat server.key'")"              "$IOCS_WANT"
+expect "patron de grep event.key permitido"      "$(run_sentinel 'grep -rn "event.key" src/')"             ALLOW
+expect "mensaje de commit con opts.key permitido" "$(run_sentinel 'git commit -m "use opts.key"')"         ALLOW
+expect "node -e con o.key permitido"             "$(run_sentinel 'node -e "console.log(o.key)"')"          ALLOW
+expect "a.key.json permitido"                    "$(run_sentinel 'cat a.key.json')"                        ALLOW
+expect "Read de config.key.ts permitido"         "$(run_sentinel_read /src/config.key.ts)"                 ALLOW
+expect "jq test(.key|.pem) permitido"            "$(run_sentinel "jq -r '.[] | select(.f | test(\"\\\\.key|\\\\.pem\"))' x.json")" ALLOW
+expect "jq division .a/.key permitida"           "$(run_sentinel "jq '.a/.key' f.json")"                   ALLOW
 expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK
 expect "force push compuesto denegado" "$(run_smart 'echo ok && git push -f origin main')"   BLOCK
 expect "comando normal en smart"       "$(run_smart 'git status')"                           ALLOW

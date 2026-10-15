@@ -30,10 +30,17 @@
       "(?i)credentials?\\.json",
       "(?i)secrets?\\.(json|ya?ml|env|txt)",
       "(?i)api[_-]?keys?\\.(json|txt|env)",
-      "(?i)private[_-]?key",
-      "(?i)(?:(?:^|[\\s\"'=<>|;&(:,`])[\\w@+~*?${-][\\w.@+~*?${}-]*|/[\\w.@+~*?${}-]*)\\.(?:pem|key|p12|pfx|jks|keystore)(?=$|[\\s\"'`:,;|&<>)*?\\]}\\\\./])"
+      "(?i)private[_-]?key"
     ],
-    "_comment_regex_patterns": "Ficheros de clave por NOMBRE: delante de la extension exige un nombre de fichero que empiece tras inicio, espacio, comilla, acento grave, =, coma, operador de shell o parentesis (glob, $ y llaves cuentan como nombre), o cualquier nombre tras una barra, incluido el oculto ./.key. Detras exige fin de nombre: separador, comilla, glob, ], }, barra invertida, punto (sufijo de copia: x.key.bak) o barra (directorio: dir.p12/x). Asi dejan de casar `to_entries[].key`, `.key | ...`, `(.key)`, `.data.key` de jq y la prosa que nombra la extension. Limites asumidos (ya no casan): el oculto a secas sin barra (cat .key, indistinguible de un campo jq), una clase de glob delante ([s]erver.key), rutas de Windows con barra invertida (C:\\certs\\x.key). Casa de mas: una division jq por un campo key (.a/.key)."
+    "key_file_extensions": [
+      "pem",
+      "key",
+      "p12",
+      "pfx",
+      "jks",
+      "keystore"
+    ],
+    "_comment_key_file_extensions": "Ficheros de clave por NOMBRE, no por subcadena: sentinel_preflight.py parte el comando en palabras de shell (comillas, $( ), acento grave, llaves {a,b} y redirecciones incluidas) y mira cada componente de ruta. Casa un nombre con una de estas extensiones, oculto incluido (.server.key), o con un sufijo de copia detras (~, #, +, -old, .bak, .1, glob) y el directorio (dir.p12/x). No casa otra extension detras (a.key.json, config.key.ts), ni las palabras que no nombran un fichero: el patron de grep/rg, el filtro de jq, el mensaje de git commit/tag/merge -m y, del codigo de node -e, python -c, perl -e o ruby -e, todo menos sus literales de cadena. Una de esas palabras con $( ) o acento grave se mira igual. Limites asumidos: el oculto a secas sin barra (cat .key, indistinguible de un campo jq o de la prosa que nombra la extension); el papel de cada palabra se lee sin prefijos (sudo grep, xargs grep, git -C x commit), y ahi el patron o el mensaje se miran como ruta (deniega de mas, no de menos)."
   },
   "sensitive_env_vars": {
     "patterns": [
