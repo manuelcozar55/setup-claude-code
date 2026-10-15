@@ -37,6 +37,14 @@ if [ "${1:-}" = "--python" ]; then
     done
   fi
 
+  # El preflight de Sentinel no es opcional: si su script falta deniega (exit 2) en vez de
+  # convertirse en un permiso silencioso. Sin intérprete sigue siendo no-op: es la máquina
+  # limpia que prueba test_clean_install_resilience.sh.
+  if [ "$(basename "$script")" = "sentinel_preflight.py" ] && [ -n "$py" ] && [ -x "$py" ] && [ ! -f "$script" ]; then
+    echo "BLOCKED (fail-closed): falta el guard obligatorio $script; reinstala el kit." >&2
+    exit 2
+  fi
+
   [ -n "$py" ] && [ -x "$py" ] || exit 0
   [ -n "$script" ] && [ -f "$script" ] || exit 0
   exec "$py" "$@"

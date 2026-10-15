@@ -58,6 +58,11 @@ echoer="$(mktemp)"; printf '#!/bin/sh\ncat\n' > "$echoer"; chmod +x "$echoer"
 got="$(printf '{"tool_name":"Bash"}' | "$W" "$echoer" 2>/dev/null)"
 if [ "$got" = '{"tool_name":"Bash"}' ]; then ok; else ko "stdin no llega al comando envuelto (got: $got)"; fi
 
+# --- (g) el preflight de Sentinel es obligatorio: ausente -> exit 2, no no-op ---
+out="$("$W" --python /no/existe/sentinel_preflight.py 2>&1)"; rc=$?
+check "sentinel_preflight.py ausente deniega (exit 2)" 2 "$rc"
+if echo "$out" | grep -q "fail-closed"; then ok; else ko "el aviso fail-closed debe llegar por stderr"; fi
+
 rm -f "$blocker" "$allower" "$echoer"
 echo "PASS=$pass FAIL=$fail"
 [ "$fail" -eq 0 ]

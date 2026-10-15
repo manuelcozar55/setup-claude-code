@@ -5,7 +5,7 @@ sentinel_preflight.py — PreToolUse hook for ALL tools (matcher: "").
 Reads the tool call JSON from stdin, checks it against the IOC library
 (iocs.json) + user allowlist, and returns allow/deny/warn on stdout.
 
-Zero LLM cost. Pure local Python. Fail-open: any crash defaults to allow.
+Zero LLM cost. Pure local Python. Fail-closed: a crash or malformed input exits 2 (block).
 
 Output protocol (Claude Code PreToolUse):
   deny  → {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "..."}}
@@ -389,7 +389,8 @@ def main() -> None:
     try:
         payload = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError:
-        sys.exit(0)
+        print("SENTINEL BLOCKED (fail-closed): payload de PreToolUse no es JSON.", file=sys.stderr)
+        sys.exit(2)
 
     tool_name = payload.get("tool_name") or payload.get("tool", "<unknown>")
     tool_input = payload.get("tool_input") or payload.get("input") or {}
@@ -435,5 +436,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
-        sys.exit(0)
+    except Exception as e:
+        print(f"SENTINEL BLOCKED (fail-closed): error interno del preflight: {e!r}", file=sys.stderr)
+        sys.exit(2)

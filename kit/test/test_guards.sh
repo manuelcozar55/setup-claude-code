@@ -303,6 +303,12 @@ bdc "curl | jq"               "curl $U $P jq ."                  allow
 bdc "echo bash"               "echo \"$B\""                      allow
 bdc "git log | head"          "git log $P head"                  allow
 
+# 14d) Sentinel fail-closed: payload basura o no-objeto -> rc 2 con mensaje; inocuo -> rc 0.
+printf 'esto no es json' | "$PY" "$KIT/sentinel/sentinel_preflight.py" >/dev/null 2>&1; rc_bad=$?
+printf '[1,2]' | "$PY" "$KIT/sentinel/sentinel_preflight.py" >/dev/null 2>&1; rc_arr=$?
+printf '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | "$PY" "$KIT/sentinel/sentinel_preflight.py" >/dev/null 2>&1; rc_ok=$?
+[ "$rc_bad" = 2 ] && [ "$rc_arr" = 2 ] && [ "$rc_ok" = 0 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: sentinel fail-closed (basura=$rc_bad, array=$rc_arr, inocuo=$rc_ok; esperaba 2/2/0)"; }
+
 # 15) modo de los hooks: settings.json los invoca por RUTA DIRECTA, asi que un *.sh
 # versionado como 100644 devuelve rc=126 en cada arranque de sesion de cualquier
 # instalacion de terceros. Le paso a preflight.sh, el unico de los nueve sin el bit, y
