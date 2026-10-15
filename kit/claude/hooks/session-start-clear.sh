@@ -17,8 +17,9 @@ CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 # Campos documentados en «SessionStart stdin fields» (code.claude.com/docs/en/hooks): con source resume
 # o fork y alguna respuesta en el transcript llegan context_tokens (entero) y prompt_cache_likely_expired
 # (booleano), desde Claude Code v2.1.251; antes faltan y el aviso no sale. `numbers`: en jq una cadena
-# ordena por encima de cualquier número y «>= 100000» sería siempre cierto.
-AVISO=$(jq -r 'select(.source=="resume" and .prompt_cache_likely_expired==true and ((.context_tokens | numbers) // 0) >= 100000)
+# ordena por encima de cualquier número y «>= 100000» sería siempre cierto. fork solo llega si el matcher
+# de settings.json lo incluye (hoy «startup|clear|resume»).
+AVISO=$(jq -r 'select((.source=="resume" or .source=="fork") and .prompt_cache_likely_expired==true and ((.context_tokens | numbers) // 0) >= 100000)
   | "Retomas con \(.context_tokens) tok y la caché caducada: el próximo turno reescribe todo el contexto. Si la fase está cerrada, /handoff ahora cuesta casi lo mismo y retoma limpio."' <<<"$IN" 2>/dev/null)
 sale() { jq -cn --arg c "$1" --arg m "$AVISO" \
   '(if $c != "" then {hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}} else {} end)
