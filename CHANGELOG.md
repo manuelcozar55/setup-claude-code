@@ -187,23 +187,33 @@ etiquetado.
 
 ### Fixed
 
-- **Sentinel: los ficheros de clave se detectan por nombre de fichero, no por subcadena.**
-  Las seis regex de extensión (`.pem`, `.key`, `.p12`, `.pfx`, `.jks`, `.keystore`) solo
-  miraban detrás, y en la instalación real dieron 245 denegaciones falsas en un día. Una sola
-  regex exige ahora un nombre delante (tras separador, comilla, acento grave, `=`, coma u
-  operador de shell, o cualquier nombre tras `/`) y un final de nombre detrás. **Dejan de
-  denegarse** (falsos positivos): `jq 'to_entries[].key'`, `.key | …`, `(.key)`, `[.key]`,
-  `.data.key` y la prosa que nombra la extensión (9 de las 12 sondas negativas de la
-  revisión, que `main` denegaba). **Siguen denegados**: rutas, comillas, nombre a secas,
-  globs (`*.key`, `server.key*`), acento grave, `$( )`, llaves, sufijos de copia
-  (`x.key.bak`), directorios (`dir.p12/x`) y el oculto tras barra (`./.key`). **Límites
-  declarados** (ya no se deniegan): el oculto a secas sin barra (`cat .key`, indistinguible
-  de un campo jq), una clase de glob delante (`[s]erver.key`) y las rutas de Windows con
-  barra invertida; y deniega de más una división jq por un campo `key` (`.a/.key`). Además,
-  `test_guards.sh` escribía sus deny en el `sentinel.jsonl` del HOME real;
+- **Sentinel: los ficheros de clave se miran por palabra de shell y por su papel, no por
+  regex sobre el comando.** Las seis regex de extensión (`.pem`, `.key`, `.p12`, `.pfx`,
+  `.jks`, `.keystore`) miraban subcadenas y en la instalación real dieron 245 denegaciones
+  falsas en un día; una regex intermedia que exigía un nombre delante dejaba pasar el oculto
+  (`.server.key`) y los sufijos de copia (`x.key~`), porque `cat .server.key` y el filtro
+  `jq '.data.key'` son el mismo texto. Ahora `sentinel_preflight.py` parte el comando con
+  `shlex` (comillas, `$( )`, acento grave, redirecciones, `{a,b}`) y compara cada componente
+  de ruta con `key_file_extensions` de `iocs.json`, que sustituye a la regex. Se exime el
+  patrón de `grep`/`rg`, el filtro de `jq` y el mensaje de `git commit|tag|merge -m`; del
+  código de `node -e`/`python -c` solo se miran los literales de cadena, y una sustitución
+  `$( )` dentro de un papel exento se mira igual. **Se deniegan**, como en `main`: rutas,
+  comillas, el oculto (`.server.key`, `.env.key`, `.tls.pem`), los sufijos de copia (`~`,
+  `#`, `+`, `-old`, `.bak`), globs (`*.key`, `[s]erver.key`), `'x'.key`, `server.{key,pem}`,
+  acento grave, `$( )`, `bash -c '…'`, directorios (`dir.p12/x`) y las rutas de Windows.
+  **Dejan de denegarse** (falsos positivos medidos): `jq 'to_entries[].key'`, `.data.key`,
+  la división `.a/.key`, `grep -rn "event.key" src/`, `git commit -m "use opts.key"`,
+  `node -e "console.log(o.key)"`, `a.key.json`, `config.key.ts` y la prosa que nombra la
+  extensión. **Límite declarado**: el oculto a secas sin barra (`cat .key`), indistinguible
+  de la prosa; donde el papel de una palabra no se clasifica (`sudo grep`, `git -C x commit`)
+  se deniega de más, nunca de menos. 25 sondas nuevas en `test_guards.sh` (17 fallaban con la
+  regex). Además, `test_guards.sh` escribía sus deny en el `sentinel.jsonl` del HOME real;
   `test_guards_falsifiability.sh` lo impide ahora con un HOME simulado.
-- **`pre-compact.sh` rota los checkpoints de más de 14 días.** Escribe uno por sesión, con
-  los últimos prompts de la persona, y nadie los borraba. Nuevo caso que fija que un
+- **`pre-compact.sh` rota los checkpoints de más de 14 días, después de publicar el nuevo.**
+  Escribe uno por sesión, con los últimos prompts de la persona, y nadie los borraba. La
+  rotación va tras el `mv` y excluye el recién escrito: si generar o publicar falla, el
+  checkpoint anterior se conserva de verdad. `nucleo-freshness.log` (una línea por
+  compactación) se acota a las últimas 1 000 al pasar de 2 000. Nuevo caso que fija que un
   directorio sin git ni `.claude/estado` no gana un `.claude/` (una instalación anterior a
   3917835 dejó 47 bajo un home).
 - **Sentinel ya no lee el allowlist del directorio de trabajo.** Un repo clonado con
