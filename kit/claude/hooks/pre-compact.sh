@@ -27,6 +27,8 @@ mkdir -p "$HOME/.claude/session-logs" 2>/dev/null \
      >>"$HOME/.claude/session-logs/nucleo-freshness.log"
 
 [ -d "$ESTADO" ] || exit 0
+# Uno por sesión y con prompts de la persona: sin rotar se acumulan para siempre.
+find "$ESTADO" -maxdepth 1 -type f -name 'checkpoint-compact-*.md' -mtime +14 -delete 2>/dev/null
 GI=$ESTADO/.gitignore
 if [ ! -L "$GI" ] && ! command grep -qsx 'checkpoint-compact-\*' "$GI"; then
   [ -s "$GI" ] && [ -n "$(tail -c1 "$GI")" ] && echo >>"$GI"

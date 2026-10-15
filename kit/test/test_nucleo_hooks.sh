@@ -120,5 +120,16 @@ ok "pre-compact: con .gitignore previo el checkpoint queda ignorado" "$(git -C "
 ok "pre-compact: el .gitignore previo conserva lo suyo" "$(cat "$R5/.claude/estado/.gitignore")" "diario.md
 checkpoint-compact-*"
 
+# --- pre-compact: sin git y sin estado no crea nada; rota checkpoints de más de 14 días ---
+# Medido en una instalación vieja: 47 .claude/estado basura bajo el home, uno por cada cwd.
+mkdir -p "$T/sin-git"
+ev "$T/sin-git" s8 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: dir sin git ni estado → no crea .claude" "$(ls -A "$T/sin-git")" ""
+VIEJO=$R/.claude/estado/checkpoint-compact-viejo.md; NUEVO=$R/.claude/estado/checkpoint-compact-nuevo.md
+touch -d '20 days ago' "$VIEJO"; touch -d '2 days ago' "$NUEVO"; touch -d '20 days ago' "$NUC"
+ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: rota el checkpoint de 20 días" "$([ -e "$VIEJO" ] && echo sigue || echo rotado)" rotado
+ok "pre-compact: conserva el de 2 días y el nucleo" "$([ -e "$NUEVO" ] && [ -e "$NUC" ] && echo si)" si
+
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
 exit $FAIL
