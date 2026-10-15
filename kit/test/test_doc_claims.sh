@@ -20,7 +20,7 @@ pass=0; fail=0; skipped=0
 
 # knowledge/PRE-MORTEM.md tampoco entra: es el mismo genero que los ADR, una foto fechada.
 DOCS=(README.md AGENTS.md CLAUDE.md CONTRIBUTING.md kit/README.md kit/evals/README.md
-      knowledge/ORACLES.md knowledge/PROCEDURES.md kit/docs/*.md)
+      knowledge/ORACLES.md knowledge/PROCEDURES.md kit/docs/*.md kit/docs/guia/*.md)
 # Fuera de DOCS a proposito (el porque, en la seccion 4), pero sus filas nombran el
 # sensor de cada afirmacion, y esos nombres si son comprobables: citar un script que
 # no existe deja la fila sin sensor sin que se note.

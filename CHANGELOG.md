@@ -36,7 +36,12 @@ etiquetado.
   `recuerda` (`recall.py`) devuelve solo los párrafos de memoria que coinciden y lee
   `$CLAUDE_MEMORY_DIR`. `kit/docs/13-memoria.md` fija el formato de una memoria, el índice
   corto y que las memorias nunca salen a un servicio externo.
-
+- **Guía para trabajar bien tras instalar** (`kit/docs/guia/`): ruta de 7 días con una
+  comprobación por día, el porqué del contexto con cifras medidas, una sesión real con las
+  salidas literales de los hooks, antipatrones, cómo medirse, qué borrar de la plantilla y una
+  ruta corta en inglés. `05-security.md` gana la tabla «hook → incidente que evita».
+  `test_guia.sh` exige que existan, que `01-overview.md` los enlace y que ningún enlace
+  relativo esté roto; `test_doc_claims.sh` juzga también sus cifras.
 - **Tema oscuro y statusline del kit.** `kit/claude/settings.json` pasa de `light-ansi` a
   `dark` y declara `statusLine` con `bash $HOME/.claude/statusline-command.sh`, que `install.sh`
   copia y deja ejecutable: dos líneas en bash + `jq` (modelo, ruta, repo, rama y cambios;
