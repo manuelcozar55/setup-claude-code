@@ -185,24 +185,24 @@ etiquetado.
   `.claude/.claude/estado/nucleo.md` anidado que nadie inyectaba. Ahora usa `git -C <cwd>` y
   sube `$HOME/.claude/**` a `$HOME`, como `nucleo_raiz` desde el cwd de la sesión
   (`CLAUDE_PROJECT_DIR` no llega al mod).
-- **`session-start-clear.sh` avisa al retomar con la caché caducada.** Con `resume`,
-  `prompt_cache_likely_expired` y ≥ 100 000 tokens, un `systemMessage` propone `/handoff`: el
+- **`session-start-clear.sh` avisa al retomar con la caché caducada.** Con `resume` o
+  `fork`, `prompt_cache_likely_expired` y ≥ 100 000 tokens, un `systemMessage` propone `/handoff`: el
   turno siguiente reescribe el contexto entero (medido: 96 % del prefijo tras > 1 h), así que
   retomar limpio cuesta casi lo mismo. `context_tokens` solo cuenta si es número: en jq una
   cadena ordena por encima de cualquier número y el umbral se cumplía siempre.
-- **`nucleo_emitir` reconoce las secciones en `###` bajo un `##` que no es de plantilla.** Las
-  sesiones escriben la tarea como `## TAREA ACTUAL` con `### Encargo original`, `### Plan`…; solo
-  con `##` el inyector entregaba el título (148 chars de un nucleo real de 7,7 KB) y el modelo
-  retomaba a ciegas. Dentro de `## Plan` o `## Pendientes` un `###` es contenido: tratarlo como
-  cabecera cortaba el plan en su primera `### Fase 1`.
+- **`nucleo_emitir` reconoce las secciones en `###`.** Las sesiones escriben la tarea como
+  `## TAREA ACTUAL` con `### Encargo original`, `### Plan`…; solo con `##` el inyector entregaba
+  el título (148 chars de un nucleo real de 7,7 KB) y el modelo retomaba a ciegas. Un `###` es
+  cabecera solo si nombra una sección de plantilla aún no vista; `### Fase 1` o `### Nota` son
+  contenido de la sección viva y no la cortan.
 - **`nucleo_emitir` no cierra la sección en un `# comentario` dentro de un bloque de
   código.** La regla de cabecera casaba cualquier línea que empezara por `# `, también entre
   ```; un comentario en «Comandos de verificación» cortaba la sección y los comandos, lo más
   importante de re-inyectar tras `/clear` o compactar, se perdían sin aviso con un «fuera de
   forma» falso. Hallazgo de `/code-review` del 15-oct; test que fallaba antes del cambio.
-  Solo conmuta una cerca pura (```` ``` ```` o ```` ```lang ````; una línea ```` ```x``` ```` no
-  abre bloque) y una cabecera `##` de plantilla cierra una cerca sin cerrar, que si no se
-  tragaba el resto del fichero. `~~~` no se contempla.
+  Las cercas solo cuentan si están equilibradas: admiten sangría y cuatro o más acentos graves
+  (una línea ```` ```x``` ```` no es cerca), y si una queda sin cerrar se ignoran todas, para que
+  no se trague el resto del fichero. Cercas anidadas y `~~~` no se contemplan.
 - **Sentinel ya no lee el allowlist del directorio de trabajo.** Un repo clonado con
   `.security/sentinel-allowlist.json` podía convertir en `allow` el deny de un `.env` o,
   con `[]`/`{"paths":null}`, tumbar toda herramienta con exit 2. Solo cuenta el de `$HOME`;
