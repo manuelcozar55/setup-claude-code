@@ -26,6 +26,9 @@ ok "misma banda dos veces → una sola" "$(run s1 p60)" ""
 ok "banda siguiente (70 %) sí avisa" "$(run s1 p72 | ctx | command grep -c '72 % del airbag')" 1
 ok "85 %: pide cerrar el turno para /handoff" "$(run s1 p90 | ctx | command grep -c '/handoff')" 1
 ok "otra sesión tiene sus propias bandas" "$(run s2 p60 | ctx | command grep -c '60 % del airbag')" 1
+# Compactar no cambia el session_id: sin rearme, solo avisaba en el primer ciclo de la sesión.
+run s5 p60 >/dev/null; run s5 p20 >/dev/null
+ok "bajo el 50 % se rearma: 60 % avisa otra vez" "$(run s5 p60 | ctx | command grep -c '60 % del airbag')" 1
 touch "$NUC"
 ok "60 % + nucleo fresco → vacío" "$(run s3 p60)" ""
 rm -f "$NUC"

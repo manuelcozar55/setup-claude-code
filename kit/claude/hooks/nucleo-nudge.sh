@@ -4,7 +4,8 @@
 # mayoría de las compactaciones caen dentro de un turno autónomo; medido, 3 de cada 4 llegaban con
 # el nucleo sin escribir en los 20 turnos previos. additionalContext llega junto al tool_result.
 # Una vez por banda (50/70/85 % del airbag) y sesión, y solo si nucleo.md tiene más de 10 min o no
-# existe. Sin nada que decir, salida vacía. Camino caliente: corre tras cada herramienta.
+# existe; bajo el 50 % se rearman (compactar no cambia el session_id). Sin nada que decir, salida
+# vacía. Camino caliente: corre tras cada herramienta.
 set -u
 IN=$(cat)
 { read -r SID; read -r TP; read -r CWD; } < <(jq -r '.session_id // "", .transcript_path // "", .cwd // ""' <<<"$IN" 2>/dev/null)
@@ -20,8 +21,9 @@ EDAD=$(( $(date +%s) - ${MT:-0} ))
 [ -z "$MT" ] || [ "$EDAD" -gt 600 ] || exit 0
 read -r _ PCT <<<"$(nucleo_ctx "$TP")"
 [ -n "${PCT:-}" ] || exit 0
-if [ "$PCT" -ge 85 ]; then B=85; elif [ "$PCT" -ge 70 ]; then B=70; elif [ "$PCT" -ge 50 ]; then B=50; else exit 0; fi
 MARCA=$HOME/.claude/session-logs/nudge-$SID
+if [ "$PCT" -ge 85 ]; then B=85; elif [ "$PCT" -ge 70 ]; then B=70; elif [ "$PCT" -ge 50 ]; then B=50
+else [ -s "$MARCA" ] && : >"$MARCA"; exit 0; fi
 command grep -qx "$B" "$MARCA" 2>/dev/null && exit 0
 mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
 if [ -n "$MT" ]; then

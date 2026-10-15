@@ -4,7 +4,8 @@
 # stdin: {"trigger":"manual|auto","session_id":"...","transcript_path":"...","cwd":"..."}
 # El campo es `trigger`; `triggerReason` no existe en el binario.
 # El checkpoint lo re-inyecta session-start-compact.sh (recortado). Vive junto a nucleo.md, en
-# <raíz>/.claude/estado/, con un .gitignore propio para no colarse en un commit.
+# <raíz>/.claude/estado/ (solo si ya existe: un repo sin nucleo no se ensucia), con una línea en su
+# .gitignore para no colarse en un commit: trae los últimos prompts de la persona.
 # Observacional: nunca bloquea (exit 0 siempre).
 set -u
 IN=$(cat)
@@ -25,8 +26,12 @@ mkdir -p "$HOME/.claude/session-logs" 2>/dev/null \
   && printf '%s %s %s %s\n' "$(date +%FT%T%z)" "${SID:--}" "${PCT:--}" "$([ -n "$MT" ] && echo $(( $(date +%s) - MT )) || echo -1)" \
      >>"$HOME/.claude/session-logs/nucleo-freshness.log"
 
-mkdir -p "$ESTADO" 2>/dev/null || exit 0
-[ -e "$ESTADO/.gitignore" ] || printf 'checkpoint-compact-*\n' >"$ESTADO/.gitignore"
+[ -d "$ESTADO" ] || exit 0
+GI=$ESTADO/.gitignore
+if [ ! -L "$GI" ] && ! command grep -qsx 'checkpoint-compact-\*' "$GI"; then
+  [ -s "$GI" ] && [ -n "$(tail -c1 "$GI")" ] && echo >>"$GI"
+  echo 'checkpoint-compact-*' >>"$GI"
+fi
 OUT="$ESTADO/checkpoint-compact.md"
 [ -n "$SID" ] && OUT="$ESTADO/checkpoint-compact-$(printf '%s' "$SID" | sha256sum | cut -d' ' -f1).md"
 TMP=$(mktemp "$ESTADO/.checkpoint-compact.XXXXXX") || exit 0

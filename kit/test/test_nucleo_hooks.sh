@@ -103,5 +103,15 @@ R4=$T/r4; mkdir -p "$R4/.claude" "$T/destino"; git -C "$R4" init -q; ln -s "$T/d
 ev "$R4" s6 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "symlink: pre-compact no escribe en el destino de .claude/estado" "$(ls -A "$T/destino")" ""
 
+# --- pre-compact: no ensucia repos sin nucleo y su checkpoint queda ignorado aunque ya hubiera .gitignore ---
+R5=$T/r5; mkdir -p "$R5"; git -C "$R5" init -q
+ev "$R5" s7 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: repo sin .claude/estado → git status limpio" "$(git -C "$R5" status --short -uall)" ""
+mkdir -p "$R5/.claude/estado"; printf 'diario.md' >"$R5/.claude/estado/.gitignore"
+ev "$R5" s7 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: con .gitignore previo el checkpoint queda ignorado" "$(git -C "$R5" status --short -uall)" "?? .claude/estado/.gitignore"
+ok "pre-compact: el .gitignore previo conserva lo suyo" "$(cat "$R5/.claude/estado/.gitignore")" "diario.md
+checkpoint-compact-*"
+
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
 exit $FAIL
