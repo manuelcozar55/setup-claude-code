@@ -188,6 +188,9 @@ jobs:
       - name: "test_mod_cockpit.sh (mod cockpit: manifiesto valido, ficheros completos, sin datos privados)"
         run: bash kit/test/test_mod_cockpit.sh
 
+      - name: "test_session_start_clear.sh (hook SessionStart: nucleo.md como datos, recorte y fail-open)"
+        run: bash kit/test/test_session_start_clear.sh
+
       - name: "test_install_plugins.sh (plugins de terceros por referencia: diff-first, ids esperados, opcionales aparte)"
         run: bash kit/test/test_install_plugins.sh
 
