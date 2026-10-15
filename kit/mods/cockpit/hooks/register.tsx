@@ -83,6 +83,13 @@ const clock = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
+// The dock's durations carry units: a bare «10:42» in a narrow pane read as a time of day. At most 6 cells under 100 h.
+export const elapsed = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor(s / 60) % 60
+  return h ? `${h}h${String(m).padStart(2, '0')}m` : m ? `${m}m${String(s % 60).padStart(2, '0')}s` : `${s}s`
+}
 
 const NAMES: Record<string, string> = {
   messages: 'mensajes',
@@ -116,7 +123,7 @@ export function condense(text: string): string {
   return `${dot > 120 ? cut.slice(0, dot + 1) : cut} …`
 }
 
-// Word wrap by hand: the mission clamps to two lines, which Text wrap="wrap" cannot do.
+// Word wrap by hand: the open mission is drawn line by line, outside the Button that toggles it.
 // shortcut: counts code units, so wide glyphs (emoji, CJK) overflow a cell; upgrade if a mission shows them.
 export function wrapLines(text: string, width: number): string[] {
   const lines: string[] = []
@@ -580,6 +587,7 @@ export const register: Register = on => {
 
     // One column at any width. A row is `glyph T<n>  description  time` with the time pinned right;
     // live agents add a second line with what they are doing. The 6-space indent is the row's prefix width.
+    // Prefix and time never shrink: only the description gives way, so «10m42s» cannot wrap at any width.
     const order = new Map(ag.map((a, i) => [a.id, i]))
     const INDENT = '      '
     const row = (a: AgentRow, glyph: string, color: string, note?: string) => {
@@ -587,11 +595,11 @@ export const register: Register = on => {
       return (
         <Box key={a.id} flexDirection="column">
           <Box gap={1}>
-            <Text color={color}>{glyph} {`T${(order.get(a.id) ?? 0) + 1}`.padEnd(3)}</Text>
+            <Box flexShrink={0}><Text color={color}>{glyph} {`T${(order.get(a.id) ?? 0) + 1}`.padEnd(3)}</Text></Box>
             <Box flexGrow={1} flexShrink={1}>
               <Text bold={!isDone && a.status !== 'pending'} dimColor={isDone} wrap="truncate-end">{a.description || a.type}</Text>
             </Box>
-            {a.status !== 'pending' && <Text dimColor>{clock((a.endedAt ?? tick) - a.startedAt)}</Text>}
+            {a.status !== 'pending' && <Box flexShrink={0}><Text dimColor>{elapsed((a.endedAt ?? tick) - a.startedAt)}</Text></Box>}
           </Box>
           {note !== undefined && (
             <Text color={color === 'error' ? 'error' : undefined} dimColor={color !== 'error'} wrap="truncate-end">{INDENT}{note}</Text>
@@ -610,15 +618,15 @@ export const register: Register = on => {
         </Box>
       )
     }
-    const stopNote = (a: AgentRow) => (a.status === 'failed' ? 'falló' : a.status === 'killed' ? 'detenido' : `${clock(tick - a.lastActiveAt)} sin actividad`)
+    const stopNote = (a: AgentRow) => (a.status === 'failed' ? 'falló' : a.status === 'killed' ? 'detenido' : `${elapsed(tick - a.lastActiveAt)} sin actividad`)
     const stopGlyph = (a: AgentRow) => (a.status === 'failed' ? '✗' : a.status === 'killed' ? '■' : '◌')
 
-    // Mission: the first two lines always, the rest behind «más» (a click, or `m` with the pane focused).
-    // The text lives outside the Button: a Button does not bound its child, so nothing wraps inside it.
-    const lines = wrapLines(tn.mission.replace(/\s+/g, ' ').trim() || '—', cols)
-    const hasMore = lines.length > 2
-    const clipped = (l: string) => `${l.length < cols ? l : l.slice(0, cols - 1).trimEnd()}…`
-    const missionLines = isOpen || !hasMore ? lines : lines.slice(0, 2).map((l, i) => (i ? clipped(l) : l))
+    // Mission: folded to one line by default, so the agents keep the rows; «más» (a click, or `m` with
+    // the pane focused) unfolds it. The text lives outside the Button: a Button does not bound its child.
+    const mission = tn.mission.replace(/\s+/g, ' ').trim() || '—'
+    const lines = wrapLines(mission, cols)
+    const hasMore = lines.length > 1
+    const missionLines = isOpen || !hasMore ? lines : [`${mission.slice(0, cols - 1).trimEnd()}…`]
 
     return (
       <Box flexDirection="column" gap={1}>
@@ -634,7 +642,7 @@ export const register: Register = on => {
             </Box>
             <Text>
               {missionPct === undefined ? '' : <Text color="claude">{missionPct}%</Text>}
-              <Text dimColor>{tn.isRunning ? ` ${clock(tick - tn.startedAt)}` : ''}</Text>
+              <Text dimColor>{tn.isRunning ? ` ${elapsed(tick - tn.startedAt)}` : ''}</Text>
             </Text>
           </Box>
           {missionLines.map((l, i) => <Text key={`mission-${i}`} wrap="truncate-end">{l}</Text>)}
