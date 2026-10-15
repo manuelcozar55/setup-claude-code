@@ -100,7 +100,7 @@ Las dos suites de test que cubren esta parte: `test/test_guards.sh` (Capa 1 + Se
 
 ## Manejo de secretos
 
-Los secretos reales (`ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`, `LANGSMITH_API_KEY`) viven únicamente en `$HOME/.claude/.env`, que **nunca** se sube al repo. Lo que sí se versiona es `.env.example`, con los nombres de variable y valores placeholder, nunca un valor real. `secret-guard.sh` es la barrera en el momento de `git add`; el `pre-commit` con gitleaks (Capa 2, si está activado) es la barrera en el momento de `git commit`; si algo se cuela más allá de ambas, el siguiente punto lo atrapa.
+Los secretos reales (`ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`) viven únicamente en `$HOME/.claude/.env`, que **nunca** se sube al repo. Lo que sí se versiona es `.env.example`, con los nombres de variable y valores placeholder, nunca un valor real. `secret-guard.sh` es la barrera en el momento de `git add`; el `pre-commit` con gitleaks (Capa 2, si está activado) es la barrera en el momento de `git commit`; si algo se cuela más allá de ambas, el siguiente punto lo atrapa.
 
 ## El gate: `scan-secrets.sh`
 

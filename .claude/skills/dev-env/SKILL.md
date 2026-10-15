@@ -1,6 +1,6 @@
 ---
 name: dev-env
-description: Gotchas verificados de este entorno WSL2 — reescritura de comandos por hooks, venvs de Python, pnpm, rendimiento de /mnt/c y el proxy Headroom. Úsala antes de instalar herramientas, crear entornos, ejecutar suites de test o diagnosticar un comando que se comporta raro. No la uses para lógica de negocio.
+description: Gotchas verificados de este entorno WSL2 — reescritura de comandos por hooks, venvs de Python, pnpm, rendimiento de /mnt/c y restos del proxy Headroom retirado. Úsala antes de instalar herramientas, crear entornos, ejecutar suites de test o diagnosticar un comando que se comporta raro. No la uses para lógica de negocio.
 ---
 
 # Entorno de desarrollo
@@ -88,29 +88,12 @@ Coste medido de la cadena completa de 7 hooks: **160 ms por comando Bash**, idé
 ext4 y en `/mnt/c` (los guards no ejecutan `git status`). El más lento es
 `block-dangerous-commands.sh` con 58 ms.
 
-## 6 · Proxy Headroom — no tocar
+## 6 · Proxy Headroom — retirado (2026-10)
 
-`:8787` es una **unidad systemd con `Restart=always`**.
-
-- Ruta correcta: `bash kit/install.sh --with-headroom`, que instala, arranca, espera a que
-  `/readyz` responda hasta 30 s y **solo entonces** enruta. `headroom wrap claude` (alias
-  `cc`) tambien funciona, pero escribe `ANTHROPIC_BASE_URL` en el `settings.local.json` del
-  proyecto y lo repone con un hook `SessionStart`: medido, dejo la variable en 5 ficheros
-  no declarados y el enrutado paso a depender del cwd de la sesion.
-- `ANTHROPIC_BASE_URL` en `settings.json` **no** desactiva la ventana de 1M ni el tool
-  search. Medido el 2026-09-01 dentro de una sesion enrutada por el `env` de settings:
-  ventana de 1M activa (va por el sufijo del id de modelo, `claude-opus-5[1m]`, no por la
-  cabecera beta) y herramientas diferidas funcionando (`ENABLE_TOOL_SEARCH`). Lo que **si**
-  se pierde es `/remote-control`, y eso lo confirma `headroom doctor`. El fallo no es
-  declararlo en `settings.json`: es declararlo en **dos** sitios, porque entonces no se
-  puede apagar. `kit/doctor.sh` falla si encuentra mas de una fuente.
-- **Nunca** `pkill -f "headroom proxy"` ni `nohup headroom proxy`: systemd relanza el suyo y
-  quedan dos instancias peleando por el puerto → respuestas HTTP 200 vacías. Reiniciar solo
-  con `systemctl --user restart <unidad>`.
-- **Nunca** `--budget`: al agotarse bloquea peticiones.
-- Si aparece *"empty or malformed response (HTTP 200)"*: `curl -s localhost:8787/readyz` y
-  `grep PERF ~/.headroom/logs/proxy.log | tail -3`. No abrir más de 2 sesiones en paralelo
-  contra el proxy.
+Medido: 0,2-0,6 % de ahorro real con latencia añadida; se retiró del kit con `--with-headroom`
+y sus tests (`kit/docs/archive/03-headroom.md`). No lo repongas ni uses `headroom wrap`: escribe
+`ANTHROPIC_BASE_URL` en el `settings.local.json` de cada proyecto. Si queda esa variable en algún
+sitio, quítala; `kit/doctor.sh` falla si enruta a un endpoint muerto o está en más de un fichero.
 
 ## 7 · Herramientas presentes y ausentes
 

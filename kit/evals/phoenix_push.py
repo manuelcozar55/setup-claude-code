@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Sube runs.jsonl a un Phoenix local: misma forma de arbol que langsmith_push.py.
+"""Sube runs.jsonl a un Phoenix local: un arbol por brazo, una rama por tarea.
 
-Existe porque "medible en local" no tiene salida por LangSmith: el autoalojado es
-de pago (LANGSMITH_LICENSE_KEY, se pide a ventas) y no hay tramo gratuito ni para
-desarrollo. Phoenix (Arize, OSS) da lo que aqui se necesita -- interfaz web, arbol
-por brazo, atributos por tarea -- sin Docker y sin licencia:
+Phoenix (Arize, OSS, trazas openinference) es la interfaz local de trazas del
+eval: interfaz web, arbol por brazo, atributos por tarea, sin Docker y sin licencia:
 
     ~/.venvs/tools/bin/phoenix serve                  # http://localhost:6006
     ~/.venvs/tools/bin/python kit/evals/phoenix_push.py
@@ -68,8 +66,7 @@ def nanos(s):
 
 
 def arbol():
-    """Un padre por (sesion, brazo) y un hijo por tarea. Identico criterio que en
-    langsmith_push.py: mezclar brazos bajo un mismo padre haria ilegible justo la
+    """Un padre por (sesion, brazo) y un hijo por tarea: mezclar brazos bajo un mismo padre haria ilegible justo la
     comparacion que es el objetivo del eval."""
     grupos = {}
     for r in runs:

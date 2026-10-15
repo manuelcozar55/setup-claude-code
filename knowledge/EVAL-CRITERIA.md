@@ -98,13 +98,13 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 + `test_evals.sh` §10: ningún check aprueba el estado inicial, y no hacer nada da `fail`, no `error` | ✅ |
 | E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan — **y no se conservaban todos**: con el nombre por día, dos tiradas del mismo día sobre la misma tarea y brazo escribían el mismo fichero. Arreglado (`ts` y pid en el nombre, `run.sh`), sensor `test_evals.sh` §23, mutantes M30–M31 y M34–M36 | ⚠️ **degradado**: humano, sin cadencia fijada, y con **26 de 98 filas históricas sin evidencia propia**. El sensor que declaraba esta fila vigilaba que el fichero existiera, no que fuera el de esa tirada: aprobaba sin poder suspender |
-| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 40/40 mutantes; los 32 mutantes versionados (M9–M40) se reproducen con `make mutantes`; los §9–§19 nacieron ya en rojo |
+| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 40/40 mutantes; los 29 mutantes versionados (M9–M40, sin M19, M20 ni M37: se retiraron con LangSmith) se reproducen con `make mutantes`; los §9–§19 nacieron ya en rojo |
 | E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **corrido**: `sin-ajustes` −0,17 → la pieza aporta (−0,12 descontando el artefacto del corrector de la 11; ver la salvedad en «La tirada completa») |
 | E23 | Un brazo cuyo flag desapareció mide el harness completo con etiqueta falsa | hallazgo propio | `test_evals.sh` §13: los 4 flags tienen que seguir en `claude --help` | ✅ · sensor mutado |
 | E24 | No restar dos brazos que corrieron modelos distintos | hallazgo propio (E14 llevado al informe) | `report.py:comparables()` dice `NO COMPARABLE` en vez de dar un lift; y `record.py` apunta el modelo **que hizo el trabajo**, no el primero del diccionario (§18) | ✅ · sensor mutado ×2 |
-| E25 | Un emisor de trazas probado **en seco** no es telemetría verificada | hallazgo propio | `langsmith_local.py` recibe de verdad + `test_evals.sh` §16: el payload viaja por red y se comprueba el árbol al otro lado | ✅ · sensor mutado |
+| E25 | Un emisor de trazas probado **en seco** no es telemetría verificada | hallazgo propio | El receptor local de LangSmith y su sensor de red se retiraron con LangSmith (2026-10). Hoy el puente a Phoenix solo se comprueba en seco (`test_evals.sh` §17) | ⚠️ · abierto otra vez: el criterio sigue en pie y no tiene sensor de red |
 | E27 | Ablar una pieza que el agente nunca activó no mide la pieza: mide nada, y con pinta de resultado | hallazgo propio (a partir de la *Discoverability* de SkillEvaluator) | `record.py` cuenta `skill_calls`/`mcp_calls`; `report.py` dice `NO MEDIBLE` y, si el brazo ni se ha corrido, que correrlo tampoco mediría; `test_evals.sh` §19 | ✅ · sensor mutado ×3 |
-| E26 | El observatorio no puede meter dependencias en lo observado | interpretación propia (E6 + "sin SDK" de `langsmith_push.py`) | `phoenix_push.py` es la única pieza con SDK, corre en otro venv, `run.sh` no lo llama, y su sensor (§17) usa `--dry-run` sin dependencias | ✅ · sensor mutado |
+| E26 | El observatorio no puede meter dependencias en lo observado | interpretación propia (E6 + "sin SDK" del emisor de LangSmith, retirado) | `phoenix_push.py` es la única pieza con SDK, corre en otro venv, `run.sh` no lo llama, y su sensor (§17) usa `--dry-run` sin dependencias | ✅ · sensor mutado |
 | E28 | Un corrector tiene que saber **aprobar**, no solo suspender: el §10 solo probaba el rechazo del estado inicial, y por ese lado un check suspendió a quien acertaba | hallazgo propio (la 12 castigaba el `__pycache__` de verificar) | clave `solucion:` por tarea + `test_evals.sh` §20 (sandbox setup→solución→check, con suelo de cobertura 10/20) | ⚠️ **parcial** · sensor mutado ×3 (M27–M29), pero prueba menos de lo que parece: §20 solo comprueba que un check apruebe **la solución que alguien le escribió**. La 11 pasa §20 y sigue rota (exige el literal `.venv/bin/pip` y suspende `.venv/bin/python -m pip`), igual que la 09. Un corrector queda cubierto por la forma que se acordaron de declararle, no por todas las correctas |
 | E29 | El coste de una tirada se estima **antes** de pagarla, y de lo ya gastado, no de una cifra escrita a mano | hallazgo propio (el Makefile decía "40 llamadas / ~12 USD" a mano) | `DRYRUN=1` en `run.sh` (media de `runs.jsonl`) + filtro por tarea + `test_evals.sh` §21 | ✅ · M9 sigue cazado con el bloque puesto |
 
@@ -258,8 +258,8 @@ cuyo instrumento estaba averiado y cuya evidencia ya no existe no se arregla a
 mano: eso sería inventarlo. Queda marcado `excluded` en `runs.jsonl`, fuera de
 todo cómputo, y el informe lo dice en su primera línea en vez de retirarlo en
 silencio. Fuera de todo cómputo es también fuera de los dos puentes al
-observatorio: ni `langsmith_push.py` ni `phoenix_push.py` la publican, y los dos
-lo anuncian por `stderr` (sensores `test_evals.sh` §7 y §17, mutantes M37–M38).
+observatorio: `phoenix_push.py` no la publica y lo anuncia por `stderr` (sensor
+`test_evals.sh` §17, mutante M38; el emisor de LangSmith hacía lo mismo hasta retirarse).
 Publicarla ahí la habría devuelto por la puerta de atrás, enseñada como un `fail`
 normal. **Lo zanja una sola llamada de pago — la 12, brazo `on`, `RUNS=1` — y
 está pendiente: no se hizo en esta ronda.**
@@ -544,8 +544,8 @@ deepseek-harness ocupa **231 bytes**.
 Lo que sí se lleva de la cantera, y está sin implementar:
 
 - **"Saltado por falta de clave" es un tercer estado, no un fallo.** Los e2e de deepseek
-  se auto-saltan sin API key. Aquí encaja con E4 (`error` ≠ `fail`) y con el hueco de
-  LangSmith.
+  se auto-saltan sin API key. Aquí encaja con E4 (`error` ≠ `fail`) y con un emisor de
+  trazas sin clave.
 - **Gate de cobertura por fichero**, no global — un promedio esconde un fichero a cero.
 - De AVO, la idea estructural: **conjunto reservado (*held-out*)**. AVO avisa de su
   propio agujero — el mismo harness evoluciona y puntúa, sin conjunto reservado, así que
@@ -553,31 +553,14 @@ Lo que sí se lleva de la cantera, y está sin implementar:
   ajustar el harness contra su propio eval, que es exactamente lo que el encargo pide
   ("ir mejorándolo con el uso").
 
-### «Medible en LangSmith local» era una afirmación sin sensor
+### «Medible en LangSmith local» era una afirmación sin sensor (retirado 2026-10)
 
-Lo era literalmente: el emisor existía, el bloque §7 comprobaba la **forma** del payload
-en seco, y nunca se había enviado una traza a nada. La razón no era pereza — **LangSmith
-autoalojado es de pago**: los contenedores no arrancan sin `LANGSMITH_LICENSE_KEY`, que se
-pide a ventas. Y en esta máquina hay una segunda puerta antes de esa: `docker` resuelve al
-binario de Docker Desktop de Windows y contesta *"The command 'docker' could not be found
-in this WSL 2 distro"*. **Son dos acciones del usuario, no una**, y ninguna está en manos
-de este repo.
-
-Lo que sí estaba en sus manos: `kit/evals/langsmith_local.py`, un receptor de la stdlib
-que habla el trozo del ingest que usa el emisor (`POST /runs/batch`) y guarda lo que
-recibe. No es LangSmith y el fichero lo dice en la primera línea: no hay interfaz, ni
-búsqueda, ni comparación entre tiradas. Lo que da es lo que faltaba — que el payload
-**viaje por red**, con cabeceras reales, y que se pueda mirar lo que queda al otro lado.
-
-Con eso, §16 comprueba cuatro cosas que en seco no se podían comprobar: que el emisor sube
-(202), que al otro lado queda un **árbol** y no una lista de runs sueltos, que cada traza
-llega **etiquetada con su brazo** —comparar `on` con `off` es el objetivo entero— y que sin
-clave **no llega nada**, que es más fuerte que el viejo "sale 0" (podía salir 0 y haber
-subido igual). Dos mutantes lo vigilan: quitarle la cabecera `x-api-key` al emisor y
-desenganchar los hijos de su padre.
-
-Pasar a LangSmith de verdad —nube, o autoalojado con licencia— es cambiar
-`LANGSMITH_ENDPOINT`. Que ese cambio baste es justo lo que §16 demuestra.
+Nunca se había enviado una traza a nada: LangSmith autoalojado es de pago (exige
+`LANGSMITH_LICENSE_KEY`) y en esta máquina `docker` ni siquiera resolvía dentro de WSL 2. El
+repo llegó a tener un receptor local de la stdlib y un sensor de red con dos mutantes que
+demostraban que el payload viajaba y llegaba como árbol. **Se retiró en 2026-10 junto con el
+emisor**: la interfaz local es Phoenix (abajo), y mantener dos puentes para un mismo
+observatorio no compensaba. El precio queda declarado en E25.
 
 ### Y la interfaz local, que era lo que se pedía de verdad
 
@@ -620,12 +603,10 @@ Dos decisiones que evitan que esto contamine el eval:
 2. **`RUNS=1` y `n` pequeño.** Con 20 tareas ya se puede, pero mientras no haya
    repeticiones los intervalos seguirán solapándose y casi todo caerá en `NEUTRO`.
    Es el techo real que queda, y multiplica el coste de arriba.
-3. **LangSmith *el producto* sigue sin levantar, y no por falta de trabajo:** no existe
-   autoalojado gratuito. La interfaz local ya está cubierta por Phoenix (arriba), y el
-   emisor de LangSmith está probado de punta a punta, así que lo que queda es una decisión
-   de compra, no de código — clave de la **nube** (gratis hasta 5 000 trazas, pero deja de
-   ser local) o licencia Enterprise.
-4. **Solo 32 de los 40 mutantes son reproducibles.** `make mutantes` versiona M9–M40 y
+3. ~~**LangSmith *el producto* sigue sin levantar.**~~ **RETIRADA en 2026-10**: LangSmith
+   salió del repo y la interfaz local es Phoenix (arriba). Lo que sí queda abierto es E25:
+   el puente a Phoenix solo se prueba en seco.
+4. **Solo 29 de los 40 mutantes son reproducibles.** `make mutantes` versiona M9–M40 y
    falla si un ancla desaparece del fuente (un mutante que no se aplica deja de vigilar
    **en silencio**). M1–M8 se corrieron con scripts de usar y tirar: de esos ocho queda
    la palabra, no la evidencia, y queda dicho.

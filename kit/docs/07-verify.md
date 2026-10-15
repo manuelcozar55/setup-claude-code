@@ -31,7 +31,7 @@ CLAUDE_HOME="$D/dot" bash install.sh
 CLAUDE_HOME="$D/dot" bash doctor.sh
 ```
 
-Esperado: `install.sh` sin error; `doctor.sh` con 0 `FAIL` (los `WARN` son aceptables cuando corresponden a terceros que no has instalado, como Headroom o el venv de tools).
+Esperado: `install.sh` sin error; `doctor.sh` con 0 `FAIL` (los `WARN` son aceptables cuando corresponden a terceros que no has instalado, como `rtk` o el venv de tools).
 
 **3. El instalador es idempotente**: reejecuta `install.sh` sobre el mismo `CLAUDE_HOME` (ideal: primero modifica un fichero instalado, para forzar la ruta de backup):
 
@@ -82,9 +82,7 @@ Ver `kit/evals/README.md` para el criterio de admisión de tareas y por qué usa
 | Venv de tools (opcional) | presencia del binario | `test -x "$HOME/.venvs/tools/bin/python3"` | `PASS` si está, `WARN` si no |
 | Intérprete para los hooks Python (opcional) | venv o `python3` del sistema | `command -v python3` | `PASS` si hay alguno; `WARN` si no (quedan en no-op, los guards de bash siguen) |
 | **Enrutado de la API** | si algo enruta a un proxy, ese proxy debe contestar | `jq` sobre `settings.json` **y** `settings.local.json` de `$PWD`, de `$CLAUDE_HOME` y de cada proyecto de `~/.claude.json` (deduplicados), más `$ANTHROPIC_BASE_URL` del entorno, + `GET /readyz` sobre la primera URL que aparezca (lo hace `doctor.sh` internamente) | `PASS` sin proxy o con proxy vivo; **`FAIL` si está enrutado y no contesta**, y `FAIL` si la URL se declara en más de un fichero |
-| Headroom, el proxy (opcional) | presencia del CLI | `command -v headroom` | `PASS` si está, `WARN` si no |
 | `rtk`, el filtro de salida de CLI (opcional) | presencia del CLI | `command -v rtk` | `PASS` si está, `WARN` si no |
-| Headroom enrutado de verdad (opcional) | el entorno de un proceso hijo de la sesión (un MCP), que es lo que la sesión usa de verdad | `tr '\0' '\n' < /proc/<pid-del-hijo>/environ \| grep ANTHROPIC_BASE_URL` + `bash doctor.sh` | la URL del proxy en el hijo; `doctor.sh` en `PASS` con el enrutado declarado en un solo sitio. **No uses `headroom doctor` para esto: miente en los dos sentidos** (ver `03-headroom.md`) |
 | Capa de IOCs de Sentinel (la trae el kit; ver `docs/05-security.md`) | presencia de `iocs.json` en las mismas rutas que busca el hook y en su orden | (lo hace `doctor.sh` internamente) | `PASS · Sentinel IOC layer activa` en una instalación limpia, con la ruta del fichero que se carga; `WARN` solo si lo has borrado (los guards de Bash siguen activos) |
 | `gitleaks` instalado (opcional; requerido para la Capa 2 de secretos), con versión | `command -v gitleaks` + `gitleaks version` | (lo hace `doctor.sh` internamente) | `PASS` si está (con versión), `WARN` si no (la Capa 1 sigue activa) |
 | Checksum de `gitleaks` no coincidió en una instalación anterior | marca `$CLAUDE_HOME/.gitleaks-checksum-mismatch` | (lo hace `doctor.sh` internamente) | `FAIL` si la marca existe (posible ataque a la cadena de suministro); nada si no |

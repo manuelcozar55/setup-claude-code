@@ -125,7 +125,6 @@ este repositorio; se listan por transparencia.
 | Componente | Licencia | Cómo entra |
 |---|---|---|
 | [gitleaks](https://github.com/gitleaks/gitleaks) | MIT | lo descarga el usuario o el CI, con versión y checksum fijados; ver `kit/docs/02-install.md` |
-| [Headroom](https://github.com/headroomlabs-ai/headroom) | Apache-2.0 | componente de terceros opcional; el kit no lo instala, ver `kit/docs/03-headroom.md` |
 | [rtk](https://github.com/rtk-ai/rtk) | Apache-2.0 | opcional; el kit no lo cablea ni lo invoca — solo lo deja permitido en `permissions.allow` |
 | [ponytail](https://github.com/DietrichGebert/ponytail) | MIT | plugin; lo instala `kit/install-plugins.sh --apply` desde su marketplace |
 | [ui-ux-pro-max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | MIT | plugin; lo instala `kit/install-plugins.sh --apply` desde su marketplace |

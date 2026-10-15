@@ -29,7 +29,7 @@ S="$KIT/claude/settings.json"
 # nadie escucha: Claude Code no puede hablar con la API. Es el fallo mas grave
 # posible en un kit de config, porque parece un problema de la herramienta.
 if jq -e '.env.ANTHROPIC_BASE_URL' "$S" >/dev/null 2>&1; then
-  ko "settings.json fija ANTHROPIC_BASE_URL: una instalacion limpia queda sin API (usar install.sh --with-headroom)"
+  ko "settings.json fija ANTHROPIC_BASE_URL: una instalacion limpia queda sin API"
 else
   ok
 fi

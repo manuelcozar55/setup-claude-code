@@ -1,6 +1,6 @@
 # 02 · Instalación
 
-Este documento cubre la instalación de la parte que el kit sí redistribuye: la config saneada de `~/.claude` (`CLAUDE.md`, `settings.json`, agentes, hooks, Sentinel) y el venv de herramientas. Los terceros (Headroom, agent-browser) se documentan aparte en `03-headroom.md` y `04-superpowers.md`: el kit no lleva sus binarios. El plugin `esenciales` es del kit y lo instala `install-plugins.sh` (ver `04-superpowers.md`).
+Este documento cubre la instalación de la parte que el kit sí redistribuye: la config saneada de `~/.claude` (`CLAUDE.md`, `settings.json`, agentes, hooks, Sentinel) y el venv de herramientas. Es la **única fuente** del procedimiento de instalación: el resto de documentos resume y enlaza aquí. Los terceros (agent-browser) se documentan aparte en `04-superpowers.md`: el kit no lleva sus binarios. El plugin `esenciales` es del kit y lo instala `install-plugins.sh` (ver `04-superpowers.md`).
 
 ## Prerrequisitos
 
@@ -8,11 +8,12 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 
 | Herramienta | Para qué | Verifica con |
 |---|---|---|
+| `bash`, `make` | `install.sh`, `doctor.sh`, los guards y la suite son bash; `make bootstrap` y `make test` | `bash --version` · `make --version` |
 | `git` | clonar el repo, y los guards de `secret-guard.sh`/`branch-guard.sh` operan sobre `git` | `git --version` |
 | `node` ≥ 20 + `pnpm` | runtime de Claude Code y de agent-browser | `node --version` · `pnpm --version` |
 | `python3` (≥ 3.10) + `venv` | Sentinel y los hooks Python corren sobre un venv propio, nunca sobre el Python del sistema | `python3 --version` |
 | `gh` (GitHub CLI) | flujo de PRs desde Claude Code | `gh --version` |
-| `jq` | `doctor.sh` y varios hooks parsean JSON con `jq`; sin él, `doctor.sh` falla explícitamente | `jq --version` |
+| `jq` | **obligatorio**: `install.sh` aborta si falta (fusiona `settings.json` con `jq`), los cuatro guards de Bash leen el payload con `jq` y sin él fallan en cerrado —deniegan en vez de permitir en silencio—, y `doctor.sh` lo marca `FAIL` | `jq --version` |
 | `uv` | gestor de paquetes Python que usa el kit vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
 | `gitleaks` (opcional, versión fijada `8.30.1`) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Si no lo tienes, `install.sh` te ofrece instalarlo (release oficial, verificado contra un checksum SHA-256 fijado en este repo — no descargado de la red —, nunca `curl \| bash`): confirma con `y`, o exporta `GITLEAKS_AUTO_INSTALL=1` para saltarte el prompt en un entorno no interactivo. Si el checksum no coincide, la instalación de `gitleaks` no rompe el resto (degrada a la Capa 1), pero deja una marca en `$CLAUDE_HOME/.gitleaks-checksum-mismatch` que `doctor.sh` reporta como `FAIL`. Ver `docs/05-security.md` | `gitleaks version` |
 
@@ -37,10 +38,22 @@ echo "$PATH" | tr ':' '\n' | grep -F "$(pnpm config get global-bin-dir)"
 
 Si no aparece nada, añade esa ruta a mano a tu `.bashrc`/`.zshrc`.
 
+**Si vienes de Windows**: clona **dentro** de WSL (`~/`), no en `/mnt/c/` (más lento y complica el bit de ejecución). Si tienes `git config core.autocrlf true`, no lo combatas: el `.gitattributes` del repo fuerza LF en scripts y hooks, porque un hook con CRLF no se ejecuta (`bad interpreter: /bin/bash^M`) y el fallo se lee como "el hook no hace nada".
+
+## El camino corto: `make bootstrap`
+
+```bash
+git clone https://github.com/manuelcozar55/setup-claude-code.git
+cd setup-claude-code
+make bootstrap
+```
+
+`make bootstrap` hace cuatro cosas y para si alguna falla: crea tu `config/profile.yaml` desde el ejemplo (es tuyo, está en `.gitignore` y no viaja: tu nombre, tu nivel de coach y tu oráculo), instala el kit en `~/.claude`, ejecuta el oráculo del repo (`make test`) y corre `kit/doctor.sh`. Los pasos siguientes son el mismo camino a mano, más lo opcional.
+
 ## Paso 1 · Clonar
 
 ```bash
-git clone <url-del-repo> setup-claude-code
+git clone https://github.com/manuelcozar55/setup-claude-code.git
 cd setup-claude-code/kit
 ```
 
@@ -56,7 +69,9 @@ Por defecto instala en `$HOME/.claude`. Si quieres probarlo primero en una ruta 
 CLAUDE_HOME=/ruta/alternativa bash install.sh
 ```
 
-`install.sh` es idempotente: si vuelves a ejecutarlo, cualquier fichero que fuera a pisar se guarda antes con backup con timestamp en `$CLAUDE_HOME/backups/`, y nunca sobreescribe sin copia. Puedes correrlo tantas veces como quieras.
+`install.sh` es idempotente: si vuelves a ejecutarlo, cualquier fichero que fuera a pisar se guarda antes con backup en `$CLAUDE_HOME/backups/<fecha>-<pid>-<aleatorio>/`, y nunca sobreescribe sin copia; reinstalar sin cambios no crea un segundo backup. Copia (no enlaza) `settings.json`, `CLAUDE.md`, los hooks, los agentes, las skills del método y Sentinel. `settings.json` se **fusiona** con `jq`, no se pisa: tus claves propias sobreviven, y un symlink no se toca.
+
+**Diff-first.** Si tu `$CLAUDE_HOME` es un repo git con remoto (un repo de configuración propio), el instalador **no escribe nada**: genera aparte el árbol que instalaría y te muestra el diff (nuevos, idénticos, modificados) para que copies lo que quieras ([ADR 008](../../knowledge/DECISIONS/008-install-diff-first.md)). `--apply` fuerza la escritura real, siempre con backup; `--plan` fuerza el modo diff aunque no sea un repo git.
 
 ### Modelo, ventana y esfuerzo: una sola fuente (medido)
 
@@ -73,7 +88,7 @@ cp .env.example $HOME/.claude/.env
 $EDITOR $HOME/.claude/.env
 ```
 
-Rellena `ANTHROPIC_API_KEY` y, si los usas, `PERPLEXITY_API_KEY` y `LANGSMITH_API_KEY`. El fichero `.env` **nunca** se sube al repo (el hook `secret-guard.sh` y el gate `scan-secrets.sh` están precisamente para que no ocurra por descuido).
+Rellena `ANTHROPIC_API_KEY` y, si la usas, `PERPLEXITY_API_KEY`. El fichero `.env` **nunca** se sube al repo (el hook `secret-guard.sh` y el gate `scan-secrets.sh` están precisamente para que no ocurra por descuido).
 
 ## Paso 4 · Venv de herramientas
 
@@ -94,8 +109,7 @@ ln -sf $HOME/.venvs/tools/bin/ruff $HOME/.local/bin/ruff
 
 El kit no instala esto por ti; solo lo documenta:
 
-- **Headroom** (proxy local de contexto/coste): ver `docs/03-headroom.md`.
-- **esenciales, los 8 agentes, y agent-browser**: ver `docs/04-superpowers.md`.
+- **esenciales, los 8 agentes, y agent-browser**: ver `docs/04-superpowers.md`. Los plugins se instalan por referencia desde su marketplace con `bash install-plugins.sh` (diff-first).
 
 Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, servidores MCP, skills adicionales como `graphify` o `deep-change`), ver `docs/08-plugins-mcp-y-skills.md`.
 
@@ -105,8 +119,26 @@ Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, serv
 bash doctor.sh
 ```
 
-`doctor.sh` imprime un informe por componente: `PASS`, `WARN` o `FAIL`, y el "cómo se obtuvo" de cada línea. Sale con código 0 solo si no hay ningún `FAIL`. Los `WARN` son aceptables cuando corresponden a un componente opcional que aún no has instalado (el venv de tools, Headroom, `rtk`): el setup base funciona sin ellos, degradando con elegancia en vez de romperse.
+`doctor.sh` imprime un informe por componente: `PASS`, `WARN` o `FAIL`, y el "cómo se obtuvo" de cada línea. Sale con código 0 solo si no hay ningún `FAIL`. Los `WARN` son aceptables cuando corresponden a un componente opcional que aún no has instalado (el venv de tools, `rtk`, `gitleaks`): el setup base funciona sin ellos, degradando con elegancia en vez de romperse.
 
-Un caso **no** degrada con elegancia y por eso es `FAIL`: que `ANTHROPIC_BASE_URL` enrute la API a un proxy que no contesta. Ahí Claude Code se queda sin poder hablar con la API, y el síntoma no se parece a un problema de configuración. El `settings.json` que distribuye el kit no fija esa variable; la escribe `install.sh --with-headroom` y solo tras comprobar que el proxy responde (ver `03-headroom.md`).
+Un caso **no** degrada con elegancia y por eso es `FAIL`: que `ANTHROPIC_BASE_URL` enrute la API a un proxy que no contesta. Ahí Claude Code se queda sin poder hablar con la API, y el síntoma no se parece a un problema de configuración. El `settings.json` que distribuye el kit no fija esa variable: si `doctor.sh` la encuentra, viene de tu config (por ejemplo, restos de un proxy que ya no usas) y basta con quitarla.
 
 Detalle completo del significado de cada línea y de cómo reproducirla en `07-verify.md`.
+
+## Paso 7 · Capa 2 de secretos (opt-in, por repositorio)
+
+`install.sh` nunca la activa por su cuenta en un repo que no hayas nombrado. Desde dentro del repo que quieras proteger (requiere `gitleaks`):
+
+```bash
+cd tu-repo && bash /ruta/al/kit/install.sh --enable-secrets-layer2
+```
+
+Para falsos positivos de los guards, usa `sentinel-allowlist.json` en vez de desactivarlos. Detalle en `05-security.md`.
+
+## Desinstalar
+
+```bash
+bash uninstall.sh          # desde la raíz del repo; dry-run: dice qué haría y no toca nada
+bash uninstall.sh --apply  # restaura el backup más reciente (antes hace backup del estado actual)
+bash uninstall.sh --list   # enumera los backups disponibles
+```

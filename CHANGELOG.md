@@ -7,27 +7,6 @@ etiquetado.
 
 ## [Unreleased]
 
-### Changed
-
-- **La plantilla de instrucciones es modular**: `kit/claude/AGENTS.md` es el núcleo común a
-  Claude Code, Codex y opencode, y `kit/claude/CLAUDE.md` una capa fina que lo importa con
-  `@AGENTS.md`. Lleva una línea de precedencia, los desempates (una ronda de aclaración; el
-  test tras la lógica nueva) y «ceremonia según riesgo»; sale Headroom, que el kit no instala.
-  `install.sh` copia los dos; `test_claude_md_template.sh` vigila sus techos y que toda ruta
-  citada exista.
-- **`/handoff` del mod `cockpit` escribe `.claude/estado/nucleo.md`** en la raíz git (o el cwd)
-  en vez de un fichero en `$TMPDIR`: el tmpfs se pierde al reiniciar y duplicaba el
-  `nucleo.md`, que se quedaba desfasado. El fork devuelve solo las secciones que cambian y el
-  código las fusiona: «Encargo original» e «Invariantes» se conservan byte a byte (regenerar el
-  estado entero es lo que pierde detalle). Copias `nucleo.prev-<sello>.md`, se guardan 3, y
-  `.claude/estado/` va a `.git/info/exclude` si git no lo ignora. Secciones nuevas: Encargo
-  original, Siguiente acción, Ficheros tocados, No repetir.
-- **La retoma tras `/clear` la hace el hook `session-start-clear.sh`** (SessionStart
-  `startup|clear`, registrado en `kit/claude/settings.json`), no un prompt del mod: es nativo,
-  funciona sin cockpit y no compite con un mensaje de la persona enviado durante el `/clear`.
-  Entrega `nucleo.md` (≤ 8 KB, sin secciones CERRADA) como datos, con el protocolo de arranque:
-  `git log`/`git status`/oráculo, manda git, y lo irreversible se confirma.
-
 ### Added
 
 - **Herramientas de medida y memoria en `scripts/`**: `compact-audit.py` (compactaciones:
@@ -101,22 +80,35 @@ etiquetado.
 
 ### Changed
 
+- **La instalación se explica en un solo sitio: `kit/docs/02-install.md`.** Estaba contada
+  cuatro veces (README, `kit/README.md`, `02-install.md` y `10-onboarding.md`) y las copias
+  divergían. `02-install.md` absorbe lo que solo estaba fuera —`make bootstrap`, el modo
+  diff-first con `--apply`/`--plan`, la fusión de `settings.json`, la Capa 2 de secretos, el
+  aviso de CRLF y desinstalar— y el resto queda en un párrafo corto con enlace.
+- **La plantilla de instrucciones es modular**: `kit/claude/AGENTS.md` es el núcleo común a
+  Claude Code, Codex y opencode, y `kit/claude/CLAUDE.md` una capa fina que lo importa con
+  `@AGENTS.md`. Lleva una línea de precedencia, los desempates (una ronda de aclaración; el
+  test tras la lógica nueva) y «ceremonia según riesgo»; sale Headroom, que el kit no instala.
+  `install.sh` copia los dos; `test_claude_md_template.sh` vigila sus techos y que toda ruta
+  citada exista.
+- **`/handoff` del mod `cockpit` escribe `.claude/estado/nucleo.md`** en la raíz git (o el cwd)
+  en vez de un fichero en `$TMPDIR`: el tmpfs se pierde al reiniciar y duplicaba el
+  `nucleo.md`, que se quedaba desfasado. El fork devuelve solo las secciones que cambian y el
+  código las fusiona: «Encargo original» e «Invariantes» se conservan byte a byte (regenerar el
+  estado entero es lo que pierde detalle). Copias `nucleo.prev-<sello>.md`, se guardan 3, y
+  `.claude/estado/` va a `.git/info/exclude` si git no lo ignora. Secciones nuevas: Encargo
+  original, Siguiente acción, Ficheros tocados, No repetir.
+- **La retoma tras `/clear` la hace el hook `session-start-clear.sh`** (SessionStart
+  `startup|clear`, registrado en `kit/claude/settings.json`), no un prompt del mod: es nativo,
+  funciona sin cockpit y no compite con un mensaje de la persona enviado durante el `/clear`.
+  Entrega `nucleo.md` (≤ 8 KB, sin secciones CERRADA) como datos, con el protocolo de arranque:
+  `git log`/`git status`/oráculo, manda git, y lo irreversible se confirma.
 - **Banda de handoff del cockpit (0.2.1).** Los botones pierden la letra delante (`guardar
   + /clear`, `solo guardar`; las teclas `y`/`g` siguen activas) y «n cancelar» pasa a ser
   `no guardar + /clear`, que limpia sin escribir handoff (cancelar es pulsar `handoff` otra
   vez). La fila amarilla usa `columnGap`: `gap` también separa las líneas partidas por
   `flexWrap` y dejaba una fila en blanco en anchos estrechos. Test falsable en
   `tests/cockpit.test.tsx`.
-
-### Removed
-
-- **`charlas/` y `docs/superpowers/` salen del árbol.** Las charlas tenían su propia
-  audiencia y `docs/superpowers/` eran planes y registros de proceso ya ejecutados; el repo
-  queda centrado en el kit y el harness. Con las charlas se va `LICENSE-DOCS` (CC BY 4.0, que
-  solo las cubría): el repo queda bajo MIT. Todo sigue en el historial de git.
-
-### Documentation
-
 - **`LICENSE` es ahora el texto MIT literal: renombrarlo no bastaba.** En la 1.2.0 se
   intercambiaron los nombres para que el fichero que GitHub inspecciona fuese el del
   software, y la API pasó de `license: null` a `Other` / `NOASSERTION`: encontraba el
@@ -131,7 +123,26 @@ etiquetado.
   convención. `README.md` explica el porqué en el sitio donde alguien lo busca. No cambia
   ninguna condición de licencia: cambia qué fichero las contiene.
 
-### Testing
+### Removed
+
+- **Headroom se retira del kit.** Medido sobre 12 322 peticiones reales: ahorro propio
+  0,2-0,6 % del coste, latencia añadida p50 40 ms, y el 89 % del «ahorro» que enseñaba su
+  medidor era la búsqueda nativa de herramientas de Claude Code. Salen `install.sh
+  --with-headroom`, `test_with_headroom.sh`, `test_headroom_guardrails.sh`, los checks de la
+  unidad y los logs del proxy en `doctor.sh`, los comprobadores de su doc en
+  `test_doc_claims.sh`, la pista de `make bootstrap` y sus pasos de CI. `03-headroom.md` pasa
+  a `kit/docs/archive/` con una cabecera ADR. `doctor.sh` conserva el check de enrutado: un
+  `ANTHROPIC_BASE_URL` que sobreviva a la retirada y apunte a un puerto muerto sigue siendo `FAIL`.
+- **LangSmith sale del eval.** Se borran `kit/evals/langsmith_push.py` y
+  `kit/evals/langsmith_local.py`, los objetivos `make langsmith-local`/`langsmith-arbol`, sus
+  bloques de `test_evals.sh` y los mutantes M19, M20 y M37. La interfaz local de trazas es
+  Phoenix (`phoenix_push.py`, openinference), que ya tenía su propio sensor de la fila retirada.
+- **`charlas/` y `docs/superpowers/` salen del árbol.** Las charlas tenían su propia
+  audiencia y `docs/superpowers/` eran planes y registros de proceso ya ejecutados; el repo
+  queda centrado en el kit y el harness. Con las charlas se va `LICENSE-DOCS` (CC BY 4.0, que
+  solo las cubría): el repo queda bajo MIT. Todo sigue en el historial de git.
+
+### Fixed
 
 - **El sensor de `[Unreleased]` enrojecía un CHANGELOG correcto, y se vio al estrenar el
   procedimiento de release.** `test_doc_claims.sh` juzga las cifras de inventario de esa

@@ -155,7 +155,7 @@ fi
 #
 # Se consulta /readyz y no /health: /health es agregado y se pone en rojo si
 # CUALQUIER subcomprobacion falla -- por ejemplo el backend semantico de
-# compresion, que es legitimo no instalar (ver docs/03-headroom.md). /readyz
+# compresion, que es legitimo no instalar. /readyz
 # responde a lo unico que decide aqui: puede atender trafico o no.
 # La URL que se sondea sale de la MISMA enumeracion de ambitos que cuenta el 5e, y en el
 # orden de precedencia real de Claude Code (proyecto local -> proyecto -> usuario). Antes se
@@ -233,7 +233,7 @@ if [ -n "$base_url" ]; then
   if probe_url "${base_url%/}/readyz" || probe_url "${base_url%/}/health" || probe_url "$base_url"; then
     pass "API enrutada a $base_url y el proxy responde  (fuente: GET /readyz)"
   else
-    fail "API enrutada a $base_url por $base_src pero ahi no contesta nadie: Claude Code no podra conectar. Arranca el proxy (docs/03-headroom.md) o quita ANTHROPIC_BASE_URL de $base_src"
+    fail "API enrutada a $base_url por $base_src pero ahi no contesta nadie: Claude Code no podra conectar. Arranca el proxy o quita ANTHROPIC_BASE_URL de $base_src"
   fi
 elif [ "$rutas_declaradas" -gt 0 ]; then
   # Declarado con la cadena vacia: no enruta a ninguna parte, pero decir "API directa"
@@ -259,87 +259,12 @@ elif [ "$rutas_declaradas" -eq 1 ]; then
   pass "enrutado declarado en un solo sitio:$rutas_detalle  (fuente: jq sobre settings*.json de usuario, del cwd y de los proyectos de ~/.claude.json)"
 fi
 
-# 5a. Headroom (opcional -> WARN). `headroom` y `rtk` son DOS proyectos distintos
-# (ver docs/03-headroom.md): el proxy HTTP en :8787 y el filtro de salida de CLI
-# que el kit ya NO cablea (el hook `rtk hook claude` se retiró). Se comprueban aparte porque
-# con un solo `command -v rtk`, una instalación con rtk pero sin el proxy daba
-# "Headroom presente" siendo falso, y al revés.
-if command -v headroom >/dev/null 2>&1; then
-  pass "Headroom (proxy) presente  (fuente: command -v headroom)"
-
-  # El modo pesa mas que cualquier otro ajuste. `token` reescribe los turnos anteriores
-  # e invalida el prefijo cacheado, que es de donde sale casi todo el ahorro. Medido en
-  # una maquina real: el 95,4 % del input son lecturas de cache, asi que `token` tendria
-  # que comprimir el 85 % del contexto solo para EMPATAR con `cache`, y comprime el 4,2 %
-  # de media. No se confia en el default porque la herramienta se contradice sobre cual es.
-  hr_unit="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/headroom-proxy.service"
-  if [ -f "$hr_unit" ]; then
-    if grep -qE '^ExecStart=.*--mode[ =]cache' "$hr_unit"; then
-      pass "el proxy arranca en --mode cache  (fuente: ExecStart de headroom-proxy.service)"
-    else
-      fail "headroom-proxy.service no fija --mode cache: en modo token se invalida el prefijo cacheado y el coste sube en vez de bajar (ver docs/03-headroom.md)"
-    fi
-    if grep -qE '^ExecStart=.*(--budget|--log-messages)' "$hr_unit"; then
-      fail "headroom-proxy.service arranca con --budget o --log-messages: el primero devuelve HTTP 200 con cuerpo vacio al agotarse (parece un fallo del cliente); el segundo escribe la conversacion entera en claro a disco"
-    fi
-
-    # El endurecimiento puede vivir en la unidad o en un drop-in, asi que se leen
-    # los dos: un grep solo al fichero de la unidad daria verde falso en una maquina
-    # arreglada con drop-in, y rojo falso en la que lo tiene en la unidad.
-    hr_efectivo="$(cat "$hr_unit" "${hr_unit}.d"/*.conf 2>/dev/null)"
-    case "$hr_efectivo" in
-      *InaccessiblePaths*) : ;;
-      *) warn "la unidad de headroom no declara InaccessiblePaths: con ProtectHome=read-only el proxy puede LEER ~/.ssh, ~/.aws, ~/.gnupg y ~/.config/gh. Añade: InaccessiblePaths=-%h/.ssh -%h/.aws -%h/.gnupg -%h/.config/gh" ;;
-    esac
-  fi
-
-  # --log-messages es opt-in y su propio --help avisa "may log sensitive data": guarda
-  # request_messages, o sea la conversacion completa. Medido: 36 conversaciones (12 MB)
-  # seguian en un fichero 0644 dos semanas despues de la sesion que las genero.
-  hr_jsonl="$HOME/.headroom/logs/proxy.jsonl"
-  if [ -f "$hr_jsonl" ] && grep -qm1 '"request_messages":[[:space:]]*\[' "$hr_jsonl" 2>/dev/null; then
-    fail "$hr_jsonl guarda cuerpos de peticion (request_messages): conversaciones en claro en disco. Borra el fichero y no arranques el proxy con --log-messages"
-  fi
-
-  # La otra mitad de la fuga, y la que estaba sin vigilar: compression_store
-  # escribe en proxy.log, a nivel INFO y con --log-messages APAGADO, hasta 4096
-  # chars de conversacion literal por cada event=headroom_retrieve. Su marca no es
-  # request_messages sino payload_preview con contenido. Medido el 2026-09-03 contando
-  # las seis franjas de rotacion: 592 lineas ese mismo dia (una medicion contra una
-  # sola franja habia dado 100). Se apaga con Environment=HEADROOM_LOG_PAYLOAD_PREVIEW=0
-  # en la unidad; no vale /admin/runtime-env, que no conoce esa clave.
-  hr_log="$HOME/.headroom/logs/proxy.log"
-  if [ -f "$hr_log" ] && grep -qm1 '"payload_preview":[[:space:]]*"[^"]' "$hr_log" 2>/dev/null; then
-    fail "$hr_log guarda payload_preview con contenido: conversacion en claro en disco. Apagalo con Environment=HEADROOM_LOG_PAYLOAD_PREVIEW=0 en la unidad, borra o rota el log ya escrito, y reinicia el servicio"
-  fi
-  if [ -d "$HOME/.headroom" ]; then
-    hr_perm="$(stat -c '%a' "$HOME/.headroom" 2>/dev/null || echo '')"
-    case "$hr_perm" in
-      700|750|'') : ;;
-      *) warn "$HOME/.headroom tiene permisos $hr_perm: ahi vive material derivado de tus prompts (ccr_store.db, savings_events.jsonl). Corrigelo con: chmod 700 \"\$HOME/.headroom\"" ;;
-    esac
-  fi
-
-  # logs/ aparte: nace con el umask del proceso (medido: 0002 -> ficheros 664), asi
-  # que el 700 del directorio padre no lo cubre. Solo lo protege que ~/.headroom
-  # bloquee el paso, y eso es una sola linea de defensa. Este 0002/664 son los FICHEROS
-  # que escribe el proxy real; no es el mismo dato que el 755 de
-  # kit/test/test_headroom_guardrails.sh:56, que es el directorio que crea mkdir bajo el
-  # umask 022 de la shell de test.
-  if [ -d "$HOME/.headroom/logs" ]; then
-    hr_lperm="$(stat -c '%a' "$HOME/.headroom/logs" 2>/dev/null || echo '')"
-    case "$hr_lperm" in
-      700|750|'') : ;;
-      *) warn "$HOME/.headroom/logs tiene permisos $hr_lperm: ahi vive el log del proxy. Corrigelo con chmod 700 y añade UMask=0077 a la unidad para las rotaciones futuras" ;;
-    esac
-  fi
-else
-  warn "Headroom (proxy) no instalado (opcional; ver docs/03-headroom.md)"
-fi
+# 5a. rtk (opcional -> WARN): filtro de salida de CLI que el kit ya NO cablea
+# (el hook `rtk hook claude` se retiró).
 if command -v rtk >/dev/null 2>&1; then
   pass "rtk (filtro de salida de CLI) presente  (fuente: command -v rtk)"
 else
-  warn "rtk no instalado (opcional): el kit no lo cablea -- ningun hook de settings.json lo invoca -- y solo lo deja permitido en permissions.allow; ver docs/03-headroom.md"
+  warn "rtk no instalado (opcional): el kit no lo cablea -- ningun hook de settings.json lo invoca -- y solo lo deja permitido en permissions.allow; ver docs/08-plugins-mcp-y-skills.md"
 fi
 
 # 5b. gitleaks (opcional -> WARN): requerido solo para activar la Capa 2 de
