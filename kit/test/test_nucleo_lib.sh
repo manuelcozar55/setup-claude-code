@@ -72,7 +72,7 @@ S=$(nucleo_emitir "$A")
 ok "### bajo TAREA ACTUAL: el encargo llega" "$(command grep -c ENCARGO-ANIDADO <<<"$S")" 1
 ok "### bajo TAREA ACTUAL: el plan llega" "$(command grep -c PLAN-ANIDADO <<<"$S")" 1
 ok "### bajo TAREA ACTUAL: verificación llega" "$(command grep -c '^make test' <<<"$S")" 1
-ok "### sin clave: contenido de la sección viva" "$(command grep -c HECHO-AJENO <<<"$S")" 1
+ok "### fuera de plantilla: no llega" "$(command grep -c HECHO-AJENO <<<"$S")" 0
 # Un ### sin clave de plantilla es contenido: «### Fase 1» dentro de «## Plan» cortaba el resto del plan.
 F=$T/fases.md
 printf '%s\n' '# Estado' '## Plan' '### Fase 1' '- [ ] FASE-A' '### Fase 2' '- [ ] FASE-B' >"$F"
@@ -96,10 +96,18 @@ printf '%s\n' '# Estado' '## Plan' '- [ ] p' "${R// /r}" '### Paso actual' 'PA-H
 S=$(nucleo_emitir "$F")
 ok "### hermanas bajo ## Plan: secciones propias" "$(command grep -c '^### Paso actual$\|^PA-HERMANA$\|^### Pendientes$\|^- Q-HERMANA$' <<<"$S")" 4
 ok "### hermanas bajo ## Plan: nada recortado" "$(command grep -c 'recortado' <<<"$S")" 0
-# Bajo «## TAREA ACTUAL» un ### sin clave es contenido de la sección viva, no la corta.
+# Bajo un ## que no es de plantilla, un ### sin clave cierra la sección y cuenta en fuera: la historia
+# cerrada («### Hecho») no puede colarse como pendiente sin aviso.
 F=$T/nota.md
 printf '%s\n' '# Estado' '## TAREA ACTUAL' '### Encargo original' 'E-ENC' '### Nota' 'N-NOTA' '### Plan' '- [ ] X-PLAN' >"$F"
-ok "### sin clave bajo TAREA ACTUAL: es contenido" "$(nucleo_emitir "$F" | command grep -c '^### Nota$\|E-ENC\|N-NOTA\|X-PLAN')" 4
+S=$(nucleo_emitir "$F")
+ok "### sin clave bajo TAREA ACTUAL: cierra la sección" "$(command grep -c 'E-ENC\|N-NOTA\|X-PLAN' <<<"$S")" 2
+ok "### sin clave bajo TAREA ACTUAL: cuenta en fuera" "$(command grep -c '^\[fuera de forma: 2 secciones' <<<"$S")" 1
+F=$T/hecho.md
+printf '%s\n' '# Estado' '## TAREA ACTUAL' '### Pendientes' '- P-PEND' '### Hecho' 'HECHO-AJENO' >"$F"
+S=$(nucleo_emitir "$F")
+ok "### Hecho tras Pendientes: no se cuela" "$(command grep -c 'P-PEND\|HECHO-AJENO' <<<"$S")" 1
+ok "### Hecho tras Pendientes: avisa fuera de forma" "$(command grep -c '^\[fuera de forma: 2 secciones' <<<"$S")" 1
 # Cercas equilibradas: un «## Plan» citado en un bloque es inerte y el Plan real llega como sección.
 F=$T/cerca-citada.md
 # shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
