@@ -308,6 +308,9 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
     const cwd = (await $.session.cwd()).replace(/[\\/]+$/, '')
     // Misma raíz que nucleo_raiz (hooks/lib/nucleo.sh), o el hook de arranque no encuentra lo que se escribe aquí:
     // git desde el cwd de la sesión (no el del proceso del mod), y $HOME/.claude/** sube a $HOME.
+    // Límites: nucleo_raiz parte de ${CLAUDE_PROJECT_DIR:-$cwd} y aquí esa variable no se ve (la API no
+    // expone el entorno, solo $.process.run); coinciden mientras el cwd de la sesión sea el del proyecto,
+    // y divergen si la sesión cambió de repo con `cd`. Sin `printenv`, home = '' y no se sube a $HOME.
     const top = await $.process.run(['git', '-C', cwd, 'rev-parse', '--show-toplevel']).catch(() => null)
     const isRepo = top?.exitCode === 0 && !!top.stdout.trim()
     const home = (await $.process.run(['printenv', 'HOME']).catch(() => null))?.stdout.trim().replace(/[\\/]+$/, '') ?? ''
