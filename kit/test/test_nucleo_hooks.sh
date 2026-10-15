@@ -149,6 +149,10 @@ seq 1 2500 >"$FLOG"
 ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: nucleo-freshness.log se acota" "$([ "$(wc -l <"$FLOG")" -le 1001 ] && echo si)" si
 ok "pre-compact: el log acotado conserva lo último y la línea nueva" "$(tail -1 "$FLOG" | cut -d' ' -f2)" s1
+# Si el mv de la rotación falla, el temporal no se queda en session-logs (antes: $FLOG.tmp fijo).
+seq 1 2500 >"$FLOG"
+ev "$R" s1 "$TP" | PATH="$T/mvfalso:$PATH" bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: un mv fallido no deja temporal del log" "$(find "$(dirname "$FLOG")" -type f -name 'nucleo-freshness.log?*' | wc -l)" 0
 
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
 exit $FAIL

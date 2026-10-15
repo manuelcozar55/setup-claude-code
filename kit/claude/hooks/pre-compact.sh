@@ -26,9 +26,11 @@ mkdir -p "$HOME/.claude/session-logs" 2>/dev/null \
   && printf '%s %s %s %s\n' "$(date +%FT%T%z)" "${SID:--}" "${PCT:--}" "$([ -n "$MT" ] && echo $(( $(date +%s) - MT )) || echo -1)" \
      >>"$HOME/.claude/session-logs/nucleo-freshness.log"
 # Una línea por compactación y nadie la leía entera: se acota a las últimas 1000 al pasar de 2000.
+# Temporal único en el mismo directorio (mv atómico) y borrado si algo falla. Aceptado: con dos
+# compactaciones a la vez se puede perder la línea que la otra añada entre el tail y el mv.
 FLOG="$HOME/.claude/session-logs/nucleo-freshness.log"
-if [ "$(wc -l <"$FLOG" 2>/dev/null || echo 0)" -gt 2000 ]; then
-  tail -n 1000 "$FLOG" >"$FLOG.tmp" 2>/dev/null && mv -f -- "$FLOG.tmp" "$FLOG" 2>/dev/null
+if [ "$(wc -l <"$FLOG" 2>/dev/null || echo 0)" -gt 2000 ] && FTMP=$(mktemp "$FLOG.XXXXXX" 2>/dev/null); then
+  { tail -n 1000 "$FLOG" >"$FTMP" && mv -f -- "$FTMP" "$FLOG"; } 2>/dev/null || rm -f -- "$FTMP"
 fi
 
 [ -d "$ESTADO" ] || exit 0

@@ -74,13 +74,23 @@ if [ "$args" = "-I -S $fakepy extra" ]; then ok; else ko "--python debe pasar -I
 # --- (i) cada hook Python del kit arranca por la resolución real del wrapper y sale 0 con `{}` ---
 # `--python` es lo que cablea settings.json (intérprete elegido por el wrapper, con -I -S): se mide
 # esa ruta, no un python3 suelto. HOME desechable: lo que se mide es el arranque, no la decisión.
+# rc 0 no basta: un hook que atrapa la excepción y falla en abierto sale 0 con el ImportError en
+# stderr. Se exige además un stderr sin ImportError ni ModuleNotFoundError.
 phome="$(mktemp -d)"
+arranca(){ # hook [intérprete]; deja el motivo en $why
+  local err rc
+  err="$(echo '{}' | env ${2:+"PYTHON_HOOK_BIN=$2"} HOME="$phome" "$W" --python "$1" 2>&1 >/dev/null)"; rc=$?
+  why="rc=$rc: $err"
+  [ "$rc" -eq 0 ] && ! printf '%s' "$err" | grep -qE 'ImportError|ModuleNotFoundError'
+}
 for hook in "$KIT"/claude/hooks/*.py "$KIT"/sentinel/*.py; do
-  out="$(echo '{}' | HOME="$phome" "$W" --python "$hook" 2>&1)"; rc=$?
-  if [ "$rc" -eq 0 ]; then ok; else ko "$(basename "$hook") no arranca por optional-hook.sh --python (rc=$rc): $out"; fi
+  if arranca "$hook"; then ok; else ko "$(basename "$hook") no arranca limpio por optional-hook.sh --python ($why)"; fi
 done
+# Falsable: un intérprete que sale 0 con un ModuleNotFoundError en stderr no puede pasar.
+brokenpy="$(mktemp)"; printf '#!/bin/sh\necho "ModuleNotFoundError: No module named x" >&2\nexit 0\n' > "$brokenpy"; chmod +x "$brokenpy"
+if arranca "$KIT/sentinel/sentinel_preflight.py" "$brokenpy"; then ko "(i) da por bueno un ModuleNotFoundError con rc 0"; else ok; fi
 rm -r -- "$phome"
 
-rm -f "$blocker" "$allower" "$echoer" "$fakepy"
+rm -f "$blocker" "$allower" "$echoer" "$fakepy" "$brokenpy"
 echo "PASS=$pass FAIL=$fail"
 [ "$fail" -eq 0 ]
