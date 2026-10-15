@@ -140,7 +140,7 @@ function describe(e: { tool: string }): string {
     v => typeof v === 'string' && v.length > 0,
   )
   // The row truncates at its end: a whole path would leave only its root in view, so keep its tail.
-  const text = arg !== undefined && arg === i.file_path ?String(arg).split('/').slice(-2).join('/') : String(arg ?? '')
+  const text = arg !== undefined && arg === i.file_path ? String(arg).split('/').slice(-2).join('/') : String(arg ?? '')
   return `${e.tool} ${text.split('\n')[0]}`.trim().slice(0, 140)
 }
 
