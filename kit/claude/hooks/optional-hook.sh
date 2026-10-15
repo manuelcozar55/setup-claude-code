@@ -47,7 +47,8 @@ if [ "${1:-}" = "--python" ]; then
 
   [ -n "$py" ] && [ -x "$py" ] || exit 0
   [ -n "$script" ] && [ -f "$script" ] || exit 0
-  exec "$py" "$@"
+  # -I -S: sin site ni PYTHON*; los hooks solo usan stdlib y un .pth ajeno no entra en un guard.
+  exec "$py" -I -S "$@"
 fi
 
 cmd="${1:-}"

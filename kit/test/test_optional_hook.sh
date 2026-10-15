@@ -63,6 +63,25 @@ out="$("$W" --python /no/existe/sentinel_preflight.py 2>&1)"; rc=$?
 check "sentinel_preflight.py ausente deniega (exit 2)" 2 "$rc"
 if echo "$out" | grep -q "fail-closed"; then ok; else ko "el aviso fail-closed debe llegar por stderr"; fi
 
-rm -f "$blocker" "$allower" "$echoer"
+# --- (h) --python arranca el intérprete aislado (-I -S) ---------------------
+# Medido en la instalación real: el venv tardaba 22 ms por hook y 8 ms con -I -S, porque site
+# cargaba apport y un .pth editable que apunta a /mnt/c, escribible desde Windows: código ajeno
+# dentro de cada guard. Los hooks del kit solo importan stdlib (lo comprueba (i)).
+fakepy="$(mktemp)"; printf '#!/bin/sh\nprintf "%%s\\n" "$*"\n' > "$fakepy"; chmod +x "$fakepy"
+args="$(PYTHON_HOOK_BIN="$fakepy" "$W" --python "$fakepy" extra 2>&1)"
+if [ "$args" = "-I -S $fakepy extra" ]; then ok; else ko "--python debe pasar -I -S antes del script (args: $args)"; fi
+
+# --- (i) cada hook Python del kit arranca con -I -S sin fallar por un import ---
+# Payload vacío por stdin y HOME desechable: lo que se mide es el arranque, no la decisión.
+phome="$(mktemp -d)"
+for hook in "$KIT"/claude/hooks/*.py "$KIT"/sentinel/*.py; do
+  out="$(HOME="$phome" python3 -I -S "$hook" </dev/null 2>&1)"; rc=$?
+  if echo "$out" | grep -qE 'ModuleNotFoundError|ImportError'; then
+    ko "$(basename "$hook") no arranca con -I -S (rc=$rc): $out"
+  else ok; fi
+done
+rm -r -- "$phome"
+
+rm -f "$blocker" "$allower" "$echoer" "$fakepy"
 echo "PASS=$pass FAIL=$fail"
 [ "$fail" -eq 0 ]
