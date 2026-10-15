@@ -61,4 +61,16 @@ ok "env 250 000 sin [1m] → airbag de 167 000" "$(CLAUDE_CODE_AUTO_COMPACT_WIND
 ok "env 250 000 con [1m] en ANTHROPIC_MODEL → 217 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='m[1m]' nucleo_ctx "$T/t.jsonl")" "100000 46"
 printf '{"model": "m[1m]"}\n' >"$HOME/.claude/settings.json"
 ok "env 250 000 con [1m] en settings.json → 217 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='' nucleo_ctx "$T/t.jsonl")" "100000 46"
+
+# Forma vista en vivo (15-oct): la tarea bajo «## TAREA ACTUAL» con sus secciones en ###. Solo
+# con ## se inyectaba el título (148 chars) y el modelo retomaba a ciegas.
+A=$T/anidado.md
+printf '%s\n' '# Estado global' '## Hecho recientemente' '- cosa vieja' '## TAREA ACTUAL (15-oct): cerrar X' \
+  '### Encargo original (literal)' 'ENCARGO-ANIDADO' '### Plan' '- [ ] PLAN-ANIDADO' '### Hechos que corrigen' 'HECHO-AJENO' \
+  '### Comandos de verificación' 'make test' >"$A"
+S=$(nucleo_emitir "$A")
+ok "### bajo TAREA ACTUAL: el encargo llega" "$(command grep -c ENCARGO-ANIDADO <<<"$S")" 1
+ok "### bajo TAREA ACTUAL: el plan llega" "$(command grep -c PLAN-ANIDADO <<<"$S")" 1
+ok "### bajo TAREA ACTUAL: verificación llega" "$(command grep -c '^make test' <<<"$S")" 1
+ok "### fuera de plantilla: no llega" "$(command grep -c HECHO-AJENO <<<"$S")" 0
 exit $FAIL

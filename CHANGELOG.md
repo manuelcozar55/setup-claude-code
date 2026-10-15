@@ -188,6 +188,9 @@ etiquetado.
   `prompt_cache_likely_expired` y ≥ 100 000 tokens, un `systemMessage` propone `/handoff`: el
   turno siguiente reescribe el contexto entero (medido: 96 % del prefijo tras > 1 h), así que
   retomar limpio cuesta casi lo mismo.
+- **`nucleo_emitir` reconoce las secciones en `###`.** Las sesiones escriben la tarea como
+  `## TAREA ACTUAL` con `### Encargo original`, `### Plan`…; solo con `##` el inyector entregaba
+  el título (148 chars de un nucleo real de 7,7 KB) y el modelo retomaba a ciegas.
 - **Sentinel ya no lee el allowlist del directorio de trabajo.** Un repo clonado con
   `.security/sentinel-allowlist.json` podía convertir en `allow` el deny de un `.env` o,
   con `[]`/`{"paths":null}`, tumbar toda herramienta con exit 2. Solo cuenta el de `$HOME`;

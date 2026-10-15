@@ -48,10 +48,11 @@ nucleo_emitir() {
   LC_ALL=C awk -v f="$1" -v kb="$(( ($(wc -c <"$1") + 1023) / 1024 ))" -v sec=3000 -v tope=6500 '
     BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|") }
     function sale(s) { out = out s "\n"; usado += length(s) + 1 }
-    /^##? / {
+    # ### también: las sesiones escriben la tarea como «## TAREA ACTUAL» con sus secciones en ###.
+    /^#(#|##)? / {
       viva = 0; dentro = 0
       if ($0 ~ /^# /) { if (!titulo) { titulo = 1; sale(substr($0, 1, 200)) } else fuera++; next }
-      t = substr($0, 4); c = ""
+      t = $0; sub(/^#+ /, "", t); c = ""
       for (i = 1; i <= n; i++) if (index(t, k[i]) == 1) c = (k[i] == "Encargo original") ? "Objetivo" : k[i]
       if (c == "" || visto[c]++) { fuera++; next }
       if (usado + length($0) > tope) { omitidas = omitidas " «" substr(t, 1, 80) "»"; next }
