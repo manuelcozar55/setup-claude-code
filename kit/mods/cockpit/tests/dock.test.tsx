@@ -193,3 +193,18 @@ test('dock: una herramienta en marcha es actividad; el agente solo se atasca 2 m
   expect(await ui.find({ type: 'Text', text: 'Parados · 1' })).toBeTruthy()
   expect(await ui.find({ text: /2m0\ds sin actividad/ })).toBeTruthy()
 })
+
+test('dock: waiting e idle están parados por diseño: siguen en Trabajando con su motivo y no se atascan', async ($, on) => {
+  const first = await mountDock($ as never, on as never, 56, undefined, [
+    { id: 'w1', description: 'Aplicar el plan', type: 'general', status: 'waiting' },
+    { id: 'i1', description: 'Revisor', type: 'teammate', status: 'idle' },
+  ])
+  await first.clock.advance(300_000)
+  await first.ui.unmount()
+  const ui = await first.mount()
+  expect(await ui.find({ type: 'Text', text: 'Trabajando · 2' })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: 'Parados · 0' })).toBeTruthy()
+  expect(await ui.find({ text: /en espera \(aprobación o tarea en segundo plano\)/ })).toBeTruthy()
+  expect(await ui.find({ text: /en espera de un mensaje/ })).toBeTruthy()
+  expect(await ui.find({ text: /sin actividad/ })).toBeFalsy()
+})

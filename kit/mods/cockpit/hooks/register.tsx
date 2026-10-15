@@ -19,6 +19,9 @@ const isMissionOpen = atom({ plugin: 'cockpit', key: 'isMissionOpen' } as const,
 
 const PINK = '#ff4f9a'
 const DONE = new Set(['completed', 'failed', 'killed'])
+// Held by design (AgentStatus): a plan's approval, background work it owns, or a teammate
+// between turns. No tool call is due, so the stall clock does not apply.
+const HELD = new Set(['waiting', 'idle'])
 const STUCK_MS = 120_000
 const TEAM_SIZES = [1, 3, 5, 10, 20, 50, 100]
 const WARN_AT = [70, 85]
@@ -638,7 +641,7 @@ export const register: Register = on => {
     const cols = Math.max(24, e.props.bodyColumns)
     const [ag, ts, tn, size, t, isOpen] = await Promise.all([read($, agents), read($, tasks), read($, turn), read($, team), read($, now), read($, isMissionOpen)])
     const tick = Math.max(t, tn.startedAt)
-    const isStuck = (a: AgentRow) => !DONE.has(a.status) && a.status !== 'pending' && tick - a.lastActiveAt > STUCK_MS
+    const isStuck = (a: AgentRow) => !DONE.has(a.status) && !HELD.has(a.status) && a.status !== 'pending' && tick - a.lastActiveAt > STUCK_MS
     // Working is the leftover, so a status this code does not know still shows somewhere.
     const working = ag.filter(a => !DONE.has(a.status) && a.status !== 'pending' && !isStuck(a))
     const queued = ag.filter(a => a.status === 'pending')
@@ -683,6 +686,7 @@ export const register: Register = on => {
         {list.map(a => row(a, glyph(a), color, note(a)))}
       </Box>
     )
+    const workNote = (a: AgentRow) => (a.status === 'waiting' ? 'en espera (aprobación o tarea en segundo plano)' : a.status === 'idle' ? 'en espera de un mensaje' : a.activity)
     const stopNote = (a: AgentRow) => (a.status === 'failed' ? 'falló' : a.status === 'killed' ? 'detenido' : `${elapsed(tick - a.lastActiveAt)} sin actividad`)
     const stopGlyph = (a: AgentRow) => (a.status === 'failed' ? '✗' : a.status === 'killed' ? '■' : '◌')
 
@@ -718,7 +722,7 @@ export const register: Register = on => {
           <Text dimColor wrap="wrap">Ningún subagente todavía. Elige un tamaño de equipo para que Claude reparta el trabajo.</Text>
         ) : (
           <Box flexDirection="column">
-            {section('Trabajando', 'permission', working, () => '●', a => a.activity)}
+            {section('Trabajando', 'permission', working, () => '●', workNote)}
             {section('En cola', 'inactive', queued, () => '○', () => undefined)}
             {section('Parados', 'error', stuck, stopGlyph, stopNote)}
             {section('Hechos', 'success', finished, () => '✓', () => undefined)}
