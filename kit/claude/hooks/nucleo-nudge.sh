@@ -12,7 +12,9 @@ case "${SID:-}" in ''|*[!A-Za-z0-9_-]*) exit 0;; esac   # va a un nombre de fich
 [ -f "${TP:-}" ] || exit 0
 # shellcheck source=SCRIPTDIR/lib/nucleo.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
-NUC="$(nucleo_raiz "${CWD:-$PWD}")/.claude/estado/nucleo.md"
+RAIZ=$(nucleo_raiz "${CWD:-$PWD}")
+nucleo_enlazado "$RAIZ" && exit 0
+NUC="$RAIZ/.claude/estado/nucleo.md"
 MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
 EDAD=$(( $(date +%s) - ${MT:-0} ))
 [ -z "$MT" ] || [ "$EDAD" -gt 600 ] || exit 0

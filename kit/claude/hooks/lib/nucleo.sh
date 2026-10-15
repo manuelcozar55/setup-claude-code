@@ -5,21 +5,32 @@
 # convertido en diario: por encima de 10 000 chars el harness manda la salida a fichero.
 
 # nucleo_raiz <cwd>: raíz del proyecto dueño de <raíz>/.claude/estado/nucleo.md. Toplevel git de
-# CLAUDE_PROJECT_DIR (o del cwd); sin git, ese mismo directorio. Lo que cae dentro de un .claude/ sube
-# a su padre: desde $HOME/.claude/estado el nucleo es $HOME/.claude/estado/nucleo.md, no uno anidado.
+# CLAUDE_PROJECT_DIR (o del cwd); sin git, ese mismo directorio. Lo que cae dentro de $HOME/.claude sube
+# a $HOME: desde $HOME/.claude/estado el nucleo es $HOME/.claude/estado/nucleo.md, no uno anidado. Solo
+# ese: un worktree de `claude --worktree` vive en <repo>/.claude/worktrees/<rama> y es su propia raíz.
 nucleo_raiz() {
   local base=${CLAUDE_PROJECT_DIR:-$1} r
   r=$(git -C "$base" rev-parse --show-toplevel 2>/dev/null) || r=$base
-  r=${r%%/.claude/*}; r=${r%/.claude}
+  case $r in "$HOME/.claude" | "$HOME/.claude/"*) r=$HOME ;; esac
   printf '%s\n' "$r"
 }
 
+# nucleo_enlazado <raíz>: .claude/estado o nucleo.md es un symlink. El repo puede ser de terceros: con
+# un enlace decidiría qué fichero de fuera se inyecta y dónde se escribe el checkpoint (con prompts).
+nucleo_enlazado() { [ -L "$1/.claude/estado" ] || [ -L "$1/.claude/estado/nucleo.md" ]; }
+
 # nucleo_ctx <transcript>: "tokens pct", con pct sobre el airbag (ventana − 33 000, la línea en la
-# que compacta solo). Nada si el transcript no trae uso.
+# que compacta solo). Nada si el transcript no trae uso. La ventana es min(la del modelo, el env), como
+# en el binario: sin [1m] el modelo tiene 200 000 y un env mayor no sube el airbag.
 nucleo_ctx() {
   local w=${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-200000} t
   case "$w" in ''|*[!0-9]*) w=200000;; esac
   [ "$w" -gt 33000 ] || w=200000
+  if [ "$w" -gt 200000 ]; then
+    case ${ANTHROPIC_MODEL:-} in *'[1m]'*) ;; *)
+      command grep -qs '"model"[[:space:]]*:[[:space:]]*"[^"]*\[1m\]' "$HOME/.claude/settings.json" || w=200000 ;;
+    esac
+  fi
   # Sin `timeout`: 40 líneas no cuelgan a jq, y en coreutils de Rust arrancarlo cuesta ~100 ms.
   t=$(tail -n 40 "$1" 2>/dev/null \
     | jq -rR 'fromjson? | select(.type=="assistant" and .message.usage!=null) | .message.usage
@@ -37,24 +48,25 @@ nucleo_emitir() {
   LC_ALL=C awk -v f="$1" -v kb="$(( ($(wc -c <"$1") + 1023) / 1024 ))" -v sec=3000 -v tope=6500 '
     BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|") }
     function sale(s) { out = out s "\n"; usado += length(s) + 1 }
-    /^#{1,2} / {
+    /^##? / {
       viva = 0; dentro = 0
-      if ($0 ~ /^# /) { if (!titulo) { titulo = 1; sale($0) } else fuera++; next }
+      if ($0 ~ /^# /) { if (!titulo) { titulo = 1; sale(substr($0, 1, 200)) } else fuera++; next }
       t = substr($0, 4); c = ""
       for (i = 1; i <= n; i++) if (index(t, k[i]) == 1) c = (k[i] == "Encargo original") ? "Objetivo" : k[i]
       if (c == "" || visto[c]++) { fuera++; next }
-      if (usado + length($0) > tope) { omitidas = omitidas " «" t "»"; next }
+      if (usado + length($0) > tope) { omitidas = omitidas " «" substr(t, 1, 80) "»"; next }
       viva = 1; sale($0); next
     }
     viva {
       resto = sec - dentro; if (tope - usado < resto) resto = tope - usado
       if (length($0) < resto) { sale($0); dentro += length($0) + 1; next }
       sale(substr($0, 1, resto > 0 ? resto : 0)); viva = 0
-      sale("[recortado: sección incompleta. LEE " f " antes de actuar.]")
+      sale("[recortado: sección incompleta.]"); recortes++
     }
     END {
       printf "%s", out
-      if (omitidas != "") print "[recortado por tope: se omiten" omitidas ". LEE " f " antes de actuar.]"
+      if (omitidas != "") print "[recortado por tope: se omiten" omitidas ".]"
+      if (recortes || omitidas != "") print "[LEE " f " antes de actuar: lo inyectado está incompleto.]"
       if (fuera || kb > 12) print "[fuera de forma: " fuera + 0 " secciones / " kb " KB → muévelas a diario.md, que nunca se inyecta]"
-    }' "$1" | sed 's|</nucleo-datos|<\\/nucleo-datos|g'
+    }' "$1" | sed 's|</|<\\/|g'
 }

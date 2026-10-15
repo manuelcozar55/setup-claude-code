@@ -347,6 +347,7 @@ printf '{"sensitive_paths":{"regex_patterns":["("]}}' > "$SH/kit/iocs.json"
 out=$(sent "$SH" "$READ" "$SH/kit/sentinel_preflight.py")
 [ "$out" = "rc=0" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: iocs.json con regex invalida bloquea un Read inocuo: $out"; }
 : > "$SH/h/.claude/audit-logs"   # un fichero donde iria el directorio: audit_log no puede escribir
+# shellcheck disable=SC2016  # el $ es literal: es el comando que se evalua
 out=$(sent "$SH" '{"tool_name":"Bash","tool_input":{"command":"echo $ANTHROPIC_API_KEY"}}')
 [ "$(echo "$out" | sed '$d' | jq -r '.hookSpecificOutput | select(.hookEventName=="PreToolUse") | .additionalContext' 2>/dev/null | grep -c SENTINEL)" = 1 ] \
   && [ "$(echo "$out" | tail -n1)" = "rc=0" ] && pass=$((pass+1)) \

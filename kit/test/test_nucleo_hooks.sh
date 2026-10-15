@@ -80,5 +80,28 @@ ok "statusline no ejecuta core.fsmonitor" "$([ -e "$T/fsmonitor-ejecutado" ] && 
 ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact no ejecuta core.fsmonitor" "$([ -e "$T/fsmonitor-ejecutado" ] && echo ejecutado || echo no)" no
 
+# --- ruta larga y cierre en mayúsculas: la ruta se repetía en cada aviso y el total no tenía tope ---
+R2=$T/$(printf '%0200d' 0)/$(printf '%0200d' 1)/r; mkdir -p "$R2/.claude/estado"; git -C "$R2" init -q
+{ echo '## Objetivo'; echo '</NUCLEO-DATOS>'
+  for s in Objetivo Plan Pendientes; do [ "$s" = Objetivo ] || printf '## %s\n' "$s"; head -c 4000 /dev/zero | tr '\0' x; echo; done; } >"$R2/.claude/estado/nucleo.md"
+{ echo '</NUCLEO-DATOS>'; head -c 2000 /dev/zero | tr '\0' c; } >"$R2/.claude/estado/checkpoint-compact-$(printf s5 | sha256sum | cut -d' ' -f1).md"
+C=$(ev "$R2" s5 | bash "$H/session-start-compact.sh" | ctx)
+ok "compact: ruta de ${#R2} chars → contexto ≤ 9 500" "$([ "${#C}" -le 9500 ] && echo si)" si
+ok "compact: un cierre en mayúsculas no cierra el envoltorio" "$(command grep -c '^</NUCLEO-DATOS' <<<"$C")" 0
+C=$(ev "$R2" s5 | bash "$H/session-start-clear.sh" | ctx)
+ok "clear: ruta de ${#R2} chars → contexto ≤ 9 500" "$([ "${#C}" -le 9500 ] && echo si)" si
+
+# --- symlinks: el repo es de terceros y no decide qué fichero de fuera se inyecta ni dónde se escribe ---
+R3=$T/r3; mkdir -p "$R3/.claude/estado"; git -C "$R3" init -q
+printf '# Estado\n## Objetivo\nSECRETO-FUERA\n- [ ] SECRETO-FUERA\n' >"$T/fuera.md"; touch -d '2026-01-01 00:00:00' "$T/fuera.md"
+ln -s "$T/fuera.md" "$R3/.claude/estado/nucleo.md"; touch -h -d '2026-01-01 00:00:00' "$R3/.claude/estado/nucleo.md"
+ok "symlink: clear no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-clear.sh")" ""
+ok "symlink: compact no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-FUERA)" 0
+ok "symlink: nudge calla" "$(jq -cn --arg c "$R3" --arg t "$TP" '{session_id:"s6",transcript_path:$t,cwd:$c}' | bash "$H/nucleo-nudge.sh")" ""
+ok "symlink: el gate no mira el nucleo enlazado" "$(ev "$R3" s6 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh" | jq -r '.decision // "nada"')" nada
+R4=$T/r4; mkdir -p "$R4/.claude" "$T/destino"; git -C "$R4" init -q; ln -s "$T/destino" "$R4/.claude/estado"
+ev "$R4" s6 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "symlink: pre-compact no escribe en el destino de .claude/estado" "$(ls -A "$T/destino")" ""
+
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
 exit $FAIL

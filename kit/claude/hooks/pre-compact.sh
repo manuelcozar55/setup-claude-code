@@ -15,6 +15,7 @@ CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 # shellcheck source=SCRIPTDIR/lib/nucleo.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
 RAIZ=$(nucleo_raiz "$CWD")
+nucleo_enlazado "$RAIZ" && exit 0
 ESTADO="$RAIZ/.claude/estado"
 
 # KPI: ts sesión ctx% edad_nucleo_s (-1 si no existe). Se mide con nucleo_audit o con awk.

@@ -30,7 +30,7 @@ SID=$(jq -r '.session_id // empty' <<<"$IN" 2>/dev/null)
 CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 RAIZ=$(nucleo_raiz "$CWD")
 NUC="$RAIZ/.claude/estado/nucleo.md"
-if [ "$(jq -r '.stop_hook_active // false' <<<"$IN" 2>/dev/null)" != true ] && [ -f "$NUC" ]; then
+if [ "$(jq -r '.stop_hook_active // false' <<<"$IN" 2>/dev/null)" != true ] && [ -f "$NUC" ] && ! nucleo_enlazado "$RAIZ"; then
   MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
   # shortcut: el commit puede ir a otro repo (`cd x && git commit`); el modo observe mide si pasa.
   COM=$(tail -n 3000 "$TP" | timeout 5 jq -rR 'fromjson? | select(.type=="assistant" and (.timestamp|type)=="string")
