@@ -71,14 +71,13 @@ fakepy="$(mktemp)"; printf '#!/bin/sh\nprintf "%%s\\n" "$*"\n' > "$fakepy"; chmo
 args="$(PYTHON_HOOK_BIN="$fakepy" "$W" --python "$fakepy" extra 2>&1)"
 if [ "$args" = "-I -S $fakepy extra" ]; then ok; else ko "--python debe pasar -I -S antes del script (args: $args)"; fi
 
-# --- (i) cada hook Python del kit arranca con -I -S sin fallar por un import ---
-# Payload vacío por stdin y HOME desechable: lo que se mide es el arranque, no la decisión.
+# --- (i) cada hook Python del kit arranca por la resolución real del wrapper y sale 0 con `{}` ---
+# `--python` es lo que cablea settings.json (intérprete elegido por el wrapper, con -I -S): se mide
+# esa ruta, no un python3 suelto. HOME desechable: lo que se mide es el arranque, no la decisión.
 phome="$(mktemp -d)"
 for hook in "$KIT"/claude/hooks/*.py "$KIT"/sentinel/*.py; do
-  out="$(HOME="$phome" python3 -I -S "$hook" </dev/null 2>&1)"; rc=$?
-  if echo "$out" | grep -qE 'ModuleNotFoundError|ImportError'; then
-    ko "$(basename "$hook") no arranca con -I -S (rc=$rc): $out"
-  else ok; fi
+  out="$(echo '{}' | HOME="$phome" "$W" --python "$hook" 2>&1)"; rc=$?
+  if [ "$rc" -eq 0 ]; then ok; else ko "$(basename "$hook") no arranca por optional-hook.sh --python (rc=$rc): $out"; fi
 done
 rm -r -- "$phome"
 

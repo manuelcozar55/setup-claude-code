@@ -122,10 +122,10 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s"\ncase "$*" in *rev-parse*) echo /
 OUT="$(mkinput /mnt/x/repo | PATH="$FAKEBIN:$PATH" COLUMNS=100000 bash "$SL" 2>/dev/null | normalize)"
 assert_has   "/mnt: rama visible"     "⎇ rama-mnt" "$OUT"
 assert_hasnt "/mnt: sin recuento"     "(+"         "$OUT"
-assert_hasnt "/mnt: no invoca git diff" "diff"     "$(cat "$GITLOG")"
+assert_hasnt "/mnt: no invoca git diff" "diff --shortstat" "$(cat "$GITLOG")"
 : > "$GITLOG"
 mkinput "$DEEP" | PATH="$FAKEBIN:$PATH" COLUMNS=100000 bash "$SL" >/dev/null 2>&1
-assert_has   "ext4: invoca git diff"  "diff"       "$(cat "$GITLOG")"
+assert_has   "ext4: invoca git diff"  "diff --shortstat" "$(cat "$GITLOG")"
 
 echo
 printf '%s\n' "-----------------------------------------"
