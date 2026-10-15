@@ -112,6 +112,8 @@ ok "resume caducado: el nucleo se sigue inyectando" "$(rs "$R/sub" true 150000 |
 ok "resume caducado sin nucleo: solo el aviso" "$(rs "$T/sin-nucleo" true 150000 | jq -r 'keys|join(",")')" systemMessage
 ok "resume con caché viva: sin aviso" "$(rs "$R/sub" false 150000 | jq -r '.systemMessage // "nada"')" nada
 ok "resume con poco contexto: sin aviso" "$(rs "$R/sub" true 50000 | jq -r '.systemMessage // "nada"')" nada
+# En jq una cadena ordena por encima de cualquier número: sin la guarda, ">= 100000" sería cierto.
+ok "resume con context_tokens no numérico: sin aviso" "$(rs "$R/sub" true '"x"' | jq -r '.systemMessage // "nada"')" nada
 ok "clear sin nucleo: no emite nada" "$(ev "$T/sin-nucleo" s7 "" clear | bash "$H/session-start-clear.sh")" ""
 ok "symlink: compact no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-FUERA)" 0
 ok "symlink: nudge calla" "$(jq -cn --arg c "$R3" --arg t "$TP" '{session_id:"s6",transcript_path:$t,cwd:$c}' | bash "$H/nucleo-nudge.sh")" ""
