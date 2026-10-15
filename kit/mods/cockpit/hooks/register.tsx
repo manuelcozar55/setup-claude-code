@@ -224,6 +224,9 @@ const softRefresh = ($: $, full = false) => void refreshCtx($, full).catch(() =>
 // A subagent's last tool call, by agent id. The poll below writes rows it read before awaiting,
 // so a tool.call landing in between was overwritten; this map lets the next poll put it back.
 const lastCall = new Map<string, { what: string; at: number }>()
+// Tool calls running now, by agent id. A call is activity until it returns: a four-minute
+// `make test` was read as a stall, since the stall clock only knew when the call began.
+const inFlight = new Map<string, number>()
 let lastIdleTick = 0
 async function syncAgents($: $) {
   const list = await $.agent.list()
@@ -241,7 +244,7 @@ async function syncAgents($: $) {
       type: a.type,
       status: a.status,
       startedAt: prev?.startedAt ?? t,
-      lastActiveAt: Math.max(prev?.lastActiveAt ?? t, call?.at ?? 0),
+      lastActiveAt: inFlight.get(a.id) ? t : Math.max(prev?.lastActiveAt ?? t, call?.at ?? 0),
       endedAt: DONE.has(a.status) ? (prev?.endedAt ?? t) : undefined,
       activity: call?.what ?? prev?.activity ?? 'arrancando…',
     }
@@ -420,14 +423,20 @@ export const register: Register = on => {
     const what = describe(e)
     if (e.agentId === undefined) {
       await update($, turn, t => ({ ...t, activity: what }))
-    } else {
-      const id = e.agentId
-      const t = await $.clock.now()
-      lastCall.set(id, { what, at: t })
-      await update($, agents, rows => rows.map(r => (r.id === id ? { ...r, activity: what, lastActiveAt: t } : r)))
+      softRefresh($)
+      return next(e)
     }
+    const id = e.agentId
+    const t = await $.clock.now()
+    lastCall.set(id, { what, at: t })
+    inFlight.set(id, (inFlight.get(id) ?? 0) + 1)
+    await update($, agents, rows => rows.map(r => (r.id === id ? { ...r, activity: what, lastActiveAt: t } : r)))
     softRefresh($)
-    return next(e)
+    try {
+      return await next(e)
+    } finally {
+      inFlight.set(id, (inFlight.get(id) ?? 1) - 1)
+    }
   })
 
   on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {

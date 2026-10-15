@@ -171,3 +171,25 @@ test('elapsed lleva unidades y no pasa de 6 celdas por debajo de 100 h', () => {
   expect(elapsed(-5)).toBe('0s')
   for (const ms of [59_999, 3_599_999, 99 * 3_600_000 + 3_599_000]) expect(elapsed(ms).length).toBeLessThanOrEqual(6)
 })
+
+test('dock: una herramienta en marcha es actividad; el agente solo se atasca 2 min después de que acabe', async ($, on) => {
+  const $$ = $ as any, o = on as any
+  let finish: (v: unknown) => void = () => undefined
+  o('tool.call', { tool: 'Bash' }, () => new Promise(resolve => { finish = resolve }))
+  const first = await mountDock($ as never, on as never, 56, undefined, AGENTS.slice(0, 1))
+  const call = $$.tool.call({ tool: 'Bash', command: 'make test', description: 'Correr los tests', agentId: 'a1' })
+  // Five minutes inside one Bash: longer than any stall threshold, and still work.
+  await first.clock.advance(300_000)
+  await first.ui.unmount()
+  let ui = await first.mount()
+  expect(await ui.find({ type: 'Text', text: 'Trabajando · 1' })).toBeTruthy()
+  expect(await ui.find({ text: /Bash Correr los tests/ })).toBeTruthy()
+  expect(await ui.find({ text: /sin actividad/ })).toBeFalsy()
+  finish({ result: { stdout: '', stderr: '', interrupted: false } })
+  await call
+  await first.clock.advance(123_000)
+  await ui.unmount()
+  ui = await first.mount()
+  expect(await ui.find({ type: 'Text', text: 'Parados · 1' })).toBeTruthy()
+  expect(await ui.find({ text: /2m0\ds sin actividad/ })).toBeTruthy()
+})
