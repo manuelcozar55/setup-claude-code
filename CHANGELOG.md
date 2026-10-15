@@ -114,6 +114,13 @@ etiquetado.
 
 ### Changed
 
+- **Los hooks Python arrancan con `python3 -I -S`** (`optional-hook.sh`). Medido: 22 → 8 ms
+  por hook, porque `site` cargaba apport y un `.pth` editable que apunta a `/mnt/c`,
+  escribible desde Windows, dentro de cada guard. Los cinco hooks solo usan stdlib;
+  `test_optional_hook.sh` comprueba el `-I -S` y que cada hook arranca así sin `ImportError`.
+- **La statusline no cuenta cambios bajo `/mnt/*`.** En un repo en DrvFs los dos
+  `git diff --shortstat` llevaban el refresco a 2,7 s (18 ms en ext4); ahí se queda en repo y
+  rama. `test_statusline.sh` lo fija con un `git` falso que registra sus argumentos.
 - **La instalación se explica en un solo sitio: `kit/docs/02-install.md`.** Estaba contada
   cuatro veces (README, `kit/README.md`, `02-install.md` y `10-onboarding.md`) y las copias
   divergían. `02-install.md` absorbe lo que solo estaba fuera —`make bootstrap`, el modo
@@ -180,6 +187,25 @@ etiquetado.
 
 ### Fixed
 
+- **Sentinel: los ficheros de clave se detectan por nombre de fichero, no por subcadena.**
+  Las seis regex de extensión (`.pem`, `.key`, `.p12`, `.pfx`, `.jks`, `.keystore`) solo
+  miraban detrás, y en la instalación real dieron 245 denegaciones falsas en un día. Una sola
+  regex exige ahora un nombre delante (tras separador, comilla, acento grave, `=`, coma u
+  operador de shell, o cualquier nombre tras `/`) y un final de nombre detrás. **Dejan de
+  denegarse** (falsos positivos): `jq 'to_entries[].key'`, `.key | …`, `(.key)`, `[.key]`,
+  `.data.key` y la prosa que nombra la extensión (9 de las 12 sondas negativas de la
+  revisión, que `main` denegaba). **Siguen denegados**: rutas, comillas, nombre a secas,
+  globs (`*.key`, `server.key*`), acento grave, `$( )`, llaves, sufijos de copia
+  (`x.key.bak`), directorios (`dir.p12/x`) y el oculto tras barra (`./.key`). **Límites
+  declarados** (ya no se deniegan): el oculto a secas sin barra (`cat .key`, indistinguible
+  de un campo jq), una clase de glob delante (`[s]erver.key`) y las rutas de Windows con
+  barra invertida; y deniega de más una división jq por un campo `key` (`.a/.key`). Además,
+  `test_guards.sh` escribía sus deny en el `sentinel.jsonl` del HOME real;
+  `test_guards_falsifiability.sh` lo impide ahora con un HOME simulado.
+- **`pre-compact.sh` rota los checkpoints de más de 14 días.** Escribe uno por sesión, con
+  los últimos prompts de la persona, y nadie los borraba. Nuevo caso que fija que un
+  directorio sin git ni `.claude/estado` no gana un `.claude/` (una instalación anterior a
+  3917835 dejó 47 bajo un home).
 - **Sentinel ya no lee el allowlist del directorio de trabajo.** Un repo clonado con
   `.security/sentinel-allowlist.json` podía convertir en `allow` el deny de un `.env` o,
   con `[]`/`{"paths":null}`, tumbar toda herramienta con exit 2. Solo cuenta el de `$HOME`;
