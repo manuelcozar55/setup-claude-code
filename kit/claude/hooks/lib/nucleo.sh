@@ -20,8 +20,9 @@ nucleo_ctx() {
   local w=${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-200000} t
   case "$w" in ''|*[!0-9]*) w=200000;; esac
   [ "$w" -gt 33000 ] || w=200000
+  # Sin `timeout`: 40 líneas no cuelgan a jq, y en coreutils de Rust arrancarlo cuesta ~100 ms.
   t=$(tail -n 40 "$1" 2>/dev/null \
-    | timeout 5 jq -rR 'fromjson? | select(.type=="assistant" and .message.usage!=null) | .message.usage
+    | jq -rR 'fromjson? | select(.type=="assistant" and .message.usage!=null) | .message.usage
         | ((.input_tokens//0)+(.cache_read_input_tokens//0)+(.cache_creation_input_tokens//0)) | select(.>0)' 2>/dev/null \
     | tail -1)
   [ -n "$t" ] && printf '%s %s\n' "$t" "$((t * 100 / (w - 33000)))"

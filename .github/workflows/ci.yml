@@ -196,6 +196,8 @@ jobs:
         run: bash kit/test/test_nucleo_lib.sh
       - name: "test_nucleo_hooks.sh (inyectores ≤ 9 500 y como datos, checkpoint con .gitignore, KPI, gauge y gate, sin fsmonitor)"
         run: bash kit/test/test_nucleo_hooks.sh
+      - name: "test_nucleo_nudge.sh (PostToolUse: aviso al modelo por banda del airbag, una vez, solo con nucleo rancio, < 50 ms)"
+        run: bash kit/test/test_nucleo_nudge.sh
 
       - name: "test_install_plugins.sh (plugins de terceros por referencia: diff-first, ids esperados, opcionales aparte)"
         run: bash kit/test/test_install_plugins.sh
