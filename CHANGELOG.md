@@ -16,6 +16,13 @@ etiquetado.
   Sustituye a ccstatusline (~300 ms por refresco, node y un bundle de 3,3 MB). La fusión de
   `settings.json` no cambia: quien ya tenía `theme` o `statusLine` conserva los suyos. Sensor
   nuevo `test_statusline.sh` (26 casos) y `doctor` exige PASS de la barra en una instalación limpia.
+- **Agent Dock legible en un pane estrecho (cockpit 0.3.1).** La misión nace plegada en una
+  sola línea con `…` (antes dos), así que los agentes suben al principio del pane. El tiempo
+  de cada agente, el de la misión y el de «sin actividad» llevan unidades (`45s`, `10m42s`,
+  `1h05m`, como mucho 6 celdas por debajo de 100 h): el `10:42` a secas se leía como una hora,
+  y en un pane estrecho se partía en `10:` / `42`. El prefijo y el tiempo de cada fila ya no
+  se encogen; solo cede la descripción. La versión sube para que `/plugin update` traiga el
+  código nuevo: con la misma versión, la caché seguía sirviendo el dock anterior.
 - **Agent Dock v3 (cockpit 0.3.0): misión en dos líneas y agentes por secciones.** La misión
   muestra siempre sus dos primeras líneas (envueltas a mano al ancho del pane) y el botón
   `▸ más` / `▾ menos` (tecla `m` con el pane enfocado) despliega el resto. Antes el clic

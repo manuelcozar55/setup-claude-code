@@ -1,10 +1,10 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { wrapLines } from '../hooks/register'
+import { elapsed, wrapLines } from '../hooks/register'
 
 const DOCK = { title: 'Agent Dock', isFocused: true, bodyColumns: 56, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
 const DESC = 'Revisar el flujo de checkout completo'
-// Over two lines even at 66 columns, so every width exercises the fold.
+// Over one line at every width tested, so every width exercises the fold.
 const LONG = 'Revisar a fondo el flujo de checkout, precios y red con tres subagentes en paralelo, dejar un informe con evidencias por cada hallazgo y proponer el orden de arreglo con su coste estimado'
 
 type Agent = { id: string; description: string; type: string; status: string }
@@ -36,7 +36,7 @@ const missionLine = (ui: any, text: string) => ui.find({ type: 'Text', text })
 
 // The first dock shipped green on prop checks while the real terminal wrapped: measure the drawn text.
 for (const bodyColumns of [24, 30, 44, 56, 66]) {
-  test(`dock a ${bodyColumns}: las cuatro secciones con su cuenta, cada agente en su sitio, misión en dos líneas que caben`, async ($, on) => {
+  test(`dock a ${bodyColumns}: las cuatro secciones con su cuenta, cada agente en su sitio, misión plegada en una línea que cabe`, async ($, on) => {
     const { ui } = await mountDock($ as never, on as never, bodyColumns, LONG)
     expect(await ui.find({ text: 'Agent Dock' })).toBeTruthy()
     for (const key of ['team-1', 'team-3', 'team-10', 'team-0']) expect(await ui.find({ key })).toBeTruthy()
@@ -53,20 +53,19 @@ for (const bodyColumns of [24, 30, 44, 56, 66]) {
     expect(await ui.find({ text: /detenido/ })).toBeTruthy()
     expect(await ui.find({ text: /○ T5/ })).toBeTruthy()
     expect(await ui.find({ text: /✓ T2/ })).toBeTruthy()
-    const lines = wrapLines(LONG, bodyColumns)
-    expect(lines.length).toBeGreaterThan(2)
-    expect((await missionLine(ui, lines[0]!)).text).toBe(lines[0])
-    const l2 = await ui.find({ type: 'Text', text: new RegExp(`^${lines[1]!.slice(0, 8).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) })
-    expect(l2.text.length).toBeLessThanOrEqual(bodyColumns)
-    expect(l2.text.endsWith('…')).toBe(true)
-    expect(await missionLine(ui, lines[2]!)).toBeFalsy()
+    const folded = await ui.find({ type: 'Text', text: /^Revisar a fondo.*…$/ })
+    expect(folded.text.length).toBeLessThanOrEqual(bodyColumns)
+    expect(await missionLine(ui, wrapLines(LONG, bodyColumns)[1]!)).toBeFalsy()
+    expect((await ui.find({ key: 'mission' })).text).toContain('más')
+    // The running agent's time carries its units, whatever the width.
+    expect(await ui.find({ type: 'Text', text: /^\d+s$/ })).toBeTruthy()
   })
 }
 
 test('dock: «más» despliega la misión entera y «menos» la pliega; una misión nueva nace plegada', async ($, on) => {
   const { ui } = await mountDock($ as never, on as never, 30, LONG)
   const lines = wrapLines(LONG, 30)
-  expect(lines.length).toBeGreaterThan(2)
+  expect(lines.length).toBeGreaterThan(1)
   const last = lines[lines.length - 1]!
   expect((await ui.find({ key: 'mission' })).text).toContain('más')
   await ui.press({ key: 'mission' })
@@ -79,10 +78,18 @@ test('dock: «más» despliega la misión entera y «menos» la pliega; una misi
   expect(await missionLine(ui, last)).toBeFalsy()
 })
 
-test('dock: una misión que cabe en dos líneas no lleva botón', async ($, on) => {
+test('dock: una misión que cabe en una línea no lleva botón', async ($, on) => {
   const { ui } = await mountDock($ as never, on as never, 56, 'Revisar el checkout')
   expect((await missionLine(ui, 'Revisar el checkout')).text).toBe('Revisar el checkout')
   expect(await ui.find({ key: 'mission' })).toBeFalsy()
+})
+
+test('dock: una misión de solo dos líneas también nace plegada', async ($, on) => {
+  const two = 'Revisar el checkout y la red de pagos'
+  expect(wrapLines(two, 24)).toHaveLength(2)
+  const { ui } = await mountDock($ as never, on as never, 24, two)
+  expect((await ui.find({ key: 'mission' })).text).toContain('más')
+  expect((await ui.find({ type: 'Text', text: /^Revisar el checkout y l…$/ })).text).toHaveLength(24)
 })
 
 test('dock: un agente sin herramienta en 2 min pasa a Parados con su tiempo sin actividad', async ($, on) => {
@@ -95,7 +102,7 @@ test('dock: un agente sin herramienta en 2 min pasa a Parados con su tiempo sin 
   expect(await ui.find({ type: 'Text', text: 'Trabajando · 0' })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: 'Parados · 1' })).toBeTruthy()
   expect(await ui.find({ text: /◌ T1/ })).toBeTruthy()
-  expect(await ui.find({ text: /2:0\d sin actividad/ })).toBeTruthy()
+  expect(await ui.find({ text: /2m0\ds sin actividad/ })).toBeTruthy()
 })
 
 test('dock: un estado que el mod no conoce sigue saliendo, bajo Trabajando', async ($, on) => {
@@ -125,4 +132,14 @@ test('wrapLines envuelve por palabras, parte las largas y nunca pasa del ancho',
   expect(wrapLines('abcdefgh ij', 3)).toEqual(['abc', 'def', 'gh', 'ij'])
   expect(wrapLines('uno dos', 20)).toEqual(['uno dos'])
   for (const w of [24, 30, 66]) for (const l of wrapLines(LONG, w)) expect(l.length).toBeLessThanOrEqual(w)
+})
+
+test('elapsed lleva unidades y no pasa de 6 celdas por debajo de 100 h', () => {
+  expect(elapsed(0)).toBe('0s')
+  expect(elapsed(45_000)).toBe('45s')
+  expect(elapsed(642_000)).toBe('10m42s')
+  expect(elapsed(3_600_000)).toBe('1h00m')
+  expect(elapsed(3_725_000)).toBe('1h02m')
+  expect(elapsed(-5)).toBe('0s')
+  for (const ms of [59_999, 3_599_999, 99 * 3_600_000 + 3_599_000]) expect(elapsed(ms).length).toBeLessThanOrEqual(6)
 })
