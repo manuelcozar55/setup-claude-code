@@ -9,6 +9,12 @@ etiquetado.
 
 ### Changed
 
+- **La plantilla de instrucciones es modular**: `kit/claude/AGENTS.md` es el núcleo común a
+  Claude Code, Codex y opencode, y `kit/claude/CLAUDE.md` una capa fina que lo importa con
+  `@AGENTS.md`. Lleva una línea de precedencia, los desempates (una ronda de aclaración; el
+  test tras la lógica nueva) y «ceremonia según riesgo»; sale Headroom, que el kit no instala.
+  `install.sh` copia los dos; `test_claude_md_template.sh` vigila sus techos y que toda ruta
+  citada exista.
 - **`/handoff` del mod `cockpit` escribe `.claude/estado/nucleo.md`** en la raíz git (o el cwd)
   en vez de un fichero en `$TMPDIR`: el tmpfs se pierde al reiniciar y duplicaba el
   `nucleo.md`, que se quedaba desfasado. El fork devuelve solo las secciones que cambian y el

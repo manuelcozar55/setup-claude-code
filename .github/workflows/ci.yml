@@ -195,6 +195,8 @@ jobs:
 
       - name: "test_install_plugins.sh (plugins de terceros por referencia: diff-first, ids esperados, opcionales aparte)"
         run: bash kit/test/test_install_plugins.sh
+      - name: "test_claude_md_template.sh (plantilla CLAUDE.md + AGENTS.md: techos, desempates, rutas citadas existen)"
+        run: bash kit/test/test_claude_md_template.sh
 
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root

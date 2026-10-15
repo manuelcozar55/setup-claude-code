@@ -368,22 +368,24 @@ install_settings() {  # src dst
   fi
 }
 
-# CLAUDE.md son instrucciones que escribes tu: no se pisa si ya la has tocado. Se deja la del
-# kit al lado, como CLAUDE.kit.md, y se avisa. Reemplazarla borraba trabajo irrecuperable por
-# fusion automatica -- una prosa no se puede fusionar como un JSON.
+# CLAUDE.md y AGENTS.md son instrucciones que escribes tu: no se pisan si ya las has tocado. Se
+# deja la del kit al lado, como CLAUDE.kit.md o AGENTS.kit.md, y se avisa. Reemplazarla borraba
+# trabajo irrecuperable por fusion automatica -- una prosa no se puede fusionar como un JSON.
 install_claude_md() {  # src dst
   local src="$1" dst="$2"
   if [ ! -f "$dst" ]; then cp -p "$src" "$dst"; return; fi
   if cmp -s "$src" "$dst"; then return; fi
-  cp -p "$src" "$(dirname "$dst")/CLAUDE.kit.md"
-  echo "   CLAUDE.md ya existe y la has modificado: NO se toca."
-  echo "   La version del kit queda en CLAUDE.kit.md para que compares y copies lo que quieras."
+  local n; n="$(basename "$dst" .md)"
+  cp -p "$src" "$(dirname "$dst")/$n.kit.md"
+  echo "   $n.md ya existe y la has modificado: NO se toca."
+  echo "   La version del kit queda en $n.kit.md para que compares y copies lo que quieras."
 }
 
 install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   local base="$1" f rel
   mkdir -p "$base/hooks" "$base/agents" "$base/sentinel"
   install_claude_md "$KIT/claude/CLAUDE.md"       "$base/CLAUDE.md"
+  install_claude_md "$KIT/claude/AGENTS.md"       "$base/AGENTS.md"
   install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
   install_file "$KIT/claude/sentinel-allowlist.json" "$base/sentinel-allowlist.json"
   install_file "$KIT/claude/.gitleaks.toml"       "$base/.gitleaks.toml"
