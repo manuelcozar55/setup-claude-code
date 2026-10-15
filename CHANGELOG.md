@@ -191,6 +191,11 @@ etiquetado.
 - **`nucleo_emitir` reconoce las secciones en `###`.** Las sesiones escriben la tarea como
   `## TAREA ACTUAL` con `### Encargo original`, `### Plan`…; solo con `##` el inyector entregaba
   el título (148 chars de un nucleo real de 7,7 KB) y el modelo retomaba a ciegas.
+- **`nucleo_emitir` no cierra la sección en un `# comentario` dentro de un bloque de
+  código.** La regla de cabecera casaba cualquier línea que empezara por `# `, también entre
+  ```; un comentario en «Comandos de verificación» cortaba la sección y los comandos, lo más
+  importante de re-inyectar tras `/clear` o compactar, se perdían sin aviso con un «fuera de
+  forma» falso. Hallazgo de `/code-review` del 15-oct; test que fallaba antes del cambio.
 - **Sentinel ya no lee el allowlist del directorio de trabajo.** Un repo clonado con
   `.security/sentinel-allowlist.json` podía convertir en `allow` el deny de un `.env` o,
   con `[]`/`{"paths":null}`, tumbar toda herramienta con exit 2. Solo cuenta el de `$HOME`;
