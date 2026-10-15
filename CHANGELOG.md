@@ -28,6 +28,13 @@ etiquetado.
   Sustituye a ccstatusline (~300 ms por refresco, node y un bundle de 3,3 MB). La fusión de
   `settings.json` no cambia: quien ya tenía `theme` o `statusLine` conserva los suyos. Sensor
   nuevo `test_statusline.sh` (26 casos) y `doctor` exige PASS de la barra en una instalación limpia.
+- **Agent Dock: una herramienta larga ya no es un atasco (cockpit 0.3.3).** El dock medía
+  «sin actividad» desde el inicio de la última llamada a herramienta y no sabía que seguía en
+  marcha: un agente dentro de un `make test` de 4 min pasaba a `Parados` a los 2 y, con el
+  turno principal ya terminado, la cabecera caía a `IDLE`. Ahora una llamada en vuelo cuenta
+  como actividad hasta que vuelve. Los estados `waiting` (aprobación de un plan, tarea en
+  segundo plano) e `idle` (teammate entre turnos) de la API, que el dock no conocía, siguen
+  en `Trabajando` con su motivo y fuera del reloj de atasco. Dos tests nuevos.
 - **Agent Dock sin cortes y con la actividad de cada agente (cockpit 0.3.2).** `Hechos` ya no
   se queda en los 8 últimos con `… y N más`, ni el estado en los 40 últimos agentes (eso
   renumeraba los `T<n>`): se dibujan todos y el pane hace scroll. La segunda línea de un agente
