@@ -7,6 +7,21 @@ etiquetado.
 
 ## [Unreleased]
 
+### Changed
+
+- **`/handoff` del mod `cockpit` escribe `.claude/estado/nucleo.md`** en la raíz git (o el cwd)
+  en vez de un fichero en `$TMPDIR`: el tmpfs se pierde al reiniciar y duplicaba el
+  `nucleo.md`, que se quedaba desfasado. El fork devuelve solo las secciones que cambian y el
+  código las fusiona: «Encargo original» e «Invariantes» se conservan byte a byte (regenerar el
+  estado entero es lo que pierde detalle). Copias `nucleo.prev-<sello>.md`, se guardan 3, y
+  `.claude/estado/` va a `.git/info/exclude` si git no lo ignora. Secciones nuevas: Encargo
+  original, Siguiente acción, Ficheros tocados, No repetir.
+- **La retoma tras `/clear` la hace el hook `session-start-clear.sh`** (SessionStart
+  `startup|clear`, registrado en `kit/claude/settings.json`), no un prompt del mod: es nativo,
+  funciona sin cockpit y no compite con un mensaje de la persona enviado durante el `/clear`.
+  Entrega `nucleo.md` (≤ 8 KB, sin secciones CERRADA) como datos, con el protocolo de arranque:
+  `git log`/`git status`/oráculo, manda git, y lo irreversible se confirma.
+
 ### Added
 
 - **Tema oscuro y statusline del kit.** `kit/claude/settings.json` pasa de `light-ansi` a

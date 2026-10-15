@@ -49,4 +49,4 @@ You have access to several files in the repo:
 - **Reviewer agent** here = the `code-reviewer` subagent, if installed; mechanical rules go to hooks in `~/.claude/hooks/` or the repo's own linter/CI.
 - **Global AGENTS.md** here = your `~/.claude/CLAUDE.md` plus any shared instruction files it imports; an organization-managed policy file (e.g. `/etc/claude-code/CLAUDE.md`) stays untouched.
 - Session logs may contain client data from your organization: read them locally, and keep excerpts out of any external service.
-- Output is a ranked proposal. Applying it is a separate change through `deep-change` (backup + change report).
+- Output is a ranked proposal. Applying it is a separate change through `deep-change` (backup + commits with their why).

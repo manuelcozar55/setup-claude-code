@@ -190,6 +190,8 @@ jobs:
 
       - name: "test_statusline.sh (statusline del kit: ruta completa, dos lineas, se parte sin recortar)"
         run: bash kit/test/test_statusline.sh
+      - name: "test_session_start_clear.sh (hook SessionStart: nucleo.md como datos, recorte y fail-open)"
+        run: bash kit/test/test_session_start_clear.sh
 
       - name: "test_install_plugins.sh (plugins de terceros por referencia: diff-first, ids esperados, opcionales aparte)"
         run: bash kit/test/test_install_plugins.sh
