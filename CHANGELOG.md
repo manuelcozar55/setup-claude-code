@@ -30,6 +30,13 @@ etiquetado.
 
 ### Added
 
+- **Herramientas de medida y memoria en `scripts/`**: `compact-audit.py` (compactaciones:
+  manuales frente a automáticas, duración, lo destruido) y `nucleo_audit.py` (si
+  `nucleo.md` se escribe antes de compactar y se relee después) leen `$CLAUDE_PROJECTS_DIR`;
+  `recuerda` (`recall.py`) devuelve solo los párrafos de memoria que coinciden y lee
+  `$CLAUDE_MEMORY_DIR`. `kit/docs/13-memoria.md` fija el formato de una memoria, el índice
+  corto y que las memorias nunca salen a un servicio externo.
+
 - **Tema oscuro y statusline del kit.** `kit/claude/settings.json` pasa de `light-ansi` a
   `dark` y declara `statusLine` con `bash $HOME/.claude/statusline-command.sh`, que `install.sh`
   copia y deja ejecutable: dos líneas en bash + `jq` (modelo, ruta, repo, rama y cambios;

@@ -78,7 +78,7 @@ flowchart LR
             SK["6 skills<br/>del método"]
             MO["Mod cockpit<br/>/handoff · Agent Dock"]
             EV["evals/<br/>20 tareas"]
-            TS["test/<br/>34 suites falsables"]
+            TS["test/<br/>36 suites falsables"]
         end
     end
     INS{{"install.sh<br/>diff-first"}}
@@ -203,7 +203,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 34 suites falsables | v1.2.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 36 suites falsables | v1.2.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -470,8 +470,9 @@ Detalle de cada opción en [`kit/docs/02-install.md`](kit/docs/02-install.md) y 
 ## Más allá del quick start
 
 - [`kit/README.md`](kit/README.md) — guía completa del kit.
-- [`kit/docs/`](kit/docs/) — overview, install, Headroom, superpowers, seguridad, rutina, verificación, plugins/MCP/skills, onboarding, cockpit y metodología.
+- [`kit/docs/`](kit/docs/) — overview, install, Headroom, superpowers, seguridad, rutina, verificación, plugins/MCP/skills, onboarding, cockpit, metodología y memoria.
 - [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) — el método de trabajo de punta a punta: IntentGate, grilling, deep-change, subagentes, handoff y retro.
+- [`kit/docs/13-memoria.md`](kit/docs/13-memoria.md) — formato de una memoria, el índice `MEMORY.md` de ≤ 60 líneas y `recuerda` para consultarlas sin cargarlas enteras.
 - [`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md) — el mod `cockpit`: `/handoff` y el Agent Dock.
 - [`kit/docs/09-ssh-y-gitlab-privado.md`](kit/docs/09-ssh-y-gitlab-privado.md) — clave SSH desde WSL2 y alta en un GitLab autoalojado, paso a paso: útil por sí sola aunque no uses el kit, y necesaria si tu equipo tiene un marketplace de plugins privado.
 - [`kit/docs/10-onboarding.md`](kit/docs/10-onboarding.md) — la ruta de un companero nuevo: `make bootstrap`, qué acaba de pasar, cómo verificarlo de verdad, y por qué Headroom es opt-in y no default.

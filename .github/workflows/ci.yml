@@ -197,6 +197,10 @@ jobs:
         run: bash kit/test/test_install_plugins.sh
       - name: "test_claude_md_template.sh (plantilla CLAUDE.md + AGENTS.md: techos, desempates, rutas citadas existen)"
         run: bash kit/test/test_claude_md_template.sh
+      - name: "test_recall.sh (recuerda: párrafos que coinciden, sin acentos, -l, -f, rc 1 si no hay nada)"
+        run: bash kit/test/test_recall.sh
+      - name: "test_scripts_audit.sh (compact-audit.py y nucleo_audit.py sobre transcripts sintéticos)"
+        run: bash kit/test/test_scripts_audit.sh
 
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
