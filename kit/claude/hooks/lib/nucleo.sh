@@ -48,21 +48,20 @@ nucleo_emitir() {
   LC_ALL=C awk -v f="$1" -v kb="$(( ($(wc -c <"$1") + 1023) / 1024 ))" -v sec=3000 -v tope=6500 '
     BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|") }
     function sale(s) { out = out s "\n"; usado += length(s) + 1 }
-    # ### también: las sesiones escriben la tarea como «## TAREA ACTUAL» con sus secciones en ###. Pero
-    # bajo un ## de plantilla (padre) el ### es contenido: «### Fase 1» en «## Plan» cortaba el plan.
+    # ### también: las sesiones escriben la tarea como «## TAREA ACTUAL» con sus secciones en ###. Solo si
+    # nombra una sección aún no vista: «### Fase 1» o «### Nota» son contenido y no cortan la sección viva.
     # Dentro de un bloque ``` nada es cabecera: un «# comentario» cerraba la sección y perdía los comandos.
-    # Solo conmuta una cerca pura (``` o ```lang), y un ## de plantilla cierra la que quedó abierta: una
-    # cerca desequilibrada se tragaba el resto del fichero. ~~~ no se contempla.
-    /^```[^`]*$/ { cerca = !cerca }
-    /^#(#|##)? / {
+    # Primera pasada: cuenta las cercas; si quedan impares se ignoran todas, para que una sin cerrar no se
+    # trague el resto del fichero. No se contemplan cercas anidadas (```` con ``` dentro) ni ~~~.
+    NR == FNR { if ($0 ~ /^[ \t]*```+[^`]*$/) cercas++; next }
+    /^[ \t]*```+[^`]*$/ && cercas % 2 == 0 { cerca = !cerca }
+    /^#(#|##)? / && !cerca {
       t = $0; sub(/^#(#|##)? /, "", t); c = ""
       for (i = 1; i <= n; i++) if (index(t, k[i]) == 1) c = (k[i] == "Encargo original") ? "Objetivo" : k[i]
-      if (c != "" && $0 ~ /^## /) cerca = 0
     }
-    /^#(#|##)? / && !cerca && !(padre && /^### /) {
+    /^#(#|##)? / && !cerca && ($0 !~ /^### / || (c != "" && !visto[c])) {
       viva = 0; dentro = 0
-      if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; sale(substr($0, 1, 200)) } else fuera++; next }
-      if ($0 ~ /^## /) padre = (c != "")
+      if ($0 ~ /^# /) { if (!titulo) { titulo = 1; sale(substr($0, 1, 200)) } else fuera++; next }
       if (c == "" || visto[c]++) { fuera++; next }
       if (usado + length($0) > tope) { omitidas = omitidas " «" substr(t, 1, 80) "»"; next }
       viva = 1; sale($0); next
@@ -78,5 +77,5 @@ nucleo_emitir() {
       if (omitidas != "") print "[recortado por tope: se omiten" omitidas ".]"
       if (recortes || omitidas != "") print "[LEE " f " antes de actuar: lo inyectado está incompleto.]"
       if (fuera || kb > 12) print "[fuera de forma: " fuera + 0 " secciones / " kb " KB → muévelas a diario.md, que nunca se inyecta]"
-    }' "$1" | sed 's|</|<\\/|g'
+    }' "$1" "$1" | sed 's|</|<\\/|g'
 }

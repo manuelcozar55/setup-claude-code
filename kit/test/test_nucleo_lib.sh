@@ -72,8 +72,8 @@ S=$(nucleo_emitir "$A")
 ok "### bajo TAREA ACTUAL: el encargo llega" "$(command grep -c ENCARGO-ANIDADO <<<"$S")" 1
 ok "### bajo TAREA ACTUAL: el plan llega" "$(command grep -c PLAN-ANIDADO <<<"$S")" 1
 ok "### bajo TAREA ACTUAL: verificación llega" "$(command grep -c '^make test' <<<"$S")" 1
-ok "### fuera de plantilla: no llega" "$(command grep -c HECHO-AJENO <<<"$S")" 0
-# Bajo un ## de plantilla, ### es contenido: «### Fase 1» dentro de «## Plan» cortaba el resto del plan.
+ok "### sin clave: contenido de la sección viva" "$(command grep -c HECHO-AJENO <<<"$S")" 1
+# Un ### sin clave de plantilla es contenido: «### Fase 1» dentro de «## Plan» cortaba el resto del plan.
 F=$T/fases.md
 printf '%s\n' '# Estado' '## Plan' '### Fase 1' '- [ ] FASE-A' '### Fase 2' '- [ ] FASE-B' >"$F"
 S=$(nucleo_emitir "$F")
@@ -89,4 +89,34 @@ F=$T/cerca2.md
 printf '%s\n' '# Estado' '## Objetivo' '```' 'código sin cerrar' '## Comandos de verificación' 'make CMD-TRAS-CERCA' \
   '## Hecho' 'HECHO-AJENO' >"$F"
 ok "cerca sin cerrar: los comandos llegan y lo ajeno no" "$(nucleo_emitir "$F" | command grep -c 'CMD-TRAS-CERCA\|HECHO-AJENO')" 1
+# ### con clave aún no vista abre su sección aunque cuelgue de un ## de plantilla: plegada en Plan,
+# caía con el tope de 3 000 bytes de Plan (el relleno lo agota).
+printf -v R '%*s' 2980 ''; F=$T/hermanas.md
+printf '%s\n' '# Estado' '## Plan' '- [ ] p' "${R// /r}" '### Paso actual' 'PA-HERMANA' '### Pendientes' '- Q-HERMANA' >"$F"
+S=$(nucleo_emitir "$F")
+ok "### hermanas bajo ## Plan: secciones propias" "$(command grep -c '^### Paso actual$\|^PA-HERMANA$\|^### Pendientes$\|^- Q-HERMANA$' <<<"$S")" 4
+ok "### hermanas bajo ## Plan: nada recortado" "$(command grep -c 'recortado' <<<"$S")" 0
+# Bajo «## TAREA ACTUAL» un ### sin clave es contenido de la sección viva, no la corta.
+F=$T/nota.md
+printf '%s\n' '# Estado' '## TAREA ACTUAL' '### Encargo original' 'E-ENC' '### Nota' 'N-NOTA' '### Plan' '- [ ] X-PLAN' >"$F"
+ok "### sin clave bajo TAREA ACTUAL: es contenido" "$(nucleo_emitir "$F" | command grep -c '^### Nota$\|E-ENC\|N-NOTA\|X-PLAN')" 4
+# Cercas equilibradas: un «## Plan» citado en un bloque es inerte y el Plan real llega como sección.
+F=$T/cerca-citada.md
+# shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
+printf '%s\n' '# Estado' '## Objetivo' '```md' '## Plan' 'CITADO' '```' '## Plan' '- [ ] REAL' '## Hecho' 'AJ-CITA' >"$F"
+S=$(nucleo_emitir "$F")
+ok "cerca con ## Plan citado: el Plan real llega" "$(command grep -c 'CITADO\|REAL' <<<"$S")" 2
+ok "cerca con ## Plan citado: lo ajeno no" "$(command grep -c AJ-CITA <<<"$S")" 0
+# Cerca sin cerrar bajo ###: se ignoran todas, así que ni ## ajeno ni ### se tragan.
+F=$T/cerca-impar.md
+printf '%s\n' '# Estado' '## TAREA ACTUAL' '### Plan' '- [ ] P-IMPAR' '```' '## Hecho' 'AJ-IMPAR' '### Pendientes' '- Q-IMPAR' >"$F"
+S=$(nucleo_emitir "$F")
+ok "cerca impar: Pendientes llega como sección" "$(command grep -c '^### Pendientes$\|Q-IMPAR' <<<"$S")" 2
+ok "cerca impar: lo ajeno no" "$(command grep -c AJ-IMPAR <<<"$S")" 0
+# Cerca de cuatro acentos (y con sangría): también conmuta.
+F=$T/cerca4.md
+# shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
+printf '%s\n' '# Estado' '## Comandos de verificación' '````' '# comentario' 'make CMD-CUATRO' '````' \
+  '## Pendientes' '  ```sh' '# otro' '  ```' '- Q-SANGRIA' >"$F"
+ok "cerca de cuatro y con sangría: los comandos llegan" "$(nucleo_emitir "$F" | command grep -c 'CMD-CUATRO\|Q-SANGRIA')" 2
 exit $FAIL
