@@ -151,15 +151,6 @@
         ]
       },
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/preflight.sh",
-            "timeout": 15
-          }
-        ]
-      },
-      {
         "matcher": "startup|clear|resume",
         "hooks": [
           {

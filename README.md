@@ -66,7 +66,7 @@ flowchart LR
         subgraph KIT["kit/ · capa de instalación"]
             direction TB
             G["Guards de Bash/git<br/>+ Capa 1 de secretos"]
-            HK["Hooks de sesión<br/>preflight · pre-compact"]
+            HK["Hooks de sesión<br/>session-start · pre-compact"]
             SE["Sentinel<br/>IOCs"]
             AG["8 agentes<br/>con tiering"]
             SK["6 skills<br/>del método"]
@@ -119,7 +119,7 @@ sequenceDiagram
     participant H as Hooks
     participant X as Herramienta
 
-    CC->>H: SessionStart · session-start.sh, preflight.sh
+    CC->>H: SessionStart · session-start.sh, session-start-clear.sh, session-start-compact.sh
     T->>CC: prompt
     CC->>H: UserPromptSubmit · auto-spec.sh (harness)
     H-->>CC: oráculo + «declara cuándo estará hecho»
