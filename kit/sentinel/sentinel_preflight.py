@@ -243,13 +243,14 @@ def collect_fields(tool_input: dict, keys: list[str]) -> list[str]:
 # '.data.key', nor `cat x.key` from `grep "event.key"`: the difference is the
 # role of the argument, not its text. So the command is lexed into shell words,
 # the words that name no file (grep pattern, jq filter, commit message) are
-# skipped, interpreter code is checked only in its string literals, and every
-# other word is checked by its path components against key_file_extensions.
-# The body of a $( ) or backtick is read as a command of its own, whatever the
-# role of the word around it. Whatever cannot be classified is checked: this
-# guard may deny more, never less.
+# skipped, interpreter code is checked only in its string literals, quote forms
+# and slashed runs, and every other word is checked by its path components against
+# key_file_extensions. The body of a $( ) or backtick is read as a command of its
+# own, whatever the role of the word around it; a heredoc body is data unless a
+# shell or an interpreter on its line reads it. Whatever cannot be classified is
+# checked: this guard may deny more, never less.
 DEFAULT_KEY_EXTS = ["pem", "key", "p12", "pfx", "jks", "keystore"]
-_BRACE_CAP, _BRACE_BUDGET = 64, 256  # brace expansions per word / per command
+_BRACE_CAP, _BRACE_BUDGET = 64, 4096  # brace expansions per word / per whole command
 _GREP_LONG = {"--regexp": 1, "--file": 1, "--max-count": 1, "--after-context": 1,
               "--before-context": 1, "--context": 1}
 # Per tool: short options with a value, long options with N values, whether options
@@ -272,22 +273,37 @@ _OPTS = {
              {"-e", "-p", "--eval", "--print"}),
     "perl": ("eE", {}, True, {"-e", "-E"}),
     "ruby": ("erI", {}, True, {"-e"}),
+    # ack's -C takes an optional number: listed, `ack -C BEGIN x.key` would skip the file.
+    "ag": ("ABCGgmp", {"--ignore": 1, "--ignore-dir": 1, "--file-search-regex": 1, "--max-count": 1,
+                       "--depth": 1, "--path-to-ignore": 1, "--pager": 1}, False, set()),
+    "ack": ("ABgmt", {"--ignore-dir": 1, "--ignore-file": 1, "--type": 1, "--match": 1,
+                      "--max-count": 1, "--files-from": 1, "--output": 1}, False, set()),
 }
 _OPTS["egrep"] = _OPTS["fgrep"] = _OPTS["grep"]
 _GREP_NO_PATTERN = {"-e", "--regexp", "-f", "--file", "--files", "--type-list"}
 _NO_PATTERN = {"grep": _GREP_NO_PATTERN, "egrep": _GREP_NO_PATTERN, "fgrep": _GREP_NO_PATTERN,
-               "rg": _GREP_NO_PATTERN, "jq": {"-f", "--from-file"}}
+               "rg": _GREP_NO_PATTERN, "jq": {"-f", "--from-file"}, "ag": {"-g"},
+               "ack": {"-f", "-g", "--match"}}
 _SKIP_VALUE = {"grep": {"-e", "--regexp"}, "egrep": {"-e", "--regexp"}, "fgrep": {"-e", "--regexp"},
-               "rg": {"-e", "--regexp"}, "git-message": {"-m", "--message"}}
+               "rg": {"-e", "--regexp"}, "ack": {"--match"}, "git-message": {"-m", "--message"}}
 _CODE_VALUE = {"node": {"-e", "-p", "--eval", "--print"}, "perl": {"-e", "-E"},
                "ruby": {"-e"}, "python": {"-c"}}
-_OPS = ("&&", "||", ";;", "|&", ">>", "<<", "&>", ">&", "<&", ">|", "|", "&", ";", "(", ")", "<", ">")
+_SHELLS, _EVALS = {"bash", "sh", "zsh", "dash", "ksh"}, {"eval", "source", "."}
+_OPS = ("&&", "||", ";;", "|&", ">>", "<<<", "<<", "&>", ">&", "<&", ">|", "|", "&", ";", "(", ")",
+        "<", ">")
 _MASK = str.maketrans("{},", "\ue000\ue001\ue002")  # quoted braces do not expand
 _UNMASK = str.maketrans("\ue000\ue001\ue002", "{},")
-_BRACE = re.compile(r"\{([^{}]*,[^{}]*)\}")
+# {a,b} | {1..9[..2]} | {a..z[..2]}
+_BRACE = re.compile(r"\{(?:([^{}]*,[^{}]*)|(-?\d+)\.\.(-?\d+)(?:\.\.(-?\d+))?"
+                    r"|([A-Za-z])\.\.([A-Za-z])(?:\.\.(-?\d+))?)\}")
 _QUOTED = re.compile(r"'[^']*'|\"(?:\\.|[^\"\\])*\"")
 _BACKTICK_BODY = re.compile(r"(?:\\.|[^`\\])*")
-_HEREDOC_OP = re.compile(r"<<-?[ \t]*(['\"]?)\\?(\w+)\1")
+# The delimiter must end the word: with `<<EOF.x` bash waits for an EOF.x line.
+_HEREDOC_OP = re.compile(r"<<(-?)[ \t]*(['\"]?)(\\?)(\w+)\2(?=[\s;&|<>()]|$)")
+# Interpreter code: perl/ruby quote forms (q() qq{} qw[] %q() %Q{} %w<> %() and / | delimiters).
+_QUOTE_FORM = re.compile(r"(?:(?<![\w$@%&])q[qw]?\s*|%[qQwW]?)([(\[{<|/])")
+_PAIRS = {"(": ")", "[": "]", "{": "}", "<": ">"}
+_PATH_RUN = re.compile(r"[\w./~@%#+$*?{}\[\]-]+")
 # $(cat <<'EOF' ... EOF) outputs the heredoc as is: Claude Code's commit message.
 _CAT_HEREDOC = re.compile(r"\s*cat\s*<<-?[ \t]*(['\"]?)(\w+)\1[ \t]*\n(.*?)\n\t*\2\n?\s*", re.S)
 _SHELL_META = re.compile(r"[\s()|;&<>\"'`]")
@@ -311,7 +327,7 @@ def _subst_end(text: str, i: int) -> int:
         c = text[i]
         m = _HEREDOC_OP.match(text, i) if text.startswith("<<", i) and not text.startswith("<<<", i) else None
         if m:
-            docs.append(m.group(2))
+            docs.append(m.group(4))
             i = m.end()
         elif c == "\n" and docs:
             for d in docs:
@@ -360,24 +376,54 @@ def _lex_char(text: str, i: int, quoted: bool, cur: str, subs: list) -> tuple[st
     return cur + (c.translate(_MASK) if quoted else c), i + 1
 
 
-def _lex(text: str) -> list:
-    """Operators as str; words as (text, brace form, substitution bodies).
+def _heredoc_bodies(text: str, i: int, docs: list) -> int:
+    """Fill the bodies of the heredocs opened on the line that ends at i; the index after them.
+    Without its delimiter line a body stays None and the rest is lexed as commands."""
+    for d in docs:
+        tabs = "\\t*" if d["strip"] else ""
+        end = re.compile(rf"^{tabs}{d['delim']}$", re.M).search(text, i)
+        if not end:
+            return i
+        d["body"], i = text[i:end.start()], end.end()
+    return i
+
+
+def _lex(text: str, comments: bool = True) -> list:
+    """Operators as str ("\\n" ends a line); words as (text, brace form, substitution
+    bodies); heredocs as dict (quoted, strip, delim, body), where the << was.
 
     Quotes are dropped from the text; in the brace form quoted braces are masked,
     since bash does not expand them. A substitution leaves a "$" in the word and
-    its body in the list, except $(cat <<'EOF' ...) whose output is the heredoc."""
-    toks, cur, subs, i, n = [], None, [], 0, len(text)
+    its body in the list, except $(cat <<'EOF' ...) whose output is the heredoc.
+    comments: a # that starts a word comments to the end of the line, as in bash;
+    off for a quoted string read again as a command, where it would hide a name."""
+    toks, cur, subs, docs, i, n = [], None, [], [], 0, len(text)
     while i < n:
         c = text[i]
+        if c == "#" and cur is None and comments:
+            i = text.find("\n", i)
+            i = n if i < 0 else i
+            continue
         op = None if c in " \t\n" else next((o for o in _OPS if text.startswith(o, i)), None)
         if c in " \t\n" or op:
             if cur is not None:
                 toks.append((cur.translate(_UNMASK), cur, subs))
                 cur, subs = None, []
+            m = _HEREDOC_OP.match(text, i) if op == "<<" else None
+            if m:
+                doc = {"quoted": bool(m.group(2) or m.group(3)), "strip": bool(m.group(1)),
+                       "delim": m.group(4), "body": None}
+                toks.append(doc)
+                docs.append(doc)
+                i = m.end()
+                continue
             if op:
                 toks.append(op)
             elif c == "\n":
-                toks.append(";")
+                toks.append("\n")
+                if docs:
+                    i, docs = _heredoc_bodies(text, i + 1, docs), []
+                    continue
             i += len(op) if op else 1
             continue
         cur = cur or ""
@@ -440,7 +486,10 @@ def _command_roles(cmd: list) -> list:
     if name not in _OPTS:
         return roles + [(a, "path") for a in args]
     parsed = _parse([a[0] for a in args], *_OPTS[name])
-    first = name in _NO_PATTERN and not {o for _, o in parsed} & _NO_PATTERN[name]
+    # Short flags too (ack -f): every letter of a cluster counts, which only denies more.
+    seen = {o for _, o in parsed} | {"-" + ch for a, (kind, _) in zip(args, parsed)
+                                     if kind != "pos" and not a[0].startswith("--") for ch in a[0][1:]}
+    first = name in _NO_PATTERN and not seen & _NO_PATTERN[name]
     for a, (kind, opt) in zip(args, parsed):
         role = "path"
         if kind in ("val", "optval") and opt in _SKIP_VALUE.get(name, ()):
@@ -453,15 +502,32 @@ def _command_roles(cmd: list) -> list:
     return roles
 
 
+def _cmd_name(word: str) -> str:
+    base = os.path.basename(word).lower()
+    return re.sub(r"[\d.]+$", "", base) or base
+
+
 def _word_roles(toks: list) -> list:
-    out, cmd, redirect = [], [], False
-    for t in toks + [";"]:
-        if isinstance(t, str):
-            if "<" in t or ">" in t:
-                redirect = True
-                continue
+    """(word, role) per word, role path, code or skip; and (heredoc, role) per body, role
+    shell, code or data. A body is read by whatever its line runs, pipes and prefixes
+    included (`cat <<EOF | sh`, `sudo bash <<EOF`): any shell or interpreter word on the
+    line, or eval/source/. as a command, makes it commands or code."""
+    out, cmd, redirect, docs, names = [], [], False, [], set()
+    for t in toks + ["\n"]:
+        if isinstance(t, dict):
+            docs.append(t)
+        elif isinstance(t, str) and ("<" in t or ">" in t):
+            redirect = True
+        elif isinstance(t, str):
+            words = [w[0] for w in cmd if not re.match(r"\w+=", w[0])]
+            names |= {_cmd_name(w) for w in words} | ({"eval"} if words and words[0] in _EVALS else set())
             out += _command_roles(cmd)
-            cmd = []
+            cmd, redirect = [], False
+            if t == "\n":
+                kinds = (["shell"] if names & (_SHELLS | {"eval"}) else []) \
+                    + (["code"] if names & _CODE_VALUE.keys() else [])
+                out += [(d, k) for d in docs if d["body"] is not None for k in kinds or ["data"]]
+                docs, names = [], set()
         elif redirect:
             out.append((t, "path"))
             redirect = False
@@ -470,8 +536,25 @@ def _word_roles(toks: list) -> list:
     return out
 
 
+def _alts(m) -> list[str] | None:
+    """Distinct alternatives of one {a,b}, {1..9..2} or {a..z} group; None for a longer sequence."""
+    if m.group(1) is not None:
+        return list(dict.fromkeys(m.group(1).split(",")))
+    num = m.group(2) is not None
+    x, y, n = m.group(2, 3, 4) if num else m.group(5, 6, 7)
+    a, b = (int(x), int(y)) if num else (ord(x), ord(y))
+    step = abs(int(n or 1)) or 1
+    if abs(b - a) // step + 1 > _BRACE_CAP:
+        return None
+    seq = range(a, b + 1, step) if a <= b else range(a, b - 1, -step)
+    if not num:
+        return [chr(v) for v in seq]
+    pad = max(len(x), len(y)) if re.match(r"-?0\d", x) or re.match(r"-?0\d", y) else 0
+    return [f"{v:0{pad}d}" for v in seq]
+
+
 def _brace_expand(form: str) -> list[str] | None:
-    """Distinct expansions of the unmasked {a,b} groups, or None past the cap."""
+    """Distinct expansions of the unmasked brace groups, or None past the cap."""
     done, todo, seen = [], [form], {form}
     while todo:
         w = todo.pop()
@@ -479,7 +562,10 @@ def _brace_expand(form: str) -> list[str] | None:
         if not m:
             done.append(w)
             continue
-        for alt in m.group(1).split(","):
+        alts = _alts(m)
+        if alts is None:
+            return None
+        for alt in alts:
             x = w[:m.start()] + alt + w[m.end():]
             if x not in seen:
                 seen.add(x)
@@ -489,21 +575,29 @@ def _brace_expand(form: str) -> list[str] | None:
     return done if len(done) <= _BRACE_CAP else None
 
 
-def _brace_linear(form: str) -> list[str]:
-    """One group at a time, the others at their first alternative: bounded, not exhaustive."""
-    groups = list(_BRACE.finditer(form))[:_BRACE_CAP]
-    firsts = [g.group(1).split(",")[0] for g in groups]
-    out = []
-    for k, g in enumerate(groups):
-        for alt in list(dict.fromkeys(g.group(1).split(",")))[:_BRACE_CAP]:
-            parts, last = [], 0
-            for j, h in enumerate(groups):
-                parts += [form[last:h.start()], alt if j == k else firsts[j]]
-                last = h.end()
-            out.append("".join(parts) + form[last:])
-            if len(out) >= _BRACE_BUDGET:
-                return out
-    return out or [form]
+def _brace_linear(form: str) -> list[str] | None:
+    """One group at a time, the others at their first alternative, level by level for nested
+    groups: linear, not exhaustive. Nothing is cut off: past the caps, None."""
+    out, todo = [], [form]
+    while todo:
+        w = todo.pop()
+        groups = list(_BRACE.finditer(w))
+        if not groups:
+            out.append(w)
+            continue
+        alts = [_alts(g) for g in groups]
+        if len(groups) > _BRACE_CAP or None in alts:
+            return None
+        for k in range(len(groups)):
+            for alt in alts[k]:
+                parts, last = [], 0
+                for j, h in enumerate(groups):
+                    parts += [w[last:h.start()], alt if j == k else alts[j][0]]
+                    last = h.end()
+                todo.append("".join(parts) + w[last:])
+        if len(out) + len(todo) > _BRACE_BUDGET:
+            return None
+    return out
 
 
 def _key_file_word(word: str, rx) -> bool:
@@ -516,36 +610,83 @@ def _key_file_word(word: str, rx) -> bool:
     return False
 
 
-def key_file_hit(text: str, rx, real: bool = True, depth: int = 0) -> str | None:
-    """Why text names a key file, or None. real: text the shell runs as is (not a
-    quoted string read again as a command), where an expansion past the cap denies."""
+def _code_strings(code: str) -> list[str]:
+    """What interpreter code may name a file with: quoted literals, perl/ruby quote forms
+    (nested brackets and escapes followed) and any run of path characters with a slash.
+    A name without slash or quoting (o.key) is a property access and is not returned."""
+    out = [s for lit in re.findall(r"'([^']*)'|\"([^\"]*)\"|`([^`]*)`", code) for s in lit if s]
+    for m in _QUOTE_FORM.finditer(code):
+        o = m.group(1)
+        c, depth, i = _PAIRS.get(o, o), 1, m.end()
+        while i < len(code):
+            if code[i] == "\\":
+                i += 2
+                continue
+            depth += (code[i] == o and o != c) - (code[i] == c)
+            if depth == 0:
+                break
+            i += 1
+        out.append(code[m.end():i])
+    return out + [r for r in _PATH_RUN.findall(code) if "/" in r]
+
+
+def _doc_subs(body: str) -> list[str]:
+    """$( ) and backtick bodies of an unquoted heredoc: bash runs them, quotes or not."""
+    out, i = [], 0
+    while i < len(body):
+        if body[i] == "\\":
+            i += 2
+        elif body.startswith("$(", i) or body[i] == "`":
+            sub, i = _substitution(body, i)
+            out.append(sub)
+        else:
+            i += 1
+    return out
+
+
+def _expanded_hit(form: str, rx, real: bool, budget: list) -> str | None:
+    words = _brace_expand(form)
+    if words is None and not real:
+        words = _brace_linear(form)
+    if words is None:
+        return "brace expansion too large"
+    if len(words) > 1:
+        budget[0] += len(words)
+        if budget[0] > _BRACE_BUDGET:
+            return "brace expansion too large"
+    return "key file name" if any(_key_file_word(w.translate(_UNMASK), rx) for w in words) else None
+
+
+def key_file_hit(text: str, rx, real: bool = True, depth: int = 0, budget: list | None = None) -> str | None:
+    """Why text names a key file, or None. real: text the shell runs as is (not a quoted
+    string read again as a command), where an expansion past the cap denies; read again,
+    the expansion goes group by group and only past that cap denies. budget: brace
+    expansions spent by the whole command, substitutions and strings read again included."""
+    budget = [0] if budget is None else budget
     if depth > 4:
         return "key file name" if _key_file_word(text, rx) else None
-    spent = 0
-    for (word, form, subs), role in _word_roles(_lex(text)):
-        for body in subs:
-            reason = key_file_hit(body, rx, real, depth + 1)
-            if reason:
-                return reason
-        if role == "code":
-            for lit in re.findall(r"'([^']*)'|\"([^\"]*)\"|`([^`]*)`", word):
-                for s in lit:
-                    reason = s and key_file_hit(s, rx, False, depth + 1)
-                    if reason:
-                        return reason
-        elif role == "path" and _SHELL_META.search(word):
-            reason = key_file_hit(word, rx, False, depth + 1)
-            if reason:
-                return reason
-        elif role == "path":
-            words = _brace_expand(form)
-            if words is None or len(words) > 1 and spent + len(words) > _BRACE_BUDGET:
-                if real:
-                    return "brace expansion too large"
-                words = _brace_linear(form)
-            spent += len(words) if len(words) > 1 else 0
-            if any(_key_file_word(w.translate(_UNMASK), rx) for w in words):
-                return "key file name"
+    for item, role in _word_roles(_lex(text, real)):
+        reason = None
+        if isinstance(item, dict):
+            body, unquoted = item["body"], not item["quoted"]
+            # Unquoted, bash joins a backslash-newline, also into the delimiter line.
+            if role == "shell" or unquoted and "\\\n" in body:
+                reason = key_file_hit(body, rx, real, depth + 1, budget)
+            for s in (_doc_subs(body) if unquoted else []) + (_code_strings(body) if role == "code" else []):
+                reason = reason or key_file_hit(s, rx, False, depth + 1, budget)
+        else:
+            word, form, subs = item
+            for body in subs:
+                reason = reason or key_file_hit(body, rx, real, depth + 1, budget)
+            if role == "code":
+                for s in _code_strings(word):
+                    reason = reason or key_file_hit(s, rx, False, depth + 1, budget)
+            elif role == "path" and _SHELL_META.search(word):
+                reason = reason or key_file_hit(word, rx, False, depth + 1, budget)
+            elif role == "path":
+                reason = reason or _expanded_hit(form, rx, real, budget)
+        if reason:
+            return reason
     return None
 
 
@@ -557,11 +698,13 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
     allowed = (allowlist.get("paths") or []) + iocs.get("allowlist", {}).get("paths", [])
     # The extension regex left regex_patterns for this list: an iocs.json without it (older,
     # own, trimmed from the example) must not turn the check off, so the code has a default
-    # and the deny reason says it was used.
-    exts = iocs.get("sensitive_paths", {}).get("key_file_extensions")
-    valid = isinstance(exts, list) and exts and all(isinstance(e, str) and e for e in exts)
-    key_rx = _key_file_rx(exts if valid else DEFAULT_KEY_EXTS)
-    key_note = "" if valid else " (default extensions: iocs.json has no valid key_file_extensions)"
+    # and the deny reason says it was used. Entries are kept one by one (a null or "" drops
+    # only itself, ".key" counts as "key"); the default only when none is left.
+    raw = iocs.get("sensitive_paths", {}).get("key_file_extensions")
+    exts = [e[1:] if e.startswith(".") else e for e in raw if isinstance(e, str)] if isinstance(raw, list) else []
+    exts = [e.lower() for e in exts if e]
+    key_rx = _key_file_rx(exts or DEFAULT_KEY_EXTS)
+    key_note = "" if exts else " (default extensions: iocs.json has no valid key_file_extensions)"
 
     for text in collect_fields(tool_input, PATH_FIELDS):
         for rx in ALWAYS_DENY_PATHS:

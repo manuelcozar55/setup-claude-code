@@ -146,6 +146,53 @@ expect "commit con heredoc y opts.key permitido" "$(run_sentinel $'git commit -m
 # shellcheck disable=SC2016  # el $(...) va literal: es el comando que se evalua
 expect "clave: \$( ) en mensaje de commit"       "$(run_sentinel 'git commit -m "$(cat tls.key)"')"        "$IOCS_WANT"
 expect "clave: \$( ) en heredoc sin comillas"    "$(run_sentinel $'git commit -m "$(cat <<EOF\n$(cat tls.key)\nEOF\n)"')" "$IOCS_WANT"
+# Ronda 2. El cuerpo de un heredoc son datos: no se parte en palabras ni gasta el tope de llaves. Se lee
+# como comandos si lo recibe un shell (tambien por tuberia), como codigo si un interprete, y sin comillas
+# en el delimitador sus $( ) se ejecutan. Un delimitador que no se reconoce deja el resto como comandos.
+DOC=$(for i in $(seq 1 200); do printf '{"id":%d,"name":"n%d"}\n' "$i" "$i"; done)
+t0=$(date +%s%N)
+out=$(jq -nc --arg c $'cat > data.jsonl <<\'EOF\'\n'"$DOC"$'\nEOF' '{tool_name:"Bash",tool_input:{command:$c}}' \
+  | HOME="$GUARDS_TEST_HOME" timeout 5 "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1)
+ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+expect "heredoc con 200 objetos JSON permitido"  "$out"                                                    ALLOW
+[ "$ms" -lt 1000 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: heredoc con 200 objetos JSON tarda ${ms} ms (tope 1000)"; }
+expect "heredoc con opts.key en notas permitido" "$(run_sentinel $'cat > notas.md <<\'EOF\'\nusar opts.key en el handler\nEOF')" ALLOW
+expect "commit -F - con heredoc permitido"       "$(run_sentinel $'git commit -F - <<\'EOF\'\nfix: opts.key\nEOF')" ALLOW
+expect "clave: heredoc a bash denegado"          "$(run_sentinel $'bash <<\'EOF\'\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: heredoc por tuberia a sh"         "$(run_sentinel $'cat <<\'EOF\' | sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: heredoc a python denegado"        "$(run_sentinel $'python3 - <<\'EOF\'\nprint(open("/etc/ssl/server.key").read())\nEOF')" "$IOCS_WANT"
+# shellcheck disable=SC2016  # el $(...) va literal: es el comando que se evalua
+expect "clave: \$( ) en cuerpo sin comillas"     "$(run_sentinel $'cat <<EOF\n$(cat tls.key)\nEOF')"     "$IOCS_WANT"
+expect "clave: tras un delimitador no reconocido" "$(run_sentinel $'cat <<EOF.x\nhola\nEOF.x\ncat server.key')" "$IOCS_WANT"
+expect "clave: delimitador con barra-salto"      "$(run_sentinel $'cat <<EOF\nx\nEO\\\nF\ncat server.key\nEOF')" "$IOCS_WANT"
+# Pasado el tope en una cadena releida no se trunca: mas de 64 grupos deniegan (antes se tiraba el ultimo).
+W="$(printf '{a,b}%.0s' 1 2 3 4 5 6 7)$(printf '{,}%.0s' $(seq 1 60))s.{k,x}ey"
+expect "clave: grupo 68 en bash -c denegado"     "$(run_sentinel "bash -c 'cat $W'")"                     "$IOCS_WANT"
+# Codigo de perl/ruby: formas de cita sin comillas y cualquier tramo con barra. o.key sigue siendo propiedad.
+expect "clave: perl q() denegado"                "$(run_sentinel "perl -e 'open F,q(/etc/ssl/server.key)'")" "$IOCS_WANT"
+expect "clave: perl qq{} denegado"               "$(run_sentinel "perl -e 'print qq{server.key}'")"       "$IOCS_WANT"
+expect "clave: ruby %q() denegado"               "$(run_sentinel "ruby -e 'File.read(%q(server.key))'")"  "$IOCS_WANT"
+expect "clave: ruta con barra en codigo"         "$(run_sentinel "node -e 'fs.readFileSync(dir+/certs/server.key)'")" "$IOCS_WANT"
+# ag y ack leen el patron como grep.
+expect "ag con patron event.key permitido"       "$(run_sentinel 'ag "event.key" src/')"                  ALLOW
+expect "ack con patron opts.key permitido"       "$(run_sentinel "ack 'opts.key'")"                       ALLOW
+expect "clave: fichero de ag denegado"           "$(run_sentinel 'ag BEGIN server.key')"                  "$IOCS_WANT"
+expect "clave: ack -C sin numero no lleva valor" "$(run_sentinel 'ack -C BEGIN server.key')"              "$IOCS_WANT"
+expect "clave: ack -f lista ficheros, sin patron" "$(run_sentinel 'ack -f server.key')"                  "$IOCS_WANT"
+# Secuencias {x..y[..n]} con el mismo tope que las listas.
+expect "clave: secuencia de letras denegada"     "$(run_sentinel 'cat s.{k..k}ey')"                       "$IOCS_WANT"
+expect "secuencia corta permitida"               "$(run_sentinel 'echo {1..5}')"                          ALLOW
+expect "secuencia sobre el tope denegada"        "$(run_sentinel 'echo {1..1000}')"                       "$IOCS_WANT"
+# Comentarios y operadores: un # que abre palabra comenta hasta fin de linea; un operador corta la
+# redireccion pendiente (antes, la primera palabra del comando siguiente pasaba por su destino).
+expect "comentario con server.key permitido"     "$(run_sentinel 'echo done # see server.key')"           ALLOW
+expect "a#b no es comentario"                    "$(run_sentinel 'echo a#b')"                             ALLOW
+expect "clave: tras redireccion vacia denegada"  "$(run_sentinel 'cmd > ; cat server.key')"               "$IOCS_WANT"
+expect "grep tras redireccion vacia es grep"     "$(run_sentinel 'cmd > ; grep "event.key" src/')"        ALLOW
+# Presupuesto de llaves: uno solo para todo el comando, sustituciones incluidas, de 4096 resultados.
+expect "200 palabras {a,b} permitidas"           "$(run_sentinel "git add $(for i in $(seq 1 200); do printf 'src/m%d.{ts,js} ' "$i"; done)")" ALLOW
+S1=$(for i in $(seq 1 50); do printf 'w%d{1..60} ' "$i"; done)
+expect "dos \$( ) de 3000 superan el presupuesto" "$(run_sentinel "echo \$(echo $S1) \$(echo $S1)")"     "$IOCS_WANT"
 expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK
 expect "force push compuesto denegado" "$(run_smart 'echo ok && git push -f origin main')"   BLOCK
 expect "comando normal en smart"       "$(run_smart 'git status')"                           ALLOW
@@ -456,6 +503,18 @@ echo "$out" | grep -q '"permissionDecision": "deny"' && pass=$((pass+1)) || { fa
 out=$(sent "$SH" '{"tool_name":"Bash","tool_input":{"command":"cat server.p12"}}' "$SH/kit/sentinel_preflight.py")
 echo "$out" | grep -q '"permissionDecision": "deny"' && echo "$out" | grep -q 'default' && pass=$((pass+1)) \
   || { fail=$((fail+1)); echo "FAIL: iocs.json sin key_file_extensions deja pasar una clave: $out"; }
+# Una entrada mala no tira la lista entera: se filtra entrada a entrada y se quita el punto inicial.
+# Una lista vacia no apaga la comprobacion: usa la de por defecto.
+printf '{"sensitive_paths":{"key_file_extensions":["pem",".key","kdbx",null,""]}}' > "$SH/kit/iocs.json"
+for f in x.kdbx x.key; do
+  out=$(sent "$SH" "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cat $f\"}}" "$SH/kit/sentinel_preflight.py")
+  echo "$out" | grep -q '"permissionDecision": "deny"' && pass=$((pass+1)) \
+    || { fail=$((fail+1)); echo "FAIL: key_file_extensions con entradas malas deja pasar $f: $out"; }
+done
+printf '{"sensitive_paths":{"key_file_extensions":[]}}' > "$SH/kit/iocs.json"
+out=$(sent "$SH" '{"tool_name":"Bash","tool_input":{"command":"cat x.p12"}}' "$SH/kit/sentinel_preflight.py")
+echo "$out" | grep -q '"permissionDecision": "deny"' && pass=$((pass+1)) \
+  || { fail=$((fail+1)); echo "FAIL: key_file_extensions vacia apaga la comprobacion: $out"; }
 
 # 14e) prosa -> hook: npm install (usa pnpm), --no-verify, y aviso de Write nuevo >150 lineas.
 bdc "npm install"             "npm install left-pad"             deny
