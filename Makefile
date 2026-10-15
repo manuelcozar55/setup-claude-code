@@ -57,6 +57,10 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_mod_cockpit.sh
 	bash kit/test/test_statusline.sh
 	bash kit/test/test_session_start_clear.sh
+	bash kit/test/test_nucleo_lib.sh
+	bash kit/test/test_nucleo_hooks.sh
+	bash kit/test/test_nucleo_nudge.sh
+	bash kit/test/test_settings_template.sh
 	bash kit/test/test_install_plugins.sh
 
 doctor: ## Verifica una instalacion existente del kit

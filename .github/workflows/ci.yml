@@ -192,6 +192,14 @@ jobs:
         run: bash kit/test/test_statusline.sh
       - name: "test_session_start_clear.sh (hook SessionStart: nucleo.md como datos, recorte y fail-open)"
         run: bash kit/test/test_session_start_clear.sh
+      - name: "test_nucleo_lib.sh (lib de nucleo: una raíz sin anidados, emisión por secciones bajo el tope)"
+        run: bash kit/test/test_nucleo_lib.sh
+      - name: "test_nucleo_hooks.sh (inyectores ≤ 9 500 y como datos, checkpoint con .gitignore, KPI, gauge y gate, sin fsmonitor)"
+        run: bash kit/test/test_nucleo_hooks.sh
+      - name: "test_nucleo_nudge.sh (PostToolUse: aviso al modelo por banda del airbag, una vez, solo con nucleo rancio, < 50 ms)"
+        run: bash kit/test/test_nucleo_nudge.sh
+      - name: "test_settings_template.sh (plantilla de settings: hooks de nucleo, un PreCompact, ventana, cleanupPeriodDays, sin LangSmith)"
+        run: bash kit/test/test_settings_template.sh
 
       - name: "test_install_plugins.sh (plugins de terceros por referencia: diff-first, ids esperados, opcionales aparte)"
         run: bash kit/test/test_install_plugins.sh

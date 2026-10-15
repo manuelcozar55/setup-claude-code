@@ -382,7 +382,7 @@ install_claude_md() {  # src dst
 
 install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   local base="$1" f rel
-  mkdir -p "$base/hooks" "$base/agents" "$base/sentinel"
+  mkdir -p "$base/hooks/lib" "$base/agents" "$base/sentinel" "$base/templates"
   install_claude_md "$KIT/claude/CLAUDE.md"       "$base/CLAUDE.md"
   install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
   install_file "$KIT/claude/sentinel-allowlist.json" "$base/sentinel-allowlist.json"
@@ -395,6 +395,8 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
     install_file "$f" "$base/skills/$rel"
   done < <(find "$KIT/claude/skills" -type f -print0 2>/dev/null)
   for f in "$KIT"/claude/hooks/*;  do [ -f "$f" ] && install_file "$f" "$base/hooks/$(basename "$f")"; done
+  for f in "$KIT"/claude/hooks/lib/*; do [ -f "$f" ] && install_file "$f" "$base/hooks/lib/$(basename "$f")"; done
+  for f in "$KIT"/claude/templates/*; do [ -f "$f" ] && install_file "$f" "$base/templates/$(basename "$f")"; done
   for f in "$KIT"/sentinel/*;      do [ -f "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
   mkdir -p "$base/hooks/git"
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"

@@ -14,6 +14,8 @@ ck "$([ -f "$CLAUDE_HOME/CLAUDE.md" ] && echo y)" "y" "instala CLAUDE.md"
 ck "$([ -f "$CLAUDE_HOME/settings.json" ] && echo y)" "y" "instala settings.json"
 ck "$([ -x "$CLAUDE_HOME/hooks/branch-guard.sh" ] && echo y)" "y" "hook ejecutable"
 ck "$([ -f "$CLAUDE_HOME/sentinel/sentinel_preflight.py" ] && echo y)" "y" "instala sentinel"
+ck "$([ -f "$CLAUDE_HOME/hooks/lib/nucleo.sh" ] && echo y)" "y" "instala hooks/lib"
+ck "$([ -f "$CLAUDE_HOME/templates/nucleo.md" ] && echo y)" "y" "instala templates"
 
 # Idempotencia + backup: modifica un fichero que el KIT posee, reinstala, debe backupear.
 # Se usa .gitleaks.toml y no CLAUDE.md: CLAUDE.md son TUS instrucciones y desde ahora no se

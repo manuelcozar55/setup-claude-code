@@ -58,6 +58,14 @@ CLAUDE_HOME=/ruta/alternativa bash install.sh
 
 `install.sh` es idempotente: si vuelves a ejecutarlo, cualquier fichero que fuera a pisar se guarda antes con backup con timestamp en `$CLAUDE_HOME/backups/`, y nunca sobreescribe sin copia. Puedes correrlo tantas veces como quieras.
 
+### Modelo, ventana y esfuerzo: una sola fuente (medido)
+
+- **La ventana de 1M va por el sufijo `[1m]` del id de modelo**, no por la cabecera beta `context-1m` (falso indicador) ni por `--1m` (estampa el sufijo sobre cualquier modelo y rompe Haiku). Ponlo en `env.ANTHROPIC_MODEL`, p. ej. `"opus[1m]"`.
+- **Una sola fuente del modelo.** `/model` no persiste: el `env` se reaplica en cada arranque y gana. Si fijas `ANTHROPIC_MODEL`, quita la clave `model` de `settings.json`: queda muerta y confunde.
+- **`effortLevel: "max"` cae a `high` en silencio.** El máximo que se puede fijar en settings es `xhigh` (el de la plantilla).
+- **El airbag se mueve con `CLAUDE_CODE_AUTO_COMPACT_WINDOW`** (la plantilla: `250000`; compacta solo a la ventana − 33 000 tokens, y sobre esa línea miden sus % los hooks de `nucleo.md`). Sin sufijos `k`/`m`: se lee como entero. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` es un hook de test, no una opción: solo baja el umbral, y en la ruta de 1M no hace nada.
+- `cleanupPeriodDays: 14` acota cuánto tiempo se guardan los transcripts en disco.
+
 ## Paso 3 · Variables de entorno
 
 ```bash

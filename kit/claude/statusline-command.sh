@@ -9,6 +9,8 @@
 # UTF-8 para que ${#s} cuente caracteres y no bytes; C para que git no traduzca
 # "insertions"/"deletions" del --shortstat. Sin locks opcionales: el refresco no
 # debe pelear por index.lock con el git de la sesion.
+# core.fsmonitor=false en cada diff: el fsmonitor de un .git/config ajeno es un ejecutable, y la
+# barra corre git en cualquier directorio en el que entres.
 export LC_ALL=C.UTF-8 GIT_OPTIONAL_LOCKS=0
 
 mapfile -t f < <(jq -r '
@@ -37,7 +39,7 @@ if top=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null); then
   while read -r l; do
     [[ $l =~ ([0-9]+)\ insertion ]] && ins=$(( ins + BASH_REMATCH[1] ))
     [[ $l =~ ([0-9]+)\ deletion ]] && del=$(( del + BASH_REMATCH[1] ))
-  done < <(git -C "$cwd" diff --shortstat 2>/dev/null; git -C "$cwd" diff --cached --shortstat 2>/dev/null)
+  done < <(git -c core.fsmonitor=false -C "$cwd" diff --shortstat 2>/dev/null; git -c core.fsmonitor=false -C "$cwd" diff --cached --shortstat 2>/dev/null)
   changes="(+$ins,-$del)"
 else
   repo="no git"

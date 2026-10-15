@@ -1,8 +1,7 @@
 {
   "env": {
     "ANTHROPIC_DISABLE_TELEMETRY": "1",
-    "TRACE_TO_LANGSMITH": "false",
-    "CC_LANGSMITH_PROJECT": "MyCC"
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "250000"
   },
   "permissions": {
     "allow": [
@@ -127,6 +126,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/nucleo-nudge.sh",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -149,11 +158,21 @@
         ]
       },
       {
-        "matcher": "startup|clear",
+        "matcher": "startup|clear|resume",
         "hooks": [
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/session-start-clear.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/session-start-compact.sh",
             "timeout": 10
           }
         ]
@@ -167,6 +186,17 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/pre-compact.sh",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/stop-context-gauge.sh",
+            "timeout": 15
           }
         ]
       }
@@ -189,8 +219,7 @@
     "skill-creator@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
-    "understand-anything@understand-anything": true,
-    "langsmith-tracing@langsmith-claude-code-plugins": false
+    "understand-anything@understand-anything": true
   },
   "extraKnownMarketplaces": {
     "openai-codex": {
@@ -204,16 +233,11 @@
         "source": "github",
         "repo": "Lum1104/Understand-Anything"
       }
-    },
-    "langsmith-claude-code-plugins": {
-      "source": {
-        "source": "github",
-        "repo": "langchain-ai/langsmith-claude-code-plugins"
-      }
     }
   },
   "effortLevel": "xhigh",
   "autoUpdatesChannel": "latest",
+  "cleanupPeriodDays": 14,
   "theme": "dark",
   "statusLine": {
     "type": "command",

@@ -4,7 +4,7 @@ La base que instala este kit (`CLAUDE.md`, `settings.json`, hooks, agentes, Sent
 
 ## Plugins de Claude Code
 
-`claude/settings.json` declara siete plugins en `enabledPlugins`, cuatro del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual); los otros tres vienen de marketplaces externos que el propio `settings.json` del kit ya declara en `extraKnownMarketplaces`, así que Claude Code los reconoce sin que tengas que darlos de alta a mano.
+`claude/settings.json` declara seis plugins en `enabledPlugins`, cuatro del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual); los otros dos vienen de marketplaces externos que el propio `settings.json` del kit ya declara en `extraKnownMarketplaces`, así que Claude Code los reconoce sin que tengas que darlos de alta a mano.
 
 | Plugin | Para qué | Cómo |
 |---|---|---|
@@ -14,9 +14,8 @@ La base que instala este kit (`CLAUDE.md`, `settings.json`, hooks, agentes, Sent
 | `frontend-design@claude-plugins-official` | diseño de interfaces | `/plugin` |
 | `codex@openai-codex` | integración con Codex | marketplace externo (GitHub `openai/codex-plugin-cc`), ya declarado en `extraKnownMarketplaces`; activa con `/plugin` |
 | `understand-anything@understand-anything` | grafos de conocimiento del código; aporta las skills `understand-*` | marketplace externo (GitHub `Lum1104/Understand-Anything`), ya declarado en `extraKnownMarketplaces`; activa con `/plugin` |
-| `langsmith-tracing@langsmith-claude-code-plugins` | trazas de ejecución en LangSmith | marketplace externo (GitHub `langchain-ai/langsmith-claude-code-plugins`), ya declarado en `extraKnownMarketplaces`; viene **desactivado** por defecto (`false` en `enabledPlugins`); actívalo con `/plugin` si lo necesitas |
 
-Los cuatro primeros se activan (o reinstalan si hiciera falta) con el comando interactivo `/plugin` dentro de una sesión de Claude Code. Los tres últimos, al venir de marketplaces externos ya declarados en el `settings.json` que instala este kit, se activan exactamente igual: `/plugin` los lista porque el marketplace ya es conocido, no hace falta registrar nada a mano. Verifica el estado (instalados, activos, disponibles) con:
+Los cuatro primeros se activan (o reinstalan si hiciera falta) con el comando interactivo `/plugin` dentro de una sesión de Claude Code. Los dos últimos, al venir de marketplaces externos ya declarados en el `settings.json` que instala este kit, se activan exactamente igual: `/plugin` los lista porque el marketplace ya es conocido, no hace falta registrar nada a mano. Verifica el estado (instalados, activos, disponibles) con:
 
 ```bash
 /plugin
