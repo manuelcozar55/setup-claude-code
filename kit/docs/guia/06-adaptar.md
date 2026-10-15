@@ -9,8 +9,7 @@ Lo que **no** se quita en ningún caso: los guards de `PreToolUse` sobre `Bash`,
 | Qué | Dónde | Quítalo si… |
 |---|---|---|
 | `WebFetch(domain:…)` en `permissions.allow` | `settings.json` | no consultas esas fuentes (son de un uso concreto: bibliografía y boletines oficiales) |
-| `Bash(graphify *)`, `Bash(rtk *)`, `Bash(uv tool *)` | `settings.json` → `allow` | no usas esas herramientas; un `allow` que no usas es superficie sin beneficio |
-| `TRACE_TO_LANGSMITH`, `CC_LANGSMITH_PROJECT` y el plugin `langsmith-tracing` | `settings.json` → `env`, `enabledPlugins`, `extraKnownMarketplaces` | no envías trazas a LangSmith |
+| `Bash(uv tool list)`, `Bash(rtk gain)`, `Bash(graphify query *)`, `Bash(graphify path *)`, `Bash(graphify explain *)` | `settings.json` → `allow` | no usas esas herramientas; un `allow` que no usas es superficie sin beneficio. Son subcomandos sueltos y no comodines porque `rtk *` ejecutaba cualquier comando vía `err`/`test`/`summary`/`proxy`, y `graphify install\|hook\|clone\|add` tocan la config de los agentes, los hooks de git o la red |
 | `understand-anything` y su marketplace | `enabledPlugins`, `extraKnownMarketplaces` | no lo has usado en un mes |
 | `"model": "opus[1m]"` | `settings.json` | tu trabajo cabe en una ventana normal ([`06-routine.md`](../06-routine.md#opus1m-solo-cuando-no-cabe)); y si fijas el modelo por `env.ANTHROPIC_MODEL`, quita esta clave: una sola fuente ([antipatrón 7](03-antipatrones.md#7--model-que-no-se-queda)) |
 | El bloque de agent-browser | `CLAUDE.md` | no automatizas navegador |

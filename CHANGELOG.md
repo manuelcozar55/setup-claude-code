@@ -68,7 +68,7 @@ etiquetado.
   Al retomar, la sesión nueva ejecuta los comandos de verificación del handoff y responde
   con un resumen corto antes de seguir: el handoff puede estar desfasado.
 - **`kit/install-plugins.sh`: plugins de terceros por referencia.** Instala desde su
-  marketplace `ponytail` y `ui-ux-pro-max` (más `superpowers` y `frontend-design`), y con
+  marketplace `ponytail` y `ui-ux-pro-max` (más `esenciales` y `frontend-design`), y con
   `--with-optional` `impeccable` y `find-skills`. Opt-in y diff-first; no copia nada al repo.
   Doc: `kit/docs/08-plugins-mcp-y-skills.md`. Sensor: `kit/test/test_install_plugins.sh`,
   sin red (dobles de `claude`/`npx`/`pnpm`), falsable.
@@ -77,6 +77,14 @@ etiquetado.
   manuelcozar55/setup-claude-code`, y `install-plugins.sh` lo incluye. El dock pasa a dos
   columnas con barra fina, contadores en una línea y misión plegable con un clic; test
   falsable en `tests/dock.test.tsx`.
+- **Plugin `esenciales` en `kit/plugins/esenciales/`:** las skills de superpowers con uso
+  real (MIT, atribución en `THIRD-PARTY.md`), sin `hooks/`: el `SessionStart` de superpowers
+  inyectaba `using-superpowers` (~1,9k tokens) en cada arranque, `/clear` y compactación.
+  Sustituye a `superpowers` en `install-plugins.sh` y en `enabledPlugins`. Sensor:
+  `kit/test/test_plugin_esenciales.sh`. 6 skills en vez de las 3 del plan: decisión de la
+  persona del 2026-10-15 por uso medido en 60 días (brainstorming 10, writing-plans 10,
+  subagent-driven-development 10, finishing-a-development-branch 3,
+  dispatching-parallel-agents 3, systematic-debugging 2; las otras 9, 0).
 
 ### Changed
 
@@ -141,8 +149,33 @@ etiquetado.
   audiencia y `docs/superpowers/` eran planes y registros de proceso ya ejecutados; el repo
   queda centrado en el kit y el harness. Con las charlas se va `LICENSE-DOCS` (CC BY 4.0, que
   solo las cubría): el repo queda bajo MIT. Todo sigue en el historial de git.
+- **`preflight.sh`.** Solo recuperaba el proxy de Headroom vía systemd; retirado Headroom,
+  era un `SessionStart` sin trabajo. Sale el script y su bloque de la plantilla.
 
 ### Fixed
+
+- **Sentinel ya no lee el allowlist del directorio de trabajo.** Un repo clonado con
+  `.security/sentinel-allowlist.json` podía convertir en `allow` el deny de un `.env` o,
+  con `[]`/`{"paths":null}`, tumbar toda herramienta con exit 2. Solo cuenta el de `$HOME`;
+  datos malformados (allowlist, iocs, regex, audit-log) se ignoran en vez de bloquear.
+- **Más grafías de pipe-a-shell y menos falsos positivos en `block-dangerous-commands.sh`.**
+  Pasaban `| sudo -E bash -`, `|& bash`, `| python3` o `. <(curl ..)`; y `"$(curl ..)"` como
+  argumento, `npm` citado en texto o `--no-verify` entre comillas se denegaban en falso.
+- **`lib/nucleo.sh`: raíz de worktrees, tope real de la inyección, ventana sin `[1m]` y
+  symlinks.** Un worktree de `claude --worktree` resolvía al repo padre, `</NUCLEO-DATOS>`
+  cerraba el envoltorio, un título enorme saltaba el tope y un `nucleo.md` enlazado hacía
+  escribir o leer fuera del repo.
+- **`pre-compact.sh` no ensucia repos ni deja el checkpoint commiteable; el nudge se
+  rearma.** Creaba `.claude/estado/.gitignore` en cualquier repo y, si ya existía, dejaba el
+  checkpoint con los prompts de la persona como `??`; el aviso de `nucleo.md` solo saltaba
+  en el primer ciclo de compactación.
+- **El `nucleo.md` de un repo ya no ordena ejecutar nada, y el `allow` no lanza código.**
+  El arranque propone el oráculo y solo lo ejecuta si la persona confirma; con
+  `Bash(uv tool *)` un repo hostil podía ejecutar `uv tool run --from git+https://…`. El
+  `allow` pasa a `uv tool list`, `rtk gain` y `graphify query|path|explain`.
+- **`task-brief` (plugin `esenciales`) solo acepta un número de tarea entero.** `N` iba sin
+  validar a un nombre de fichero y a una regex de awk: `../../../x` salía del espacio de
+  trabajo y `1.*` mezclaba las tareas 1, 10, 11…
 
 - **El sensor de `[Unreleased]` enrojecía un CHANGELOG correcto, y se vio al estrenar el
   procedimiento de release.** `test_doc_claims.sh` juzga las cifras de inventario de esa

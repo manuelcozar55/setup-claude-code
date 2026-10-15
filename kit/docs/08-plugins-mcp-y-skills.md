@@ -97,7 +97,7 @@ Cómo se añaden: `claude mcp add ...`. La sintaxis exacta (transporte, comando 
 
 **Marketplaces privados (GitLab autoalojado, VPN).** Un marketplace de plugins de tu organización se da de alta con su URL SSH — `claude plugin marketplace add git@tu-gitlab:grupo/marketplace.git` — así que necesita una clave SSH dada de alta y la VPN levantada. El proceso completo, con los comandos y el diagnóstico de los fallos que dan todos el mismo mensaje, está en [`09-ssh-y-gitlab-privado.md`](09-ssh-y-gitlab-privado.md). Si la VPN está caída, ese marketplace falla al refrescarse y el resto de Claude Code sigue funcionando igual.
 
-[`rtk`](https://github.com/rtk-ai/rtk) filtra la salida de los comandos de shell. El kit no lo cablea: el hook `rtk hook claude` que este `settings.json` traía se retiró, y de `rtk` solo queda `Bash(rtk *)` en `permissions.allow`. (Headroom, el proxy de compresión con el que se confundía, se retiró en 2026-10: [`archive/03-headroom.md`](archive/03-headroom.md).)
+[`rtk`](https://github.com/rtk-ai/rtk) filtra la salida de los comandos de shell. El kit no lo cablea: el hook `rtk hook claude` que este `settings.json` traía se retiró, y de `rtk` solo queda `Bash(rtk gain)` en `permissions.allow`. (Headroom, el proxy de compresión con el que se confundía, se retiró en 2026-10: [`archive/03-headroom.md`](archive/03-headroom.md).)
 
 Verifica los servidores dados de alta con:
 
