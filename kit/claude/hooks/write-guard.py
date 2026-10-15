@@ -74,6 +74,16 @@ def main() -> None:
 
     findings = scan(content)
     if not findings:
+        if tool == "Write" and len(content.splitlines()) > 150 and not Path(path).exists():
+            print(json.dumps({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "additionalContext": (
+                        f"[WRITE-GUARD] '{path}' es un fichero nuevo de >150 líneas: "
+                        "delégalo a un subagente."
+                    ),
+                }
+            }))
         sys.exit(0)
 
     blocking = any(b for _, b in findings)

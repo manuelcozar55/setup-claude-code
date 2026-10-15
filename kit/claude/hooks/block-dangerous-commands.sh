@@ -144,6 +144,10 @@ DENY_RULES=(
   '\bdeno\s+(run|install)\s+https?://' "BLOCKED: deno run/install from URL"
   '\bbun\s+(x|run)\s+https?://'        "BLOCKED: bun x/run from URL (supply chain risk)"
 
+  # ── PROSA → HOOK (convenciones del kit) ────────────────────────────────────
+  '\bnpm\s+(install|i|add|ci|update)\b'  "BLOCKED: usa pnpm (pnpm install/add/update), no npm"
+  '\bgit\b[^;&|]*\b(commit|push)\b[^;&|]*--no-verify'  "BLOCKED: --no-verify salta los hooks de git; arregla el hook que falla"
+
   # ── MISC ───────────────────────────────────────────────────────────────────
   ':\(\)\s*\{.*\|'                    "BLOCKED: fork bomb pattern"
 )

@@ -309,6 +309,24 @@ printf '[1,2]' | "$PY" "$KIT/sentinel/sentinel_preflight.py" >/dev/null 2>&1; rc
 printf '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | "$PY" "$KIT/sentinel/sentinel_preflight.py" >/dev/null 2>&1; rc_ok=$?
 [ "$rc_bad" = 2 ] && [ "$rc_arr" = 2 ] && [ "$rc_ok" = 0 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: sentinel fail-closed (basura=$rc_bad, array=$rc_arr, inocuo=$rc_ok; esperaba 2/2/0)"; }
 
+# 14e) prosa -> hook: npm install (usa pnpm), --no-verify, y aviso de Write nuevo >150 lineas.
+bdc "npm install"             "npm install left-pad"             deny
+bdc "npm i"                   "npm i"                            deny
+bdc "npm ci"                  "npm ci"                           deny
+bdc "pnpm install"            "pnpm install"                     allow
+bdc "npm list"                "npm list -g"                      allow
+bdc "npm view"                "npm view left-pad version"        allow
+bdc "git commit --no-verify"  "git commit -m x --no-verify"      deny
+bdc "git push --no-verify"    "git push --no-verify origin foo"  deny
+bdc "git commit normal"       "git commit -m x"                  allow
+wg_ctx() { # $1 = nº de líneas, $2 = ruta
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[2],"content":"x\n"*int(sys.argv[1])}}))' "$1" "$2" \
+    | "$PY" "$KIT/claude/hooks/write-guard.py" | jq -r '.hookSpecificOutput.additionalContext // empty'
+}
+[ -n "$(wg_ctx 151 "$GUARDS_TEST_HOME/nuevo-largo.txt")" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: Write nuevo de 151 lineas sin aviso"; }
+[ -z "$(wg_ctx 150 "$GUARDS_TEST_HOME/nuevo-corto.txt")" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: Write nuevo de 150 lineas avisa"; }
+[ -z "$(wg_ctx 151 "$GUARDS_TEST_HOME/.claude/settings.json")" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: Write sobre fichero existente avisa"; }
+
 # 15) modo de los hooks: settings.json los invoca por RUTA DIRECTA, asi que un *.sh
 # versionado como 100644 devuelve rc=126 en cada arranque de sesion de cualquier
 # instalacion de terceros. Le paso a preflight.sh, el unico de los nueve sin el bit, y
