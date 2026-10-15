@@ -309,6 +309,35 @@ printf '[1,2]' | "$PY" "$KIT/sentinel/sentinel_preflight.py" >/dev/null 2>&1; rc
 printf '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | "$PY" "$KIT/sentinel/sentinel_preflight.py" >/dev/null 2>&1; rc_ok=$?
 [ "$rc_bad" = 2 ] && [ "$rc_arr" = 2 ] && [ "$rc_ok" = 0 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: sentinel fail-closed (basura=$rc_bad, array=$rc_arr, inocuo=$rc_ok; esperaba 2/2/0)"; }
 
+# 14d-bis) El fail-closed es SOLO para el payload. El allowlist y iocs.json son datos: con una
+# forma rara (`[]`, `{"paths":null}`, una regex invalida) el hook salia con 2 en TODA herramienta,
+# Read incluido, y la sesion no se podia arreglar desde dentro. Y el allowlist del repo clonado
+# ($CWD/.security) no se lee: con `paths` de un .env convertia ese deny en allow.
+SH="$GUARDS_TEST_HOME/sentinel-datos"; mkdir -p "$SH/h/.claude" "$SH/repo/.security" "$SH/kit"
+sent() { # $1 = cwd, $2 = payload, $3 = preflight (opcional); imprime la salida y rc=N
+  (cd "$1" && printf '%s' "$2" | HOME="$SH/h" "$PY" "${3:-$KIT/sentinel/sentinel_preflight.py}" 2>&1; echo "rc=$?")
+}
+READ='{"tool_name":"Read","tool_input":{"file_path":"README.md"}}'
+for al in '[]' '{"paths":null}'; do
+  printf '%s' "$al" > "$SH/h/.claude/sentinel-allowlist.json"
+  out=$(sent "$SH" "$READ")
+  [ "$out" = "rc=0" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: allowlist $al bloquea un Read inocuo: $out"; }
+done
+rm -f "$SH/h/.claude/sentinel-allowlist.json"
+cp "$KIT/sentinel/sentinel_preflight.py" "$SH/kit/"
+printf '{"sensitive_paths":{"regex_patterns":["("]}}' > "$SH/kit/iocs.json"
+out=$(sent "$SH" "$READ" "$SH/kit/sentinel_preflight.py")
+[ "$out" = "rc=0" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: iocs.json con regex invalida bloquea un Read inocuo: $out"; }
+: > "$SH/h/.claude/audit-logs"   # un fichero donde iria el directorio: audit_log no puede escribir
+out=$(sent "$SH" '{"tool_name":"Bash","tool_input":{"command":"echo $ANTHROPIC_API_KEY"}}')
+[ "$(echo "$out" | sed '$d' | jq -r '.hookSpecificOutput | select(.hookEventName=="PreToolUse") | .additionalContext' 2>/dev/null | grep -c SENTINEL)" = 1 ] \
+  && [ "$(echo "$out" | tail -n1)" = "rc=0" ] && pass=$((pass+1)) \
+  || { fail=$((fail+1)); echo "FAIL: warn sin audit-log escribible o fuera de hookSpecificOutput: $out"; }
+ENVF="/srv/app/.e""nv"
+printf '{"paths":["%s"]}' "$ENVF" > "$SH/repo/.security/sentinel-allowlist.json"
+out=$(sent "$SH/repo" "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"$ENVF\"}}")
+echo "$out" | grep -q '"permissionDecision": "deny"' && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: el allowlist del repo clonado exime un .env: $out"; }
+
 # 14e) prosa -> hook: npm install (usa pnpm), --no-verify, y aviso de Write nuevo >150 lineas.
 bdc "npm install"             "npm install left-pad"             deny
 bdc "npm i"                   "npm i"                            deny

@@ -6,10 +6,11 @@ Reads the tool call JSON from stdin, checks it against the IOC library
 (iocs.json) + user allowlist, and returns allow/deny/warn on stdout.
 
 Zero LLM cost. Pure local Python. Fail-closed: a crash or malformed input exits 2 (block).
+A malformed allowlist/iocs.json is ignored instead: it is data, and exit 2 on it blocks every tool.
 
 Output protocol (Claude Code PreToolUse):
   deny  → {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "..."}}
-  warn  → {"additionalContext": "⚠ [SENTINEL] ..."}
+  warn  → {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "⚠ [SENTINEL] ..."}}
   allow → exit 0 silently
 
 Audit log: ~/.claude/audit-logs/sentinel.jsonl
@@ -34,22 +35,24 @@ def load_iocs() -> dict:
     for path in candidates:
         if path.exists():
             try:
-                return json.loads(path.read_text())
+                data = json.loads(path.read_text())
             except Exception:
                 continue
+            if isinstance(data, dict):
+                return data
     return {}
 
 
 def load_user_allowlist() -> dict:
-    for candidate in (
-        Path.cwd() / ".security" / "sentinel-allowlist.json",
-        Path.home() / ".claude" / "sentinel-allowlist.json",
-    ):
-        if candidate.exists():
-            try:
-                return json.loads(candidate.read_text())
-            except Exception:
-                continue
+    # Never $CWD/.security/: a cloned repo could ship its own exemptions.
+    candidate = Path.home() / ".claude" / "sentinel-allowlist.json"
+    if candidate.exists():
+        try:
+            data = json.loads(candidate.read_text())
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
     return {"paths": [], "domains": [], "commands": []}
 
 
@@ -74,6 +77,14 @@ def path_matches(text: str, pattern: str) -> bool:
         if pattern_raw and pattern_raw in t:
             return True
     return False
+
+
+def _search(rx: str, text: str):
+    """re.search for regexes that come from data files: an invalid one is skipped, not fatal."""
+    try:
+        return re.search(rx, text)
+    except re.error:
+        return None
 
 
 def _norm_path(p: str) -> str:
@@ -122,10 +133,10 @@ def is_allowed_path(text: str, allowed: list[str]) -> bool:
 #     false positive can justify exempting, and for the last two the kit already
 #     says so in prose: docs/09 tells the user not to put '~/.ssh/' in the
 #     allowlist "para salir del paso". Prose is not enforcement; this list is.
-#     Second measured vector that makes it necessary: load_user_allowlist()
-#     prefers '$CWD/.security/sentinel-allowlist.json', so a *cloned repo* can
-#     ship its own exemptions — with paths ["/"] it turned the ~/.aws and
-#     ~/.ssh denies into allows without the user editing anything.
+#     Second measured vector: load_user_allowlist() used to prefer
+#     '$CWD/.security/sentinel-allowlist.json', so a *cloned repo* could ship
+#     its own exemptions (paths ["/"] turned the ~/.aws and ~/.ssh denies into
+#     allows). It no longer reads $CWD; this floor stays for the user's own file.
 #   PROTECTED_CONFIG — the guards and the config that drives them. These carry
 #     no deny of their own (blocking the write is permissions.deny's job, in the
 #     settings template); what they guarantee is that no allowlist entry — this
@@ -232,7 +243,7 @@ def collect_fields(tool_input: dict, keys: list[str]) -> list[str]:
 def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
     patterns = iocs.get("sensitive_paths", {}).get("patterns", [])
     regexes = iocs.get("sensitive_paths", {}).get("regex_patterns", [])
-    allowed = allowlist.get("paths", []) + iocs.get("allowlist", {}).get("paths", [])
+    allowed = (allowlist.get("paths") or []) + iocs.get("allowlist", {}).get("paths", [])
 
     for text in collect_fields(tool_input, PATH_FIELDS):
         for rx in ALWAYS_DENY_PATHS:
@@ -246,7 +257,7 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
             if path_matches(text, p):
                 return (f"sensitive path: {p}", "critical")
         for rx in regexes:
-            if re.search(rx, text):
+            if _search(rx, text):
                 return (f"sensitive path pattern", "critical")
     return (None, None)
 
@@ -254,7 +265,7 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
 def check_sensitive_env(tool_input: dict, iocs: dict, allowlist: dict):
     patterns = iocs.get("sensitive_env_vars", {}).get("patterns", [])
     regexes = iocs.get("sensitive_env_vars", {}).get("regex_patterns", [])
-    allowed_vars = allowlist.get("env_vars", []) + iocs.get("allowlist", {}).get("env_vars", [])
+    allowed_vars = (allowlist.get("env_vars") or []) + iocs.get("allowlist", {}).get("env_vars", [])
 
     for text in collect_fields(tool_input, ["command", "url"]):
         for var in patterns:
@@ -263,7 +274,7 @@ def check_sensitive_env(tool_input: dict, iocs: dict, allowlist: dict):
             if re.search(rf"\b{re.escape(var)}\b", text):
                 return (f"sensitive env var: {var}", "medium")
         for rx in regexes:
-            if re.search(rx, text):
+            if _search(rx, text):
                 return ("sensitive env var pattern", "medium")
     return (None, None)
 
@@ -277,7 +288,7 @@ def check_prompt_injection(tool_input: dict, iocs: dict, allowlist: dict):
     instr = ["command", "prompt", "query", "input", "text", "message", "instruction", "description", "url"]
     for text in collect_fields(tool_input, instr):
         for rx in patterns:
-            if re.search(rx, text):
+            if _search(rx, text):
                 return ("prompt injection attempt", "high")
     # Content being written/read: warn, not deny. Hard-denying here blocks the
     # legitimate act of writing docs, tests or reports that quote an injection
@@ -285,7 +296,7 @@ def check_prompt_injection(tool_input: dict, iocs: dict, allowlist: dict):
     # without freezing the session.
     for text in collect_fields(tool_input, ["content", "new_string", "new_str", "contents", "body"]):
         for rx in patterns:
-            if re.search(rx, text):
+            if _search(rx, text):
                 return ("prompt injection phrase in written content", "medium")
     return (None, None)
 
@@ -296,7 +307,7 @@ def check_suspicious_network(tool_input: dict, iocs: dict, allowlist: dict):
     suspicious_tlds = net.get("suspicious_tlds", [])
     pastebin = net.get("pastebin_style", [])
     suspicious_patterns = net.get("suspicious_patterns", [])
-    allowed_domains = allowlist.get("domains", []) + iocs.get("allowlist", {}).get("domains", [])
+    allowed_domains = (allowlist.get("domains") or []) + iocs.get("allowlist", {}).get("domains", [])
 
     for text in collect_fields(tool_input, ["url", "command", "endpoint", "uri", "href", "target"]):
         for entry in known_malicious:
@@ -311,7 +322,7 @@ def check_suspicious_network(tool_input: dict, iocs: dict, allowlist: dict):
                 return (f"exfil service: {ps}", "high")
 
         for rx in suspicious_patterns:
-            if re.search(rx, text):
+            if _search(rx, text):
                 return ("raw IP address in URL", "high")
 
         for tld in suspicious_tlds:
@@ -323,13 +334,13 @@ def check_suspicious_network(tool_input: dict, iocs: dict, allowlist: dict):
 
 def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
     patterns = iocs.get("dangerous_commands", {}).get("patterns", [])
-    allowed_cmds = allowlist.get("commands", [])
+    allowed_cmds = allowlist.get("commands") or []
 
     for text in collect_fields(tool_input, ["command"]):
         if text in allowed_cmds:
             continue
         for rx in patterns:
-            if re.search(rx, text):
+            if _search(rx, text):
                 return (f"dangerous command pattern", "critical")
     return (None, None)
 
@@ -371,15 +382,18 @@ def decide(payload: dict):
 
 def audit_log(tool: str, decision: str, reason: str | None) -> None:
     log_path = Path.home() / ".claude" / "audit-logs" / "sentinel.jsonl"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("a") as f:
-        json.dump({
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "tool": tool,
-            "decision": decision,
-            "reason": reason,
-        }, f)
-        f.write("\n")
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a") as f:
+            json.dump({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "tool": tool,
+                "decision": decision,
+                "reason": reason,
+            }, f)
+            f.write("\n")
+    except OSError:
+        pass  # an unwritable log must not turn a warn into a block
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -426,10 +440,13 @@ def main() -> None:
         }))
     else:
         print(json.dumps({
-            "additionalContext": (
-                f"⚠ [SENTINEL WARNING] {tool_name}: {reason}\n"
-                "Proceed only if this is expected. Add to allowlist to suppress."
-            )
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "additionalContext": (
+                    f"⚠ [SENTINEL WARNING] {tool_name}: {reason}\n"
+                    "Proceed only if this is expected. Add to allowlist to suppress."
+                ),
+            }
         }))
 
 
