@@ -28,6 +28,20 @@ etiquetado.
   Sustituye a ccstatusline (~300 ms por refresco, node y un bundle de 3,3 MB). La fusión de
   `settings.json` no cambia: quien ya tenía `theme` o `statusLine` conserva los suyos. Sensor
   nuevo `test_statusline.sh` (26 casos) y `doctor` exige PASS de la barra en una instalación limpia.
+- **Agent Dock y handoff con controles sin letra ni cromo (cockpit 0.3.4).** `Equipo` sube
+  bajo la cabecera, antes de la misión; la misión se titula `Misión:` y `▸ más` ya no dibuja
+  la tecla `m` como `m:` (se pulsa con un clic o Enter bajo el foco). Los tres botones de
+  handoff pasan a `plain` con los corchetes en la etiqueta (`[solo guardar]`): el cromo
+  `[ solo guardar ]` lo dibuja el motor y un mod no puede estrecharlo, y `plain` con tecla
+  dibujaría `g: …`, así que las teclas `y`/`g`/`n` desaparecen. La línea «N% until
+  auto-compact» que sale bajo el prompt es una notificación del propio Claude Code
+  (`token-warning`), no del mod: no hay componente de `ui.render` que la cubra.
+- **CI: shellcheck fijado a 0.11.0 con checksum, como gitleaks.** El `shellcheck` de `apt`
+  del runner (0.10) seguía emitiendo `SC2002` (*useless cat*), que la 0.11 local ya no
+  reporta por defecto: la PR #37 cayó en rojo por un `cat` inútil en
+  `test_plugin_esenciales.sh` con el árbol limpio en local. Se corrige la línea y `ci.yml`
+  descarga la versión fijada en `SHELLCHECK_VERSION`, de modo que local y CI ven lo mismo
+  (CONTRIBUTING lo documenta).
 - **Agent Dock: una herramienta larga ya no es un atasco (cockpit 0.3.3).** El dock medía
   «sin actividad» desde el inicio de la última llamada a herramienta y no sabía que seguía en
   marcha: un agente dentro de un `make test` de 4 min pasaba a `Parados` a los 2 y, con el

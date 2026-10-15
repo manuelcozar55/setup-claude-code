@@ -548,13 +548,13 @@ export const register: Register = on => {
       ho.phase === 'confirm' ? (
         <Box key="ho" columnGap={1} flexWrap="wrap">
           <Text color="warning">Handoff: resume en .claude/estado/nucleo.md →</Text>
-          {!tn.isRunning && <Button key="ho-go" hotkey="y" variant="primary" label="guardar + /clear" onPress={() => runHandoff($, true)} />}
-          <Button key="ho-save" hotkey="g" label="solo guardar" onPress={() => runHandoff($, false)} />
+          {!tn.isRunning && <Button key="ho-go" plain variant="primary" label="[guardar + /clear]" onPress={() => runHandoff($, true)} />}
+          <Button key="ho-save" plain label="[solo guardar]" onPress={() => runHandoff($, false)} />
           {!tn.isRunning && (
             <Button
               key="ho-no"
-              hotkey="n"
-              label="no guardar + /clear"
+              plain
+              label="[no guardar + /clear]"
               onPress={async () => {
                 await update($, handoff, (): Handoff => ({ phase: 'idle' }))
                 await clearAfter($)
@@ -690,8 +690,7 @@ export const register: Register = on => {
     const stopNote = (a: AgentRow) => (a.status === 'failed' ? 'falló' : a.status === 'killed' ? 'detenido' : `${elapsed(tick - a.lastActiveAt)} sin actividad`)
     const stopGlyph = (a: AgentRow) => (a.status === 'failed' ? '✗' : a.status === 'killed' ? '■' : '◌')
 
-    // Mission: folded to one line by default, so the agents keep the rows; «más» (a click, or `m` with
-    // the pane focused) unfolds it. The text lives outside the Button: a Button does not bound its child.
+    // Mission: folded to one line by default, so the agents keep the rows; «más» (a click) unfolds it. The text lives outside the Button: a Button does not bound its child.
     const mission = tn.mission.replace(/\s+/g, ' ').trim() || '—'
     const lines = wrapLines(mission, cols)
     const hasMore = lines.length > 1
@@ -703,11 +702,26 @@ export const register: Register = on => {
           <Text bold color="claude">◆ Agent Dock</Text>
           <Text color={isLive ? 'success' : 'inactive'}>{isLive ? '● LIVE' : '○ IDLE'}</Text>
         </Box>
+        {/* Team first, under the header: it is the one knob the person turns before the work starts. */}
+        <Box flexDirection="column">
+          <Box flexWrap="wrap" gap={1}>
+            <Text bold>Equipo</Text>
+            {TEAM_SIZES.map(n => (
+              <Button key={`team-${n}`} plain={n === size ? undefined : true} variant={n === size ? 'primary' : undefined} label={String(n)}
+                onPress={() => update($, team, () => n)} />
+            ))}
+            <Button key="team-0" plain={size === 0 ? undefined : true} variant={size === 0 ? 'primary' : undefined} label="Auto"
+              onPress={() => update($, team, () => 0)} />
+          </Box>
+          <Text dimColor wrap="wrap">
+            {size > 0 ? `Reparte cada petición entre ${size} ayudantes · ${size} a la vez · haiku para lo sencillo` : 'Auto: Claude decide cuándo lanzar subagentes'}
+          </Text>
+        </Box>
         <Box flexDirection="column">
           <Box justifyContent="space-between">
             <Box gap={1}>
-              <Text bold color="claude">Misión</Text>
-              {hasMore && <Button key="mission" hotkey="m" plain label={isOpen ? '▾ menos' : '▸ más'} onPress={() => update($, isMissionOpen, v => !v)} />}
+              <Text bold color="claude">Misión:</Text>
+              {hasMore && <Button key="mission" plain label={isOpen ? '▾ menos' : '▸ más'} onPress={() => update($, isMissionOpen, v => !v)} />}
             </Box>
             <Text>
               {missionPct === undefined ? '' : <Text color="claude">{missionPct}%</Text>}
@@ -728,21 +742,6 @@ export const register: Register = on => {
             {section('Hechos', 'success', finished, () => '✓', () => undefined)}
           </Box>
         )}
-        {/* Controls last: the mission and the live agents own the first rows at any pane height. */}
-        <Box flexDirection="column">
-          <Box flexWrap="wrap" gap={1}>
-            <Text bold>Equipo</Text>
-            {TEAM_SIZES.map(n => (
-              <Button key={`team-${n}`} plain={n === size ? undefined : true} variant={n === size ? 'primary' : undefined} label={String(n)}
-                onPress={() => update($, team, () => n)} />
-            ))}
-            <Button key="team-0" plain={size === 0 ? undefined : true} variant={size === 0 ? 'primary' : undefined} label="Auto"
-              onPress={() => update($, team, () => 0)} />
-          </Box>
-          <Text dimColor wrap="wrap">
-            {size > 0 ? `Reparte cada petición entre ${size} ayudantes · ${size} a la vez · haiku para lo sencillo` : 'Auto: Claude decide cuándo lanzar subagentes'}
-          </Text>
-        </Box>
       </Box>
     )
   })
