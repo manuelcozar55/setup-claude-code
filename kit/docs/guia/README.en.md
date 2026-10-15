@@ -11,8 +11,8 @@ The full guide is in Spanish; this is the one-screen version. Figures were measu
 | 3 | Close each phase with `/handoff` ([`11-cockpit.md`](../11-cockpit.md)) or update the file and `/clear`. One task, one session. | the new session starts with `git log` and `git status`, as the startup hook asks |
 | 4 | Learn which incident each hook prevents ([`05-security.md`](../05-security.md#hook--incidente-que-evita)) | you can justify every hook in your `settings.json` |
 | 5 | Delegate any search longer than three queries to a subagent; cap shell output (`tail -n 40`, `grep -c`) | `/context` barely grows in the main thread |
-| 6 | One short line per memory entry; look facts up with `recuerda <terms>` | your memory index fits in 60 short lines |
-| 7 | Measure yourself ([`04-mide-tu-setup.md`](04-mide-tu-setup.md)) | three dated numbers: fixed cost, % manual compactions, % sessions with corrections |
+| 6 | One short line per memory entry ([`13-memoria.md`](../13-memoria.md)); look facts up with [`recuerda <terms>`](../../../scripts/recuerda) | your memory index fits in 60 short lines |
+| 7 | Measure yourself ([`04-mide-tu-setup.md`](04-mide-tu-setup.md), [`compact-audit.py`](../../../scripts/compact-audit.py), [`nucleo_audit.py`](../../../scripts/nucleo_audit.py)) | three dated numbers: fixed cost, % manual compactions, % sessions with corrections |
 
 **Anti-patterns that cost something real** ([`03-antipatrones.md`](03-antipatrones.md)): a session left open for 42 days with 66 compactions; a compression proxy that saved 0.2–0.6 % and was removed; `effortLevel: "max"` silently falls back to `high` (use `"xhigh"`); `--1m` breaks Haiku subagents (put `[1m]` in the model id instead); `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` measured as inert on the 1M path; a 78 KB diary-style `nucleo.md` injected in pieces (hook output caps at 10,000 characters); `Bash(node *)` in `allow` is arbitrary code execution; `/model` never sticks when `ANTHROPIC_MODEL` is set in `env`; in `Edit(/x)` one slash anchors to the settings directory, `//x` to the filesystem root.
 

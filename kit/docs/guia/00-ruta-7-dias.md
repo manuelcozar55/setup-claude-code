@@ -42,7 +42,7 @@ En la raíz git de tu proyecto crea `.claude/estado/nucleo.md` con estas seccion
 
 - «Encargo original» son las palabras de quien pidió la tarea, tal cual. «Invariantes», lo que no se toca y por qué. Esas dos no se reescriben nunca.
 - «Siguiente acción» es **una**, concreta y ejecutable.
-- Lo terminado sale del fichero (a un `diario.md` aparte, que nada inyecta). El hook [`session-start-clear.sh`](../../claude/hooks/session-start-clear.sh) lo entrega a cada sesión nueva y **recorta lo que pase de su tope** (hoy 8 000 caracteres) quitando el centro: si el fichero crece, lo primero que pierdes es justo lo de en medio.
+- Lo terminado sale del fichero (a un `diario.md` aparte, que nada inyecta). El hook [`session-start-clear.sh`](../../claude/hooks/session-start-clear.sh) lo entrega a cada sesión nueva (y [`session-start-compact.sh`](../../claude/hooks/session-start-compact.sh) tras cada compactación), pero **solo las secciones de la forma fija**: la primera vez que aparece cada una, con un tope por sección y otro total (3 000 y 6 500 bytes, en [`lib/nucleo.sh`](../../claude/hooks/lib/nucleo.sh)). Lo que no tiene esa forma no llega, y una línea lo dice: si el fichero degenera en diario, el modelo recibe el título y el aviso, nada más.
 
 **Por qué.** El 75 % de las compactaciones medidas llegaron con el estado sin tocar en los 20 turnos previos: lo que sobrevivió fue un estado viejo. Y un `nucleo.md` que degeneró en diario llegó a 78 KB con cuatro «TAREA ACTUAL»: se inyectaba troceado y la siguiente acción vigente quedaba en el centro cortado. Lo ves con salidas reales en [`02-sesion-real.md`](02-sesion-real.md).
 
@@ -76,7 +76,7 @@ Cualquier exploración de más de tres búsquedas se delega: `Agent(subagent_typ
 
 ## Día 6 · Memoria corta y `recuerda`
 
-La auto-memoria de Claude Code inyecta el índice `MEMORY.md` en cada turno. Una línea corta por entrada (título y gancho), el contenido en su propio fichero. El hook `session-start.sh` imprime cuántas entradas tienes y avisa cuando el índice pasa de 60 líneas. Para consultar, `recuerda <términos>` devuelve solo los párrafos que coinciden, en vez de leer memorias enteras.
+La auto-memoria de Claude Code inyecta el índice `MEMORY.md` en cada turno. Una línea corta por entrada (título y gancho), el contenido en su propio fichero. El hook `session-start.sh` imprime cuántas entradas tienes y avisa cuando el índice pasa de 60 líneas. Para consultar, [`recuerda <términos>`](../../../scripts/recuerda) devuelve solo los párrafos que coinciden, en vez de leer memorias enteras. El formato de una memoria y del índice está en [`13-memoria.md`](../13-memoria.md).
 
 **Por qué.** Un índice de 63 líneas largas costaba 4,5k tokens por turno; con una línea corta por entrada se estima en ~1,5k. Leer memorias enteras para encontrar un dato es pagar el fichero entero por una frase.
 
@@ -84,7 +84,7 @@ La auto-memoria de Claude Code inyecta el índice `MEMORY.md` en cada turno. Una
 
 ## Día 7 · Mídete
 
-Repite `/context` y compáralo con el día 1. Luego mide tus sesiones reales con las herramientas de [`04-mide-tu-setup.md`](04-mide-tu-setup.md): compactaciones (cuántas, manuales o automáticas, con el estado fresco o no) y correcciones por sesión.
+Repite `/context` y compáralo con el día 1. Luego mide tus sesiones reales con las herramientas de [`04-mide-tu-setup.md`](04-mide-tu-setup.md): compactaciones (cuántas, manuales o automáticas, con el estado fresco o no: [`compact-audit.py`](../../../scripts/compact-audit.py) y [`nucleo_audit.py`](../../../scripts/nucleo_audit.py)) y correcciones por sesión.
 
 **Por qué.** Las sesiones reales medidas tienen una mediana de 4 mensajes y el 58 % contiene alguna corrección. Tu intuición sobre cómo trabajas casi seguro no coincide con tus datos.
 

@@ -32,7 +32,7 @@ Lo que más enseña:
 | `compactaciones` | cada una tira ~88 % del contexto | baja con `/handoff` |
 | `herramientas por sesion (mediana)` | cuánto trabajo autónomo hay por sesión | informativo |
 
-## 3 · Compactaciones y estado: `compact-audit.py` y `nucleo_audit.py` (10 minutos)
+## 3 · Compactaciones y estado: [`compact-audit.py`](../../../scripts/compact-audit.py) y [`nucleo_audit.py`](../../../scripts/nucleo_audit.py) (10 minutos)
 
 Dos auditorías sobre las mismas transcripciones, que responden a las dos preguntas de [`01-por-que-contexto.md`](01-por-que-contexto.md): ¿compactas tú o compacta sola?, y cuando compacta, ¿el estado estaba al día?
 
@@ -40,6 +40,8 @@ Dos auditorías sobre las mismas transcripciones, que responden a las dos pregun
 python3 scripts/compact-audit.py --since 14   # últimas dos semanas
 python3 scripts/nucleo_audit.py
 ```
+
+Leen `$CLAUDE_PROJECTS_DIR` (por defecto, las transcripciones de `~/.claude/projects/`). Para la memoria, [`scripts/recuerda`](../../../scripts/recuerda) y [`13-memoria.md`](../13-memoria.md).
 
 | Métrica | Medido en 2026 | Objetivo |
 |---|---|---|
