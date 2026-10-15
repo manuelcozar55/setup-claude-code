@@ -1,6 +1,6 @@
 {
   "name": "cockpit",
-  "version": "0.2.1",
+  "version": "0.3.1",
   "description": "Tres mods: vigía de contexto con handoff sobre el prompt, Agent Dock a la derecha y modo simple de pasos",
   "author": { "name": "setup-claude-code" },
   "types": "./types/index.d.ts"

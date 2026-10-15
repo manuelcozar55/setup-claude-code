@@ -210,11 +210,20 @@ if echo "$out_h" | grep -qE '^FAIL .*statusLine'; then
   ko "una statusLine muda es WARN, no FAIL: el fallo puede ser del entorno de doctor"
 else ok; fi
 
-# --- caso I: sin statusLine -> ni FAIL ni WARN ------------------------------
-# El kit no instala statusLine y la mayoria no la usa: convertir su ausencia en hallazgo
-# seria ruido en cada instalacion limpia.
-if echo "$out_b" | grep -qE '^(FAIL|WARN) .*statusLine'; then
-  ko "sin statusLine declarada doctor no puede reportar nada (salida: $(echo "$out_b" | grep -i statusline | tr '\n' ' '))"
+# --- caso I: la statusLine del kit en una instalacion limpia -> PASS --------
+# HOME es el padre de CLAUDE_HOME porque el comando de la plantilla apunta a $HOME/.claude.
+CH_I="$(install_clean)"
+out_i="$(run_doctor "$CH_I" "$(dirname "$CH_I")")"
+if echo "$out_i" | grep -qE '^PASS .*statusLine'; then ok; else
+  ko "la statusLine que instala el kit no responde en una instalacion limpia (salida: $(echo "$out_i" | grep -i statusline | tr '\n' ' '))"
+fi
+
+# --- caso I2: sin statusLine -> ni FAIL ni WARN ------------------------------
+# Quitarla es una eleccion valida: convertir su ausencia en hallazgo seria ruido.
+jq 'del(.statusLine)' "$CH_I/settings.json" > "$CH_I/s.tmp" && mv "$CH_I/s.tmp" "$CH_I/settings.json"
+out_i2="$(run_doctor "$CH_I" "$(dirname "$CH_I")")"
+if echo "$out_i2" | grep -qE '^(FAIL|WARN) .*statusLine'; then
+  ko "sin statusLine declarada doctor no puede reportar nada (salida: $(echo "$out_i2" | grep -i statusline | tr '\n' ' '))"
 else ok; fi
 
 # --- caso J: fuente unica de proyecto a un puerto muerto -> FAIL y rc != 0 --

@@ -20,7 +20,6 @@ export type AgentRow = {
   lastActiveAt: number
   endedAt?: number
   activity: string
-  tools: number
 }
 
 export type TaskRow = { id: string; subject: string; status: 'pending' | 'in_progress' | 'completed'; activeForm?: string }

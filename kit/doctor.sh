@@ -89,7 +89,7 @@ fi
 # la barra vacia y ni una linea de aviso en ningun sitio.
 # Del string del comando se extrae el ejecutable REAL: en "bash ~/.claude/statusline.sh" lo
 # que puede faltar es el script, no bash.
-# Si no hay statusLine este check calla: la mayoria de instalaciones del kit no la usa y eso
+# Si no hay statusLine este check calla: el kit instala una, pero quitarla es valido y eso
 # no es un defecto. Ejecutarla es solo WARN (con timeout) porque el fallo puede ser del
 # entorno de doctor y no de la barra.
 sl_cmd="$(jq -r '.statusLine.command // empty' "$CLAUDE_HOME/settings.json" 2>/dev/null)"

@@ -323,7 +323,8 @@ install_file() {  # src dst
 #   - `hooks`      -> gana el KIT. La cadena de guards es lo que el kit aporta.
 #   - `permissions`-> UNION. Nunca se pierde un deny (seguridad) ni un allow (tu trabajo).
 #   - `env`        -> tus claves ganan, y las nuevas del kit se anaden.
-#   - todo lo demas (model, statusLine, theme, enabledPlugins...) -> lo tuyo, intacto.
+#   - todo lo demas (model, statusLine, theme, enabledPlugins...) -> lo tuyo, intacto. La
+#     statusLine y el tema oscuro del kit solo llegan a quien no tenia los suyos.
 # Por que existe esto: reemplazar el fichero entero borraba en silencio el ajuste personal.
 # Medido en una maquina real al reinstalar: se perdieron ENABLE_TOOL_SEARCH (que vale ~30k de
 # contexto por sesion), ANTHROPIC_MODEL con el sufijo de la ventana de 1M,
@@ -386,6 +387,7 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
   install_file "$KIT/claude/sentinel-allowlist.json" "$base/sentinel-allowlist.json"
   install_file "$KIT/claude/.gitleaks.toml"       "$base/.gitleaks.toml"
+  install_file "$KIT/claude/statusline-command.sh" "$base/statusline-command.sh"
   for f in "$KIT"/claude/agents/*; do [ -f "$f" ] && install_file "$f" "$base/agents/$(basename "$f")"; done
   while IFS= read -r -d '' f; do
     rel="${f#"$KIT"/claude/skills/}"
@@ -396,7 +398,7 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   for f in "$KIT"/sentinel/*;      do [ -f "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
   mkdir -p "$base/hooks/git"
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
-  chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit 2>/dev/null || true
+  chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit "$base"/statusline-command.sh 2>/dev/null || true
 }
 
 run_diff_first() {

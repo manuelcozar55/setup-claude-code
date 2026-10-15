@@ -5,7 +5,7 @@
 ## Qué hace
 
 - **`/handoff`**: pide al modelo las secciones del estado que cambian, las fusiona en `.claude/estado/nucleo.md` y limpia el contexto (`/clear`); la sesión nueva lo recibe del hook `SessionStart`.
-- **Agent Dock**: un panel lateral con una tarjeta por subagente (estado, actividad, tiempo), a dos columnas. También lleva el vigía de contexto con handoff sobre el prompt y `/simple` (modo de pasos con resumen corto).
+- **Agent Dock**: un panel lateral con la misión en curso y los subagentes en cuatro secciones fijas (trabajando, en cola, parados, hechos). También lleva el vigía de contexto con handoff sobre el prompt y `/simple` (modo de pasos con resumen corto).
 
 ## Cómo se carga
 
@@ -52,7 +52,11 @@ flowchart LR
 
 ## Agent Dock
 
-Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`. Las tarjetas no llevan borde: una barra de color a la izquierda marca el estado y tres líneas fijas dicen todo: `T<n>`, descripción y tiempo; en qué trabaja el agente (`● Bash: make test`, o `○ En cola`, `✓ Hecho`, `✗ Falló`, `◌ Atascado`); y la barra fina con el contador (`5h` o `100%`) en la misma línea. Van a dos columnas desde 50 de ancho útil (a una por debajo). La misión nace plegada en una línea (`▸ texto…`); un clic (o Enter con el foco) la despliega entera (`▾`) y otro la pliega. Los contadores van en una sola línea y abrevian en estrecho (`●2 ○1 ✓3 ×0`). El tamaño de equipo viaja al modelo como contexto oculto del prompt. Los tests miden el texto dibujado a 24, 30, 44, 56 y 66 columnas.
+Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`.
+
+**Misión.** Plegada por defecto en una sola línea, cortada en `…` al ancho del pane, para que los agentes ocupen las filas; la cabecera lleva el porcentaje y el tiempo del turno (`10m42s`). Si no cabe en una línea, la cabecera lleva el botón `▸ más`: un clic, Enter con el foco o la tecla `m` con el pane enfocado (`ctrl+x tab` o un clic en él) la despliega entera y `▾ menos` la pliega. Una misión nueva nace plegada. El texto va fuera del botón a propósito: un `Button` no acota a su hijo, así que un `Text` con `wrap` dentro de él no envuelve nunca (por eso el clic de la versión anterior "no hacía nada": desplegaba una sola línea cortada por el borde). Debajo, la barra de progreso (pasos completados o, sin lista de pasos, agentes de la misión completados: un fallo no suma) y, durante el turno, la actividad del agente principal.
+
+**Agentes.** Una columna a cualquier ancho y cuatro secciones fijas con su cuenta, también a cero (atenuadas), en orden de urgencia: `Trabajando`, `En cola`, `Parados` (fallados `✗`, detenidos `■` y atascados `◌`: más de 2 min sin llamar a una herramienta) y `Hechos` (los últimos 8 y `… y N más`). Cada agente es una línea: glifo de estado, `T<n>` por orden de arranque, descripción truncada y tiempo fijo a la derecha. Solo la descripción cede ancho: el prefijo y el tiempo no se encogen nunca, así que el tiempo no se parte en dos líneas por estrecho que sea el pane. El tiempo lleva unidades (`45s`, `10m42s`, `1h05m`) porque un `10:42` a secas se leía como una hora del día. Los que trabajan o están parados añaden una segunda línea con su actividad (`Bash: make test`, `falló`, `2m10s sin actividad`). Si el pane es más bajo que la lista, el motor hace scroll (flechas con el pane enfocado); lo urgente queda arriba. Los botones de `Equipo` van al final del pane por eso mismo: la misión y los agentes vivos ocupan las primeras filas a cualquier altura. El tamaño de equipo viaja al modelo como contexto oculto del prompt. Los tests miden el texto dibujado a 24, 30, 44, 56 y 66 columnas, incluidos los estados fallado, detenido y atascado.
 
 ## Tests
 
@@ -71,7 +75,7 @@ bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin r
 ## Limitaciones conocidas
 
 - **`/clear` lanzado desde el mod no está verificado en una sesión interactiva.** Se comprobó de punta a punta con el arnés de tests, no a mano. Si falla, el mod deja el documento guardado; escribe `/clear` y luego «sigue».
-- **Los estados `failed`, `killed` y `stuck` de las tarjetas del dock no se han probado en el render**; solo los estados en curso y completado.
+- **El clic sobre el dock solo llega en pantalla completa**: es donde el terminal reporta clics (y donde existe el dock lateral). Con el pane encajado sobre el prompt, enfócalo (`ctrl+x tab`) y usa la tecla `m` o Tab + Enter.
 - El redactor de secretos es un último recurso parcial; revisa el documento antes de compartirlo.
 - **El documento hereda los permisos del directorio del proyecto**: se crea con los permisos por defecto, no 0600, y sin creación exclusiva (la API `$.fs.write(path, text)` no admite modo). Está en el árbol del proyecto; si git no lo ignora ya, el mod lo añade a `.git/info/exclude` (local, no se versiona).
 - El hook de arranque entrega `nucleo.md` envuelto como datos y exige confirmar lo irreversible, pero eso mitiga la inyección de instrucciones escritas en el fichero, no la elimina.

@@ -214,5 +214,10 @@
   },
   "effortLevel": "xhigh",
   "autoUpdatesChannel": "latest",
-  "theme": "light-ansi"
+  "theme": "dark",
+  "statusLine": {
+    "type": "command",
+    "command": "bash $HOME/.claude/statusline-command.sh",
+    "padding": 0
+  }
 }
