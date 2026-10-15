@@ -131,5 +131,24 @@ ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: rota el checkpoint de 20 días" "$([ -e "$VIEJO" ] && echo sigue || echo rotado)" rotado
 ok "pre-compact: conserva el de 2 días y el nucleo" "$([ -e "$NUEVO" ] && [ -e "$NUC" ] && echo si)" si
 
+# Si el mv de publicación falla, la rotación no puede haber borrado ya el checkpoint viejo
+# («anterior conservado»); y el checkpoint recién publicado nunca cae en la rotación.
+touch -d '20 days ago' "$VIEJO"
+mkdir -p "$T/mvfalso"; printf '#!/bin/sh\nexit 1\n' >"$T/mvfalso/mv"; chmod +x "$T/mvfalso/mv"
+ev "$R" s1 "$TP" | PATH="$T/mvfalso:$PATH" bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: si falla la publicación, el checkpoint viejo se conserva" "$([ -e "$VIEJO" ] && echo si)" si
+OUT1=$R/.claude/estado/checkpoint-compact-$(printf s1 | sha256sum | cut -d' ' -f1).md
+touch -d '20 days ago' "$OUT1"
+ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: el checkpoint recién publicado no se rota" "$([ -e "$OUT1" ] && [ -z "$(find "$OUT1" -mtime +14)" ] && echo si)" si
+ok "pre-compact: tras publicar, rota el viejo" "$([ -e "$VIEJO" ] && echo sigue || echo rotado)" rotado
+
+# nucleo-freshness.log: una línea por compactación; no crece sin límite.
+FLOG=$HOME/.claude/session-logs/nucleo-freshness.log
+seq 1 2500 >"$FLOG"
+ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: nucleo-freshness.log se acota" "$([ "$(wc -l <"$FLOG")" -le 1001 ] && echo si)" si
+ok "pre-compact: el log acotado conserva lo último y la línea nueva" "$(tail -1 "$FLOG" | cut -d' ' -f2)" s1
+
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
 exit $FAIL

@@ -25,10 +25,13 @@ PCT=$( { [ -n "$TP" ] && nucleo_ctx "$TP"; } | cut -d' ' -f2)
 mkdir -p "$HOME/.claude/session-logs" 2>/dev/null \
   && printf '%s %s %s %s\n' "$(date +%FT%T%z)" "${SID:--}" "${PCT:--}" "$([ -n "$MT" ] && echo $(( $(date +%s) - MT )) || echo -1)" \
      >>"$HOME/.claude/session-logs/nucleo-freshness.log"
+# Una línea por compactación y nadie la leía entera: se acota a las últimas 1000 al pasar de 2000.
+FLOG="$HOME/.claude/session-logs/nucleo-freshness.log"
+if [ "$(wc -l <"$FLOG" 2>/dev/null || echo 0)" -gt 2000 ]; then
+  tail -n 1000 "$FLOG" >"$FLOG.tmp" 2>/dev/null && mv -f -- "$FLOG.tmp" "$FLOG" 2>/dev/null
+fi
 
 [ -d "$ESTADO" ] || exit 0
-# Uno por sesión y con prompts de la persona: sin rotar se acumulan para siempre.
-find "$ESTADO" -maxdepth 1 -type f -name 'checkpoint-compact-*.md' -mtime +14 -delete 2>/dev/null
 GI=$ESTADO/.gitignore
 if [ ! -L "$GI" ] && ! command grep -qsx 'checkpoint-compact-\*' "$GI"; then
   [ -s "$GI" ] && [ -n "$(tail -c1 "$GI")" ] && echo >>"$GI"
@@ -68,5 +71,8 @@ trap 'exit 0' HUP INT TERM
 # shellcheck disable=SC2181  # `if ! (…)` apagaría el set -e de dentro
 [ "$?" -eq 0 ] || { echo '[PreCompact] fallo al generar checkpoint; anterior conservado' >&2; exit 0; }
 mv -f -- "$TMP" "$OUT" 2>/dev/null || { echo '[PreCompact] fallo al publicar checkpoint; anterior conservado' >&2; exit 0; }
+# Uno por sesión y con prompts de la persona: sin rotar se acumulan para siempre. Va después de
+# publicar el nuevo, así un fallo de arriba no deja sin checkpoint viejo ni nuevo; $OUT no se toca.
+find "$ESTADO" -maxdepth 1 -type f -name 'checkpoint-compact-*.md' ! -path "$OUT" -mtime +14 -delete 2>/dev/null
 echo "[PreCompact] ($TRIGGER) checkpoint en $OUT" >&2
 exit 0
