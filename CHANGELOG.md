@@ -198,34 +198,72 @@ etiquetado.
   aparte) y compara cada componente de ruta con `key_file_extensions` de `iocs.json`, que
   sustituye a la regex; sus entradas se filtran una a una (con o sin punto inicial) y, si la
   lista falta o no queda ninguna, el código usa las seis por defecto y el motivo del deny lo
-  dice: una lista vacía no apaga la comprobación. El cuerpo de un heredoc son datos (un
-  `cat > data.jsonl <<'EOF'` con JSON ya no se mira como rutas): se lee como comandos si en su
-  línea hay un shell (también por tubería o tras `sudo`; `eval`, `source` o `.` como
-  comando), como código si hay un intérprete, y sin comillas en el delimitador sus `$( )` se
-  ejecutan. Las llaves `{a,b}` y las secuencias `{a..z}`, `{1..9..2}` sin comillas se expanden
-  sin repetidos hasta 64 por palabra y 4 096 por comando entero (un solo contador que incluye
-  sustituciones y cadenas releídas; 4 096 expansiones cuestan 5 ms) y pasado el tope se
-  deniega (`brace expansion too large`); entre comillas no se expanden, como en bash, y en una
-  cadena releída (`bash -c '…'`) se expanden grupo a grupo sin truncar nunca (más de 64 grupos
-  deniegan). Se exime el patrón de `grep`/`rg`/`ag`/`ack`, el filtro de `jq` y el mensaje de
-  `git commit|tag|merge -m`, con la aridad de sus opciones (`-e`, `-f`, `-g`, `--match`,
-  `--files` y `--type-list` anulan la exención); del código de `node -e`/`python -c`/
-  `perl -e`/`ruby -e` solo se miran los literales de cadena, las formas de cita de perl y ruby
-  (`q()`, `qq{}`, `%q()`…) y cualquier ruta con barra, y solo si el flag va antes del script
-  (`python3 x.py -c …` no exime). El cuerpo de una sustitución `$( )` dentro de un papel
+  dice: una lista vacía no apaga la comprobación. El cuerpo de un heredoc se lee como
+  comandos salvo que lo reciba un sumidero de datos conocido. El consumidor es el comando que
+  lleva el `<<`, sin `sudo`, `env`, `nice`, `time`, `command` ni `exec`. `cat`, `tee`,
+  `grep`, `jq`, `git commit -F -`, `curl -d @-`, `curl -T -`, `wget -i -` y el resto de la
+  lista lo hacen datos (`curl -K -` no: una configuración por stdin puede subir un fichero;
+  `sed` y `awk` solo si su programa, también el pegado a `-e`/`--expression=`/`--source=`,
+  no ejecuta nada): un `cat > data.jsonl <<'EOF'` con JSON no se mira como rutas. Un
+  intérprete lo hace código, salvo que su código en línea (`python -c`, `node -e`,
+  `perl -e`, `ruby -e`, `php -r`, `lua -e`, `Rscript -e`, `bun -e`, `deno eval`; sin tabla se
+  mira entero) ejecute lo que lee, por nombres de ejecución (`system`, `system2`, `exec…`,
+  `spawn…`, `eval`, `popen`, `Deno.Command`:
+  `perl -ne 'system $_'`, `php -r 'passthru(…)'`; `evaluate` no casa), y `ssh`, `sudo -s`, `fish`, `xargs`,
+  `psql` o cualquier desconocido, comandos. Manda el peor consumidor de su tubería, comandos
+  sobre perl/ruby sobre el resto de código (`cat <<EOF | python3 | sh` son comandos), y el de
+  todo el comando si el heredoc o su tubería pasan por un grupo, un bucle o una sustitución
+  de proceso (`cat <<EOF | { cat; sh; }`). Si después del heredoc, en la misma orden, hay un
+  ejecutor (un shell, un intérprete, `source`, `eval`, `chmod`, `xargs`, `find`/`fd` con
+  exec, `flock -c`, `./x`, también tras `timeout`, `nohup`, `busybox`, `unshare` y similares;
+  una ruta bajo `/bin`, `/usr/bin`, `/sbin` o `/usr/sbin` como `/usr/bin/git` no lo es), el
+  cuerpo son comandos sin seguir el nombre del fichero ni cómo se escribió
+  (`cat <<EOF >run.sh; bash run.sh`, también `sed -n '1w run.sh'`, `cat run.sh | sh`, tras
+  `mv` o por variable; coste: `cat <<'EOF' && bash deploy.sh` con una clave en el cuerpo se
+  deniega); `cat > notes.md <<'EOF' … && git add notes.md` sigue siendo datos. Sin comillas en el delimitador sus `$( )` se
+  ejecutan, y la barra-salto solo sirve para hallar el delimitador (100 000 líneas con barra
+  final y sin delimitador cuestan 1,1 s; antes 13,4 s, la unión era cuadrática). Las llaves
+  `{a,b}` y las secuencias de letras `{a..z}` sin comillas se expanden sin repetidos hasta 64
+  por palabra y 4 096 por comando entero (un solo contador que incluye sustituciones, cadenas
+  releídas y literales de código; 4 096 expansiones cuestan 15 ms) y pasado el tope se
+  deniega (`brace expansion too large`); una secuencia numérica (`{1..1000}`) no aporta
+  letras: cuenta como su primer valor y no gasta tope; entre comillas no se expanden, como en
+  bash, y en una cadena releída (`bash -c '…'`) se expanden grupo a grupo sin truncar nunca
+  (más de 64 grupos deniegan). Se exime el patrón de `grep`/`rg`/`ag`/`ack`, el filtro de
+  `jq` y el mensaje de `git commit|tag|merge -m`, con la aridad de sus opciones (`-e`, `-f`,
+  `-g`, `--match`, `--files` y `--type-list` anulan la exención, también como letra de un
+  racimo de flags cortos, pero no como letra del valor de una opción: `rg -t typescript` ya
+  no la anula); del código de `node -e`/`python -c`/`perl -e`/`ruby -e` solo se miran los
+  literales de cadena (una vez cada uno; pasado el presupuesto, sin expandir), las formas de
+  cita con su letra (`%q()`, `%x()`…; `q()`, `qq{}`, `qx()` y el `%()` pegado solo en perl y
+  ruby; una sin cierre no se traga nada) y, de cada tramo con barra, todos sus componentes
+  si tiene forma de ruta (`/`, `./`, `../`, `~/`) y si no el último (`opts.key/2` es una
+  división), y solo si el flag va antes del script (`python3 x.py -c …` no exime). El cuerpo de una sustitución `$( )` dentro de un papel
   exento se lee como comando propio: el commit con heredoc (`-m "$(cat <<'EOF' … EOF)"`) deja
   de dar falso positivo. **Se deniegan**, como en `main`: rutas,
   comillas, el oculto (`.server.key`, `.env.key`, `.tls.pem`), los sufijos de copia (`~`,
   `#`, `+`, `-old`, `.bak`), globs (`*.key`, `[s]erver.key`), `'x'.key`, `server.{key,pem}`,
-  acento grave, `$( )`, `bash -c '…'`, directorios (`dir.p12/x`) y las rutas de Windows.
+  `x.key.{1..3}`, acento grave, `$( )`, `bash -c '…'`, un heredoc con una clave hacia `ssh`,
+  `sudo -s`, `fish` o `php`, directorios (`dir.p12/x`; en código, con forma de ruta) y las
+  rutas de Windows.
   **Dejan de denegarse** (falsos positivos medidos): `jq 'to_entries[].key'`, `.data.key`,
-  la división `.a/.key`, `grep -rn "event.key" src/`, `git commit -m "use opts.key"`,
-  `node -e "console.log(o.key)"`, `a.key.json`, `config.key.ts` y la prosa que nombra la
+  la división `.a/.key`, `grep -rn "event.key" src/`, `rg -t typescript 'event.key'`,
+  `git commit -m "use opts.key"`, `node -e "console.log(o.key)"`,
+  `node -e 'console.log(opts.key/2)'`, `echo {1..100}`, unas notas en
+  `cat <<EOF >out.txt && bash run.sh`, `a.key.json`, `config.key.ts` y la prosa que nombra la
   extensión. **Límite declarado**: el oculto a secas sin barra (`cat .key`), indistinguible
   de la prosa; donde el papel de una palabra no se clasifica (`sudo grep`, `git -C x commit`)
-  se deniega de más, nunca de menos; los demás límites asumidos van en el comentario de
-  `key_file_extensions`. 73 sondas nuevas en `test_guards.sh` (25 de la regex, 17 fallaban
-  con ella; 16 y 32 de las dos rondas de revisión, 11 y 17 fallaban antes de su fix).
+  se deniega de más, nunca de menos; un script escrito por un heredoc y ejecutado en otra
+  llamada o con un comando fuera de la lista de ejecutores (`make run.sh`) no se ve, y un
+  ejecutor posterior deniega aunque el heredoc no escriba el fichero que ejecuta, en cualquier
+  línea de la misma llamada y también si es una ruta fuera de `/bin`, `/sbin`, `/usr/bin` y
+  `/usr/sbin`; la prosa con `exec` en código en línea cuenta como ejecución y un prefijo sin
+  comando (`flock -n 9`) como shell; no se ven las letras `x` dentro de un racimo de flags de
+  `fd`, las opciones con valor de `unshare` fuera de la tabla, `setpriv`/`nsenter` ni
+  `deno repl --eval`; los demás límites asumidos van en el comentario de `key_file_extensions`.
+  202 sondas nuevas en `test_guards.sh` (25 de la regex, 17 fallaban con ella; 16, 32, 35,
+  24, 22, 22 y 26 de las siete rondas de revisión, 11, 17, 21, 16, 18, 14 y 14 fallaban antes
+  de su fix).
   Además, `test_guards.sh` escribía sus deny en el `sentinel.jsonl` del HOME real;
   `test_guards_falsifiability.sh` lo impide ahora con un HOME simulado.
 - **`pre-compact.sh` rota los checkpoints de más de 14 días, después de publicar el nuevo.**
