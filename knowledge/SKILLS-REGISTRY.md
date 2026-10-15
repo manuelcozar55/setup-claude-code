@@ -83,7 +83,7 @@ dejar la elección al azar. Ver ADR 005.
 |---|---:|---|
 | `serena` | 4 | **Cablear su uso.** `/implement` ya lo exige antes de tocar símbolos compartidos: `find_referencing_symbols` da análisis de impacto *antes* de romper algo, que es un sensor computacional de primer orden |
 | `firecrawl` | 4 (+460 en subagentes) | Mantener: es el motor de la investigación |
-| `headroom` | **0** | Revisar. Es infraestructura, no herramienta de sesión |
+| `headroom` | **0** | **Retirado (2026-10)** con el proxy: 0,2-0,6 % de ahorro medido. Ver `kit/docs/archive/03-headroom.md` |
 | `linkedin` | **0** | Revisar. Dos de sus tools ya están en la `deny` de settings |
 | 9 conectores `claude.ai` | **0** | **Sin autenticar.** Autenticar los útiles o darlos de baja: un MCP registrado y roto es ruido en cada arranque |
 
