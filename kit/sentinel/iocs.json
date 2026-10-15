@@ -31,9 +31,9 @@
       "(?i)secrets?\\.(json|ya?ml|env|txt)",
       "(?i)api[_-]?keys?\\.(json|txt|env)",
       "(?i)private[_-]?key",
-      "(?i)(?:(?:^|[\\s\"'=<>|;&(:])[\\w@+~-]|/[\\w.@+~-])[\\w.@+~-]*\\.(?:pem|key|p12|pfx|jks|keystore)(?=$|[\\s\"':,;|&<>)])"
+      "(?i)(?:(?:^|[\\s\"'=<>|;&(:,`])[\\w@+~*?${-][\\w.@+~*?${}-]*|/[\\w.@+~*?${}-]*)\\.(?:pem|key|p12|pfx|jks|keystore)(?=$|[\\s\"'`:,;|&<>)*?\\]}\\\\./])"
     ],
-    "_comment_regex_patterns": "Ficheros de clave por NOMBRE: exige un nombre de fichero delante de la extension (tras inicio, espacio, comilla, =, /, operador de shell o parentesis; tras / puede empezar por punto) y un final de nombre detras. Con solo el lookahead de detras casaban `to_entries[].key` de jq y la prosa que nombra la extension. Limite asumido: un nombre de directorio (bundle.p12/x) o con sufijo (x.key.bak) ya no casa."
+    "_comment_regex_patterns": "Ficheros de clave por NOMBRE: delante de la extension exige un nombre de fichero que empiece tras inicio, espacio, comilla, acento grave, =, coma, operador de shell o parentesis (glob, $ y llaves cuentan como nombre), o cualquier nombre tras una barra, incluido el oculto ./.key. Detras exige fin de nombre: separador, comilla, glob, ], }, barra invertida, punto (sufijo de copia: x.key.bak) o barra (directorio: dir.p12/x). Asi dejan de casar `to_entries[].key`, `.key | ...`, `(.key)`, `.data.key` de jq y la prosa que nombra la extension. Limites asumidos (ya no casan): el oculto a secas sin barra (cat .key, indistinguible de un campo jq), una clase de glob delante ([s]erver.key), rutas de Windows con barra invertida (C:\\certs\\x.key). Casa de mas: una division jq por un campo key (.a/.key)."
   },
   "sensitive_env_vars": {
     "patterns": [

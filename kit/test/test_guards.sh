@@ -68,8 +68,20 @@ expect "clave: .pem a secas denegado"            "$(run_sentinel 'openssl x509 -
 expect "clave: .keystore denegado"               "$(run_sentinel 'keytool -list -keystore=app.keystore')"  "$IOCS_WANT"
 # shellcheck disable=SC2016  # el $(...) va literal: es el comando que se evalua
 expect "clave: dentro de \$( ) denegada"         "$(run_sentinel 'echo $(cat tls.key)')"                   "$IOCS_WANT"
-expect "clave: Read por file_path denegado" "$(jq -nc '{tool_name:"Read",tool_input:{file_path:"/srv/tls/server.key"}}' \
-  | HOME="$GUARDS_TEST_HOME" "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1)" "$IOCS_WANT"
+run_sentinel_read() { jq -nc --arg p "$1" '{tool_name:"Read",tool_input:{file_path:$p}}' | HOME="$GUARDS_TEST_HOME" "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1; }
+expect "clave: Read por file_path denegado"      "$(run_sentinel_read /srv/tls/server.key)"                "$IOCS_WANT"
+# Formas de leer o copiar una clave que la primera version de la valla dejo pasar (revision del
+# 15-oct): glob, acento grave, sufijo de copia, directorio, llaves, y el oculto tras una barra.
+expect "clave: glob con ruta denegado"           "$(run_sentinel 'cat /etc/ssl/private/*.key')"            "$IOCS_WANT"
+expect "clave: glob detras denegado"             "$(run_sentinel 'cat server.key*')"                       "$IOCS_WANT"
+# shellcheck disable=SC2016  # el acento grave va literal: es el comando que se evalua
+expect "clave: entre acentos graves denegada"    "$(run_sentinel 'echo `cat x.key`')"                      "$IOCS_WANT"
+expect "clave: sufijo de copia denegado"         "$(run_sentinel 'cp x.key.bak /srv/')"                    "$IOCS_WANT"
+expect "clave: directorio .p12 denegado"         "$(run_sentinel 'cat dir.p12/x')"                         "$IOCS_WANT"
+expect "clave: expansion de llaves denegada"     "$(run_sentinel 'cat {a,b}.key')"                         "$IOCS_WANT"
+expect "clave: oculto tras ./ denegado"          "$(run_sentinel 'cat ./.key')"                            "$IOCS_WANT"
+expect "clave: Read de sufijo de copia denegado" "$(run_sentinel_read /srv/tls/server.key.bak)"            "$IOCS_WANT"
+expect "clave: Read de oculto denegado"          "$(run_sentinel_read /opt/app/.config/.key)"           "$IOCS_WANT"
 expect "jq to_entries[].key permitido"           "$(run_sentinel "jq -r 'to_entries[].key' f.json")"       ALLOW
 expect "jq .key | permitido"                     "$(run_sentinel "jq '.key | ascii_downcase' f.json")"     ALLOW
 expect "jq (.key) y [.key] permitidos"           "$(run_sentinel "jq '[.items[] | (.key)] + [.key]' f.json")" ALLOW
