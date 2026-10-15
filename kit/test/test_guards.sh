@@ -276,8 +276,8 @@ expect "sed -e s/a/b/ con opts.key permitido"    "$(run_sentinel $'sed -e \'s/a/
 t0=$(date +%s%N)
 out=$({ printf 'cat <<EOF\n'; seq -f "linea %g \\" 1 100000; } | jq -Rsc '{tool_name:"Bash",tool_input:{command:.}}' \
   | HOME="$GUARDS_TEST_HOME" timeout 10 "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1)
-ms=$(( ($(date +%s%N) - t0) / 1000000 ))
 rc=$?
+ms=$(( ($(date +%s%N) - t0) / 1000000 ))
 expect "100000 lineas con barra final permitidas" "$out"                                                  ALLOW
 [ "$ms" -lt 5000 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: 100000 lineas con barra final tardan ${ms} ms (tope 5000)"; }
 # Un crash o el timeout no cuentan como ALLOW.
@@ -322,6 +322,33 @@ expect "node systemd-notify.js permitido"        "$(run_sentinel $'node systemd-
 # En la tuberia, qcode (perl/ruby, con q()) gana a code.
 expect "clave: python -c | perl -ne con q()"     "$(run_sentinel $'cat <<\'EOF\' | python3 -c \'print(1)\' | perl -ne \'print\'\nq(/etc/ssl/server.key)\nEOF')" "$IOCS_WANT"
 expect "clave: python -c | perl -ne con q() sin ruta" "$(run_sentinel $'cat <<\'EOF\' | python3 -c \'print(1)\' | perl -ne \'print\'\nq(server.key)\nEOF')" "$IOCS_WANT"
+# Ronda 3-quater. Interpretes con tabla de codigo en linea (lua, Rscript, bun -e); sin tabla, todos sus
+# argumentos. La regex va anclada: evaluate o retrieval no ejecutan nada.
+expect "clave: lua -e os.execute"                "$(run_sentinel $'lua -e \'os.execute(io.read())\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: Rscript -e system"                "$(run_sentinel $'Rscript -e \'system(readLines("stdin"))\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: bun -e Bun.spawn"                 "$(run_sentinel $'bun -e \'Bun.spawn(["sh"])\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "lua script.lua permitido"                "$(run_sentinel $'lua script.lua <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
+expect "perl con evaluate|execution permitido"   "$(run_sentinel $'perl -ne \'print if /evaluate|execution/\' <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
+expect "python -c con retrieval permitido"       "$(run_sentinel $'python3 -c \'print("retrieval")\' <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
+expect "clave: node child_process.execSync"      "$(run_sentinel $'node -e \'require("child_process").execSync(require("fs").readFileSync(0))\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: perl -ne eval"                    "$(run_sentinel $'perl -ne \'eval\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+# Prefijos que ejecutan la palabra siguiente (timeout, busybox, flock, stdbuf...) y find -exec.
+expect "clave: timeout 5 bash run.sh"            "$(run_sentinel $'cat <<EOF >run.sh; timeout 5 bash run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: busybox sh run.sh"                "$(run_sentinel $'cat <<EOF >run.sh; busybox sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: flock l sh run.sh"                "$(run_sentinel $'cat <<EOF >run.sh; flock l sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: stdbuf -o0 sh run.sh"             "$(run_sentinel $'cat <<EOF >run.sh; stdbuf -o0 sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: find -exec sh run.sh"             "$(run_sentinel $'cat <<EOF >run.sh; find . -exec sh run.sh \\;\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "notas y timeout 5 git add permitido"     "$(run_sentinel $'cat > notes.md <<\'EOF\' && timeout 5 git add notes.md\nsee opts.key\nEOF')" ALLOW
+expect "notas y find -name permitido"            "$(run_sentinel $'cat > notes.md <<\'EOF\' && find . -name \'*.md\'\nsee opts.key\nEOF')" ALLOW
+# Sumideros que escriben a fichero por opcion o programa: sort -o, sed w, awk con >.
+expect "clave: sort -o run.sh; sh run.sh"        "$(run_sentinel $'sort -o run.sh <<EOF; sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: sed -n w run.sh; sh run.sh"       "$(run_sentinel $'sed -n \'w run.sh\' <<EOF; sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: awk print > run.sh; sh run.sh"    "$(run_sentinel $'awk \'{print > "run.sh"}\' <<EOF; sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "sort -o out.txt solo permitido"          "$(run_sentinel $'sort -o out.txt <<\'EOF\'\nopts.key\nEOF')" ALLOW
+# Una ruta absoluta bajo un directorio estandar de binarios no es ejecutor salvo shell o interprete.
+expect "notas y /usr/bin/git add permitido"      "$(run_sentinel $'cat > notes.md <<\'EOF\' && /usr/bin/git add notes.md\nsee opts.key\nEOF')" ALLOW
+expect "clave: >/tmp/run.sh; /tmp/run.sh"        "$(run_sentinel $'cat <<EOF >/tmp/run.sh; /tmp/run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >run.sh; /bin/sh run.sh"          "$(run_sentinel $'cat <<EOF >run.sh; /bin/sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
 # En codigo, un tramo con forma de ruta (/, ./, ../, ~/) se mira entero.
 expect "clave: dir.p12 en ruta de codigo"        "$(run_sentinel "node -e 'fs.readdirSync(/etc/ssl/dir.p12/x)'")" "$IOCS_WANT"
 expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK
