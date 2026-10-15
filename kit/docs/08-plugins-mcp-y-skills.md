@@ -4,19 +4,18 @@ La base que instala este kit (`CLAUDE.md`, `settings.json`, hooks, agentes, Sent
 
 ## Plugins de Claude Code
 
-`claude/settings.json` declara siete plugins en `enabledPlugins`, cuatro del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual); los otros tres vienen de marketplaces externos que el propio `settings.json` del kit ya declara en `extraKnownMarketplaces`, así que Claude Code los reconoce sin que tengas que darlos de alta a mano.
+`claude/settings.json` declara seis plugins en `enabledPlugins`, tres del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual); `esenciales` viene del marketplace de este repo, que da de alta `kit/install-plugins.sh` (abajo); los otros dos vienen de marketplaces externos que el propio `settings.json` del kit ya declara en `extraKnownMarketplaces`, así que Claude Code los reconoce sin que tengas que darlos de alta a mano.
 
 | Plugin | Para qué | Cómo |
 |---|---|---|
-| `superpowers@claude-plugins-official` | el método y sus skills (ver `04-superpowers.md`) | `/plugin` |
+| `esenciales@setup-claude-code` | el método y sus skills (ver `04-superpowers.md`) | marketplace de este repo, que registra `kit/install-plugins.sh --apply`; luego `/plugin` |
 | `code-review@claude-plugins-official` | revisión de PRs | `/plugin` |
 | `skill-creator@claude-plugins-official` | crear y editar skills | `/plugin` |
 | `frontend-design@claude-plugins-official` | diseño de interfaces | `/plugin` |
 | `codex@openai-codex` | integración con Codex | marketplace externo (GitHub `openai/codex-plugin-cc`), ya declarado en `extraKnownMarketplaces`; activa con `/plugin` |
 | `understand-anything@understand-anything` | grafos de conocimiento del código; aporta las skills `understand-*` | marketplace externo (GitHub `Lum1104/Understand-Anything`), ya declarado en `extraKnownMarketplaces`; activa con `/plugin` |
-| `langsmith-tracing@langsmith-claude-code-plugins` | trazas de ejecución en LangSmith | marketplace externo (GitHub `langchain-ai/langsmith-claude-code-plugins`), ya declarado en `extraKnownMarketplaces`; viene **desactivado** por defecto (`false` en `enabledPlugins`); actívalo con `/plugin` si lo necesitas |
 
-Los cuatro primeros se activan (o reinstalan si hiciera falta) con el comando interactivo `/plugin` dentro de una sesión de Claude Code. Los tres últimos, al venir de marketplaces externos ya declarados en el `settings.json` que instala este kit, se activan exactamente igual: `/plugin` los lista porque el marketplace ya es conocido, no hace falta registrar nada a mano. Verifica el estado (instalados, activos, disponibles) con:
+Los tres oficiales se activan (o reinstalan si hiciera falta) con el comando interactivo `/plugin` dentro de una sesión de Claude Code. Los dos últimos, al venir de marketplaces externos ya declarados en el `settings.json` que instala este kit, se activan exactamente igual: `/plugin` los lista porque el marketplace ya es conocido, no hace falta registrar nada a mano. Verifica el estado (instalados, activos, disponibles) con:
 
 ```bash
 /plugin
@@ -34,7 +33,8 @@ bash kit/install-plugins.sh --apply --with-optional  # + impeccable y find-skill
 
 | Plugin / skill | Origen · licencia | Para qué | Riesgo que asumes |
 |---|---|---|---|
-| `superpowers` · `frontend-design` | `claude-plugins-official` · MIT / Apache-2.0 | el método y diseño de interfaces | ninguno nuevo: ya están en `enabledPlugins` |
+| `frontend-design` | `claude-plugins-official` · Apache-2.0 | diseño de interfaces | ninguno nuevo: ya está en `enabledPlugins` |
+| `esenciales` | este repo (`setup-claude-code`) · MIT, derivado de superpowers | las seis skills del método (ver `04-superpowers.md`) | ninguno nuevo: solo skills, sin hooks; el código está en `kit/plugins/esenciales/` |
 | `ponytail` | `DietrichGebert/ponytail` · MIT | modo «senior perezoso»: el cambio mínimo completo, respuestas cortas | instala hooks globales (`SessionStart`, `UserPromptSubmit`, `SubagentStart`) que cambian el estilo de todas las sesiones; se apaga con «stop ponytail» |
 | `cockpit` | este repo (`setup-claude-code`) · MIT | `/handoff`, Agent Dock y modo simple (ver `11-cockpit.md`) | hooks de sesión propios; el código está en `kit/mods/cockpit/` |
 | `ui-ux-pro-max` | `nextlevelbuilder/ui-ux-pro-max-skill` · MIT | catálogo de estilos, paletas y tipografías para UI | scripts Python que solo leen sus CSV locales |
@@ -49,10 +49,9 @@ Descartados: las skills `docx`/`pdf`/`xlsx`/`pptx` de Anthropic (licencia propie
 
 Capacidades externas que Claude Code invoca vía el protocolo MCP. Conocidos en este setup:
 
-- **headroom**: el MCP del proxy de contexto (ver `03-headroom.md`). Es el único que este setup deja registrado en ámbito global.
 - **firecrawl**: scraping y búsqueda web. Requiere su propia clave en `$HOME/.claude/.env`.
 - **perplexity**: búsqueda web. Dado de baja en este setup el 2026-08-17 (llegó sin `PERPLEXITY_API_KEY` tras una migración de máquina y nunca se repuso). Se documenta porque el `.env.example` todavía la nombra: si no la usas, no la des de alta.
-- **linkedin**: mensajería. Retirado del ámbito global el 2026-08-25 por coste de arranque (`uvx …@latest` consulta PyPI en **cada** lanzamiento: 1,43 s medidos, más que Serena y Headroom juntos). Si lo repones, píneale la versión y **no toques** las dos denegaciones que `settings.json` mantiene en `permissions.deny` — `mcp__linkedin__send_message` y `mcp__linkedin__connect_with_person` —: siguen ahí a propósito, para que reinstalarlo no reabra en silencio la puerta a escribir a terceros.
+- **linkedin**: mensajería. Retirado del ámbito global el 2026-08-25 por coste de arranque (`uvx …@latest` consulta PyPI en **cada** lanzamiento: 1,43 s medidos). Si lo repones, píneale la versión y **no toques** las dos denegaciones que `settings.json` mantiene en `permissions.deny` — `mcp__linkedin__send_message` y `mcp__linkedin__connect_with_person` —: siguen ahí a propósito, para que reinstalarlo no reabra en silencio la puerta a escribir a terceros.
 - **serena**: navegación por símbolos vía LSP. **Por proyecto, nunca en global** (ver abajo).
 
 ### Un MCP en ámbito global es un impuesto fijo, y casi nunca se mide
@@ -90,17 +89,15 @@ diferidos. Serena costaba un proceso Python más un servidor de lenguaje en cada
 `linkedin` costaba una consulta a PyPI en cada lanzamiento. Mide el uso, sí, pero **retira por
 el coste**, no por el recuento.
 
-La regla que sale de ahí: **global solo para lo que usas en cada sesión** (aquí: `headroom`). Todo lo demás, `claude mcp add --scope project` en el repo donde compensa, o un alias dedicado.
+La regla que sale de ahí: **global solo para lo que usas en cada sesión**. Todo lo demás, `claude mcp add --scope project` en el repo donde compensa, o un alias dedicado.
 
-Ojo con los wrappers: `headroom wrap claude` registra Serena **por defecto** y vuelve a escribirla en `~/.claude.json` en cada lanzamiento, así que borrarla con `claude mcp remove` no basta — hay que lanzarlo con `--code-memory none`. Y su `--serena-instructions` reescribe tu `CLAUDE.md` en cada arranque con un prompt que ordena cargar las 24 herramientas de golpe, justo lo contrario de lo que consigue `--1m`. Quitar un MCP del arranque es tres sitios, no uno: el registro, el flag del wrapper y el fichero de instrucciones que dejó atrás.
+Quitar un MCP del arranque puede ser más de un sitio: el registro, el flag de un wrapper que lo reponga y el fichero de instrucciones que dejó atrás.
 
 Cómo se añaden: `claude mcp add ...`. La sintaxis exacta (transporte, comando o URL, variables de entorno que necesite) depende de cada servidor; consulta su propio repositorio antes de darlo de alta. El kit no incluye claves ni configuraciones MCP con secretos: cualquier credencial vive solo en tu `.env` local, nunca en este repo.
 
 **Marketplaces privados (GitLab autoalojado, VPN).** Un marketplace de plugins de tu organización se da de alta con su URL SSH — `claude plugin marketplace add git@tu-gitlab:grupo/marketplace.git` — así que necesita una clave SSH dada de alta y la VPN levantada. El proceso completo, con los comandos y el diagnóstico de los fallos que dan todos el mismo mensaje, está en [`09-ssh-y-gitlab-privado.md`](09-ssh-y-gitlab-privado.md). Si la VPN está caída, ese marketplace falla al refrescarse y el resto de Claude Code sigue funcionando igual.
 
-**Headroom son dos piezas, y solo una es un MCP.** El **proxy** de contexto (ver `03-headroom.md`) no se añade con `claude mcp add`: se cablea vía `ANTHROPIC_BASE_URL` y actúa sobre las peticiones a la API, por debajo del protocolo MCP. Aparte de eso, Headroom trae **también** un servidor MCP (`headroom mcp serve`) que sí se registra como cualquier otro y da acceso a sus estadísticas y a recuperar contenido que el proxy comprimió. Puedes usar el proxy sin registrar ese MCP; lo que no tiene sentido es lo contrario.
-
-Y ojo con una confusión que este documento arrastraba: [`rtk`](https://github.com/rtk-ai/rtk) **no es Headroom**, es otro proyecto, el que filtra la salida de los comandos de shell. Puedes tener uno sin el otro, y el kit no cablea ninguno de los dos: el hook `rtk hook claude` que este `settings.json` traía se retiró (ver `03-headroom.md`), y de `rtk` solo queda `Bash(rtk *)` en `permissions.allow`. Ver la tabla comparativa al principio de `03-headroom.md`.
+[`rtk`](https://github.com/rtk-ai/rtk) filtra la salida de los comandos de shell. El kit no lo cablea: el hook `rtk hook claude` que este `settings.json` traía se retiró, y de `rtk` solo queda `Bash(rtk gain)` en `permissions.allow`. (Headroom, el proxy de compresión con el que se confundía, se retiró en 2026-10: [`archive/03-headroom.md`](archive/03-headroom.md).)
 
 Verifica los servidores dados de alta con:
 
@@ -119,7 +116,7 @@ El `CLAUDE.md` que instala este kit invoca varias skills que viven en `$HOME/.cl
 | `ultrawork` | `/ultrawork` | modo de máxima potencia: todos los agentes, en paralelo, sin paradas |
 | `agent-browser` | se carga antes de cualquier tarea de navegador | estándar de automatización de navegador (ya cubierta en `04-superpowers.md`) |
 
-Instálalas desde su origen o adáptalas a tu propio setup. Nota honesta: el `CLAUDE.md` las invoca como si estuvieran siempre disponibles, pero son herramientas, no leyes de hierro (esas son las cuatro de superpowers, ver `04-superpowers.md`): si una de estas skills no está instalada en tu máquina, el setup degrada con elegancia, no se rompe.
+Instálalas desde su origen o adáptalas a tu propio setup. Nota honesta: el `CLAUDE.md` las invoca como si estuvieran siempre disponibles, pero son herramientas, no leyes de hierro (esas son las tres de `04-superpowers.md`): si una de estas skills no está instalada en tu máquina, el setup degrada con elegancia, no se rompe.
 
 Verifica qué tienes instalado con:
 
@@ -135,8 +132,7 @@ Todos estos van en `02-install.md`; recordatorio de la pila que usa el setup com
 |---|---|---|
 | `uv` | gestor de paquetes Python; el kit lo usa vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
 | venv de tools (`$HOME/.venvs/tools`) | ejecuta Sentinel y `smart_approve.py` con un Python propio, no el del sistema (ver `02-install.md`, paso 4) | `test -x $HOME/.venvs/tools/bin/python3` |
-| `headroom` | el proxy de contexto en `127.0.0.1:8787`, y el servidor MCP `headroom mcp serve` (ver `03-headroom.md`) | `headroom --version` · `headroom doctor` |
-| `rtk` | filtra la salida de los comandos de shell antes de que entre en contexto; el kit no lo cablea, se invoca a mano (`rtk proxy <comando>`). **Proyecto distinto de Headroom** | `rtk --version` |
+| `rtk` | filtra la salida de los comandos de shell antes de que entre en contexto; el kit no lo cablea, se invoca a mano (`rtk proxy <comando>`) | `rtk --version` |
 | `pnpm` | instala `agent-browser` y otros paquetes globales de Node | `pnpm --version` |
 
 ## Verificación rápida

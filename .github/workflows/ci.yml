@@ -30,6 +30,10 @@ concurrency:
 env:
   GITLEAKS_VERSION: "8.30.1"
   GITLEAKS_SHA256_LINUX_X64: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+  # shellcheck fijado como gitleaks: el de apt del runner va por detras (0.10 aun emite SC2002,
+  # que 0.11 retiro del defecto) y un verde local se volvia rojo en CI sin tocar nada.
+  SHELLCHECK_VERSION: "0.11.0"
+  SHELLCHECK_SHA256_LINUX_X86_64: "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"
 
 jobs:
   shellcheck:
@@ -39,10 +43,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Instalar shellcheck (version fijada + checksum, no la de apt del runner)
+        run: |
+          set -euo pipefail
+          curl -sSL -o shellcheck.tar.xz \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          echo "${SHELLCHECK_SHA256_LINUX_X86_64}  shellcheck.tar.xz" | sha256sum -c -
+          # Solo el binario, sin su carpeta: no queda nada que borrar de forma recursiva.
+          tar -xJf shellcheck.tar.xz --strip-components=1 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          sudo install -m 0755 shellcheck /usr/local/bin/shellcheck
+          rm -f shellcheck.tar.xz shellcheck
+          shellcheck --version
+
       - name: shellcheck -x (todo .sh versionado, sin lista literal)
         run: |
           set -euo pipefail
-          command -v shellcheck >/dev/null 2>&1 || sudo apt-get install -y shellcheck
           # La lista literal que habia aqui dejaba fuera los .sh de la capa de harness
           # (.claude/hooks, scripts/, kit/evals): un script nuevo entraba en el repo sin
           # analizar y sin que nadie se enterara. git ls-files acota a lo VERSIONADO (ni
@@ -147,12 +162,6 @@ jobs:
       - name: test_doctor_base_url.sh (un proxy enrutado y muerto es FAIL)
         run: bash kit/test/test_doctor_base_url.sh
 
-      - name: test_with_headroom.sh (solo cablea despues de comprobar /readyz)
-        run: bash kit/test/test_with_headroom.sh
-
-      - name: "test_headroom_guardrails.sh (modo cache, sin --budget ni --log-messages, una sola fuente de enrutado)"
-        run: bash kit/test/test_headroom_guardrails.sh
-
       - name: test_metrics.sh (scripts/metrics.py sobre transcripts sinteticos)
         run: bash kit/test/test_metrics.sh
 
@@ -192,9 +201,29 @@ jobs:
         run: bash kit/test/test_statusline.sh
       - name: "test_session_start_clear.sh (hook SessionStart: nucleo.md como datos, recorte y fail-open)"
         run: bash kit/test/test_session_start_clear.sh
+      - name: "test_nucleo_lib.sh (lib de nucleo: una raíz sin anidados, emisión por secciones bajo el tope)"
+        run: bash kit/test/test_nucleo_lib.sh
+      - name: "test_nucleo_hooks.sh (inyectores ≤ 9 500 y como datos, checkpoint con .gitignore, KPI, gauge y gate, sin fsmonitor)"
+        run: bash kit/test/test_nucleo_hooks.sh
+      - name: "test_nucleo_nudge.sh (PostToolUse: aviso al modelo por banda del airbag, una vez, solo con nucleo rancio, < 50 ms)"
+        run: bash kit/test/test_nucleo_nudge.sh
+      - name: "test_settings_template.sh (plantilla de settings: hooks de nucleo, un PreCompact, ventana, cleanupPeriodDays, sin LangSmith)"
+        run: bash kit/test/test_settings_template.sh
 
       - name: "test_install_plugins.sh (plugins de terceros por referencia: diff-first, ids esperados, opcionales aparte)"
         run: bash kit/test/test_install_plugins.sh
+      - name: "test_claude_md_template.sh (plantilla CLAUDE.md + AGENTS.md: techos, desempates, rutas citadas existen)"
+        run: bash kit/test/test_claude_md_template.sh
+      - name: "test_recall.sh (recuerda: párrafos que coinciden, sin acentos, -l, -f, rc 1 si no hay nada)"
+        run: bash kit/test/test_recall.sh
+      - name: "test_scripts_audit.sh (compact-audit.py y nucleo_audit.py sobre transcripts sintéticos)"
+        run: bash kit/test/test_scripts_audit.sh
+
+      - name: "test_guia.sh (guía didáctica: existe, enlazada desde 01-overview, sin enlaces rotos)"
+        run: bash kit/test/test_guia.sh
+
+      - name: "test_plugin_esenciales.sh (plugin esenciales: 6 skills, sin hooks, sin restos de las excluidas, en el marketplace)"
+        run: bash kit/test/test_plugin_esenciales.sh
 
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root

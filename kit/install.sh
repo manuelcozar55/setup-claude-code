@@ -88,203 +88,6 @@ if [ "${1:-}" = "--enable-secrets-layer2" ]; then
   exit 0
 fi
 
-# --- Subcomando: instalar Headroom y cablearlo (opt-in) ---------------------
-# Headroom es de terceros y el kit NO lo redistribuye: se instala desde PyPI
-# (paquete headroom-ai) en el venv del usuario.
-#
-# El orden de los pasos es la parte importante, y es lo que arregla el fallo que
-# tenia este kit: primero instalar, luego arrancar, luego COMPROBAR que responde,
-# y solo entonces escribir ANTHROPIC_BASE_URL en settings.json. Hacerlo al reves
-# --distribuir la variable y esperar que el proxy aparezca-- dejaba a quien
-# instalaba el kit en limpio con Claude Code apuntando a un puerto muerto.
-# Contrato probado en kit/test/test_with_headroom.sh.
-if [ "${1:-}" = "--with-headroom" ]; then
-  HR_PORT="${HEADROOM_PORT:-8787}"
-  VENV="${TOOLS_VENV:-$HOME/.venvs/tools}"
-  UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-  DRY="${HEADROOM_DRY_RUN:-0}"
-
-  if [ ! -f "$CLAUDE_HOME/settings.json" ]; then
-    echo "==> Instala primero el kit:  bash $KIT/install.sh" >&2
-    exit 1
-  fi
-  # Sin comprobar jq: la puerta de dependencia de arriba ya paro la ejecucion si
-  # falta, asi que aqui esta garantizado (lo usa el cableado del paso 4).
-
-  # 1. Paquete en el venv de tools (nunca pip del sistema).
-  if [ "$DRY" != "1" ]; then
-    if [ ! -x "$VENV/bin/python3" ]; then
-      echo "==> Creando venv de tools en $VENV"
-      python3 -m venv "$VENV" || { echo "==> No se pudo crear el venv." >&2; exit 1; }
-    fi
-    # El extra es [proxy], y no es opcional: sin el, el proxy no arranca y falla
-    # con "No module named 'httpx'". Y NO se usa [all]: expande a trece extras,
-    # entre ellos [ml] (torch + huggingface-hub), que mide ~900 MB frente a
-    # 7,2 GB sin comprar nada aqui -- el motor de compresion usa ONNX Runtime,
-    # que ya viene en [proxy]. Ver kit/docs/03-headroom.md.
-    echo "==> Instalando 'headroom-ai[proxy]' en $VENV (no [all]: ver docs/03-headroom.md)"
-    "$VENV/bin/pip" install -q --upgrade 'headroom-ai[proxy]' || {
-      echo "==> Fallo la instalacion de headroom-ai[proxy] (sin red o paquete inaccesible)." >&2
-      echo "    No se ha tocado settings.json." >&2
-      exit 1
-    }
-    mkdir -p "$HOME/.local/bin"
-    ln -sf "$VENV/bin/headroom" "$HOME/.local/bin/headroom"
-  fi
-
-  # 2. Helper del output-shaper. Reduce tokens de SALIDA, que no se cachean, asi
-  # que es la unica palanca de ahorro que no arriesga el prefijo cacheado. Los
-  # toggles no se propagan por Environment= ni por el manifest: el unico canal
-  # es un POST en vivo, y por eso hay que repetirlo en cada arranque.
-  # HEADROOM_OUTPUT_HOLDOUT=0.1 deja un 10 % del trafico sin moldear a proposito,
-  # para que el ahorro siga siendo medible en vez de una cifra que hay que creerse.
-  SHAPER="$CLAUDE_HOME/headroom-apply-shaper.sh"
-  cat > "$SHAPER" <<SHAPEREOF
-#!/usr/bin/env bash
-# Generado por install.sh --with-headroom. Aplica los toggles de runtime.
-# NUNCA falla el arranque del servicio: si fallara, systemd marcaria la unidad
-# como failed y con Restart entraria en bucle de reinicios.
-set -uo pipefail
-URL=http://127.0.0.1:${HR_PORT}
-PAYLOAD='{"HEADROOM_OUTPUT_SHAPER":"1","HEADROOM_OUTPUT_HOLDOUT":"0.1"}'
-if ! curl -sf --retry 60 --retry-delay 1 --retry-connrefused -m 3 "\$URL/readyz" >/dev/null 2>&1; then
-  echo "headroom shaper: /readyz no respondio; no se aplico nada"; exit 0
-fi
-resp=\$(curl -sf -m 5 -X POST "\$URL/admin/runtime-env" \\
-         -H 'content-type: application/json' -d "\$PAYLOAD" 2>&1)
-if [[ "\$resp" == *'"HEADROOM_OUTPUT_SHAPER":"1"'* ]]; then
-  echo "headroom shaper: aplicado OK (output-shaper=1, holdout=0.1)"
-else
-  echo "headroom shaper: NO aplicado. respuesta: \$resp"
-fi
-exit 0
-SHAPEREOF
-  chmod +x "$SHAPER"
-
-  # 3. Unidad de usuario. Una sola, a proposito: ver docs/03-headroom.md sobre
-  # las dos unidades peleando por el puerto.
-  mkdir -p "$UNIT_DIR"
-  cat > "$UNIT_DIR/headroom-proxy.service" <<UNITEOF
-[Unit]
-Description=Headroom LLM context compression proxy
-Documentation=https://github.com/headroomlabs-ai/headroom
-After=network.target
-# Sin limite de intentos, y va en [Unit]: en [Service] systemd lo ignora en
-# silencio y la unidad muere en 'failed' tras 5 arranques en 10 s.
-StartLimitIntervalSec=0
-
-[Service]
-Type=simple
-# Modo cache EXPLICITO. De los perfiles de ahorro, solo 'coding' usa modo cache;
-# los demas usan 'token', que reescribe los turnos anteriores e invalida el
-# prefijo cacheado de Anthropic -- que es de donde sale casi todo el ahorro.
-# No se confia en el default porque la propia herramienta se contradice sobre
-# cual es (ver kit/docs/03-headroom.md).
-ExecStart=%h/.local/bin/headroom proxy --port ${HR_PORT} --mode cache --no-telemetry
-Environment=HEADROOM_SAVINGS_PROFILE=coding
-Environment=PATH=%h/.local/bin:%h/.venvs/tools/bin:/usr/local/bin:/usr/bin:/bin
-# El motor de compresion descarga su modelo ONNX la primera vez. Con HF_HUB_OFFLINE=1
-# heredado del entorno, kompress queda available:false EN SILENCIO: /readyz sigue
-# healthy y el proxy no comprime nada.
-Environment=HF_HUB_OFFLINE=0
-# El default de Headroom es escribir en proxy.log hasta 4096 chars de conversacion
-# literal por cada event=headroom_retrieve: _payload_preview_enabled() devuelve True
-# cuando la variable NO esta puesta. Con 0 solo registra recuentos de bytes. No se
-# puede cambiar en caliente: la clave no esta en _KNOBS_BY_ENV y el lector consulta
-# os.environ directo, asi que /admin/runtime-env no la ve.
-Environment=HEADROOM_LOG_PAYLOAD_PREVIEW=0
-# El proceso hereda Umask 0002 y por eso proxy.log nace en 664. Esto solo gobierna
-# los ficheros futuros, incluidas las rotaciones; lo ya escrito se arregla aparte.
-UMask=0077
-# El '-' es deliberado: si el shaper falla, la unidad NO debe quedar en failed.
-ExecStartPost=-${SHAPER}
-Restart=always
-RestartSec=3
-
-# Endurecimiento: escribible solo lo imprescindible.
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=read-only
-# read-only y no tmpfs a proposito: con tmpfs el home queda vacio dentro del
-# namespace y %h/.local/bin/headroom deja de existir -> la unidad no arranca
-# (203/EXEC). Como read-only si permite LEER todo el home, se tapan a mano los
-# directorios que el proxy no tiene ningun motivo para leer. El '-' tolera que falten.
-InaccessiblePaths=-%h/.ssh -%h/.aws -%h/.gnupg -%h/.config/gh
-# %h/.local/share/rtk: SQLite necesita escritura en el directorio aunque solo se
-# lea la base. Sin esto, 'unable to open database file (code 14)' cada 60 s. El '-'
-# porque el kit no instala rtk y no da por supuesto que exista.
-ReadWritePaths=%h/.headroom %h/.cache/huggingface -%h/.local/share/rtk
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
-RestrictSUIDSGID=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-
-[Install]
-WantedBy=default.target
-UNITEOF
-  echo "==> Unidad escrita: $UNIT_DIR/headroom-proxy.service"
-
-  # 4. Arrancar.
-  if [ "$DRY" != "1" ]; then
-    if ! command -v systemctl >/dev/null 2>&1; then
-      echo "==> Sin systemd: arranca el proxy a mano y vuelve a lanzar esto." >&2
-      echo "    \$HOME/.local/bin/headroom proxy --port $HR_PORT --mode cache" >&2
-      exit 1
-    fi
-    mkdir -p "$HOME/.headroom" "$HOME/.cache/huggingface"
-    # El proxy deja en ~/.headroom material derivado de tus prompts (ccr_store.db,
-    # savings_events.jsonl y, si alguien arranca con --log-messages, conversaciones
-    # enteras en claro). Por defecto quedaba 0755.
-    chmod 700 "$HOME/.headroom" 2>/dev/null || true
-    # logs/ aparte: se crea con el umask del proceso, no hereda el 700 de arriba.
-    chmod 700 "$HOME/.headroom/logs" 2>/dev/null || true
-    systemctl --user daemon-reload
-    systemctl --user enable --now headroom-proxy.service || true
-    # linger: que el proxy arranque con la maquina y no al primer login.
-    loginctl enable-linger "${USER:-$(id -un)}" >/dev/null 2>&1 || true
-  fi
-
-  # 5. Readiness. /readyz y no /health: /health es agregado y se pone en rojo si
-  # cualquier subcomprobacion falla (p.ej. el backend semantico que no se instala).
-  ready=0
-  if [ -n "${HEADROOM_FAKE_READY:-}" ]; then
-    [ "$HEADROOM_FAKE_READY" = "1" ] && ready=1
-  else
-    for _ in $(seq 1 30); do
-      if curl -fsS -m 1 -o /dev/null "http://127.0.0.1:$HR_PORT/readyz" 2>/dev/null; then ready=1; break; fi
-      sleep 1
-    done
-  fi
-
-  if [ "$ready" -ne 1 ]; then
-    echo "==> El proxy no responde en 127.0.0.1:$HR_PORT/readyz tras 30 s." >&2
-    echo "    settings.json NO se ha tocado: es deliberado. Cablear la API a un" >&2
-    echo "    proxy que no contesta deja Claude Code sin poder conectar." >&2
-    echo "    Diagnostico:  systemctl --user status headroom-proxy" >&2
-    echo "                  journalctl --user -u headroom-proxy -n 50" >&2
-    exit 1
-  fi
-
-  # 6. Y solo ahora, cablear.
-  tmp_s="$(mktemp)"
-  if jq --arg u "http://127.0.0.1:$HR_PORT" '.env.ANTHROPIC_BASE_URL = $u' \
-       "$CLAUDE_HOME/settings.json" > "$tmp_s" && jq empty "$tmp_s" 2>/dev/null; then
-    mv "$tmp_s" "$CLAUDE_HOME/settings.json"
-  else
-    rm -f "$tmp_s"
-    echo "==> No se pudo actualizar settings.json; se deja intacto." >&2
-    exit 1
-  fi
-
-  echo "==> Headroom cableado: ANTHROPIC_BASE_URL=http://127.0.0.1:$HR_PORT"
-  echo "==> NO ejecutes 'headroom install': crearia una segunda unidad peleando"
-  echo "    por el puerto $HR_PORT. Esta unidad es la unica fuente de verdad."
-  echo "==> Verifica:  bash $KIT/doctor.sh"
-  exit 0
-fi
-
 # --- Modo diff-first: CLAUDE_HOME es un repo git ajeno con remoto ----------
 # Si $CLAUDE_HOME es en si mismo un repositorio git con al menos un remoto
 # configurado, se asume que es un repo de configuracion propio del usuario
@@ -368,22 +171,24 @@ install_settings() {  # src dst
   fi
 }
 
-# CLAUDE.md son instrucciones que escribes tu: no se pisa si ya la has tocado. Se deja la del
-# kit al lado, como CLAUDE.kit.md, y se avisa. Reemplazarla borraba trabajo irrecuperable por
-# fusion automatica -- una prosa no se puede fusionar como un JSON.
+# CLAUDE.md y AGENTS.md son instrucciones que escribes tu: no se pisan si ya las has tocado. Se
+# deja la del kit al lado, como CLAUDE.kit.md o AGENTS.kit.md, y se avisa. Reemplazarla borraba
+# trabajo irrecuperable por fusion automatica -- una prosa no se puede fusionar como un JSON.
 install_claude_md() {  # src dst
   local src="$1" dst="$2"
   if [ ! -f "$dst" ]; then cp -p "$src" "$dst"; return; fi
   if cmp -s "$src" "$dst"; then return; fi
-  cp -p "$src" "$(dirname "$dst")/CLAUDE.kit.md"
-  echo "   CLAUDE.md ya existe y la has modificado: NO se toca."
-  echo "   La version del kit queda en CLAUDE.kit.md para que compares y copies lo que quieras."
+  local n; n="$(basename "$dst" .md)"
+  cp -p "$src" "$(dirname "$dst")/$n.kit.md"
+  echo "   $n.md ya existe y la has modificado: NO se toca."
+  echo "   La version del kit queda en $n.kit.md para que compares y copies lo que quieras."
 }
 
 install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   local base="$1" f rel
-  mkdir -p "$base/hooks" "$base/agents" "$base/sentinel"
+  mkdir -p "$base/hooks/lib" "$base/agents" "$base/sentinel" "$base/templates"
   install_claude_md "$KIT/claude/CLAUDE.md"       "$base/CLAUDE.md"
+  install_claude_md "$KIT/claude/AGENTS.md"       "$base/AGENTS.md"
   install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
   install_file "$KIT/claude/sentinel-allowlist.json" "$base/sentinel-allowlist.json"
   install_file "$KIT/claude/.gitleaks.toml"       "$base/.gitleaks.toml"
@@ -395,6 +200,8 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
     install_file "$f" "$base/skills/$rel"
   done < <(find "$KIT/claude/skills" -type f -print0 2>/dev/null)
   for f in "$KIT"/claude/hooks/*;  do [ -f "$f" ] && install_file "$f" "$base/hooks/$(basename "$f")"; done
+  for f in "$KIT"/claude/hooks/lib/*; do [ -f "$f" ] && install_file "$f" "$base/hooks/lib/$(basename "$f")"; done
+  for f in "$KIT"/claude/templates/*; do [ -f "$f" ] && install_file "$f" "$base/templates/$(basename "$f")"; done
   for f in "$KIT"/sentinel/*;      do [ -f "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
   mkdir -p "$base/hooks/git"
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
@@ -560,7 +367,7 @@ if [ "$gl_rc" -eq 2 ]; then
   echo "==> Revisa \$CLAUDE_HOME/.gitleaks-checksum-mismatch y kit/docs/05-security.md antes de reintentar. doctor.sh tambien lo reporta."
 fi
 
-echo "==> Config instalada. Terceros (ver docs/): superpowers, Headroom, agent-browser, venv de tools."
+echo "==> Config instalada. Terceros (ver docs/): agent-browser, venv de tools. Plugins: install-plugins.sh."
 echo "==> Rellena tus claves:  cp $KIT/.env.example \$HOME/.claude/.env  &&  editar"
 echo "==> Capa 2 de secretos (gitleaks pre-commit) es opt-in, por repositorio. Actívala DONDE QUIERAS con:"
 echo "       bash $KIT/install.sh --enable-secrets-layer2   # ejecútalo dentro del repo a proteger"

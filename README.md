@@ -34,14 +34,8 @@ configuración esté verificada en vez de supuesta.
 macOS (no hay CI que lo demuestre), y no es un framework del que dependas: se instala en tu
 `~/.claude` y se desinstala.
 
-```bash
-git clone https://github.com/manuelcozar55/setup-claude-code.git
-cd setup-claude-code
-bash kit/install.sh    # requiere jq; FUSIONA tu settings.json con jq, no lo pisa
-make test              # el oráculo de este repo: exit 0, o el trabajo no está hecho
-bash kit/doctor.sh     # diagnostico de lo que ya tienes instalado
-bash uninstall.sh      # SIMULA la reversion; con --apply la ejecuta (y hace backup antes)
-```
+**Instalar.** Clona y `make bootstrap` (instala en `~/.claude` con backup, corre `make test` y
+`kit/doctor.sh`); se deshace con `bash uninstall.sh`. Ver [Quick start](#quick-start).
 
 **Aspecto.** Una instalación limpia trae el tema oscuro (`"theme": "dark"`) y una barra de estado
 en dos líneas (`~/.claude/statusline-command.sh`, bash + `jq`): modelo, ruta completa, repo, rama
@@ -72,13 +66,13 @@ flowchart LR
         subgraph KIT["kit/ · capa de instalación"]
             direction TB
             G["Guards de Bash/git<br/>+ Capa 1 de secretos"]
-            HK["Hooks de sesión<br/>preflight · pre-compact"]
+            HK["Hooks de sesión<br/>session-start · pre-compact"]
             SE["Sentinel<br/>IOCs"]
             AG["8 agentes<br/>con tiering"]
             SK["6 skills<br/>del método"]
             MO["Mod cockpit<br/>/handoff · Agent Dock"]
             EV["evals/<br/>20 tareas"]
-            TS["test/<br/>33 suites falsables"]
+            TS["test/<br/>40 suites falsables"]
         end
     end
     INS{{"install.sh<br/>diff-first"}}
@@ -125,7 +119,7 @@ sequenceDiagram
     participant H as Hooks
     participant X as Herramienta
 
-    CC->>H: SessionStart · session-start.sh, preflight.sh
+    CC->>H: SessionStart · session-start.sh, session-start-clear.sh, session-start-compact.sh
     T->>CC: prompt
     CC->>H: UserPromptSubmit · auto-spec.sh (harness)
     H-->>CC: oráculo + «declara cuándo estará hecho»
@@ -203,7 +197,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 33 suites falsables | v1.2.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 40 suites falsables | v1.2.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -409,30 +403,10 @@ No son garantías absolutas: son defensa en profundidad, con sus límites docume
 
 ## Quick start
 
-**Prerrequisitos** — el kit solo soporta **Linux o WSL2** (ver el aviso de arriba: en Windows, entra en WSL antes de nada y clona dentro de `~`, no en `/mnt/c/`).
-
-Además necesitas: `bash`, `git`, `make`, `python3` ≥ 3.10, `jq`. `gitleaks` (para la Capa 2 de secretos) es opcional — si no lo tienes, `install.sh` te ofrece instalarlo solo (binario oficial, verificado contra un checksum SHA-256 fijado en este repo, no descargado de la red; sin `curl | bash`), o puedes seguir sin él: la Capa 1 funciona igual. Lista completa y cómo comprobar cada una en [`kit/docs/02-install.md`](kit/docs/02-install.md).
-
-```bash
-git clone https://github.com/manuelcozar55/setup-claude-code.git
-cd setup-claude-code/kit
-bash install.sh                                        # instala en $CLAUDE_HOME (default $HOME/.claude), con backup
-cp .env.example "${CLAUDE_HOME:-$HOME/.claude}"/.env    # rellena tus claves
-bash doctor.sh                                          # autodiagnóstico con evidencia (PASS/WARN/FAIL)
-```
-
-**Y para deshacerlo**: `bash uninstall.sh` (desde la raíz del repo) restaura el backup más
-reciente que dejó `install.sh`. Por defecto es un *dry-run* que solo enseña qué haría; hace
-falta `--apply` para escribir, y antes de escribir se hace a su vez un backup del estado
-actual. `bash uninstall.sh --list` enumera los backups disponibles.
-
-`doctor.sh` sale con código 0 solo si no hay ningún `FAIL`. Un `WARN` es aceptable en un componente opcional que aún no instalaste (Headroom, `rtk`, el venv de tools, `gitleaks`): **nada del kit los da por supuestos**, y hay un test que lo demuestra en una máquina pelada (`test_clean_install_resilience.sh`). La excepción es `jq`, y es explícita: el kit **sí** lo exige — `install.sh` aborta si falta, y sin él los guards de Bash fallan en cerrado, deniegan en vez de permitir en silencio —, y ese mismo test también lo demuestra. Guía completa en [`kit/README.md`](kit/README.md).
-
-Si quieres el proxy de contexto, es un flag — y se cablea solo si arranca de verdad:
-
-```bash
-bash install.sh --with-headroom    # instala, arranca, verifica /readyz, y solo entonces enruta
-```
+Linux o WSL2, con `bash`, `git`, `make`, `python3` ≥ 3.10 y `jq`. `make bootstrap` desde un clon
+instala el kit (diff-first si tu `~/.claude` es un repo con remoto), corre la suite y `doctor.sh`;
+`bash uninstall.sh` lo revierte. El procedimiento completo, paso a paso y con lo opcional
+(`.env`, venv de tools, plugins, Capa 2 de secretos), vive solo en [`kit/docs/02-install.md`](kit/docs/02-install.md).
 
 ## Qué incluye
 
@@ -448,7 +422,6 @@ bash install.sh --with-headroom    # instala, arranca, verifica /readyz, y solo 
 | Eval set | 20 tareas reales (mitad negativas: miden lo que cuesta un falso positivo), dos brazos (con harness y sin el) y agregado con intervalo de confianza; opt-in, cuesta llamadas reales a `claude -p`, nunca corre en CI | [`kit/evals/`](kit/evals/) |
 | Suite de test falsable | `test_guards_falsifiability.sh`: neutraliza un guard real y comprueba que caen casos `BLOCK` conocidos | [`kit/test/`](kit/test/) |
 | Garantía de instalación limpia | `test_clean_install_resilience.sh`: monta el kit sin ningún componente de terceros y exige que no falle **y** que siga bloqueando | [`kit/test/`](kit/test/) |
-| Headroom opt-in | `install.sh --with-headroom`: instala el proxy, lo arranca, comprueba `/readyz` y solo entonces enruta la API | [`kit/docs/03-headroom.md`](kit/docs/03-headroom.md) |
 
 ## Por qué existe
 
@@ -456,25 +429,18 @@ No es una config que se copia y ya: es un bucle que se instala, se diagnostica y
 
 ## Configuración
 
-Tras `install.sh`, personaliza en `$CLAUDE_HOME` (`$HOME/.claude` por defecto):
-
-- **`.env`** — tus claves reales (`ANTHROPIC_API_KEY` y, si las usas, `PERPLEXITY_API_KEY`/`LANGSMITH_API_KEY`). Nunca se sube al repo.
-- **Capa 2 de secretos** (opt-in, por repositorio de trabajo — `install.sh` nunca la activa por su cuenta en un repo que no hayas nombrado):
-  ```bash
-  cd tu-repo && bash /ruta/al/kit/install.sh --enable-secrets-layer2
-  ```
-- **`sentinel-allowlist.json`** — para falsos positivos de los guards, en vez de desactivarlos.
-
-Detalle de cada opción en [`kit/docs/02-install.md`](kit/docs/02-install.md) y [`kit/docs/05-security.md`](kit/docs/05-security.md).
+Tras `install.sh`, lo tuyo vive en `$CLAUDE_HOME` (`$HOME/.claude` por defecto): el `.env` con tus
+claves (nunca se sube), la Capa 2 de secretos (opt-in, por repositorio) y `sentinel-allowlist.json`
+para falsos positivos. Cómo se configura cada uno: [`kit/docs/02-install.md`](kit/docs/02-install.md) y [`kit/docs/05-security.md`](kit/docs/05-security.md).
 
 ## Más allá del quick start
 
 - [`kit/README.md`](kit/README.md) — guía completa del kit.
-- [`kit/docs/`](kit/docs/) — overview, install, Headroom, superpowers, seguridad, rutina, verificación, plugins/MCP/skills, onboarding, cockpit y metodología.
+- [`kit/docs/`](kit/docs/) — overview, install, método (esenciales), seguridad, rutina, verificación, plugins/MCP/skills, onboarding, cockpit y metodología.
 - [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) — el método de trabajo de punta a punta: IntentGate, grilling, deep-change, subagentes, handoff y retro.
 - [`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md) — el mod `cockpit`: `/handoff` y el Agent Dock.
 - [`kit/docs/09-ssh-y-gitlab-privado.md`](kit/docs/09-ssh-y-gitlab-privado.md) — clave SSH desde WSL2 y alta en un GitLab autoalojado, paso a paso: útil por sí sola aunque no uses el kit, y necesaria si tu equipo tiene un marketplace de plugins privado.
-- [`kit/docs/10-onboarding.md`](kit/docs/10-onboarding.md) — la ruta de un companero nuevo: `make bootstrap`, qué acaba de pasar, cómo verificarlo de verdad, y por qué Headroom es opt-in y no default.
+- [`kit/docs/10-onboarding.md`](kit/docs/10-onboarding.md) — la ruta de un companero nuevo: qué levantas, cómo verificarlo de verdad y qué hacer cuando algo va mal.
 - [`SECURITY.md`](SECURITY.md) — qué protegen los guards y qué no (defensa en profundidad, no un límite duro), y cómo reportar una vulnerabilidad.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — cómo correr los tests y qué se espera de un PR.
 - [`CHANGELOG.md`](CHANGELOG.md) — historial de versiones de este repo.

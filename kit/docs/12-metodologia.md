@@ -46,8 +46,8 @@ Ante un encargo ambiguo o de varios pasos, una apertura corta fija cuatro cosas:
 4. **Supuestos**: explícitos. Si hay varias lecturas, se presentan, no se elige una en silencio.
 
 Si hay un camino más simple, se dice. Si algo no está claro, se pregunta **una sola ronda**.
-Vive en la plantilla [`kit/claude/CLAUDE.md`](../claude/CLAUDE.md) (sección *IntentGate*), que
-`install.sh` deja en tu `~/.claude`.
+Vive en la plantilla [`kit/claude/AGENTS.md`](../claude/AGENTS.md) (sección *IntentGate*), que
+`install.sh` deja en tu `~/.claude` junto al `CLAUDE.md` que la importa.
 
 ## 2 · `grilling` y `domain-modeling`: cuando las decisiones cuelgan unas de otras
 

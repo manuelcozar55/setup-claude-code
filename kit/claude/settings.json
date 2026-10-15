@@ -1,8 +1,7 @@
 {
   "env": {
     "ANTHROPIC_DISABLE_TELEMETRY": "1",
-    "TRACE_TO_LANGSMITH": "false",
-    "CC_LANGSMITH_PROJECT": "MyCC"
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "250000"
   },
   "permissions": {
     "allow": [
@@ -11,9 +10,11 @@
       "WebFetch(domain:api.crossref.org)",
       "WebFetch(domain:www.boe.es)",
       "WebFetch(domain:ec.europa.eu)",
-      "Bash(uv tool *)",
-      "Bash(graphify *)",
-      "Bash(rtk *)"
+      "Bash(uv tool list)",
+      "Bash(graphify query *)",
+      "Bash(graphify path *)",
+      "Bash(graphify explain *)",
+      "Bash(rtk gain)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
@@ -127,6 +128,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/nucleo-nudge.sh",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -140,20 +151,21 @@
         ]
       },
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/preflight.sh",
-            "timeout": 15
-          }
-        ]
-      },
-      {
-        "matcher": "startup|clear",
+        "matcher": "startup|clear|resume",
         "hooks": [
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/session-start-clear.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/session-start-compact.sh",
             "timeout": 10
           }
         ]
@@ -167,6 +179,17 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/pre-compact.sh",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/stop-context-gauge.sh",
+            "timeout": 15
           }
         ]
       }
@@ -188,9 +211,8 @@
     "code-review@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
-    "superpowers@claude-plugins-official": true,
-    "understand-anything@understand-anything": true,
-    "langsmith-tracing@langsmith-claude-code-plugins": false
+    "esenciales@setup-claude-code": true,
+    "understand-anything@understand-anything": true
   },
   "extraKnownMarketplaces": {
     "openai-codex": {
@@ -204,16 +226,11 @@
         "source": "github",
         "repo": "Lum1104/Understand-Anything"
       }
-    },
-    "langsmith-claude-code-plugins": {
-      "source": {
-        "source": "github",
-        "repo": "langchain-ai/langsmith-claude-code-plugins"
-      }
     }
   },
   "effortLevel": "xhigh",
   "autoUpdatesChannel": "latest",
+  "cleanupPeriodDays": 14,
   "theme": "dark",
   "statusLine": {
     "type": "command",

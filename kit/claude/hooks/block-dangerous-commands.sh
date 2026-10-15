@@ -86,8 +86,18 @@ DENY_RULES=(
   # ── NETWORK / REMOTE CODE EXECUTION ────────────────────────────────────────
   '\biptables\s+-F'                   "BLOCKED: iptables -F (flush firewall)"
   '\bufw\s+disable'                   "BLOCKED: ufw disable"
-  '\bcurl\b.*\|\s*(ba)?sh'            "BLOCKED: curl piped to shell (RCE)"
-  '\bwget\b.*\|\s*(ba)?sh'            "BLOCKED: wget piped to shell (RCE)"
+  # Interprete tras el pipe, con prefijo opcional (`sudo -E`, `env -i`, `xargs -0`...) y `|&`:
+  # la forma canonica de NodeSource (`| sudo -E bash -`), `| dash`, `| python3` o `| node` pasaban.
+  '\bcurl\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'  "BLOCKED: curl piped to shell (RCE)"
+  '\bwget\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'  "BLOCKED: wget piped to shell (RCE)"
+  '\b(curl|wget)\b.*\|\s*(\.|source)\s+/dev/stdin'  "BLOCKED: curl/wget piped to source (RCE)"
+  # Sustitucion de comando/proceso: `sh -c "$(curl ..)"`, `eval "$(curl ..)"`, `bash < <(curl ..)`.
+  # El curl tiene que estar en posicion de CODIGO (justo tras el interprete o su -c): como
+  # argumento (`bash script.sh "$(curl ..)"`, `node x.js "$(curl ..)"`) no se ejecuta.
+  '(^|[[:space:];&|(])(\S*/)?((ba|z)?sh|python[0-9.]*|perl|ruby|node)\s+(-c\s+)?["'"'"']?(\$\(|<\(|`)\s*(curl|wget)'  "BLOCKED: curl/wget output executed by an interpreter (RCE)"
+  '\beval\s+["'"'"']?\$\(\s*(curl|wget)'      "BLOCKED: curl/wget output executed by an interpreter (RCE)"
+  '<\s*<\(\s*(curl|wget)'                      "BLOCKED: curl/wget output executed by an interpreter (RCE)"
+  '(^|[;&|]\s*)(\.|source)\s+<\(\s*(curl|wget)'  "BLOCKED: curl/wget output executed by an interpreter (RCE)"
   '\bnc\s+-[a-z]*l'                   "BLOCKED: netcat listener (reverse shell)"
   '/dev/tcp/'                         "BLOCKED: /dev/tcp (reverse shell)"
   '/dev/udp/'                         "BLOCKED: /dev/udp (reverse shell)"
@@ -142,6 +152,10 @@ DENY_RULES=(
   '\bdeno\s+(run|install)\s+https?://' "BLOCKED: deno run/install from URL"
   '\bbun\s+(x|run)\s+https?://'        "BLOCKED: bun x/run from URL (supply chain risk)"
 
+  # ── PROSA → HOOK (convenciones del kit) ────────────────────────────────────
+  # Anclado a posicion de comando: `echo "npm install foo" >> README.md` no instala nada.
+  '(^|[;&|(]\s*)npm\s+(install|i|add|ci|update)\b'  "BLOCKED: usa pnpm (pnpm install/add/update), no npm"
+
   # ── MISC ───────────────────────────────────────────────────────────────────
   ':\(\)\s*\{.*\|'                    "BLOCKED: fork bomb pattern"
 )
@@ -161,10 +175,21 @@ ASK_RULES=(
   '\bdocker\s+system\s+prune'  "Confirm: docker system prune — removes all unused containers/images"
   '\bdocker\s+volume\s+rm'     "Confirm: docker volume rm — permanent volume data loss"
 
+  # ── DOWNLOAD AND EXECUTE (ASK — HITL) ──────────────────────────────────────
+  '\b(curl|wget)\b[^|]*(&&|;)\s*(sudo\s+)?(ba|z)?sh\b'  "Confirm: download then run a script — review it before executing"
+
   # ── PACKAGE PUBLISH / INSTALL FROM URL (ASK — HITL) ────────────────────────
   '\bnpm\s+publish'             "Confirm: npm publish — will publish to public npm registry"
   '\bpip\s+install\s+https?://' "Confirm: pip install from URL — verify source before installing"
 )
+
+# --no-verify (y su forma corta `commit -n`, tambien agrupada: `-nm`) se mira SIN los tramos
+# entre comillas: en el mensaje (`git commit -m "skip --no-verify docs"`) es texto, no un flag.
+if [[ $COMMAND == *git* ]]; then
+  sed -E "s/\"[^\"]*\"|'[^']*'//g" <<<"$COMMAND" \
+    | grep -qiE '\bgit\b[^;&|]*\b(commit|push)\b[^;&|]*--no-verify|\bgit\b[^;&|]*\bcommit\b[^;&|]*\s-[a-z]*n' \
+    && deny "BLOCKED: --no-verify salta los hooks de git; arregla el hook que falla"
+fi
 
 UNION=''
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do UNION+="|${DENY_RULES[i]}"; done

@@ -41,7 +41,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     for (const key of ['ho-go', 'ho-save', 'ho-no']) {
       expect((await ui.find({ key }))?.text).not.toMatch(/^[ygn] /)
     }
-    expect((await ui.find({ key: 'ho-no' }))?.text).toBe('no guardar + /clear')
+    expect((await ui.find({ key: 'ho-no' }))?.text).toBe('[no guardar + /clear]')
     await ui.press({ key: 'ho-no' })
     await clock.advance(400)
     expect(writes).toEqual([])

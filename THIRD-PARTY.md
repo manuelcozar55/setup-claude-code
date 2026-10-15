@@ -70,6 +70,24 @@ adaptación local por una versión genérica (sin referencias a ninguna
 organización concreta). El resto se copia sin cambios. La skill `deep-change`
 de la misma carpeta es propia y no deriva de ese proyecto.
 
+### obra/superpowers — MIT
+
+Repositorio: <https://github.com/obra/superpowers>, versión 6.4.1.
+
+El plugin `kit/plugins/esenciales/` deriva de ese proyecto: seis de sus skills
+(`brainstorming`, `writing-plans`, `subagent-driven-development`,
+`systematic-debugging`, `finishing-a-development-branch`,
+`dispatching-parallel-agents`) con sus ficheros de apoyo (salvo el companion visual
+de `brainstorming`, retirado), y el `LICENSE` original
+íntegro (`Copyright (c) 2025 Jesse Vincent`, texto MIT) en
+`kit/plugins/esenciales/LICENSE`.
+
+Adaptación: namespace `esenciales:`, referencias a las skills no incluidas
+sustituidas por su paso equivalente, y en `brainstorming`, `writing-plans` y
+`subagent-driven-development` el flujo pasa por `.claude/estado/nucleo.md`. Cada
+`SKILL.md` lo declara en su última línea; el detalle está en
+`kit/plugins/esenciales/README.md`. No se incluye el hook `SessionStart` del original.
+
 ### randomdreft/claude-code-security-hook — situación de licencia SIN RESOLVER
 
 Fichero afectado: `kit/claude/hooks/block-dangerous-commands.sh`, cuya cabecera
@@ -107,7 +125,6 @@ este repositorio; se listan por transparencia.
 | Componente | Licencia | Cómo entra |
 |---|---|---|
 | [gitleaks](https://github.com/gitleaks/gitleaks) | MIT | lo descarga el usuario o el CI, con versión y checksum fijados; ver `kit/docs/02-install.md` |
-| [Headroom](https://github.com/headroomlabs-ai/headroom) | Apache-2.0 | componente de terceros opcional; el kit no lo instala, ver `kit/docs/03-headroom.md` |
 | [rtk](https://github.com/rtk-ai/rtk) | Apache-2.0 | opcional; el kit no lo cablea ni lo invoca — solo lo deja permitido en `permissions.allow` |
 | [ponytail](https://github.com/DietrichGebert/ponytail) | MIT | plugin; lo instala `kit/install-plugins.sh --apply` desde su marketplace |
 | [ui-ux-pro-max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | MIT | plugin; lo instala `kit/install-plugins.sh --apply` desde su marketplace |

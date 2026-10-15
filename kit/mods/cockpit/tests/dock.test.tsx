@@ -112,12 +112,40 @@ test('dock: un estado que el mod no conoce sigue saliendo, bajo Trabajando', asy
   expect(await ui.find({ text: '● LIVE' })).toBeTruthy()
 })
 
-test('dock: Hechos enseña los últimos 8 y cuenta el resto', async ($, on) => {
-  const many = Array.from({ length: 11 }, (_, i) => ({ id: `d${i}`, description: `Tarea ${i}`, type: 'general', status: 'completed' }))
+test('dock: Hechos enseña todos sus agentes, sin «… y N más»', async ($, on) => {
+  const many = Array.from({ length: 50 }, (_, i) => ({ id: `d${i}`, description: `Tarea ${i}`, type: 'general', status: 'completed' }))
   const { ui } = await mountDock($ as never, on as never, 56, undefined, many)
-  expect(await ui.find({ type: 'Text', text: 'Hechos · 11' })).toBeTruthy()
-  expect(await ui.findAll({ type: 'Text', text: /✓ T\d+/ })).toHaveLength(8)
-  expect(await ui.find({ text: /… y 3 más/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: 'Hechos · 50' })).toBeTruthy()
+  expect(await ui.findAll({ type: 'Text', text: /✓ T\d+/ })).toHaveLength(50)
+  expect(await ui.find({ text: /✓ T1 / })).toBeTruthy()
+  expect(await ui.find({ text: /✓ T50/ })).toBeTruthy()
+  expect(await ui.find({ text: /más$/ })).toBeFalsy()
+})
+
+test('dock: bajo cada agente activo, su última herramienta; la ruta guarda su cola', async ($, on) => {
+  // The engine's stand-ins go in before the first call on $.
+  const o = on as any
+  o('tool.call', { tool: 'Read' }, () => ({ result: { type: 'text', file: { filePath: '', content: '', numLines: 0, startLine: 1, totalLines: 0 } } }))
+  o('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
+  const { ui: before, clock, mount } = await mountDock($ as never, on as never, 56, undefined, AGENTS.slice(0, 1))
+  expect(await before.find({ text: /arrancando…/ })).toBeTruthy()
+  await ($ as any).tool.call({ tool: 'Read', file_path: '/srv/app/src/checkout/precio.ts', agentId: 'a1' })
+  await clock.advance(1500)
+  await before.unmount()
+  let ui = await mount()
+  expect((await ui.find({ type: 'Text', text: /^ +Read checkout\/precio\.ts$/ })).text).toBe('      Read checkout/precio.ts')
+  expect(await ui.find({ text: /arrancando…/ })).toBeFalsy()
+  await ($ as any).tool.call({ tool: 'Bash', command: 'git status', description: 'Estado del repo', agentId: 'a1' })
+  await clock.advance(1500)
+  await ui.unmount()
+  ui = await mount()
+  expect(await ui.find({ type: 'Text', text: '      Bash Estado del repo' })).toBeTruthy()
+  // The main loop's calls go to the mission's line, never under an agent.
+  await ($ as any).tool.call({ tool: 'Bash', command: 'ls', description: 'Listar', agentId: undefined })
+  await clock.advance(1500)
+  await ui.unmount()
+  ui = await mount()
+  expect(await ui.find({ type: 'Text', text: '      Bash Estado del repo' })).toBeTruthy()
 })
 
 test('dock: una notificación de tarea no pisa la misión de la persona', async ($, on) => {
@@ -142,4 +170,41 @@ test('elapsed lleva unidades y no pasa de 6 celdas por debajo de 100 h', () => {
   expect(elapsed(3_725_000)).toBe('1h02m')
   expect(elapsed(-5)).toBe('0s')
   for (const ms of [59_999, 3_599_999, 99 * 3_600_000 + 3_599_000]) expect(elapsed(ms).length).toBeLessThanOrEqual(6)
+})
+
+test('dock: una herramienta en marcha es actividad; el agente solo se atasca 2 min después de que acabe', async ($, on) => {
+  const $$ = $ as any, o = on as any
+  let finish: (v: unknown) => void = () => undefined
+  o('tool.call', { tool: 'Bash' }, () => new Promise(resolve => { finish = resolve }))
+  const first = await mountDock($ as never, on as never, 56, undefined, AGENTS.slice(0, 1))
+  const call = $$.tool.call({ tool: 'Bash', command: 'make test', description: 'Correr los tests', agentId: 'a1' })
+  // Five minutes inside one Bash: longer than any stall threshold, and still work.
+  await first.clock.advance(300_000)
+  await first.ui.unmount()
+  let ui = await first.mount()
+  expect(await ui.find({ type: 'Text', text: 'Trabajando · 1' })).toBeTruthy()
+  expect(await ui.find({ text: /Bash Correr los tests/ })).toBeTruthy()
+  expect(await ui.find({ text: /sin actividad/ })).toBeFalsy()
+  finish({ result: { stdout: '', stderr: '', interrupted: false } })
+  await call
+  await first.clock.advance(123_000)
+  await ui.unmount()
+  ui = await first.mount()
+  expect(await ui.find({ type: 'Text', text: 'Parados · 1' })).toBeTruthy()
+  expect(await ui.find({ text: /2m0\ds sin actividad/ })).toBeTruthy()
+})
+
+test('dock: waiting e idle están parados por diseño: siguen en Trabajando con su motivo y no se atascan', async ($, on) => {
+  const first = await mountDock($ as never, on as never, 56, undefined, [
+    { id: 'w1', description: 'Aplicar el plan', type: 'general', status: 'waiting' },
+    { id: 'i1', description: 'Revisor', type: 'teammate', status: 'idle' },
+  ])
+  await first.clock.advance(300_000)
+  await first.ui.unmount()
+  const ui = await first.mount()
+  expect(await ui.find({ type: 'Text', text: 'Trabajando · 2' })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: 'Parados · 0' })).toBeTruthy()
+  expect(await ui.find({ text: /en espera \(aprobación o tarea en segundo plano\)/ })).toBeTruthy()
+  expect(await ui.find({ text: /en espera de un mensaje/ })).toBeTruthy()
+  expect(await ui.find({ text: /sin actividad/ })).toBeFalsy()
 })

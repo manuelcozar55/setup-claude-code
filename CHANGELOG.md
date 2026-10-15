@@ -7,23 +7,20 @@ etiquetado.
 
 ## [Unreleased]
 
-### Changed
-
-- **`/handoff` del mod `cockpit` escribe `.claude/estado/nucleo.md`** en la raíz git (o el cwd)
-  en vez de un fichero en `$TMPDIR`: el tmpfs se pierde al reiniciar y duplicaba el
-  `nucleo.md`, que se quedaba desfasado. El fork devuelve solo las secciones que cambian y el
-  código las fusiona: «Encargo original» e «Invariantes» se conservan byte a byte (regenerar el
-  estado entero es lo que pierde detalle). Copias `nucleo.prev-<sello>.md`, se guardan 3, y
-  `.claude/estado/` va a `.git/info/exclude` si git no lo ignora. Secciones nuevas: Encargo
-  original, Siguiente acción, Ficheros tocados, No repetir.
-- **La retoma tras `/clear` la hace el hook `session-start-clear.sh`** (SessionStart
-  `startup|clear`, registrado en `kit/claude/settings.json`), no un prompt del mod: es nativo,
-  funciona sin cockpit y no compite con un mensaje de la persona enviado durante el `/clear`.
-  Entrega `nucleo.md` (≤ 8 KB, sin secciones CERRADA) como datos, con el protocolo de arranque:
-  `git log`/`git status`/oráculo, manda git, y lo irreversible se confirma.
-
 ### Added
 
+- **Herramientas de medida y memoria en `scripts/`**: `compact-audit.py` (compactaciones:
+  manuales frente a automáticas, duración, lo destruido) y `nucleo_audit.py` (si
+  `nucleo.md` se escribe antes de compactar y se relee después) leen `$CLAUDE_PROJECTS_DIR`;
+  `recuerda` (`recall.py`) devuelve solo los párrafos de memoria que coinciden y lee
+  `$CLAUDE_MEMORY_DIR`. `kit/docs/13-memoria.md` fija el formato de una memoria, el índice
+  corto y que las memorias nunca salen a un servicio externo.
+- **Guía para trabajar bien tras instalar** (`kit/docs/guia/`): ruta de 7 días con una
+  comprobación por día, el porqué del contexto con cifras medidas, una sesión real con las
+  salidas literales de los hooks, antipatrones, cómo medirse, qué borrar de la plantilla y una
+  ruta corta en inglés. `05-security.md` gana la tabla «hook → incidente que evita».
+  `test_guia.sh` exige que existan, que `01-overview.md` los enlace y que ningún enlace
+  relativo esté roto; `test_doc_claims.sh` juzga también sus cifras.
 - **Tema oscuro y statusline del kit.** `kit/claude/settings.json` pasa de `light-ansi` a
   `dark` y declara `statusLine` con `bash $HOME/.claude/statusline-command.sh`, que `install.sh`
   copia y deja ejecutable: dos líneas en bash + `jq` (modelo, ruta, repo, rama y cambios;
@@ -31,6 +28,32 @@ etiquetado.
   Sustituye a ccstatusline (~300 ms por refresco, node y un bundle de 3,3 MB). La fusión de
   `settings.json` no cambia: quien ya tenía `theme` o `statusLine` conserva los suyos. Sensor
   nuevo `test_statusline.sh` (26 casos) y `doctor` exige PASS de la barra en una instalación limpia.
+- **Agent Dock y handoff con controles sin letra ni cromo (cockpit 0.3.4).** `Equipo` sube
+  bajo la cabecera, antes de la misión; la misión se titula `Misión:` y `▸ más` ya no dibuja
+  la tecla `m` como `m:` (se pulsa con un clic o Enter bajo el foco). Los tres botones de
+  handoff pasan a `plain` con los corchetes en la etiqueta (`[solo guardar]`): el cromo
+  `[ solo guardar ]` lo dibuja el motor y un mod no puede estrecharlo, y `plain` con tecla
+  dibujaría `g: …`, así que las teclas `y`/`g`/`n` desaparecen. La línea «N% until
+  auto-compact» que sale bajo el prompt es una notificación del propio Claude Code
+  (`token-warning`), no del mod: no hay componente de `ui.render` que la cubra.
+- **CI: shellcheck fijado a 0.11.0 con checksum, como gitleaks.** El `shellcheck` de `apt`
+  del runner (0.10) seguía emitiendo `SC2002` (*useless cat*), que la 0.11 local ya no
+  reporta por defecto: la PR #37 cayó en rojo por un `cat` inútil en
+  `test_plugin_esenciales.sh` con el árbol limpio en local. Se corrige la línea y `ci.yml`
+  descarga la versión fijada en `SHELLCHECK_VERSION`, de modo que local y CI ven lo mismo
+  (CONTRIBUTING lo documenta).
+- **Agent Dock: una herramienta larga ya no es un atasco (cockpit 0.3.3).** El dock medía
+  «sin actividad» desde el inicio de la última llamada a herramienta y no sabía que seguía en
+  marcha: un agente dentro de un `make test` de 4 min pasaba a `Parados` a los 2 y, con el
+  turno principal ya terminado, la cabecera caía a `IDLE`. Ahora una llamada en vuelo cuenta
+  como actividad hasta que vuelve. Los estados `waiting` (aprobación de un plan, tarea en
+  segundo plano) e `idle` (teammate entre turnos) de la API, que el dock no conocía, siguen
+  en `Trabajando` con su motivo y fuera del reloj de atasco. Dos tests nuevos.
+- **Agent Dock sin cortes y con la actividad de cada agente (cockpit 0.3.2).** `Hechos` ya no
+  se queda en los 8 últimos con `… y N más`, ni el estado en los 40 últimos agentes (eso
+  renumeraba los `T<n>`): se dibujan todos y el pane hace scroll. La segunda línea de un agente
+  que trabaja (su última herramienta) ya no la pisa el sondeo de 1,5 s, que escribía filas
+  leídas antes de un `tool.call`; y de una ruta enseña la cola (`checkout/precio.ts`), no la raíz.
 - **Agent Dock legible en un pane estrecho (cockpit 0.3.1).** La misión nace plegada en una
   sola línea con `…` (antes dos), así que los agentes suben al principio del pane. El tiempo
   de cada agente, el de la misión y el de «sin actividad» llevan unidades (`45s`, `10m42s`,
@@ -71,7 +94,7 @@ etiquetado.
   Al retomar, la sesión nueva ejecuta los comandos de verificación del handoff y responde
   con un resumen corto antes de seguir: el handoff puede estar desfasado.
 - **`kit/install-plugins.sh`: plugins de terceros por referencia.** Instala desde su
-  marketplace `ponytail` y `ui-ux-pro-max` (más `superpowers` y `frontend-design`), y con
+  marketplace `ponytail` y `ui-ux-pro-max` (más `esenciales` y `frontend-design`), y con
   `--with-optional` `impeccable` y `find-skills`. Opt-in y diff-first; no copia nada al repo.
   Doc: `kit/docs/08-plugins-mcp-y-skills.md`. Sensor: `kit/test/test_install_plugins.sh`,
   sin red (dobles de `claude`/`npx`/`pnpm`), falsable.
@@ -80,25 +103,46 @@ etiquetado.
   manuelcozar55/setup-claude-code`, y `install-plugins.sh` lo incluye. El dock pasa a dos
   columnas con barra fina, contadores en una línea y misión plegable con un clic; test
   falsable en `tests/dock.test.tsx`.
+- **Plugin `esenciales` en `kit/plugins/esenciales/`:** las skills de superpowers con uso
+  real (MIT, atribución en `THIRD-PARTY.md`), sin `hooks/`: el `SessionStart` de superpowers
+  inyectaba `using-superpowers` (~1,9k tokens) en cada arranque, `/clear` y compactación.
+  Sustituye a `superpowers` en `install-plugins.sh` y en `enabledPlugins`. Sensor:
+  `kit/test/test_plugin_esenciales.sh`. 6 skills en vez de las 3 del plan: decisión de la
+  persona del 2026-10-15 por uso medido en 60 días (brainstorming 10, writing-plans 10,
+  subagent-driven-development 10, finishing-a-development-branch 3,
+  dispatching-parallel-agents 3, systematic-debugging 2; las otras 9, 0).
 
 ### Changed
 
+- **La instalación se explica en un solo sitio: `kit/docs/02-install.md`.** Estaba contada
+  cuatro veces (README, `kit/README.md`, `02-install.md` y `10-onboarding.md`) y las copias
+  divergían. `02-install.md` absorbe lo que solo estaba fuera —`make bootstrap`, el modo
+  diff-first con `--apply`/`--plan`, la fusión de `settings.json`, la Capa 2 de secretos, el
+  aviso de CRLF y desinstalar— y el resto queda en un párrafo corto con enlace.
+- **La plantilla de instrucciones es modular**: `kit/claude/AGENTS.md` es el núcleo común a
+  Claude Code, Codex y opencode, y `kit/claude/CLAUDE.md` una capa fina que lo importa con
+  `@AGENTS.md`. Lleva una línea de precedencia, los desempates (una ronda de aclaración; el
+  test tras la lógica nueva) y «ceremonia según riesgo»; sale Headroom, que el kit no instala.
+  `install.sh` copia los dos; `test_claude_md_template.sh` vigila sus techos y que toda ruta
+  citada exista.
+- **`/handoff` del mod `cockpit` escribe `.claude/estado/nucleo.md`** en la raíz git (o el cwd)
+  en vez de un fichero en `$TMPDIR`: el tmpfs se pierde al reiniciar y duplicaba el
+  `nucleo.md`, que se quedaba desfasado. El fork devuelve solo las secciones que cambian y el
+  código las fusiona: «Encargo original» e «Invariantes» se conservan byte a byte (regenerar el
+  estado entero es lo que pierde detalle). Copias `nucleo.prev-<sello>.md`, se guardan 3, y
+  `.claude/estado/` va a `.git/info/exclude` si git no lo ignora. Secciones nuevas: Encargo
+  original, Siguiente acción, Ficheros tocados, No repetir.
+- **La retoma tras `/clear` la hace el hook `session-start-clear.sh`** (SessionStart
+  `startup|clear`, registrado en `kit/claude/settings.json`), no un prompt del mod: es nativo,
+  funciona sin cockpit y no compite con un mensaje de la persona enviado durante el `/clear`.
+  Entrega `nucleo.md` (≤ 8 KB, sin secciones CERRADA) como datos, con el protocolo de arranque:
+  `git log`/`git status`/oráculo, manda git, y lo irreversible se confirma.
 - **Banda de handoff del cockpit (0.2.1).** Los botones pierden la letra delante (`guardar
   + /clear`, `solo guardar`; las teclas `y`/`g` siguen activas) y «n cancelar» pasa a ser
   `no guardar + /clear`, que limpia sin escribir handoff (cancelar es pulsar `handoff` otra
   vez). La fila amarilla usa `columnGap`: `gap` también separa las líneas partidas por
   `flexWrap` y dejaba una fila en blanco en anchos estrechos. Test falsable en
   `tests/cockpit.test.tsx`.
-
-### Removed
-
-- **`charlas/` y `docs/superpowers/` salen del árbol.** Las charlas tenían su propia
-  audiencia y `docs/superpowers/` eran planes y registros de proceso ya ejecutados; el repo
-  queda centrado en el kit y el harness. Con las charlas se va `LICENSE-DOCS` (CC BY 4.0, que
-  solo las cubría): el repo queda bajo MIT. Todo sigue en el historial de git.
-
-### Documentation
-
 - **`LICENSE` es ahora el texto MIT literal: renombrarlo no bastaba.** En la 1.2.0 se
   intercambiaron los nombres para que el fichero que GitHub inspecciona fuese el del
   software, y la API pasó de `license: null` a `Other` / `NOASSERTION`: encontraba el
@@ -113,7 +157,51 @@ etiquetado.
   convención. `README.md` explica el porqué en el sitio donde alguien lo busca. No cambia
   ninguna condición de licencia: cambia qué fichero las contiene.
 
-### Testing
+### Removed
+
+- **Headroom se retira del kit.** Medido sobre 12 322 peticiones reales: ahorro propio
+  0,2-0,6 % del coste, latencia añadida p50 40 ms, y el 89 % del «ahorro» que enseñaba su
+  medidor era la búsqueda nativa de herramientas de Claude Code. Salen `install.sh
+  --with-headroom`, `test_with_headroom.sh`, `test_headroom_guardrails.sh`, los checks de la
+  unidad y los logs del proxy en `doctor.sh`, los comprobadores de su doc en
+  `test_doc_claims.sh`, la pista de `make bootstrap` y sus pasos de CI. `03-headroom.md` pasa
+  a `kit/docs/archive/` con una cabecera ADR. `doctor.sh` conserva el check de enrutado: un
+  `ANTHROPIC_BASE_URL` que sobreviva a la retirada y apunte a un puerto muerto sigue siendo `FAIL`.
+- **LangSmith sale del eval.** Se borran `kit/evals/langsmith_push.py` y
+  `kit/evals/langsmith_local.py`, los objetivos `make langsmith-local`/`langsmith-arbol`, sus
+  bloques de `test_evals.sh` y los mutantes M19, M20 y M37. La interfaz local de trazas es
+  Phoenix (`phoenix_push.py`, openinference), que ya tenía su propio sensor de la fila retirada.
+- **`charlas/` y `docs/superpowers/` salen del árbol.** Las charlas tenían su propia
+  audiencia y `docs/superpowers/` eran planes y registros de proceso ya ejecutados; el repo
+  queda centrado en el kit y el harness. Con las charlas se va `LICENSE-DOCS` (CC BY 4.0, que
+  solo las cubría): el repo queda bajo MIT. Todo sigue en el historial de git.
+- **`preflight.sh`.** Solo recuperaba el proxy de Headroom vía systemd; retirado Headroom,
+  era un `SessionStart` sin trabajo. Sale el script y su bloque de la plantilla.
+
+### Fixed
+
+- **Sentinel ya no lee el allowlist del directorio de trabajo.** Un repo clonado con
+  `.security/sentinel-allowlist.json` podía convertir en `allow` el deny de un `.env` o,
+  con `[]`/`{"paths":null}`, tumbar toda herramienta con exit 2. Solo cuenta el de `$HOME`;
+  datos malformados (allowlist, iocs, regex, audit-log) se ignoran en vez de bloquear.
+- **Más grafías de pipe-a-shell y menos falsos positivos en `block-dangerous-commands.sh`.**
+  Pasaban `| sudo -E bash -`, `|& bash`, `| python3` o `. <(curl ..)`; y `"$(curl ..)"` como
+  argumento, `npm` citado en texto o `--no-verify` entre comillas se denegaban en falso.
+- **`lib/nucleo.sh`: raíz de worktrees, tope real de la inyección, ventana sin `[1m]` y
+  symlinks.** Un worktree de `claude --worktree` resolvía al repo padre, `</NUCLEO-DATOS>`
+  cerraba el envoltorio, un título enorme saltaba el tope y un `nucleo.md` enlazado hacía
+  escribir o leer fuera del repo.
+- **`pre-compact.sh` no ensucia repos ni deja el checkpoint commiteable; el nudge se
+  rearma.** Creaba `.claude/estado/.gitignore` en cualquier repo y, si ya existía, dejaba el
+  checkpoint con los prompts de la persona como `??`; el aviso de `nucleo.md` solo saltaba
+  en el primer ciclo de compactación.
+- **El `nucleo.md` de un repo ya no ordena ejecutar nada, y el `allow` no lanza código.**
+  El arranque propone el oráculo y solo lo ejecuta si la persona confirma; con
+  `Bash(uv tool *)` un repo hostil podía ejecutar `uv tool run --from git+https://…`. El
+  `allow` pasa a `uv tool list`, `rtk gain` y `graphify query|path|explain`.
+- **`task-brief` (plugin `esenciales`) solo acepta un número de tarea entero.** `N` iba sin
+  validar a un nombre de fichero y a una regex de awk: `../../../x` salía del espacio de
+  trabajo y `1.*` mezclaba las tareas 1, 10, 11…
 
 - **El sensor de `[Unreleased]` enrojecía un CHANGELOG correcto, y se vio al estrenar el
   procedimiento de release.** `test_doc_claims.sh` juzga las cifras de inventario de esa

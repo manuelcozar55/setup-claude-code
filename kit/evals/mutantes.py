@@ -97,18 +97,6 @@ MUTANTES = [
      "            if True:",
      "sale siempre"),
 
-    ("M19 el emisor deja de autenticarse contra el receptor",
-     "kit/evals/langsmith_push.py",
-     '"Content-Type": "application/json", "x-api-key": api_key',
-     '"Content-Type": "application/json", "x-api-key": ""',
-     "un receptor local que escucha"),
-
-    ("M20 las tareas dejan de colgar de la traza de su brazo",
-     "kit/evals/langsmith_push.py",
-     '            "parent_run_id": pid,',
-     '            "parent_run_id": None,',
-     "no una lista suelta"),
-
     ("M21 el puente a Phoenix deja de ordenar las tareas",
      "kit/evals/phoenix_push.py",
      '        for r in sorted(rs, key=lambda x: x.get("task") or ""):',
@@ -220,12 +208,6 @@ MUTANTES = [
      '    "run_pid": os.environ.get("EVAL_RUN"),',
      '    "run_pid": None,',
      "derivables de su fila"),
-
-    ("M37 langsmith vuelve a publicar la fila retirada",
-     "kit/evals/langsmith_push.py",
-     '    if str(r.get("excluded") or "").strip():',
-     "    if False:",
-     "langsmith_push: la fila retirada"),
 
     ("M38 phoenix vuelve a publicar la fila retirada",
      "kit/evals/phoenix_push.py",

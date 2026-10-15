@@ -113,19 +113,18 @@ Esto es una decisión consciente de disponibilidad sobre seguridad — ver
 `kit/docs/05-security.md` para el razonamiento completo — y significa que
 Sentinel es opcional y aditivo, no la barrera principal.
 
-**El allowlist se busca primero en el directorio de trabajo.**
-`load_user_allowlist()` prueba `./.security/sentinel-allowlist.json` **antes**
-que `$HOME/.claude/sentinel-allowlist.json` y se queda con el primero que
-exista, así que un repo clonado puede traer sus propias exenciones y ganárselas
-a las tuyas por el solo hecho de que abras la sesión dentro de él (medido: con
-`paths: ["/"]` convertía en `allow` los denies de `~/.aws` y `~/.ssh` sin que el
-usuario editara nada). Es un compromiso deliberado —un proyecto puede declarar
-sus falsos positivos sin obligar a cada persona del equipo a copiarlos a su
-`$HOME`— y se documenta en vez de esconderse, porque el precio es que el
-allowlist efectivo depende del `cwd`. Lo que ningún allowlist puede levantar es
-el suelo en código (`ALWAYS_DENY_PATHS`: el fichero de credenciales de Claude
+**El allowlist solo se lee de tu `$HOME`.** `load_user_allowlist()` abre
+`$HOME/.claude/sentinel-allowlist.json` y nada más: el
+`./.security/sentinel-allowlist.json` del directorio de trabajo ya no se
+consulta. Antes se probaba primero, y un repo clonado podía traerlo y anular tu
+allowlist por el solo hecho de que abrieras la sesión dentro de él (con
+`{"paths":["/srv/app/.env"]}` convertía en `allow` el deny de ese fichero) o
+tumbar todas las herramientas con un JSON malformado (con `[]` o
+`{"paths":null}` el hook reventaba y salía con 2 en toda herramienta, `Read`
+incluido). Hoy un fichero que no sea un objeto JSON válido se ignora y cada
+lista ausente o `null` cuenta como vacía. Lo que ningún allowlist puede levantar
+es el suelo en código (`ALWAYS_DENY_PATHS`: el fichero de credenciales de Claude
 Code, la clave privada de SSH y las credenciales de AWS), que se consulta antes.
-En un repo ajeno, mira qué trae ese fichero antes de fiarte de esta capa.
 
 ## En resumen
 

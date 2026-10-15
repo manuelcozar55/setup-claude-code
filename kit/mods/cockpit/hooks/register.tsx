@@ -19,6 +19,9 @@ const isMissionOpen = atom({ plugin: 'cockpit', key: 'isMissionOpen' } as const,
 
 const PINK = '#ff4f9a'
 const DONE = new Set(['completed', 'failed', 'killed'])
+// Held by design (AgentStatus): a plan's approval, background work it owns, or a teammate
+// between turns. No tool call is due, so the stall clock does not apply.
+const HELD = new Set(['waiting', 'idle'])
 const STUCK_MS = 120_000
 const TEAM_SIZES = [1, 3, 5, 10, 20, 50, 100]
 const WARN_AT = [70, 85]
@@ -139,7 +142,9 @@ function describe(e: { tool: string }): string {
   const arg = [i.description, i.command, i.file_path, i.pattern, i.query, i.url, i.skill, i.subject].find(
     v => typeof v === 'string' && v.length > 0,
   )
-  return `${e.tool} ${String(arg ?? '').split('\n')[0]}`.trim().slice(0, 140)
+  // The row truncates at its end: a whole path would leave only its root in view, so keep its tail.
+  const text = arg !== undefined && arg === i.file_path ? String(arg).split('/').slice(-2).join('/') : String(arg ?? '')
+  return `${e.tool} ${text.split('\n')[0]}`.trim().slice(0, 140)
 }
 
 export function condense(text: string): string {
@@ -219,7 +224,12 @@ async function refreshCtx($: $, withBreakdown: boolean) {
 }
 const softRefresh = ($: $, full = false) => void refreshCtx($, full).catch(() => undefined)
 
-const pendingActivity = new Map<string, string>()
+// A subagent's last tool call, by agent id. The poll below writes rows it read before awaiting,
+// so a tool.call landing in between was overwritten; this map lets the next poll put it back.
+const lastCall = new Map<string, { what: string; at: number }>()
+// Tool calls running now, by agent id. A call is activity until it returns: a four-minute
+// `make test` was read as a stall, since the stall clock only knew when the call began.
+const inFlight = new Map<string, number>()
 let lastIdleTick = 0
 async function syncAgents($: $) {
   const list = await $.agent.list()
@@ -230,20 +240,23 @@ async function syncAgents($: $) {
   for (const a of list) {
     const i = next.findIndex(r => r.id === a.id)
     const prev = i < 0 ? undefined : next[i]
+    const call = lastCall.get(a.id)
     const row: AgentRow = {
       id: a.id,
       description: a.description,
       type: a.type,
       status: a.status,
       startedAt: prev?.startedAt ?? t,
-      lastActiveAt: prev?.lastActiveAt ?? t,
+      lastActiveAt: inFlight.get(a.id) ? t : Math.max(prev?.lastActiveAt ?? t, call?.at ?? 0),
       endedAt: DONE.has(a.status) ? (prev?.endedAt ?? t) : undefined,
-      activity: prev?.activity ?? pendingActivity.get(a.id) ?? 'arrancando…',
+      activity: call?.what ?? prev?.activity ?? 'arrancando…',
     }
     if (i < 0) next.push(row)
     else next[i] = row
   }
-  if (JSON.stringify(next) !== JSON.stringify(rows)) await update($, agents, () => next.slice(-40))
+  // Every agent of the session stays listed: the pane scrolls, and dropping old rows renumbered the T<n>.
+  // shortcut: unbounded in a session; cap it again if a session ever reaches thousands of agents.
+  if (JSON.stringify(next) !== JSON.stringify(rows)) await update($, agents, () => next)
   const isBusy = (await read($, turn)).isRunning || next.some(r => !DONE.has(r.status)) || (await read($, handoff)).phase === 'working'
   // Busy: tick every poll for timers; idle: every 15 s, enough for the cache countdown.
   if (isBusy || t - lastIdleTick >= 15_000) {
@@ -413,14 +426,20 @@ export const register: Register = on => {
     const what = describe(e)
     if (e.agentId === undefined) {
       await update($, turn, t => ({ ...t, activity: what }))
-    } else {
-      const id = e.agentId
-      const t = await $.clock.now()
-      pendingActivity.set(id, what)
-      await update($, agents, rows => rows.map(r => (r.id === id ? { ...r, activity: what, lastActiveAt: t } : r)))
+      softRefresh($)
+      return next(e)
     }
+    const id = e.agentId
+    const t = await $.clock.now()
+    lastCall.set(id, { what, at: t })
+    inFlight.set(id, (inFlight.get(id) ?? 0) + 1)
+    await update($, agents, rows => rows.map(r => (r.id === id ? { ...r, activity: what, lastActiveAt: t } : r)))
     softRefresh($)
-    return next(e)
+    try {
+      return await next(e)
+    } finally {
+      inFlight.set(id, (inFlight.get(id) ?? 1) - 1)
+    }
   })
 
   on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
@@ -529,13 +548,13 @@ export const register: Register = on => {
       ho.phase === 'confirm' ? (
         <Box key="ho" columnGap={1} flexWrap="wrap">
           <Text color="warning">Handoff: resume en .claude/estado/nucleo.md →</Text>
-          {!tn.isRunning && <Button key="ho-go" hotkey="y" variant="primary" label="guardar + /clear" onPress={() => runHandoff($, true)} />}
-          <Button key="ho-save" hotkey="g" label="solo guardar" onPress={() => runHandoff($, false)} />
+          {!tn.isRunning && <Button key="ho-go" plain variant="primary" label="[guardar + /clear]" onPress={() => runHandoff($, true)} />}
+          <Button key="ho-save" plain label="[solo guardar]" onPress={() => runHandoff($, false)} />
           {!tn.isRunning && (
             <Button
               key="ho-no"
-              hotkey="n"
-              label="no guardar + /clear"
+              plain
+              label="[no guardar + /clear]"
               onPress={async () => {
                 await update($, handoff, (): Handoff => ({ phase: 'idle' }))
                 await clearAfter($)
@@ -622,7 +641,7 @@ export const register: Register = on => {
     const cols = Math.max(24, e.props.bodyColumns)
     const [ag, ts, tn, size, t, isOpen] = await Promise.all([read($, agents), read($, tasks), read($, turn), read($, team), read($, now), read($, isMissionOpen)])
     const tick = Math.max(t, tn.startedAt)
-    const isStuck = (a: AgentRow) => !DONE.has(a.status) && a.status !== 'pending' && tick - a.lastActiveAt > STUCK_MS
+    const isStuck = (a: AgentRow) => !DONE.has(a.status) && !HELD.has(a.status) && a.status !== 'pending' && tick - a.lastActiveAt > STUCK_MS
     // Working is the leftover, so a status this code does not know still shows somewhere.
     const working = ag.filter(a => !DONE.has(a.status) && a.status !== 'pending' && !isStuck(a))
     const queued = ag.filter(a => a.status === 'pending')
@@ -660,21 +679,18 @@ export const register: Register = on => {
       )
     }
     // The four states always show, with their count, so the pane reads the same at any size; empty ones dim.
-    const section = (label: string, color: string, list: AgentRow[], glyph: (a: AgentRow) => string, note: (a: AgentRow) => string | undefined, cap = Infinity) => {
-      const shown = list.slice(-cap)
-      return (
-        <Box key={label} flexDirection="column">
-          <Text bold color={list.length ? color : 'inactive'}>{label} · {list.length}</Text>
-          {shown.map(a => row(a, glyph(a), color, note(a)))}
-          {shown.length < list.length && <Text dimColor>{INDENT}… y {list.length - shown.length} más</Text>}
-        </Box>
-      )
-    }
+    // Every agent is drawn: the pane body scrolls, so a cap only hid rows («… y 1 más»).
+    const section = (label: string, color: string, list: AgentRow[], glyph: (a: AgentRow) => string, note: (a: AgentRow) => string | undefined) => (
+      <Box key={label} flexDirection="column">
+        <Text bold color={list.length ? color : 'inactive'}>{label} · {list.length}</Text>
+        {list.map(a => row(a, glyph(a), color, note(a)))}
+      </Box>
+    )
+    const workNote = (a: AgentRow) => (a.status === 'waiting' ? 'en espera (aprobación o tarea en segundo plano)' : a.status === 'idle' ? 'en espera de un mensaje' : a.activity)
     const stopNote = (a: AgentRow) => (a.status === 'failed' ? 'falló' : a.status === 'killed' ? 'detenido' : `${elapsed(tick - a.lastActiveAt)} sin actividad`)
     const stopGlyph = (a: AgentRow) => (a.status === 'failed' ? '✗' : a.status === 'killed' ? '■' : '◌')
 
-    // Mission: folded to one line by default, so the agents keep the rows; «más» (a click, or `m` with
-    // the pane focused) unfolds it. The text lives outside the Button: a Button does not bound its child.
+    // Mission: folded to one line by default, so the agents keep the rows; «más» (a click) unfolds it. The text lives outside the Button: a Button does not bound its child.
     const mission = tn.mission.replace(/\s+/g, ' ').trim() || '—'
     const lines = wrapLines(mission, cols)
     const hasMore = lines.length > 1
@@ -686,32 +702,7 @@ export const register: Register = on => {
           <Text bold color="claude">◆ Agent Dock</Text>
           <Text color={isLive ? 'success' : 'inactive'}>{isLive ? '● LIVE' : '○ IDLE'}</Text>
         </Box>
-        <Box flexDirection="column">
-          <Box justifyContent="space-between">
-            <Box gap={1}>
-              <Text bold color="claude">Misión</Text>
-              {hasMore && <Button key="mission" hotkey="m" plain label={isOpen ? '▾ menos' : '▸ más'} onPress={() => update($, isMissionOpen, v => !v)} />}
-            </Box>
-            <Text>
-              {missionPct === undefined ? '' : <Text color="claude">{missionPct}%</Text>}
-              <Text dimColor>{tn.isRunning ? ` ${elapsed(tick - tn.startedAt)}` : ''}</Text>
-            </Text>
-          </Box>
-          {missionLines.map((l, i) => <Text key={`mission-${i}`} wrap="truncate-end">{l}</Text>)}
-          <Text color="claude" wrap="truncate-end">{thin(missionPct === undefined ? scanner(tick, cols) : bar(missionPct, cols))}</Text>
-          {tn.isRunning && <Text dimColor wrap="truncate-end">principal · {tn.activity}</Text>}
-        </Box>
-        {ag.length === 0 ? (
-          <Text dimColor wrap="wrap">Ningún subagente todavía. Elige un tamaño de equipo para que Claude reparta el trabajo.</Text>
-        ) : (
-          <Box flexDirection="column">
-            {section('Trabajando', 'permission', working, () => '●', a => a.activity)}
-            {section('En cola', 'inactive', queued, () => '○', () => undefined)}
-            {section('Parados', 'error', stuck, stopGlyph, stopNote)}
-            {section('Hechos', 'success', finished, () => '✓', () => undefined, 8)}
-          </Box>
-        )}
-        {/* Controls last: the mission and the live agents own the first rows at any pane height. */}
+        {/* Team first, under the header: it is the one knob the person turns before the work starts. */}
         <Box flexDirection="column">
           <Box flexWrap="wrap" gap={1}>
             <Text bold>Equipo</Text>
@@ -726,6 +717,31 @@ export const register: Register = on => {
             {size > 0 ? `Reparte cada petición entre ${size} ayudantes · ${size} a la vez · haiku para lo sencillo` : 'Auto: Claude decide cuándo lanzar subagentes'}
           </Text>
         </Box>
+        <Box flexDirection="column">
+          <Box justifyContent="space-between">
+            <Box gap={1}>
+              <Text bold color="claude">Misión:</Text>
+              {hasMore && <Button key="mission" plain label={isOpen ? '▾ menos' : '▸ más'} onPress={() => update($, isMissionOpen, v => !v)} />}
+            </Box>
+            <Text>
+              {missionPct === undefined ? '' : <Text color="claude">{missionPct}%</Text>}
+              <Text dimColor>{tn.isRunning ? ` ${elapsed(tick - tn.startedAt)}` : ''}</Text>
+            </Text>
+          </Box>
+          {missionLines.map((l, i) => <Text key={`mission-${i}`} wrap="truncate-end">{l}</Text>)}
+          <Text color="claude" wrap="truncate-end">{thin(missionPct === undefined ? scanner(tick, cols) : bar(missionPct, cols))}</Text>
+          {tn.isRunning && <Text dimColor wrap="truncate-end">principal · {tn.activity}</Text>}
+        </Box>
+        {ag.length === 0 ? (
+          <Text dimColor wrap="wrap">Ningún subagente todavía. Elige un tamaño de equipo para que Claude reparta el trabajo.</Text>
+        ) : (
+          <Box flexDirection="column">
+            {section('Trabajando', 'permission', working, () => '●', workNote)}
+            {section('En cola', 'inactive', queued, () => '○', () => undefined)}
+            {section('Parados', 'error', stuck, stopGlyph, stopNote)}
+            {section('Hechos', 'success', finished, () => '✓', () => undefined)}
+          </Box>
+        )}
       </Box>
     )
   })
