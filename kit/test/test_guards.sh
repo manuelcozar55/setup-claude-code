@@ -1,4 +1,7 @@
 #!/bin/bash
+# shellcheck disable=SC2015  # «cond && pass=$((pass+1)) || { fail=...; }»: la rama del medio
+# es una asignacion y nunca falla, asi que aqui si es un if abreviado. El CI corre shellcheck
+# -x sin -S y un aviso info basta para ponerlo rojo.
 # test_guards.sh — regresión de la cadena PreToolUse (Sentinel, smart_approve,
 # secret-guard). Corre contra los ficheros del propio kit, no contra una
 # instalación.
