@@ -77,7 +77,8 @@ Repositorio: <https://github.com/obra/superpowers>, versión 6.4.1.
 El plugin `kit/plugins/esenciales/` deriva de ese proyecto: seis de sus skills
 (`brainstorming`, `writing-plans`, `subagent-driven-development`,
 `systematic-debugging`, `finishing-a-development-branch`,
-`dispatching-parallel-agents`) con sus ficheros de apoyo, y el `LICENSE` original
+`dispatching-parallel-agents`) con sus ficheros de apoyo (salvo el companion visual
+de `brainstorming`, retirado), y el `LICENSE` original
 íntegro (`Copyright (c) 2025 Jesse Vincent`, texto MIT) en
 `kit/plugins/esenciales/LICENSE`.
 

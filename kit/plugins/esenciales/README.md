@@ -37,7 +37,9 @@ cambió. En resumen:
   con el agente `code-reviewer`, `git worktree add`…).
 - `brainstorming`: una sola ronda de aclaración y el diseño completo antes del OK, en vez
   de una pregunta por mensaje; el diseño aprobado va a `.claude/estado/nucleo.md`
-  («Encargo original» e «Invariantes»).
+  («Encargo original» e «Invariantes»). Sin el companion visual del original: su servidor
+  local cargaba un logo de un dominio de terceros y reportaba la versión, y aquí nada sale
+  a terceros sin pedirlo. La skill funciona igual sin él.
 - `writing-plans`: el plan va a la sección `## Plan` de `.claude/estado/nucleo.md`.
 - `subagent-driven-development`: cada tarea se cierra con `[x]` en `nucleo.md` y el comando
   que la verificó; revisión con `code-reviewer`; commits con el porqué.
@@ -47,10 +49,6 @@ cambió. En resumen:
 Los ficheros de apoyo (prompts, scripts) se copian sin cambios salvo dos líneas: la ruta de la spec en
 `brainstorming/spec-document-reviewer-prompt.md` y una referencia a TDD en
 `systematic-debugging/CREATION-LOG.md`.
-
-Aviso heredado: el companion visual de `brainstorming` (opt-in, se ofrece solo cuando una
-pregunta es visual) pinta un logo servido desde el dominio del autor original. Para
-evitarlo, exporta `DISABLE_TELEMETRY=1` antes de abrir Claude Code.
 
 ## Instalar y volver a superpowers
 

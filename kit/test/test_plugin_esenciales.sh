@@ -13,6 +13,7 @@ ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT 
 
 EXCLUIDAS="test-driven-development|verification-before-completion|requesting-code-review|receiving-code-review|executing-plans|using-git-worktrees|writing-skills|using-superpowers"
 # El README explica por que se excluyeron y tiene que poder nombrarlas; las skills no.
+urls_ajenas(){ grep -rIlE 'https?://' "$1" 2>/dev/null | xargs -r grep -hoE 'https?://[^/[:space:]"'"'"'`)<>]*' | grep -vcE '^https?://(github\.com|docs\.anthropic\.com|code\.claude\.com)$' || true; }
 restos(){ { grep -rlF 'superpowers:' "$1" 2>/dev/null; grep -rlE "$EXCLUIDAS" "$1" --exclude=README.md 2>/dev/null; } | wc -l | tr -d ' '; }
 
 ck "$(jq -r '.name // empty' "$P/.claude-plugin/plugin.json" 2>/dev/null || true)" "esenciales" "plugin.json es JSON valido con name esenciales"
@@ -25,6 +26,8 @@ for d in "$P"/skills/*/; do
 done
 ck "$(restos "$P")" "0" "sin 'superpowers:' ni nombres de las 8 skills excluidas"
 ck "$([ -e "$P/hooks" ] && echo si || echo no)" "no" "sin directorio hooks/"
+# Nada sale a dominios de terceros sin pedirlo: solo URLs de github.com y de la doc de Claude Code.
+ck "$(urls_ajenas "$P")" "0" "sin URLs http(s) fuera de github.com y la doc de Claude Code"
 ck "$(grep -q 'Permission is hereby granted' "$P/LICENSE" 2>/dev/null && echo y || echo n)" "y" "LICENSE MIT presente"
 ck "$(jq -r '.plugins[] | select(.name=="esenciales") | .source' "$ROOT/.claude-plugin/marketplace.json")" "./kit/plugins/esenciales" "marketplace.json lo lista"
 
@@ -32,6 +35,8 @@ ck "$(jq -r '.plugins[] | select(.name=="esenciales") | .source' "$ROOT/.claude-
 cp -R "$P" "$tmp/p"
 printf 'usa %s\n' "superpowers"":executing-plans" >> "$tmp/p/skills/writing-plans/SKILL.md"
 ck "$(restos "$tmp/p")" "2" "falsabilidad: referencia plantada detectada"
+printf 'logo https://%s/x.png\n' "ejemplo.invalid" >> "$tmp/p/README.md"
+ck "$(urls_ajenas "$tmp/p")" "1" "falsabilidad: URL de tercero plantada detectada"
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
