@@ -180,6 +180,14 @@ etiquetado.
 
 ### Fixed
 
+- **`/handoff` (cockpit 0.3.5) escribe donde el hook de arranque lee.** Resolvía la raíz git
+  desde el cwd del proceso del mod, no desde el de la sesión, y desde `~/.claude` escribía un
+  `.claude/.claude/estado/nucleo.md` anidado que nadie inyectaba. Ahora usa `git -C <cwd>` y
+  sube `$HOME/.claude/**` a `$HOME`, como `nucleo_raiz`.
+- **`session-start-clear.sh` avisa al retomar con la caché caducada.** Con `resume`,
+  `prompt_cache_likely_expired` y ≥ 100 000 tokens, un `systemMessage` propone `/handoff`: el
+  turno siguiente reescribe el contexto entero (medido: 96 % del prefijo tras > 1 h), así que
+  retomar limpio cuesta casi lo mismo.
 - **Sentinel ya no lee el allowlist del directorio de trabajo.** Un repo clonado con
   `.security/sentinel-allowlist.json` podía convertir en `allow` el deny de un `.env` o,
   con `[]`/`{"paths":null}`, tumbar toda herramienta con exit 2. Solo cuenta el de `$HOME`;

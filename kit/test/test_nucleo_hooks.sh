@@ -103,6 +103,16 @@ R3=$T/r3; mkdir -p "$R3/.claude/estado"; git -C "$R3" init -q
 printf '# Estado\n## Objetivo\nSECRETO-FUERA\n- [ ] SECRETO-FUERA\n' >"$T/fuera.md"; touch -d '2026-01-01 00:00:00' "$T/fuera.md"
 ln -s "$T/fuera.md" "$R3/.claude/estado/nucleo.md"; touch -h -d '2026-01-01 00:00:00' "$R3/.claude/estado/nucleo.md"
 ok "symlink: clear no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-clear.sh")" ""
+
+# --- resume con la caché caducada: aviso a la persona; sin caducar o con poco contexto, nada ---
+rs() { ev "$1" s7 "" resume | jq -c --argjson e "$2" --argjson k "$3" '.prompt_cache_likely_expired=$e | .context_tokens=$k' \
+  | bash "$H/session-start-clear.sh"; }
+ok "resume caducado: aviso de /handoff" "$(rs "$R/sub" true 150000 | jq -r '.systemMessage // ""' | command grep -c '/handoff')" 1
+ok "resume caducado: el nucleo se sigue inyectando" "$(rs "$R/sub" true 150000 | ctx | command grep -c PASO-VIVO)" 1
+ok "resume caducado sin nucleo: solo el aviso" "$(rs "$T/sin-nucleo" true 150000 | jq -r 'keys|join(",")')" systemMessage
+ok "resume con caché viva: sin aviso" "$(rs "$R/sub" false 150000 | jq -r '.systemMessage // "nada"')" nada
+ok "resume con poco contexto: sin aviso" "$(rs "$R/sub" true 50000 | jq -r '.systemMessage // "nada"')" nada
+ok "clear sin nucleo: no emite nada" "$(ev "$T/sin-nucleo" s7 "" clear | bash "$H/session-start-clear.sh")" ""
 ok "symlink: compact no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-FUERA)" 0
 ok "symlink: nudge calla" "$(jq -cn --arg c "$R3" --arg t "$TP" '{session_id:"s6",transcript_path:$t,cwd:$c}' | bash "$H/nucleo-nudge.sh")" ""
 ok "symlink: el gate no mira el nucleo enlazado" "$(ev "$R3" s6 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh" | jq -r '.decision // "nada"')" nada

@@ -11,10 +11,17 @@ IN=$(cat)
 CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 # shellcheck source=SCRIPTDIR/lib/nucleo.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
+# Retomar con la caché caducada reescribe el contexto entero (medido: 96 % del prefijo tras >1 h),
+# así que un /handoff en ese momento sale casi gratis y además retoma limpio. Aviso para la persona.
+AVISO=$(jq -r 'select(.source=="resume" and .prompt_cache_likely_expired==true and (.context_tokens//0) >= 100000)
+  | "Retomas con \(.context_tokens) tok y la caché caducada: el próximo turno reescribe todo el contexto. Si la fase está cerrada, /handoff ahora cuesta casi lo mismo y retoma limpio."' <<<"$IN" 2>/dev/null)
+sale() { jq -cn --arg c "$1" --arg m "$AVISO" \
+  '(if $c != "" then {hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}} else {} end)
+   + (if $m != "" then {systemMessage:$m} else {} end) | select(. != {})'; exit 0; }
 RAIZ=$(nucleo_raiz "$CWD")
-nucleo_enlazado "$RAIZ" && exit 0
+nucleo_enlazado "$RAIZ" && sale ""
 NUC="$RAIZ/.claude/estado/nucleo.md"
-[ -f "$NUC" ] || exit 0
+[ -f "$NUC" ] || sale ""
 T=$(nucleo_emitir "$NUC")
 
 CTX="Hay trabajo en curso en $RAIZ (estado en $NUC). Protocolo de arranque, antes de nada más:
@@ -28,5 +35,4 @@ $T
 </nucleo-datos>"
 
 # Las rutas no tienen tope: con una larga el total pasaba de 10 000.
-jq -cn --arg c "${CTX:0:9500}" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
-exit 0
+sale "${CTX:0:9500}"
