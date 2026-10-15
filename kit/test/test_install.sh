@@ -11,6 +11,7 @@ export CLAUDE_HOME="$tmp/dot"
 set +e; bash "$KIT/install.sh" >"$tmp/install.log" 2>&1; irc=$?; set -e
 ck "$irc" "0" "install.sh sale 0 en un CLAUDE_HOME limpio$([ "$irc" -eq 0 ] || printf ' -- %s' "$(tail -1 "$tmp/install.log")")"
 ck "$([ -f "$CLAUDE_HOME/CLAUDE.md" ] && echo y)" "y" "instala CLAUDE.md"
+ck "$([ -f "$CLAUDE_HOME/AGENTS.md" ] && echo y)" "y" "instala AGENTS.md junto a CLAUDE.md (su @AGENTS.md lo importa)"
 ck "$([ -f "$CLAUDE_HOME/settings.json" ] && echo y)" "y" "instala settings.json"
 ck "$([ -x "$CLAUDE_HOME/hooks/branch-guard.sh" ] && echo y)" "y" "hook ejecutable"
 ck "$([ -f "$CLAUDE_HOME/sentinel/sentinel_preflight.py" ] && echo y)" "y" "instala sentinel"

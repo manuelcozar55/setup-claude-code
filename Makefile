@@ -62,6 +62,9 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_nucleo_nudge.sh
 	bash kit/test/test_settings_template.sh
 	bash kit/test/test_install_plugins.sh
+	bash kit/test/test_claude_md_template.sh
+	bash kit/test/test_recall.sh
+	bash kit/test/test_scripts_audit.sh
 
 doctor: ## Verifica una instalacion existente del kit
 	bash kit/doctor.sh

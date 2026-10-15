@@ -56,7 +56,7 @@ La excepción, y es un `FAIL`: si tu `settings.json` enruta la API a un proxy (`
 | `test/` | regresión de guards, instalador y Capa 2 de secretos, en bash puro | `test/test_guards.sh`, `test/test_guards_falsifiability.sh`, `test/test_secret_content_gitleaks.sh` y el resto: 37 suites, todas en `make test` |
 | `claude/skills/` · `mods/cockpit/` | las 6 skills del método (`install.sh` las copia a `~/.claude/skills/`) y el mod de traspaso de sesión (`/plugin install cockpit`, no lo instala `install.sh`) | llevar la forma de trabajar, no solo los guards; ver `docs/12-metodologia.md` |
 | `evals/` | 20 tareas reales (10 positivas / 10 negativas), brazo de control (`ARM=off`), historico, emisor a LangSmith y receptor local para probarlo (opt-in, no corre en `test/`, cuesta llamadas reales a `claude -p`) | medir si el harness **sirve**, no solo si el agente pasa — ver [`evals/README.md`](evals/README.md) |
-| `docs/` | 12 documentos, del mapa (`01`) al onboarding (`10`), el cockpit (`11`) y la metodología (`12`) | el mapa mental y el "cómo" de cada pieza, con enlaces a terceros |
+| `docs/` | 13 documentos, del mapa (`01`) al onboarding (`10`), el cockpit (`11`), la metodología (`12`) y la memoria (`13`) | el mapa mental y el "cómo" de cada pieza, con enlaces a terceros |
 
 ## Cómo funciona
 

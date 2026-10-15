@@ -9,6 +9,12 @@ etiquetado.
 
 ### Changed
 
+- **La plantilla de instrucciones es modular**: `kit/claude/AGENTS.md` es el núcleo común a
+  Claude Code, Codex y opencode, y `kit/claude/CLAUDE.md` una capa fina que lo importa con
+  `@AGENTS.md`. Lleva una línea de precedencia, los desempates (una ronda de aclaración; el
+  test tras la lógica nueva) y «ceremonia según riesgo»; sale Headroom, que el kit no instala.
+  `install.sh` copia los dos; `test_claude_md_template.sh` vigila sus techos y que toda ruta
+  citada exista.
 - **`/handoff` del mod `cockpit` escribe `.claude/estado/nucleo.md`** en la raíz git (o el cwd)
   en vez de un fichero en `$TMPDIR`: el tmpfs se pierde al reiniciar y duplicaba el
   `nucleo.md`, que se quedaba desfasado. El fork devuelve solo las secciones que cambian y el
@@ -23,6 +29,13 @@ etiquetado.
   `git log`/`git status`/oráculo, manda git, y lo irreversible se confirma.
 
 ### Added
+
+- **Herramientas de medida y memoria en `scripts/`**: `compact-audit.py` (compactaciones:
+  manuales frente a automáticas, duración, lo destruido) y `nucleo_audit.py` (si
+  `nucleo.md` se escribe antes de compactar y se relee después) leen `$CLAUDE_PROJECTS_DIR`;
+  `recuerda` (`recall.py`) devuelve solo los párrafos de memoria que coinciden y lee
+  `$CLAUDE_MEMORY_DIR`. `kit/docs/13-memoria.md` fija el formato de una memoria, el índice
+  corto y que las memorias nunca salen a un servicio externo.
 
 - **Tema oscuro y statusline del kit.** `kit/claude/settings.json` pasa de `light-ansi` a
   `dark` y declara `statusLine` con `bash $HOME/.claude/statusline-command.sh`, que `install.sh`

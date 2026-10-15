@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# recuerda — atajo de scripts/recall.py; enlázalo en tu PATH (ver kit/docs/13-memoria.md).
+exec python3 "$(dirname "$(readlink -f "$0")")/recall.py" "$@"
