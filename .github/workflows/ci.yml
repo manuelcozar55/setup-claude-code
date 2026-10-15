@@ -198,6 +198,8 @@ jobs:
         run: bash kit/test/test_nucleo_hooks.sh
       - name: "test_nucleo_nudge.sh (PostToolUse: aviso al modelo por banda del airbag, una vez, solo con nucleo rancio, < 50 ms)"
         run: bash kit/test/test_nucleo_nudge.sh
+      - name: "test_settings_template.sh (plantilla de settings: hooks de nucleo, un PreCompact, ventana, cleanupPeriodDays, sin LangSmith)"
+        run: bash kit/test/test_settings_template.sh
 
       - name: "test_install_plugins.sh (plugins de terceros por referencia: diff-first, ids esperados, opcionales aparte)"
         run: bash kit/test/test_install_plugins.sh
