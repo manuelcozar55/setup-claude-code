@@ -10,9 +10,11 @@
       "WebFetch(domain:api.crossref.org)",
       "WebFetch(domain:www.boe.es)",
       "WebFetch(domain:ec.europa.eu)",
-      "Bash(uv tool *)",
-      "Bash(graphify *)",
-      "Bash(rtk *)"
+      "Bash(uv tool list)",
+      "Bash(graphify query *)",
+      "Bash(graphify path *)",
+      "Bash(graphify explain *)",
+      "Bash(rtk gain)"
     ],
     "deny": [
       "Bash(rm -rf /*)",

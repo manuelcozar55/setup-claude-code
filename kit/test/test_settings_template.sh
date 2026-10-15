@@ -23,6 +23,7 @@ ok "env fija CLAUDE_CODE_AUTO_COMPACT_WINDOW (entero)" "$(q '.env.CLAUDE_CODE_AU
 ok "sin CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (es un hook de test)" "$(q '.env | has("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")')" false
 ok "sin ANTHROPIC_BASE_URL" "$(q '.env | has("ANTHROPIC_BASE_URL")')" false
 ok "sin restos de LangSmith" "$(command grep -ci 'langsmith' "$S")" 0
+ok "allow sin comodines que ejecutan código (uv tool, rtk, graphify, npx…)" "$(q '[.permissions.allow[]? | select(test("^Bash\\((uv tool|uv run|uvx|rtk|graphify|npx|pnpm dlx|pnpm exec|python3?|node|bash|sh) \\*\\)$"))] | join(" ")')" ""
 ok "todo hook registrado existe en el kit" "$(q '.hooks[][].hooks[].command' | command grep -o 'hooks/[A-Za-z0-9_.-]*' | sort -u \
   | while read -r h; do [ -f "$(dirname "$S")/$h" ] || echo "$h"; done)" ""
 exit $FAIL

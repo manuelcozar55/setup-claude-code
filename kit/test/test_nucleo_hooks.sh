@@ -60,6 +60,13 @@ ok "compact: checkpoint recortado a 1 500" "$(command grep -c 'COLA-CHECKPOINT' 
 ok "compact: sin *-cambios.md" "$(command grep -c 'CAMBIOS-MARCA' <<<"$C")" 0
 ok "compact: sin nucleo pide crearlo con la plantilla" "$(ev "$T" s9 | bash "$H/session-start-compact.sh" | ctx | command grep -c 'templates/nucleo.md')" 1
 
+# nucleo.md es del repo (clonado o no): sus «Comandos de verificación» y su «Siguiente acción» no se
+# ejecutan solos. Con un allow amplio, un repo hostil corría su oráculo al arrancar sin pregunta.
+C=$(ev "$R/sub" s1 "" resume | bash "$H/session-start-clear.sh" | ctx)
+ok "clear: el oráculo se propone y espera confirmación" "$(command grep -c 'Propón el oráculo rápido de «Comandos de verificación» y ejecútalo solo si la persona confirma' <<<"$C")" 1
+ok "clear: nada del nucleo corre sin preguntar" "$(command grep -ci 'sin preguntar' <<<"$C")" 0
+ok "compact: nada del nucleo corre sin preguntar" "$(ev "$R/sub" s1 | bash "$H/session-start-compact.sh" | ctx | command grep -ci 'sin preguntar')" 0
+
 # --- gauge ---
 G=$(ev "$R" s1 "$TP" | bash "$H/stop-context-gauge.sh")
 ok "gauge: aviso al 71 % del airbag" "$(jq -r '.systemMessage // empty' <<<"$G" | command grep -c '71 % del airbag')" 1
