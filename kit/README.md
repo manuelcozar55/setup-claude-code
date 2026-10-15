@@ -53,7 +53,7 @@ La excepción, y es un `FAIL`: si tu `settings.json` enruta la API a un proxy (`
 | `claude/agents/` | 8 agentes (`orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker`) | orquestación con tiering de modelo por tarea |
 | `sentinel/` | `sentinel_preflight.py` | el motor de políticas `PreToolUse` que decide allow/warn/deny |
 | `install.sh` · `doctor.sh` · `scan-secrets.sh` | scripts de instalación y verificación | instalar sin pisar nada, diagnosticar con evidencia, cerrar la puerta de secretos |
-| `test/` | regresión de guards, instalador y Capa 2 de secretos, en bash puro | `test/test_guards.sh`, `test/test_guards_falsifiability.sh`, `test/test_secret_content_gitleaks.sh` y el resto: 33 suites, todas en `make test` |
+| `test/` | regresión de guards, instalador y Capa 2 de secretos, en bash puro | `test/test_guards.sh`, `test/test_guards_falsifiability.sh`, `test/test_secret_content_gitleaks.sh` y el resto: 34 suites, todas en `make test` |
 | `claude/skills/` · `mods/cockpit/` | las 6 skills del método (`install.sh` las copia a `~/.claude/skills/`) y el mod de traspaso de sesión (`/plugin install cockpit`, no lo instala `install.sh`) | llevar la forma de trabajar, no solo los guards; ver `docs/12-metodologia.md` |
 | `evals/` | 20 tareas reales (10 positivas / 10 negativas), brazo de control (`ARM=off`), historico, emisor a LangSmith y receptor local para probarlo (opt-in, no corre en `test/`, cuesta llamadas reales a `claude -p`) | medir si el harness **sirve**, no solo si el agente pasa — ver [`evals/README.md`](evals/README.md) |
 | `docs/` | 12 documentos, del mapa (`01`) al onboarding (`10`), el cockpit (`11`) y la metodología (`12`) | el mapa mental y el "cómo" de cada pieza, con enlaces a terceros |
@@ -103,6 +103,7 @@ El kit no redistribuye binarios de terceros, solo los documenta y los cablea con
 | [`docs/08-plugins-mcp-y-skills.md`](docs/08-plugins-mcp-y-skills.md) | la pila completa: plugins de Claude Code, servidores MCP, skills adicionales, prerrequisitos extra |
 | [`docs/09-ssh-y-gitlab-privado.md`](docs/09-ssh-y-gitlab-privado.md) | clave SSH desde WSL2 y alta en un GitLab autoalojado, paso a paso |
 | [`docs/10-onboarding.md`](docs/10-onboarding.md) | de cero a sesión verde: `make bootstrap`, cómo leer `doctor.sh`, y Headroom con sus cifras medidas |
+| [`docs/guia/`](docs/guia/00-ruta-7-dias.md) | trabajar bien tras instalar: ruta de 7 días, el porqué con cifras medidas, una sesión real, antipatrones, mídete y qué borrar de la plantilla |
 
 ## Notas de experto
 

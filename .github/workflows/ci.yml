@@ -196,6 +196,9 @@ jobs:
       - name: "test_install_plugins.sh (plugins de terceros por referencia: diff-first, ids esperados, opcionales aparte)"
         run: bash kit/test/test_install_plugins.sh
 
+      - name: "test_guia.sh (guía didáctica: existe, enlazada desde 01-overview, sin enlaces rotos)"
+        run: bash kit/test/test_guia.sh
+
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
     runs-on: ubuntu-latest

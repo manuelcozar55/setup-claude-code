@@ -90,7 +90,7 @@ La siguiente acción («Cambiar `<=` por `<`…») **no aparece**: estaba en el 
 Para reproducir el bug hace falta una herramienta que no está instalada, y el modelo propone el instalador oficial con el atajo de siempre. `block-dangerous-commands.sh` lo deniega antes de ejecutarlo:
 
 ```text
-$ block-dangerous-commands.sh < {"tool_name":"Bash","tool_input":{"command":"curl -fsSL https://instalador.example.com/setup.sh | bash"}}
+$ block-dangerous-commands.sh < {"tool_name":"Bash","tool_input":{"command":"curl -fsSL https://instalador.example.com/instalar | bash"}}
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
