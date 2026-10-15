@@ -4,18 +4,18 @@ La base que instala este kit (`CLAUDE.md`, `settings.json`, hooks, agentes, Sent
 
 ## Plugins de Claude Code
 
-`claude/settings.json` declara seis plugins en `enabledPlugins`, cuatro del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual); los otros dos vienen de marketplaces externos que el propio `settings.json` del kit ya declara en `extraKnownMarketplaces`, así que Claude Code los reconoce sin que tengas que darlos de alta a mano.
+`claude/settings.json` declara seis plugins en `enabledPlugins`, tres del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual); `esenciales` viene del marketplace de este repo, que da de alta `kit/install-plugins.sh` (abajo); los otros dos vienen de marketplaces externos que el propio `settings.json` del kit ya declara en `extraKnownMarketplaces`, así que Claude Code los reconoce sin que tengas que darlos de alta a mano.
 
 | Plugin | Para qué | Cómo |
 |---|---|---|
-| `superpowers@claude-plugins-official` | el método y sus skills (ver `04-superpowers.md`) | `/plugin` |
+| `esenciales@setup-claude-code` | el método y sus skills (ver `04-superpowers.md`) | marketplace de este repo, que registra `kit/install-plugins.sh --apply`; luego `/plugin` |
 | `code-review@claude-plugins-official` | revisión de PRs | `/plugin` |
 | `skill-creator@claude-plugins-official` | crear y editar skills | `/plugin` |
 | `frontend-design@claude-plugins-official` | diseño de interfaces | `/plugin` |
 | `codex@openai-codex` | integración con Codex | marketplace externo (GitHub `openai/codex-plugin-cc`), ya declarado en `extraKnownMarketplaces`; activa con `/plugin` |
 | `understand-anything@understand-anything` | grafos de conocimiento del código; aporta las skills `understand-*` | marketplace externo (GitHub `Lum1104/Understand-Anything`), ya declarado en `extraKnownMarketplaces`; activa con `/plugin` |
 
-Los cuatro primeros se activan (o reinstalan si hiciera falta) con el comando interactivo `/plugin` dentro de una sesión de Claude Code. Los dos últimos, al venir de marketplaces externos ya declarados en el `settings.json` que instala este kit, se activan exactamente igual: `/plugin` los lista porque el marketplace ya es conocido, no hace falta registrar nada a mano. Verifica el estado (instalados, activos, disponibles) con:
+Los tres oficiales se activan (o reinstalan si hiciera falta) con el comando interactivo `/plugin` dentro de una sesión de Claude Code. Los dos últimos, al venir de marketplaces externos ya declarados en el `settings.json` que instala este kit, se activan exactamente igual: `/plugin` los lista porque el marketplace ya es conocido, no hace falta registrar nada a mano. Verifica el estado (instalados, activos, disponibles) con:
 
 ```bash
 /plugin

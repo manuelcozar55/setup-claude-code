@@ -218,7 +218,7 @@
     "code-review@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
-    "superpowers@claude-plugins-official": true,
+    "esenciales@setup-claude-code": true,
     "understand-anything@understand-anything": true
   },
   "extraKnownMarketplaces": {
