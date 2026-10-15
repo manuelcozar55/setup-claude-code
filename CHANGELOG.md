@@ -201,8 +201,12 @@ etiquetado.
   también cierra la sección (los subapartados se escriben con `####`), pero no en silencio: si
   cierra una sección viva, la salida pide leer el fichero y sugiere `####`. La
   clave va por prefijo también en `###`: `### Plan de migración` reclama Plan, como ya hacía
-  `## Plan de migración`. Límite: un `##` de plantilla repetido descarta su contenido y sus `###`
-  sin clave sin más señal que «fuera de forma».
+  `## Plan de migración`. Límites: un `##` de plantilla repetido descarta su contenido y sus `###`
+  sin clave sin más señal que «fuera de forma»; un `###` sin clave justo después de
+  `## TAREA ACTUAL`, sin sección viva que cerrar, se descarta sin la línea «LEE»; esa línea
+  sale también en la disposición de siempre (`### Hecho` tras una sección viva), coste de hacer
+  visible la pérdida; y una cerca sangrada suelta (una ``` de ejemplo en prosa) vuelve impar la
+  paridad y desactiva todas las cercas del fichero, con su aviso.
 - **`nucleo_emitir` no cierra la sección en un `# comentario` dentro de un bloque de
   código.** La regla de cabecera casaba cualquier línea que empezara por `# `, también entre
   ```; un comentario en «Comandos de verificación» cortaba la sección y los comandos, lo más
