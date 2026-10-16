@@ -28,7 +28,7 @@ con remoto), corre el oráculo y `doctor.sh`. Requisitos, pasos a mano y desinst
 ## 2 · Verificar de verdad
 
 ```bash
-make test          # 40 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
+make test          # 41 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
 bash kit/doctor.sh # estado de ESTA máquina
 ```
 
