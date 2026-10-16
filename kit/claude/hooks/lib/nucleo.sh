@@ -85,15 +85,19 @@ nucleo_emitir() {
       if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; sale(substr($0, 1, 200)) } else fuera++; next }
       if ($0 ~ /^## /) padre = (c != "")
       # Repetido: solo entra si la primera copia quedó vacía (plantilla con «## Pendientes» y, después, el
-      # «## Pendientes y riesgos» de /handoff); con contenido sigue ganando la primera.
+      # «## Pendientes y riesgos» de /handoff); con contenido sigue ganando la primera. Los marcadores
+      # <!-- … --> de la plantilla no cuentan como contenido (si no, «Encargo original» y «Plan» del
+      # handoff se descartaban como repetidos de un Objetivo y un Plan que solo tenían el marcador).
       if (c == "" || (visto[c] && con[c])) { fuera++; next }
-      visto[c] = 1; actual = c
+      visto[c] = 1; actual = c; coment = 0
       if (usado + length($0) > tope) { omitidas = omitidas " «" substr(t, 1, 80) "»"; next }
       viva = 1; sale($0); next
     }
     viva {
       resto = sec - dentro; if (tope - usado < resto) resto = tope - usado
-      if ($0 ~ /[^ \t]/) con[actual]++
+      if (coment) { if (index($0, "-->")) coment = 0 }
+      else if ($0 ~ /^[ \t]*<!--/) { if (!index($0, "-->")) coment = 1; else { t2 = $0; sub(/.*-->/, "", t2); if (t2 ~ /[^ \t]/) con[actual]++ } }
+      else if ($0 ~ /[^ \t]/) con[actual]++
       if (length($0) < resto) { sale($0); dentro += length($0) + 1; next }
       sale(substr($0, 1, resto > 0 ? resto : 0)); viva = 0
       sale("[recortado: sección incompleta.]"); recortes++
