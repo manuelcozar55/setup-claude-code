@@ -15,9 +15,17 @@ nucleo_raiz() {
   printf '%s\n' "$r"
 }
 
-# nucleo_enlazado <raíz>: .claude/estado o nucleo.md es un symlink. El repo puede ser de terceros: con
-# un enlace decidiría qué fichero de fuera se inyecta y dónde se escribe el checkpoint (con prompts).
-nucleo_enlazado() { [ -L "$1/.claude/estado" ] || [ -L "$1/.claude/estado/nucleo.md" ]; }
+# nucleo_enlazado <raíz>: .claude, .claude/estado o nucleo.md es un symlink, o la ruta resuelta de nucleo.md
+# cae fuera de la raíz. El repo puede ser de terceros: con un enlace decidiría qué fichero de fuera se
+# inyecta y dónde se escribe el checkpoint (con prompts). Con `.claude` enlazado, mirar solo estado/ y
+# nucleo.md no bastaba. realpath falla cerrado: sin resolver, se da por enlazado.
+nucleo_enlazado() {
+  [ -L "$1/.claude" ] || [ -L "$1/.claude/estado" ] || [ -L "$1/.claude/estado/nucleo.md" ] && return 0
+  local r e
+  r=$(realpath -m -- "$1" 2>/dev/null) && e=$(realpath -m -- "$1/.claude/estado/nucleo.md" 2>/dev/null) || return 0
+  case $e in "$r"/*) return 1 ;; esac
+  return 0
+}
 
 # nucleo_ctx <transcript>: "tokens pct", con pct sobre el airbag (ventana − 33 000, la línea en la
 # que compacta solo). Nada si el transcript no trae uso. La ventana es min(la del modelo, el env), como

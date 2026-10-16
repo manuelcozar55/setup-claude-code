@@ -189,4 +189,19 @@ ok "cuatro espacios cuentan: entran en la paridad" "$(nucleo_emitir "$F" | comma
 ok "cerca sin cerrar: avisa" "$(nucleo_emitir "$T/cerca2.md" | command grep -c '^\[cercas sin equilibrar: se ignoran')" 1
 ok "cerca sin cerrar: pide leer el fichero" "$(nucleo_emitir "$T/cerca2.md" | command grep -c '^\[LEE ')" 1
 ok "cercas equilibradas: sin aviso" "$(nucleo_emitir "$T/cerca4.md" | command grep -c 'cercas sin equilibrar')" 0
+
+# --- #8: .claude enlazado (o estado/) a otro sitio: los tres componentes se miran y la ruta resuelta queda en el repo ---
+mkdir -p "$T/ajeno/estado" "$T/r8a" "$T/r8b/.claude" "$T/r8c/.claude/estado" "$T/r8d/.claude/estado"
+printf '## Objetivo\nAJENO\n' >"$T/ajeno/estado/nucleo.md"
+ln -s "$T/ajeno" "$T/r8a/.claude"
+ln -s "$T/ajeno/estado" "$T/r8b/.claude/estado"
+ln -s "$T/ajeno/estado/nucleo.md" "$T/r8c/.claude/estado/nucleo.md"
+printf '## Objetivo\nPROPIO\n' >"$T/r8d/.claude/estado/nucleo.md"
+ok "enlazado: .claude es un symlink" "$(nucleo_enlazado "$T/r8a" && echo si)" si
+ok "enlazado: estado es un symlink" "$(nucleo_enlazado "$T/r8b" && echo si)" si
+ok "enlazado: nucleo.md es un symlink" "$(nucleo_enlazado "$T/r8c" && echo si)" si
+ok "enlazado: árbol propio sin enlaces → no" "$(nucleo_enlazado "$T/r8d" && echo si || echo no)" no
+ln -s "$T/r8d" "$T/r8e"
+ok "enlazado: la raíz misma puede ser un symlink" "$(nucleo_enlazado "$T/r8e" && echo si || echo no)" no
+
 exit $FAIL

@@ -125,6 +125,19 @@ R4=$T/r4; mkdir -p "$R4/.claude" "$T/destino"; git -C "$R4" init -q; ln -s "$T/d
 ev "$R4" s6 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "symlink: pre-compact no escribe en el destino de .claude/estado" "$(ls -A "$T/destino")" ""
 
+# --- #8: .claude enlazado a otro sitio: nada se inyecta ni se escribe fuera del repo ---
+R8=$T/r8; mkdir -p "$R8" "$T/ajeno8/estado"; git -C "$R8" init -q
+printf '# Estado\n## Objetivo\nSECRETO-AJENO\n- [ ] SECRETO-AJENO\n' >"$T/ajeno8/estado/nucleo.md"; ln -s "$T/ajeno8" "$R8/.claude"
+ok "symlink .claude: clear no inyecta" "$(ev "$R8" s8a | bash "$H/session-start-clear.sh")" ""
+ok "symlink .claude: compact no inyecta" "$(ev "$R8" s8a | bash "$H/session-start-compact.sh")" ""
+ev "$R8" s8a "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "symlink .claude: pre-compact no escribe fuera del repo" "$(ls -A "$T/ajeno8/estado")" "nucleo.md"
+# Un checkpoint que es un enlace a un fichero de fuera tampoco se inyecta.
+R9=$T/r9; mkdir -p "$R9/.claude/estado"; git -C "$R9" init -q; printf '## Objetivo\nx\n' >"$R9/.claude/estado/nucleo.md"
+printf 'SECRETO-CHECKPOINT\n' >"$T/fuera-cp.md"
+ln -s "$T/fuera-cp.md" "$R9/.claude/estado/checkpoint-compact-$(printf s9 | sha256sum | cut -d' ' -f1).md"
+ok "symlink checkpoint: compact no lo inyecta" "$(ev "$R9" s9 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-CHECKPOINT)" 0
+
 # --- pre-compact: no ensucia repos sin nucleo y su checkpoint queda ignorado aunque ya hubiera .gitignore ---
 R5=$T/r5; mkdir -p "$R5"; git -C "$R5" init -q
 ev "$R5" s7 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
