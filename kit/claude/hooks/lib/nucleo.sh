@@ -67,6 +67,13 @@ nucleo_emitir() {
     BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|") }
     # «Paso actual» y «Siguiente acción» tienen reserva propia (res bytes cada una, fuera del tope): con un
     # nucleo de 20 KB el presupuesto se gastaba por orden y eran justo las dos que se perdían.
+    # Corte por bytes sin partir un carácter UTF-8: si el byte siguiente es de continuación, el corte cayó
+    # dentro de uno y se quita el inicio huérfano con sus continuaciones (octales: valen en gawk y mawk).
+    function corta(l, n,   r) {
+      r = substr(l, 1, n)
+      if (substr(l, n + 1, 1) ~ /[\200-\277]/) sub(/[\300-\377][\200-\277]*$/, "", r)
+      return r
+    }
     function sale(s) { out = out s "\n"; if (!rsv) usado += length(s) + 1 }
     # ### también: las sesiones escriben la tarea como «## TAREA ACTUAL» con sus secciones en ###. Si nombra
     # una sección aún no vista es cabecera; si no, es contenido solo bajo un ## de plantilla (padre: «### Fase 1»
@@ -92,7 +99,7 @@ nucleo_emitir() {
     /^#(#|##)? / && !cerca && ($0 !~ /^### / || (c != "" && !visto[c]) || !padre) {
       if ($0 ~ /^### / && viva && !padre && (c == "" || visto[c])) cerradas++
       viva = 0; dentro = 0; rsv = 0
-      if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; sale(substr($0, 1, 200)) } else fuera++; next }
+      if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; sale(corta($0, 200)) } else fuera++; next }
       if ($0 ~ /^## /) padre = (c != "")
       # Repetido: solo entra si la primera copia quedó vacía (plantilla con «## Pendientes» y, después, el
       # «## Pendientes y riesgos» de /handoff); con contenido sigue ganando la primera. Los marcadores
@@ -100,7 +107,7 @@ nucleo_emitir() {
       # handoff se descartaban como repetidos de un Objetivo y un Plan que solo tenían el marcador).
       if (c == "" || (visto[c] && con[c])) { fuera++; next }
       visto[c] = 1; actual = c; coment = 0; rsv = (c == "Paso actual" || c == "Siguiente acción")
-      if (!rsv && usado + length($0) > tope) { omitidas = omitidas " «" substr(t, 1, 80) "»"; next }
+      if (!rsv && usado + length($0) > tope) { omitidas = omitidas " «" corta(t, 80) "»"; next }
       viva = 1; sale($0); next
     }
     viva {
@@ -109,7 +116,7 @@ nucleo_emitir() {
       else if ($0 ~ /^[ \t]*<!--/) { if (!index($0, "-->")) coment = 1; else { t2 = $0; sub(/.*-->/, "", t2); if (t2 ~ /[^ \t]/) con[actual]++ } }
       else if ($0 ~ /[^ \t]/) con[actual]++
       if (length($0) < resto) { sale($0); dentro += length($0) + 1; next }
-      sale(substr($0, 1, resto > 0 ? resto : 0)); viva = 0
+      sale(corta($0, resto > 0 ? resto : 0)); viva = 0
       sale("[recortado: sección incompleta.]"); recortes++
     }
     END {

@@ -220,4 +220,12 @@ C3=$T/res-largo.md
   echo '## Paso actual'; echo 'PASO-RESERVADO'; echo '## Siguiente acción'; echo 'SIGUIENTE-RESERVADA'; } >"$C3"
 ok "secciones previas al tope: Paso actual y Siguiente acción siguen" "$(nucleo_emitir "$C3" | command grep -c 'PASO-RESERVADO\|SIGUIENTE-RESERVADA')" 2
 
+# --- #22: el corte por bytes no parte un carácter UTF-8 (línea larga con ñ de 2 bytes; título y sección) ---
+U=$T/utf8.md
+{ printf '# '; printf 'a'; head -c 800 /dev/zero | tr '\0' x | sed 's/x/ñ/g'; echo
+  echo '## Objetivo'; printf 'a'; head -c 5000 /dev/zero | tr '\0' x | sed 's/x/ñ/g'; echo
+  echo '## Paso actual'; printf 'a'; head -c 2000 /dev/zero | tr '\0' x | sed 's/x/€/g'; echo; } >"$U"
+ok "corte: la emisión sigue siendo UTF-8 válido" "$(nucleo_emitir "$U" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1 && echo si)" si
+ok "corte: aun así se avisa del recorte" "$(nucleo_emitir "$U" | command grep -c '^\[recortado: sección incompleta')" 2
+
 exit $FAIL
