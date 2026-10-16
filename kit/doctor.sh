@@ -86,6 +86,30 @@ else
   warn "Sentinel IOC layer inactiva: falta iocs.json (opcional; ver docs/05-security.md). Los guards de Bash siguen activos."
 fi
 
+# 2c. version minima del preflight que exige iocs.json (acoplamiento datos/codigo, E6 #27).
+# Un iocs.json nuevo con un preflight viejo no falla: las reglas que el codigo viejo no sabe
+# leer (p. ej. las de tuberia al shell, que cuentan con la union de continuaciones) se quedan
+# a medias en silencio. Se compara el entero de iocs.json contra PREFLIGHT_VERSION del .py.
+if [ -n "$ioc_file" ]; then
+  ioc_want="$(jq -r '.min_preflight_version // empty' "$ioc_file" 2>/dev/null)"
+  pre_py=""
+  for c in "${ioc_file%/*}/sentinel_preflight.py" "$ioc_pre" "$CLAUDE_HOME/sentinel/sentinel_preflight.py"; do
+    [ -n "$c" ] && [ -f "$c" ] && { pre_py="$c"; break; }
+  done
+  case "$ioc_want" in
+    ''|*[!0-9]*) ;;
+    *) if [ -n "$pre_py" ]; then
+         pre_have="$(grep -oE '^PREFLIGHT_VERSION = [0-9]+' "$pre_py" | grep -oE '[0-9]+$' | head -1)"
+         pre_have="${pre_have:-1}"
+         if [ "$pre_have" -lt "$ioc_want" ]; then
+           warn "iocs.json exige sentinel_preflight.py v$ioc_want y el instalado ($pre_py) es v$pre_have: reinstala el kit para alinearlos"
+         else
+           pass "sentinel_preflight.py v$pre_have cubre lo que exige iocs.json (v$ioc_want)"
+         fi
+       fi ;;
+  esac
+fi
+
 # 2d. statusLine: si settings.json la declara, su comando tiene que resolverse.
 # Claude Code no avisa de nada aqui: medido en 2.1.258, un exit != 0 o un stdout vacio dejan
 # la barra EN BLANCO en silencio y stderr se descarta. Ya paso: una instalacion escribio

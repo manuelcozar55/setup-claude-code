@@ -96,4 +96,29 @@ else
   ck n y "con iocs.json junto al preflight, doctor lo encuentra y lo dice"
 fi
 
+# Acoplamiento iocs.json/.py (E6 #27): el iocs declara la version minima del preflight y doctor avisa
+# si el instalado es mas viejo. Antes un iocs nuevo con un .py viejo no fallaba: se quedaba a medias.
+dr() { env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1; }
+out="$(dr)"
+if echo "$out" | grep -qE '^PASS .*sentinel_preflight\.py v[0-9]+ cubre lo que exige iocs\.json'; then
+  ck y y "iocs.json y preflight alineados: doctor lo confirma"
+else
+  ck n y "iocs.json y preflight alineados: doctor lo confirma"
+fi
+jq '.min_preflight_version = 99' "$CLAUDE_HOME/sentinel/iocs.json" > "$tmp/iocs.alto" && cp "$tmp/iocs.alto" "$CLAUDE_HOME/sentinel/iocs.json"
+out="$(dr)"
+if echo "$out" | grep -qE '^WARN .*iocs\.json exige sentinel_preflight\.py v99'; then
+  ck y y "un iocs.json que exige un preflight mas nuevo que el instalado produce WARN"
+else
+  ck n y "un iocs.json que exige un preflight mas nuevo que el instalado produce WARN"
+fi
+jq '.min_preflight_version = 2' "$CLAUDE_HOME/sentinel/iocs.json" > "$tmp/iocs.dos" && cp "$tmp/iocs.dos" "$CLAUDE_HOME/sentinel/iocs.json"
+sed -i '/^PREFLIGHT_VERSION = /d' "$CLAUDE_HOME/sentinel/sentinel_preflight.py"
+out="$(dr)"
+if echo "$out" | grep -qE '^WARN .*iocs\.json exige sentinel_preflight\.py v2 y el instalado .* es v1'; then
+  ck y y "un preflight sin constante de version cuenta como v1 y produce WARN"
+else
+  ck n y "un preflight sin constante de version cuenta como v1 y produce WARN"
+fi
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
