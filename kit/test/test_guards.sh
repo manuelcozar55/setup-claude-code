@@ -676,6 +676,28 @@ expect "secret-guard bloquea server.key por nombre" "$(run_secret 'git add serve
 printf '{}\n' > "$SG_DIR/credentials.json"
 expect "secret-guard bloquea credentials.json por nombre" "$(run_secret 'git add credentials.json')" BLOCK
 
+# 8b) Normalizacion (E7 PR2, hallazgo 9): `git -C . add` no llegaba al filtro, la exencion del fichero de
+# ejemplo se evaluaba sobre TODO el comando y `--all` no se contemplaba. Ahora se miran los operandos de
+# `git add` uno a uno. Los ficheros no hacen falta: el guard decide por el nombre.
+for c in 'git -C . add .env' 'git add .env.example .env' 'git add .env .env.example' 'git add .env.example .env.local' \
+         'sudo git add server.pem' 'git add -- server.pem' 'git add "server.pem"' "git add 'credentials.json'" \
+         'git add dir/server.key' 'git -c core.x=1 add .env' 'git add -f .env.production' 'cd x && git add id.p12' \
+         'git add ok.txt server.pem'; do
+  expect "secret-guard: $c denegado" "$(run_secret "$c")" BLOCK
+done
+for c in 'git add .env.example' 'git -C . add .env.template' 'git add notes.md' 'git commit -m "git add .env"' \
+         'echo git add server.pem' 'git add bundle.p12/data.txt' 'git add src/environment.py.txt'; do
+  expect "secret-guard: $c NO denegado" "$(run_secret "$c")" ALLOW
+done
+printf 'SECRET=1\n' > "$SG_DIR/.env"
+for c in 'git add --all' 'git add -A' 'git add .' 'git -C . add -A' 'sudo git add --all'; do
+  expect "secret-guard: $c con .env sin ignorar denegado" "$(run_secret "$c")" BLOCK
+done
+expect "secret-guard: git add .gitignore con .env sin ignorar NO denegado" "$(run_secret 'git add .gitignore')" ALLOW
+printf '.env\n' > "$SG_DIR/.gitignore"
+expect "secret-guard: git add --all con .env ignorado NO denegado" "$(run_secret 'git add --all')" ALLOW
+rm -f "$SG_DIR/.env" "$SG_DIR/.gitignore"
+
 # 9) git add de un fichero limpio desde un subdirectorio -> no bloquea espuriamente
 SUBDIR_ROOT=$(mktemp -d)
 (cd "$SUBDIR_ROOT" && git init -q)
