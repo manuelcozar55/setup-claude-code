@@ -204,4 +204,20 @@ ok "enlazado: árbol propio sin enlaces → no" "$(nucleo_enlazado "$T/r8d" && e
 ln -s "$T/r8d" "$T/r8e"
 ok "enlazado: la raíz misma puede ser un symlink" "$(nucleo_enlazado "$T/r8e" && echo si || echo no)" no
 
+# --- #17: con un nucleo grande el presupuesto se gastaba por orden y se perdían Paso actual y Siguiente acción ---
+for kb in 12 20; do
+  B=$T/res-$kb.md
+  { echo '# Estado'; for sx in Objetivo Invariantes Plan; do echo "## $sx"; for _ in $(seq 1 30); do echo "$sx: relleno de sección larga para gastar el presupuesto de la emisión"; done; done
+    echo '## Paso actual'; echo 'PASO-RESERVADO'; echo '## Siguiente acción'; echo 'SIGUIENTE-RESERVADA'
+    for sx in Pendientes 'Comandos de verificación' 'Ficheros tocados'; do echo "## $sx"; for _ in $(seq 1 $((kb * 5))); do echo "$sx: relleno de sección larga para gastar el presupuesto"; done; done; } >"$B"
+  S=$(nucleo_emitir "$B")
+  ok "nucleo de ${kb} KB: Paso actual y Siguiente acción presentes" "$(command grep -c 'PASO-RESERVADO\|SIGUIENTE-RESERVADA' <<<"$S")" 2
+  ok "nucleo de ${kb} KB: emisión ≤ 8 500 chars" "$([ "${#S}" -le 8500 ] && echo si)" si
+done
+# Con Objetivo, Invariantes y Plan al tope por sección (3 × 3 000 > 6 500): el orden antes dejaba fuera lo de después.
+C3=$T/res-largo.md
+{ echo '# Estado'; for sx in Objetivo Invariantes Plan; do echo "## $sx"; head -c 4000 /dev/zero | tr '\0' x; echo; done
+  echo '## Paso actual'; echo 'PASO-RESERVADO'; echo '## Siguiente acción'; echo 'SIGUIENTE-RESERVADA'; } >"$C3"
+ok "secciones previas al tope: Paso actual y Siguiente acción siguen" "$(nucleo_emitir "$C3" | command grep -c 'PASO-RESERVADO\|SIGUIENTE-RESERVADA')" 2
+
 exit $FAIL
