@@ -215,4 +215,12 @@ E=$(. "$H/lib/nucleo.sh"; nucleo_emitir "$NF")
 ok "emitir: comentario en bloque de código no corta la sección" "$(command grep -c 'make test\|P-FENCE' <<<"$E")" 2
 ok "emitir: el comentario no cuenta como sección fuera de forma" "$(command grep -c 'fuera de forma' <<<"$E")" 0
 
+# --- #23: session-start.sh: un solo 0 sin entradas, y la ruta de memoria codifica como Claude Code (todo no alfanumérico → -) ---
+MP=$T/mi.proyecto_x; mkdir -p "$MP"
+MD=$HOME/.claude/projects/$(printf '%s' "$MP" | sed 's/[^A-Za-z0-9]/-/g')/memory; mkdir -p "$MD"; printf '# Memory Index\n' >"$MD/MEMORY.md"
+SS=$(cd "$MP" && bash "$H/session-start.sh")
+ok "session-start: sin entradas imprime un solo 0" "$(sed -n 's/.*Memory: \(.*\) entradas en.*/\1/p' <<<"$SS")" 0
+ok "session-start: encuentra la memoria de un cwd con . y _" "$(command grep -c 'Memory: .* entradas' <<<"$SS")" 1
+ok "session-start: sin memoria conserva el aviso" "$(cd "$T/sin-git" && bash "$H/session-start.sh" | command grep -c 'No project memory found')" 1
+
 exit $FAIL
