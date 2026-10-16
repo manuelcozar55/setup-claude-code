@@ -254,16 +254,30 @@ etiquetado.
   extensión. **Límite declarado**: el oculto a secas sin barra (`cat .key`), indistinguible
   de la prosa; donde el papel de una palabra no se clasifica (`sudo grep`, `git -C x commit`)
   se deniega de más, nunca de menos; un script escrito por un heredoc y ejecutado en otra
-  llamada o con un comando fuera de la lista de ejecutores (`make run.sh`) no se ve, y un
-  ejecutor posterior deniega aunque el heredoc no escriba el fichero que ejecuta, en cualquier
-  línea de la misma llamada y también si es una ruta fuera de `/bin`, `/sbin`, `/usr/bin` y
-  `/usr/sbin`; la prosa con `exec` en código en línea cuenta como ejecución y un prefijo sin
-  comando (`flock -n 9`) como shell; no se ven las letras `x` dentro de un racimo de flags de
-  `fd`, las opciones con valor de `unshare` fuera de la tabla, `setpriv`/`nsenter` ni
-  `deno repl --eval`; los demás límites asumidos van en el comentario de `key_file_extensions`.
-  202 sondas nuevas en `test_guards.sh` (25 de la regex, 17 fallaban con ella; 16, 32, 35,
-  24, 22, 22 y 26 de las siete rondas de revisión, 11, 17, 21, 16, 18, 14 y 14 fallaban antes
-  de su fix).
+  llamada o con un comando fuera de la lista de ejecutores (`make run.sh`, `pnpm exec sh run.sh`)
+  no se ve, y un ejecutor en cualquier línea posterior de la misma llamada deniega aunque el
+  heredoc no escriba el fichero que ejecuta (coste de la regla sin nombres, pinado en la suite:
+  unas notas seguidas de `python3 gen.py`, un `git commit -F -` seguido de `bash scripts/check.sh`).
+  Una palabra con barra se clasifica por su basename: una herramienta conocida que no ejecuta su
+  argumento (`git`, `gh`, `pnpm`, `code`, `make`, `curl`, los sumideros) en un directorio `bin`
+  (`/usr/local/bin/git`, `/opt/homebrew/bin/gh`, `/snap/bin/code`) no es ejecutor; un basename
+  desconocido o fuera de un directorio `bin` (`./run.sh`, `/opt/tools/foo`, `$PNPM_HOME/pnpm`) sí,
+  y deniega de más; `cat <<EOF >~/bin/git; ~/bin/git` no se ve. Los nombres de ejecución del
+  código en línea van por lista explícita de palabras enteras (`exec…`, `spawn…`, `system2`,
+  `posix_spawnp`, `pcntl_exec`, `Deno.Command`…): la prosa con `execution` o `executor` ya no hace
+  del cuerpo comandos, y un nombre fuera de la lista no se ve. `fd`/`fdfind` ven la `x` dentro
+  de un racimo de flags (`-Hx`, `-HIx`; `-ex` es `-e x`); `unshare` reconoce `--propagation`,
+  `--setgroups`, `--monotonic`, `--boottime`, `--map-users` y `--map-groups`; `setpriv` y
+  `nsenter` son prefijos con su aridad. `deno`: el subcomando es la primera palabra que no es
+  flag, `deno repl --eval CODE` mira su código y `deno run eval`/`deno run -` leen código (una
+  opción global con valor separado antes del subcomando, `deno --log-level info eval`, se lee
+  como código). Un prefijo sin comando solo cuenta como shell si abre uno por diseño (`sudo`/
+  `doas -s`/`-i`, `chroot`, `unshare`, `nsenter`, `exec` con solo redirecciones) o lleva el
+  comando en un valor (`flock -c`, `env -S`): `flock -n 9` o `timeout 5` a secas ya no deniegan.
+  Los demás límites asumidos van en el comentario de `key_file_extensions`.
+  238 sondas nuevas en `test_guards.sh` (25 de la regex, 17 fallaban con ella; 16, 32, 35,
+  24, 22, 22, 26 y 36 de las ocho rondas de revisión, 11, 17, 21, 16, 18, 14, 14 y 23 fallaban
+  antes de su fix).
   Además, `test_guards.sh` escribía sus deny en el `sentinel.jsonl` del HOME real;
   `test_guards_falsifiability.sh` lo impide ahora con un HOME simulado.
 - **`pre-compact.sh` rota los checkpoints de más de 14 días, después de publicar el nuevo.**
