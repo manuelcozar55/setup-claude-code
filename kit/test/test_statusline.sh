@@ -102,7 +102,10 @@ UNA="$(run "$DEEP/sub/carpeta" | sin_contadores | aplanar)"
 for W in 80 50; do
   OUT="$(mkinput "$DEEP/sub/carpeta" | COLUMNS=$W bash "$SL" 2>/dev/null | normalize | sin_contadores)"
   [ "$(printf '%s\n' "$OUT" | wc -l)" -gt 2 ] && ok "ancho $W: varias lineas" || bad "ancho $W" "una sola linea: $OUT"
-  LARGA=$(printf '%s\n' "$OUT" | awk -v m=$((W-6)) 'length($0)>m && index($0," | ")' | head -1)
+  # length() de mawk cuenta bytes y parte los caracteres UTF-8: se mide con ${#} de bash.
+  LARGA=$(export LC_ALL=C.UTF-8; while IFS= read -r l; do
+    if [ "${#l}" -gt $((W-6)) ] && [[ $l == *" | "* ]]; then printf '%s\n' "$l"; break; fi
+  done <<< "$OUT")
   [ -z "$LARGA" ] && ok "ancho $W: ninguna linea partible pasa de $((W-6))" || bad "ancho $W" "linea larga: $LARGA"
   [ "$(printf '%s\n' "$OUT" | aplanar)" = "$UNA" ] \
     && ok "ancho $W: unidas por \" | \" dan la linea original" || bad "ancho $W" "se perdio contenido: $OUT"

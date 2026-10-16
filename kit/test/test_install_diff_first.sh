@@ -77,4 +77,49 @@ set -e
 ck "$rc5" "0" "repo git SIN remoto: install.sh sale 0"
 ck "$([ -f "$CLAUDE_HOME/CLAUDE.md" ] && echo y || echo n)" "y" "repo git SIN remoto NO activa el modo diff (escribe igual, falsabilidad del check)"
 
+# --- Hallazgo E6-1: --plan nunca borra lo que no escribio el, ni solapa con CLAUDE_HOME ---
+export CLAUDE_HOME="$tmp/dot-solape"
+bash "$KIT/install.sh" >/dev/null 2>&1
+echo "MIO" > "$CLAUDE_HOME/mio.txt"
+for o in "$CLAUDE_HOME" "$CLAUDE_HOME/sub/plan" "$tmp" "$CLAUDE_HOME/../dot-solape/."; do
+  set +e; MCHARNESS_OUT="$o" bash "$KIT/install.sh" --plan >/dev/null 2>&1; rc=$?; set -e
+  ck "$rc" "1" "--plan con MCHARNESS_OUT solapado ($o): exit 1"
+  ck "$([ -f "$CLAUDE_HOME/mio.txt" ] && [ -f "$CLAUDE_HOME/settings.json" ] && echo y || echo n)" "y" "--plan solapado ($o): la instalacion sigue entera"
+done
+mkdir -p "$tmp/ajeno"; echo "AJENO" > "$tmp/ajeno/dato.txt"
+set +e; MCHARNESS_OUT="$tmp/ajeno" bash "$KIT/install.sh" --plan >/dev/null 2>&1; rc=$?; set -e
+ck "$rc" "1" "--plan con MCHARNESS_OUT existente sin marcador: exit 1"
+ck "$(cat "$tmp/ajeno/dato.txt" 2>/dev/null)" "AJENO" "--plan no borra un directorio ajeno sin marcador"
+MCHARNESS_OUT="$tmp/plan-rep" bash "$KIT/install.sh" --plan >/dev/null 2>&1
+echo x > "$tmp/plan-rep/viejo.txt"
+set +e; MCHARNESS_OUT="$tmp/plan-rep" bash "$KIT/install.sh" --plan >/dev/null 2>&1; rc=$?; set -e
+ck "$rc" "0" "--plan repetido sobre su propio plan (con marcador): exit 0"
+ck "$([ -e "$tmp/plan-rep/viejo.txt" ] && echo y || echo n)" "n" "--plan repetido regenera el arbol (borra lo anterior con marcador)"
+ck "$([ -f "$tmp/plan-rep/settings.json" ] && echo y || echo n)" "y" "--plan repetido deja el arbol nuevo"
+# Sin MCHARNESS_OUT ya no se usa $PWD/.mcharness-out (que se borraba a ciegas)
+mkdir -p "$tmp/cwd/.mcharness-out" "$tmp/tmpd"; echo "OTRO" > "$tmp/cwd/.mcharness-out/otro.txt"
+export CLAUDE_HOME="$tmp/dot-plan-defecto"
+out="$(cd "$tmp/cwd" && TMPDIR="$tmp/tmpd" bash "$KIT/install.sh" --plan 2>&1)"
+ck "$(cat "$tmp/cwd/.mcharness-out/otro.txt")" "OTRO" "--plan sin MCHARNESS_OUT no toca \$PWD/.mcharness-out"
+ck "$(find "$tmp/tmpd" -maxdepth 1 -name 'mcharness-plan.*' | wc -l | tr -d ' ')" "1" "--plan sin MCHARNESS_OUT genera el plan en un temporal nuevo"
+# --- Hallazgo E6-27: el mensaje de --plan no finge que CLAUDE_HOME sea un repo git ---
+ck "$(echo "$out" | grep -c 'tu propio repo git' || true)" "0" "--plan sobre CLAUDE_HOME que no es repo: no dice «es tu propio repo git»"
+ck "$(echo "$out" | grep -c -- '--plan solo muestra' || true)" "1" "--plan sobre CLAUDE_HOME que no es repo: dice que solo muestra"
+ck "$(echo "$out" | grep -c 'mcharness-out-marker' || true)" "0" "el marcador no aparece como fichero del plan"
+out="$(MCHARNESS_OUT="$tmp/out-git" CLAUDE_HOME="$tmp/dot-git" bash "$KIT/install.sh" 2>&1)"
+ck "$(echo "$out" | grep -c 'tu propio repo git' || true)" "1" "repo git con remoto: sigue diciendo «es tu propio repo git»"
+
+# --- Hallazgo E6-12: settings.json enlazado se fusiona a traves del enlace y sigue siendo enlace ---
+export CLAUDE_HOME="$tmp/dot-link"
+mkdir -p "$CLAUDE_HOME" "$tmp/repo-propio"
+echo '{"model":"mi-modelo","env":{"MIA":"1"}}' > "$tmp/repo-propio/settings.json"
+ln -s "$tmp/repo-propio/settings.json" "$CLAUDE_HOME/settings.json"
+set +e; bash "$KIT/install.sh" --apply >/dev/null 2>&1; rc=$?; set -e
+ck "$rc" "0" "--apply con settings.json enlazado: exit 0"
+ck "$([ -L "$CLAUDE_HOME/settings.json" ] && echo y || echo n)" "y" "--apply conserva settings.json como enlace"
+ck "$(readlink "$CLAUDE_HOME/settings.json")" "$tmp/repo-propio/settings.json" "--apply no cambia el destino del enlace"
+ck "$(jq -r '.model + "|" + .env.MIA' "$tmp/repo-propio/settings.json")" "mi-modelo|1" "el destino del enlace conserva lo tuyo (model, env)"
+ck "$(jq '.hooks | length > 0' "$tmp/repo-propio/settings.json")" "true" "el destino del enlace lleva los hooks del kit"
+ck "$(find "$CLAUDE_HOME/backups" -name settings.json | wc -l | tr -d ' ')" "1" "--apply con enlace deja backup del settings.json"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
