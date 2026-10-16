@@ -53,6 +53,24 @@ else
   ck n y "un hook desplegado modificado a mano produce WARN de deriva"
 fi
 
+# La deriva tambien cubre hooks/lib/ (nucleo.sh, del que dependen los hooks de estado) y sentinel/
+# (sentinel_preflight.py): antes solo se comparaba hooks/*, y esos dos podian divergir sin aviso.
+bash "$KIT/install.sh" >/dev/null 2>&1
+echo "# tocado a mano" >> "$CLAUDE_HOME/hooks/lib/nucleo.sh"
+echo "# tocado a mano" >> "$CLAUDE_HOME/sentinel/sentinel_preflight.py"
+out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
+       bash "$KIT/doctor.sh" 2>&1)"
+if echo "$out" | grep -qE '^WARN .*difieren de los del kit.*lib/nucleo\.sh'; then
+  ck y y "un hooks/lib/nucleo.sh desplegado modificado a mano produce WARN de deriva"
+else
+  ck n y "un hooks/lib/nucleo.sh desplegado modificado a mano produce WARN de deriva"
+fi
+if echo "$out" | grep -qE '^WARN .*difieren de los del kit.*sentinel_preflight\.py'; then
+  ck y y "un sentinel_preflight.py desplegado modificado a mano produce WARN de deriva"
+else
+  ck n y "un sentinel_preflight.py desplegado modificado a mano produce WARN de deriva"
+fi
+
 # La capa de IOCs se busca donde la busca el hook, no en una sola ruta fija.
 # El defecto: en una instalacion donde sentinel vive FUERA de CLAUDE_HOME, doctor avisaba de
 # que la capa estaba inactiva cuando en realidad cargaba 31 patrones de ruta. Un aviso falso

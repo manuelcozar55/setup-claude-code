@@ -189,4 +189,43 @@ ok "cuatro espacios cuentan: entran en la paridad" "$(nucleo_emitir "$F" | comma
 ok "cerca sin cerrar: avisa" "$(nucleo_emitir "$T/cerca2.md" | command grep -c '^\[cercas sin equilibrar: se ignoran')" 1
 ok "cerca sin cerrar: pide leer el fichero" "$(nucleo_emitir "$T/cerca2.md" | command grep -c '^\[LEE ')" 1
 ok "cercas equilibradas: sin aviso" "$(nucleo_emitir "$T/cerca4.md" | command grep -c 'cercas sin equilibrar')" 0
+
+# --- #8: .claude enlazado (o estado/) a otro sitio: los tres componentes se miran y la ruta resuelta queda en el repo ---
+mkdir -p "$T/ajeno/estado" "$T/r8a" "$T/r8b/.claude" "$T/r8c/.claude/estado" "$T/r8d/.claude/estado"
+printf '## Objetivo\nAJENO\n' >"$T/ajeno/estado/nucleo.md"
+ln -s "$T/ajeno" "$T/r8a/.claude"
+ln -s "$T/ajeno/estado" "$T/r8b/.claude/estado"
+ln -s "$T/ajeno/estado/nucleo.md" "$T/r8c/.claude/estado/nucleo.md"
+printf '## Objetivo\nPROPIO\n' >"$T/r8d/.claude/estado/nucleo.md"
+ok "enlazado: .claude es un symlink" "$(nucleo_enlazado "$T/r8a" && echo si)" si
+ok "enlazado: estado es un symlink" "$(nucleo_enlazado "$T/r8b" && echo si)" si
+ok "enlazado: nucleo.md es un symlink" "$(nucleo_enlazado "$T/r8c" && echo si)" si
+ok "enlazado: árbol propio sin enlaces → no" "$(nucleo_enlazado "$T/r8d" && echo si || echo no)" no
+ln -s "$T/r8d" "$T/r8e"
+ok "enlazado: la raíz misma puede ser un symlink" "$(nucleo_enlazado "$T/r8e" && echo si || echo no)" no
+
+# --- #17: con un nucleo grande el presupuesto se gastaba por orden y se perdían Paso actual y Siguiente acción ---
+for kb in 12 20; do
+  B=$T/res-$kb.md
+  { echo '# Estado'; for sx in Objetivo Invariantes Plan; do echo "## $sx"; for _ in $(seq 1 30); do echo "$sx: relleno de sección larga para gastar el presupuesto de la emisión"; done; done
+    echo '## Paso actual'; echo 'PASO-RESERVADO'; echo '## Siguiente acción'; echo 'SIGUIENTE-RESERVADA'
+    for sx in Pendientes 'Comandos de verificación' 'Ficheros tocados'; do echo "## $sx"; for _ in $(seq 1 $((kb * 5))); do echo "$sx: relleno de sección larga para gastar el presupuesto"; done; done; } >"$B"
+  S=$(nucleo_emitir "$B")
+  ok "nucleo de ${kb} KB: Paso actual y Siguiente acción presentes" "$(command grep -c 'PASO-RESERVADO\|SIGUIENTE-RESERVADA' <<<"$S")" 2
+  ok "nucleo de ${kb} KB: emisión ≤ 8 500 chars" "$([ "${#S}" -le 8500 ] && echo si)" si
+done
+# Con Objetivo, Invariantes y Plan al tope por sección (3 × 3 000 > 6 500): el orden antes dejaba fuera lo de después.
+C3=$T/res-largo.md
+{ echo '# Estado'; for sx in Objetivo Invariantes Plan; do echo "## $sx"; head -c 4000 /dev/zero | tr '\0' x; echo; done
+  echo '## Paso actual'; echo 'PASO-RESERVADO'; echo '## Siguiente acción'; echo 'SIGUIENTE-RESERVADA'; } >"$C3"
+ok "secciones previas al tope: Paso actual y Siguiente acción siguen" "$(nucleo_emitir "$C3" | command grep -c 'PASO-RESERVADO\|SIGUIENTE-RESERVADA')" 2
+
+# --- #22: el corte por bytes no parte un carácter UTF-8 (línea larga con ñ de 2 bytes; título y sección) ---
+U=$T/utf8.md
+{ printf '# '; printf 'a'; head -c 800 /dev/zero | tr '\0' x | sed 's/x/ñ/g'; echo
+  echo '## Objetivo'; printf 'a'; head -c 5000 /dev/zero | tr '\0' x | sed 's/x/ñ/g'; echo
+  echo '## Paso actual'; printf 'a'; head -c 2000 /dev/zero | tr '\0' x | sed 's/x/€/g'; echo; } >"$U"
+ok "corte: la emisión sigue siendo UTF-8 válido" "$(nucleo_emitir "$U" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1 && echo si)" si
+ok "corte: aun así se avisa del recorte" "$(nucleo_emitir "$U" | command grep -c '^\[recortado: sección incompleta')" 2
+
 exit $FAIL

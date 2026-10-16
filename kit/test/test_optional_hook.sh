@@ -91,6 +91,17 @@ brokenpy="$(mktemp)"; printf '#!/bin/sh\necho "ModuleNotFoundError: No module na
 if arranca "$KIT/sentinel/sentinel_preflight.py" "$brokenpy"; then ko "(i) da por bueno un ModuleNotFoundError con rc 0"; else ok; fi
 rm -r -- "$phome"
 
+# --- (j) narthex: un directorio de auditoria no escribible no puede silenciar el aviso al modelo ---
+# log() sin captura mandaba el OSError al except de main, que sale 0 sin imprimir: el unico canal del hook.
+nxhome="$(mktemp -d)"; mkdir -p "$nxhome/.claude"; : > "$nxhome/.claude/audit-logs"
+nxerr="$nxhome/stderr"
+nxout="$(printf '{"tool_name":"mcp__x__y","tool_response":{"text":"%s%s"}}' jail break \
+  | HOME="$nxhome" python3 "$KIT/claude/hooks/narthex-post-mcp.py" 2>"$nxerr")"; rc=$?
+check "narthex con auditoria no escribible sale 0" 0 "$rc"
+if [ -n "$(jq -r '.hookSpecificOutput.additionalContext // empty' <<<"$nxout")" ]; then ok; else ko "narthex con auditoria no escribible no emite el aviso"; fi
+if grep -q 'narthex' "$nxerr"; then ok; else ko "narthex con auditoria no escribible no avisa por stderr"; fi
+rm -r -- "$nxhome"
+
 rm -f "$blocker" "$allower" "$echoer" "$fakepy" "$brokenpy"
 echo "PASS=$pass FAIL=$fail"
 [ "$fail" -eq 0 ]
