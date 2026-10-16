@@ -45,7 +45,7 @@ ev "$R/sub" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 CP=$(ls "$R"/.claude/estado/checkpoint-compact-*.md 2>/dev/null)
 ok "pre-compact: checkpoint por sesión en .claude/estado de la raíz" "$([ -n "$CP" ] && echo si)" si
 ok "pre-compact: el checkpoint trae mensaje humano y pendientes" "$(command grep -c 'MENSAJE-HUMANO\|PENDIENTE-1' "$CP")" 2
-ok "pre-compact: .gitignore propio con checkpoint-compact-*" "$(cat "$R/.claude/estado/.gitignore" 2>/dev/null)" 'checkpoint-compact-*'
+ok "pre-compact: .gitignore propio con checkpoint-compact*" "$(cat "$R/.claude/estado/.gitignore" 2>/dev/null)" 'checkpoint-compact*'
 ok "pre-compact: git ignora el checkpoint" "$(git -C "$R" check-ignore -q "$CP" && echo si)" si
 L=$(tail -1 "$HOME/.claude/session-logs/nucleo-freshness.log" 2>/dev/null)
 ok "pre-compact: KPI «ts sesión ctx% edad_s»" "$(awk '{print NF, $2, $3, ($4 ~ /^[0-9]+$/)}' <<<"$L")" "4 s1 71 1"
@@ -157,7 +157,7 @@ mkdir -p "$R5/.claude/estado"; printf 'diario.md' >"$R5/.claude/estado/.gitignor
 ev "$R5" s7 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: con .gitignore previo el checkpoint queda ignorado" "$(git -C "$R5" status --short -uall)" "?? .claude/estado/.gitignore"
 ok "pre-compact: el .gitignore previo conserva lo suyo" "$(cat "$R5/.claude/estado/.gitignore")" "diario.md
-checkpoint-compact-*"
+checkpoint-compact*"
 
 # --- pre-compact: sin git y sin estado no crea nada; rota checkpoints de más de 14 días ---
 # Medido en una instalación vieja: 47 .claude/estado basura bajo el home, uno por cada cwd.
@@ -222,5 +222,16 @@ SS=$(cd "$MP" && bash "$H/session-start.sh")
 ok "session-start: sin entradas imprime un solo 0" "$(sed -n 's/.*Memory: \(.*\) entradas en.*/\1/p' <<<"$SS")" 0
 ok "session-start: encuentra la memoria de un cwd con . y _" "$(command grep -c 'Memory: .* entradas' <<<"$SS")" 1
 ok "session-start: sin memoria conserva el aviso" "$(cd "$T/sin-git" && bash "$H/session-start.sh" | command grep -c 'No project memory found')" 1
+
+# --- #25: rotación por número además de por edad (conserva 5; NUCLEO_CHECKPOINT_KEEP); #sin-sid: el respaldo sin hash también se ignora ---
+RR=$T/rr; mkdir -p "$RR/.claude/estado"; git -C "$RR" init -q; printf '## Objetivo\nx\n' >"$RR/.claude/estado/nucleo.md"
+for i in 1 2 3 4 5 6 7 8; do : >"$RR/.claude/estado/checkpoint-compact-n$i.md"; touch -d "-$((10 - i)) hours" "$RR/.claude/estado/checkpoint-compact-n$i.md"; done
+ev "$RR" s11 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "rotación por número: quedan 5 (incluido el nuevo)" "$(find "$RR/.claude/estado" -name "checkpoint-compact-*.md" | wc -l)" 5
+ok "rotación por número: se van los más viejos, no los recientes" "$([ ! -e "$RR/.claude/estado/checkpoint-compact-n1.md" ] && [ -e "$RR/.claude/estado/checkpoint-compact-n8.md" ] && echo si)" si
+ev "$RR" s11 "$TP" | NUCLEO_CHECKPOINT_KEEP=2 bash "$H/pre-compact.sh" 2>/dev/null
+ok "NUCLEO_CHECKPOINT_KEEP=2: quedan 2 y el nuevo es uno" "$(find "$RR/.claude/estado" -name "checkpoint-compact-*.md" | wc -l),$([ -e "$RR/.claude/estado/checkpoint-compact-$(printf s11 | sha256sum | cut -d' ' -f1).md" ] && echo si)" 2,si
+ev "$RR" "" "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "sin session_id: checkpoint-compact.md existe y git lo ignora" "$(git -C "$RR" check-ignore -q "$RR/.claude/estado/checkpoint-compact.md" && echo si)" si
 
 exit $FAIL

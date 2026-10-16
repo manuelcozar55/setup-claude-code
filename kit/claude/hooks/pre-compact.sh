@@ -42,9 +42,9 @@ FTMP=
 
 [ -d "$ESTADO" ] || exit 0
 GI=$ESTADO/.gitignore
-if [ ! -L "$GI" ] && ! command grep -qsx 'checkpoint-compact-\*' "$GI"; then
+if [ ! -L "$GI" ] && ! command grep -qsx 'checkpoint-compact\*' "$GI"; then
   [ -s "$GI" ] && [ -n "$(tail -c1 "$GI")" ] && echo >>"$GI"
-  echo 'checkpoint-compact-*' >>"$GI"
+  echo 'checkpoint-compact*' >>"$GI"
 fi
 OUT="$ESTADO/checkpoint-compact.md"
 [ -n "$SID" ] && OUT="$ESTADO/checkpoint-compact-$(printf '%s' "$SID" | sha256sum | cut -d' ' -f1).md"
@@ -82,6 +82,12 @@ trap 'exit 0' HUP INT TERM
 mv -f -- "$TMP" "$OUT" 2>/dev/null || { echo '[PreCompact] fallo al publicar checkpoint; anterior conservado' >&2; exit 0; }
 # Uno por sesión y con prompts de la persona: sin rotar se acumulan para siempre. Va después de
 # publicar el nuevo, así un fallo de arriba no deja sin checkpoint viejo ni nuevo; $OUT no se toca.
+# Por edad (14 días) y por número (NUCLEO_CHECKPOINT_KEEP, 5 por defecto, contando el nuevo): con muchas
+# sesiones al día la edad sola dejaba decenas de ficheros con prompts.
 find "$ESTADO" -maxdepth 1 -type f -name 'checkpoint-compact-*.md' ! -path "$OUT" -mtime +14 -delete 2>/dev/null
+KEEP=${NUCLEO_CHECKPOINT_KEEP:-5}
+case $KEEP in ''|*[!0-9]*|0) KEEP=5 ;; esac
+find "$ESTADO" -maxdepth 1 -type f -name 'checkpoint-compact-*.md' ! -path "$OUT" -printf '%T@ %p\n' 2>/dev/null \
+  | sort -rn | tail -n +"$KEEP" | cut -d' ' -f2- | while IFS= read -r f; do rm -f -- "$f"; done
 echo "[PreCompact] ($TRIGGER) checkpoint en $OUT" >&2
 exit 0
