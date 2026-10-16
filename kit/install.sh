@@ -134,7 +134,7 @@ install_file() {  # src dst
 # CLAUDE_CODE_AUTO_COMPACT_WINDOW y tres limites mas. Habia backup, pero un backup que hay que
 # descubrir no es una salvaguarda: es una autopsia.
 install_settings() {  # src dst
-  local src="$1" dst="$2" tmp
+  local src="$1" dst="$2" tmp real name
   # Sin fichero previo no hay nada que fusionar. El caso "sin jq" ya no llega hasta aqui:
   # la puerta de dependencia del principio aborta antes, sin tocar tu settings.json.
   if [ ! -f "$dst" ]; then
@@ -147,7 +147,11 @@ install_settings() {  # src dst
   # El temporal va en el MISMO directorio que $dst para que el mv de abajo sea un rename
   # atomico (no cruza sistemas de ficheros): un fallo a mitad del cp anterior dejaba tu
   # settings.json truncado, y no hay medio settings.json que valga.
-  tmp="$(mktemp "$dst.XXXXXX")"
+  # Un settings.json enlazado (p.ej. a un repo propio) se fusiona A TRAVES del enlace y el
+  # enlace se conserva: el mv de abajo sobre el enlace lo sustituia por un fichero regular.
+  name="${dst#"$CLAUDE_HOME"/}"; real="$dst"
+  [ -L "$dst" ] && real="$(readlink -f "$dst")"
+  tmp="$(mktemp "$real.XXXXXX")"
   if jq -s '
       .[0] as $kit | .[1] as $old |
       ($kit + $old)
@@ -156,13 +160,13 @@ install_settings() {  # src dst
       | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
           | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
           | .deny  = (($kit.permissions.deny  // []) + (($old.permissions.deny  // []) - ($kit.permissions.deny  // []))))
-    ' "$src" "$dst" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
-    if ! cmp -s "$tmp" "$dst"; then
-      mkdir -p "$(dirname "$BK/${dst#"$CLAUDE_HOME"/}")"
-      cp -p "$dst" "$BK/${dst#"$CLAUDE_HOME"/}"
-      echo "   backup: ${dst#"$CLAUDE_HOME"/} (fusionado: hooks del kit, permisos unidos, tu env y tu model intactos)"
-      chmod --reference="$dst" "$tmp"
-      mv "$tmp" "$dst"
+    ' "$src" "$real" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
+    if ! cmp -s "$tmp" "$real"; then
+      mkdir -p "$(dirname "$BK/$name")"
+      cp -p "$real" "$BK/$name"
+      echo "   backup: $name (fusionado: hooks del kit, permisos unidos, tu env y tu model intactos)"
+      chmod --reference="$real" "$tmp"
+      mv "$tmp" "$real"
     fi
     rm -f "$tmp"
   else
@@ -209,11 +213,41 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
 }
 
 run_diff_first() {
-  local out="${MCHARNESS_OUT:-$PWD/.mcharness-out}"
-  rm -rf "$out"
+  local out marker=".mcharness-out-marker" real_out real_home solape=0
+  if [ -n "${MCHARNESS_OUT:-}" ]; then
+    out="$MCHARNESS_OUT"
+    real_out="$(realpath -m -- "$out")"; real_home="$(realpath -m -- "$CLAUDE_HOME")"
+    # Solape = iguales o una contiene a la otra: generar el plan ahi pisaria la instalacion.
+    case "$real_out/" in "$real_home"/*) solape=1 ;; esac
+    case "$real_home/" in "$real_out"/*) solape=1 ;; esac
+    if [ "$solape" -eq 1 ]; then
+      echo "==> MCHARNESS_OUT ($out) solapa con CLAUDE_HOME ($CLAUDE_HOME): no se genera el plan ahi." >&2
+      exit 1
+    fi
+    if [ -e "$out" ] || [ -L "$out" ]; then
+      if [ -f "$out/$marker" ] && [ ! -L "$out" ]; then
+        # Solo un arbol que escribio este mismo script (lleva su marcador).
+        rm -rf -- "$out"
+      elif [ -d "$out" ] && [ ! -L "$out" ] && [ -z "$(ls -A -- "$out")" ]; then
+        :
+      else
+        echo "==> MCHARNESS_OUT ($out) existe y no es un plan anterior de este instalador (sin marcador): no se borra." >&2
+        exit 1
+      fi
+    fi
+  else
+    # Directorio nuevo y exclusivo por ejecucion: no hay nada previo que borrar. Se conserva
+    # a proposito: el paso 2 del texto de abajo manda copiar a mano desde ahi.
+    out="$(mktemp -d "${TMPDIR:-/tmp}/mcharness-plan.XXXXXX")"
+  fi
+  mkdir -p "$out"; : > "$out/$marker"
   install_kit_files "$out"
 
-  echo "==> $CLAUDE_HOME es un repositorio git con remoto configurado: no se escribe nada ahi."
+  if is_git_repo_with_remote; then
+    echo "==> $CLAUDE_HOME es un repositorio git con remoto configurado: no se escribe nada ahi."
+  else
+    echo "==> Modo --plan: no se escribe nada en $CLAUDE_HOME."
+  fi
   echo "    Arbol que se instalaria, generado en: $out"
   echo
 
@@ -228,7 +262,7 @@ run_diff_first() {
     else
       changed+=("$rel")
     fi
-  done < <(find "$out" -type f -print0)
+  done < <(find "$out" -type f ! -name "$marker" -print0)
 
   echo "==> nuevos (no existen en $CLAUDE_HOME):"
   if [ "${#new[@]}" -gt 0 ]; then printf '    %s\n' "${new[@]}"; else echo "    (ninguno)"; fi
@@ -242,10 +276,15 @@ run_diff_first() {
     diff -u "$CLAUDE_HOME/$rel" "$out/$rel" || true
   done
 
+  if is_git_repo_with_remote; then
+    echo
+    echo "==> $CLAUDE_HOME es tu propio repo git (con remoto): no se sobreescribe sin"
+    echo "    que lo veas. Que hacer:"
+  else
+    echo
+    echo "==> --plan solo muestra lo que se instalaria; $CLAUDE_HOME no se ha tocado. Que hacer:"
+  fi
   cat <<EOF
-
-==> $CLAUDE_HOME es tu propio repo git (con remoto): no se sobreescribe sin
-    que lo veas. Que hacer:
       1. Revisa arriba los ficheros nuevos/modificados (arbol completo en $out).
       2. Copia a mano lo que quieras adoptar de $out a $CLAUDE_HOME.
       3. Commitea esos cambios en TU repo (el privado), como de costumbre.
