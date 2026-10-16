@@ -7,8 +7,8 @@
 # Fixture: fixtures/guards-corpus.tsv, 7 columnas: id, clase, comando, esperado (B bloquear, A permitir,
 # ASK pedir confirmacion, ? sin expectativa), observado en E5, hook(s) que respondieron, veredicto de E5.
 # Es una copia del b2-results.tsv de E5 con una sola edicion: el home de la maquina de pruebas
-# (/home/mcozar/kit-test) pasa a /home/usuario/kit-test, porque scan-secrets.sh rechaza el nombre
-# de una persona concreta en el repo. Esas rutas solo las leen Sentinel y write-guard.
+# (el de una persona concreta) pasa a /home/usuario, porque scan-secrets.sh rechaza ese nombre en el
+# repo. Esas rutas solo las leen Sentinel y write-guard.
 #
 # Reglas, por fila:
 #   - Read/Write/Edit/MultiEdit/NotebookEdit: no son comandos Bash -> skip (Sentinel y write-guard: PR3/PR6).
