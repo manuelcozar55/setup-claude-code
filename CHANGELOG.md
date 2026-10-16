@@ -209,6 +209,7 @@ etiquetado.
   modelo que nombra. El aviso del 70 % declara el fin de fase como parada válida y el del 85 %
   remite al handoff automático, salvo con `COCKPIT_AUTO_HANDOFF=off`.
 
+- **`test_harness_structure.sh` sin gitleaks**: el grep de respaldo no llevaba `\<` delante de `sk-` y casaba con el fixture kebab «risk-mitigation-…» de `test_scan_secrets.sh`, así que la suite fallaba en cualquier máquina sin gitleaks (visto en Debian 13). Mismo límite de palabra que `kit/scan-secrets.sh`.
 - **Sentinel: los ficheros de clave se miran por palabra de shell y por su papel, no por
   regex sobre el comando.** Las seis regex de extensión (`.pem`, `.key`, `.p12`, `.pfx`,
   `.jks`, `.keystore`) miraban subcadenas y en la instalación real dieron 245 denegaciones
