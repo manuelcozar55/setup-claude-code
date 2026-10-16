@@ -45,10 +45,14 @@ fi
 # eso ya paso: dos guards llevaban meses distintos entre el kit y su copia de origen, con la
 # version endurecida en un lado y la antigua en el otro, y nadie lo noto.
 derivados=0; derivados_lista=""
-for src in "$KIT"/claude/hooks/*; do
+# hooks/lib/ y sentinel/ tambien: nucleo.sh y sentinel_preflight.py gobiernan hooks enteros y antes quedaban fuera.
+for src in "$KIT"/claude/hooks/* "$KIT"/claude/hooks/lib/* "$KIT"/sentinel/*; do
   [ -f "$src" ] || continue
-  nombre="$(basename "$src")"
-  dst="$CLAUDE_HOME/hooks/$nombre"
+  case "$src" in
+    "$KIT"/sentinel/*) nombre="sentinel/$(basename "$src")"; dst="$CLAUDE_HOME/$nombre" ;;
+    "$KIT"/claude/hooks/lib/*) nombre="lib/$(basename "$src")"; dst="$CLAUDE_HOME/hooks/$nombre" ;;
+    *) nombre="$(basename "$src")"; dst="$CLAUDE_HOME/hooks/$nombre" ;;
+  esac
   [ -f "$dst" ] || continue
   if ! cmp -s "$src" "$dst"; then
     derivados=$((derivados + 1)); derivados_lista="$derivados_lista $nombre"
