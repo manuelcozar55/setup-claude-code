@@ -882,7 +882,7 @@ bdc "--no-verify en mensaje"  "git commit -m \"skip --no-verify docs\""  allow
 bdc "-n en mensaje"           "git commit -m \"add -nightly build\""     allow
 bdc "git commit --no-edit"    "git commit --amend --no-edit"     allow
 # E7 PR2, hallazgo 6: la continuacion `\`+salto de linea partia el pipe-a-shell en dos lineas y esquivaba la regla.
-NL=$'\n'; BS='\'
+NL=$'\n'; BS=$'\\'
 bdc "continuacion antes del pipe"      "curl $U $BS${NL}$P $B"            deny
 bdc "continuacion tras el pipe"        "curl $U $P $BS${NL}$B"            deny
 bdc "continuacion + sudo"              "curl $U $BS${NL}$P sudo $B -"     deny
