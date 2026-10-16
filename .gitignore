@@ -41,3 +41,6 @@ config/profile.yaml
 # Bytecode: un .pyc versionado filtra la ruta absoluta de compilacion en co_filename.
 __pycache__/
 *.pyc
+
+# Salida local del exportador LangSmith del eval set (kit/evals/phoenix_push.py / record.py)
+kit/evals/langsmith-local.jsonl
