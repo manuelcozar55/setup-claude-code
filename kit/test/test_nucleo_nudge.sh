@@ -28,6 +28,7 @@ ok "70 %: fin de fase es parada válida" "$(run s6 p72 | ctx | command grep -c '
 C90=$(run s1 p90 | ctx)
 ok "85 %: cierra ya; handoff y /clear automáticos con cockpit" "$(command grep -c 'Cierra el turno ya: con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff\.' <<<"$C90")" 1
 ok "85 % ≤ 400 chars" "$([ "${#C90}" -le 400 ] && echo si)" si
+ok "85 % con COCKPIT_AUTO_HANDOFF=off: no promete handoff automático" "$(COCKPIT_AUTO_HANDOFF=off run s7 p90 | ctx | command grep -c 'Cierra el turno ya: el handoff automático está desactivado; la persona hará /handoff\.')" 1
 ok "otra sesión tiene sus propias bandas" "$(run s2 p60 | ctx | command grep -c '60 % del airbag')" 1
 # Compactar no cambia el session_id: sin rearme, solo avisaba en el primer ciclo de la sesión.
 run s5 p60 >/dev/null; run s5 p20 >/dev/null
