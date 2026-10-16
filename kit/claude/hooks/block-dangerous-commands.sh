@@ -38,6 +38,18 @@ command_allowlisted() {
 
 command_allowlisted && exit 0
 
+# El texto que se escanea sale de la normalizacion comun (lib/cmdnorm.sh): la continuacion
+# barra+salto de linea unida (partia el pipe-a-shell en dos lineas que grep miraba por separado) y los
+# comentarios quitados solo fuera de comillas. La allowlist de arriba compara el comando EXACTO, por
+# eso va antes y sobre el literal. Si la lib falta o awk falla se deniega: seguir con el literal
+# reabriria justo estos huecos.
+# shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" 2>/dev/null \
+  || deny "BLOCKED (fail-closed): falta lib/cmdnorm.sh junto al guard; reinstala el kit."
+cmdn_parse "$COMMAND" \
+  || deny "BLOCKED (fail-closed): awk no pudo normalizar el comando, asi que este guard no puede evaluarlo."
+COMMAND=$CMDN_TEXT
+
 ask() {
   jq -n --arg r "$1" '{
     hookSpecificOutput: {

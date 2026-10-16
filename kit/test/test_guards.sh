@@ -495,6 +495,7 @@ expect "branch-guard: master tras cd + && denegado" "$(run_branchguard 'cd /tmp 
 expect "branch-guard: -C antes de push a main denegado" "$(run_branchguard 'git -C /home/user/repo push origin main')" BLOCK
 expect "branch-guard: rama de feature NO denegada"  "$(run_branchguard 'git push origin feature/x')"             ALLOW
 
+
 # Las TRES grafias del borrado de una rama remota. Solo `--delete` estaba cubierta: contra rama
 # protegida las otras dos tambien caian, pero por branch-guard.sh (que bloquea por el nombre de
 # la rama), asi que medir solo contra `main` daba cobertura completa donde no la habia. Contra
@@ -536,6 +537,7 @@ expect "guard: rm -r sin forzar NO denegado"      "$(run_blockdc 'rm -r node_mod
 expect "destructive: rm forma larga en /home denegado" "$(run_destructive 'rm --recursive --force /home/usuario/docs')" BLOCK
 expect "destructive: find -delete bajo /home denegado" "$(run_destructive 'find /home/usuario/docs -delete')"    BLOCK
 expect "destructive: find -delete en /tmp NO denegado" "$(run_destructive 'find /tmp/build -delete')"            ALLOW
+
 
 # El check 4 (find -delete) bloqueaba con exit 2 pero era el unico que no llamaba a
 # log_block: el bloqueo ocurria y no quedaba registrado, asi que el log de auditoria daba
@@ -803,6 +805,14 @@ bdc "git commit -nm"          "git commit -nm x"                 deny
 bdc "--no-verify en mensaje"  "git commit -m \"skip --no-verify docs\""  allow
 bdc "-n en mensaje"           "git commit -m \"add -nightly build\""     allow
 bdc "git commit --no-edit"    "git commit --amend --no-edit"     allow
+# E7 PR2, hallazgo 6: la continuacion `\`+salto de linea partia el pipe-a-shell en dos lineas y esquivaba la regla.
+NL=$'\n'; BS='\'
+bdc "continuacion antes del pipe"      "curl $U $BS${NL}$P $B"            deny
+bdc "continuacion tras el pipe"        "curl $U $P $BS${NL}$B"            deny
+bdc "continuacion + sudo"              "curl $U $BS${NL}$P sudo $B -"     deny
+bdc "wget con continuacion"            "wget -qO- $U $BS${NL}$P $S"       deny
+bdc "pipe de curl comentado NO deniega" "curl $U # $P $B"                 allow
+bdc "comentario entre comillas no corta" "git commit -m \"fix #1\" && curl $U $P $B" deny
 wg_ctx() { # $1 = nº de líneas, $2 = ruta
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[2],"content":"x\n"*int(sys.argv[1])}}))' "$1" "$2" \
     | "$PY" "$KIT/claude/hooks/write-guard.py" | jq -r '.hookSpecificOutput.additionalContext // empty'
