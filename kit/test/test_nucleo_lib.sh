@@ -79,6 +79,13 @@ ok "transcript opus-5-5 + settings alias, env 250 000 → 217 000" "$(CLAUDE_COD
 jq -cn '{type:"assistant",message:{model:"claude-opus-4-6",usage:{input_tokens:100000}}}' >"$T/tm2.jsonl"
 ok "transcript opus-4-6 + settings alias, env 250 000 → 167 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='' nucleo_ctx "$T/tm2.jsonl")" "100000 59"
 ok "sin modelo en el transcript, alias en settings → 200k" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='' nucleo_ctx "$T/t.jsonl")" "100000 59"
+# El [1m] de env o settings vale solo para el modelo que nombra: haiku en el transcript con opus[1m] en settings sigue en 200k.
+jq -cn '{type:"assistant",message:{model:"claude-haiku-4-5",usage:{input_tokens:100000}}}' >"$T/tm3.jsonl"
+jq -cn '{type:"assistant",message:{model:"claude-sonnet-4-6",usage:{input_tokens:100000}}}' >"$T/tm4.jsonl"
+printf '{"model": "opus[1m]"}\n' >"$HOME/.claude/settings.json"
+ok "transcript haiku + settings opus[1m] → 167 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='' nucleo_ctx "$T/tm3.jsonl")" "100000 59"
+ok "transcript opus-4-6 + settings opus[1m] → 217 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='' nucleo_ctx "$T/tm2.jsonl")" "100000 46"
+ok "transcript sonnet-4-6 + su [1m] en el env → 217 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='claude-sonnet-4-6[1m]' nucleo_ctx "$T/tm4.jsonl")" "100000 46"
 # Forma vista en vivo (15-oct): la tarea bajo «## TAREA ACTUAL» con sus secciones en ###. Solo
 # con ## se inyectaba el título (148 chars) y el modelo retomaba a ciegas.
 A=$T/anidado.md

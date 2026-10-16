@@ -26,7 +26,7 @@ nucleo_enlazado() { [ -L "$1/.claude/estado" ] || [ -L "$1/.claude/estado/nucleo
 # El id del último assistant del transcript cuenta también (settings.json suele traer un alias pelado
 # como «opus», que no dice la ventana). Un env mayor no sube el airbag; sin env (o no numérico) manda la ventana del modelo.
 nucleo_ctx() {
-  local w=${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-} m=200000 t tm id
+  local w=${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-} m=200000 t tm id s
   # Sin `timeout`: 40 líneas no cuelgan a jq, y en coreutils de Rust arrancarlo cuesta ~100 ms.
   read -r t tm < <(tail -n 40 "$1" 2>/dev/null \
     | jq -rR 'fromjson? | select(.type=="assistant" and .message.usage!=null) | .message
@@ -34,7 +34,12 @@ nucleo_ctx() {
         | select($n>0) | "\($n) \(.model // "-")"' 2>/dev/null \
     | tail -1)
   [ -n "$t" ] || return 0
-  id="$tm ${ANTHROPIC_MODEL:-} $(sed -n 's/.*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.claude/settings.json" 2>/dev/null)"
+  id=$tm
+  # Un id configurado cuenta entero si el transcript no trae modelo; si lo trae, solo por su [1m]
+  # y solo si nombra ese modelo (haiku en el transcript con opus[1m] en settings sigue en 200k).
+  for s in "${ANTHROPIC_MODEL:-}" "$(sed -n 's/.*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.claude/settings.json" 2>/dev/null)"; do
+    case $tm:$s in -:?* | *"${s%%\[1m\]*}"*:*'[1m]'*) id="$id $s" ;; esac
+  done
   case $id in
     *'[1m]'* | *opus-4[-.][7-9]* | *opus-[5-9]* | *fable* | *mythos* | *sonnet-[5-9]*) m=1000000 ;;
   esac
