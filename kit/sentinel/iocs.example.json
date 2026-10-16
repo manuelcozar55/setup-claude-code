@@ -1,5 +1,6 @@
 {
   "_comment": "Plantilla de ejemplo para activar la capa IOC de Sentinel. Copia este fichero a $HOME/.claude/hooks/iocs.json y sustituye las entradas de ejemplo por tus propios indicadores (dominios/IPs/patrones reales que quieras bloquear). El kit no incluye un iocs.json real para no filtrar indicadores personales. Ver docs/05-security.md.",
+  "min_preflight_version": 2,
   "sensitive_paths": {
     "patterns": [
       "$HOME/.ssh",

@@ -21,7 +21,12 @@ import os
 import re
 import sys
 from datetime import datetime, timezone
+from fnmatch import fnmatchcase
 from pathlib import Path
+
+# Contract with iocs.json ("min_preflight_version"): bump it when this code starts to rely on
+# something the data file must carry, and doctor.sh warns when the installed code is older.
+PREFLIGHT_VERSION = 2
 
 
 # ── IOC loading ──────────────────────────────────────────────────────────────
@@ -160,7 +165,16 @@ PROTECTED_CONFIG = [
 
 # Fields that carry a path/target. Shared so the never-exempt checks and the
 # sensitive-path check can never drift apart on what counts as a "target".
-PATH_FIELDS = ["file_path", "path", "paths", "command", "url", "endpoint", "uri", "href", "target"]
+# glob/pattern/notebook_path/file/filename are what Grep, Glob, NotebookEdit and
+# third-party tools name their path in; the alternative (scanning every string of
+# tool_input) would read the content of every Write/Edit, which this guard avoids on
+# purpose. Limit: a tool that calls its path something else is not seen.
+PATH_FIELDS = ["file_path", "path", "paths", "notebook_path", "file", "filename", "glob", "pattern",
+               "command", "url", "endpoint", "uri", "href", "target"]
+# The fields that hold ONE path and nothing else: the only ones an allowlisted path may
+# exempt. A command or URL is text, and its first word living under /tmp says nothing
+# about the arguments that follow it.
+EXEMPTABLE_FIELDS = {"file_path", "path", "paths", "notebook_path", "file", "filename", "glob", "pattern"}
 
 
 def always_deny_hit(tool_input: dict) -> str | None:
@@ -191,13 +205,13 @@ def _url_hosts(text: str) -> set[str]:
     return hosts
 
 
-def is_allowed_domain(text: str, allowed: list[str]) -> bool:
-    """Match on the parsed host, not a raw substring.
+def is_allowed_domain(url: str, allowed: list[str]) -> bool:
+    """Match one URL on its parsed host, not a raw substring.
 
     'github.com.evil-phish.tk' no longer counts as allowlisted just because it
     contains the substring 'github.com'.
     """
-    hosts = _url_hosts(text)
+    hosts = _url_hosts(url)
     if not hosts:
         return False
     for d in allowed:
@@ -208,6 +222,28 @@ def is_allowed_domain(text: str, allowed: list[str]) -> bool:
             if host == dl or host.endswith("." + dl):
                 return True
     return False
+
+
+def without_allowed_urls(text: str, allowed: list[str]) -> str:
+    """text with every allowlisted URL cut out, each URL judged on its own.
+
+    An allowed host somewhere in a command (a comment, a second URL, a query value) used to
+    exempt the whole command; now it exempts only its own URL, and the rest is still checked.
+    A URL ends at whitespace, a quote or the next scheme, so one embedded in another's query
+    is a URL of its own.
+    """
+    starts = [m.start() for m in re.finditer(r"https?://", text)]
+    out, last = [], 0
+    for i, st in enumerate(starts):
+        end = starts[i + 1] if i + 1 < len(starts) else len(text)
+        m = re.search(r"[\s\"'`<>)]", text[st:end])
+        if m:
+            end = st + m.start()
+        if is_allowed_domain(text[st:end], allowed):
+            out.append(text[last:st])
+            last = end
+    out.append(text[last:])
+    return " ".join(out)
 
 
 def collect_strings(obj, depth: int = 0) -> list[str]:
@@ -228,14 +264,19 @@ def collect_strings(obj, depth: int = 0) -> list[str]:
     return []
 
 
-def collect_fields(tool_input: dict, keys: list[str]) -> list[str]:
-    """Extract strings from specific top-level keys only, avoiding file content."""
+def collect_pairs(tool_input: dict, keys: list[str]) -> list[tuple[str, str]]:
+    """(key, string) for specific top-level keys only, avoiding file content."""
     out = []
     for key in keys:
         val = tool_input.get(key)
         if val is not None:
-            out.extend(collect_strings(val))
+            out.extend((key, t) for t in collect_strings(val))
     return out
+
+
+def collect_fields(tool_input: dict, keys: list[str]) -> list[str]:
+    """Extract strings from specific top-level keys only, avoiding file content."""
+    return [t for _, t in collect_pairs(tool_input, keys)]
 
 
 # ── Key files by name ────────────────────────────────────────────────────────
@@ -977,6 +1018,74 @@ def key_file_hit(text: str, rx, real: bool = True, depth: int = 0, budget: list 
 
 # ── Checks ───────────────────────────────────────────────────────────────────
 
+_WORD_RUN = re.compile(r"[^\s'\"`;&|<>():=]+")
+_WILD_ONLY = re.compile(r"\.?[*?]+")
+_GENERIC_BASENAMES = {"config", "known_hosts"}
+
+
+def _path_forms(text: str, is_path: bool) -> dict[str, bool]:
+    """The text itself and every shell word in it, brace groups expanded, normalized; each
+    with whether it is a whole path (a path field, or a word with a slash) and not a bare word."""
+    words = {text: is_path}
+    for w in _WORD_RUN.findall(text):
+        for x in (_brace_expand(w) or [w]) if "{" in w else [w]:
+            words[x] = words.get(x, False) or "/" in x
+    out: dict[str, bool] = {}
+    for w, whole in words.items():
+        if w:
+            f = os.path.normpath(expand(w))
+            out[f] = out.get(f, False) or whole
+    return out
+
+
+def _comp_match(tc: str, pc: str, inside_dotdir: bool) -> bool:
+    """One component of a glob against one of a path, as the shell reads it: a wildcard never
+    matches a leading dot, and a bare * or ? names nothing in particular unless it is the
+    file level of a dot directory (~/.aws/* reads credentials; /etc/* or ~/.config/* are listings)."""
+    if pc.startswith(".") and not tc.startswith("."):
+        return False
+    if _WILD_ONLY.fullmatch(tc):
+        return inside_dotdir
+    return fnmatchcase(pc, tc)
+
+
+def _glob_reaches(glob: str, path: str) -> bool:
+    """Does the glob name path, or something inside it, or a parent of it (an ancestor glob
+    reads the path too)? Components are compared up to the shorter of the two."""
+    gc, pc = glob.strip("/").split("/"), path.strip("/").split("/")
+    n = min(len(gc), len(pc))
+    return n > 0 and all(_comp_match(gc[i], pc[i], i == len(pc) - 1 and i > 0 and pc[i - 1].startswith(".")) for i in range(n))
+
+
+def _sensitive_path_hit(text: str, patterns: list[str], is_path: bool) -> str | None:
+    """The sensitive_paths pattern that text reaches once normalized ('..', '~', $HOME), as a
+    glob (~/.s*/id_rsa, **/.ssh/*) or by the base name of a credential file (id_ed25519).
+    The base name alone counts only for a whole path: as a bare word of a command it is as
+    often prose (a commit message, a grep pattern)."""
+    home = os.path.expanduser("~").rstrip("/")
+    pats = [(p, os.path.normpath(expand(p))) for p in patterns if isinstance(p, str) and p.strip()]
+    bases = {os.path.basename(pn) for _, pn in pats
+             if os.path.basename(os.path.dirname(pn)) == ".ssh" and os.path.basename(pn) not in _GENERIC_BASENAMES}
+    for form, whole in _path_forms(text, is_path).items():
+        for p, pn in pats:
+            if pn and pn != "." and pn in form:
+                return p
+        if re.search(r"[*?\[]", form):
+            rel = form.lstrip("/") if not form.startswith("/") else None
+            while rel and re.fullmatch(r"\*+", rel.split("/")[0]):
+                rel = rel.partition("/")[2]
+            for p, pn in pats:
+                if form.startswith("/") and _glob_reaches(form, pn):
+                    return p
+                if rel and "/" in rel and home and pn.startswith(home + "/") and _glob_reaches(rel, pn[len(home) + 1:]):
+                    return p
+        base = os.path.basename(form)
+        lit = re.split(r"[*?\[]", base)[0]
+        if whole and (base in bases or (lit != base and len(lit) >= 2 and any(fnmatchcase(b, base) for b in bases))):
+            return form
+    return None
+
+
 def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
     patterns = iocs.get("sensitive_paths", {}).get("patterns", [])
     regexes = iocs.get("sensitive_paths", {}).get("regex_patterns", [])
@@ -991,17 +1100,21 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
     key_rx = _key_file_rx(exts or DEFAULT_KEY_EXTS)
     key_note = "" if exts else " (default extensions: iocs.json has no valid key_file_extensions)"
 
-    for text in collect_fields(tool_input, PATH_FIELDS):
+    for key, text in collect_pairs(tool_input, PATH_FIELDS):
         for rx in ALWAYS_DENY_PATHS:
             m = re.search(rx, text)
             if m:
                 return (f"never-exempt credential material: {m.group(0)}", "critical")
-        # The allowlist may not exempt the guards or their config.
-        if not protected_config_hit({"path": text}) and is_allowed_path(text, allowed):
+        # The allowlist may not exempt the guards or their config, and only a field that is a
+        # path can be exempted: never a command, whatever its first word is.
+        if key in EXEMPTABLE_FIELDS and not protected_config_hit({"path": text}) and is_allowed_path(text, allowed):
             continue
         for p in patterns:
             if path_matches(text, p):
                 return (f"sensitive path: {p}", "critical")
+        hit = _sensitive_path_hit(text, patterns, key in EXEMPTABLE_FIELDS)
+        if hit:
+            return (f"sensitive path: {hit}", "critical")
         for rx in regexes:
             if _search(rx, text):
                 return (f"sensitive path pattern", "critical")
@@ -1011,20 +1124,41 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
     return (None, None)
 
 
+_ENV_REF = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
+_PRINTENV = re.compile(r"\bprintenv\b((?:[ \t]+[^\s;&|<>()]+)*)")
+_ENV_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _env_read(text: str) -> set[str]:
+    """Names of the variables the command reads: $X, ${X...} and the operands of printenv."""
+    names = set(_ENV_REF.findall(text))
+    for m in _PRINTENV.finditer(text):
+        names.update(w.strip("'\"") for w in m.group(1).split() if not w.startswith("-"))
+    return names
+
+
 def check_sensitive_env(tool_input: dict, iocs: dict, allowlist: dict):
     patterns = iocs.get("sensitive_env_vars", {}).get("patterns", [])
     regexes = iocs.get("sensitive_env_vars", {}).get("regex_patterns", [])
     allowed_vars = (allowlist.get("env_vars") or []) + iocs.get("allowlist", {}).get("env_vars", [])
 
+    def sensitive(name: str) -> bool:
+        return name not in allowed_vars and (name in patterns or any(_search(rx, name) for rx in regexes))
+
     for text in collect_fields(tool_input, ["command", "url"]):
+        # The regexes judge one NAME at a time: matched against the whole command, an
+        # end anchor ('_TOKEN$') only ever saw the last word of it.
+        for name in sorted(_env_read(text)):
+            if sensitive(name):
+                return (f"sensitive env var read: {name}", "high")
+        # Only named (a commit message, an assignment): not a read, so a warning.
         for var in patterns:
             if var in allowed_vars:
                 continue
             if re.search(rf"\b{re.escape(var)}\b", text):
                 return (f"sensitive env var: {var}", "medium")
-        for rx in regexes:
-            if _search(rx, text):
-                return ("sensitive env var pattern", "medium")
+        if any(sensitive(w) for w in _ENV_WORD.findall(text)):
+            return ("sensitive env var pattern", "medium")
     return (None, None)
 
 
@@ -1063,8 +1197,7 @@ def check_suspicious_network(tool_input: dict, iocs: dict, allowlist: dict):
             if entry.get("domain", "").lower() in text.lower():
                 return (f"known-malicious domain: {entry['domain']}", "critical")
 
-        if is_allowed_domain(text, allowed_domains):
-            continue
+        text = without_allowed_urls(text, allowed_domains)
 
         for ps in pastebin:
             if ps.lower() in text.lower():
@@ -1088,6 +1221,8 @@ def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
     for text in collect_fields(tool_input, ["command"]):
         if text in allowed_cmds:
             continue
+        # A backslash-newline is a continuation: the shell reads it as one line, so must the regexes.
+        text = re.sub(r"\\\r?\n[ \t]*", " ", text)
         for rx in patterns:
             if _search(rx, text):
                 return (f"dangerous command pattern", "critical")
@@ -1099,10 +1234,19 @@ def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
 SEVERITY_RANK = {"medium": 1, "high": 2, "critical": 3}
 
 
+def effective_input(payload: dict) -> dict:
+    """tool_input as the checks must see it. Grep's pattern is a regex over file content, not
+    a path; the same word names the path in Glob, so it is dropped for Grep alone."""
+    tool_input = payload.get("tool_input") or payload.get("input") or {}
+    if (payload.get("tool_name") or payload.get("tool")) == "Grep":
+        tool_input = {k: v for k, v in tool_input.items() if k != "pattern"}
+    return tool_input
+
+
 def decide(payload: dict):
     iocs = load_iocs()
     allowlist = load_user_allowlist()
-    tool_input = payload.get("tool_input") or payload.get("input") or {}
+    tool_input = effective_input(payload)
 
     checks = [
         check_sensitive_paths,
@@ -1156,7 +1300,7 @@ def main() -> None:
         sys.exit(2)
 
     tool_name = payload.get("tool_name") or payload.get("tool", "<unknown>")
-    tool_input = payload.get("tool_input") or payload.get("input") or {}
+    tool_input = effective_input(payload)
     decision, reason = decide(payload)
 
     if decision == "allow":
