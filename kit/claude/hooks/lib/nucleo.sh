@@ -84,12 +84,16 @@ nucleo_emitir() {
       viva = 0; dentro = 0
       if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; sale(substr($0, 1, 200)) } else fuera++; next }
       if ($0 ~ /^## /) padre = (c != "")
-      if (c == "" || visto[c]++) { fuera++; next }
+      # Repetido: solo entra si la primera copia quedó vacía (plantilla con «## Pendientes» y, después, el
+      # «## Pendientes y riesgos» de /handoff); con contenido sigue ganando la primera.
+      if (c == "" || (visto[c] && con[c])) { fuera++; next }
+      visto[c] = 1; actual = c
       if (usado + length($0) > tope) { omitidas = omitidas " «" substr(t, 1, 80) "»"; next }
       viva = 1; sale($0); next
     }
     viva {
       resto = sec - dentro; if (tope - usado < resto) resto = tope - usado
+      if ($0 ~ /[^ \t]/) con[actual]++
       if (length($0) < resto) { sale($0); dentro += length($0) + 1; next }
       sale(substr($0, 1, resto > 0 ? resto : 0)); viva = 0
       sale("[recortado: sección incompleta.]"); recortes++

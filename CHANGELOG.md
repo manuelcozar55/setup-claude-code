@@ -209,6 +209,7 @@ etiquetado.
   modelo que nombra. El aviso del 70 % declara el fin de fase como parada válida y el del 85 %
   remite al handoff automático, salvo con `COCKPIT_AUTO_HANDOFF=off`.
 
+- **`nucleo_emitir` perdía los pendientes de `/handoff`**: con un `nucleo.md` sembrado desde la plantilla (`## Pendientes` vacío) el handoff escribe `## Pendientes y riesgos` más abajo y, al ganar la primera copia, lo inyectado traía la sección vacía y ninguna señal más que «fuera de forma» (visto e2e en Debian con Haiku y Sonnet). Ahora una sección repetida entra si la primera quedó vacía; con contenido sigue ganando la primera. Tests en `test_nucleo_lib.sh`; verificado con gawk y mawk.
 - **`test_harness_structure.sh` sin gitleaks**: el grep de respaldo no llevaba `\<` delante de `sk-` y casaba con el fixture kebab «risk-mitigation-…» de `test_scan_secrets.sh`, así que la suite fallaba en cualquier máquina sin gitleaks (visto en Debian 13). Mismo límite de palabra que `kit/scan-secrets.sh`.
 - **Sentinel: los ficheros de clave se miran por palabra de shell y por su papel, no por
   regex sobre el comando.** Las seis regex de extensión (`.pem`, `.key`, `.p12`, `.pfx`,
