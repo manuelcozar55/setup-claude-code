@@ -5,6 +5,8 @@
 ## Qué hace
 
 - **`/handoff`**: pide al modelo las secciones del estado que cambian, las fusiona en `.claude/estado/nucleo.md` y limpia el contexto (`/clear`); la sesión nueva lo recibe del hook `SessionStart`.
+- **Handoff automático**: al cerrar un turno con el contexto al 70 % del límite de autocompactación, el mod guarda el estado con el handoff de siempre, hace `/clear` y deja «sigue…» escrito en el prompt.
+- **`/nueva <tarea>`**: cambia de tarea. Archiva el `nucleo.md` actual, limpia el contexto y deja la tarea nueva en el prompt.
 - **Agent Dock**: un panel lateral con la misión en curso y los subagentes en cuatro secciones fijas (trabajando, en cola, parados, hechos). También lleva el vigía de contexto con handoff sobre el prompt y `/simple` (modo de pasos con resumen corto).
 
 ## Cómo se carga
@@ -48,7 +50,51 @@ flowchart LR
   E -->|"no"| G["/clear"]
   G --> H["Hook SessionStart(clear):<br/>nucleo.md como datos"]
   G -.->|"falla"| I["Escribe /clear a mano"]
+  T["Turno principal cerrado<br/>(contexto ≥ umbral)"] -->|"automático"| B
+  G -->|"automático"| P["Rellena el prompt:<br/>«sigue con la Siguiente acción»"]
 ```
+
+## Handoff automático
+
+Se activa solo, sin comando.
+
+**Disparo.** Al cerrar un turno del bucle principal (`reason` `answer`) con el contexto en o por encima del umbral, un porcentaje del límite de autocompactación. El mod:
+
+1. Guarda el estado con el mismo handoff que `/handoff`.
+2. Hace `/clear` desde `$.clock.after`: dentro del hook que el turno espera, el motor lo rechaza.
+3. Deja «sigue con la Siguiente acción de .claude/estado/nucleo.md» en el prompt, sin enviarlo.
+
+Rellena el prompt (`$.prompt.fill`) y no lo envía (`prompt.submit`) porque un prompt enviado tras `/clear` se perdía (14-oct). La sesión nueva recibe `nucleo.md` del hook `SessionStart`, como en `/handoff`; tú pulsas Enter.
+
+**Configuración.** Variable `COCKPIT_AUTO_HANDOFF`:
+
+| Valor | Efecto |
+|---|---|
+| `off` | Desactivado. |
+| Entero de 50 a 95 | Umbral en % del límite de autocompactación. |
+| Cualquier otra cosa, o vacío | 70. |
+
+**Cuándo no actúa.**
+
+- En un subagente: solo cuenta el bucle principal.
+- Con subagentes o teammates sin terminar.
+- Con un handoff en curso o en error.
+- Con la raíz en `$HOME` o fuera de un repo: ese `nucleo.md` es compartido entre tareas y el handoff fusionaría en él el estado de otra. Sigue así hasta el plan v3 («`~` sin estado»).
+- Si empieza otro turno entre el guardado y el `/clear`: no limpia, deja el documento guardado y avisa.
+
+**Veto de compactación.** Si la autocompactación salta a mitad de turno (`session.compact` con `trigger` auto), el mod la pospone para que el handoff llegue al cerrar el turno, que entonces lo dispara aunque no se haya llegado al umbral. El techo es `min(1,5 × límite, 0,5 × ventana real del modelo)`. Pasado el techo, compacta como siempre. En ventanas de 200k el techo queda por debajo del límite y el veto no actúa. Cede también en subagentes, con `off`, con la raíz en `$HOME`, con el handoff en error y si la lectura del contexto falla.
+
+## `/nueva`
+
+```
+/nueva <la tarea nueva>
+```
+
+Cambia de tarea sin arrastrar el contexto. Si hay `nucleo.md`, guarda primero el estado con el handoff, lo mueve a `.claude/estado/archivo/nucleo-<sello UTC>.md`, hace `/clear` y deja la tarea nueva escrita en el prompt. Sin argumento muestra el uso.
+
+- Con la raíz en `$HOME` o fuera de un repo no hay estado propio por tarea: solo hace `/clear` y deja la tarea en el prompt, con el aviso de que la sesión nueva puede recibir el `nucleo.md` compartido.
+- No corre con un turno o un handoff en marcha: repítelo cuando termine.
+- Si el handoff falla o no puede archivar, no limpia.
 
 ## Agent Dock
 
@@ -63,7 +109,7 @@ Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`.
 ```bash
 cd kit/mods/cockpit
 claude plugin validate .                          # Validation passed
-claude plugin test .                              # 35 pass, 0 fail
+claude plugin test .                              # 57 pass, 0 fail (21 nuevos en tests/handoff.test.tsx)
 pnpm dlx --package=typescript@5 tsc -p .          # rc=0
 bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin red ni claude
 ```
@@ -75,6 +121,7 @@ bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin r
 ## Limitaciones conocidas
 
 - **`/clear` lanzado desde el mod no está verificado en una sesión interactiva.** Se comprobó de punta a punta con el arnés de tests, no a mano. Si falla, el mod deja el documento guardado; escribe `/clear` y luego «sigue».
+- **Sin verificar en una sesión interactiva** (solo con el arnés de tests): el `/clear` lanzado desde el temporizador tras un turno, el relleno del prompt después de él, el comportamiento del motor tras varios vetos de compactación seguidos y el coste del fork del handoff al 70 % de contexto.
 - **El clic sobre el dock solo llega en pantalla completa**: es donde el terminal reporta clics (y donde existe el dock lateral). Con el pane encajado sobre el prompt, enfócalo (`ctrl+x tab`) y usa la tecla `m` o Tab + Enter.
 - El redactor de secretos es un último recurso parcial; revisa el documento antes de compartirlo.
 - **El documento hereda los permisos del directorio del proyecto**: se crea con los permisos por defecto, no 0600, y sin creación exclusiva (la API `$.fs.write(path, text)` no admite modo). Está en el árbol del proyecto; si git no lo ignora ya, el mod lo añade a `.git/info/exclude` (local, no se versiona).

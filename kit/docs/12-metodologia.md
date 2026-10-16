@@ -121,6 +121,8 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
 - **`/handoff`** (mod [`cockpit`](11-cockpit.md)) escribe un documento de traspaso —objetivo,
   invariantes, plan, paso actual, pendientes, comandos de verificación—, limpia el contexto y
   retoma desde él. Con `solo` guarda el documento y no limpia nada.
+  El cockpit lo lanza solo al cerrar un turno con el contexto al 70 % del límite de autocompactación
+  (`COCKPIT_AUTO_HANDOFF=off` lo desactiva); `/nueva <tarea>` archiva el estado y cambia de tarea.
 - **`/retro`** cierra el ciclo: revisa una sesión y propone mejoras al **entorno** del agente
   (punteros de navegación, comprobaciones automáticas, estándares de revisión, tamaño de los
   ficheros de guía, acceso a información), ordenadas por gravedad. Aplicarlas es un cambio
