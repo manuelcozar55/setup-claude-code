@@ -328,7 +328,7 @@ expect "clave: lua -e os.execute"                "$(run_sentinel $'lua -e \'os.e
 expect "clave: Rscript -e system"                "$(run_sentinel $'Rscript -e \'system(readLines("stdin"))\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
 expect "clave: bun -e Bun.spawn"                 "$(run_sentinel $'bun -e \'Bun.spawn(["sh"])\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
 expect "lua script.lua permitido"                "$(run_sentinel $'lua script.lua <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
-expect "perl con evaluate permitido"             "$(run_sentinel $'perl -ne \'print if /evaluate/\' <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
+expect "perl con evaluate|execution permitido"   "$(run_sentinel $'perl -ne \'print if /evaluate|execution/\' <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
 expect "python -c con retrieval permitido"       "$(run_sentinel $'python3 -c \'print("retrieval")\' <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
 expect "clave: node child_process.execSync"      "$(run_sentinel $'node -e \'require("child_process").execSync(require("fs").readFileSync(0))\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
 expect "clave: perl -ne eval"                    "$(run_sentinel $'perl -ne \'eval\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
@@ -381,6 +381,52 @@ expect "deno run /tmp/exec.ts permitido"         "$(run_sentinel $'deno run /tmp
 expect "clave: unshare -R / sh run.sh"           "$(run_sentinel $'cat <<EOF >run.sh; unshare -R / sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
 expect "clave: chroot --userspec / sh run.sh"    "$(run_sentinel $'cat <<EOF >run.sh; chroot --userspec=u:g / sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
 expect "notas y unshare -R / git add permitido"  "$(run_sentinel $'cat > notes.md <<\'EOF\' && unshare -R / git add notes.md\nsee opts.key\nEOF')" ALLOW
+# Ronda 3-sexies. Coste declarado, pinado para que una relajacion o un endurecimiento se noten: un
+# ejecutor en una linea posterior de la misma llamada hace del cuerpo comandos (no se siguen nombres).
+expect "coste declarado: notas y python3 gen.py"  "$(run_sentinel $'cat > notes.md <<\'EOF\'\nsee opts.key and config.pem\nEOF\npython3 gen.py')" "$IOCS_WANT"
+expect "coste declarado: commit -F - y check.sh" "$(run_sentinel $'git commit -F - <<\'EOF\'\nfix: rotate server.key\nEOF\nbash scripts/check.sh')" "$IOCS_WANT"
+# Una palabra con barra se clasifica por su basename: herramienta conocida en un directorio bin no
+# ejecuta; desconocida, o fuera de un directorio bin, si.
+expect "notas y /usr/local/bin/git add permitido" "$(run_sentinel $'cat > notes.md <<\'EOF\' && /usr/local/bin/git add notes.md\nsee opts.key and config.pem\nEOF')" ALLOW
+expect "notas y /opt/homebrew/bin/gh permitido"  "$(run_sentinel $'cat > notes.md <<\'EOF\' && /opt/homebrew/bin/gh pr view 1\nsee opts.key and config.pem\nEOF')" ALLOW
+expect "notas y /snap/bin/code permitido"        "$(run_sentinel $'cat > notes.md <<\'EOF\' && /snap/bin/code .\nsee opts.key and config.pem\nEOF')" ALLOW
+expect "notas; cd && /usr/local/bin/pnpm permitido" "$(run_sentinel $'cat > notes.md <<\'EOF\'; cd /tmp && /usr/local/bin/pnpm test\nsee opts.key and config.pem\nEOF')" ALLOW
+expect "notas y \$NVM/bin/pnpm permitido"        "$(run_sentinel $'cat > notes.md <<\'EOF\' && $NVM/bin/pnpm test\nsee opts.key and config.pem\nEOF')" ALLOW
+expect "clave: >run.sh; ./run.sh"                "$(run_sentinel $'cat <<EOF >run.sh; ./run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >x.js; /usr/local/bin/node x.js"  "$(run_sentinel $'cat <<EOF >x.js; /usr/local/bin/node x.js\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >git; ./git fuera de un bin"      "$(run_sentinel $'cat <<EOF >git; ./git\ncat server.key\nEOF')" "$IOCS_WANT"
+# Racimo de flags de fd: x o X antes de la primera letra que toma valor (-ex es -e x).
+expect "clave: >run.sh; fd -Hx sh run.sh"        "$(run_sentinel $'cat <<EOF >run.sh; fd -Hx sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >run.sh; fdfind -HIx sh run.sh"   "$(run_sentinel $'cat <<EOF >run.sh; fdfind -HIx sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >run.sh; fd -HX sh"               "$(run_sentinel $'cat <<EOF >run.sh; fd -HX sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "notas y fd -e md permitido"              "$(run_sentinel $'cat > notes.md <<\'EOF\' && fd -e md\nsee opts.key and config.pem\nEOF')" ALLOW
+expect "notas y fd -ex notes permitido"          "$(run_sentinel $'cat > notes.md <<\'EOF\' && fd -ex notes\nsee opts.key and config.pem\nEOF')" ALLOW
+# Aridad de unshare, setpriv y nsenter.
+expect "clave: unshare --propagation private sh" "$(run_sentinel $'cat <<EOF >run.sh; unshare --propagation private sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: unshare --setgroups deny sh"      "$(run_sentinel $'cat <<EOF >run.sh; unshare --setgroups deny sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: setpriv --reuid 1 sh run.sh"      "$(run_sentinel $'cat <<EOF >run.sh; setpriv --reuid 1 sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: nsenter -t 1 sh run.sh"           "$(run_sentinel $'cat <<EOF >run.sh; nsenter -t 1 sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: nsenter -t 1 -m -u sh run.sh"     "$(run_sentinel $'cat <<EOF >run.sh; nsenter -t 1 -m -u sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: nsenter -t 1 -n=ruta sh run.sh"   "$(run_sentinel $'cat <<EOF >run.sh; nsenter -t 1 -n=/proc/1/ns/net sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "notas y nsenter -t 1 git add permitido"  "$(run_sentinel $'cat > notes.md <<\'EOF\' && nsenter -t 1 git add notes.md\nsee opts.key and config.pem\nEOF')" ALLOW
+# Nombres de ejecucion por lista explicita: la prosa con exec (execution, executor) no cuenta.
+expect "python -c con execution permitido"       "$(run_sentinel $'python3 -c "print(\'see the execution plan\')" <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
+expect "node -e con executor permitido"          "$(run_sentinel $'node -e "console.log(\'executor\')" <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
+# deno: el subcomando es la primera palabra que no es flag; repl --eval lleva codigo en linea.
+expect "clave: deno repl --eval Deno.run"        "$(run_sentinel $'deno repl --eval \'Deno.run({cmd:["sh"]})\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: deno repl --eval= Deno.run"       "$(run_sentinel $'deno repl --eval=\'Deno.run({cmd:["sh"]})\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "deno run eval permitido"                 "$(run_sentinel $'deno run eval <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
+expect "deno run - permitido"                    "$(run_sentinel $'deno run - <<\'EOF\'\nconst k = opts.key\nEOF')" ALLOW
+expect "deno run script.ts eval Deno.run permitido" "$(run_sentinel $'deno run x.ts eval \'Deno.run\' <<\'EOF\'\nconst k = opts.key\nEOF')" ALLOW
+# Un prefijo sin comando ejecuta solo si abre un shell por diseno (sudo/doas -s/-i, chroot, unshare,
+# nsenter) o lleva el comando en su valor (flock -c, env -S).
+expect "notas y flock -n 9 permitido"            "$(run_sentinel $'cat > notes.md <<\'EOF\' && flock -n 9\nsee opts.key\nEOF')" ALLOW
+expect "notas; ( flock -n 9 ) 9>lock permitido"  "$(run_sentinel $'cat > notes.md <<\'EOF\'; ( flock -n 9 ) 9>lock\nsee opts.key\nEOF')" ALLOW
+expect "notas y timeout 5 permitido"             "$(run_sentinel $'cat > notes.md <<\'EOF\' && timeout 5\nsee opts.key\nEOF')" ALLOW
+expect "clave: >run.sh; unshare -r"              "$(run_sentinel $'cat <<EOF >run.sh; unshare -r\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >run.sh; sudo -s"                 "$(run_sentinel $'cat <<EOF >run.sh; sudo -s\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >run.sh; chroot /"                "$(run_sentinel $'cat <<EOF >run.sh; chroot /\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >run.sh; env -S sh run.sh"        "$(run_sentinel $'cat <<EOF >run.sh; env -S \'sh run.sh\'\ncat server.key\nEOF')" "$IOCS_WANT"
 # En codigo, un tramo con forma de ruta (/, ./, ../, ~/) se mira entero.
 expect "clave: dir.p12 en ruta de codigo"        "$(run_sentinel "node -e 'fs.readdirSync(/etc/ssl/dir.p12/x)'")" "$IOCS_WANT"
 expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK
