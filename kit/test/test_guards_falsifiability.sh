@@ -21,13 +21,21 @@ STUB=$(mktemp)
 printf '#!/bin/bash\nexit 0\n' > "$STUB"
 chmod +x "$STUB"
 
-BASELINE_OUT=$(bash "$HERE/test_guards.sh")
+# La suite no puede escribir en el log de auditoria de quien la corre: sus recuentos allow/deny se
+# leen por dia. Se le da un HOME «real» simulado con un log previo y se exige que salga intacto.
+REAL_HOME=$(mktemp -d)
+LOG="$REAL_HOME/.claude/audit-logs/sentinel.jsonl"
+mkdir -p "$(dirname "$LOG")"; printf '{"previo":1}\n{"previo":2}\n' > "$LOG"
+LOG_ANTES=$(wc -l < "$LOG")
+
+BASELINE_OUT=$(HOME="$REAL_HOME" bash "$HERE/test_guards.sh")
 BASELINE_FAIL=$(echo "$BASELINE_OUT" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
 
-STUB_OUT=$(SECRET_GUARD_BIN="$STUB" bash "$HERE/test_guards.sh")
+STUB_OUT=$(HOME="$REAL_HOME" SECRET_GUARD_BIN="$STUB" bash "$HERE/test_guards.sh")
 STUB_FAIL=$(echo "$STUB_OUT" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
 
-rm -f "$STUB"
+LOG_DESPUES=$(wc -l < "$LOG")
+rm -f "$STUB"; rm -r -- "$REAL_HOME"
 
 echo "== baseline (guard real) =="
 echo "$BASELINE_OUT" | tail -1
@@ -38,6 +46,10 @@ FLIPPED=$((STUB_FAIL - BASELINE_FAIL))
 echo "== resultado =="
 echo "casos que caen al neutralizar el guard: $FLIPPED"
 
+if [ "$LOG_DESPUES" -ne "$LOG_ANTES" ]; then
+  echo "FAIL: la suite escribio en el sentinel.jsonl del HOME real ($LOG_ANTES -> $LOG_DESPUES lineas)."
+  exit 1
+fi
 if [ "$BASELINE_FAIL" -ne 0 ]; then
   echo "FAIL: la baseline no esta limpia (FAIL=$BASELINE_FAIL); arregla test_guards.sh antes."
   exit 1

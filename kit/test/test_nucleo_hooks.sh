@@ -135,6 +135,52 @@ ok "pre-compact: con .gitignore previo el checkpoint queda ignorado" "$(git -C "
 ok "pre-compact: el .gitignore previo conserva lo suyo" "$(cat "$R5/.claude/estado/.gitignore")" "diario.md
 checkpoint-compact-*"
 
+# --- pre-compact: sin git y sin estado no crea nada; rota checkpoints de más de 14 días ---
+# Medido en una instalación vieja: 47 .claude/estado basura bajo el home, uno por cada cwd.
+mkdir -p "$T/sin-git"
+ev "$T/sin-git" s8 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: dir sin git ni estado → no crea .claude" "$(ls -A "$T/sin-git")" ""
+VIEJO=$R/.claude/estado/checkpoint-compact-viejo.md; NUEVO=$R/.claude/estado/checkpoint-compact-nuevo.md
+touch -d '20 days ago' "$VIEJO"; touch -d '2 days ago' "$NUEVO"; touch -d '20 days ago' "$NUC"
+ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: rota el checkpoint de 20 días" "$([ -e "$VIEJO" ] && echo sigue || echo rotado)" rotado
+ok "pre-compact: conserva el de 2 días y el nucleo" "$([ -e "$NUEVO" ] && [ -e "$NUC" ] && echo si)" si
+
+# Si el mv de publicación falla, la rotación no puede haber borrado ya el checkpoint viejo
+# («anterior conservado»); y el checkpoint recién publicado nunca cae en la rotación.
+touch -d '20 days ago' "$VIEJO"
+mkdir -p "$T/mvfalso"; printf '#!/bin/sh\nexit 1\n' >"$T/mvfalso/mv"; chmod +x "$T/mvfalso/mv"
+ev "$R" s1 "$TP" | PATH="$T/mvfalso:$PATH" bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: si falla la publicación, el checkpoint viejo se conserva" "$([ -e "$VIEJO" ] && echo si)" si
+OUT1=$R/.claude/estado/checkpoint-compact-$(printf s1 | sha256sum | cut -d' ' -f1).md
+touch -d '20 days ago' "$OUT1"
+ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: el checkpoint recién publicado no se rota" "$([ -e "$OUT1" ] && [ -z "$(find "$OUT1" -mtime +14)" ] && echo si)" si
+ok "pre-compact: tras publicar, rota el viejo" "$([ -e "$VIEJO" ] && echo sigue || echo rotado)" rotado
+
+# nucleo-freshness.log: una línea por compactación; no crece sin límite.
+FLOG=$HOME/.claude/session-logs/nucleo-freshness.log
+seq 1 2500 >"$FLOG"
+ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: nucleo-freshness.log se acota" "$([ "$(wc -l <"$FLOG")" -le 1001 ] && echo si)" si
+ok "pre-compact: el log acotado conserva lo último y la línea nueva" "$(tail -1 "$FLOG" | cut -d' ' -f2)" s1
+# Si el mv de la rotación falla, el temporal no se queda en session-logs (antes: $FLOG.tmp fijo).
+seq 1 2500 >"$FLOG"
+ev "$R" s1 "$TP" | PATH="$T/mvfalso:$PATH" bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: un mv fallido no deja temporal del log" "$(find "$(dirname "$FLOG")" -type f -name 'nucleo-freshness.log?*' | wc -l)" 0
+# mktemp crea 0600: sin copiar el modo, la rotación cambiaba el del log.
+seq 1 2500 >"$FLOG"; chmod 640 "$FLOG"
+ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: la rotación conserva el modo del log" "$(stat -c %a "$FLOG")" 640
+# Un TERM entre el mktemp y el mv (aquí, durante el tail de la rotación) no deja el temporal.
+mkdir -p "$T/tailterm"
+# shellcheck disable=SC2016  # $2 y $PPID los expande el stub
+printf '#!/bin/sh\n[ "$2" = 1000 ] && kill -TERM "$PPID"\nexec %s "$@"\n' "$(command -v tail)" >"$T/tailterm/tail"
+chmod +x "$T/tailterm/tail"
+seq 1 2500 >"$FLOG"
+ev "$R" s1 "$TP" | PATH="$T/tailterm:$PATH" bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: un TERM durante la rotación no deja temporal del log" "$(find "$(dirname "$FLOG")" -type f -name 'nucleo-freshness.log?*' | wc -l)" 0
+
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
 # --- nucleo_emitir: un «# comentario» dentro de un bloque ``` no es cabecera (cortaba la sección) ---
 NF=$T/fence.md

@@ -35,12 +35,15 @@ if top=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null); then
   branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
   [ -n "$branch" ] || branch=$(git -C "$cwd" rev-parse --short HEAD 2>/dev/null)
   branch="⎇ $branch"
-  ins=0 del=0
-  while read -r l; do
-    [[ $l =~ ([0-9]+)\ insertion ]] && ins=$(( ins + BASH_REMATCH[1] ))
-    [[ $l =~ ([0-9]+)\ deletion ]] && del=$(( del + BASH_REMATCH[1] ))
-  done < <(git -c core.fsmonitor=false -C "$cwd" diff --shortstat 2>/dev/null; git -c core.fsmonitor=false -C "$cwd" diff --cached --shortstat 2>/dev/null)
-  changes="(+$ins,-$del)"
+  # /mnt/* (DrvFs en WSL): los dos diff costaban 2,7 s por refresco frente a 18 ms en ext4.
+  if [[ $cwd != /mnt/* ]]; then
+    ins=0 del=0
+    while read -r l; do
+      [[ $l =~ ([0-9]+)\ insertion ]] && ins=$(( ins + BASH_REMATCH[1] ))
+      [[ $l =~ ([0-9]+)\ deletion ]] && del=$(( del + BASH_REMATCH[1] ))
+    done < <(git -c core.fsmonitor=false -C "$cwd" diff --shortstat 2>/dev/null; git -c core.fsmonitor=false -C "$cwd" diff --cached --shortstat 2>/dev/null)
+    changes="(+$ins,-$del)"
+  fi
 else
   repo="no git"
 fi

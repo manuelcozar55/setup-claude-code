@@ -113,6 +113,20 @@ OUT="$(mkinput "$DEEP" | jq '.context_window.current_usage = null | del(.rate_li
        | COLUMNS=100000 bash "$SL" 2>/dev/null | normalize | sed -n 2p)"
 [ "$OUT" = "Ctx: 0" ] && ok "linea 2 = «Ctx: 0» sin separadores sueltos" || bad "linea 2" "«$OUT»"
 
+echo "== 7. /mnt/* (DrvFs): rama sin recuento; en ext4 si hay diff =="
+# Medido: en un repo bajo /mnt/c los dos diff --shortstat llevaban la barra a 2,7 s por refresco
+# (18 ms en ext4). Un git falso registra sus argumentos y finge un repo en cualquier ruta.
+FAKEBIN="$TMP/fakebin"; GITLOG="$TMP/git-args.log"; mkdir -p "$FAKEBIN"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s"\ncase "$*" in *rev-parse*) echo /mnt/x/repo;; *branch*) echo rama-mnt;; esac\n' \
+  "$GITLOG" > "$FAKEBIN/git"; chmod +x "$FAKEBIN/git"
+OUT="$(mkinput /mnt/x/repo | PATH="$FAKEBIN:$PATH" COLUMNS=100000 bash "$SL" 2>/dev/null | normalize)"
+assert_has   "/mnt: rama visible"     "⎇ rama-mnt" "$OUT"
+assert_hasnt "/mnt: sin recuento"     "(+"         "$OUT"
+assert_hasnt "/mnt: no invoca git diff" "diff --shortstat" "$(cat "$GITLOG")"
+: > "$GITLOG"
+mkinput "$DEEP" | PATH="$FAKEBIN:$PATH" COLUMNS=100000 bash "$SL" >/dev/null 2>&1
+assert_has   "ext4: invoca git diff"  "diff --shortstat" "$(cat "$GITLOG")"
+
 echo
 printf '%s\n' "-----------------------------------------"
 if [ "$fails" -eq 0 ]; then printf 'OK  %d/%d\n' "$tests" "$tests"

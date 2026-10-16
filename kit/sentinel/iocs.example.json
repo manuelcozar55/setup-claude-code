@@ -9,8 +9,11 @@
       "/etc/passwd"
     ],
     "regex_patterns": [
-      "id_rsa$",
-      "\\.pem$"
+      "id_rsa$"
+    ],
+    "key_file_extensions": [
+      "pem",
+      "key"
     ]
   },
   "suspicious_network": {

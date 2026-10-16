@@ -114,6 +114,13 @@ etiquetado.
 
 ### Changed
 
+- **Los hooks Python arrancan con `python3 -I -S`** (`optional-hook.sh`). Medido: 22 → 8 ms
+  por hook, porque `site` cargaba apport y un `.pth` editable que apunta a `/mnt/c`,
+  escribible desde Windows, dentro de cada guard. Los cinco hooks solo usan stdlib;
+  `test_optional_hook.sh` comprueba el `-I -S` y que cada hook arranca así sin `ImportError`.
+- **La statusline no cuenta cambios bajo `/mnt/*`.** En un repo en DrvFs los dos
+  `git diff --shortstat` llevaban el refresco a 2,7 s (18 ms en ext4); ahí se queda en repo y
+  rama. `test_statusline.sh` lo fija con un `git` falso que registra sus argumentos.
 - **La instalación se explica en un solo sitio: `kit/docs/02-install.md`.** Estaba contada
   cuatro veces (README, `kit/README.md`, `02-install.md` y `10-onboarding.md`) y las copias
   divergían. `02-install.md` absorbe lo que solo estaba fuera —`make bootstrap`, el modo
@@ -180,6 +187,117 @@ etiquetado.
 
 ### Fixed
 
+- **Sentinel: los ficheros de clave se miran por palabra de shell y por su papel, no por
+  regex sobre el comando.** Las seis regex de extensión (`.pem`, `.key`, `.p12`, `.pfx`,
+  `.jks`, `.keystore`) miraban subcadenas y en la instalación real dieron 245 denegaciones
+  falsas en un día; una regex intermedia que exigía un nombre delante dejaba pasar el oculto
+  (`.server.key`) y los sufijos de copia (`x.key~`), porque `cat .server.key` y el filtro
+  `jq '.data.key'` son el mismo texto. Ahora `sentinel_preflight.py` parte el comando con un
+  lexer propio (comillas, escapes, redirecciones, saltos de línea; un `#` que abre palabra
+  comenta hasta fin de línea, como en bash; `$( )` y acento grave se leen como comando
+  aparte) y compara cada componente de ruta con `key_file_extensions` de `iocs.json`, que
+  sustituye a la regex; sus entradas se filtran una a una (con o sin punto inicial) y, si la
+  lista falta o no queda ninguna, el código usa las seis por defecto y el motivo del deny lo
+  dice: una lista vacía no apaga la comprobación. El cuerpo de un heredoc se lee como
+  comandos salvo que lo reciba un sumidero de datos conocido. El consumidor es el comando que
+  lleva el `<<`, sin `sudo`, `env`, `nice`, `time`, `command` ni `exec`. `cat`, `tee`,
+  `grep`, `jq`, `git commit -F -`, `curl -d @-`, `curl -T -`, `wget -i -` y el resto de la
+  lista lo hacen datos (`curl -K -` no: una configuración por stdin puede subir un fichero;
+  `sed` y `awk` solo si su programa, también el pegado a `-e`/`--expression=`/`--source=`,
+  no ejecuta nada): un `cat > data.jsonl <<'EOF'` con JSON no se mira como rutas. Un
+  intérprete lo hace código, salvo que su código en línea (`python -c`, `node -e`,
+  `perl -e`, `ruby -e`, `php -r`, `lua -e`, `Rscript -e`, `bun -e`, `deno eval`; sin tabla se
+  mira entero) ejecute lo que lee, por nombres de ejecución (`system`, `system2`, `exec…`,
+  `spawn…`, `eval`, `popen`, `Deno.Command`:
+  `perl -ne 'system $_'`, `php -r 'passthru(…)'`; `evaluate` no casa), y `ssh`, `sudo -s`, `fish`, `xargs`,
+  `psql` o cualquier desconocido, comandos. Manda el peor consumidor de su tubería, comandos
+  sobre perl/ruby sobre el resto de código (`cat <<EOF | python3 | sh` son comandos), y el de
+  todo el comando si el heredoc o su tubería pasan por un grupo, un bucle o una sustitución
+  de proceso (`cat <<EOF | { cat; sh; }`). Si después del heredoc, en la misma orden, hay un
+  ejecutor (un shell, un intérprete, `source`, `eval`, `chmod`, `xargs`, `find`/`fd` con
+  exec, `flock -c`, `./x`, también tras `timeout`, `nohup`, `busybox`, `unshare` y similares;
+  una ruta bajo `/bin`, `/usr/bin`, `/sbin` o `/usr/sbin` como `/usr/bin/git` no lo es), el
+  cuerpo son comandos sin seguir el nombre del fichero ni cómo se escribió
+  (`cat <<EOF >run.sh; bash run.sh`, también `sed -n '1w run.sh'`, `cat run.sh | sh`, tras
+  `mv` o por variable; coste: `cat <<'EOF' && bash deploy.sh` con una clave en el cuerpo se
+  deniega); `cat > notes.md <<'EOF' … && git add notes.md` sigue siendo datos. Sin comillas en el delimitador sus `$( )` se
+  ejecutan, y la barra-salto solo sirve para hallar el delimitador (100 000 líneas con barra
+  final y sin delimitador cuestan 1,1 s; antes 13,4 s, la unión era cuadrática). Las llaves
+  `{a,b}` y las secuencias de letras `{a..z}` sin comillas se expanden sin repetidos hasta 64
+  por palabra y 4 096 por comando entero (un solo contador que incluye sustituciones, cadenas
+  releídas y literales de código; 4 096 expansiones cuestan 15 ms) y pasado el tope se
+  deniega (`brace expansion too large`); una secuencia numérica (`{1..1000}`) no aporta
+  letras: cuenta como su primer valor y no gasta tope; entre comillas no se expanden, como en
+  bash, y en una cadena releída (`bash -c '…'`) se expanden grupo a grupo sin truncar nunca
+  (más de 64 grupos deniegan). Se exime el patrón de `grep`/`rg`/`ag`/`ack`, el filtro de
+  `jq` y el mensaje de `git commit|tag|merge -m`, con la aridad de sus opciones (`-e`, `-f`,
+  `-g`, `--match`, `--files` y `--type-list` anulan la exención, también como letra de un
+  racimo de flags cortos, pero no como letra del valor de una opción: `rg -t typescript` ya
+  no la anula); del código de `node -e`/`python -c`/`perl -e`/`ruby -e` solo se miran los
+  literales de cadena (una vez cada uno; pasado el presupuesto, sin expandir), las formas de
+  cita con su letra (`%q()`, `%x()`…; `q()`, `qq{}`, `qx()` y el `%()` pegado solo en perl y
+  ruby; una sin cierre no se traga nada) y, de cada tramo con barra, todos sus componentes
+  si tiene forma de ruta (`/`, `./`, `../`, `~/`) y si no el último (`opts.key/2` es una
+  división), y solo si el flag va antes del script (`python3 x.py -c …` no exime). El cuerpo de una sustitución `$( )` dentro de un papel
+  exento se lee como comando propio: el commit con heredoc (`-m "$(cat <<'EOF' … EOF)"`) deja
+  de dar falso positivo. **Se deniegan**, como en `main`: rutas,
+  comillas, el oculto (`.server.key`, `.env.key`, `.tls.pem`), los sufijos de copia (`~`,
+  `#`, `+`, `-old`, `.bak`), globs (`*.key`, `[s]erver.key`), `'x'.key`, `server.{key,pem}`,
+  `x.key.{1..3}`, acento grave, `$( )`, `bash -c '…'`, un heredoc con una clave hacia `ssh`,
+  `sudo -s`, `fish` o `php`, directorios (`dir.p12/x`; en código, con forma de ruta) y las
+  rutas de Windows.
+  **Dejan de denegarse** (falsos positivos medidos): `jq 'to_entries[].key'`, `.data.key`,
+  la división `.a/.key`, `grep -rn "event.key" src/`, `rg -t typescript 'event.key'`,
+  `git commit -m "use opts.key"`, `node -e "console.log(o.key)"`,
+  `node -e 'console.log(opts.key/2)'`, `echo {1..100}`, unas notas en
+  `cat <<EOF >out.txt && bash run.sh`, `a.key.json`, `config.key.ts` y la prosa que nombra la
+  extensión. **Límite declarado**: el oculto a secas sin barra (`cat .key`), indistinguible
+  de la prosa; donde el papel de una palabra no se clasifica (`sudo grep`, `git -C x commit`)
+  se deniega de más, nunca de menos; un script escrito por un heredoc y ejecutado en otra
+  llamada o con un comando fuera de la lista de ejecutores (`make run.sh`, `pnpm exec sh run.sh`)
+  no se ve, y un ejecutor en cualquier línea posterior de la misma llamada deniega aunque el
+  heredoc no escriba el fichero que ejecuta (coste de la regla sin nombres, pinado en la suite:
+  unas notas seguidas de `python3 gen.py`, un `git commit -F -` seguido de `bash scripts/check.sh`).
+  Una palabra con barra se clasifica por su basename solo si es una ruta absoluta en una lista
+  cerrada de directorios (`/bin`, `/sbin`, `/usr/bin`, `/usr/sbin`, `/usr/local/bin`,
+  `/usr/local/sbin`, `/opt/homebrew/bin`, `/opt/homebrew/sbin`, `/opt/local/bin`, `/snap/bin`) y
+  el basename es una herramienta conocida que no ejecuta su argumento (`git`, `gh`, `pnpm`, `code`,
+  `make`, `curl`, los sumideros): `/usr/local/bin/git add` tras un heredoc no es ejecutor; todo lo
+  demás con barra (`./run.sh`, `./bin/git`, `~/bin/git`, `node_modules/.bin/tsc`, `$NVM/bin/pnpm`,
+  `/opt/tools/foo`) sí, y deniega de más; no se ve una herramienta conocida que el propio heredoc
+  escriba en esos directorios (en macOS `/usr/local/bin` y `/opt/homebrew/bin` son del usuario y
+  basta un `>`; en Linux piden root) ni que ejecute su argumento (`pnpm exec sh run.sh`, `make run`
+  o `/usr/local/bin/make run` con un Makefile escrito por el heredoc). El código en línea sigue viendo
+  cualquier palabra con `exec` o `spawn` (`os.execlpe`, `os.spawnle`, `execa`) y `popen` con sufijo
+  (`Open3.popen3`); solo se exime una lista cerrada de prosa (`execution`, `executor`, `executable`,
+  `executed`, `executing`, `executive`, `spawned`, `spawning`, `spawns`), y otra palabra de prosa
+  deniega de más (la forma sin sufijo es un nombre de API en Lua y Groovy: no se exime).
+  `fd`/`fdfind` ven la `x` dentro de un racimo de flags, dígitos incluidos (`-Hx`,
+  `-1Hx`; `-ex` es `-e x`); `unshare` reconoce `--propagation`, `--setgroups`, `--monotonic`,
+  `--boottime`, `--map-users` y `--map-groups`; `setpriv` y `nsenter` son prefijos con su aridad.
+  `deno`: el subcomando es la primera palabra de su lista de subcomandos que no sea el valor de
+  `-L`/`--log-level` (`deno --log-level info eval` se ve); sin subcomando conocido todo es código en
+  línea; el valor de otra opción global que coincida con un subcomando es límite (`deno -c check
+  eval` toma `check` por subcomando). Un prefijo sin
+  comando solo cuenta como shell si abre uno por diseño (`sudo`/`doas` con `-s`, `-i`, `--shell`,
+  `--login`, también en racimo o tras `-u usuario`; `chroot`, `unshare`, `nsenter`, `exec` con solo
+  redirecciones) o lleva el comando en un valor (`flock -c`, `env -S`): `flock -n 9` o `timeout 5` a
+  secas ya no deniegan; cada prefijo lo declara en `_BARE_SHELL` y la suite exige que estén todos.
+  Los demás límites asumidos van en el comentario de `key_file_extensions`.
+  257 sondas nuevas en `test_guards.sh` (25 de la regex, 17 fallaban con ella; 16, 32, 35,
+  24, 22, 22, 26, 36 y 19 de las nueve rondas de revisión, 11, 17, 21, 16, 18, 14, 14, 23 y 12
+  fallaban antes de su fix).
+  Además, `test_guards.sh` escribía sus deny en el `sentinel.jsonl` del HOME real;
+  `test_guards_falsifiability.sh` lo impide ahora con un HOME simulado.
+- **`pre-compact.sh` rota los checkpoints de más de 14 días, después de publicar el nuevo.**
+  Escribe uno por sesión, con los últimos prompts de la persona, y nadie los borraba. La
+  rotación va tras el `mv` y excluye el recién escrito: si generar o publicar falla, el
+  checkpoint anterior se conserva de verdad. `nucleo-freshness.log` (una línea por
+  compactación) se acota a las últimas 1 000 al pasar de 2 000, con un temporal de `mktemp`
+  que conserva el modo del log y que un `trap` borra si el `tail` o el `mv` fallan o una señal
+  mata el hook a medias. Nuevo caso que fija que un
+  directorio sin git ni `.claude/estado` no gana un `.claude/` (una instalación anterior a
+  3917835 dejó 47 bajo un home).
 - **`/handoff` (cockpit 0.3.5) escribe donde el hook de arranque lee.** Resolvía la raíz git
   desde el cwd del proceso del mod, no desde el de la sesión, y desde `~/.claude` escribía un
   `.claude/.claude/estado/nucleo.md` anidado que nadie inyectaba. Ahora usa `git -C <cwd>` y

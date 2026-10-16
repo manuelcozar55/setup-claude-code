@@ -25,6 +25,20 @@ PCT=$( { [ -n "$TP" ] && nucleo_ctx "$TP"; } | cut -d' ' -f2)
 mkdir -p "$HOME/.claude/session-logs" 2>/dev/null \
   && printf '%s %s %s %s\n' "$(date +%FT%T%z)" "${SID:--}" "${PCT:--}" "$([ -n "$MT" ] && echo $(( $(date +%s) - MT )) || echo -1)" \
      >>"$HOME/.claude/session-logs/nucleo-freshness.log"
+# Una línea por compactación y nadie la leía entera: se acota a las últimas 1000 al pasar de 2000.
+# Temporal único en el mismo directorio (mv atómico) con el modo del log, y borrado si algo falla
+# o si una señal mata el hook a medias. Aceptado: con dos compactaciones a la vez se puede perder
+# la línea que la otra añada entre el tail y el mv. chmod --reference es de GNU: sin él, el log
+# rota igual con el 0600 de mktemp.
+FLOG="$HOME/.claude/session-logs/nucleo-freshness.log"
+FTMP=
+trap '[ -z "$FTMP" ] || rm -f -- "$FTMP"' EXIT
+trap 'exit 0' HUP INT TERM
+if [ "$(wc -l <"$FLOG" 2>/dev/null || echo 0)" -gt 2000 ] && FTMP=$(mktemp "$FLOG.XXXXXX" 2>/dev/null); then
+  { tail -n 1000 "$FLOG" >"$FTMP" && { chmod --reference="$FLOG" "$FTMP" || :; } \
+      && mv -f -- "$FTMP" "$FLOG"; } 2>/dev/null || rm -f -- "$FTMP"
+fi
+FTMP=
 
 [ -d "$ESTADO" ] || exit 0
 GI=$ESTADO/.gitignore
@@ -66,5 +80,8 @@ trap 'exit 0' HUP INT TERM
 # shellcheck disable=SC2181  # `if ! (…)` apagaría el set -e de dentro
 [ "$?" -eq 0 ] || { echo '[PreCompact] fallo al generar checkpoint; anterior conservado' >&2; exit 0; }
 mv -f -- "$TMP" "$OUT" 2>/dev/null || { echo '[PreCompact] fallo al publicar checkpoint; anterior conservado' >&2; exit 0; }
+# Uno por sesión y con prompts de la persona: sin rotar se acumulan para siempre. Va después de
+# publicar el nuevo, así un fallo de arriba no deja sin checkpoint viejo ni nuevo; $OUT no se toca.
+find "$ESTADO" -maxdepth 1 -type f -name 'checkpoint-compact-*.md' ! -path "$OUT" -mtime +14 -delete 2>/dev/null
 echo "[PreCompact] ($TRIGGER) checkpoint en $OUT" >&2
 exit 0
