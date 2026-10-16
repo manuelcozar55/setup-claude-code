@@ -27,6 +27,14 @@ nucleo_enlazado() {
   return 0
 }
 
+# nucleo_tope <contexto>: recorta a 9 500 chars (el harness manda a fichero lo que pasa de 10 000; las rutas no
+# tienen tope) y, si recortó, cierra el <nucleo-datos> que pudiera haber quedado abierto.
+nucleo_tope() {
+  local c=$1
+  [ "${#c}" -le 9500 ] || c="${c:0:9460}"$'\n[recortado]\n</nucleo-datos>'
+  printf '%s' "$c"
+}
+
 # nucleo_ctx <transcript>: "tokens pct", con pct sobre el airbag (ventana − 33 000, la línea en la
 # que compacta solo). Nada si el transcript no trae uso. La ventana es min(la del modelo, el env), como
 # en el binario: el modelo tiene 1M con [1m] en el id (ANTHROPIC_MODEL o `model` de settings.json) o si es

@@ -35,5 +35,5 @@ $(LC_ALL=C head -c 1500 "$CP" | sed 's|</|<\\/|g')
 </nucleo-datos>"
 fi
 # Las rutas no tienen tope: con una larga el total pasaba de 10 000.
-jq -cn --arg c "${CTX:0:9500}" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
+jq -cn --arg c "$(nucleo_tope "$CTX")" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
 exit 0

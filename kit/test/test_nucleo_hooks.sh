@@ -125,6 +125,17 @@ R4=$T/r4; mkdir -p "$R4/.claude" "$T/destino"; git -C "$R4" init -q; ln -s "$T/d
 ev "$R4" s6 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "symlink: pre-compact no escribe en el destino de .claude/estado" "$(ls -A "$T/destino")" ""
 
+# --- #21: con rutas de ~1 800 chars el recorte a 9 500 dejaba <nucleo-datos> sin cerrar ---
+R10=$T/$(printf '%0250d/' 1 2 3 4 5 6 7)r; mkdir -p "$R10/.claude/estado"; git -C "$R10" init -q
+for s in Objetivo Plan Pendientes; do printf '## %s\n' "$s"; head -c 4000 /dev/zero | tr '\0' x; echo; done >"$R10/.claude/estado/nucleo.md"
+head -c 2000 /dev/zero | tr '\0' c >"$R10/.claude/estado/checkpoint-compact-$(printf s10 | sha256sum | cut -d' ' -f1).md"
+for h in clear compact; do
+  C=$(ev "$R10" s10 | bash "$H/session-start-$h.sh" | ctx)
+  ok "$h: ruta de ${#R10} chars → contexto ≤ 9 500" "$([ "${#C}" -le 9500 ] && echo si)" si
+  ok "$h: ruta larga → el envoltorio se cierra" "$(command grep -c '^<nucleo-datos ' <<<"$C")/$(command grep -c '^</nucleo-datos>$' <<<"$C")" "$(command grep -c '^<nucleo-datos ' <<<"$C")/$(command grep -c '^<nucleo-datos ' <<<"$C")"
+  ok "$h: ruta larga → termina con el cierre" "$(tail -n1 <<<"$C")" '</nucleo-datos>'
+done
+
 # --- #8: .claude enlazado a otro sitio: nada se inyecta ni se escribe fuera del repo ---
 R8=$T/r8; mkdir -p "$R8" "$T/ajeno8/estado"; git -C "$R8" init -q
 printf '# Estado\n## Objetivo\nSECRETO-AJENO\n- [ ] SECRETO-AJENO\n' >"$T/ajeno8/estado/nucleo.md"; ln -s "$T/ajeno8" "$R8/.claude"
