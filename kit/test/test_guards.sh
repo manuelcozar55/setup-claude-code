@@ -391,7 +391,7 @@ expect "notas y /usr/local/bin/git add permitido" "$(run_sentinel $'cat > notes.
 expect "notas y /opt/homebrew/bin/gh permitido"  "$(run_sentinel $'cat > notes.md <<\'EOF\' && /opt/homebrew/bin/gh pr view 1\nsee opts.key and config.pem\nEOF')" ALLOW
 expect "notas y /snap/bin/code permitido"        "$(run_sentinel $'cat > notes.md <<\'EOF\' && /snap/bin/code .\nsee opts.key and config.pem\nEOF')" ALLOW
 expect "notas; cd && /usr/local/bin/pnpm permitido" "$(run_sentinel $'cat > notes.md <<\'EOF\'; cd /tmp && /usr/local/bin/pnpm test\nsee opts.key and config.pem\nEOF')" ALLOW
-expect "notas y \$NVM/bin/pnpm permitido"        "$(run_sentinel $'cat > notes.md <<\'EOF\' && $NVM/bin/pnpm test\nsee opts.key and config.pem\nEOF')" ALLOW
+expect "limite: \$NVM/bin/pnpm deniega de mas"   "$(run_sentinel $'cat > notes.md <<\'EOF\' && $NVM/bin/pnpm test\nsee opts.key and config.pem\nEOF')" "$IOCS_WANT"
 expect "clave: >run.sh; ./run.sh"                "$(run_sentinel $'cat <<EOF >run.sh; ./run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
 expect "clave: >x.js; /usr/local/bin/node x.js"  "$(run_sentinel $'cat <<EOF >x.js; /usr/local/bin/node x.js\ncat server.key\nEOF')" "$IOCS_WANT"
 expect "clave: >git; ./git fuera de un bin"      "$(run_sentinel $'cat <<EOF >git; ./git\ncat server.key\nEOF')" "$IOCS_WANT"
@@ -427,6 +427,34 @@ expect "clave: >run.sh; unshare -r"              "$(run_sentinel $'cat <<EOF >ru
 expect "clave: >run.sh; sudo -s"                 "$(run_sentinel $'cat <<EOF >run.sh; sudo -s\ncat server.key\nEOF')" "$IOCS_WANT"
 expect "clave: >run.sh; chroot /"                "$(run_sentinel $'cat <<EOF >run.sh; chroot /\ncat server.key\nEOF')" "$IOCS_WANT"
 expect "clave: >run.sh; env -S sh run.sh"        "$(run_sentinel $'cat <<EOF >run.sh; env -S \'sh run.sh\'\ncat server.key\nEOF')" "$IOCS_WANT"
+# Ronda 3-septies. La herramienta conocida solo se exime por ruta absoluta en un directorio de la lista
+# cerrada _TOOL_DIRS: ./bin/git, node_modules/.bin o ~/bin los puede haber escrito el heredoc.
+expect "clave: >bin/git; ./bin/git"              "$(run_sentinel $'cat <<EOF >bin/git; ./bin/git\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >x; ./node_modules/.bin/make"     "$(run_sentinel $'cat <<EOF >x; ./node_modules/.bin/make\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >~/bin/git; ~/bin/git"            "$(run_sentinel $'cat <<EOF >~/bin/git; ~/bin/git\ncat server.key\nEOF')" "$IOCS_WANT"
+# Coincidencia amplia exec/spawn con la prosa eximida por lista cerrada; popen con sufijo.
+expect "clave: python os.execlpe"                "$(run_sentinel $'python3 -c \'import os;os.execlpe("sh","sh")\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: python os.spawnle"                "$(run_sentinel $'python3 -c \'import os;os.spawnle(0,"sh","sh")\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: node execa"                       "$(run_sentinel $'node -e \'require("execa")("sh")\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: ruby Open3.popen3"                "$(run_sentinel $'ruby -e \'require "open3"; Open3.popen3("sh")\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "python -c con executable permitido"      "$(run_sentinel $'python3 -c "print(\'executable\')" <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
+# deno: el subcomando es la primera palabra de la lista de subcomandos; sin ninguna, todo es codigo.
+expect "clave: deno --log-level info eval"       "$(run_sentinel $'deno --log-level info eval \'Deno.run({cmd:["sh"]})\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: deno -L info repl --eval"         "$(run_sentinel $'deno -L info repl --eval \'Deno.run({cmd:["sh"]})\' <<EOF\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "deno --log-level info run eval permitido" "$(run_sentinel $'deno --log-level info run eval <<\'EOF\'\nx = opts.key\nEOF')" ALLOW
+# Los digitos del racimo de fd no toman valor.
+expect "clave: >run.sh; fd -1Hx sh run.sh"       "$(run_sentinel $'cat <<EOF >run.sh; fd -1Hx sh run.sh\ncat server.key\nEOF')" "$IOCS_WANT"
+# sudo/doas abren shell con -s/-i/--shell/--login, tambien en un racimo booleano y tras -u user.
+expect "clave: >run.sh; sudo -Es"                "$(run_sentinel $'cat <<EOF >run.sh; sudo -Es\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >run.sh; sudo -u root -s"         "$(run_sentinel $'cat <<EOF >run.sh; sudo -u root -s\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >run.sh; sudo --shell"            "$(run_sentinel $'cat <<EOF >run.sh; sudo --shell\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "clave: >run.sh; doas -s"                 "$(run_sentinel $'cat <<EOF >run.sh; doas -s\ncat server.key\nEOF')" "$IOCS_WANT"
+expect "notas y sudo -E permitido"               "$(run_sentinel $'cat > notes.md <<\'EOF\' && sudo -E\nsee opts.key\nEOF')" ALLOW
+expect "notas y env -i permitido"                "$(run_sentinel $'cat > notes.md <<\'EOF\' && env -i\nsee opts.key\nEOF')" ALLOW
+# Cada prefijo declara si abre shell sin comando: uno nuevo sin declarar no nace fail-open.
+"$PY" -B -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import sentinel_preflight as s
+sys.exit(set(s._PREFIXES) != set(s._BARE_SHELL))' "$KIT/sentinel" 2>/dev/null && pass=$((pass+1)) \
+  || { fail=$((fail+1)); echo "FAIL: _BARE_SHELL no declara exactamente los prefijos de _PREFIXES"; }
 # En codigo, un tramo con forma de ruta (/, ./, ../, ~/) se mira entero.
 expect "clave: dir.p12 en ruta de codigo"        "$(run_sentinel "node -e 'fs.readdirSync(/etc/ssl/dir.p12/x)'")" "$IOCS_WANT"
 expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK

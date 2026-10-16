@@ -304,12 +304,11 @@ _STDIN_DATA = {"curl": re.compile(r"@-$|^(?:-T|--upload-file)(?:\n|=)?-$", re.M)
                "wget": re.compile(r"^(?:-i|--input-file)(?:\n|=)?-$", re.M)}
 _STDIN_CONFIG = re.compile(r"^(?:-K|--config)(?:\n|=)?-$", re.M)
 # Inline code that runs what it reads (perl -ne 'system $_', open P,"|sh"): the body is commands.
-# Names from an explicit list, whole words (execution or executor are prose); a name outside it is
-# not seen (declared limit).
-_RUNS_INPUT = re.compile(r"\b(?:exec|execv|execve|execvp|execvpe|execl|execlp|execle|execFile|execFileSync"
-                         r"|execSync|exec_command|pcntl_exec|posix_spawnp?|spawn|spawnSync|spawnl|spawnlp|spawnv"
-                         r"|spawnvp|spawnve|spawnvpe|shell_exec"
-                         r"|eval|system2?|popen|fork|subprocess|passthru|proc_open|qx"
+# Any word with exec or spawn counts (os.execlpe, spawnle, execa, pcntl_exec) except the whole
+# words of a closed list of prose (execution, executor, spawned...); other prose only denies more.
+_RUNS_INPUT = re.compile(r"\b(?!(?:executions?|executors?|executables?|executed|executing|executives?"
+                         r"|spawned|spawning|spawns)\b)\w*(?:exec|spawn)\w*"
+                         r"|\b(?:eval|system2?|popen\w*|fork|subprocess|passthru|proc_open|qx"
                          r"|child_process|os\.execute|io\.popen|Deno\.(?:Command|run))\b|`|\bopen\b[^;]*\|"
                          r"|\|\s*['\"]?(?:sh|bash|zsh|dash)\b")
 # Inline code options per interpreter (deno: what follows eval, or repl --eval); one without a table has all its
@@ -318,18 +317,27 @@ _INLINE = {**{n: (_OPTS[n], _CODE_VALUE[n]) for n in ("python", "node", "perl", 
            "php": (("r", {}, True, set()), {"-r"}), "lua": (("el", {}, True, set()), {"-e"}),
            "rscript": (("e", {}, True, set()), {"-e"}),
            "bun": (("ep", {"--eval": 1, "--print": 1}, True, set()), {"-e", "-p", "--eval", "--print"})}
+_DENO_SUBS = {"run", "eval", "repl", "test", "bench", "compile", "bundle", "cache", "check", "doc", "fmt", "lint",
+              "info", "install", "uninstall", "upgrade", "task", "types", "vendor", "publish", "add", "remove",
+              "init", "jupyter", "serve", "coverage", "completions"}
 # What runs a program or a file (_executes): these commands, find/fd with their exec options
 # (also attached: fd -xsh, --exec=sh, and in a cluster: fd -Hx), and a command word with a slash
-# outside the system's binary directories unless its basename is a known tool in a bin directory.
+# outside the system's binary directories unless its basename is a known tool in _TOOL_DIRS.
 _EXECUTORS = {"bash", "sh", "zsh", "dash", "ksh", "fish", "source", ".", "eval", "chmod", "xargs", "su"}
 _EXEC_FLAGS = {"find": {"-exec", "-execdir", "-ok", "-okdir"},
                "fd": {"-x", "--exec", "-X", "--exec-batch"}, "fdfind": {"-x", "--exec", "-X", "--exec-batch"}}
-# fd's short cluster: an x or X before the first letter that takes a value (-ex is -e x).
-_FD_EXEC = re.compile(r"-[^\W\d_deEtSocjxX]*[xX]")
+# fd's short cluster: an x or X before the first letter that takes a value (-ex is -e x; digits
+# take none: -1Hx).
+_FD_EXEC = re.compile(r"-[^\W_deEtSocjxX]*[xX]")
 _BIN_DIRS = {"/bin/", "/sbin/", "/usr/bin/", "/usr/sbin/"}
+# Where a known tool is not an executor: absolute directories of a closed list (./bin/git, ~/bin/git
+# or node_modules/.bin/x may have been written by the heredoc). Linuxbrew's bin is left out:
+# kit/scan-secrets.sh reads its path as a personal home, so it denies more.
+_TOOL_DIRS = _BIN_DIRS | {"/usr/local/bin/", "/usr/local/sbin/", "/opt/homebrew/bin/", "/opt/homebrew/sbin/",
+                          "/opt/local/bin/", "/snap/bin/"}
 _INTERPRETERS = {"python", "node", "deno", "bun", "perl", "ruby", "php", "lua", "rscript"}
 _RUNNERS = _EXECUTORS | _INTERPRETERS
-# Tools that do not run their argument: /usr/local/bin/git or $NVM/bin/pnpm count as the bare word.
+# Tools that do not run their argument: /usr/local/bin/git counts as the bare word (_TOOL_DIRS).
 _KNOWN_TOOLS = _SINKS | {"grep", "rg", "ag", "ack", "jq", "git", "gh", "pnpm", "npm", "npx", "yarn", "corepack",
                          "cargo", "go", "pip", "pip3", "docker", "podman", "kubectl", "code", "cursor", "yq",
                          "curl", "wget", "rsync", "tar", "gzip", "zip", "unzip", "ls", "cp", "mv", "mkdir",
@@ -358,13 +366,16 @@ _PREFIXES = {"sudo": ("ugpChDRrTU", {"--user", "--group", "--host", "--prompt", 
 # Prefixes with positional arguments before the command, options around them: timeout 5 cmd,
 # flock lockfile -c cmd.
 _PREFIX_ARGS = {"timeout": 1, "flock": 1, "chroot": 1, "taskset": 1, "chrt": 1}
-# A prefix left without command runs something only if it opens a shell by design (chroot,
-# unshare and nsenter run $SHELL; sudo/doas -s or -i) or carries the command in a value (flock -c,
-# env -S): short letters and long options per prefix. timeout 5 or flock -n 9 alone run nothing.
-# exec with only redirections hands its stdin to the rest of the call: it stays a shell.
-_SHELL_PREFIXES = {"chroot", "unshare", "nsenter", "exec"}
-_SHELL_OPTS = {"sudo": ("si", {"--shell", "--login"}), "doas": ("s", set()),
-               "flock": ("c", {"--command"}), "env": ("S", {"--split-string"})}
+# Whether each prefix of _PREFIXES left without command runs something: True if it opens a shell
+# by design (chroot, unshare and nsenter run $SHELL; exec with only redirections hands its stdin to
+# the rest of the call), False if not (timeout 5, flock -n 9), or the short letters, also inside a
+# cluster, and long options that open one (sudo/doas -s, -i) or carry the command in a value
+# (flock -c, env -S). Every prefix is declared (test_guards checks it); an undeclared one is a shell.
+_BARE_SHELL = {"sudo": ("si", {"--shell", "--login"}), "doas": ("si", {"--shell", "--login"}),
+               "flock": ("c", {"--command"}), "env": ("S", {"--split-string"}),
+               "chroot": True, "unshare": True, "nsenter": True, "exec": True,
+               **dict.fromkeys(("nice", "time", "command", "timeout", "stdbuf", "busybox", "nohup", "setsid",
+                                "ionice", "strace", "ltrace", "watch", "chrt", "taskset", "setpriv"), False)}
 _KEYWORDS = {"!", "{", "if", "then", "else", "elif", "while", "until", "do"}
 _OPENERS, _CLOSERS = {"{", "if", "while", "until", "for", "case", "select"}, {"}", "fi", "done", "esac"}
 _NO_STDIN = _CLOSERS | {"for", "case", "select", "function"}
@@ -624,16 +635,17 @@ def _cmd_name(word: str) -> str:
 def _command_word(words: list[str]) -> tuple[int, bool]:
     """Index of the command word past assignments, keywords and prefixes with their options
     (len(words) if none), and whether a skipped prefix runs a shell or a command of its own
-    without a command word (_SHELL_PREFIXES, _SHELL_OPTS)."""
+    without a command word (_BARE_SHELL)."""
     i, n, shell = 0, len(words), False
     while i < n and (words[i] in _KEYWORDS or re.match(r"\w+=", words[i])):
         i += 1
     while i < n and _cmd_name(words[i]) in _PREFIXES:
         name = _cmd_name(words[i])
         short, long = _PREFIXES[name]
-        sh_short, sh_long = _SHELL_OPTS.get(name, ("", set()))
+        bare = _BARE_SHELL.get(name, True)
+        sh_short, sh_long = bare if isinstance(bare, tuple) else ("", set())
         i, pos = i + 1, _PREFIX_ARGS.get(name, 0)
-        shell = shell or name in _SHELL_PREFIXES
+        shell = shell or bare is True
         while i < n and (re.match(r"\w+=", words[i]) or words[i].startswith("-") and words[i] != "-" or pos):
             w, i = words[i], i + 1
             if w == "--":
@@ -674,11 +686,14 @@ def _stdin_role(words: list[str]) -> str | None:
             return "data"
         inline = args
         if name == "deno":
-            # The subcommand is the first word that is not a flag: deno run eval runs a script.
-            # deno eval and repl --eval take inline code; deno run - and eval - read it from stdin.
-            sub = next((k for k, a in enumerate(args) if not a.startswith("-")), len(args))
-            what, rest = args[sub:sub + 1], args[sub + 1:]
-            inline = []
+            # The subcommand is the first word of _DENO_SUBS that is not the value of -L/--log-level
+            # (deno run eval runs a script; other words before it are flag values); without one, all
+            # the arguments are inline code. deno eval and repl --eval take inline code; deno run -
+            # and eval - read it from stdin.
+            sub = next((k for k, a in enumerate(args) if a in _DENO_SUBS
+                        and args[k - 1:k] not in (["-L"], ["--log-level"])), None)
+            what, rest = (args[sub:sub + 1], args[sub + 1:]) if sub is not None else ([], args)
+            inline = args if sub is None else []
             if what == ["eval"]:
                 inline = rest
             elif what == ["repl"]:
@@ -725,7 +740,7 @@ def _executes(cmd: list, depth: int = 0) -> bool:
     """Whether a simple command (lexed words) runs a program or a file: a shell, an
     interpreter, source, eval, chmod, xargs, su, find/fd with -exec/-x (fd -Hx too), a command
     word with a slash outside _BIN_DIRS (./run.sh, /usr/local/bin/x) unless its basename is in
-    _KNOWN_TOOLS and its directory is a bin one (/usr/local/bin/git, $NVM/bin/pnpm, not ./git),
+    _KNOWN_TOOLS and its directory, absolute, in _TOOL_DIRS (/usr/local/bin/git; not ./bin/git),
     or a prefix without command that opens a shell or carries one (sudo -s, chroot /, unshare -r,
     flock -c cmd lockfile, env -S cmd; not timeout 5 or flock -n 9); also inside its $( ) and
     backtick bodies. A later executor makes a heredoc commands in any line of the call: the
@@ -737,8 +752,7 @@ def _executes(cmd: list, depth: int = 0) -> bool:
     else:
         w, name = words[i], _cmd_name(words[i])
         flags = _EXEC_FLAGS.get(name, set())
-        tool = (name in _KNOWN_TOOLS or os.path.basename(w).lower() in _KNOWN_TOOLS) and \
-            os.path.basename(os.path.dirname(w)).lower().endswith("bin")
+        tool = name in _KNOWN_TOOLS and w.startswith("/") and os.path.dirname(w) + "/" in _TOOL_DIRS
         runs = (name in _RUNNERS or any(a.partition("=")[0] in flags or a[:2] in flags and a[1] != "-"
                                         or name in ("fd", "fdfind") and _FD_EXEC.match(a)
                                         for a in words[i + 1:])
