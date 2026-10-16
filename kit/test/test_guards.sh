@@ -826,6 +826,50 @@ if git -C "$KIT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 if [ "$mode_fail" -eq 0 ]; then pass=$((pass+1)); else fail=$((fail+1)); fi
 
+# 16) write-guard (E6 #13, #16): claves sk-proj-/sk-svcacct- de OpenAI, herramientas MultiEdit y
+# NotebookEdit, secretos de alta confianza tambien en ficheros de ejemplo (placeholders siguen
+# pasando) y fail-closed ante excepcion. Las claves ficticias se montan por trozos: sin literal
+# completo en el fichero, scan-secrets no las ve como secreto.
+wg_k() { printf '%s%s' "$1" "$(printf 'A1b2C3d4E5f6G7h8I9j0%.0s' 1 2)"; }
+wg_json() { # $1 = herramienta, $2 = ruta, $3 = texto
+  python3 -c 'import json,sys
+t,p,s=sys.argv[1:4]
+i={"Write":{"file_path":p,"content":s},"Edit":{"file_path":p,"new_string":s},
+   "MultiEdit":{"file_path":p,"edits":[{"old_string":"a","new_string":"ok"},{"old_string":"b","new_string":s}]},
+   "NotebookEdit":{"notebook_path":p,"new_source":s}}[t]
+print(json.dumps({"tool_name":t,"tool_input":i}))' "$1" "$2" "$3"
+}
+wg_expect() { # $1 = etiqueta, $2 = BLOCK|ALLOW, resto = args de wg_json
+  local label="$1" want="$2" out rc
+  shift 2
+  out=$(wg_json "$@" | "$PY" "$KIT/claude/hooks/write-guard.py" 2>/dev/null); rc=$?
+  local got=ALLOW
+  { [ "$rc" -eq 2 ] || printf '%s' "$out" | grep -q '"permissionDecision": "deny"'; } && got=BLOCK
+  if [ "$got" = "$want" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: write-guard $label: esperado $want, obtenido $got"; fi
+}
+wg_pem="-----BEGIN PRIV""ATE KEY-----"
+wg_pw="pass""word = \"hunter2hunter2\""
+wg_aws="AK""IAABCDEFGH12345678"
+wg_expect "sk-proj- en Write"          BLOCK Write /tmp/x.py "KEY = $(wg_k sk-proj-)"
+wg_expect "sk-svcacct- en Write"       BLOCK Write /tmp/x.py "KEY = $(wg_k sk-svcacct-)"
+wg_expect "sk-proj- en Edit"           BLOCK Edit /tmp/x.py "$(wg_k sk-proj-)"
+wg_expect "sk-proj- en MultiEdit"      BLOCK MultiEdit /tmp/x.py "$(wg_k sk-proj-)"
+wg_expect "sk-proj- en NotebookEdit"   BLOCK NotebookEdit /tmp/x.ipynb "$(wg_k sk-proj-)"
+wg_expect "MultiEdit sin secretos"     ALLOW MultiEdit /tmp/x.py "texto normal"
+wg_expect "NotebookEdit sin secretos"  ALLOW NotebookEdit /tmp/x.ipynb "print(1)"
+wg_expect ".env.example con clave real" BLOCK Write /tmp/.env.example "OPENAI_API_KEY=$(wg_k sk-proj-)"
+wg_expect ".env.example con AWS real"  BLOCK Write /tmp/.env.example "AWS_ACCESS_KEY_ID=$wg_aws"
+wg_expect ".env.example con PEM"       BLOCK Write /tmp/.env.sample "$wg_pem"
+wg_expect ".env.example placeholder xxx" ALLOW Write /tmp/.env.example "OPENAI_API_KEY=sk-pro""j-xxxxxxxxxxxxxxxxxxxxxxxx"
+wg_expect ".env.example placeholder <>" ALLOW Write /tmp/.env.example "OPENAI_API_KEY=sk-<tu-clave-aqui-de-openai-123>"
+wg_expect ".env.example changeme"      ALLOW Write /tmp/.env.example "KEY=sk-pro""j-changemechangemechangeme"
+wg_expect ".env.example con asignacion generica" ALLOW Write /tmp/.env.example "$wg_pw"
+# fail-closed: JSON invalido o entrada que provoca excepcion bloquea con exit 2 y mensaje en stderr
+wg_err=$(printf 'no es json' | "$PY" "$KIT/claude/hooks/write-guard.py" 2>&1 >/dev/null); wg_rc=$?
+if [ "$wg_rc" -eq 2 ] && [ -n "$wg_err" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: write-guard JSON invalido: rc=$wg_rc (esperado 2 con stderr)"; fi
+wg_err=$(printf '{"tool_name":"Write","tool_input":{"content":7,"file_path":"/tmp/x"}}' | "$PY" "$KIT/claude/hooks/write-guard.py" 2>&1 >/dev/null); wg_rc=$?
+if [ "$wg_rc" -eq 2 ] && [ -n "$wg_err" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: write-guard excepcion interna: rc=$wg_rc (esperado 2 con stderr)"; fi
+
 rm -rf "$SG_DIR"
 rm -rf "$GUARDS_TEST_HOME"
 echo "PASS=$pass FAIL=$fail"; [ $fail -eq 0 ]
