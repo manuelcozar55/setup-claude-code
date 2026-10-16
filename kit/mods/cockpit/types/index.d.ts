@@ -3,6 +3,7 @@ export type Eat = { name: string; tokens: number }
 export type Ctx = {
   tokens: number
   limit: number
+  window?: number
   usd?: number
   rate5h?: number
   rate7d?: number
@@ -43,6 +44,8 @@ declare module 'claude-code' {
       turn: Turn
       now: number
       isMissionOpen: boolean
+      isAutoQueued: boolean
+      isVetoed: boolean
     }
   }
 }

@@ -16,6 +16,9 @@ const handoff = atom({ plugin: 'cockpit', key: 'handoff' } as const, { phase: 'i
 const turn = atom({ plugin: 'cockpit', key: 'turn' } as const, { isRunning: false, startedAt: 0, activity: '', mission: '' } as Turn)
 const now = atom({ plugin: 'cockpit', key: 'now' } as const, 0)
 const isMissionOpen = atom({ plugin: 'cockpit', key: 'isMissionOpen' } as const, false)
+// An automatic handoff is scheduled; a compaction was vetoed and owes one.
+const isAutoQueued = atom({ plugin: 'cockpit', key: 'isAutoQueued' } as const, false)
+const isVetoed = atom({ plugin: 'cockpit', key: 'isVetoed' } as const, false)
 
 const PINK = '#ff4f9a'
 const DONE = new Set(['completed', 'failed', 'killed'])
@@ -25,6 +28,8 @@ const HELD = new Set(['waiting', 'idle'])
 const STUCK_MS = 120_000
 const TEAM_SIZES = [1, 3, 5, 10, 20, 50, 100]
 const WARN_AT = [70, 85]
+const AUTO_DEFAULT = 70
+const CONTINUE = 'sigue con la Siguiente acción de .claude/estado/nucleo.md'
 
 // The fork returns only the sections that move; the code merges them into nucleo.md. Rewriting
 // the whole state each time is what loses detail (Factory, 2025-12-16), so the person's words
@@ -195,6 +200,7 @@ async function refreshCtx($: $, withBreakdown: boolean) {
   const rate = (kind: string) => u.rateLimits.find(r => r.kind === kind)?.percentUsed
   const next: Ctx = {
     tokens: u.context.tokens ?? b?.totalTokens ?? 0,
+    window: u.context.window,
     limit: b
       ? b.rawMaxTokens - b.categories.filter(c => c.kind === 'buffer').reduce((s, c) => s + c.tokens, 0)
       : (prev?.limit ?? u.context.window),
@@ -266,13 +272,20 @@ async function syncAgents($: $) {
 }
 
 // Leave the press/command dispatch before clearing the conversation under it.
-// No prompt is sent after /clear: the SessionStart(clear) hook hands nucleo.md to the new
-// session, so a message the person sends meanwhile is never raced (lost once, 2026-10-14).
-async function clearAfter($: $, path?: string) {
+// After a clear that carries a saved state, the prompt box is filled (never submitted) with a
+// line to continue: the SessionStart(clear) hook hands nucleo.md to the new session, and a
+// message sent here would race it (lost once, 2026-10-14). Filling is best effort.
+async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefined) {
   $.clock.after(300, async () => {
     try {
+      // A turn that began since the save would lose its context to this clear.
+      if ((await read($, turn)).isRunning) {
+        await update($, handoff, (): Handoff => ({ phase: 'done', msg: `${path ? `Guardado en ${path}` : 'Listo'}, pero empezó otro turno: no limpio; escribe /clear cuando quieras` }))
+        return
+      }
       await $.command.run({ command: 'clear' })
       await update($, handoff, (): Handoff => ({ phase: 'done', msg: path ? `Contexto limpio; la sesión nueva carga ${path}: escribe «sigue»` : 'Contexto limpio' }))
+      if (fill) await $.prompt.fill({ text: fill }).catch(() => undefined)
     } catch {
       await update($, handoff, (): Handoff => ({
         phase: 'error',
@@ -282,10 +295,11 @@ async function clearAfter($: $, path?: string) {
   })
 }
 
+const utcStamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')
+
 // Copies are nucleo.prev-<UTC stamp>.md, so name order is age order.
 async function keepCopies($: $, dir: string, prev: string) {
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')
-  await $.fs.write(`${dir}/nucleo.prev-${stamp}.md`, prev)
+  await $.fs.write(`${dir}/nucleo.prev-${utcStamp()}.md`, prev)
   const copies = (await $.fs.list(dir)).map(f => f.name).filter(n => /^nucleo\.prev-.+\.md$/.test(n)).sort()
   const stale = copies.slice(0, -KEEP_COPIES).map(n => `${dir}/${n}`)
   if (stale.length) await $.process.run(['rm', '-f', '--', ...stale])
@@ -302,23 +316,42 @@ async function excludeState($: $, root: string) {
   await $.fs.write(file, `${text}${text && !text.endsWith('\n') ? '\n' : ''}.claude/estado/\n`)
 }
 
+// Same root as nucleo_raiz (hooks/lib/nucleo.sh), or the start hook does not find what is written here:
+// git from the session's cwd (not the mod process's), and $HOME/.claude/** climbs to $HOME.
+// Limits: nucleo_raiz starts from ${CLAUDE_PROJECT_DIR:-$cwd} and that variable is not visible here (the API
+// does not expose the environment, only $.process.run); they agree while the session's cwd is the project's,
+// and diverge if the session changed repo with `cd`. Without `printenv`, home = '' and it does not climb to $HOME.
+// isShared: the root is $HOME, whose nucleo.md belongs to no single task.
+async function resolveRoot($: $) {
+  const cwd = (await $.session.cwd()).replace(/[\\/]+$/, '')
+  const top = await $.process.run(['git', '-C', cwd, 'rev-parse', '--show-toplevel']).catch(() => null)
+  const isRepo = top?.exitCode === 0 && !!top.stdout.trim()
+  const home = (await $.process.run(['printenv', 'HOME']).catch(() => null))?.stdout.trim().replace(/[\\/]+$/, '') ?? ''
+  const found = isRepo ? top.stdout.trim() : cwd
+  const inHomeClaude = !!home && (found === `${home}/.claude` || found.startsWith(`${home}/.claude/`))
+  const root = inHomeClaude ? home : found
+  const dir = `${root}/.claude/estado`
+  return { isRepo, root, dir, path: `${dir}/nucleo.md`, isShared: !!home && root === home }
+}
+
+// COCKPIT_AUTO_HANDOFF: `off`, an integer 50-95 (the % of the compaction limit), or anything else = 70.
+async function autoThreshold($: $) {
+  const v = (await $.process.run(['printenv', 'COCKPIT_AUTO_HANDOFF']).catch(() => null))?.stdout.trim().toLowerCase() ?? ''
+  if (v === 'off') return null
+  const n = /^\d+$/.test(v) ? Number(v) : NaN
+  return n >= 50 && n <= 95 ? n : AUTO_DEFAULT
+}
+
+// Automatic handoff only where the state is the task's own: a repo that is not $HOME.
+async function isAutoEligible($: $) {
+  const r = await resolveRoot($).catch(() => null)
+  return !!r && r.isRepo && !r.isShared
+}
+
 async function runHandoff($: $, andClear: boolean, focus = '') {
   await update($, handoff, (): Handoff => ({ phase: 'working' }))
   try {
-    const cwd = (await $.session.cwd()).replace(/[\\/]+$/, '')
-    // Misma raíz que nucleo_raiz (hooks/lib/nucleo.sh), o el hook de arranque no encuentra lo que se escribe aquí:
-    // git desde el cwd de la sesión (no el del proceso del mod), y $HOME/.claude/** sube a $HOME.
-    // Límites: nucleo_raiz parte de ${CLAUDE_PROJECT_DIR:-$cwd} y aquí esa variable no se ve (la API no
-    // expone el entorno, solo $.process.run); coinciden mientras el cwd de la sesión sea el del proyecto,
-    // y divergen si la sesión cambió de repo con `cd`. Sin `printenv`, home = '' y no se sube a $HOME.
-    const top = await $.process.run(['git', '-C', cwd, 'rev-parse', '--show-toplevel']).catch(() => null)
-    const isRepo = top?.exitCode === 0 && !!top.stdout.trim()
-    const home = (await $.process.run(['printenv', 'HOME']).catch(() => null))?.stdout.trim().replace(/[\\/]+$/, '') ?? ''
-    const found = isRepo ? top.stdout.trim() : cwd
-    const inHomeClaude = !!home && (found === `${home}/.claude` || found.startsWith(`${home}/.claude/`))
-    const root = inHomeClaude ? home : found
-    const dir = `${root}/.claude/estado`
-    const path = `${dir}/nucleo.md`
+    const { isRepo, root, dir, path } = await resolveRoot($)
     const prev = (await $.fs.exists(path)) ? await $.fs.read(path) : ''
     const reply = await $.model.fork({ prompt: HANDOFF_PROMPT + (prev ? prevNote(prev) : firstNote) + (focus ? focusNote(focus) : '') })
     if (!reply.isAnswered) throw new Error(`el modelo no respondió (${reply.reason})`)
@@ -336,6 +369,30 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
   }
 }
 
+// At a main-loop turn end: the context crossed the threshold (or a compaction was vetoed and owes
+// one), the state is the task's own and nothing else is running. Scheduled out of the hook the
+// turn awaits, because /clear is refused inside it.
+async function maybeAutoHandoff($: $) {
+  const limit = await autoThreshold($)
+  const c = await read($, ctx)
+  if (limit === null || !c) return
+  const pct = pctOf(c)
+  if (pct < limit && !(await read($, isVetoed))) return
+  if ((await read($, isAutoQueued)) || !['idle', 'done'].includes((await read($, handoff)).phase)) return
+  if ((await $.agent.list()).some(a => !DONE.has(a.status)) || !(await isAutoEligible($))) return
+  await update($, isAutoQueued, () => true)
+  $.ui.toast(`Contexto al ${pct}%: handoff automático y sesión nueva`)
+  $.clock.after(300, async () => {
+    try {
+      if ((await read($, turn)).isRunning) return
+      await update($, isVetoed, () => false)
+      await runHandoff($, true)
+    } finally {
+      await update($, isAutoQueued, () => false)
+    }
+  })
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'dock', description: 'Abre el Agent Dock: agentes trabajando, misión y tamaño de equipo' })
@@ -344,6 +401,11 @@ export const register: Register = on => {
       name: 'handoff',
       description: 'Guarda el estado en .claude/estado/nucleo.md del proyecto, hace /clear y retoma (`/handoff solo` solo guarda; el resto es el foco de la próxima sesión)',
       argumentHint: '[solo] [foco de la próxima sesión]',
+    })
+    await $.command.register({
+      name: 'nueva',
+      description: 'Archiva el estado de la tarea actual, hace /clear y deja la tarea nueva escrita en el prompt',
+      argumentHint: '<la tarea nueva>',
     })
     $.clock.every(1500, () => void syncAgents($).catch(() => undefined))
     softRefresh($, true)
@@ -369,12 +431,39 @@ export const register: Register = on => {
     return { text: h.msg ?? 'Handoff en marcha.' }
   })
 
+  on('command.run', { command: 'nueva' }, async ($, e) => {
+    const task = e.args.trim()
+    if (!task) return { text: 'Uso: /nueva <la tarea nueva>. Archiva el estado de la tarea actual, limpia el contexto y deja la tarea nueva escrita en el prompt.' }
+    // Archiving under a running turn or handoff would pull the state from under it, and the /clear would be refused anyway.
+    if ((await read($, turn)).isRunning || (await read($, handoff)).phase === 'working' || (await read($, isAutoQueued)))
+      return { text: 'Hay un turno o un handoff en marcha: repite /nueva cuando termine.' }
+    const { dir, path, isRepo, isShared } = await resolveRoot($)
+    if (!isRepo || isShared) {
+      await clearAfter($, undefined, task)
+      return { text: 'Limpiando; la tarea nueva quedará en el prompt. Aviso: aquí (~ o fuera de un repo) no hay estado propio por tarea: la sesión nueva puede recibir el nucleo compartido.' }
+    }
+    let note = ''
+    if (await $.fs.exists(path)) {
+      await runHandoff($, false)
+      const h = await read($, handoff)
+      if (h.phase === 'error') return { text: h.msg ?? 'Handoff fallido' }
+      const dest = `${dir}/archivo/nucleo-${utcStamp()}.md`
+      const moved = await $.process.run(['mkdir', '-p', '--', `${dir}/archivo`]).then(m => (m.exitCode === 0 ? $.process.run(['mv', '--', path, dest]) : m))
+      if (moved.exitCode !== 0) return { text: `Guardado en ${path}, pero no pude archivarlo: no limpio` }
+      note = ` Estado archivado en ${dest}.`
+    }
+    await clearAfter($, undefined, task)
+    return { text: `Limpiando; la tarea nueva quedará en el prompt.${note}` }
+  })
+
   on('session.end', async ($, e, next) => {
     if (e.reason === 'clear') {
       await update($, agents, () => [])
       await update($, tasks, () => [])
       await update($, summary, () => '')
       await update($, warned, () => 0)
+      await update($, isAutoQueued, () => false)
+      await update($, isVetoed, () => false)
       await update($, ctx, () => null)
       await update($, cache, c => ({ ...c, lastAt: 0, cold: 0, turns: 0 }))
     }
@@ -425,9 +514,28 @@ export const register: Register = on => {
           }
         })
       }
-      softRefresh($, true)
+      // Not awaited: the breakdown estimate must not delay the turn's end; the check rides behind it.
+      void refreshCtx($, true)
+        .then(() => (e.reason === 'answer' ? maybeAutoHandoff($) : undefined))
+        .catch(() => undefined)
     }
     return next(e)
+  })
+
+  // Hold back the engine's own compaction while the handoff can still run; a window nearly full is let through.
+  // `ctx.window` is the model's own window and `ctx.limit` the compaction limit, which may be smaller (d.ts SessionContextUsage).
+  on('session.compact', { trigger: 'auto' }, async ($, e, next) => {
+    if (e.agentId !== undefined || (await autoThreshold($)) === null) return next(e)
+    // Unthrottled read: the throttled one can be 4 s old, and compactions are rare enough to pay for it.
+    // A failed read leaves the last turn's figure, which may sit under a ceiling the context already passed.
+    const isFresh = await refreshCtx($, true).then(() => true, () => false)
+    const c = await read($, ctx)
+    // A handoff in error is not retried, so holding the compaction back would wait for nothing.
+    if (!isFresh || !c?.window || (await read($, handoff)).phase === 'error' || !(await isAutoEligible($))) return next(e)
+    const ceiling = Math.min(c.limit * 1.5, c.window * 0.5)
+    if (c.tokens >= ceiling) return next(e)
+    await update($, isVetoed, () => true)
+    return { skip: `Cockpit: compactación pospuesta (${k(c.tokens)} tokens, techo ${k(ceiling)}); el handoff automático cierra la fase al terminar el turno` }
   })
 
   on('tool.call', async ($, e, next) => {
