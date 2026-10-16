@@ -86,7 +86,7 @@ else
   warn "Sentinel IOC layer inactiva: falta iocs.json (opcional; ver docs/05-security.md). Los guards de Bash siguen activos."
 fi
 
-# 2c. version minima del preflight que exige iocs.json (acoplamiento datos/codigo, E6 #27).
+# 2d. version minima del preflight que exige iocs.json (acoplamiento datos/codigo, E6 #27).
 # Un iocs.json nuevo con un preflight viejo no falla: las reglas que el codigo viejo no sabe
 # leer (p. ej. las de tuberia al shell, que cuentan con la union de continuaciones) se quedan
 # a medias en silencio. Se compara el entero de iocs.json contra PREFLIGHT_VERSION del .py.
