@@ -103,6 +103,21 @@ R3=$T/r3; mkdir -p "$R3/.claude/estado"; git -C "$R3" init -q
 printf '# Estado\n## Objetivo\nSECRETO-FUERA\n- [ ] SECRETO-FUERA\n' >"$T/fuera.md"; touch -d '2026-01-01 00:00:00' "$T/fuera.md"
 ln -s "$T/fuera.md" "$R3/.claude/estado/nucleo.md"; touch -h -d '2026-01-01 00:00:00' "$R3/.claude/estado/nucleo.md"
 ok "symlink: clear no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-clear.sh")" ""
+
+# --- resume con la caché caducada: aviso a la persona; sin caducar o con poco contexto, nada ---
+rs() { ev "$1" s7 "" resume | jq -c --argjson e "$2" --argjson k "$3" '.prompt_cache_likely_expired=$e | .context_tokens=$k' \
+  | bash "$H/session-start-clear.sh"; }
+ok "resume caducado: aviso de /handoff" "$(rs "$R/sub" true 150000 | jq -r '.systemMessage // ""' | command grep -c '/handoff')" 1
+ok "resume caducado: el nucleo se sigue inyectando" "$(rs "$R/sub" true 150000 | ctx | command grep -c PASO-VIVO)" 1
+ok "resume caducado sin nucleo: solo el aviso" "$(rs "$T/sin-nucleo" true 150000 | jq -r 'keys|join(",")')" systemMessage
+ok "resume con caché viva: sin aviso" "$(rs "$R/sub" false 150000 | jq -r '.systemMessage // "nada"')" nada
+ok "resume con poco contexto: sin aviso" "$(rs "$R/sub" true 50000 | jq -r '.systemMessage // "nada"')" nada
+# En jq una cadena ordena por encima de cualquier número: sin la guarda, ">= 100000" sería cierto.
+ok "resume con context_tokens no numérico: sin aviso" "$(rs "$R/sub" true '"x"' | jq -r '.systemMessage // "nada"')" nada
+# fork trae los mismos campos (doc), pero el filtro solo acepta resume: el matcher del kit no lo lanza en fork.
+ok "fork caducado: sin aviso" "$(ev "$R/sub" s7 "" fork | jq -c '.prompt_cache_likely_expired=true | .context_tokens=150000' \
+  | bash "$H/session-start-clear.sh" | jq -r '.systemMessage // "nada"')" nada
+ok "clear sin nucleo: no emite nada" "$(ev "$T/sin-nucleo" s7 "" clear | bash "$H/session-start-clear.sh")" ""
 ok "symlink: compact no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-FUERA)" 0
 ok "symlink: nudge calla" "$(jq -cn --arg c "$R3" --arg t "$TP" '{session_id:"s6",transcript_path:$t,cwd:$c}' | bash "$H/nucleo-nudge.sh")" ""
 ok "symlink: el gate no mira el nucleo enlazado" "$(ev "$R3" s6 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh" | jq -r '.decision // "nada"')" nada
@@ -121,4 +136,13 @@ ok "pre-compact: el .gitignore previo conserva lo suyo" "$(cat "$R5/.claude/esta
 checkpoint-compact-*"
 
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
+# --- nucleo_emitir: un «# comentario» dentro de un bloque ``` no es cabecera (cortaba la sección) ---
+NF=$T/fence.md
+{ echo '# Estado'; echo '## Comandos de verificación'; echo '```bash'; echo '# correr los tests'; echo 'make test'; echo '```'
+  echo '## Pendientes'; echo '- [ ] P-FENCE'; } >"$NF"
+# shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
+E=$(. "$H/lib/nucleo.sh"; nucleo_emitir "$NF")
+ok "emitir: comentario en bloque de código no corta la sección" "$(command grep -c 'make test\|P-FENCE' <<<"$E")" 2
+ok "emitir: el comentario no cuenta como sección fuera de forma" "$(command grep -c 'fuera de forma' <<<"$E")" 0
+
 exit $FAIL

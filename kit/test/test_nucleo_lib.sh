@@ -61,4 +61,96 @@ ok "env 250 000 sin [1m] → airbag de 167 000" "$(CLAUDE_CODE_AUTO_COMPACT_WIND
 ok "env 250 000 con [1m] en ANTHROPIC_MODEL → 217 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='m[1m]' nucleo_ctx "$T/t.jsonl")" "100000 46"
 printf '{"model": "m[1m]"}\n' >"$HOME/.claude/settings.json"
 ok "env 250 000 con [1m] en settings.json → 217 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='' nucleo_ctx "$T/t.jsonl")" "100000 46"
+
+# Forma vista en vivo (15-oct): la tarea bajo «## TAREA ACTUAL» con sus secciones en ###. Solo
+# con ## se inyectaba el título (148 chars) y el modelo retomaba a ciegas.
+A=$T/anidado.md
+printf '%s\n' '# Estado global' '## Hecho recientemente' '- cosa vieja' '## TAREA ACTUAL (15-oct): cerrar X' \
+  '### Encargo original (literal)' 'ENCARGO-ANIDADO' '### Plan' '- [ ] PLAN-ANIDADO' '### Hechos que corrigen' 'HECHO-AJENO' \
+  '### Comandos de verificación' 'make test' >"$A"
+S=$(nucleo_emitir "$A")
+ok "### bajo TAREA ACTUAL: el encargo llega" "$(command grep -c ENCARGO-ANIDADO <<<"$S")" 1
+ok "### bajo TAREA ACTUAL: el plan llega" "$(command grep -c PLAN-ANIDADO <<<"$S")" 1
+ok "### bajo TAREA ACTUAL: verificación llega" "$(command grep -c '^make test' <<<"$S")" 1
+ok "### fuera de plantilla: no llega" "$(command grep -c HECHO-AJENO <<<"$S")" 0
+# Un ### sin clave de plantilla es contenido: «### Fase 1» dentro de «## Plan» cortaba el resto del plan.
+F=$T/fases.md
+printf '%s\n' '# Estado' '## Plan' '### Fase 1' '- [ ] FASE-A' '### Fase 2' '- [ ] FASE-B' >"$F"
+S=$(nucleo_emitir "$F")
+ok "### bajo ## Plan: las cuatro líneas llegan" "$(command grep -c '^### Fase [12]$\|FASE-[AB]' <<<"$S")" 4
+ok "### bajo ## Plan: no es fuera de forma" "$(command grep -c 'fuera de forma' <<<"$S")" 0
+ok "### bajo ## Plan: no pide leer el fichero" "$(command grep -c '^\[LEE ' <<<"$S")" 0
+# Cercas: una línea ```x``` no abre bloque, y una cerca sin cerrar no se traga las secciones siguientes.
+# Tragadas, llegaban como cuerpo del Objetivo: lo delata la sección ajena del final, que se cuela.
+F=$T/cerca1.md
+# shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
+printf '%s\n' '# Estado' '## Objetivo' '```x```' '## Plan' '- [ ] PLAN-TRAS-CERCA' '## Hecho' 'HECHO-AJENO' >"$F"
+ok "cerca de una línea: el Plan llega y lo ajeno no" "$(nucleo_emitir "$F" | command grep -c 'PLAN-TRAS-CERCA\|HECHO-AJENO')" 1
+F=$T/cerca2.md
+printf '%s\n' '# Estado' '## Objetivo' '```' 'código sin cerrar' '## Comandos de verificación' 'make CMD-TRAS-CERCA' \
+  '## Hecho' 'HECHO-AJENO' >"$F"
+ok "cerca sin cerrar: los comandos llegan y lo ajeno no" "$(nucleo_emitir "$F" | command grep -c 'CMD-TRAS-CERCA\|HECHO-AJENO')" 1
+# ### con clave aún no vista abre su sección aunque cuelgue de un ## de plantilla: plegada en Plan,
+# caía con el tope de 3 000 bytes de Plan (el relleno lo agota).
+printf -v R '%*s' 2980 ''; F=$T/hermanas.md
+printf '%s\n' '# Estado' '## Plan' '- [ ] p' "${R// /r}" '### Paso actual' 'PA-HERMANA' '### Pendientes' '- Q-HERMANA' >"$F"
+S=$(nucleo_emitir "$F")
+ok "### hermanas bajo ## Plan: secciones propias" "$(command grep -c '^### Paso actual$\|^PA-HERMANA$\|^### Pendientes$\|^- Q-HERMANA$' <<<"$S")" 4
+ok "### hermanas bajo ## Plan: nada recortado" "$(command grep -c 'recortado' <<<"$S")" 0
+# Bajo un ## que no es de plantilla, un ### sin clave cierra la sección y cuenta en fuera: la historia
+# cerrada («### Hecho») no puede colarse como pendiente sin aviso.
+F=$T/nota.md
+printf '%s\n' '# Estado' '## TAREA ACTUAL' '### Encargo original' 'E-ENC' '### Nota' 'N-NOTA' '### Plan' '- [ ] X-PLAN' >"$F"
+S=$(nucleo_emitir "$F")
+ok "### sin clave bajo TAREA ACTUAL: cierra la sección" "$(command grep -c 'E-ENC\|N-NOTA\|X-PLAN' <<<"$S")" 2
+ok "### sin clave bajo TAREA ACTUAL: cuenta en fuera" "$(command grep -c '^\[fuera de forma: 2 secciones' <<<"$S")" 1
+F=$T/hecho.md
+printf '%s\n' '# Estado' '## TAREA ACTUAL' '### Pendientes' '- P-PEND' '### Hecho' 'HECHO-AJENO' >"$F"
+S=$(nucleo_emitir "$F")
+ok "### Hecho tras Pendientes: no se cuela" "$(command grep -c 'P-PEND\|HECHO-AJENO' <<<"$S")" 1
+ok "### Hecho tras Pendientes: avisa fuera de forma" "$(command grep -c '^\[fuera de forma: 2 secciones' <<<"$S")" 1
+# Lo mismo con un subapartado («### Fase 1» tras «### Plan»): solo el nombre lo distingue de «### Hecho», así
+# que también cierra, pero la pérdida se ve: la salida pide leer el fichero y sugiere ####.
+F=$T/fase-perdida.md
+printf '%s\n' '# E' '## TAREA ACTUAL' '### Plan' '- p' '### Fase 1' '- FASE-A' '### Pendientes' '- P' >"$F"
+S=$(nucleo_emitir "$F")
+ok "### sin clave tras Plan bajo TAREA ACTUAL: no llega" "$(command grep -c FASE-A <<<"$S")" 0
+ok "### sin clave cierra una sección: pide leer el fichero" "$(command grep -c '^\[LEE ' <<<"$S")" 1
+ok "### sin clave cierra una sección: sugiere ####" "$(command grep -c 'escríbelo con ####)\]$' <<<"$S")" 1
+# Cercas equilibradas: un «## Plan» citado en un bloque es inerte y el Plan real llega como sección.
+F=$T/cerca-citada.md
+# shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
+printf '%s\n' '# Estado' '## Objetivo' '```md' '## Plan' 'CITADO' '```' '## Plan' '- [ ] REAL' '## Hecho' 'AJ-CITA' >"$F"
+S=$(nucleo_emitir "$F")
+ok "cerca con ## Plan citado: el Plan real llega" "$(command grep -c 'CITADO\|REAL' <<<"$S")" 2
+ok "cerca con ## Plan citado: lo ajeno no" "$(command grep -c AJ-CITA <<<"$S")" 0
+# Cerca sin cerrar bajo ###: se ignoran todas, así que ni ## ajeno ni ### se tragan.
+F=$T/cerca-impar.md
+printf '%s\n' '# Estado' '## TAREA ACTUAL' '### Plan' '- [ ] P-IMPAR' '```' '## Hecho' 'AJ-IMPAR' '### Pendientes' '- Q-IMPAR' >"$F"
+S=$(nucleo_emitir "$F")
+ok "cerca impar: Pendientes llega como sección" "$(command grep -c '^### Pendientes$\|Q-IMPAR' <<<"$S")" 2
+ok "cerca impar: lo ajeno no" "$(command grep -c AJ-IMPAR <<<"$S")" 0
+# Cerca de cuatro acentos (y con sangría): también conmuta.
+F=$T/cerca4.md
+# shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
+printf '%s\n' '# Estado' '## Comandos de verificación' '````' '# comentario' 'make CMD-CUATRO' '````' \
+  '## Pendientes' '  ```sh' '# otro' '  ```' '- Q-SANGRIA' >"$F"
+ok "cerca de cuatro y con sangría: los comandos llegan" "$(nucleo_emitir "$F" | command grep -c 'CMD-CUATRO\|Q-SANGRIA')" 2
+# Cuatro espacios también son cerca: en un nucleo lo común es un paso numerado con su bloque sangrado, y si
+# no contara su # comentario cortaría los comandos.
+F=$T/cerca-paso.md
+# shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
+printf '%s\n' '## Plan' '1. correr' '    ```sh' '# c' 'make X' '    ```' '- Q' '## Pendientes' '- r' >"$F"
+ok "cerca sangrada cuatro espacios: el Plan sigue y Pendientes llega" "$(nucleo_emitir "$F" | command grep -c '^make X$\|^- Q$\|^## Pendientes$\|^- r$')" 4
+# Límite declarado: un ``` dentro de un bloque sangrado de CommonMark cuenta como cerca; aquí deja la paridad
+# impar, y se avisa.
+F=$T/cerca-sangrada.md
+# shellcheck disable=SC2016 # las comillas invertidas son una cerca markdown literal, no una sustitución
+printf '%s\n' '# Estado' '## Objetivo' '    ```' '## Comandos de verificación' '```sh' '# comentario' 'make CMD-SANGRADA' '```' \
+  '## Plan' '- [ ] P-SANGRADA' >"$F"
+ok "cuatro espacios cuentan: entran en la paridad" "$(nucleo_emitir "$F" | command grep -c '^\[cercas sin equilibrar')" 1
+# Cercas impares: se ignoran, pero no en silencio.
+ok "cerca sin cerrar: avisa" "$(nucleo_emitir "$T/cerca2.md" | command grep -c '^\[cercas sin equilibrar: se ignoran')" 1
+ok "cerca sin cerrar: pide leer el fichero" "$(nucleo_emitir "$T/cerca2.md" | command grep -c '^\[LEE ')" 1
+ok "cercas equilibradas: sin aviso" "$(nucleo_emitir "$T/cerca4.md" | command grep -c 'cercas sin equilibrar')" 0
 exit $FAIL
