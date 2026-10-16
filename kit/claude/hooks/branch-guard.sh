@@ -19,29 +19,74 @@ if ! COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 fi
 [[ -z "$COMMAND" ]] && exit 0
 
-# Sin ancla de inicio y sin exigir `push` pegado a `git`: el ancla '^' dejaba pasar
-# `cd /tmp && git push origin master` y exigir `git\s+push` dejaba pasar
-# `git -C /ruta push origin main`. El corte por [;&|] mantiene el patron dentro de un
-# solo comando, para que un "push" de otro segmento no active el guard.
-# rc=1 es "no es un push" y se sale; rc>=2 es "la regex no compila", que con `|| exit 0` era un
-# permiso silencioso. Se distinguen: si el filtro se rompe, el guard deniega en vez de callarse.
-echo "$COMMAND" | grep -qE '\bgit\b[^;&|]*\bpush\b'
-rc_filtro=$?
-if [ "$rc_filtro" -ge 2 ]; then
-  echo "BLOCKED: branch-guard no puede evaluar el comando (grep rc=$rc_filtro)." >&2
+# El destino real del push se resuelve sobre el comando normalizado (lib/cmdnorm.sh): tokens
+# descomillados, sin prefijos (sudo, env, timeout...) ni opciones globales de git. Antes se buscaba el
+# nombre de la rama como SUBCADENA del texto, y eso fallaba en las dos direcciones: `git push origin
+# "main"`, `git push` a secas y `git push origin HEAD` con main activa pasaban, y `main-menu` o un
+# `echo main` posterior daban falso positivo. Ahora: refspec implicito o HEAD -> rama actual
+# (`git symbolic-ref`, en el cwd del hook o en el que fijen `git -C` / `cd`), y igualdad de token.
+# Fuera de un repo, o con HEAD suelto, la rama actual no existe y se conserva el comportamiento
+# anterior: solo cuenta lo que el comando nombra.
+# shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit." >&2; exit 2; }
+if ! cmdn_parse "$COMMAND"; then
+  echo "BLOCKED (fail-closed): awk no pudo normalizar el comando; branch-guard no puede evaluarlo." >&2
   exit 2
 fi
-[ "$rc_filtro" -eq 0 ] || exit 0
 
 PROTECTED="${CC_PROTECT_BRANCHES:-main:master:production}"
 IFS=':' read -ra BRANCHES <<< "$PROTECTED"
-for branch in "${BRANCHES[@]}"; do
-  if echo "$COMMAND" | grep -qwE "(origin\s+${branch}|${branch}\s|${branch}$)"; then
-    echo "BLOCKED: Attempted push to protected branch '${branch}'." >&2
-    echo "Command: $COMMAND" >&2
-    echo "Push to a feature/staging branch first, then open a PR." >&2
-    exit 2
+
+is_protected() {
+  local b
+  for b in "${BRANCHES[@]}"; do [[ $1 == "$b" ]] && return 0; done
+  return 1
+}
+
+block() {
+  echo "BLOCKED: Attempted push to protected branch '$1'." >&2
+  echo "Command: $COMMAND" >&2
+  echo "Push to a feature/staging branch first, then open a PR." >&2
+  exit 2
+}
+
+for seg in "${CMDN_SEGS[@]}"; do
+  cmdn_fields "$seg"
+  cmdn_track_cd
+  [[ ${T[1]:-} == git && ${T[2]:-} == push ]] || continue
+
+  ops=(); skip=0; dd=0; tags=0
+  for a in "${T[@]:3}"; do
+    if (( skip )); then skip=0; continue; fi
+    if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
+    if (( ! dd )) && [[ $a == -* ]]; then
+      case $a in
+        -o|--push-option|--repo|--receive-pack|--exec) skip=1 ;;
+        --tags) tags=1 ;;
+      esac
+      continue
+    fi
+    ops+=("$a")
+  done
+
+  IFS=$CMDN_GS read -r -a gopts <<<"${T[0]}"
+  cur=$(git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" symbolic-ref --short -q HEAD 2>/dev/null)
+
+  targets=()
+  if (( ${#ops[@]} <= 1 )); then
+    (( tags )) || targets+=("$cur")
+  else
+    for ref in "${ops[@]:1}"; do
+      ref=${ref#+}
+      dst=$ref
+      [[ $ref == *:* ]] && dst=${ref##*:}
+      [[ $dst == HEAD ]] && dst=$cur
+      targets+=("${dst#refs/heads/}")
+    done
   fi
+  for t in "${targets[@]}"; do
+    [[ -n $t ]] && is_protected "$t" && block "$t"
+  done
 done
 
 exit 0

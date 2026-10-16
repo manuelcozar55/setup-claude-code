@@ -495,6 +495,39 @@ expect "branch-guard: master tras cd + && denegado" "$(run_branchguard 'cd /tmp 
 expect "branch-guard: -C antes de push a main denegado" "$(run_branchguard 'git -C /home/user/repo push origin main')" BLOCK
 expect "branch-guard: rama de feature NO denegada"  "$(run_branchguard 'git push origin feature/x')"             ALLOW
 
+# Destino real del push (E7 PR2, hallazgo 5). El guard comparaba subcadenas del TEXTO: la rama
+# entrecomillada, el push a secas y `HEAD` pasaban con main activa, y `main-menu` daba falso
+# positivo. Ahora se resuelve la rama actual con symbolic-ref y se compara por igualdad de token.
+# Se usan repos temporales porque el resultado depende de la rama activa del cwd del hook.
+BR_MAIN=$(mktemp -d); BR_FEAT=$(mktemp -d); BR_NONE=$(mktemp -d)
+git -C "$BR_MAIN" init -q && git -C "$BR_MAIN" symbolic-ref HEAD refs/heads/main
+git -C "$BR_FEAT" init -q && git -C "$BR_FEAT" symbolic-ref HEAD refs/heads/feature/x
+run_bg() { # $1 cwd, $2 comando
+  (cd "$1" && jq -nc --arg c "$2" '{tool_name:"Bash",tool_input:{command:$c}}' | bash "$KIT/claude/hooks/branch-guard.sh" 2>&1)
+}
+for c in 'git push origin "main"' "git push origin 'main'" 'git push' 'git push origin' 'git push origin HEAD' \
+         'git push -u origin HEAD' 'git push origin HEAD:main' 'git push origin feature:main' \
+         'git push origin refs/heads/main' 'git push origin +main' 'sudo git push origin main' \
+         'git -C . push' '/usr/bin/git push origin main' 'git push origin main main-menu' \
+         'git commit -m "x #1" && git push' 'git push --set-upstream origin HEAD'; do
+  expect "branch-guard (main activa): $c denegado" "$(run_bg "$BR_MAIN" "$c")" BLOCK
+done
+for c in 'git push origin main-menu' 'git push origin feature/x' 'git push origin HEAD:feature/x' \
+         'git push origin x # main' 'git commit -m "push main" && git status' 'git push origin domain' \
+         'echo git push origin main'; do
+  expect "branch-guard (main activa): $c NO denegado" "$(run_bg "$BR_MAIN" "$c")" ALLOW
+done
+for c in 'git push' 'git push origin HEAD' 'git push -u origin HEAD' 'git push origin feature/x'; do
+  expect "branch-guard (feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
+expect "branch-guard (feature activa): push explicito a main denegado" "$(run_bg "$BR_FEAT" 'git push origin main')" BLOCK
+expect "branch-guard (fuera de repo): git push a secas conserva el comportamiento" "$(run_bg "$BR_NONE" 'git push')"             ALLOW
+expect "branch-guard (fuera de repo): HEAD conserva el comportamiento"             "$(run_bg "$BR_NONE" 'git push origin HEAD')" ALLOW
+expect "branch-guard (fuera de repo): main explicito denegado"                     "$(run_bg "$BR_NONE" 'git push origin main')" BLOCK
+expect "branch-guard: git -C a un repo en main denegado desde fuera"    "$(run_bg "$BR_NONE" "git -C $BR_MAIN push")" BLOCK
+expect "branch-guard: git -C a un repo en feature NO denegado"          "$(run_bg "$BR_NONE" "git -C $BR_FEAT push")" ALLOW
+expect "branch-guard: cd a un repo en main + push denegado"             "$(run_bg "$BR_NONE" "cd $BR_MAIN && git push")" BLOCK
+rm -rf "$BR_MAIN" "$BR_FEAT" "$BR_NONE"
 
 # Las TRES grafias del borrado de una rama remota. Solo `--delete` estaba cubierta: contra rama
 # protegida las otras dos tambien caian, pero por branch-guard.sh (que bloquea por el nombre de
