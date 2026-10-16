@@ -48,11 +48,32 @@ nucleo_emitir() {
   LC_ALL=C awk -v f="$1" -v kb="$(( ($(wc -c <"$1") + 1023) / 1024 ))" -v sec=3000 -v tope=6500 '
     BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|") }
     function sale(s) { out = out s "\n"; usado += length(s) + 1 }
-    /^##? / {
-      viva = 0; dentro = 0
-      if ($0 ~ /^# /) { if (!titulo) { titulo = 1; sale(substr($0, 1, 200)) } else fuera++; next }
-      t = substr($0, 4); c = ""
+    # ### también: las sesiones escriben la tarea como «## TAREA ACTUAL» con sus secciones en ###. Si nombra
+    # una sección aún no vista es cabecera; si no, es contenido solo bajo un ## de plantilla (padre: «### Fase 1»
+    # en «## Plan»); bajo otro ## cierra y cuenta en fuera, para que «### Hecho» no se cuele en Pendientes.
+    # Solo el nombre distingue ese «### Hecho» de un subapartado «### Fase 1»: si cierra una sección viva
+    # (cerradas), la salida pide leer el fichero y sugiere escribir los subapartados con ####.
+    # La clave va por prefijo también en ###: «### Plan de migración» reclama Plan, como ya lo hacía con ##.
+    # Dentro de un bloque ``` nada es cabecera: un «# comentario» cerraba la sección y perdía los comandos.
+    # Primera pasada: cuenta las cercas; si quedan impares se ignoran todas (y se avisa), para que una sin
+    # cerrar no se trague el resto del fichero. Con cualquier sangría: un paso numerado lleva su bloque
+    # sangrado cuatro espacios, y sin contarlo su # comentario cortaba los comandos.
+    # Límites: un ``` dentro de un bloque sangrado de CommonMark cuenta como cerca; no se casa el cierre con
+    # la longitud ni el info string del apertor; ni cercas anidadas (```` con ``` dentro) ni ~~~; si otra
+    # sesión escribe el fichero entre las dos lecturas (como ya pasaba con wc -c), la paridad puede no ser
+    # la del texto emitido; y un ## de plantilla repetido descarta su contenido y sus ### sin clave sin más
+    # señal que «fuera de forma».
+    NR == FNR { if ($0 ~ /^[ \t]*```+[^`]*$/) cercas++; next }
+    /^[ \t]*```+[^`]*$/ && cercas % 2 == 0 { cerca = !cerca }
+    /^#(#|##)? / && !cerca {
+      t = $0; sub(/^#(#|##)? /, "", t); c = ""
       for (i = 1; i <= n; i++) if (index(t, k[i]) == 1) c = (k[i] == "Encargo original") ? "Objetivo" : k[i]
+    }
+    /^#(#|##)? / && !cerca && ($0 !~ /^### / || (c != "" && !visto[c]) || !padre) {
+      if ($0 ~ /^### / && viva && !padre && (c == "" || visto[c])) cerradas++
+      viva = 0; dentro = 0
+      if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; sale(substr($0, 1, 200)) } else fuera++; next }
+      if ($0 ~ /^## /) padre = (c != "")
       if (c == "" || visto[c]++) { fuera++; next }
       if (usado + length($0) > tope) { omitidas = omitidas " «" substr(t, 1, 80) "»"; next }
       viva = 1; sale($0); next
@@ -65,8 +86,10 @@ nucleo_emitir() {
     }
     END {
       printf "%s", out
+      if (cercas % 2) print "[cercas sin equilibrar: se ignoran; un # comentario dentro de un bloque puede cortar su sección]"
       if (omitidas != "") print "[recortado por tope: se omiten" omitidas ".]"
-      if (recortes || omitidas != "") print "[LEE " f " antes de actuar: lo inyectado está incompleto.]"
-      if (fuera || kb > 12) print "[fuera de forma: " fuera + 0 " secciones / " kb " KB → muévelas a diario.md, que nunca se inyecta]"
-    }' "$1" | sed 's|</|<\\/|g'
+      if (recortes || omitidas != "" || cerradas || cercas % 2) print "[LEE " f " antes de actuar: lo inyectado está incompleto.]"
+      if (fuera || kb > 12) print "[fuera de forma: " fuera + 0 " secciones / " kb " KB → muévelas a diario.md, que nunca se inyecta" \
+        (cerradas ? " (un ### sin nombre de plantilla cerró una sección: si era un subapartado, escríbelo con ####)" : "") "]"
+    }' "$1" "$1" | sed 's|</|<\\/|g'
 }

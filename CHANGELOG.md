@@ -295,6 +295,46 @@ etiquetado.
   mata el hook a medias. Nuevo caso que fija que un
   directorio sin git ni `.claude/estado` no gana un `.claude/` (una instalación anterior a
   3917835 dejó 47 bajo un home).
+- **`/handoff` (cockpit 0.3.5) escribe donde el hook de arranque lee.** Resolvía la raíz git
+  desde el cwd del proceso del mod, no desde el de la sesión, y desde `~/.claude` escribía un
+  `.claude/.claude/estado/nucleo.md` anidado que nadie inyectaba. Ahora usa `git -C <cwd>` y
+  sube `$HOME/.claude/**` a `$HOME`, como `nucleo_raiz` desde el cwd de la sesión
+  (`CLAUDE_PROJECT_DIR` no llega al mod).
+- **`session-start-clear.sh` avisa al retomar con la caché caducada.** Con `resume`,
+  `prompt_cache_likely_expired` y ≥ 100 000 tokens, un `systemMessage` propone `/handoff`: el
+  turno siguiente reescribe el contexto entero (medido: 96 % del prefijo tras > 1 h), así que
+  retomar limpio cuesta casi lo mismo. La doc envía los mismos campos en `fork`, pero el matcher
+  del kit no lanza el hook ahí: una sesión bifurcada ya trae su contexto. `context_tokens` solo cuenta si es número: en jq una
+  cadena ordena por encima de cualquier número y el umbral se cumplía siempre.
+- **`nucleo_emitir` reconoce las secciones en `###`.** Las sesiones escriben la tarea como
+  `## TAREA ACTUAL` con `### Encargo original`, `### Plan`…; solo con `##` el inyector entregaba
+  el título (148 chars de un nucleo real de 7,7 KB) y el modelo retomaba a ciegas. Un `###` que
+  nombra una sección de plantilla aún no vista es cabecera bajo cualquier `##`; sin clave es
+  contenido solo bajo un `##` de plantilla (`### Fase 1` en `## Plan`) y, bajo otro, cierra la
+  sección y cuenta en «fuera de forma», para que un `### Hecho` no se cuele en Pendientes. Solo
+  el nombre distingue ese `### Hecho` de un subapartado: un `### Fase 1` bajo `## TAREA ACTUAL`
+  también cierra la sección (los subapartados se escriben con `####`), pero no en silencio: si
+  cierra una sección viva, la salida pide leer el fichero y sugiere `####`. La
+  clave va por prefijo también en `###`: `### Plan de migración` reclama Plan, como ya hacía
+  `## Plan de migración`. Límites: un `##` de plantilla repetido descarta su contenido y sus `###`
+  sin clave sin más señal que «fuera de forma»; un `###` sin clave justo después de
+  `## TAREA ACTUAL`, sin sección viva que cerrar, se descarta sin la línea «LEE»; esa línea
+  sale también en la disposición de siempre (`### Hecho` tras una sección viva), coste de hacer
+  visible la pérdida; y una cerca sangrada suelta (una ``` de ejemplo en prosa) vuelve impar la
+  paridad y desactiva todas las cercas del fichero, con su aviso.
+- **`nucleo_emitir` no cierra la sección en un `# comentario` dentro de un bloque de
+  código.** La regla de cabecera casaba cualquier línea que empezara por `# `, también entre
+  ```; un comentario en «Comandos de verificación» cortaba la sección y los comandos, lo más
+  importante de re-inyectar tras `/clear` o compactar, se perdían sin aviso con un «fuera de
+  forma» falso. Hallazgo de `/code-review` del 15-oct; test que fallaba antes del cambio.
+  Las cercas solo cuentan si están equilibradas: admiten cualquier sangría (un paso numerado
+  lleva su bloque de comandos sangrado cuatro espacios) y tres o más acentos graves (una línea
+  ```` ```x``` ```` no es cerca). Si una queda sin cerrar se ignoran todas, para que no se trague
+  el resto del fichero, y la salida lo avisa y pide leer el fichero. Límites: un ```` ``` ````
+  dentro de un bloque sangrado de CommonMark cuenta como cerca; no se contemplan cercas anidadas
+  ni `~~~`, ni se casa el cierre con el apertor (longitud ni info string). El fichero se lee dos
+  veces (como ya hacía `wc -c`): si otra sesión lo escribe entre medias, la paridad puede no ser
+  la del texto emitido.
 - **Sentinel ya no lee el allowlist del directorio de trabajo.** Un repo clonado con
   `.security/sentinel-allowlist.json` podía convertir en `allow` el deny de un `.env` o,
   con `[]`/`{"paths":null}`, tumbar toda herramienta con exit 2. Solo cuenta el de `$HOME`;

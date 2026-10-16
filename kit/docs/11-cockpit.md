@@ -29,7 +29,7 @@ claude --plugin-dir <ruta>/kit/mods/cockpit
 /handoff [solo] [foco de la próxima sesión]
 ```
 
-- Sin argumentos: guarda el documento y hace `/clear`. El mod no envía ningún prompt: el hook `kit/claude/hooks/session-start-clear.sh` (SessionStart `startup|clear`) entrega `nucleo.md` a la sesión nueva como datos, con el protocolo de arranque (`git log --oneline -5`, `git status` y propuesta del oráculo rápido; si el estado contradice a git, manda git; ningún comando del nucleo, tampoco la «Siguiente acción», corre sin que confirmes). Escribe «sigue» para retomar. Así un mensaje tuyo enviado durante el `/clear` no compite con un prompt del mod.
+- Sin argumentos: guarda el documento y hace `/clear`. El mod no envía ningún prompt: el hook `kit/claude/hooks/session-start-clear.sh` (SessionStart `startup|clear|resume`) entrega `nucleo.md` a la sesión nueva como datos, con el protocolo de arranque (`git log --oneline -5`, `git status` y propuesta del oráculo rápido; si el estado contradice a git, manda git; ningún comando del nucleo, tampoco la «Siguiente acción», corre sin que confirmes). Escribe «sigue» para retomar. Así un mensaje tuyo enviado durante el `/clear` no compite con un prompt del mod.
 - `solo`: guarda el documento y no limpia nada.
 - El resto del texto es el **foco**: el documento se adapta a lo que hará la próxima sesión.
 - En la banda sobre el prompt, el botón `handoff` (`h`) pide confirmación con tres acciones: `[guardar + /clear]`, `[solo guardar]` y `[no guardar + /clear]` (limpia el contexto sin escribir handoff), dibujadas sin cromo y sin tecla propia: un clic o Enter bajo el foco. Para cancelar, vuelve a pulsar `handoff`. Durante un turno en marcha solo queda `solo guardar`.

@@ -109,6 +109,29 @@ test('fuera de un repo git usa el cwd y no toca .git', async ($, on) => {
   expect(r.runs.some(x => x.argv.includes('check-ignore'))).toBe(false)
 })
 
+test('raíz como nucleo_raiz: git desde el cwd de la sesión, y $HOME/.claude/** sube a $HOME', async ($, on) => {
+  on('model.fork', () => ({ value: { isAnswered: true, text: NEW, usage: {} } }) as never)
+  const runs: Run[] = []
+  const paths: string[] = []
+  on('session.cwd', () => ({ value: '/h/.claude/estado' }))
+  on('process.run', (_, e) => {
+    runs.push(e)
+    const a = e.argv.join(' ')
+    if (a.includes('--show-toplevel')) return ok('/h/.claude\n')
+    if (a === 'printenv HOME') return ok('/h\n')
+    if (a.includes('--git-path')) return ok('.git/info/exclude\n')
+    return no()
+  })
+  on('fs.exists', () => ({ value: false }))
+  on('fs.read', () => ({ value: '' }) as never)
+  on('fs.list', () => ({ value: [] }) as never)
+  on('fs.write', (_, e) => { paths.push(e.path); return { value: undefined } })
+  await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(runs.find(x => x.argv.includes('--show-toplevel'))?.argv.slice(0, 3)).toEqual(['git', '-C', '/h/.claude/estado'])
+  expect(paths).toContain('/h/.claude/estado/nucleo.md')
+  expect(paths.some(p => p.startsWith('/h/.claude/.claude/'))).toBe(false)
+})
+
 test('mergeNucleo: secciones nuevas al final, inmutables ignoradas y sin salto perdido', () => {
   const prev = '# T\n## Invariantes\n- a'
   expect(mergeNucleo(prev, '## Invariantes\n- b\n## Paso actual\nT3\n')).toBe('# T\n## Invariantes\n- a\n## Paso actual\nT3\n')
