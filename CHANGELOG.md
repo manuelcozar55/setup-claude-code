@@ -258,26 +258,32 @@ etiquetado.
   no se ve, y un ejecutor en cualquier línea posterior de la misma llamada deniega aunque el
   heredoc no escriba el fichero que ejecuta (coste de la regla sin nombres, pinado en la suite:
   unas notas seguidas de `python3 gen.py`, un `git commit -F -` seguido de `bash scripts/check.sh`).
-  Una palabra con barra se clasifica por su basename: una herramienta conocida que no ejecuta su
-  argumento (`git`, `gh`, `pnpm`, `code`, `make`, `curl`, los sumideros) en un directorio `bin`
-  (`/usr/local/bin/git`, `/opt/homebrew/bin/gh`, `/snap/bin/code`) no es ejecutor; un basename
-  desconocido o fuera de un directorio `bin` (`./run.sh`, `/opt/tools/foo`, `$PNPM_HOME/pnpm`) sí,
-  y deniega de más; `cat <<EOF >~/bin/git; ~/bin/git` no se ve. Los nombres de ejecución del
-  código en línea van por lista explícita de palabras enteras (`exec…`, `spawn…`, `system2`,
-  `posix_spawnp`, `pcntl_exec`, `Deno.Command`…): la prosa con `execution` o `executor` ya no hace
-  del cuerpo comandos, y un nombre fuera de la lista no se ve. `fd`/`fdfind` ven la `x` dentro
-  de un racimo de flags (`-Hx`, `-HIx`; `-ex` es `-e x`); `unshare` reconoce `--propagation`,
-  `--setgroups`, `--monotonic`, `--boottime`, `--map-users` y `--map-groups`; `setpriv` y
-  `nsenter` son prefijos con su aridad. `deno`: el subcomando es la primera palabra que no es
-  flag, `deno repl --eval CODE` mira su código y `deno run eval`/`deno run -` leen código (una
-  opción global con valor separado antes del subcomando, `deno --log-level info eval`, se lee
-  como código). Un prefijo sin comando solo cuenta como shell si abre uno por diseño (`sudo`/
-  `doas -s`/`-i`, `chroot`, `unshare`, `nsenter`, `exec` con solo redirecciones) o lleva el
-  comando en un valor (`flock -c`, `env -S`): `flock -n 9` o `timeout 5` a secas ya no deniegan.
+  Una palabra con barra se clasifica por su basename solo si es una ruta absoluta en una lista
+  cerrada de directorios (`/bin`, `/sbin`, `/usr/bin`, `/usr/sbin`, `/usr/local/bin`,
+  `/usr/local/sbin`, `/opt/homebrew/bin`, `/opt/homebrew/sbin`, `/opt/local/bin`, `/snap/bin`) y
+  el basename es una herramienta conocida que no ejecuta su argumento (`git`, `gh`, `pnpm`, `code`,
+  `make`, `curl`, los sumideros): `/usr/local/bin/git add` tras un heredoc no es ejecutor; todo lo
+  demás con barra (`./run.sh`, `./bin/git`, `~/bin/git`, `node_modules/.bin/tsc`, `$NVM/bin/pnpm`,
+  `/opt/tools/foo`) sí, y deniega de más; no se ve una herramienta conocida que el propio heredoc
+  escriba en esos directorios ni que ejecute su argumento (`pnpm exec sh run.sh`, `make run` o
+  `/usr/local/bin/make run` con un Makefile escrito por el heredoc). El código en línea sigue viendo
+  cualquier palabra con `exec` o `spawn` (`os.execlpe`, `os.spawnle`, `execa`) y `popen` con sufijo
+  (`Open3.popen3`); solo se exime una lista cerrada de prosa (`execution`, `executor`, `executable`,
+  `executed`, `executing`, `executive`, `spawned`, `spawning`, `spawns`), y otra palabra de prosa
+  deniega de más. `fd`/`fdfind` ven la `x` dentro de un racimo de flags, dígitos incluidos (`-Hx`,
+  `-1Hx`; `-ex` es `-e x`); `unshare` reconoce `--propagation`, `--setgroups`, `--monotonic`,
+  `--boottime`, `--map-users` y `--map-groups`; `setpriv` y `nsenter` son prefijos con su aridad.
+  `deno`: el subcomando es la primera palabra de su lista de subcomandos que no sea el valor de
+  `-L`/`--log-level` (`deno --log-level info eval` se ve); sin subcomando conocido todo es código en
+  línea; el valor de otra opción global que coincida con un subcomando es límite. Un prefijo sin
+  comando solo cuenta como shell si abre uno por diseño (`sudo`/`doas` con `-s`, `-i`, `--shell`,
+  `--login`, también en racimo o tras `-u usuario`; `chroot`, `unshare`, `nsenter`, `exec` con solo
+  redirecciones) o lleva el comando en un valor (`flock -c`, `env -S`): `flock -n 9` o `timeout 5` a
+  secas ya no deniegan; cada prefijo lo declara en `_BARE_SHELL` y la suite exige que estén todos.
   Los demás límites asumidos van en el comentario de `key_file_extensions`.
-  238 sondas nuevas en `test_guards.sh` (25 de la regex, 17 fallaban con ella; 16, 32, 35,
-  24, 22, 22, 26 y 36 de las ocho rondas de revisión, 11, 17, 21, 16, 18, 14, 14 y 23 fallaban
-  antes de su fix).
+  257 sondas nuevas en `test_guards.sh` (25 de la regex, 17 fallaban con ella; 16, 32, 35,
+  24, 22, 22, 26, 36 y 19 de las nueve rondas de revisión, 11, 17, 21, 16, 18, 14, 14, 23 y 12
+  fallaban antes de su fix).
   Además, `test_guards.sh` escribía sus deny en el `sentinel.jsonl` del HOME real;
   `test_guards_falsifiability.sh` lo impide ahora con un HOME simulado.
 - **`pre-compact.sh` rota los checkpoints de más de 14 días, después de publicar el nuevo.**
