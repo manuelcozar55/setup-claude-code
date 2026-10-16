@@ -18,4 +18,6 @@ de los hooks, skills y subagentes que este kit instala en `~/.claude/`.
 - Salidas de Bash acotadas y honestas (`| tail -n 40`, `grep -c`, `--stat`); nunca un filtro que reescriba la salida.
 - Busca antes de leer un fichero entero (`rg -n <patrón>`) y no releas lo que ya está cargado.
 - `.claude/estado/nucleo.md` es el estado; el hook avisa cuándo actualizarlo; tras compactar llega inyectado; la historia va a `diario.md`.
-- Cambio de tarea: `/clear`.
+- Excepción a Never-Stop: con el aviso del 70 % del umbral de autocompactación, terminar la fase, actualizar el estado
+  y cerrar el turno es parada válida; el handoff y `/clear` vienen después, del cockpit o de la persona.
+- Cambio de tarea: `/nueva <tarea>` con cockpit (archiva el estado y limpia); sin él, `/clear`.

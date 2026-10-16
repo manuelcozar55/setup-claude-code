@@ -9,6 +9,21 @@ etiquetado.
 
 ### Added
 
+- **Handoff automático y `/nueva` en cockpit 0.4.0.** Al cerrar un turno del bucle principal
+  con el contexto por encima del umbral (70 % del límite de autocompactación por defecto;
+  `COCKPIT_AUTO_HANDOFF=off` lo desactiva, un entero 50-95 lo cambia), el mod guarda el estado
+  con el handoff de siempre, hace `/clear` y deja «sigue…» escrito en el prompt, sin enviarlo.
+  Si la autocompactación salta a mitad de turno, la pospone hasta un techo (1,5 × el límite,
+  nunca más de media ventana real del modelo) para que el handoff llegue al cerrar el turno;
+  pasado el techo, o en subagentes, compacta como siempre. `/nueva <tarea>` archiva el
+  `nucleo.md` de la tarea actual en `.claude/estado/archivo/`, limpia y deja la tarea nueva en
+  el prompt. Solo actúa donde el estado es de la tarea: un repo que no es `$HOME`; con
+  subagentes vivos o si empieza otro turno entre el guardado y el `/clear`, no limpia. El veto
+  cede si la lectura del contexto falla o si el handoff quedó en error, y `/nueva` no corre
+  con un turno o un handoff en marcha. 21 tests nuevos en `tests/handoff.test.tsx`. La capa
+  de Claude Code (`kit/claude/CLAUDE.md`) declara el fin de fase al 70 % como excepción a
+  Never-Stop y `/nueva` como cambio de tarea.
+
 - **Herramientas de medida y memoria en `scripts/`**: `compact-audit.py` (compactaciones:
   manuales frente a automáticas, duración, lo destruido) y `nucleo_audit.py` (si
   `nucleo.md` se escribe antes de compactar y se relee después) leen `$CLAUDE_PROJECTS_DIR`;
@@ -186,6 +201,13 @@ etiquetado.
   era un `SessionStart` sin trabajo. Sale el script y su bloque de la plantilla.
 
 ### Fixed
+
+- **`nucleo_ctx` medía sobre 200k en modelos de 1M.** Exigía `[1m]` en el id, y Opus 4.7+,
+  Opus 5, Fable y Sonnet 5 traen 1M sin sufijo: con el alias `opus` el aviso marcaba ~30 % de
+  más. La ventana sale ahora también del id del último assistant del transcript, en la misma
+  lectura de `jq`; el `[1m]` de `ANTHROPIC_MODEL` o de `settings.json` solo cuenta para el
+  modelo que nombra. El aviso del 70 % declara el fin de fase como parada válida y el del 85 %
+  remite al handoff automático, salvo con `COCKPIT_AUTO_HANDOFF=off`.
 
 - **Sentinel: los ficheros de clave se miran por palabra de shell y por su papel, no por
   regex sobre el comando.** Las seis regex de extensión (`.pem`, `.key`, `.p12`, `.pfx`,
