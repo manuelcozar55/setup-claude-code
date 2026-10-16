@@ -538,6 +538,27 @@ expect "destructive: rm forma larga en /home denegado" "$(run_destructive 'rm --
 expect "destructive: find -delete bajo /home denegado" "$(run_destructive 'find /home/usuario/docs -delete')"    BLOCK
 expect "destructive: find -delete en /tmp NO denegado" "$(run_destructive 'find /tmp/build -delete')"            ALLOW
 
+# Normalizacion de comandos (E7 PR2, hallazgo 4): un comentario entre comillas cortaba el escaneo
+# y las opciones globales de git, los prefijos (sudo, env, timeout...) y las grafias de rm/clean
+# sacaban el comando del patron. Los comandos se pasan por jq porque llevan comillas.
+run_dg() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" bash "$KIT/claude/hooks/destructive-guard.sh" 2>&1; }
+for c in 'git commit -m "fix #12" && git reset --hard' "git commit -m 'a #b' ; git clean -fd" \
+         'git -C dir reset --hard' 'git -c core.x=1 reset --hard' 'git --git-dir=.git reset --hard' \
+         'sudo git reset --hard' 'sudo -u root git reset --hard' 'env A=1 git reset --hard' 'A=1 git reset --hard' \
+         'command git reset --hard' 'timeout 5 git reset --hard' 'nice -n 5 git clean -fd' '/usr/bin/git reset --hard' \
+         'git "reset" --hard' "git reset '--hard'" 'git reset HEAD~1 --hard' '(git reset --hard)' \
+         'git clean --force -d' 'git clean -d --force' 'git -C dir clean -fd' \
+         'rm -rv /home/usuario/x' 'rm -R /home/usuario/x' 'rm -rf -- /home/usuario/x' 'rm -r -f /etc/x' 'rm -fr ~/docs' \
+         'sudo rm -rf /var/lib/x' 'r""m -rf /home/usuario' 'echo hi # c
+git reset --hard' 'git reset \
+--hard'; do
+  expect "destructive: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'git commit -m "git reset --hard"' 'git reset --soft HEAD~1' 'echo "run: git reset --hard"' \
+         'git commit -m x # git reset --hard' 'git clean -n' 'rm -rf node_modules' 'rm -rv ./build' \
+         'git -C dir status'; do
+  expect "destructive: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
 
 # El check 4 (find -delete) bloqueaba con exit 2 pero era el unico que no llamaba a
 # log_block: el bloqueo ocurria y no quedaba registrado, asi que el log de auditoria daba
