@@ -21,22 +21,27 @@ nucleo_enlazado() { [ -L "$1/.claude/estado" ] || [ -L "$1/.claude/estado/nucleo
 
 # nucleo_ctx <transcript>: "tokens pct", con pct sobre el airbag (ventana − 33 000, la línea en la
 # que compacta solo). Nada si el transcript no trae uso. La ventana es min(la del modelo, el env), como
-# en el binario: sin [1m] el modelo tiene 200 000 y un env mayor no sube el airbag.
+# en el binario: el modelo tiene 1M con [1m] en el id (ANTHROPIC_MODEL o `model` de settings.json) o si es
+# de una familia que lo trae por defecto (opus 4.7+, opus 5+, fable, mythos, sonnet 5+); si no, 200 000.
+# El id del último assistant del transcript cuenta también (settings.json suele traer un alias pelado
+# como «opus», que no dice la ventana). Un env mayor no sube el airbag; sin env (o no numérico) manda la ventana del modelo.
 nucleo_ctx() {
-  local w=${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-200000} t
-  case "$w" in ''|*[!0-9]*) w=200000;; esac
-  [ "$w" -gt 33000 ] || w=200000
-  if [ "$w" -gt 200000 ]; then
-    case ${ANTHROPIC_MODEL:-} in *'[1m]'*) ;; *)
-      command grep -qs '"model"[[:space:]]*:[[:space:]]*"[^"]*\[1m\]' "$HOME/.claude/settings.json" || w=200000 ;;
-    esac
-  fi
+  local w=${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-} m=200000 t tm id
   # Sin `timeout`: 40 líneas no cuelgan a jq, y en coreutils de Rust arrancarlo cuesta ~100 ms.
-  t=$(tail -n 40 "$1" 2>/dev/null \
-    | jq -rR 'fromjson? | select(.type=="assistant" and .message.usage!=null) | .message.usage
-        | ((.input_tokens//0)+(.cache_read_input_tokens//0)+(.cache_creation_input_tokens//0)) | select(.>0)' 2>/dev/null \
+  read -r t tm < <(tail -n 40 "$1" 2>/dev/null \
+    | jq -rR 'fromjson? | select(.type=="assistant" and .message.usage!=null) | .message
+        | ((.usage.input_tokens//0)+(.usage.cache_read_input_tokens//0)+(.usage.cache_creation_input_tokens//0)) as $n
+        | select($n>0) | "\($n) \(.model // "-")"' 2>/dev/null \
     | tail -1)
-  [ -n "$t" ] && printf '%s %s\n' "$t" "$((t * 100 / (w - 33000)))"
+  [ -n "$t" ] || return 0
+  id="$tm ${ANTHROPIC_MODEL:-} $(sed -n 's/.*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.claude/settings.json" 2>/dev/null)"
+  case $id in
+    *'[1m]'* | *opus-4[-.][7-9]* | *opus-[5-9]* | *fable* | *mythos* | *sonnet-[5-9]*) m=1000000 ;;
+  esac
+  case "$w" in ''|*[!0-9]*) w=$m;; esac
+  [ "$w" -gt "$m" ] && w=$m
+  [ "$w" -gt 33000 ] || w=$m
+  printf '%s %s\n' "$t" "$((t * 100 / (w - 33000)))"
 }
 
 # nucleo_emitir <fichero>: solo las secciones de la plantilla (templates/nucleo.md), la primera vez
