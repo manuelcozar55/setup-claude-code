@@ -265,17 +265,20 @@ etiquetado.
   `make`, `curl`, los sumideros): `/usr/local/bin/git add` tras un heredoc no es ejecutor; todo lo
   demás con barra (`./run.sh`, `./bin/git`, `~/bin/git`, `node_modules/.bin/tsc`, `$NVM/bin/pnpm`,
   `/opt/tools/foo`) sí, y deniega de más; no se ve una herramienta conocida que el propio heredoc
-  escriba en esos directorios ni que ejecute su argumento (`pnpm exec sh run.sh`, `make run` o
-  `/usr/local/bin/make run` con un Makefile escrito por el heredoc). El código en línea sigue viendo
+  escriba en esos directorios (en macOS `/usr/local/bin` y `/opt/homebrew/bin` son del usuario y
+  basta un `>`; en Linux piden root) ni que ejecute su argumento (`pnpm exec sh run.sh`, `make run`
+  o `/usr/local/bin/make run` con un Makefile escrito por el heredoc). El código en línea sigue viendo
   cualquier palabra con `exec` o `spawn` (`os.execlpe`, `os.spawnle`, `execa`) y `popen` con sufijo
   (`Open3.popen3`); solo se exime una lista cerrada de prosa (`execution`, `executor`, `executable`,
   `executed`, `executing`, `executive`, `spawned`, `spawning`, `spawns`), y otra palabra de prosa
-  deniega de más. `fd`/`fdfind` ven la `x` dentro de un racimo de flags, dígitos incluidos (`-Hx`,
+  deniega de más (la forma sin sufijo es un nombre de API en Lua y Groovy: no se exime).
+  `fd`/`fdfind` ven la `x` dentro de un racimo de flags, dígitos incluidos (`-Hx`,
   `-1Hx`; `-ex` es `-e x`); `unshare` reconoce `--propagation`, `--setgroups`, `--monotonic`,
   `--boottime`, `--map-users` y `--map-groups`; `setpriv` y `nsenter` son prefijos con su aridad.
   `deno`: el subcomando es la primera palabra de su lista de subcomandos que no sea el valor de
   `-L`/`--log-level` (`deno --log-level info eval` se ve); sin subcomando conocido todo es código en
-  línea; el valor de otra opción global que coincida con un subcomando es límite. Un prefijo sin
+  línea; el valor de otra opción global que coincida con un subcomando es límite (`deno -c check
+  eval` toma `check` por subcomando). Un prefijo sin
   comando solo cuenta como shell si abre uno por diseño (`sudo`/`doas` con `-s`, `-i`, `--shell`,
   `--login`, también en racimo o tras `-u usuario`; `chroot`, `unshare`, `nsenter`, `exec` con solo
   redirecciones) o lleva el comando en un valor (`flock -c`, `env -S`): `flock -n 9` o `timeout 5` a

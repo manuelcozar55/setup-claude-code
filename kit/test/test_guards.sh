@@ -451,10 +451,16 @@ expect "clave: >run.sh; sudo --shell"            "$(run_sentinel $'cat <<EOF >ru
 expect "clave: >run.sh; doas -s"                 "$(run_sentinel $'cat <<EOF >run.sh; doas -s\ncat server.key\nEOF')" "$IOCS_WANT"
 expect "notas y sudo -E permitido"               "$(run_sentinel $'cat > notes.md <<\'EOF\' && sudo -E\nsee opts.key\nEOF')" ALLOW
 expect "notas y env -i permitido"                "$(run_sentinel $'cat > notes.md <<\'EOF\' && env -i\nsee opts.key\nEOF')" ALLOW
-# Cada prefijo declara si abre shell sin comando: uno nuevo sin declarar no nace fail-open.
-"$PY" -B -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import sentinel_preflight as s
-sys.exit(set(s._PREFIXES) != set(s._BARE_SHELL))' "$KIT/sentinel" 2>/dev/null && pass=$((pass+1)) \
-  || { fail=$((fail+1)); echo "FAIL: _BARE_SHELL no declara exactamente los prefijos de _PREFIXES"; }
+# Cada prefijo declara si abre shell sin comando: uno nuevo sin declarar no nace fail-open, y un
+# valor de otra forma (1, "yes", lista) tampoco: solo True, False o (cortas, {largas}). El error de
+# importacion, si lo hay, se muestra en vez de taparse.
+bare_err=$("$PY" -B -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import sentinel_preflight as s
+ok = set(s._PREFIXES) == set(s._BARE_SHELL) and all(
+    v is True or v is False or (isinstance(v, tuple) and len(v) == 2 and isinstance(v[0], str)
+                                and isinstance(v[1], set) and all(isinstance(x, str) for x in v[1]))
+    for v in s._BARE_SHELL.values())
+sys.exit(0 if ok else 1)' "$KIT/sentinel" 2>&1) && pass=$((pass+1)) \
+  || { fail=$((fail+1)); echo "FAIL: _BARE_SHELL no declara exactamente los prefijos de _PREFIXES con True/False/tupla${bare_err:+: $bare_err}"; }
 # En codigo, un tramo con forma de ruta (/, ./, ../, ~/) se mira entero.
 expect "clave: dir.p12 en ruta de codigo"        "$(run_sentinel "node -e 'fs.readdirSync(/etc/ssl/dir.p12/x)'")" "$IOCS_WANT"
 expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK

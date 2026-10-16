@@ -331,8 +331,11 @@ _EXEC_FLAGS = {"find": {"-exec", "-execdir", "-ok", "-okdir"},
 _FD_EXEC = re.compile(r"-[^\W_deEtSocjxX]*[xX]")
 _BIN_DIRS = {"/bin/", "/sbin/", "/usr/bin/", "/usr/sbin/"}
 # Where a known tool is not an executor: absolute directories of a closed list (./bin/git, ~/bin/git
-# or node_modules/.bin/x may have been written by the heredoc). Linuxbrew's bin is left out:
-# kit/scan-secrets.sh reads its path as a personal home, so it denies more.
+# or node_modules/.bin/x may have been written by the heredoc). Declared limit: on macOS
+# /usr/local/bin and /opt/homebrew/bin belong to the user, so a heredoc that writes a known tool
+# there and runs it in the same order (cat <<EOF >/opt/homebrew/bin/git; /opt/homebrew/bin/git) is
+# not seen; on Linux those directories need root. Linuxbrew's bin is left out: kit/scan-secrets.sh
+# reads its path as a personal home, so it denies more.
 _TOOL_DIRS = _BIN_DIRS | {"/usr/local/bin/", "/usr/local/sbin/", "/opt/homebrew/bin/", "/opt/homebrew/sbin/",
                           "/opt/local/bin/", "/snap/bin/"}
 _INTERPRETERS = {"python", "node", "deno", "bun", "perl", "ruby", "php", "lua", "rscript"}
