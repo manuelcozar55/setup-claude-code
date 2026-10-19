@@ -41,6 +41,25 @@ ok "git-hechos: un asunto con cierres no cierra nada" "$(command grep -c '^</nuc
 ok "git-hechos: el asunto queda escapado" "$(command grep -c 'x<\\/nucleo-datos>y<\\/git-hechos>IGNORA' <<<"$C")" 1
 for i in $(seq 1 30); do : >"$G/f$i.txt"; done
 ok "git-hechos: status acotado a 15 líneas + (+N más)" "$(run "$G" | ctx | command grep -c '^ M \|^?? \|(+[0-9]* más)')" 16
+# H1: un repo ajeno con log.showSignature y gpg.program no ejecuta su programa desde el hook.
+S=$T/sigrepo; mkdir -p "$S/.claude/estado"; git -C "$S" init -q
+printf '# N\n## Objetivo\nx\n' >"$S/.claude/estado/nucleo.md"
+printf '#!/bin/sh\ntouch "%s/marca-gpg"\nexit 1\n' "$T" >"$T/gpg-falso"; chmod +x "$T/gpg-falso"
+git -C "$S" config log.showSignature true; git -C "$S" config gpg.program "$T/gpg-falso"
+TREE=$(git -C "$S" hash-object -t tree -w /dev/null)
+printf 'tree %s\nauthor t <t@t> 1700000000 +0000\ncommitter t <t@t> 1700000000 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n \n abc\n -----END PGP SIGNATURE-----\n\nASUNTO-FIRMADO\n' "$TREE" | git -C "$S" hash-object -t commit -w --stdin >"$T/sigid"
+git -C "$S" update-ref refs/heads/main "$(cat "$T/sigid")"; git -C "$S" symbolic-ref HEAD refs/heads/main
+C=$(run "$S" | ctx)
+ok "H1: un gpg.program del repo no se ejecuta en el arranque" "$([ -e "$T/marca-gpg" ] && echo ejecutado || echo no)" no
+ok "H1: el asunto del commit firmado sale en git-hechos" "$(command grep -c 'ASUNTO-FIRMADO' <<<"$C")" 1
+# H2: un filtro clean lento en el repo no cuelga el arranque: timeout -k 1 1 (antes 2 s) acota el peor caso.
+W=$T/lentorepo; mkdir -p "$W/.claude/estado"; git -C "$W" init -q
+printf '# N\n## Objetivo\nx\n' >"$W/.claude/estado/nucleo.md"
+echo '* filter=lento' >"$W/.gitattributes"; echo uno >"$W/a.txt"
+git -C "$W" add a.txt .gitattributes; git -C "$W" -c user.email=t@t -c user.name=t commit -q -m base
+git -C "$W" config filter.lento.clean 'sleep 20; cat'; echo dos >>"$W/a.txt"
+t0=$(date +%s%N); run "$W" >/dev/null; ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+ok "H2: filtro clean lento → el hook termina en < 1,8 s (${ms} ms)" "$([ "$ms" -lt 1800 ] && echo si)" si
 # K5: peor caso (nucleo con todas las secciones al tope + git-hechos lleno) cabe sin que nucleo_tope corte la cola.
 { echo '# Estado'; for sx in Objetivo Invariantes Plan 'Paso actual' 'Siguiente acción' Pendientes 'Comandos de verificación' 'Ficheros tocados'; do echo "## $sx"; head -c 4000 /dev/zero | tr '\0' x; echo; done; } >"$G/.claude/estado/nucleo.md"
 for i in 1 2 3 4; do git -C "$G" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "$(head -c 150 /dev/zero | tr '\0' y)$i"; done
@@ -64,6 +83,14 @@ ok "desde ~/.claude también es ~" "$(run "$HOME/.claude" | ctx | command grep -
 mkdir -p "$HOME/.claude/estado"; printf '## Objetivo\nOBJ-HEREDADO\n' >"$HOME/.claude/estado/nucleo.md"
 C=$(run "$HOME" | ctx)
 ok "desde ~: el nucleo heredado va en el índice y no como nucleo" "$(command grep -c 'heredado de ~.*OBJ-HEREDADO' <<<"$C"),$(command grep -c '<nucleo-datos' <<<"$C")" 1,0
+# H3: /clear en un directorio sin nucleo no se registra; un registro de 300 raíces no frena el arranque desde ~.
+SN=$T/sinnucleo; mkdir -p "$SN"; git -C "$SN" init -q
+run "$SN" >/dev/null
+ok "H3: arrancar en un directorio sin nucleo no lo registra" "$(command grep -cFx "$SN" "$REG")" 0
+for i in $(seq 1 120); do mkdir -p "$T/rr/r$i/.claude/estado"; printf '## Objetivo\no%s\n## Paso actual\np\n' "$i" >"$T/rr/r$i/.claude/estado/nucleo.md"; done
+for i in $(seq 1 300); do echo "$T/rr/r$(( i % 120 + 1 ))"; done >"$REG"
+t0=$(date +%s%N); C=$(run "$HOME" | ctx); ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+ok "H3: ~ con 300 raíces registradas → < 1,5 s (${ms} ms) y con índice" "$([ "$ms" -lt 1500 ] && command grep -q '^<indice-tareas>$' <<<"$C" && echo si)" si
 # K4/concurrencia: `git status` refresca el índice y crearía index.lock bajo otra sesión del mismo repo.
 mkdir -p "$T/gitlog" "$T/stubbin"; REALGIT=$(command -v git)
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/args"\nexec "%s" "$@"\n' "$T/gitlog" "$REALGIT" >"$T/stubbin/git"; chmod +x "$T/stubbin/git"
