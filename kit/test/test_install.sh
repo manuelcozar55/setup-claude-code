@@ -6,8 +6,9 @@ pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 
 # HOME falso: install.sh enlaza handoff y oraculo en $HOME/.local/bin y no debe tocar el de quien corre el test.
+# CLAUDE_HOME es $HOME/.claude porque solo ahi se enlaza (con otro, install.sh imprime las ordenes; ver abajo).
 export HOME="$tmp/home"; mkdir -p "$HOME"
-export CLAUDE_HOME="$tmp/dot"
+export CLAUDE_HOME="$HOME/.claude"
 # Con `set -e` y la salida a /dev/null, un fallo aqui mataba la suite con rc=1 y CERO salida:
 # rojo correcto pero imposible de diagnosticar. Se captura para que el rojo diga por que.
 set +e; bash "$KIT/install.sh" >"$tmp/install.log" 2>&1; irc=$?; set -e
@@ -39,6 +40,17 @@ rm "$HOME/.local/bin/handoff" "$HOME/.local/bin/oraculo"
 set +e; MCHARNESS_OUT="$tmp/plan-ln" bash "$KIT/install.sh" --plan >"$tmp/plan-ln.log" 2>&1; set -e
 ck "$([ -e "$HOME/.local/bin/handoff" ] && echo y || echo n)" "n" "--plan no crea enlaces"
 ck "$(grep -c 'se enlazarian handoff y oraculo' "$tmp/plan-ln.log")" "1" "--plan lo dice en el plan"
+# Un CLAUDE_HOME que no es $HOME/.claude (prueba, CI, sandbox) enlazaba en el ~/.local/bin real, y al
+# borrar esa ruta los enlaces quedaban colgantes y ya no se reparaban (contaban como ajenos). Ahora no
+# escribe nada ahi: imprime las ordenes ln -s.
+H2="$tmp/home-otro"; mkdir -p "$H2"
+set +e; HOME="$H2" CLAUDE_HOME="$tmp/otro" bash "$KIT/install.sh" >"$tmp/otro.log" 2>&1; orc=$?; set -e
+ck "$orc" "0" "CLAUDE_HOME no estandar: install.sh sale 0"
+ck "$(find "$H2/.local/bin" -mindepth 1 2>/dev/null | wc -l | tr -d ' ')" "0" "CLAUDE_HOME no estandar: no aparece ningun enlace en ~/.local/bin"
+ck "$(grep -cF "ln -s \"$tmp/otro/bin/handoff\" \"$H2/.local/bin/handoff\"" "$tmp/otro.log")" "1" "CLAUDE_HOME no estandar: imprime la orden ln -s de handoff"
+ck "$(grep -cF "ln -s \"$tmp/otro/bin/oraculo\" \"$H2/.local/bin/oraculo\"" "$tmp/otro.log")" "1" "CLAUDE_HOME no estandar: imprime la orden ln -s de oraculo"
+set +e; HOME="$H2" CLAUDE_HOME="$tmp/otro" MCHARNESS_OUT="$tmp/plan-otro" bash "$KIT/install.sh" --plan >"$tmp/plan-otro.log" 2>&1; set -e
+ck "$(grep -c 'se enlazarian handoff y oraculo' "$tmp/plan-otro.log")" "0" "--plan con CLAUDE_HOME no estandar no promete enlaces"
 bash "$KIT/install.sh" >/dev/null 2>&1
 # En el plan diff-first los bin entran como cualquier otro fichero del kit (y con el modo ejecutable).
 set +e; MCHARNESS_OUT="$tmp/plan-bin" bash "$KIT/install.sh" --plan >"$tmp/plan.log" 2>&1; set -e

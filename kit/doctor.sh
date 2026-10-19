@@ -21,6 +21,11 @@ if [ -f "$CLAUDE_HOME/settings.json" ] && jq empty "$CLAUDE_HOME/settings.json" 
 else
   fail "settings.json ausente o inválido"
 fi
+# 1b. disableAllHooks: true apaga todos los hooks, guards incluidos, aunque cada fichero este en su
+# sitio: el resto de checks saldria en verde sobre un kit que no protege nada. install.sh lo respeta y avisa.
+if jq -e '.disableAllHooks == true' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1; then
+  fail "settings.json tiene disableAllHooks: true: no corre ningun hook, tampoco los guards. Quita la clave"
+fi
 
 # 2. hooks referenciados existen y son ejecutables
 if [ -f "$CLAUDE_HOME/settings.json" ]; then
@@ -48,10 +53,15 @@ for cli in handoff oraculo; do
   else
     fail "falta $CLAUDE_HOME/bin/$cli o no es ejecutable (reinstala: bash $KIT/install.sh)"
   fi
-  if command -v "$cli" >/dev/null 2>&1; then
-    pass "$cli se resuelve en el PATH  (fuente: command -v)"
+  # Resolverse no basta: un $cli ajeno primero en el PATH daba PASS y la persona corria otro programa.
+  # La sugerencia es ln -s y no -sf: -sf pisaria justo el hueco ajeno que install.sh no toca.
+  cli_ruta="$(command -v "$cli" 2>/dev/null)"
+  if [ -z "$cli_ruta" ]; then
+    warn "$cli no se resuelve en tu PATH: ln -s \"$CLAUDE_HOME/bin/$cli\" \"\$HOME/.local/bin/$cli\" y abre una terminal nueva (comprueba que ~/.local/bin esta en el PATH)"
+  elif [ "$(readlink -f -- "$cli_ruta")" = "$(readlink -f -- "$CLAUDE_HOME/bin/$cli")" ]; then
+    pass "$cli se resuelve en el PATH  (fuente: command -v + readlink -f)"
   else
-    warn "$cli no se resuelve en tu PATH: ln -sf \"$CLAUDE_HOME/bin/$cli\" \"\$HOME/.local/bin/$cli\" y abre una terminal nueva (comprueba que ~/.local/bin esta en el PATH)"
+    warn "$cli del PATH es $cli_ruta, que no es $CLAUDE_HOME/bin/$cli: usa esa ruta o resuelve el conflicto (si retiras el otro: ln -s \"$CLAUDE_HOME/bin/$cli\" \"\$HOME/.local/bin/$cli\")"
   fi
 done
 if [ -f "$CLAUDE_HOME/templates/nucleo.md" ]; then

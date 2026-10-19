@@ -125,6 +125,8 @@ install_file() {  # src dst
 # settings.json NO se reemplaza si ya existe: se fusiona. Regla, y es deliberada:
 #   - `hooks`      -> gana el KIT. La cadena de guards es lo que el kit aporta.
 #   - `permissions`-> UNION. Nunca se pierde un deny (seguridad) ni un allow (tu trabajo).
+#     Salvo `permissions.disableBypassPermissionsMode`, que queda en "disable" siempre: con la
+#     union ganaba tu valor, y un "" previo dejaba el modo sin permisos al alcance.
 #   - `env`        -> tus claves ganan, y las nuevas del kit se anaden.
 #   - todo lo demas (model, statusLine, theme, enabledPlugins...) -> lo tuyo, intacto. La
 #     statusLine y el tema oscuro del kit solo llegan a quien no tenia los suyos.
@@ -160,11 +162,15 @@ install_settings() {  # src dst
       | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
           | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
           | .deny  = (($kit.permissions.deny  // []) + (($old.permissions.deny  // []) - ($kit.permissions.deny  // []))))
+      | .permissions.disableBypassPermissionsMode = "disable"
     ' "$src" "$real" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
     if ! cmp -s "$tmp" "$real"; then
       mkdir -p "$(dirname "$BK/$name")"
       cp -p "$real" "$BK/$name"
       echo "   backup: $name (fusionado: hooks del kit, permisos unidos, tu env y tu model intactos)"
+      if jq -e '.permissions.disableBypassPermissionsMode | . != null and . != "disable"' "$real" >/dev/null 2>&1; then
+        echo "   permissions.disableBypassPermissionsMode: tu valor se sustituye por \"disable\" (gana el kit)"
+      fi
       chmod --reference="$real" "$tmp"
       mv "$tmp" "$real"
     fi
@@ -172,6 +178,23 @@ install_settings() {  # src dst
   else
     rm -f "$tmp"
     echo "   AVISO: la fusion de settings.json fallo; se deja el tuyo intacto" >&2
+  fi
+}
+
+# Dos claves tuyas dejan al kit sin efecto, y la fusion las respeta porque son tuyas: se avisa.
+# disableAllHooks apaga todos los hooks, guards incluidos; defaultMode bypassPermissions pide el
+# modo sin permisos, que el "disable" del kit deja inerte. Se mira el fichero que queda: al
+# aplicar, el ya fusionado; en el plan, el instalado.
+avisos_settings() {  # settings.json
+  local f="$1"
+  if [ ! -f "$f" ] || ! jq empty "$f" 2>/dev/null; then return 0; fi
+  if jq -e '.disableAllHooks == true' "$f" >/dev/null; then
+    echo "==> AVISO: $f tiene disableAllHooks: true: no corre ningun hook, tampoco los guards del kit."
+    echo "    Quita la clave para tener la proteccion del kit. doctor.sh lo marca como FAIL."
+  fi
+  if jq -e '.permissions.defaultMode == "bypassPermissions"' "$f" >/dev/null; then
+    echo "==> AVISO: $f tiene permissions.defaultMode: bypassPermissions. Con disableBypassPermissionsMode"
+    echo "    en \"disable\" (lo fija el kit al instalar) queda inerte: quitalo o elige otro modo."
   fi
 }
 
@@ -219,8 +242,12 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
 # handoff y oraculo se llaman a pelo en las instrucciones y los hooks: sin estar en el PATH, «command not
 # found». Se enlazan en ~/.local/bin SOLO si el hueco esta libre o ya es un enlace nuestro (a $CLAUDE_HOME/bin):
 # un fichero o un enlace ajeno es de la persona y no se pisa.
+# Y solo si CLAUDE_HOME es ~/.claude: una instalacion de prueba (tests, CI, CLAUDE_HOME=/ruta/alternativa)
+# enlazaba en el ~/.local/bin real y, al borrar su ruta, dejaba enlaces colgantes que ya no se reparaban
+# (contaban como ajenos). Con otro CLAUDE_HOME se imprimen las ordenes y no se escribe.
 LOCAL_BIN="$HOME/.local/bin"
 CLIS="handoff oraculo"
+clis_enlazables() { [ "$(realpath -m -- "$CLAUDE_HOME")" = "$(realpath -m -- "$HOME/.claude")" ]; }
 cli_estado() {  # nombre -> libre | nuestro | ajeno
   local dst="$LOCAL_BIN/$1"
   if [ -L "$dst" ]; then
@@ -232,6 +259,11 @@ cli_estado() {  # nombre -> libre | nuestro | ajeno
 enlazar_clis() {
   local c st
   LINK_AJENOS=""
+  if ! clis_enlazables; then
+    echo "   CLAUDE_HOME ($CLAUDE_HOME) no es $HOME/.claude: no se toca $LOCAL_BIN. Si quieres los enlaces:"
+    for c in $CLIS; do echo "     ln -s \"$CLAUDE_HOME/bin/$c\" \"$LOCAL_BIN/$c\""; done
+    return 0
+  fi
   for c in $CLIS; do
     st="$(cli_estado "$c")"
     case "$st" in
@@ -312,6 +344,7 @@ run_diff_first() {
     echo "----- diff: $rel -----"
     diff -u "$CLAUDE_HOME/$rel" "$out/$rel" || true
   done
+  avisos_settings "$CLAUDE_HOME/settings.json"
 
   if is_git_repo_with_remote; then
     echo
@@ -322,9 +355,14 @@ run_diff_first() {
     echo "==> --plan solo muestra lo que se instalaria; $CLAUDE_HOME no se ha tocado. Que hacer:"
   fi
   echo
-  echo "==> En modo aplicar (--apply) tambien se enlazarian handoff y oraculo en $LOCAL_BIN (solo si el hueco"
-  echo "    esta libre o ya es un enlace a $CLAUDE_HOME/bin). Estado ahora:"
-  for c in $CLIS; do echo "      $c: $(cli_estado "$c")"; done
+  if clis_enlazables; then
+    echo "==> En modo aplicar (--apply) tambien se enlazarian handoff y oraculo en $LOCAL_BIN (solo si el hueco"
+    echo "    esta libre o ya es un enlace a $CLAUDE_HOME/bin). Estado ahora:"
+    for c in $CLIS; do echo "      $c: $(cli_estado "$c")"; done
+  else
+    echo "==> En modo aplicar (--apply) no se tocaria $LOCAL_BIN: CLAUDE_HOME no es $HOME/.claude."
+    echo "    Se imprimirian las ordenes ln -s para que enlaces tu, si quieres."
+  fi
   cat <<EOF
       1. Revisa arriba los ficheros nuevos/modificados (arbol completo en $out).
       2. Copia a mano lo que quieras adoptar de $out a $CLAUDE_HOME.
@@ -464,6 +502,7 @@ if [ "$CLAUDE_MD_PREVIO" -eq 1 ]; then
   echo "==> AVISO: ya tenias un CLAUDE.md y no se ha tocado. Añade @AGENTS.md a tu CLAUDE.md;"
   echo "    la plantilla del kit quedo en CLAUDE.kit.md. Sin eso, Claude no lee las instrucciones del kit."
 fi
+avisos_settings "$CLAUDE_HOME/settings.json"
 aviso_path
 if [ -n "${LINK_AJENOS:-}" ]; then
   echo "==> AVISO: no se enlazo$LINK_AJENOS (ya existia en $LOCAL_BIN). Usa la ruta $CLAUDE_HOME/bin/<nombre> o resuelve el conflicto."
