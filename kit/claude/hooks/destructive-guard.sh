@@ -86,13 +86,111 @@ if echo "$COMMAND_SCAN" | grep -qE '(^|[;&|])\s*git\s+clean\s+-[a-z]*[fd]'; then
   exit 2
 fi
 
-# Check 4: find -delete on broad paths (WSL2 junction risk). /home/... entra por su
-# propia alternativa: el resto exige un separador justo tras / ~ .., asi que
-# `find /home/usuario/docs -delete` no emparejaba ninguna.
-if echo "$COMMAND_SCAN" | grep -qE 'find\s+((\/|~|\.\.?\/?)\s|\/home\/).*-delete'; then
-  log_block "find -delete on broad path"
-  echo "BLOCKED: find -delete on broad path (WSL2 junction risk)." >&2
-  exit 2
+# Check 4: find -delete on broad paths (WSL2 junction risk). Va sobre tokens, no sobre el texto: la
+# regex se evitaba con `find -L .`, `find '.'`, `find ../..` o `find /etc`, y a la vez bloqueaba
+# `find . -name '*.pyc' -delete` y hasta un `echo` o un mensaje de commit que lo citara. La ruta son
+# los operandos entre las opciones iniciales de find (-H -L -P -O<n> -D x --) y el primer token de
+# expresion (-..., `(`, `!`); sin ruta, `.`. Tres familias, con la ruta normalizada (`./.` es `.`):
+#   - cwd (`.`): bloquea salvo que la expresion filtre por nombre o ruta (-name, -path, -regex...).
+#   - amplia (`..` y lo que sube de el, `~`, `$HOME`, `/`, `/*`, un solo componente absoluto como
+#     /etc, y todo /home/... y /mnt/...): bloquea siempre, con filtro o sin el.
+#   - resto (`build`, `./build`, `/tmp/x`): pasa, decision ya declarada.
+# Como en branch-guard.sh, la cadena de un `bash -c`, `ssh`, `xargs`... se vuelve a normalizar, hasta
+# 3 niveles; git y lo que solo muestra texto (echo, grep...) no cuentan: ahi `find` es prosa.
+# shellcheck disable=SC2088,SC2016  # `~` y `$HOME` son el TEXTO del operando, no se expanden.
+find_path_class() {
+  local c abs=0
+  local -a parts out=()
+  case $1 in '~'*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*) FCLASS=amplia; return ;; esac
+  [[ $1 == /* ]] && abs=1
+  IFS=/ read -ra parts <<<"$1"
+  for c in "${parts[@]}"; do
+    case $c in
+      ''|.) ;;
+      ..) if (( ${#out[@]} )) && [[ ${out[-1]} != .. ]]; then unset 'out[-1]'; elif (( ! abs )); then out+=(..); fi ;;
+      *) out+=("$c") ;;
+    esac
+  done
+  if (( abs )); then
+    if (( ${#out[@]} <= 1 )) || [[ ${out[0]} == home || ${out[0]} == mnt ]]; then FCLASS=amplia; else FCLASS=resto; fi
+  elif (( ${#out[@]} == 0 )); then FCLASS=cwd
+  elif [[ ${out[0]} == .. ]]; then FCLASS=amplia
+  else FCLASS=resto
+  fi
+}
+# Cada cadena anidada cuesta un awk (~3 ms): sin tope, 14 KB de `x find;` eran 7 s de CPU, y un guard
+# que pasa de su timeout deja ejecutar el comando ENTERO. Solo se vuelve a normalizar la cadena que
+# lleva -delete, y pasadas 16 se bloquea: fallar cerrado.
+NEST=0
+find_delete() {
+  local depth=$1 seg a i k inner del filt rc
+  local -a T segs paths
+  segs=("${CMDN_SEGS[@]}")
+  for seg in "${segs[@]}"; do
+    [[ $seg == *find* && $seg == *-delete* ]] || continue
+    cmdn_fields "$seg"
+    if [[ ${T[1]:-} != find ]]; then
+      (( depth < 3 )) || continue
+      case ${T[1]:-} in git|echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') continue ;; esac
+      for (( i = 2; i < ${#T[@]}; i++ )); do
+        a=${T[i]}
+        [[ $a == *find* ]] || continue
+        inner=$a
+        [[ $a == find || $a == */find ]] && printf -v inner '%s ' "${T[@]:i}"
+        [[ $inner == *-delete* ]] || continue
+        (( ++NEST > 16 )) && return 2
+        cmdn_parse "$inner" || continue
+        find_delete $(( depth + 1 )); rc=$?
+        (( rc == 1 )) || return $rc
+      done
+      continue
+    fi
+    k=2
+    while (( k < ${#T[@]} )); do
+      case ${T[k]} in
+        -H|-L|-P|-O*) k=$(( k + 1 )) ;;
+        -D) k=$(( k + 2 )) ;;
+        --) k=$(( k + 1 )); break ;;
+        *) break ;;
+      esac
+    done
+    paths=()
+    while (( k < ${#T[@]} )); do
+      case ${T[k]} in -*|'('|'!') break ;; esac
+      paths+=("${T[k]}"); k=$(( k + 1 ))
+    done
+    del=0; filt=0
+    for a in "${T[@]:k}"; do
+      case $a in
+        -delete) del=1 ;;
+        -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex) filt=1 ;;
+      esac
+    done
+    (( del )) || continue
+    (( ${#paths[@]} )) || paths=(.)
+    for a in "${paths[@]}"; do
+      find_path_class "$a"
+      [[ $FCLASS == amplia ]] && return 0
+      [[ $FCLASS == cwd ]] && (( ! filt )) && return 0
+    done
+  done
+  return 1
+}
+# La vuelta a normalizar pisa CMDN_SEGS, y el Check 5 lo necesita intacto.
+if [[ $COMMAND_SCAN == *find* && $COMMAND_SCAN == *-delete* ]]; then
+  segs0=("${CMDN_SEGS[@]}")
+  find_delete 0; rc_find=$?
+  if (( rc_find == 0 )); then
+    log_block "find -delete on broad path"
+    echo "BLOCKED: find -delete on broad path (WSL2 junction risk)." >&2
+    exit 2
+  fi
+  if (( rc_find == 2 )); then
+    log_block "find -delete nested too deep"
+    echo "BLOCKED: mas de 16 comandos anidados (bash -c, ssh, xargs...) con find -delete: no caben en el timeout del guard; dividelo en comandos cortos." >&2
+    exit 2
+  fi
+  CMDN_SEGS=("${segs0[@]}")
 fi
 
 # Check 5: el mismo conjunto sobre cada comando simple ya normalizado (tokens descomillados, sin

@@ -107,6 +107,33 @@ git -C . clean -fdx
 find . -delete
 find ./ -delete
 find . -type f -delete
+find -delete
+find ./. -delete
+find -L . -delete
+find -H ./ -delete
+find -- . -delete
+find '.' -delete
+find "./" -delete
+find . -type f -mtime +7 -delete
+find . -maxdepth 1 -delete
+find .. -delete
+find ../.. -delete
+find .. -name x -delete
+find ~ -delete
+find ~/ -delete
+find $HOME -delete
+find "$HOME" -delete
+find ~ -name '*.pyc' -delete
+find / -delete
+find /* -delete
+find /etc -delete
+find /var -delete
+find /home -delete
+find /home/u/docs -delete
+find /mnt/c -delete
+sudo find / -delete
+bash -c "find . -delete"
+sh -c 'find / -delete'
 rm -r "$HOME/x"
 EOF
 while IFS= read -r c; do
@@ -125,6 +152,15 @@ python3 -m pytest
 grep a f | sort
 ls | head
 find . -name '*.py'
+find . -name '*.pyc' -delete
+find . -type f -name '*.tmp' -delete
+find . -path './build/*' -delete
+find build -delete
+find ./build -delete
+find /tmp/x -delete
+git commit -m "find . -delete"
+echo "find . -delete"
+grep -r "find . -delete" docs
 rm -r build/
 curl -s https://x.example/a.json | jq .
 EOF
@@ -148,6 +184,7 @@ nest_case() { # $1 guard, $2 comando simple que se repite 2000 veces
   fi
 }
 nest_case block-dangerous-commands.sh "x 'git stash push +1'"
+nest_case destructive-guard.sh "x 'find build -delete'"
 rm -rf "$BYPASS_HOME"
 if [ "$bypass_fail" -ne 0 ]; then
   echo "FAIL: $bypass_fail casos de bypass/negativos incorrectos."
