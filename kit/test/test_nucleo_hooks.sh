@@ -377,7 +377,7 @@ PASO-2
 SIG-2
 EOF
 ho --desde "$T/b2.md" >/dev/null 2>&1; RC=$?
-ok "fusión: Objetivo e Invariantes del nucleo intactos" "$RC,$(command grep -c 'OBJ-1 literal' "$HNUC"),$(command grep -c 'INV-1 no tocar Y' "$HNUC"),$(command grep -c 'OTRO' "$HNUC")" "0,1,1,0"
+ok "fusión: Objetivo intacto; Invariantes = unión (INV-1 sigue, INV-OTRO se añade)" "$RC,$(command grep -c 'OBJ-1 literal' "$HNUC"),$(command grep -c 'INV-1 no tocar Y' "$HNUC"),$(command grep -c 'INV-OTRO' "$HNUC"),$(command grep -c 'OBJ-OTRO' "$HNUC")" "0,1,1,1,0"
 ok "fusión: la sección del borrador sustituye a la suya" "$(command grep -c 'PASO-2' "$HNUC"),$(command grep -c 'PASO-1' "$HNUC")" "1,0"
 ok "fusión: lo que el borrador no trae se conserva (Plan, Pendientes, Ficheros)" "$(command grep -c 'paso-dos\|PEND-1\|x/y.sh' "$HNUC")" 3
 ok "fusión: nucleo.prev-* guarda el estado anterior" "$(command grep -lF 'PASO-1' "$HR"/.claude/estado/nucleo.prev-*.md | wc -l)" 1
@@ -388,12 +388,12 @@ printf '## Objetivo\nOBJ-RELLENO\n## Paso actual\nnuevo\n' >"$T/b-relleno.md"
 (cd "$HE" && bash "$BIN/handoff" --desde "$T/b-relleno.md" >/dev/null 2>&1)
 ok "fusión: Objetivo vacío lo rellena el borrador" "$(command grep -c 'OBJ-RELLENO' "$HE/.claude/estado/nucleo.md")" 1
 
-# -- --desde: correcciones literales (decisión 13): se añaden a Invariantes, máx. 3, las más recientes --
+# -- --desde: Invariantes = unión por líneas (decisión 13: sobreviven las correcciones fechadas) --
 for i in 1 2 3 4; do
   printf '## Invariantes\n- Corrección 2026-10-1%s: «no hagas COR-%s»\n## Paso actual\np%s\n' "$i" "$i" "$i" >"$T/bc$i.md"
   ho --desde "$T/bc$i.md" >/dev/null 2>&1
 done
-ok "correcciones: quedan las 3 últimas, la primera cae" "$(command grep -c 'COR-' "$HNUC"),$(command grep -c 'COR-1' "$HNUC"),$(command grep -c 'COR-4' "$HNUC")" "3,0,1"
+ok "invariantes: unión por líneas, se conservan todas (nunca se borra una) y en orden" "$(command grep -c 'COR-' "$HNUC"),$(command grep 'COR-\|INV-1' "$HNUC" | head -n 1 | command grep -c INV-1)" "4,1"
 ok "correcciones: INV-1 sigue intacto debajo" "$(command grep -c 'INV-1 no tocar Y' "$HNUC")" 1
 ho --desde "$T/bc4.md" >/dev/null 2>&1
 ok "correcciones: repetir la misma no la duplica" "$(command grep -c 'COR-4' "$HNUC")" 1
@@ -459,5 +459,56 @@ cp "$HNUC" "$T/nucleo-antes.md"
 ( NUCLEO_FUSION_PAUSA=1 ho --desde "$T/b2.md" >/dev/null 2>"$T/e4.txt"; echo $? >"$T/rc4.txt" ) &
 sleep 0.3; echo '## Pendientes (otra sesión)' >>"$HNUC"; wait
 ok "carrera: si nucleo.md cambia durante la fusión → exit 4 y no pisa" "$(cat "$T/rc4.txt"),$(tail -n 1 "$HNUC")" "4,## Pendientes (otra sesión)"
+
+# -- --solo, dueño, --commit, --migrar --
+HS=$T/hos; mkrepo "$HS"
+hs() { (cd "$HS" && bash "$BIN/handoff" "$@"); }
+hs --desde "$T/b1.md" >/dev/null 2>&1
+printf '## Objetivo\nOBJ-SOLO\n## Paso actual\nPASO-SOLO\n' >"$T/b-solo.md"
+hs --desde "$T/b-solo.md" --solo >/dev/null 2>&1; RC=$?
+SN=$HS/.claude/estado/nucleo.md
+ok "solo: el borrador sustituye (no conserva ni Objetivo ni Plan)" "$RC,$(command grep -c 'OBJ-SOLO' "$SN"),$(command grep -c 'OBJ-1 literal\|paso-dos' "$SN")" "0,1,0"
+ok "solo: el nucleo anterior queda en nucleo.prev-*" "$(command grep -lF 'OBJ-1 literal' "$HS"/.claude/estado/nucleo.prev-*.md | wc -l)" 1
+
+# Dueño: solo lo libera quien lo es (--sesion), o cualquiera si no hay dueño vigente / no se dice sesión.
+HW=$T/how; mkrepo "$HW"; mkdir -p "$HW/.claude/estado"
+hw() { (cd "$HW" && bash "$BIN/handoff" --desde "$T/b-solo.md" "$@"); }
+DW=$HW/.claude/estado/.dueno
+printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$DW"
+ERR=$(hw --sesion sB 2>&1 >/dev/null)
+ok "dueño: otra sesión vigente → no se libera y se avisa" "$([ -e "$DW" ] && echo sigue),$(command grep -c 'sA' <<<"$ERR")" "sigue,1"
+hw --sesion sA >/dev/null 2>&1
+ok "dueño: la dueña lo libera" "$([ -e "$DW" ] && echo sigue || echo libre)" libre
+printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$DW"; hw >/dev/null 2>&1
+ok "dueño: sin --sesion, handoff lo libera" "$([ -e "$DW" ] && echo sigue || echo libre)" libre
+printf 'sesion=sA\ndesde=1\n' >"$DW"; hw --sesion sB >/dev/null 2>&1
+ok "dueño: caducado, cualquiera lo libera" "$([ -e "$DW" ] && echo sigue || echo libre)" libre
+
+# --commit: commit solo de .claude/estado/ (nucleo, diario y su .gitignore); sin tocar lo demás; sin exclude.
+HC=$T/hoc; mkrepo "$HC"; echo uno >"$HC/otro.txt"; git -C "$HC" add otro.txt; echo sucio >"$HC/sucio.txt"
+(cd "$HC" && bash "$BIN/handoff" --desde "$T/b1.md" --commit >/dev/null 2>&1); RC=$?
+ok "commit: exit 0 y un commit «docs(estado)»" "$RC,$(git -C "$HC" log -1 --format=%s | command grep -c '^docs(estado)')" "0,1"
+ok "commit: solo toca .claude/estado/ (nucleo, diario, .gitignore)" "$(git -C "$HC" show --name-only --format= HEAD | sort | paste -sd,)" ".claude/estado/.gitignore,.claude/estado/diario.md,.claude/estado/nucleo.md"
+ok "commit: lo que ya estaba en el índice o sin seguir queda como estaba" "$(git -C "$HC" status --short | sort | paste -sd,)" "?? sucio.txt,A  otro.txt"
+ok "commit: no añade .claude/estado/ a .git/info/exclude" "$(command grep -cFx '.claude/estado/' "$HC/.git/info/exclude" || true)" 0
+ok "commit: .dueno, el log de verificaciones y las copias quedan ignorados" "$(git -C "$HC" check-ignore .claude/estado/.dueno .claude/estado/verificaciones.log .claude/estado/nucleo.prev-x.md | wc -l)" 3
+(cd "$HC" && bash "$BIN/handoff" --desde "$T/b2.md" --commit >/dev/null 2>&1); N1=$(git -C "$HC" rev-list --count HEAD)
+(cd "$HC" && bash "$BIN/handoff" --desde "$T/b2.md" --commit >/dev/null 2>&1); RC=$?
+ok "commit: repetir sin cambios no falla ni crea un commit vacío" "$RC,$(git -C "$HC" rev-list --count HEAD)" "0,$N1"
+
+# --migrar: archiva el nucleo heredado, nunca borra.
+MG=$T/mig; mkdir -p "$MG/.claude/estado"; printf '# E\n## Objetivo\nHEREDADO-X\n' >"$MG/.claude/estado/nucleo.md"
+OUT=$(cd "$T/ro-sin-git" && bash "$BIN/handoff" --migrar "$MG" 2>&1); RC=$?
+AR=$(ls "$MG"/.claude/estado/archivo/nucleo-*.md 2>/dev/null)
+ok "migrar: exit 0, el nucleo ya no está en su sitio y sí en archivo/" "$RC,$([ -e "$MG/.claude/estado/nucleo.md" ] && echo sigue || echo movido),$(echo "$AR" | wc -l)" "0,movido,1"
+ok "migrar: el archivado conserva el contenido" "$(command grep -c HEREDADO-X "$AR")" 1
+ok "migrar: entrada en diario.md" "$(command grep -c 'archivado.*archivo/nucleo-' "$MG/.claude/estado/diario.md")" 1
+ok "migrar: dos veces no pierde el primero (nada que migrar → exit 0)" "$(cd "$T/ro-sin-git" && bash "$BIN/handoff" --migrar "$MG" >/dev/null 2>&1; echo "$?,$(ls "$MG"/.claude/estado/archivo | wc -l)")" "0,1"
+printf 'otro\n' >"$MG/.claude/estado/nucleo.md"; sleep 1
+(cd "$T/ro-sin-git" && bash "$BIN/handoff" --migrar "$MG" >/dev/null 2>&1)
+ok "migrar: un segundo nucleo no pisa al archivado antes" "$(ls "$MG"/.claude/estado/archivo | wc -l)" 2
+ok "migrar: directorio inexistente → exit 1" "$(bash "$BIN/handoff" --migrar "$T/no-existe" >/dev/null 2>&1; echo $?)" 1
+MS=$T/migs; mkdir -p "$MS/.claude/estado" "$T/fuera-mig"; printf 'F\n' >"$T/fuera-mig/n.md"; ln -s "$T/fuera-mig/n.md" "$MS/.claude/estado/nucleo.md"
+ok "migrar: un nucleo enlazado no se toca (exit 1)" "$(bash "$BIN/handoff" --migrar "$MS" >/dev/null 2>&1; echo "$?,$(ls "$T/fuera-mig" | wc -l)")" "1,1"
 
 exit $FAIL

@@ -3,7 +3,7 @@
 ## Objetivo
 <!-- literal de la persona y cómo se acotó; no se reescribe -->
 ## Invariantes
-<!-- lo que no se toca, con su porqué. Correcciones literales de la persona aún vigentes (≤ 3 líneas): `- Corrección AAAA-MM-DD: «sus palabras»`; `handoff` es lo único que las añade. -->
+<!-- lo que no se toca, con su porqué; incluye las correcciones literales de la persona, con fecha: `- Corrección AAAA-MM-DD: «sus palabras»`. `handoff` solo añade líneas, nunca borra. -->
 ## Paso actual
 ## Siguiente acción
 ## Comandos de verificación

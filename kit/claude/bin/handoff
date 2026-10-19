@@ -12,8 +12,8 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
      handoff --migrar DIR
      handoff --estado [--raiz DIR]
 --desde   fusiona el borrador (secciones «## » de la plantilla; «Pendientes y riesgos» vale por «Pendientes») en
-          <raíz>/.claude/estado/nucleo.md: Objetivo e Invariantes del nucleo no se tocan (de Invariantes solo se
-          añaden líneas «Corrección AAAA-MM-DD: …», las 3 últimas); los [x] del Plan pasan a diario.md con su
+          <raíz>/.claude/estado/nucleo.md: Objetivo e Invariantes del nucleo no se tocan (de Invariantes se añaden las líneas
+          nuevas del borrador, sin borrar nunca una); los [x] del Plan pasan a diario.md con su
           comando y el hash de HEAD; el último rc de verificaciones.log se pliega en «Comandos de verificación»;
           se guarda nucleo.prev-* (3 copias) y se recorta al tope omitiendo secciones enteras desde el final.
   --solo    no fusiona: el borrador sustituye al nucleo (se sigue validando).
@@ -78,8 +78,22 @@ if [ "$MODO" = estado ]; then
   exit 0
 fi
 
+# ---------------------------------------------------------------- --migrar
+if [ "$MODO" = migrar ]; then
+  [ -d "$MIGRAR" ] || die 1 "no existe el directorio «$MIGRAR»"
+  ME=$MIGRAR/.claude/estado; MN=$ME/nucleo.md
+  if [ -L "$MIGRAR/.claude" ] || [ -L "$ME" ] || [ -L "$MN" ]; then die 1 "$MN es un enlace o cuelga de uno: no lo toco"; fi
+  [ -f "$MN" ] || { echo "handoff: nada que migrar: no existe $MN"; exit 0; }
+  mkdir -p "$ME/archivo"
+  AR=$ME/archivo/nucleo-$(date -u +%Y%m%dT%H%M%SZ).md
+  [ ! -e "$AR" ] || AR=${AR%.md}-$$.md
+  mv -n -- "$MN" "$AR"
+  printf -- '- %s · nucleo heredado archivado en archivo/%s\n' "$(date -u +%F)" "${AR##*/}" >>"$ME/diario.md"
+  echo "handoff: $MN archivado en $AR"
+  exit 0
+fi
+
 # ---------------------------------------------------------------- --desde
-[ "$MODO" = desde ] || die 64 "modo sin implementar"
 [ -f "$DESDE" ] && [ -r "$DESDE" ] || die 2 "no puedo leer el borrador «$DESDE»"
 [ "$(wc -c <"$DESDE")" -le 262144 ] || die 2 "el borrador pasa de 256 KB: un estado no es un volcado"
 resolver_raiz || die 3 "sin proyecto (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
@@ -112,7 +126,7 @@ clave() {
 }
 admitida() {
   case $1 in
-    objetivo | invariantes | "paso actual" | "siguiente accion" | "comandos de verificacion" | plan | pendientes | "ficheros tocados" | "no repetir") return 0 ;;
+    objetivo | invariantes | "paso actual" | "siguiente accion" | "comandos de verificacion" | plan | pendientes | "ficheros tocados") return 0 ;;
   esac
   return 1
 }
@@ -161,7 +175,7 @@ if [ -n "${DHEAD//[$' \t\r\n']/}" ]; then
 fi
 VISTAS=" "
 for ((i = 0; i < ${#DK[@]}; i++)); do
-  admitida "${DK[i]}" || die 2 "cabecera no admitida «${DTIT[i]}» (admitidas: Objetivo, Invariantes, Paso actual, Siguiente acción, Comandos de verificación, Plan, Pendientes, Ficheros tocados, No repetir)"
+  admitida "${DK[i]}" || die 2 "cabecera no admitida «${DTIT[i]}» (admitidas: Objetivo, Invariantes, Paso actual, Siguiente acción, Comandos de verificación, Plan, Pendientes, Ficheros tocados)"
   case $VISTAS in *" ${DK[i]} "*) die 2 "cabecera repetida «${DTIT[i]}»" ;; esac
   VISTAS+="${DK[i]} "
 done
@@ -173,7 +187,7 @@ HAYVIEJO=0; [ -f "$NUC" ] && [ -s "$NUC" ] && HAYVIEJO=1
 [ "$HAYVIEJO" -eq 0 ] || cp -- "$NUC" "$W/viejo.md"
 
 RK=(); RT=(); HEAD="# Estado"$'\n'$'\n'
-if [ "$HAYVIEJO" -eq 1 ]; then
+if [ "$HAYVIEJO" -eq 1 ] && [ "$SOLO" -eq 0 ]; then
   parsear "$W/viejo.md"
   OK=("${PK[@]}"); OT=("${PT[@]}"); HEAD=$PHEAD
   [ -n "$HEAD" ] || HEAD="# Estado"$'\n'$'\n'
@@ -186,8 +200,14 @@ if [ "$HAYVIEJO" -eq 1 ]; then
           t=${OT[i]}
           if [ "$k" = invariantes ] && [ "$di" -ge 0 ]; then
             while IFS= read -r l; do
-              [[ $l =~ ^[[:space:]]*[-*][[:space:]]*[Cc]orrecci[oó]n ]] || continue
-              case $'\n'"$t" in *$'\n'"$l"$'\n'*) ;; *) fin_nl t; t+=$l$'\n' ;; esac
+              tl=${l#"${l%%[![:space:]]*}"}; tl=${tl%"${tl##*[![:space:]]}"}
+              [ -n "$tl" ] || continue
+              yaesta=0
+              while IFS= read -r ol; do
+                ol=${ol#"${ol%%[![:space:]]*}"}; ol=${ol%"${ol##*[![:space:]]}"}
+                [ "$ol" != "$tl" ] || { yaesta=1; break; }
+              done <<<"${t#*$'\n'}"
+              [ "$yaesta" -eq 1 ] || { fin_nl t; t+=$l$'\n'; }
             done <<<"${DT[di]#*$'\n'}"
           fi
           [ "$di" -lt 0 ] || USADAS+="$k "
@@ -212,20 +232,6 @@ if [ "$HAYVIEJO" -eq 1 ]; then
 else
   for ((j = 0; j < ${#DK[@]}; j++)); do titulo_de "${DTIT[j]}"; RK+=("${DK[j]}"); RT+=("## $TITULO"$'\n'"${DT[j]#*$'\n'}"); done
 fi
-
-# Correcciones literales: solo las 3 últimas (decisión 13).
-for ((i = 0; i < ${#RK[@]}; i++)); do
-  [ "${RK[i]}" = invariantes ] || continue
-  n=$(command grep -c -E '^[[:space:]]*[-*][[:space:]]*[Cc]orrecci[oó]n' <<<"${RT[i]}" || true)
-  if [ "${n:-0}" -gt 3 ]; then
-    corte=$((n - 3)); out=""
-    while IFS= read -r l; do
-      if [[ $l =~ ^[[:space:]]*[-*][[:space:]]*[Cc]orrecci[oó]n ]] && [ "$corte" -gt 0 ]; then corte=$((corte - 1)); continue; fi
-      out+=$l$'\n'
-    done <<<"${RT[i]}"
-    RT[i]=$out
-  fi
-done
 
 # Los [x] del Plan (fuera de las cercas) salen del nucleo y van a diario con su comando y el hash de HEAD.
 : >"$W/hechos"
@@ -321,6 +327,7 @@ printf '%s' "$TEXTO" >"$TMP"
 mv -f -- "$TMP" "$NUC"
 
 HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
+# shellcheck disable=SC2094  # diario.md solo se añade; lo que se lee es $W/hechos
 {
   [ -s "$DIARIO" ] || printf '# Diario\n'
   while IFS= read -r l; do
@@ -331,7 +338,17 @@ HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
 } >>"$DIARIO"
 
 nucleo_registrar "$RAIZ"
-if EX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
+if [ "$COMMIT" -eq 1 ]; then
+  GI=$E/.gitignore
+  for pat in .dueno verificaciones.log recortes.log 'nucleo.prev-*' 'checkpoint-compact*'; do
+    command grep -qFx -- "$pat" "$GI" 2>/dev/null || printf '%s\n' "$pat" >>"$GI"
+  done
+  PATHS=(.claude/estado/nucleo.md .claude/estado/diario.md .claude/estado/.gitignore)
+  git -C "$RAIZ" add -- "${PATHS[@]}" || die 1 "nucleo.md escrito, pero git add falló"
+  if ! git -C "$RAIZ" diff --cached --quiet -- "${PATHS[@]}"; then
+    git -C "$RAIZ" commit -q -m "docs(estado): handoff de $HOY" -- "${PATHS[@]}" || die 1 "nucleo.md escrito, pero el commit falló"
+  fi
+elif EX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
   case $EX in /*) ;; *) EX=$RAIZ/$EX ;; esac
   mkdir -p "$(dirname "$EX")" 2>/dev/null || true
   command grep -qFx '.claude/estado/' "$EX" 2>/dev/null || printf '.claude/estado/\n' >>"$EX" 2>/dev/null || true
