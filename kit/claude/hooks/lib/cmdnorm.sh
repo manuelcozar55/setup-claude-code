@@ -132,10 +132,11 @@ END {
 }
 '
 
-# Tope de tamano. Los guards son lineales hasta ~256 KB (peor caso medido ~4 s de CPU, con 10 s de
-# timeout), pero un hook que pasa de su timeout NO bloquea: la herramienta se ejecuta. Por encima del
-# tope el guard no se arriesga a quedarse sin tiempo y pide confirmacion, que es fallar CERRADO.
-CMDN_MAX_BYTES=262144
+# Tope de tamano. Los guards son lineales (256 KB: peor caso medido ~4 s de CPU cada uno, y corren a la
+# vez: con 2 nucleos rozan los 10 s de timeout; con 128 KB, ~2 s), pero un hook que pasa de su timeout
+# NO bloquea: la herramienta se ejecuta. Por encima del tope el guard no se arriesga a quedarse sin
+# tiempo y pide confirmacion, que es fallar CERRADO.
+CMDN_MAX_BYTES=131072
 
 # cmdn_oversize "$COMMAND": si pasa del tope imprime la decision `ask` y devuelve 0; si no, devuelve 1.
 cmdn_oversize() {

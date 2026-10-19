@@ -85,10 +85,10 @@ p50=$(pct 50); p95=$(pct 95)
 echo "hooks en la cadena: ${#CHAIN[@]}   llamadas medidas: $n   (CPU user+sys por llamada)"
 echo "p50=${p50} ms  p95=${p95} ms  max=${sorted[n - 1]} ms  objetivo p95 < ${MAX} ms"
 
-BODY128=$(head -c 131072 /dev/zero | tr '\0' 'a')
+BODY128=$(head -c 122880 /dev/zero | tr '\0' 'a')
 BODYSEMI=$(yes ab | head -c 32768 | tr '\n' ';')
 DANGER='git push --for''ce origin main'
-BIGLABEL=("64 KB una linea" "128 KB una linea" "32 KB de segmentos")
+BIGLABEL=("64 KB una linea" "120 KB una linea" "32 KB de segmentos")
 BIGCMD=("echo $BODY64; $DANGER" "echo $BODY128; $DANGER" "echo $BODYSEMI; $DANGER")
 big_fail=0
 for ((b = 0; b < ${#BIGCMD[@]}; b++)); do

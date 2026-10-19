@@ -1303,10 +1303,11 @@ big_guard "secret-guard"     "$SG_DIR" 'git add .env'                bash "$KIT/
 big_guard "sentinel"         "$SG_DIR" 'cat ~/.ssh/id_rsa'           "$PY" "$KIT/sentinel/sentinel_preflight.py"
 rm -f "$SG_DIR/.env"
 
-# Por encima de 256 KB ningun guard se arriesga: pide confirmacion (ask, no deny ni silencio) y dice
-# que se use Write. El peor caso lineal por debajo del tope son ~4 s de CPU con 10 s de timeout; sin
-# tope, 1 MB cruzaria el timeout y el guard fallaria en abierto.
-big_over=$(head -c 300000 /dev/zero | tr '\0' 'a')
+# Por encima de 128 KB ningun guard se arriesga: pide confirmacion (ask, no deny ni silencio) y dice
+# que se use Write. El peor caso lineal por debajo del tope son ~2 s de CPU con 10 s de timeout (los
+# guards corren a la vez: con 2 nucleos y tope de 256 KB rozaria el timeout); sin tope, 1 MB lo
+# cruzaria y el guard fallaria en abierto. 140 KB: justo por encima del tope.
+big_over=$(head -c 140000 /dev/zero | tr '\0' 'a')
 big_ask() { # $1 etiqueta, resto = el guard (argv)
   local label=$1 payload out
   shift
@@ -1315,7 +1316,7 @@ big_ask() { # $1 etiqueta, resto = el guard (argv)
   out=$(cd "$SG_DIR" && printf '%s' "$payload" | HOME="$GUARDS_TEST_HOME" CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" "$@" 2>&1)
   if [ "$(jq -r '.hookSpecificOutput.permissionDecision' <<<"$out" 2>/dev/null)" = ask ] && grep -q 'herramienta Write' <<<"$out"; then
     pass=$((pass+1))
-  else fail=$((fail+1)); echo "FAIL: $label: 293 KB no pide confirmacion con aviso de Write (salida: ${out:0:200})"; fi
+  else fail=$((fail+1)); echo "FAIL: $label: 140 KB no pide confirmacion con aviso de Write (salida: ${out:0:200})"; fi
 }
 big_ask "block-dangerous" bash "$KIT/claude/hooks/block-dangerous-commands.sh"
 big_ask "branch-guard"    bash "$KIT/claude/hooks/branch-guard.sh"

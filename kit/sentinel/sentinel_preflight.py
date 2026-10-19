@@ -1234,7 +1234,7 @@ def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
 
 # ── Decision engine ───────────────────────────────────────────────────────────
 
-MAX_COMMAND_BYTES = 262144
+MAX_COMMAND_BYTES = 131072  # el mismo tope que CMDN_MAX_BYTES de cmdnorm.sh
 
 SEVERITY_RANK = {"medium": 1, "high": 2, "critical": 3}
 
