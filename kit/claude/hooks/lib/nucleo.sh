@@ -35,6 +35,24 @@ nucleo_tope() {
   printf '%s' "$c"
 }
 
+# nucleo_git_hechos <raíz>: bloque <git-hechos> con `git log --oneline -5` y `git status --short` (máx. 15
+# líneas + «(+N más)»), tope ~1 200 chars, para que el modelo no gaste su primer turno en algo determinista.
+# Nada si no hay git o si git falla o expira (2 s). core.fsmonitor=false: un .git/config ajeno no ejecuta
+# código desde este hook. Los asuntos de commit y los nombres de fichero son DATOS: sin caracteres de control
+# y con `</` escapado, para que no cierren el bloque ni el <nucleo-datos>.
+nucleo_git_hechos() {
+  command -v git >/dev/null 2>&1 || return 0
+  local tm=() lg st n b
+  command -v timeout >/dev/null 2>&1 && tm=(timeout 2)
+  lg=$("${tm[@]}" git -c core.fsmonitor=false -C "$1" log --oneline -5 2>/dev/null) || return 0
+  st=$("${tm[@]}" git -c core.fsmonitor=false -C "$1" status --short 2>/dev/null) || return 0
+  n=$(printf '%s\n' "$st" | sed -n '$=')
+  [ "${n:-0}" -le 15 ] || st="$(printf '%s\n' "$st" | head -n 15)"$'\n'"(+$((n - 15)) más)"
+  b=$(printf 'git log --oneline -5:\n%s\ngit status --short:\n%s\n' "$lg" "${st:-(limpio)}" | LC_ALL=C tr -d '\000-\010\013-\037\177' | sed 's|</|<\\/|g')
+  [ "${#b}" -le 1100 ] || b="${b:0:1100}"$'\n[recortado]'
+  printf '<git-hechos calculado="%s">\n%s\n</git-hechos>' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$b"
+}
+
 # nucleo_ctx <transcript>: "tokens pct", con pct sobre el airbag (ventana − 33 000, la línea en la
 # que compacta solo). Nada si el transcript no trae uso. La ventana es min(la del modelo, el env), como
 # en el binario: el modelo tiene 1M con [1m] en el id (ANTHROPIC_MODEL o `model` de settings.json) o si es
