@@ -119,6 +119,16 @@ expect "from secrets import permitido"           "$(run_sentinel "python3 -c 'fr
 expect "secrets.yaml como fichero denegado"      "$(run_sentinel 'cat secrets.yaml')"                      "$IOCS_WANT"
 expect "directorio de AWS en el home denegado"        "$(run_sentinel 'ls ~/.aws/')"                            "$IOCS_WANT"
 expect "sso/cache de AWS en el home denegado"         "$(run_sentinel 'cat ~/.aws/sso/cache/x.json')"           "$IOCS_WANT"
+# R2 SEC-3: .aws/credentials tambien en ruta relativa y con el nombre entrecomillado (como .ssh).
+expect "aws: credentials en ruta relativa denegado"   "$(run_sentinel 'cd ~ && cat .aws/credentials')"        "$IOCS_WANT"
+expect "aws: config en ruta relativa denegado"        "$(run_sentinel 'cd ~ && cat .aws/config')"             "$IOCS_WANT"
+expect "aws: nombre entrecomillado denegado"          "$(run_sentinel 'cat ~/".aws"/credentials')"            "$IOCS_WANT"
+expect "aws: Read relativo de .aws/credentials denegado" "$(run_sentinel_read .aws/credentials)"              "$IOCS_WANT"
+# R2 SEC-4: secrets.* con mas extensiones de datos; `secrets` sin extension y el modulo Python siguen pasando.
+for sx in toml ini conf cfg tfvars; do
+  expect "secrets.$sx como fichero denegado"          "$(run_sentinel "cat secrets.$sx")"                     "$IOCS_WANT"
+done
+expect "secrets sin extension permitido"              "$(run_sentinel 'ls secrets')"                          ALLOW
 # Lectura de la config del propio harness: Sentinel no la deniega (el falso positivo no se reprodujo en
 # el kit ni en el Sentinel vivo; la proteccion de ESCRIBIR esos ficheros es de permissions.deny y de los
 # guards de Bash). Se fija aqui para que una clasificacion de verbos futura no la rompa.

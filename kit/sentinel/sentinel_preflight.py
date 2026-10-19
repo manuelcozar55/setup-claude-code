@@ -152,6 +152,7 @@ ALWAYS_DENY_PATHS = [
     r"(?i)\.credentials\.json(?![a-z0-9])",
     r"(?i)/\.ssh/id_[a-z0-9_]+(?![a-z0-9._-])",
     r"(?i)/\.aws/credentials(?![a-z0-9])",
+    r"(?i)(?<![a-z0-9_-])\.aws[\"']?/(credentials|config)(?![a-z0-9])",
 ]
 
 PROTECTED_CONFIG = [
