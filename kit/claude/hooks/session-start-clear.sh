@@ -10,7 +10,7 @@
 # mismos campos en fork, pero el matcher del kit no lo lanza porque una sesión bifurcada ya trae su contexto.
 set -u
 IN=$(cat)
-{ read -r CWD; read -r SID; } < <(jq -r '.cwd // "", .session_id // ""' <<<"$IN" 2>/dev/null)
+{ read -r CWD; read -r SID; read -r SRC; } < <(jq -r '.cwd // "", .session_id // "", .source // ""' <<<"$IN" 2>/dev/null)
 CWD=${CWD:-$PWD}
 # shellcheck source=SCRIPTDIR/lib/nucleo.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
@@ -34,12 +34,19 @@ fi
 nucleo_registrar "$RAIZ"
 nucleo_enlazado "$RAIZ" && sale ""
 # Una tarea = una sesión dueña: la que llega con otra viva lo sabe (no se le bloquea nada); la primera, o la
-# que reanuda, lo reclama; con el TTL vencido el dueño anterior ya no cuenta.
-AJENO=""
+# que reanuda, lo reclama; con el TTL vencido el dueño anterior ya no cuenta. Con source=clear el session_id cambia
+# y el dueño anterior es casi siempre la sesión de este mismo terminal: se reclama y solo se informa (una línea).
+AJENO=""; CLEARAVISO=""
 case ${SID:-} in
   '' | *[!A-Za-z0-9_-]*) ;;
-  *) AJENO=$(nucleo_dueno_ajeno "$RAIZ" "$SID") || { AJENO=""; nucleo_dueno_reclamar "$RAIZ" "$SID"; } ;;
+  *) if AJENO=$(nucleo_dueno_ajeno "$RAIZ" "$SID") && [ "${SRC:-}" = clear ]; then
+       CLEARAVISO="Tras /clear esta sesión pasa a ser dueña de la tarea; la anterior era ${AJENO} (si era otro terminal, avísalo)."
+       AJENO=""; nucleo_dueno_reclamar "$RAIZ" "$SID"
+     elif [ -z "$AJENO" ]; then nucleo_dueno_reclamar "$RAIZ" "$SID"
+     fi ;;
 esac
+[ -z "$CLEARAVISO" ] || AVISO="${AVISO:+$AVISO
+}$CLEARAVISO"
 DAVISO=""
 [ -z "$AJENO" ] || { DAVISO="Esta tarea ya tiene otra sesión dueña (${AJENO}); no pisará su nucleo.md. Si ya no está activa, el dueño caduca solo."
   AVISO="${AVISO:+$AVISO
