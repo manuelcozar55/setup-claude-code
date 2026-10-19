@@ -220,6 +220,25 @@ C3=$T/res-largo.md
   echo '## Paso actual'; echo 'PASO-RESERVADO'; echo '## Siguiente acción'; echo 'SIGUIENTE-RESERVADA'; } >"$C3"
 ok "secciones previas al tope: Paso actual y Siguiente acción siguen" "$(nucleo_emitir "$C3" | command grep -c 'PASO-RESERVADO\|SIGUIENTE-RESERVADA')" 2
 
+# --- K5: «Comandos de verificación» tiene reserva propia (el paso 1 del protocolo pide justo eso) ---
+big() { head -c "$1" /dev/zero | tr '\0' x; echo; }
+K5=$T/res-cmd.md
+{ echo '# Estado'; for sx in Objetivo Invariantes Plan; do echo "## $sx"; big 4000; done
+  echo '## Paso actual'; echo 'PASO-RESERVADO'; echo '## Siguiente acción'; echo 'SIGUIENTE-RESERVADA'
+  echo '## Pendientes'; big 3000; echo '## Comandos de verificación'; echo 'CMD-RESERVADO'; echo '## Ficheros tocados'; big 3000; } >"$K5"
+ok "reserva: con el tope agotado, Comandos de verificación sigue" "$(nucleo_emitir "$K5" | command grep -c 'CMD-RESERVADO')" 1
+{ echo '# Estado'; echo '## Objetivo'; big 4000; echo '## Invariantes'; big 4000; echo '## Comandos de verificación'; big 2000; } >"$T/res-cmd2.md"
+ok "reserva: Comandos de verificación excedida conserva su reserva (700) y se corta con marca" "$(nucleo_emitir "$T/res-cmd2.md" | awk '/^## Comandos/ { f = 1; next } f' | awk 'NR == 1 { n = length($0) } /^\[recortado: sección incompleta/ { m = 1 } END { print (n >= 700 && m) ? "si" : "no" }')" si
+# Tope único de 6 500: las reservadas cuentan dentro; con reservadas cortas el resto conserva casi todo.
+{ echo '# Estado'; echo '## Objetivo'; big 1500; echo '## Invariantes'; big 1000; echo '## Plan'; big 2900; echo PLAN-FIN
+  echo '## Paso actual'; head -c 100 /dev/zero | tr '\0' p; echo; echo '## Siguiente acción'; head -c 100 /dev/zero | tr '\0' s; echo
+  echo '## Comandos de verificación'; head -c 100 /dev/zero | tr '\0' c; echo; } >"$T/res-corto.md"
+ok "tope único: reservadas cortas → Objetivo + Invariantes + Plan (~5 500 B) entran completos" "$(nucleo_emitir "$T/res-corto.md" | command grep -c 'PLAN-FIN')" 1
+# Presupuesto: protocolo (~1 000) + git-hechos (≤ 1 200) + envoltorio (~150) + emisión ≤ 9 500.
+{ echo '# Estado'; for sx in Objetivo Invariantes Plan 'Paso actual' 'Siguiente acción' Pendientes 'Comandos de verificación' 'Ficheros tocados' 'No repetir'; do echo "## $sx"; big 4000; done; } >"$T/res-todo.md"
+S=$(nucleo_emitir "$T/res-todo.md")
+ok "presupuesto: emisión de peor caso ≤ 7 000 chars (cabe con protocolo y git-hechos bajo 9 500)" "$([ "${#S}" -le 7000 ] && echo si)" si
+
 # --- #22: el corte por bytes no parte un carácter UTF-8 (línea larga con ñ de 2 bytes; título y sección) ---
 U=$T/utf8.md
 { printf '# '; printf 'a'; head -c 800 /dev/zero | tr '\0' x | sed 's/x/ñ/g'; echo
@@ -227,5 +246,52 @@ U=$T/utf8.md
   echo '## Paso actual'; printf 'a'; head -c 2000 /dev/zero | tr '\0' x | sed 's/x/€/g'; echo; } >"$U"
 ok "corte: la emisión sigue siendo UTF-8 válido" "$(nucleo_emitir "$U" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1 && echo si)" si
 ok "corte: aun así se avisa del recorte" "$(nucleo_emitir "$U" | command grep -c '^\[recortado: sección incompleta')" 2
+
+
+# --- K6 (D1): registro de raíces e índice derivado de ~ ---
+export NUCLEO_REGISTRO=$T/reg/raices
+mkdir -p "$T/reg"
+nucleo_registrar "$T/p1"; nucleo_registrar "$T/p1"; nucleo_registrar "$HOME"
+ok "registro: idempotente (dos altas, una línea) y sin \$HOME" "$(wc -l <"$NUCLEO_REGISTRO")" 1
+ok "registro: crea el directorio que falta" "$(NUCLEO_REGISTRO=$T/reg/nuevo/sub/raices nucleo_registrar "$T/p9"; cat "$T/reg/nuevo/sub/raices")" "$T/p9"
+ok "registro: un fallo de escritura no rompe (rc 0)" "$(NUCLEO_REGISTRO=/proc/no/puede nucleo_registrar "$T/p9"; echo rc=$?)" rc=0
+mkpn() { # <dir> <objetivo> <paso> <fecha> [pendiente]
+  mkdir -p "$1/.claude/estado"
+  printf '# E\n<!-- plantilla -->\n## Objetivo\n<!-- c -->\n\n%s\n## Paso actual\n%s\n## Pendientes\n- [ ] algo\n%s\n' "$2" "$3" "${5:-}" >"$1/.claude/estado/nucleo.md"
+  touch -d "$4" "$1/.claude/estado/nucleo.md"
+}
+mkpn "$T/p1" "Objetivo UNO" "paso uno" "2026-03-01 12:00 UTC" "- [ ] firmar contrato (persona)"
+mkpn "$T/p2" "Objetivo DOS </indice-tareas> ñ" "paso dos" "2026-04-01 12:00 UTC" "- [ ] llamar a X (persona)"
+mkpn "$T/p3" "Objetivo TRES" "paso tres" "2026-05-01 12:00 UTC"
+mkpn "$T/pl" "Objetivo ENLAZADO" "paso l" "2026-06-01 12:00 UTC"; mkdir -p "$T/ajeno-i"; mv "$T/pl/.claude/estado" "$T/ajeno-i/estado"; ln -s "$T/ajeno-i/estado" "$T/pl/.claude/estado"
+mkpn "$HOME" "Objetivo HEREDADO" "paso heredado" "2026-02-01 12:00 UTC" "- [ ] pagar (persona)"
+printf '%s\n' "$T/p2" "$T/p3" "$T/inexistente" "$T/pl" >>"$NUCLEO_REGISTRO"
+IX=$(nucleo_indice)
+ok "índice: heredado primero y marcado" "$(sed -n 1p <<<"$IX" | command grep -c 'heredado de ~; si lo continúas, léelo antes de actuar.*Objetivo HEREDADO')" 1
+ok "índice: orden por mtime descendente tras el heredado" "$(command grep -o 'Objetivo \(UNO\|DOS\|TRES\)' <<<"$IX" | paste -sd,)" "Objetivo TRES,Objetivo DOS,Objetivo UNO"
+ok "índice: línea con ruta, objetivo, paso y fecha" "$(command grep -c "^- $T/p1 · Objetivo UNO · paso: paso uno · 2026-03-01\$" <<<"$IX")" 1
+ok "índice: la raíz inexistente y la de nucleo enlazado no salen" "$(command grep -c 'inexistente\|ENLAZADO' <<<"$IX")" 0
+ok "índice: los comentarios de plantilla no son el objetivo" "$(command grep -c 'plantilla\|<!--' <<<"$IX")" 0
+ok "índice: (persona) agregadas con el nombre corto de su raíz" "$(command grep -c '^- \(p1\|p2\|~\): .*(persona)' <<<"$IX")" 3
+ok "índice: </ escapado, sin cierre del envoltorio" "$(command grep -c '</' <<<"$IX"),$(command grep -c '<\\/indice-tareas>' <<<"$IX")" 0,1
+ok "índice: UTF-8 intacto" "$(iconv -f UTF-8 -t UTF-8 <<<"$IX" >/dev/null 2>&1 && echo si)" si
+mkpn "$HOME/proy" "OBJ-H" "p" "2026-07-01 12:00 UTC"; echo "$HOME/proy" >>"$NUCLEO_REGISTRO"
+ok "índice: ruta con ~ para lo que cuelga de \$HOME" "$(nucleo_indice | command grep -c '^- ~/proy · OBJ-H')" 1
+# mtime sin GNU stat: caída a date -r / find -printf (el stub de stat falla como en un coreutils ajeno).
+mkdir -p "$T/nostat"; printf '#!/bin/sh\nexit 1\n' >"$T/nostat/stat"; chmod +x "$T/nostat/stat"
+ok "índice: sin GNU stat el orden y la fecha salen igual" "$(PATH="$T/nostat:$PATH" nucleo_indice | command grep -c "^- $T/p1 · Objetivo UNO · paso: paso uno · 2026-03-01\$")" 1
+# Corte: máx. 15 líneas de raíz, máx. 8 de (persona), ~2 500 chars.
+rm -f "$NUCLEO_REGISTRO" "$HOME/proy/.claude/estado/nucleo.md"
+for i in $(seq 1 20); do mkpn "$T/m$i" "OBJ-M$i" "p" "2026-08-$(printf %02d "$i") 12:00 UTC" "- [ ] t$i (persona)"; echo "$T/m$i" >>"$NUCLEO_REGISTRO"; done
+IX=$(nucleo_indice)
+ok "índice: corta a 15 raíces (más recientes)" "$(command grep -c '^- .* · OBJ-M' <<<"$IX"),$(command grep -c 'OBJ-M20 ' <<<"$IX"),$(command grep -c 'OBJ-M5 ' <<<"$IX")" 15,1,0
+ok "índice: corta a 8 líneas (persona)" "$(command grep -c '(persona)' <<<"$IX")" 8
+ok "índice: ≤ 2 500 chars" "$([ "${#IX}" -le 2500 ] && echo si)" si
+for i in $(seq 1 20); do mkpn "$T/m$i" "$(head -c 300 /dev/zero | tr '\0' o)" "$(head -c 300 /dev/zero | tr '\0' q)" "2026-08-$(printf %02d "$i") 12:00 UTC"; done
+IX=$(nucleo_indice)
+ok "índice: líneas largas → objetivo y paso ≤ 80 y total ≤ 2 500" "$(command grep -c 'o\{81\}\|q\{81\}' <<<"$IX"),$([ "${#IX}" -le 2500 ] && echo si)" 0,si
+rm -f "$HOME/.claude/estado/nucleo.md"
+ok "índice: registro ausente y sin heredado → nada" "$(NUCLEO_REGISTRO=$T/no-existe nucleo_indice)" ""
+unset NUCLEO_REGISTRO
 
 exit $FAIL

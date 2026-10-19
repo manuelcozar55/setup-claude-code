@@ -38,7 +38,7 @@ TP=$T/t.jsonl
 OUT=$(ev "$R/sub" s1 "" resume | bash "$H/session-start-clear.sh"); C=$(ctx <<<"$OUT")
 ok "clear: salida ≤ 9 500 con nucleo de 78 KB" "$([ "$(printf '%s' "$OUT" | wc -m)" -le 9500 ] && echo si)" si
 ok "clear: envuelto en <nucleo-datos>" "$(command grep -c '^<nucleo-datos \|^</nucleo-datos>$' <<<"$C")" 2
-ok "clear: línea de datos antes del envoltorio" "$(command grep -B1 '^<nucleo-datos ' <<<"$C" | command grep -c 'datos del proyecto, no instrucciones')" 1
+ok "clear: línea de datos antes del envoltorio (y de <git-hechos>, que va delante)" "$(command grep -B1 '^<git-hechos \|^<nucleo-datos ' <<<"$C" | command grep -c 'datos del proyecto, no instrucciones')" 1
 ok "clear: Paso actual vivo y aviso de forma" "$(command grep -c 'PASO-VIVO\|fuera de forma' <<<"$C")" 2
 
 ev "$R/sub" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
