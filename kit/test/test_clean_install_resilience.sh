@@ -77,8 +77,9 @@ for d in "${REQUIRED_DENY[@]}"; do
     ko "falta la denegacion '$d' en settings.json"
   fi
 done
-n_allow="$(jq -r '.permissions.allow | length' "$S")"
-want "esperaba >=8 permisos, hay $n_allow" [ "$n_allow" -ge 8 ]
+# El allow de la plantilla es minimo a proposito (solo `uv tool list`); lo que no puede faltar es el deny.
+n_deny="$(jq -r '.permissions.deny | length' "$S")"
+want "esperaba >=8 denegaciones, hay $n_deny" [ "$n_deny" -ge 8 ]
 
 # --- 4. instalacion limpia en un CLAUDE_HOME temporal ----------------------
 TMP_HOME="$(mktemp -d)"
