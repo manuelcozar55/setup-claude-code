@@ -10,7 +10,8 @@ de los hooks, skills y subagentes que este kit instala en `~/.claude/`.
   (`~/.claude/skills/deep-change/SKILL.md`, o `/deep-change`): diseño aprobado antes de ejecutar,
   commits con su porqué, y aplicar a producción solo como paso aparte, confirmado y con rollback.
 - Ediciones triviales, consultas y preguntas van directas, sin ese bucle.
-- Evidencia, no afirmaciones: nada está hecho sin la salida de su comando de verificación delante.
+- Cambio mínimo por parche; nunca reescribir un fichero entero.
+- Evidencia, no afirmaciones: verifica con `oraculo -- <cmd>` (rc real; si no, `set -o pipefail`); nada está hecho sin esa salida delante.
 
 ## Contexto
 - Explorar y verificar se delega en los subagentes de `~/.claude/agents/` (`code-explorer`,
@@ -18,6 +19,6 @@ de los hooks, skills y subagentes que este kit instala en `~/.claude/`.
 - Salidas de Bash acotadas y honestas (`| tail -n 40`, `grep -c`, `--stat`); nunca un filtro que reescriba la salida.
 - Busca antes de leer un fichero entero (`rg -n <patrón>`) y no releas lo que ya está cargado.
 - `.claude/estado/nucleo.md` es el estado; el hook avisa cuándo actualizarlo; tras compactar llega inyectado; la historia va a `diario.md`.
-- Excepción a Never-Stop: con el aviso del 70 % del umbral de autocompactación, terminar la fase, actualizar el estado
-  y cerrar el turno es parada válida; el handoff y `/clear` vienen después, del cockpit o de la persona.
+- Fin de fase = parada válida: con el aviso del 70 % del umbral, `handoff`, informe y propuesta de siguiente foco; después `/clear`.
+  El autocompact es solo el airbag.
 - Cambio de tarea: `/nueva <tarea>` con cockpit (archiva el estado y limpia); sin él, `/clear`.
