@@ -495,6 +495,40 @@ expect "branch-guard: master tras cd + && denegado" "$(run_branchguard 'cd /tmp 
 expect "branch-guard: -C antes de push a main denegado" "$(run_branchguard 'git -C /home/user/repo push origin main')" BLOCK
 expect "branch-guard: rama de feature NO denegada"  "$(run_branchguard 'git push origin feature/x')"             ALLOW
 
+# Destino real del push (E7 PR2, hallazgo 5). El guard comparaba subcadenas del TEXTO: la rama
+# entrecomillada, el push a secas y `HEAD` pasaban con main activa, y `main-menu` daba falso
+# positivo. Ahora se resuelve la rama actual con symbolic-ref y se compara por igualdad de token.
+# Se usan repos temporales porque el resultado depende de la rama activa del cwd del hook.
+BR_MAIN=$(mktemp -d); BR_FEAT=$(mktemp -d); BR_NONE=$(mktemp -d)
+git -C "$BR_MAIN" init -q && git -C "$BR_MAIN" symbolic-ref HEAD refs/heads/main
+git -C "$BR_FEAT" init -q && git -C "$BR_FEAT" symbolic-ref HEAD refs/heads/feature/x
+run_bg() { # $1 cwd, $2 comando
+  (cd "$1" && jq -nc --arg c "$2" '{tool_name:"Bash",tool_input:{command:$c}}' | bash "$KIT/claude/hooks/branch-guard.sh" 2>&1)
+}
+for c in 'git push origin "main"' "git push origin 'main'" 'git push' 'git push origin' 'git push origin HEAD' \
+         'git push -u origin HEAD' 'git push origin HEAD:main' 'git push origin feature:main' \
+         'git push origin refs/heads/main' 'git push origin +main' 'sudo git push origin main' \
+         'git -C . push' '/usr/bin/git push origin main' 'git push origin main main-menu' \
+         'git commit -m "x #1" && git push' 'git push --set-upstream origin HEAD'; do
+  expect "branch-guard (main activa): $c denegado" "$(run_bg "$BR_MAIN" "$c")" BLOCK
+done
+for c in 'git push origin main-menu' 'git push origin feature/x' 'git push origin HEAD:feature/x' \
+         'git push origin x # main' 'git commit -m "push main" && git status' 'git push origin domain' \
+         'echo git push origin main'; do
+  expect "branch-guard (main activa): $c NO denegado" "$(run_bg "$BR_MAIN" "$c")" ALLOW
+done
+for c in 'git push' 'git push origin HEAD' 'git push -u origin HEAD' 'git push origin feature/x'; do
+  expect "branch-guard (feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
+expect "branch-guard (feature activa): push explicito a main denegado" "$(run_bg "$BR_FEAT" 'git push origin main')" BLOCK
+expect "branch-guard (fuera de repo): git push a secas conserva el comportamiento" "$(run_bg "$BR_NONE" 'git push')"             ALLOW
+expect "branch-guard (fuera de repo): HEAD conserva el comportamiento"             "$(run_bg "$BR_NONE" 'git push origin HEAD')" ALLOW
+expect "branch-guard (fuera de repo): main explicito denegado"                     "$(run_bg "$BR_NONE" 'git push origin main')" BLOCK
+expect "branch-guard: git -C a un repo en main denegado desde fuera"    "$(run_bg "$BR_NONE" "git -C $BR_MAIN push")" BLOCK
+expect "branch-guard: git -C a un repo en feature NO denegado"          "$(run_bg "$BR_NONE" "git -C $BR_FEAT push")" ALLOW
+expect "branch-guard: cd a un repo en main + push denegado"             "$(run_bg "$BR_NONE" "cd $BR_MAIN && git push")" BLOCK
+rm -rf "$BR_MAIN" "$BR_FEAT" "$BR_NONE"
+
 # Las TRES grafias del borrado de una rama remota. Solo `--delete` estaba cubierta: contra rama
 # protegida las otras dos tambien caian, pero por branch-guard.sh (que bloquea por el nombre de
 # la rama), asi que medir solo contra `main` daba cobertura completa donde no la habia. Contra
@@ -536,6 +570,28 @@ expect "guard: rm -r sin forzar NO denegado"      "$(run_blockdc 'rm -r node_mod
 expect "destructive: rm forma larga en /home denegado" "$(run_destructive 'rm --recursive --force /home/usuario/docs')" BLOCK
 expect "destructive: find -delete bajo /home denegado" "$(run_destructive 'find /home/usuario/docs -delete')"    BLOCK
 expect "destructive: find -delete en /tmp NO denegado" "$(run_destructive 'find /tmp/build -delete')"            ALLOW
+
+# Normalizacion de comandos (E7 PR2, hallazgo 4): un comentario entre comillas cortaba el escaneo
+# y las opciones globales de git, los prefijos (sudo, env, timeout...) y las grafias de rm/clean
+# sacaban el comando del patron. Los comandos se pasan por jq porque llevan comillas.
+run_dg() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" bash "$KIT/claude/hooks/destructive-guard.sh" 2>&1; }
+for c in 'git commit -m "fix #12" && git reset --hard' "git commit -m 'a #b' ; git clean -fd" \
+         'git -C dir reset --hard' 'git -c core.x=1 reset --hard' 'git --git-dir=.git reset --hard' \
+         'sudo git reset --hard' 'sudo -u root git reset --hard' 'env A=1 git reset --hard' 'A=1 git reset --hard' \
+         'command git reset --hard' 'timeout 5 git reset --hard' 'nice -n 5 git clean -fd' '/usr/bin/git reset --hard' \
+         'git "reset" --hard' "git reset '--hard'" 'git reset HEAD~1 --hard' '(git reset --hard)' \
+         'git clean --force -d' 'git clean -d --force' 'git -C dir clean -fd' \
+         'rm -rv /home/usuario/x' 'rm -R /home/usuario/x' 'rm -rf -- /home/usuario/x' 'rm -r -f /etc/x' 'rm -fr ~/docs' \
+         'sudo rm -rf /var/lib/x' 'r""m -rf /home/usuario' 'echo hi # c
+git reset --hard' 'git reset \
+--hard'; do
+  expect "destructive: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'git commit -m "git reset --hard"' 'git reset --soft HEAD~1' 'echo "run: git reset --hard"' \
+         'git commit -m x # git reset --hard' 'git clean -n' 'rm -rf node_modules' 'rm -rv ./build' \
+         'git -C dir status'; do
+  expect "destructive: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
 
 # El check 4 (find -delete) bloqueaba con exit 2 pero era el unico que no llamaba a
 # log_block: el bloqueo ocurria y no quedaba registrado, asi que el log de auditoria daba
@@ -619,6 +675,28 @@ expect "secret-guard bloquea server.key por nombre" "$(run_secret 'git add serve
 #    cualquier fichero que contenga la subcadena)
 printf '{}\n' > "$SG_DIR/credentials.json"
 expect "secret-guard bloquea credentials.json por nombre" "$(run_secret 'git add credentials.json')" BLOCK
+
+# 8b) Normalizacion (E7 PR2, hallazgo 9): `git -C . add` no llegaba al filtro, la exencion del fichero de
+# ejemplo se evaluaba sobre TODO el comando y `--all` no se contemplaba. Ahora se miran los operandos de
+# `git add` uno a uno. Los ficheros no hacen falta: el guard decide por el nombre.
+for c in 'git -C . add .env' 'git add .env.example .env' 'git add .env .env.example' 'git add .env.example .env.local' \
+         'sudo git add server.pem' 'git add -- server.pem' 'git add "server.pem"' "git add 'credentials.json'" \
+         'git add dir/server.key' 'git -c core.x=1 add .env' 'git add -f .env.production' 'cd x && git add id.p12' \
+         'git add ok.txt server.pem'; do
+  expect "secret-guard: $c denegado" "$(run_secret "$c")" BLOCK
+done
+for c in 'git add .env.example' 'git -C . add .env.template' 'git add notes.md' 'git commit -m "git add .env"' \
+         'echo git add server.pem' 'git add bundle.p12/data.txt' 'git add src/environment.py.txt'; do
+  expect "secret-guard: $c NO denegado" "$(run_secret "$c")" ALLOW
+done
+printf 'SECRET=1\n' > "$SG_DIR/.env"
+for c in 'git add --all' 'git add -A' 'git add .' 'git -C . add -A' 'sudo git add --all'; do
+  expect "secret-guard: $c con .env sin ignorar denegado" "$(run_secret "$c")" BLOCK
+done
+expect "secret-guard: git add .gitignore con .env sin ignorar NO denegado" "$(run_secret 'git add .gitignore')" ALLOW
+printf '.env\n' > "$SG_DIR/.gitignore"
+expect "secret-guard: git add --all con .env ignorado NO denegado" "$(run_secret 'git add --all')" ALLOW
+rm -f "$SG_DIR/.env" "$SG_DIR/.gitignore"
 
 # 9) git add de un fichero limpio desde un subdirectorio -> no bloquea espuriamente
 SUBDIR_ROOT=$(mktemp -d)
@@ -933,6 +1011,14 @@ bdc "git commit -nm"          "git commit -nm x"                 deny
 bdc "--no-verify en mensaje"  "git commit -m \"skip --no-verify docs\""  allow
 bdc "-n en mensaje"           "git commit -m \"add -nightly build\""     allow
 bdc "git commit --no-edit"    "git commit --amend --no-edit"     allow
+# E7 PR2, hallazgo 6: la continuacion `\`+salto de linea partia el pipe-a-shell en dos lineas y esquivaba la regla.
+NL=$'\n'; BS=$'\\'
+bdc "continuacion antes del pipe"      "curl $U $BS${NL}$P $B"            deny
+bdc "continuacion tras el pipe"        "curl $U $P $BS${NL}$B"            deny
+bdc "continuacion + sudo"              "curl $U $BS${NL}$P sudo $B -"     deny
+bdc "wget con continuacion"            "wget -qO- $U $BS${NL}$P $S"       deny
+bdc "pipe de curl comentado NO deniega" "curl $U # $P $B"                 allow
+bdc "comentario entre comillas no corta" "git commit -m \"fix #1\" && curl $U $P $B" deny
 wg_ctx() { # $1 = nº de líneas, $2 = ruta
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[2],"content":"x\n"*int(sys.argv[1])}}))' "$1" "$2" \
     | "$PY" "$KIT/claude/hooks/write-guard.py" | jq -r '.hookSpecificOutput.additionalContext // empty'

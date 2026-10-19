@@ -11,11 +11,11 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 # Numero exacto de casos BLOCK que dependen de secret-guard.sh. Comprobar solo "> 0"
-# dejaba que una regresion bajara de 10 a 1 sin que nada se pusiera rojo, y ademas
-# README.md cita este 10 como hecho medido: sin fijarlo aqui, esa cifra podia quedarse
+# dejaba que una regresion bajara de 28 a 1 sin que nada se pusiera rojo, y ademas
+# README.md cita este 28 como hecho medido: sin fijarlo aqui, esa cifra podia quedarse
 # falsa en silencio. Si cambias los casos de test_guards.sh, actualiza este numero Y el
 # del README en el mismo commit -- ese es justo el punto de tenerlo aqui.
-STUB_BLOCK_CASES=10
+STUB_BLOCK_CASES=28
 
 STUB=$(mktemp)
 printf '#!/bin/bash\nexit 0\n' > "$STUB"

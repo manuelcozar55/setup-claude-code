@@ -120,6 +120,9 @@ jobs:
       - name: test_guards_falsifiability.sh (la suite anterior es falsable)
         run: bash kit/test/test_guards_falsifiability.sh
 
+      - name: test_guards_corpus.sh (corpus adversario de E5 contra los guards bash)
+        run: bash kit/test/test_guards_corpus.sh
+
       - name: test_secret_content_gitleaks.sh (Capa 2, por contenido)
         run: bash kit/test/test_secret_content_gitleaks.sh
 

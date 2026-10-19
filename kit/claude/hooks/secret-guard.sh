@@ -33,42 +33,59 @@ if ! COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 fi
 [[ -z "$COMMAND" ]] && exit 0
 
-# Anchored to (^|[;&|(]) so "cd x && git add key" and "(git add key)" don't
-# evade the guard — a bare "^" only catches git add at the very start.
-# rc=1 is "not a git add" and we exit; rc>=2 is "the regex did not compile", which `|| exit 0`
-# turned into a silent allow. Keep them apart: a broken filter must deny, not fall through.
-echo "$COMMAND" | grep -qE '(^|[;&|(])\s*git\s+add'
-rc_filter=$?
-if [ "$rc_filter" -ge 2 ]; then
-  echo "BLOCKED: secret-guard cannot evaluate the command (grep rc=$rc_filter)." >&2
-  exit 2
-fi
-[ "$rc_filter" -eq 0 ] || exit 0
-
-# Block .env files (allow known-safe template variants: .env.example, .env.template, .env.sample, .env.dist)
-if echo "$COMMAND" | grep -qiE 'git\s+add\s+.*\.env' && \
-   ! echo "$COMMAND" | grep -qiE '\.env\.(example|template|sample|dist)'; then
-  echo "BLOCKED: Staging .env file — add to .gitignore instead." >&2
+# Se decide por los OPERANDOS de cada `git add`, sobre el comando normalizado (lib/cmdnorm.sh): tokens
+# descomillados, sin prefijos (sudo, env...) ni opciones globales de git. Antes eran regex sobre el texto
+# entero, y fallaban en tres sitios: `git -C . add .env` no llegaba al filtro, la exencion del fichero
+# de ejemplo se evaluaba sobre TODO el comando (`git add .env.example .env` pasaba) y `--all` no existia.
+# shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit." >&2; exit 2; }
+if ! cmdn_parse "$COMMAND"; then
+  echo "BLOCKED (fail-closed): awk no pudo normalizar el comando; secret-guard no puede evaluarlo." >&2
   exit 2
 fi
 
-# Block credential/key files by name (extensions anchored to end-of-token, not
-# end-of-string: a token ends at whitespace, end of command, or a closing
-# quote/paren, but NOT at "/" -- so ".p12" inside a directory name like
-# bundle.p12/data still doesn't match. No bare "secret" token, it matched
-# inside unrelated words like "secreto")
-if echo "$COMMAND" | grep -qiE 'git\s+add\s+.*(\.pem|\.p12|\.pfx|\.jks|\.keystore|\.key|credentials\.json)([[:space:]]|$|['\''")])'; then
-  echo "BLOCKED: Staging potential credential file." >&2
-  echo "Command: $COMMAND" >&2
-  exit 2
-fi
+shopt -s nocasematch
+for seg in "${CMDN_SEGS[@]}"; do
+  cmdn_fields "$seg"
+  cmdn_track_cd
+  [[ ${T[1]:-} == git && ${T[2]:-} == add ]] || continue
 
-# Block git add -A / git add . only when .env is NOT gitignored
-if echo "$COMMAND" | grep -qE 'git\s+add\s+(-A|\.)' && [ -f ".env" ]; then
-  if ! git check-ignore -q .env 2>/dev/null; then
-    echo "BLOCKED: git add -A/. with untracked .env present — add to .gitignore first." >&2
-    exit 2
+  all=0; dot=0; dd=0
+  for op in "${T[@]:3}"; do
+    if (( ! dd )) && [[ $op == -- ]]; then dd=1; continue; fi
+    if (( ! dd )) && [[ $op == -* ]]; then
+      [[ $op == --all || ( $op != --* && $op == -*A* ) ]] && all=1
+      continue
+    fi
+    # .env files (allow known-safe template variants: .env.example, .env.template, .env.sample, .env.dist)
+    if [[ $op =~ \.env ]] && ! [[ $op =~ \.env\.(example|template|sample|dist) ]]; then
+      echo "BLOCKED: Staging .env file — add to .gitignore instead." >&2
+      exit 2
+    fi
+    # Credential/key files by name. Con los tokens ya descomillados la extension se ancla al final del
+    # operando: `bundle.p12/data` no casa, igual que antes. No hay un "secret" suelto: casaba dentro de
+    # palabras ajenas como "secreto".
+    if [[ $op =~ (\.pem|\.p12|\.pfx|\.jks|\.keystore|\.key|credentials\.json)$ ]]; then
+      echo "BLOCKED: Staging potential credential file." >&2
+      echo "Command: $COMMAND" >&2
+      exit 2
+    fi
+    [[ $op == . || $op == ./ || $op == '*' ]] && dot=1
+  done
+
+  # git add -A / --all / . only when .env is NOT gitignored
+  if (( all || dot )); then
+    IFS=$CMDN_GS read -r -a gopts <<<"${T[0]}"
+    top=$(git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" rev-parse --show-toplevel 2>/dev/null) || top=""
+    if [[ -n $top ]]; then
+      base=$top
+      (( all )) || base="$top/$(git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" rev-parse --show-prefix 2>/dev/null)"
+      if [ -f "$base/.env" ] && ! git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" check-ignore -q "$base/.env" 2>/dev/null; then
+        echo "BLOCKED: git add -A/. with untracked .env present — add to .gitignore first." >&2
+        exit 2
+      fi
+    fi
   fi
-fi
+done
 
 exit 0
