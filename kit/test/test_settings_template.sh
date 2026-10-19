@@ -32,6 +32,7 @@ ok "deny del kit intactos aunque la política gestionada los repita (decisión 2
 ok "model sin sufijo [1m] (Opus 4.7+ trae 1M por defecto)" "$(q '.model')" opus
 ok "allow reducido a lo genérico (sin dominios, graphify ni rtk personales)" "$(q '[.permissions.allow[]? | select(. != "Bash(uv tool list)")] | join(" ")')" ""
 ok "ni oraculo ni handoff en allow (envuelven comandos arbitrarios)" "$(q '[.permissions.allow[]? | select(test("oraculo|handoff"))] | length')" 0
+# shellcheck disable=SC2016 # $k y $m son variables de jq, no del shell
 ok "todo plugin de terceros tiene su marketplace en extraKnownMarketplaces" "$(q '(.extraKnownMarketplaces // {} | keys) as $k | [.enabledPlugins | keys[] | split("@")[1] | select(. != "claude-plugins-official") | select(. as $m | $k | index($m) | not)] | join(" ")')" ""
 ok "marketplace setup-claude-code apunta a manuelcozar55/setup-claude-code" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.repo')" manuelcozar55/setup-claude-code
 ok "sin plugins personales ni de contexto caro (codex, understand-anything, frontend-design)" "$(q '[.enabledPlugins | keys[] | select(test("^(codex|understand-anything|frontend-design)@"))] | length')" 0
