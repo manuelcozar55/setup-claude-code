@@ -50,7 +50,7 @@ En la raíz git de tu proyecto crea `.claude/estado/nucleo.md` con estas seccion
 
 ## Día 3 · `/handoff` y `/clear` en vez de esperar a la compactación
 
-Instala el mod `cockpit` ([`11-cockpit.md`](../11-cockpit.md)). Al cerrar una fase, `/handoff`: el modelo devuelve las secciones que cambian, el código las fusiona en `nucleo.md` y hace `/clear`. La sesión nueva recibe el estado del hook de arranque; escribes «sigue». Sin el mod, lo mismo a mano: actualiza `nucleo.md` y teclea `/clear`.
+Instala el mod `cockpit` ([`11-cockpit.md`](../11-cockpit.md)). Al cerrar una fase, `/handoff`: el modelo devuelve las secciones que cambian, el código las fusiona en `nucleo.md` y hace `/clear`. La sesión nueva recibe el estado del hook de arranque; pulsas Enter sobre el prompt que el mod deja relleno con la siguiente acción. Sin el mod, lo mismo a mano: actualiza `nucleo.md` y teclea `/clear`.
 
 Cambias de tarea: `/clear` a secas. Una sesión por tarea.
 

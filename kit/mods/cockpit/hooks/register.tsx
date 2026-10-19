@@ -34,14 +34,14 @@ const CONTINUE = 'sigue con la Siguiente acción de .claude/estado/nucleo.md'
 // The fork returns only the sections that move; the code merges them into nucleo.md. Rewriting
 // the whole state each time is what loses detail (Factory, 2025-12-16), so the person's words
 // and the invariants are kept by code, not by asking the model to copy them.
-const HANDOFF_PROMPT = `Actualiza el estado del proyecto (.claude/estado/nucleo.md) para que una sesión NUEVA de Claude Code, sin este historial, retome el trabajo sin perder nada. Responde SOLO con estas secciones de Markdown, con estos títulos exactos:
+export const HANDOFF_PROMPT = `Actualiza el estado del proyecto (.claude/estado/nucleo.md) para que una sesión NUEVA de Claude Code, sin este historial, retome el trabajo sin perder nada. Responde SOLO con estas secciones de Markdown, con estos títulos exactos:
 ## Plan
 (pasos con [x] hechos, cada uno con el comando que lo verificó, y [ ] pendientes)
 ## Paso actual
 ## Siguiente acción
 (una sola, concreta y ejecutable)
-## Pendientes y riesgos
-(incluye los heredados que sigan abiertos)
+## Pendientes
+(incluye riesgos y los heredados que sigan abiertos; empieza con \`(persona)\` cada línea que solo pueda hacer la persona: el índice de \`~\` las reúne)
 ## Ficheros tocados
 (rutas absolutas y qué cambió; los de fuera de git, con la ruta de su copia de seguridad)
 ## Comandos de verificación
@@ -55,6 +55,14 @@ const KEEP_COPIES = 3
 
 // Titles compare without case, accents or repeated spaces: «Siguiente acción» and «siguiente accion» are one key.
 const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+// Names the fork may use for a template section: the key folds into the template's title.
+const ALIAS: Record<string, string> = { 'pendientes y riesgos': 'Pendientes' }
+const canon = (title: string) => norm(ALIAS[norm(title)] ?? title)
+// An aliased header is written back under the template's title, so the state never carries the alias.
+const retitle = (text: string) => {
+  const canonical = ALIAS[norm((text.split('\n')[0] ?? '').slice(3))]
+  return canonical === undefined ? text : `## ${canonical}${text.includes('\n') ? text.slice(text.indexOf('\n')) : '\n'}`
+}
 const isFixed = (title: string) => /^(encargo original|objetivo|invariantes)/.test(norm(title))
 // «Encargo original» (the task's literal words) and «Objetivo» (the kit template's name for it) are one family.
 const family = (title: string) => (norm(title).startsWith('invariantes') ? 'invariantes' : 'encargo')
@@ -64,7 +72,7 @@ const bodyOf = (text: string) => (text.includes('\n') ? text.slice(text.indexOf(
 function sections(doc: string) {
   const parts = doc.split(/^(?=## )/m)
   const head = parts[0]?.startsWith('## ') ? '' : (parts.shift() ?? '')
-  return { head, list: parts.map(text => ({ key: norm((text.split('\n')[0] ?? '').slice(3)), text })) }
+  return { head, list: parts.map(text => ({ key: canon((text.split('\n')[0] ?? '').slice(3)), text })) }
 }
 // Fixed sections the state does not carry yet (absent, or only the template's placeholder): the fork must supply them.
 const missingFixed = (prev: string) => {
@@ -88,7 +96,8 @@ export function mergeNucleo(prev: string, reply: string) {
   if (!fresh.length) throw new Error('la respuesta no trae secciones ## ')
   if (!prev) return `# Estado\n\n${fresh.map(s => withNl(s.text)).join('')}`
   const old = sections(prev)
-  const byKey = new Map(fresh.filter(s => !isFixed(s.key)).map(s => [s.key, s.text]))
+  const byKey = new Map(fresh.filter(s => !isFixed(s.key)).map(s => [s.key, retitle(s.text)]))
+  const replaced = new Set<string>()
   const gaps = new Map(fresh.filter(s => isFixed(s.key) && bodyOf(s.text) !== '').map(s => [family(s.key), s.text]))
   for (const s of old.list) if (isFixed(s.key) && bodyOf(s.text) !== '') gaps.delete(family(s.key))
   const out = old.list.map(s => {
@@ -100,9 +109,12 @@ export function mergeNucleo(prev: string, reply: string) {
     }
     const next = byKey.get(s.key)
     byKey.delete(s.key)
+    if (next !== undefined) replaced.add(s.key)
+    // A later namesake of a replaced section is a leftover of an old merge; its text stays in nucleo.prev-*.
+    else if (replaced.has(s.key)) return ''
     return next === undefined ? s.text : withNl(next)
   })
-  return old.head + [...out, ...gaps.values(), ...byKey.values()].map(withNl).join('')
+  return old.head + [...out, ...gaps.values(), ...byKey.values()].filter(t => t !== '').map(withNl).join('')
 }
 const focusNote = (focus: string) => `\nLa próxima sesión se centrará en: ${focus}\nAdapta el documento a ese foco.`
 
@@ -298,6 +310,21 @@ async function syncAgents($: $) {
   }
 }
 
+// First line of «Siguiente acción» in the saved state: what the person approves when the prompt comes back filled.
+export function nextLine(doc: string) {
+  const sec = sections(doc).list.find(s => s.key.startsWith('siguiente accion'))
+  const line = bodyOf(sec?.text ?? '')
+    .split('\n')
+    .map(l => l.replace(/^\s*(?:[-*]|\d+\.)\s+/, '').replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim())
+    .find(l => l !== '')
+  return line === undefined ? '' : line.length > 200 ? `${line.slice(0, 200)}…` : line
+}
+// The fixed prefix keeps the draft from starting with «/» or «!»: it cannot run a command or switch to bash mode.
+export const fillFor = (doc: string) => {
+  const line = nextLine(doc)
+  return line ? `adelante con la Siguiente acción de .claude/estado/nucleo.md: ${line}` : CONTINUE
+}
+
 // Leave the press/command dispatch before clearing the conversation under it.
 // After a clear that carries a saved state, the prompt box is filled (never submitted) with a
 // line to continue: the SessionStart(clear) hook hands nucleo.md to the new session, and a
@@ -311,13 +338,17 @@ async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefine
         return
       }
       await $.command.run({ command: 'clear' })
-      await update($, handoff, (): Handoff => ({ phase: 'done', msg: path ? `Contexto limpio; la sesión nueva carga ${path}: escribe «sigue»` : 'Contexto limpio' }))
-      if (fill) await $.prompt.fill({ text: fill }).catch(() => undefined)
-    } catch {
+      if (!fill) {
+        await update($, handoff, (): Handoff => ({ phase: 'done', msg: 'Contexto limpio' }))
+        return
+      }
+      const filled = await $.prompt.fill({ text: fill }).catch(() => null)
       await update($, handoff, (): Handoff => ({
-        phase: 'error',
-        msg: path ? `Guardado en ${path}, pero /clear falló: escribe /clear y luego «sigue»` : '/clear falló: escríbelo tú',
+        phase: 'done',
+        msg: filled?.isFilled ? 'Contexto limpio; revisa el prompt y pulsa Enter para seguir' : `Contexto limpio; escribe: ${fill}`,
       }))
+    } catch {
+      await update($, handoff, (): Handoff => ({ phase: 'error', msg: fill ? `/clear falló: escribe /clear y luego ${fill}` : '/clear falló: escríbelo tú' }))
     }
   })
 }
@@ -408,7 +439,7 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
       await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${path}` }))
       return
     }
-    await clearAfter($, path)
+    await clearAfter($, path, fillFor(doc))
   } catch (err) {
     await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}` }))
   }
