@@ -89,10 +89,14 @@ nucleo_ctx() {
 # Bytes (LC_ALL=C): el tope protege el límite del harness, que se mide en la salida entera.
 nucleo_emitir() {
   [ -f "$1" ] || return 0
-  LC_ALL=C awk -v f="$1" -v kb="$(( ($(wc -c <"$1") + 1023) / 1024 ))" -v sec=3000 -v tope=6500 -v res=700 '
+  LC_ALL=C awk -v f="$1" -v kb="$(( ($(wc -c <"$1") + 1023) / 1024 ))" -v sec=3000 -v tope=4300 -v res=700 '
     BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|") }
-    # «Paso actual» y «Siguiente acción» tienen reserva propia (res bytes cada una, fuera del tope): con un
-    # nucleo de 20 KB el presupuesto se gastaba por orden y eran justo las dos que se perdían.
+    # «Paso actual», «Siguiente acción» y «Comandos de verificación» tienen reserva propia (res bytes cada
+    # una, fuera del tope): con un nucleo de 20 KB el presupuesto se gastaba por orden y eran justo las que
+    # se perdían (la tercera es lo que pide el paso 1 del protocolo de arranque).
+    # Presupuesto del contexto de SessionStart (nucleo_tope: 9 500): protocolo ~1 000 + <git-hechos> ≤ 1 200 +
+    # envoltorio ~150 + esta emisión, que en el peor caso es título 200 + tope 4 300 + 3 × (res 700 + cabecera)
+    # + avisos ≈ 7 000. Por eso el tope por orden bajó de 6 500 a 4 300 al sumar la tercera reserva.
     # Corte por bytes sin partir un carácter UTF-8: si el byte siguiente es de continuación, el corte cayó
     # dentro de uno y se quita el inicio huérfano con sus continuaciones (octales: valen en gawk y mawk).
     function corta(l, n,   r) {
@@ -132,7 +136,7 @@ nucleo_emitir() {
       # <!-- … --> de la plantilla no cuentan como contenido (si no, «Encargo original» y «Plan» del
       # handoff se descartaban como repetidos de un Objetivo y un Plan que solo tenían el marcador).
       if (c == "" || (visto[c] && con[c])) { fuera++; next }
-      visto[c] = 1; actual = c; coment = 0; rsv = (c == "Paso actual" || c == "Siguiente acción")
+      visto[c] = 1; actual = c; coment = 0; rsv = (c == "Paso actual" || c == "Siguiente acción" || c == "Comandos de verificación")
       if (!rsv && usado + length($0) > tope) { omitidas = omitidas " «" corta(t, 80) "»"; next }
       viva = 1; sale($0); next
     }

@@ -220,6 +220,20 @@ C3=$T/res-largo.md
   echo '## Paso actual'; echo 'PASO-RESERVADO'; echo '## Siguiente acción'; echo 'SIGUIENTE-RESERVADA'; } >"$C3"
 ok "secciones previas al tope: Paso actual y Siguiente acción siguen" "$(nucleo_emitir "$C3" | command grep -c 'PASO-RESERVADO\|SIGUIENTE-RESERVADA')" 2
 
+# --- K5: «Comandos de verificación» tiene reserva propia (el paso 1 del protocolo pide justo eso) ---
+big() { head -c "$1" /dev/zero | tr '\0' x; echo; }
+K5=$T/res-cmd.md
+{ echo '# Estado'; for sx in Objetivo Invariantes Plan; do echo "## $sx"; big 4000; done
+  echo '## Paso actual'; echo 'PASO-RESERVADO'; echo '## Siguiente acción'; echo 'SIGUIENTE-RESERVADA'
+  echo '## Pendientes'; big 3000; echo '## Comandos de verificación'; echo 'CMD-RESERVADO'; echo '## Ficheros tocados'; big 3000; } >"$K5"
+ok "reserva: con el tope agotado, Comandos de verificación sigue" "$(nucleo_emitir "$K5" | command grep -c 'CMD-RESERVADO')" 1
+{ echo '# Estado'; echo '## Objetivo'; big 4000; echo '## Invariantes'; big 4000; echo '## Comandos de verificación'; big 2000; } >"$T/res-cmd2.md"
+ok "reserva: Comandos de verificación excedida conserva su reserva (700) y se corta con marca" "$(nucleo_emitir "$T/res-cmd2.md" | awk '/^## Comandos/ { f = 1; next } f' | awk 'NR == 1 { n = length($0) } /^\[recortado: sección incompleta/ { m = 1 } END { print (n >= 700 && m) ? "si" : "no" }')" si
+# Presupuesto: protocolo (~1 000) + git-hechos (≤ 1 200) + envoltorio (~150) + emisión ≤ 9 500.
+{ echo '# Estado'; for sx in Objetivo Invariantes Plan 'Paso actual' 'Siguiente acción' Pendientes 'Comandos de verificación' 'Ficheros tocados' 'No repetir'; do echo "## $sx"; big 4000; done; } >"$T/res-todo.md"
+S=$(nucleo_emitir "$T/res-todo.md")
+ok "presupuesto: emisión de peor caso ≤ 7 300 chars (cabe con protocolo y git-hechos bajo 9 500)" "$([ "${#S}" -le 7300 ] && echo si)" si
+
 # --- #22: el corte por bytes no parte un carácter UTF-8 (línea larga con ñ de 2 bytes; título y sección) ---
 U=$T/utf8.md
 { printf '# '; printf 'a'; head -c 800 /dev/zero | tr '\0' x | sed 's/x/ñ/g'; echo

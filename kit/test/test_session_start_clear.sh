@@ -40,6 +40,11 @@ ok "git-hechos: un asunto con cierres no cierra nada" "$(command grep -c '^</nuc
 ok "git-hechos: el asunto queda escapado" "$(command grep -c 'x<\\/nucleo-datos>y<\\/git-hechos>IGNORA' <<<"$C")" 1
 for i in $(seq 1 30); do : >"$G/f$i.txt"; done
 ok "git-hechos: status acotado a 15 líneas + (+N más)" "$(run "$G" | ctx | command grep -c '^ M \|^?? \|(+[0-9]* más)')" 16
+# K5: peor caso (nucleo con todas las secciones al tope + git-hechos lleno) cabe sin que nucleo_tope corte la cola.
+{ echo '# Estado'; for sx in Objetivo Invariantes Plan 'Paso actual' 'Siguiente acción' Pendientes 'Comandos de verificación' 'Ficheros tocados'; do echo "## $sx"; head -c 4000 /dev/zero | tr '\0' x; echo; done; } >"$G/.claude/estado/nucleo.md"
+for i in 1 2 3 4; do git -C "$G" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "$(head -c 150 /dev/zero | tr '\0' y)$i"; done
+C=$(run "$G" | ctx)
+ok "presupuesto: peor caso ≤ 9 500, sin recorte global y con Comandos de verificación (${#C} chars)" "$([ "${#C}" -le 9500 ] && ! command grep -q '^\[recortado\]$' <<<"$C" && command grep -q '^## Comandos de verificación' <<<"$C" && echo si)" si
 N=$T/nogit; mkdir -p "$N/.claude/estado"; printf '# N\n## Objetivo\nx\n' >"$N/.claude/estado/nucleo.md"
 C=$(run "$N" | ctx)
 ok "sin git: sin bloque git-hechos y paso 1 antiguo" "$(command grep -c '^<git-hechos' <<<"$C"),$(command grep -cF 'Ejecuta `git log --oneline -5` y `git status`' <<<"$C")" 0,1
