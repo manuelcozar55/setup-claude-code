@@ -632,6 +632,7 @@ done
 
 # Revision E7.3 (CR-4): la exencion de directorio seguro miraba `/dir/` como subcadena, asi que un
 # `..` tras el nombre seguro eximia una ruta que escapa de el. Lo vale para el check 1 (texto) y el 5.
+# shellcheck disable=SC2016  # el $HOME va literal: es el comando que se evalua
 for c in 'rm -rf ~/dist/../Documents' 'rm -rf ~/node_modules/../.ssh' 'rm -rf dist/..' \
          'rm -rf ./node_modules/x/../..' 'rm -rf $HOME/build/../Documents' 'rm -rf "$HOME/dist/../Documents"' \
          'sudo rm -rf ~/tmp/../Documents' 'rm -rf ~/dist/foo/../../Documents'; do
