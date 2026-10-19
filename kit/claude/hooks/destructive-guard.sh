@@ -53,8 +53,10 @@ if echo "$COMMAND_SCAN" | grep -qE 'rm\s+((-[rf]+|--recursive|--force)\s+)*(\/$|
   IFS=':' read -ra DIRS <<< "$SAFE_DIRS"
   for dir in "${DIRS[@]}"; do
     # Exempt only when a safe dir is a real path token of the target AND the
-    # command is not also touching an absolute sensitive path.
+    # command is not also touching an absolute sensitive path. Un `..` tras el directorio seguro
+    # (`~/dist/../Documents`) escapa de el: no cuenta como exencion.
     if echo "$COMMAND_SCAN" | grep -qE "(^|[[:space:]/])${dir}(/|[[:space:]]|$)" \
+       && ! echo "$COMMAND_SCAN" | grep -qE "(^|[[:space:]/])${dir}/([^[:space:]]*/)?\.\.(/|[[:space:]]|$)" \
        && ! echo "$COMMAND_SCAN" | grep -qE '(^|[[:space:]])(/home|/etc|/usr|/var|/root|/boot|/lib|/bin|/sbin)'; then
       SAFE=1; break
     fi
@@ -100,14 +102,19 @@ fi
 # shellcheck disable=SC2088,SC2016  # `~` y `$HOME` son el TEXTO del operando, no se expanden.
 sensitive_operand() {
   case $1 in
-    /|/[!a-z]*|/home*|/etc*|/usr*|/var*|/root*|/boot*|'~'|'~/'*|..|../*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*) return 0 ;;
+    /|/[!a-z]*|/home*|/etc*|/usr*|/var*|/root*|/boot*|'~'|'~/'*|..|../*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*|*/..|*/../*) return 0 ;;
   esac
   return 1
 }
 safe_operand() {
-  local d
+  local d p tail
   case $1 in /home*|/etc*|/usr*|/var*|/root*|/boot*|/lib*|/bin*|/sbin*) return 1 ;; esac
-  for d in "${DIRS[@]}"; do [[ "/$1/" == *"/$d/"* ]] && return 0; done
+  p="/$1/"
+  for d in "${DIRS[@]}"; do
+    [[ $p == *"/$d/"* ]] || continue
+    tail="/${p#*"/$d/"}"
+    [[ $tail == *"/../"* ]] || return 0
+  done
   return 1
 }
 IFS=':' read -ra DIRS <<< "$SAFE_DIRS"
