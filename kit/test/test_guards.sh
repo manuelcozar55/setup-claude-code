@@ -1153,6 +1153,9 @@ wg_expect "sk-svcacct- en Write"       BLOCK Write /tmp/x.py "KEY = $(wg_k sk-sv
 wg_expect "sk-proj- en Edit"           BLOCK Edit /tmp/x.py "$(wg_k sk-proj-)"
 wg_expect "sk-proj- en MultiEdit"      BLOCK MultiEdit /tmp/x.py "$(wg_k sk-proj-)"
 wg_expect "sk-proj- en NotebookEdit"   BLOCK NotebookEdit /tmp/x.ipynb "$(wg_k sk-proj-)"
+wg_expect "R2: ghs_ en Write"          BLOCK Write /tmp/x.py "T = $(printf 'gh''s_%s' abcdefghijklmnopqrstuvwxyz0123456789)"
+wg_expect "R2: ghu_ en Write"          BLOCK Write /tmp/x.py "T = $(printf 'gh''u_%s' abcdefghijklmnopqrstuvwxyz0123456789)"
+wg_expect "R2: PEM cifrada en Write"   BLOCK Write /tmp/k.pem "-----BEGIN ENCRYPTED PRIV""ATE KEY-----"
 wg_expect "MultiEdit sin secretos"     ALLOW MultiEdit /tmp/x.py "texto normal"
 wg_expect "NotebookEdit sin secretos"  ALLOW NotebookEdit /tmp/x.ipynb "print(1)"
 wg_expect ".env.example con clave real" BLOCK Write /tmp/.env.example "OPENAI_API_KEY=$(wg_k sk-proj-)"
@@ -1183,6 +1186,9 @@ sp_samples=$(mktemp)
   printf 'AI''za%s\n' abcdefghijklmnopqrstuvwxyz0123456789A
   printf 'gh''p_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
   printf 'gh''o_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  printf 'gh''s_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  printf 'gh''u_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  echo "-----BEGIN ENCRYPTED PRIV""ATE KEY-----"
   printf 'github_''pat_%s\n' "$(printf 'a%.0s' $(seq 1 82))"
   printf 'xox''b-123-abcDEF-ghi\n'
   printf 'xox''p-123-abcDEF-ghi\n'
