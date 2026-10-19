@@ -118,6 +118,21 @@ expect "node -e con o.key permitido"             "$(run_sentinel 'node -e "conso
 expect "a.key.json permitido"                    "$(run_sentinel 'cat a.key.json')"                        ALLOW
 expect "Read de config.key.ts permitido"         "$(run_sentinel_read /src/config.key.ts)"                 ALLOW
 expect "jq test(.key|.pem) permitido"            "$(run_sentinel "jq -r '.[] | select(.f | test(\"\\\\.key|\\\\.pem\"))' x.json")" ALLOW
+# W2, decision 5. `secrets.token_hex` es el modulo secrets de Python, no un fichero: el ioc de nombre
+# (secrets.json|yaml|env|txt) solo casa un nombre de fichero con extension de datos. Y ~/.aws/ se protege
+# como DIRECTORIO (el sso/cache con tokens vivos no es credentials ni config, y listarlo lo enumera).
+expect "secrets.token_hex de Python permitido"   "$(run_sentinel "python3 -c 'import secrets; print(secrets.token_hex(16))'")" ALLOW
+expect "from secrets import permitido"           "$(run_sentinel "python3 -c 'from secrets import token_urlsafe'")" ALLOW
+expect "secrets.yaml como fichero denegado"      "$(run_sentinel 'cat secrets.yaml')"                      "$IOCS_WANT"
+expect "~/.aws/ como directorio denegado"        "$(run_sentinel 'ls ~/.aws/')"                            "$IOCS_WANT"
+expect "~/.aws/sso/cache denegado"               "$(run_sentinel 'cat ~/.aws/sso/cache/x.json')"           "$IOCS_WANT"
+# Lectura de la config del propio harness: Sentinel no la deniega (el falso positivo no se reprodujo en
+# el kit ni en el Sentinel vivo; la proteccion de ESCRIBIR esos ficheros es de permissions.deny y de los
+# guards de Bash). Se fija aqui para que una clasificacion de verbos futura no la rompa.
+expect "cat de settings.json permitido"          "$(run_sentinel 'cat ~/.claude/settings.json')"           ALLOW
+expect "sed -n de settings.json permitido"       "$(run_sentinel 'sed -n 1,20p ~/.claude/settings.json')"  ALLOW
+expect "jq de settings.json permitido"           "$(run_sentinel 'jq .permissions ~/.claude/settings.json')" ALLOW
+expect "grep de /etc/claude-code permitido"      "$(run_sentinel 'grep -n deny /etc/claude-code/managed-settings.json')" ALLOW
 expect "jq division .a/.key permitida"           "$(run_sentinel "jq '.a/.key' f.json")"                   ALLOW
 # Ronda 1 de la revision. Llaves: bash no expande entre comillas, y la expansion tiene tope; pasado el
 # tope en texto sin comillas se deniega (antes, un JSON entre comillas colgaba el hook y mas de 8 llaves

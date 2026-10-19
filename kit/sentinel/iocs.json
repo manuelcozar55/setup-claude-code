@@ -13,6 +13,7 @@
       "~/.ssh/config",
       "~/.ssh/known_hosts",
       "~/.ssh/authorized_keys",
+      "~/.aws/",
       "~/.aws/credentials",
       "~/.aws/config",
       "~/.gnupg/",
