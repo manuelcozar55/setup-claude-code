@@ -59,7 +59,8 @@ const isFixed = (title: string) => /^(encargo original|objetivo|invariantes)/.te
 // «Encargo original» (the task's literal words) and «Objetivo» (the kit template's name for it) are one family.
 const family = (title: string) => (norm(title).startsWith('invariantes') ? 'invariantes' : 'encargo')
 const withNl = (s: string) => (s.endsWith('\n') ? s : s + '\n')
-const bodyOf = (text: string) => text.slice(text.indexOf('\n') + 1).replace(/<!--[\s\S]*?-->/g, '').trim()
+// A header with no newline after it (last line of the file) has no body: slice(0) would return the header itself.
+const bodyOf = (text: string) => (text.includes('\n') ? text.slice(text.indexOf('\n') + 1) : '').replace(/<!--[\s\S]*?-->/g, '').trim()
 function sections(doc: string) {
   const parts = doc.split(/^(?=## )/m)
   const head = parts[0]?.startsWith('## ') ? '' : (parts.shift() ?? '')
@@ -95,7 +96,7 @@ export function mergeNucleo(prev: string, reply: string) {
       const fill = bodyOf(s.text) === '' ? gaps.get(family(s.key)) : undefined
       if (fill === undefined) return s.text
       gaps.delete(family(s.key))
-      return withNl(s.text.slice(0, s.text.indexOf('\n') + 1)) + withNl(fill.slice(fill.indexOf('\n') + 1))
+      return withNl(s.text.split('\n')[0] ?? '') + withNl(fill.slice(fill.indexOf('\n') + 1))
     }
     const next = byKey.get(s.key)
     byKey.delete(s.key)
@@ -378,9 +379,12 @@ const readState = async ($: $, path: string) => ((await $.fs.exists(path)) ? awa
 
 // A symlink at estado/, nucleo.md or a nucleo.prev-* copy would make the handoff read or write elsewhere.
 // find does not follow its starting point, so it lists dir itself when dir is a link. The API has no lstat.
+// A linked .claude is the parent of dir, so find dir never sees it: list it from its own parent.
 async function refuseLinks($: $, dir: string) {
-  const out = (await $.process.run(['find', dir, '-maxdepth', '1', '-type', 'l']).catch(() => null))?.stdout ?? ''
-  const links = out.split('\n').map(l => l.trim()).filter(l => l === dir || /\/nucleo\.(md|prev-[^/]+\.md)$/.test(l))
+  const claude = dir.slice(0, dir.lastIndexOf('/'))
+  const find = async (argv: string[]) => (await $.process.run(['find', ...argv]).catch(() => null))?.stdout ?? ''
+  const out = (await find([dir, '-maxdepth', '1', '-type', 'l'])) + '\n' + (await find([claude.slice(0, claude.lastIndexOf('/')) || '/', '-maxdepth', '1', '-name', '.claude', '-type', 'l']))
+  const links = out.split('\n').map(l => l.trim()).filter(l => l === dir || l === claude || /\/nucleo\.(md|prev-[^/]+\.md)$/.test(l))
   if (links.length) throw new Error(`enlaces simbólicos en ${links.join(', ')}: no leo ni escribo; sustitúyelos por ficheros normales`)
 }
 
