@@ -86,6 +86,9 @@ def path_matches(text: str, pattern: str) -> bool:
 
 def _search(rx: str, text: str):
     """re.search for regexes that come from data files: an invalid one is skipped, not fatal."""
+    # A leading `.*` changes nothing for a search, but retried at every start it is quadratic:
+    # `(?i).*_TOKEN$` took 10 s on one 64 KB word, past the hook timeout (which fails open).
+    rx = re.sub(r"^((?:\(\?[a-z]+\))?)\.\*(?=.)", r"\1", rx)
     try:
         return re.search(rx, text)
     except re.error:
@@ -1231,6 +1234,8 @@ def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
 
 # ── Decision engine ───────────────────────────────────────────────────────────
 
+MAX_COMMAND_BYTES = 262144
+
 SEVERITY_RANK = {"medium": 1, "high": 2, "critical": 3}
 
 
@@ -1301,6 +1306,23 @@ def main() -> None:
 
     tool_name = payload.get("tool_name") or payload.get("tool", "<unknown>")
     tool_input = effective_input(payload)
+    command = tool_input.get("command")
+    if tool_name == "Bash" and isinstance(command, str) and len(command.encode()) > MAX_COMMAND_BYTES:
+        # A hook past its timeout does not block: the tool runs. Above the cap, ask instead of risking it.
+        kb = len(command.encode()) // 1024
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": (
+                    f"Confirm: el comando pesa {kb} KB (tope {MAX_COMMAND_BYTES // 1024} KB): Sentinel no puede "
+                    "analizarlo dentro de su timeout, y un guard que se pasa de tiempo deja ejecutar la "
+                    "herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un "
+                    "comando corto."
+                ),
+            }
+        }))
+        sys.exit(0)
     decision, reason = decide(payload)
 
     if decision == "allow":
