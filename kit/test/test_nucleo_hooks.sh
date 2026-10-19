@@ -213,15 +213,25 @@ ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' 
 # --- estado (pre-compact y plantilla): un transcript ilegible no pisa el checkpoint bueno ---
 CK=$R/.claude/estado/checkpoint-compact.md
 TPC=$T/transcript-c.jsonl
-for modo in malformado ausente; do
+for modo in basura ausente; do
   echo previo-CK >"$CK"
   printf '%s\n' '{"type":"user","message":{"content":"mensaje-nuevo"}}' >"$TPC"
-  [ "$modo" != malformado ] || printf '{"type":\n' >"$TPC"
+  [ "$modo" != basura ] || printf 'no es json\n{"type":\n' >"$TPC"
   TPX=$TPC; [ "$modo" != ausente ] || TPX=$T/no-existe.jsonl
   jq -cn --arg c "$R" --arg t "$TPX" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>"$T/c-err"; RC=$?
-  ok "pre-compact $modo: exit 0, conserva el checkpoint anterior y avisa" "$RC,$(cat "$CK"),$([ -s "$T/c-err" ] && echo aviso)" "0,previo-CK,aviso"
-  ok "pre-compact $modo: sin temporales" "$(find "$R/.claude/estado" -name '.checkpoint-compact.*' | wc -l | tr -d ' ')" 0
+  ok "pre-compact transcript $modo: exit 0, conserva el checkpoint anterior y avisa" "$RC,$(cat "$CK"),$([ -s "$T/c-err" ] && echo aviso)" "0,previo-CK,aviso"
+  ok "pre-compact transcript $modo: sin temporales" "$(find "$R/.claude/estado" -name '.checkpoint-compact.*' | wc -l | tr -d ' ')" 0
 done
+# Claude Code sigue añadiendo líneas mientras corre el hook: la última puede estar a medias.
+echo previo-CK >"$CK"
+{ printf '%s\n' '{"type":"user","message":{"content":"MSG-UNO"}}' '{"type":"user","message":{"content":"MSG-DOS"}}'; printf '{"type":"user","message":{"cont'; } >"$TPC"
+jq -cn --arg c "$R" --arg t "$TPC" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: línea final truncada → escribe el checkpoint con los 2 mensajes válidos" "$(command grep -c 'MSG-UNO\|MSG-DOS' "$CK"),$(command grep -c previo-CK "$CK")" 2,0
+echo previo-CK >"$CK"; : >"$T/sin-leer.jsonl"; printf '%s\n' '{"type":"user","message":{"content":"X"}}' >"$T/sin-leer.jsonl"; chmod 000 "$T/sin-leer.jsonl"
+if [ ! -r "$T/sin-leer.jsonl" ]; then
+  jq -cn --arg c "$R" --arg t "$T/sin-leer.jsonl" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
+  ok "pre-compact: transcript no legible conserva el anterior" "$(cat "$CK")" previo-CK
+fi
 echo previo-CK >"$CK"
 jq -cn --arg c "$R" '{cwd:$c,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact sin transcript_path: escribe checkpoint (sin sección de mensajes)" "$(command grep -c '^# Checkpoint pre-compact' "$CK"),$(command grep -c 'últimos mensajes' "$CK")" 1,0
