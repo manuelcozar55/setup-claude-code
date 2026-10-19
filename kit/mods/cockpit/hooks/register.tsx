@@ -59,7 +59,8 @@ const isFixed = (title: string) => /^(encargo original|objetivo|invariantes)/.te
 // «Encargo original» (the task's literal words) and «Objetivo» (the kit template's name for it) are one family.
 const family = (title: string) => (norm(title).startsWith('invariantes') ? 'invariantes' : 'encargo')
 const withNl = (s: string) => (s.endsWith('\n') ? s : s + '\n')
-const bodyOf = (text: string) => text.slice(text.indexOf('\n') + 1).replace(/<!--[\s\S]*?-->/g, '').trim()
+// A header with no newline after it (last line of the file) has no body: slice(0) would return the header itself.
+const bodyOf = (text: string) => (text.includes('\n') ? text.slice(text.indexOf('\n') + 1) : '').replace(/<!--[\s\S]*?-->/g, '').trim()
 function sections(doc: string) {
   const parts = doc.split(/^(?=## )/m)
   const head = parts[0]?.startsWith('## ') ? '' : (parts.shift() ?? '')
@@ -95,7 +96,7 @@ export function mergeNucleo(prev: string, reply: string) {
       const fill = bodyOf(s.text) === '' ? gaps.get(family(s.key)) : undefined
       if (fill === undefined) return s.text
       gaps.delete(family(s.key))
-      return withNl(s.text.slice(0, s.text.indexOf('\n') + 1)) + withNl(fill.slice(fill.indexOf('\n') + 1))
+      return withNl(s.text.split('\n')[0] ?? '') + withNl(fill.slice(fill.indexOf('\n') + 1))
     }
     const next = byKey.get(s.key)
     byKey.delete(s.key)
