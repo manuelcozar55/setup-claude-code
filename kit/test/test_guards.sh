@@ -527,6 +527,43 @@ expect "branch-guard (fuera de repo): main explicito denegado"                  
 expect "branch-guard: git -C a un repo en main denegado desde fuera"    "$(run_bg "$BR_NONE" "git -C $BR_MAIN push")" BLOCK
 expect "branch-guard: git -C a un repo en feature NO denegado"          "$(run_bg "$BR_NONE" "git -C $BR_FEAT push")" ALLOW
 expect "branch-guard: cd a un repo en main + push denegado"             "$(run_bg "$BR_NONE" "cd $BR_MAIN && git push")" BLOCK
+# Revision E7.3 (CR-2): las redirecciones no son operandos del push. Con `2>&1` como segundo
+# posicional el destino pasaba a ser `2>&1` y el push implicito a main se escapaba.
+for c in 'git push origin 2>&1' 'git push origin 2>&1 | tail -3' 'git push -u origin >/dev/null' 'git push origin &>/dev/null'; do
+  expect "branch-guard (E7.3, main activa): $c denegado" "$(run_bg "$BR_MAIN" "$c")" BLOCK
+done
+for c in 'git push origin feature 2>&1' 'git push -u origin >/dev/null' 'git push origin 2>&1 | tail -3'; do
+  expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
+expect "branch-guard (E7.3, feature activa): main con 2>&1 denegado" "$(run_bg "$BR_FEAT" 'git push origin main 2>&1')" BLOCK
+# Revision E7.3 (CR-3): con --repo, git trata TODOS los posicionales como refspecs; el guard
+# tomaba el primero por remoto y `git push --repo=origin main` desde una feature pasaba.
+for c in 'git push --repo=origin main' 'git push --repo origin main'; do
+  expect "branch-guard (E7.3, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+expect "branch-guard (E7.3, main activa): --repo=origin sin refspec denegado" "$(run_bg "$BR_MAIN" 'git push --repo=origin')" BLOCK
+for c in 'git push --repo=origin feature' 'git push --repo origin feature' 'git push --repo=origin'; do
+  expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
+# Revision E7.3 (CR-8): --all, --branches y --mirror empujan todas las ramas, las protegidas
+# incluidas, desde cualquier rama activa.
+for c in 'git push --all origin' 'git push origin --all' 'git push --branches origin' 'git push --mirror' 'git push --mirror origin'; do
+  expect "branch-guard (E7.3, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+expect "branch-guard (E7.3, feature activa): --all-ish en un nombre de rama NO denegado" "$(run_bg "$BR_FEAT" 'git push origin all')" ALLOW
+# Revision E7.3 (CR-1): el guard solo miraba segmentos cuyo ejecutable era git, y el guard de
+# texto de 3576d87 bloqueaba estas siete grafias (regresion de PR2). Se analiza la cadena interior.
+for c in 'bash -c "git push origin main"' "sh -c 'git push origin main'" 'eval "git push origin main"' \
+         'ssh host git push origin main' 'xargs git push origin main' 'find . -exec git push origin main \;' \
+         'bash -c "cd /tmp && git push origin master"' 'sudo bash -c "git push origin main"' \
+         'bash -c "bash -c \"git push origin main\""'; do
+  expect "branch-guard (E7.3, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+expect "branch-guard (E7.3, main activa): bash -c con push implicito denegado" "$(run_bg "$BR_MAIN" 'bash -c "git push"')" BLOCK
+for c in 'bash -c "git push origin feature"' 'ssh host git status' 'bash -c "echo main"' 'echo "git push origin main"' \
+         'printf "%s" "git push origin main"' 'xargs git status main' 'find . -name main'; do
+  expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
 rm -rf "$BR_MAIN" "$BR_FEAT" "$BR_NONE"
 
 # Las TRES grafias del borrado de una rama remota. Solo `--delete` estaba cubierta: contra rama
@@ -591,6 +628,18 @@ for c in 'git commit -m "git reset --hard"' 'git reset --soft HEAD~1' 'echo "run
          'git commit -m x # git reset --hard' 'git clean -n' 'rm -rf node_modules' 'rm -rv ./build' \
          'git -C dir status'; do
   expect "destructive: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+
+# Revision E7.3 (CR-4): la exencion de directorio seguro miraba `/dir/` como subcadena, asi que un
+# `..` tras el nombre seguro eximia una ruta que escapa de el. Lo vale para el check 1 (texto) y el 5.
+# shellcheck disable=SC2016  # el $HOME va literal: es el comando que se evalua
+for c in 'rm -rf ~/dist/../Documents' 'rm -rf ~/node_modules/../.ssh' 'rm -rf dist/..' \
+         'rm -rf ./node_modules/x/../..' 'rm -rf $HOME/build/../Documents' 'rm -rf "$HOME/dist/../Documents"' \
+         'sudo rm -rf ~/tmp/../Documents' 'rm -rf ~/dist/foo/../../Documents'; do
+  expect "destructive (E7.3): $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'rm -rf ./node_modules/x' 'rm -rf ~/node_modules/x' 'rm -rf ../node_modules' 'rm -rf dist build' 'rm -rf ~/dist'; do
+  expect "destructive (E7.3): $c NO denegado" "$(run_dg "$c")" ALLOW
 done
 
 # El check 4 (find -delete) bloqueaba con exit 2 pero era el unico que no llamaba a
