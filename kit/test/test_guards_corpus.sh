@@ -1,9 +1,9 @@
 #!/bin/bash
 # shellcheck disable=SC2015  # «cond && pass=$((pass+1)) || bad»: la rama del medio es una asignacion y nunca falla.
 # test_guards_corpus.sh — el corpus adversario de la campana E5 como suite data-driven contra los
-# CUATRO guards bash: block-dangerous-commands, destructive-guard, branch-guard y secret-guard. Corre
+# CINCO guards bash: block-dangerous-commands, destructive-guard, branch-guard, secret-guard y bash-write-guard. Corre
 # contra los ficheros del propio kit. Cifra honesta: el fixture tiene 715 filas; 119 se ejecutan sobre
-# los guards bash (336 aserciones); Sentinel y write-guard se cubren en test_guards.sh (secciones
+# los guards bash (402 aserciones); Sentinel y write-guard se cubren en test_guards.sh (secciones
 # Sentinel y write-guard), no aqui.
 #
 # Fixture: fixtures/guards-corpus.tsv, 7 columnas: id, clase, comando, esperado (B bloquear, A permitir,
@@ -14,7 +14,7 @@
 #
 # Reglas, por fila:
 #   - Read/Write/Edit/MultiEdit/NotebookEdit: no son comandos Bash -> skip (otra herramienta; Sentinel y write-guard viven en test_guards.sh).
-#   - esperado A: los cuatro guards tienen que dejarlo pasar.
+#   - esperado A: los cinco guards tienen que dejarlo pasar.
 #   - esperado B con algun guard bash entre los que respondieron en E5: cada uno de ESOS guards bloquea.
 #   - esperado B que E5 solo vio caer en Sentinel/smart_approve (o que nadie vio): skip, salvo en las clases que
 #     son de los guards bash (destruct, pipe-shell): ahi un guard bash tiene que bloquearlo, o es un falso
@@ -52,7 +52,7 @@ run_hook() {
 }
 bad() { fail=$((fail+1)); echo "FAIL: [#$id $cls] $1 :: $cmd"; }
 
-MINE="block-dangerous-commands.sh destructive-guard.sh branch-guard.sh secret-guard.sh"
+MINE="block-dangerous-commands.sh destructive-guard.sh branch-guard.sh secret-guard.sh bash-write-guard.sh"
 [ -f "$FIXTURE" ] || { echo "FAIL: falta el fixture $FIXTURE"; exit 1; }
 
 while IFS=$'\037' read -r id cls cmd exp _ hook verd; do

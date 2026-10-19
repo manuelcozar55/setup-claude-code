@@ -1207,6 +1207,53 @@ wg_err=$(wg_json Write /tmp/x.py "texto normal" | "$PY" "$WG_ALONE/write-guard.p
 if [ "$wg_rc" -eq 2 ] && [ -n "$wg_err" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: write-guard sin lib/secret-patterns: rc=$wg_rc (esperado 2 con stderr)"; fi
 rm -r -- "$WG_ALONE"
 
+# 18) bash-write-guard.sh (W2): lo que write-guard.py hace con Write/Edit, para el contenido que Bash
+# escribe con heredoc, `>`, `>>`, `tee` y `sed -i` (Edit(...) y write-guard no frenan a Bash). Usa la
+# misma lista (lib/secret-patterns). Solo las filas `block`: el aviso del JWT lo da write-guard.py.
+BWG="$KIT/claude/hooks/bash-write-guard.sh"
+run_bwg() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$GUARDS_TEST_HOME" bash "$BWG" 2>&1; }
+bwg_key=$(wg_k sk-ant-)
+expect "bash-write: heredoc con secreto denegado"      "$(run_bwg "cat > cfg.py <<'EOF'
+KEY = \"$bwg_key\"
+EOF")" BLOCK
+expect "bash-write: heredoc sin secreto permitido"     "$(run_bwg "cat > cfg.py <<'EOF'
+KEY = os.environ['KEY']
+EOF")" ALLOW
+expect "bash-write: > con secreto denegado"            "$(run_bwg "echo $bwg_key > .tokens")" BLOCK
+expect "bash-write: >> con secreto denegado"           "$(run_bwg "echo \"$wg_aws\" >> notas.txt")" BLOCK
+expect "bash-write: tee con secreto denegado"          "$(run_bwg "echo $bwg_key | tee out.txt")" BLOCK
+expect "bash-write: sed -i con secreto denegado"       "$(run_bwg "sed -i 's/X/$bwg_key/' cfg.py")" BLOCK
+expect "bash-write: PEM en heredoc denegado"           "$(run_bwg "cat > k <<EOF
+$wg_pem
+EOF")" BLOCK
+expect "bash-write: > sin secreto permitido"           "$(run_bwg 'echo hola > notas.txt')" ALLOW
+expect "bash-write: sed -i sin secreto permitido"      "$(run_bwg "sed -i 's/a/b/' notas.txt")" ALLOW
+expect "bash-write: leer con secreto en el literal permitido" "$(run_bwg "grep -rn $bwg_key src/")" ALLOW
+expect "bash-write: JWT (aviso, no bloqueo) permitido" "$(run_bwg "echo ey""Jhbgcioijiuzi1.ey""Jzdwiioixmjm0.sflkxwrjsmeka4wo > t.txt")" ALLOW
+# Salida rapida en bash puro: sin `>`, `<<`, `tee` ni `sed` no se lanza ni jq. Con el PATH vacio solo
+# el builtin puede contestar; y con una escritura el mismo PATH tiene que fallar CERRADO (sin jq).
+bwg_pay() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1"; }
+bwg_fast=$(bwg_pay 'ls -la src' | PATH=/nonexistent /bin/bash "$BWG" 2>&1); bwg_rc=$?
+if [ "$bwg_rc" -eq 0 ] && [ -z "$bwg_fast" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: bash-write-guard: la salida temprana no es bash puro (rc=$bwg_rc, salida=$bwg_fast)"; fi
+bwg_slow=$(bwg_pay 'echo hola > a.txt' | PATH=/nonexistent /bin/bash "$BWG" 2>&1)
+expect "bash-write: escritura sin jq falla cerrada"  "$bwg_slow" BLOCK
+# Cuerpo de 64 KB: tiene que decidir en menos de 1 s, con y sin secreto al final.
+bwg_body=$(for i in $(seq 1 1000); do echo "linea $i de texto normal con algo de contenido ok"; done | head -c 65536)
+bwg_t0=$(date +%s%N)
+bwg_big=$(run_bwg "cat > big.txt <<'EOF'
+$bwg_body
+EOF")
+bwg_ms=$(( ($(date +%s%N) - bwg_t0) / 1000000 ))
+expect "bash-write: 64 KB sin secreto permitido"     "$bwg_big" ALLOW
+if [ "$bwg_ms" -lt 1000 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: bash-write-guard: 64 KB tardo ${bwg_ms} ms (tope 1000)"; fi
+expect "bash-write: 64 KB con secreto al final denegado" "$(run_bwg "cat > big.txt <<'EOF'
+$bwg_body
+$bwg_key
+EOF")" BLOCK
+# Esta suite fija ademas que el guard esta cableado: con timeout 5 en la cadena de Bash.
+bwg_to=$(jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | endswith("/bash-write-guard.sh")) | .timeout] | join(",")' "$KIT/claude/settings.json")
+if [ "$bwg_to" = 5 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: bash-write-guard no esta en la cadena PreToolUse/Bash del settings con timeout 5 (timeouts: '$bwg_to')"; fi
+
 rm -rf "$SG_DIR"
 rm -rf "$GUARDS_TEST_HOME" "$FIELDS_HOME"
 echo "PASS=$pass FAIL=$fail"; [ $fail -eq 0 ]
