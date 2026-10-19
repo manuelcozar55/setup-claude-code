@@ -141,12 +141,18 @@ etiquetado.
 - **Arranque desde `~`: `<indice-tareas>` en vez del nucleo compartido (handoff v2, D1).** `session-start-clear.sh`
   ya no inyecta el nucleo de `~`; emite un `<indice-tareas>` derivado (`nucleo_indice`) de los
   nucleos de las raíces registradas en `~/.claude/estado/raices` (máx. 15 por fecha, el heredado de
-  `~` primero y marcado, hasta 8 pendientes `(persona)`, tope ~2 500 caracteres, datos escapados). El
-  hook registra cada raíz de proyecto al arrancar (idempotente). La plantilla del nucleo pide marcar
+  `~` primero y marcado, hasta 8 pendientes `(persona)`, tope ~2 500 caracteres, datos escapados,
+  sin marcadores de lista ni `[x]` ni controles bidi). El hook registra cada raíz de proyecto al
+  arrancar (idempotente) y solo si tiene `.claude/estado/nucleo.md` propio y no enlazado; el
+  registro se crea con modo 600 (directorio 700), pasadas 100 líneas se reescribe de forma atómica
+  sin duplicados ni raíces sin nucleo, y el índice lee como máximo las 50 últimas únicas. Lo mismo
+  vale tras compactar: `session-start-compact.sh` inyecta el índice (con «Contexto compactado.»
+  delante, vía `nucleo_indice_ctx`) en vez del nucleo compartido y nunca manda «escríbelo»;
+  `nucleo-nudge.sh` y `stop-context-gauge.sh` tampoco tratan el nucleo de `~` como de la sesión (K8). La plantilla del nucleo pide marcar
   `(persona)` lo que solo puede hacer la persona.
 
 - **Arranque con `<git-hechos>`.** El hook calcula `git log --oneline -5` y `git status --short`
-  (timeout 2 s, `core.fsmonitor=false`, `--no-optional-locks` para no dejar un `index.lock` bajo otra
+  (`timeout -k 1 1`, `--no-show-signature`, `core.fsmonitor=false`, `--no-optional-locks` para no dejar un `index.lock` bajo otra
   sesión del mismo repo, ≤ 1 200 caracteres, `</` escapado) y los inyecta entre la línea de datos y
   `<nucleo-datos>`.
 
@@ -225,7 +231,7 @@ etiquetado.
 - **`nucleo_emitir`: tope único de 6 500 con reservas dentro.** «Paso actual», «Siguiente acción» y
   «Comandos de verificación» tienen reserva propia (hasta 700 bytes cada una) y se miden primero; el
   resto recibe 6 500 menos eso. Con reservas cortas el Plan conserva su espacio y con las tres llenas
-  quedan ~4 300; peor caso total ~9 300, dentro de los 9 500 de protocolo + git-hechos + nucleo.
+  quedan ~4 300; peor caso total ≈ 9 400 (el test mide 8 677), dentro de los 9 500 de protocolo + git-hechos + nucleo.
 
 - **Cockpit 0.4.2: el primer mensaje tras `/clear` dice qué se va a hacer.** El relleno del prompt era un
   «sigue con la Siguiente acción…» genérico y la persona aprobaba a ciegas. Ahora es «adelante con la
@@ -524,6 +530,16 @@ Subsección: Fixed (cockpit 0.4.1)
 - **`nucleo-nudge.sh` ignora a los subagentes** (`agent_id` no vacío): un Explore recibía «CONTEXTO 55 %…
   actualiza nucleo.md».
 
+- **Cockpit 0.4.2: `nextLine` sin bidi ni vallas.** Sustituye por espacio U+202A-202E, U+2066-2069 y
+  U+2028-2029 (un U+202E en la Siguiente acción invertía en pantalla lo que la persona aprueba con
+  Enter), salta las vallas de código (```` ``` ````, ```` ```bash ````) y toma el primer comando; el corte
+  a 200 va por puntos de código y no parte un par sustituto. Si `/clear` falla, el mensaje vuelve a
+  decir dónde quedó el estado: «Guardado en <ruta>, pero /clear falló: escribe /clear y luego <texto>».
+
+- **`<git-hechos>` ejecutaba `git log` sin `--no-show-signature`:** un repo con `log.showSignature=true`
+  y `gpg.program=<script>` ejecutaba ese script en `SessionStart`. Ahora la firma no se consulta y las
+  dos llamadas de git usan `timeout -k 1 1`.
+
 ### Security
 
 - **Los cuatro guards bash leen el comando normalizado, no el texto crudo (E6 4, 5, 6, 9).** Cada
@@ -606,6 +622,12 @@ Subseccion: Security (E6 #13 y #16)
   checkpoint que sea un enlace. Límite declarado: un `~/.claude` enlazado a propósito (dotfiles)
   desactiva el estado en `$HOME`; `pre-compact.sh` no necesita guarda propia del checkpoint
   porque publica con `mv` (reemplaza el enlace, no escribe a su destino).
+
+- **`<git-hechos>` e `<indice-tareas>` eliminan U+202A-202E, U+2066-2069 y U+2028-2029** (controles
+  bidi y separadores de línea) de los datos de repos ajenos. Sin arreglo, declarado: el filtro `clean`
+  de `git status` (Claude Code ya ejecuta `git status` en el mismo cwd al arrancar, así que no se
+  amplía la superficie); el orden del índice por mtime de un nucleo ajeno solo afecta a la prioridad;
+  `agent_id` lo pone el harness.
 
 ## [1.2.0] - 2026-09-04
 
