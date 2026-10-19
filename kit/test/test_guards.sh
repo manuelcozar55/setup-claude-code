@@ -536,6 +536,15 @@ for c in 'git push origin feature 2>&1' 'git push -u origin >/dev/null' 'git pus
   expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
 done
 expect "branch-guard (E7.3, feature activa): main con 2>&1 denegado" "$(run_bg "$BR_FEAT" 'git push origin main 2>&1')" BLOCK
+# Revision E7.3 (CR-3): con --repo, git trata TODOS los posicionales como refspecs; el guard
+# tomaba el primero por remoto y `git push --repo=origin main` desde una feature pasaba.
+for c in 'git push --repo=origin main' 'git push --repo origin main'; do
+  expect "branch-guard (E7.3, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+expect "branch-guard (E7.3, main activa): --repo=origin sin refspec denegado" "$(run_bg "$BR_MAIN" 'git push --repo=origin')" BLOCK
+for c in 'git push --repo=origin feature' 'git push --repo origin feature' 'git push --repo=origin'; do
+  expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
 rm -rf "$BR_MAIN" "$BR_FEAT" "$BR_NONE"
 
 # Las TRES grafias del borrado de una rama remota. Solo `--delete` estaba cubierta: contra rama

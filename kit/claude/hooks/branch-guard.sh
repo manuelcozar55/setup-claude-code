@@ -55,13 +55,15 @@ for seg in "${CMDN_SEGS[@]}"; do
   cmdn_track_cd
   [[ ${T[1]:-} == git && ${T[2]:-} == push ]] || continue
 
-  ops=(); skip=0; dd=0; tags=0
+  ops=(); skip=0; dd=0; tags=0; repo=0
   for a in "${T[@]:3}"; do
     if (( skip )); then skip=0; continue; fi
     if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
     if (( ! dd )) && [[ $a == -* ]]; then
       case $a in
-        -o|--push-option|--repo|--receive-pack|--exec) skip=1 ;;
+        --repo) skip=1; repo=1 ;;
+        --repo=*) repo=1 ;;
+        -o|--push-option|--receive-pack|--exec) skip=1 ;;
         --tags) tags=1 ;;
       esac
       continue
@@ -73,11 +75,13 @@ for seg in "${CMDN_SEGS[@]}"; do
   IFS=$CMDN_GS read -r -a gopts <<<"${T[0]}"
   cur=$(git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" symbolic-ref --short -q HEAD 2>/dev/null)
 
+  # Con --repo el remoto ya viene dado y todos los posicionales son refspecs.
+  first=1; (( repo )) && first=0
   targets=()
-  if (( ${#ops[@]} <= 1 )); then
+  if (( ${#ops[@]} <= first )); then
     (( tags )) || targets+=("$cur")
   else
-    for ref in "${ops[@]:1}"; do
+    for ref in "${ops[@]:first}"; do
       ref=${ref#+}
       dst=$ref
       [[ $ref == *:* ]] && dst=${ref##*:}
