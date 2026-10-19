@@ -588,4 +588,21 @@ ln -s "$T/sec2-fuera" "$S2/.claude/estado/archivo"
 OUT=$(bash "$BIN/handoff" --migrar "$S2" 2>&1); RC=$?
 ok "SEC-1: --migrar con archivo/ enlazado → exit 3, el destino externo queda vacío y el nucleo en su sitio" "$RC,$(nent "$T/sec2-fuera"),$([ -f "$S2/.claude/estado/nucleo.md" ] && echo sigue)" "3,0,sigue"
 
+# --- handoff --iniciar (crea el primer nucleo.md desde la plantilla; nunca sobrescribe) ---
+IN=$T/ini; mkdir -p "$IN"; git -C "$IN" init -q
+OUT=$(cd "$IN" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar 2>&1); RC=$?
+ok "iniciar: crea nucleo.md desde la plantilla, rc 0" "$RC,$(cmp -s "$KIT/claude/templates/nucleo.md" "$IN/.claude/estado/nucleo.md" && echo igual)" "0,igual"
+ok "iniciar: .claude/estado/ entra en info/exclude" "$(command grep -cFx '.claude/estado/' "$IN/.git/info/exclude")" 1
+ok "iniciar: el nucleo recien creado pasa por --estado" "$(cd "$IN" && bash "$BIN/handoff" --estado | jq -r '.raiz')" "$IN"
+printf '# Estado\n## Objetivo\nMIO\n' >"$IN/.claude/estado/nucleo.md"
+OUT=$(cd "$IN" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar 2>&1); RC=$?
+ok "iniciar: con nucleo existente no sobrescribe, rc 0 y dice «ya existe»" "$RC,$(command grep -c MIO "$IN/.claude/estado/nucleo.md"),$(command grep -c 'ya existe' <<<"$OUT")" "0,1,1"
+mkdir -p "$T/ini-fuera"
+OUT=$(cd "$T/ini-fuera" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar 2>&1); RC=$?
+ok "iniciar: sin proyecto (sin git) → exit 3 y no escribe" "$RC,$([ -e "$T/ini-fuera/.claude" ] && echo escribio || echo no)" "3,no"
+IR=$T/ini-raiz; mkdir -p "$IR"; git -C "$IR" init -q
+OUT=$(cd "$T/ini-fuera" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar --raiz "$IR" 2>&1); RC=$?
+ok "iniciar: --raiz DIR crea el nucleo en esa raíz" "$RC,$([ -f "$IR/.claude/estado/nucleo.md" ] && echo si)" "0,si"
+ok "iniciar: aparece en handoff --help" "$(bash "$BIN/handoff" --help | command grep -c '^     handoff --iniciar')" "1"
+
 exit $FAIL
