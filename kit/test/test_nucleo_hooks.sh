@@ -209,6 +209,29 @@ ev "$R" s1 "$TP" | PATH="$T/tailterm:$PATH" bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: un TERM durante la rotación no deja temporal del log" "$(find "$(dirname "$FLOG")" -type f -name 'nucleo-freshness.log?*' | wc -l)" 0
 
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
+
+# --- estado (pre-compact y plantilla): un transcript ilegible no pisa el checkpoint bueno ---
+CK=$R/.claude/estado/checkpoint-compact.md
+TPC=$T/transcript-c.jsonl
+for modo in malformado ausente; do
+  echo previo-CK >"$CK"
+  printf '%s\n' '{"type":"user","message":{"content":"mensaje-nuevo"}}' >"$TPC"
+  [ "$modo" != malformado ] || printf '{"type":\n' >"$TPC"
+  TPX=$TPC; [ "$modo" != ausente ] || TPX=$T/no-existe.jsonl
+  jq -cn --arg c "$R" --arg t "$TPX" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>"$T/c-err"; RC=$?
+  ok "pre-compact $modo: exit 0, conserva el checkpoint anterior y avisa" "$RC,$(cat "$CK"),$([ -s "$T/c-err" ] && echo aviso)" "0,previo-CK,aviso"
+  ok "pre-compact $modo: sin temporales" "$(find "$R/.claude/estado" -name '.checkpoint-compact.*' | wc -l | tr -d ' ')" 0
+done
+echo previo-CK >"$CK"
+jq -cn --arg c "$R" '{cwd:$c,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact sin transcript_path: escribe checkpoint (sin sección de mensajes)" "$(command grep -c '^# Checkpoint pre-compact' "$CK"),$(command grep -c 'últimos mensajes' "$CK")" 1,0
+printf '%s\n' '{"type":"event_msg","payload":{"type":"user_message","message":"MSG-CODEX"}}' '{"type":"response_item","payload":{"role":"user","content":"MSG-CODEX"}}' >"$TPC"
+jq -cn --arg c "$R" --arg t "$TPC" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: mensaje de Codex (event_msg/user_message) una sola vez" "$(command grep -c MSG-CODEX "$CK")" 1
+# La plantilla pegada tal cual como borrador debe valer: sin texto antes de la primera «## ».
+PT=$T/plantilla-proyecto; mkdir -p "$PT"; git -C "$PT" init -q
+(cd "$PT" && bash "$KIT/claude/bin/handoff" --desde "$KIT/claude/templates/nucleo.md" >"$T/c-ho" 2>&1); RC=$?
+ok "plantilla como borrador: handoff --desde sale 0 y escribe el nucleo en el orden de la plantilla" "$RC,$(sed -n 's/^## //p' "$PT/.claude/estado/nucleo.md" 2>/dev/null | paste -sd,)" "0,$(sed -n 's/^## //p' "$KIT/claude/templates/nucleo.md" | paste -sd,)"
 # --- nucleo_emitir: un «# comentario» dentro de un bloque ``` no es cabecera (cortaba la sección) ---
 NF=$T/fence.md
 { echo '# Estado'; echo '## Comandos de verificación'; echo '```bash'; echo '# correr los tests'; echo 'make test'; echo '```'

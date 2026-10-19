@@ -52,7 +52,7 @@ TMP=$(mktemp "$ESTADO/.checkpoint-compact.XXXXXX") || exit 0
 trap 'rm -f -- "$TMP"' EXIT
 trap 'exit 0' HUP INT TERM
 (
-  set -e
+  set -e -o pipefail
   echo "# Checkpoint pre-compact ($TRIGGER) $(date -Is)"
   echo "cwd: $CWD"
   # Claude permite 10 s para el hook completo; Git deja margen para publicar el checkpoint.
@@ -66,13 +66,20 @@ trap 'exit 0' HUP INT TERM
       git -c core.fsmonitor=false -C "$1" diff --stat | tail -1
     fi
   ' bash "$RAIZ" 2>/dev/null || true
-  if [ -n "$TP" ] && [ -f "$TP" ]; then
+  if [ -n "$TP" ]; then
+    # Con un transcript declarado que no se lee o no se procesa, set -e -o pipefail aborta y
+    # no se publica nada: el checkpoint anterior vale más que uno con la sección vacía.
+    { [ -f "$TP" ] && [ -r "$TP" ]; } || exit 1
     echo; echo "## últimos mensajes humanos"
+    # Claude Code: type=user. Codex: event_msg/user_message (response_item repetiría el mismo texto).
     tail -n 3000 "$TP" \
-      | jq -r 'select(.type == "user" and ((.isMeta // false) | not))
-          | .message.content | if type == "array" then map(select(.type == "text") | .text) | join(" ") else . end
-          | select(type == "string") | gsub("\\s+"; " ")' 2>/dev/null \
-      | command grep -v -e '^<' -e '^\s*$' | tail -3 | cut -c1-400 | sed 's/^/- /' || true
+      | jq -r 'if .type == "user" and ((.isMeta // false) | not) then
+          .message.content | if type == "array" then map(select(.type == "text") | .text) | join(" ") else . end
+        elif .type == "event_msg" and .payload.type == "user_message" then .payload.message
+        else empty end
+        | select(type == "string") | gsub("\\s+"; " ")
+        | select(startswith("<") | not) | select(test("[^[:space:]]"))' 2>/dev/null \
+      | tail -3 | cut -c1-400 | sed 's/^/- /'
   fi
   echo; echo "## pendientes declarados"
   command grep -hE '^\s*- \[ \]' "$ESTADO/nucleo.md" 2>/dev/null | head -15 || true
