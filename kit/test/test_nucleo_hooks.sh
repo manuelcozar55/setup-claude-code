@@ -222,6 +222,12 @@ for modo in basura ausente; do
   ok "pre-compact transcript $modo: exit 0, conserva el checkpoint anterior y avisa" "$RC,$(cat "$CK"),$([ -s "$T/c-err" ] && echo aviso)" "0,previo-CK,aviso"
   ok "pre-compact transcript $modo: sin temporales" "$(find "$R/.claude/estado" -name '.checkpoint-compact.*' | wc -l | tr -d ' ')" 0
 done
+# Sin checkpoint previo, «anterior conservado» mentía: se sigue sin publicar, pero el aviso dice que no había ninguno.
+NPS='s-sin-previo'; NPO=$R/.claude/estado/checkpoint-compact-$(printf '%s' "$NPS" | sha256sum | cut -d' ' -f1).md
+ev "$R" "$NPS" "$T/no-existe.jsonl" | bash "$H/pre-compact.sh" 2>"$T/c-err"; RC=$?
+ok "pre-compact transcript ausente sin checkpoint previo: exit 0, no publica y avisa de que no había ninguno" "$RC,$([ -e "$NPO" ] && echo publicado || echo no),$(command grep -c 'no había ninguno' "$T/c-err"),$(command grep -c 'anterior conservado' "$T/c-err")" "0,no,1,0"
+ev "$R" "$NPS" "$TP" | PATH="$T/mvfalso:$PATH" bash "$H/pre-compact.sh" 2>"$T/c-err"
+ok "pre-compact: publicación fallida sin checkpoint previo tampoco dice «anterior conservado»" "$([ -e "$NPO" ] && echo publicado || echo no),$(command grep -c 'no había ninguno' "$T/c-err"),$(command grep -c 'anterior conservado' "$T/c-err")" "no,1,0"
 # Claude Code sigue añadiendo líneas mientras corre el hook: la última puede estar a medias.
 echo previo-CK >"$CK"
 { printf '%s\n' '{"type":"user","message":{"content":"MSG-UNO"}}' '{"type":"user","message":{"content":"MSG-DOS"}}'; printf '{"type":"user","message":{"cont'; } >"$TPC"

@@ -48,6 +48,8 @@ if [ ! -L "$GI" ] && ! command grep -qsx 'checkpoint-compact\*' "$GI"; then
 fi
 OUT="$ESTADO/checkpoint-compact.md"
 [ -n "$SID" ] && OUT="$ESTADO/checkpoint-compact-$(printf '%s' "$SID" | sha256sum | cut -d' ' -f1).md"
+# El aviso de fallo no promete un checkpoint anterior si esta sesión aún no tiene ninguno.
+PREVIO='anterior conservado'; [ -e "$OUT" ] || PREVIO='no había ninguno anterior'
 TMP=$(mktemp "$ESTADO/.checkpoint-compact.XXXXXX") || exit 0
 trap 'rm -f -- "$TMP"' EXIT
 trap 'exit 0' HUP INT TERM
@@ -89,8 +91,8 @@ trap 'exit 0' HUP INT TERM
   command grep -hE '^\s*- \[ \]' "$ESTADO/nucleo.md" 2>/dev/null | head -15 || true
 ) > "$TMP" 2>/dev/null
 # shellcheck disable=SC2181  # `if ! (…)` apagaría el set -e de dentro
-[ "$?" -eq 0 ] || { echo '[PreCompact] fallo al generar checkpoint; anterior conservado' >&2; exit 0; }
-mv -f -- "$TMP" "$OUT" 2>/dev/null || { echo '[PreCompact] fallo al publicar checkpoint; anterior conservado' >&2; exit 0; }
+[ "$?" -eq 0 ] || { echo "[PreCompact] fallo al generar checkpoint; $PREVIO" >&2; exit 0; }
+mv -f -- "$TMP" "$OUT" 2>/dev/null || { echo "[PreCompact] fallo al publicar checkpoint; $PREVIO" >&2; exit 0; }
 # Uno por sesión y con prompts de la persona: sin rotar se acumulan para siempre. Va después de
 # publicar el nuevo, así un fallo de arriba no deja sin checkpoint viejo ni nuevo; $OUT no se toca.
 # Por edad (14 días) y por número (NUCLEO_CHECKPOINT_KEEP, 5 por defecto, contando el nuevo): con muchas
