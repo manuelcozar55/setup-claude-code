@@ -1060,6 +1060,24 @@ bdc "git commit -nm"          "git commit -nm x"                 deny
 bdc "--no-verify en mensaje"  "git commit -m \"skip --no-verify docs\""  allow
 bdc "-n en mensaje"           "git commit -m \"add -nightly build\""     allow
 bdc "git commit --no-edit"    "git commit --amend --no-edit"     allow
+# W2, decision 1: operaciones sobre issues/PRs y paquetes de sistema piden confirmacion (ask), y
+# --no-verify NO pasa a ask: sigue en deny (arriba y aqui, para que un cambio de nivel lo rompa).
+bdc "gh pr close"             "gh pr close 12"                   ask
+bdc "gh pr merge"             "gh pr merge 12 --squash"          ask
+bdc "gh issue close"          "gh issue close 7 -c hecho"        ask
+bdc "gh -R pr merge"          "gh -R org/repo pr merge 3"        ask
+bdc "gh pr view"              "gh pr view 12"                    allow
+bdc "gh pr list"              "gh pr list --state closed"        allow
+bdc "gh issue view"           "gh issue view 7 --json state"     allow
+bdc "gh pr create"            "gh pr create --title merge"       allow
+bdc "sudo apt"                "sudo apt install jq"              ask
+bdc "sudo apt-get"            "sudo apt-get update"              ask
+bdc "sudo dnf"                "sudo dnf install jq"              ask
+bdc "sudo pip"                "sudo pip install requests"        ask
+bdc "sudo -E apt"             "sudo -E apt install jq"           ask
+bdc "apt sin sudo"            "apt list --installed"             allow
+bdc "sudo ls"                 "sudo ls /root"                    allow
+bdc "--no-verify sigue en deny" "git commit --no-verify -m x"    deny
 # E7 PR2, hallazgo 6: la continuacion `\`+salto de linea partia el pipe-a-shell en dos lineas y esquivaba la regla.
 NL=$'\n'; BS=$'\\'
 bdc "continuacion antes del pipe"      "curl $U $BS${NL}$P $B"            deny
