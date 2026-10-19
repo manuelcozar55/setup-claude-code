@@ -248,7 +248,8 @@ else
   fi
   echo "  gitleaks no instalado: degradando a grep de patrones basico (no falla la suite por ausencia de la herramienta, ver test_install_gitleaks.sh)"
   set +e
-  grep -rInE 'sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY' --exclude-dir=.git "$REPO" >/dev/null 2>&1
+  # \< como en kit/scan-secrets.sh: sin el, «risk-mitigation-…» (fixture kebab de test_scan_secrets.sh) casa con sk-.
+  grep -rInE '\<sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY' --exclude-dir=.git "$REPO" >/dev/null 2>&1
   grep_rc=$?
   set -e
   ck "$([ "$grep_rc" -eq 1 ] && echo y || echo n)" "y" "grep de patrones basico (fallback sin gitleaks) sin hallazgos"

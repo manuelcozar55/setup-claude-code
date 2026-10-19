@@ -15,9 +15,25 @@ nucleo_raiz() {
   printf '%s\n' "$r"
 }
 
-# nucleo_enlazado <raíz>: .claude/estado o nucleo.md es un symlink. El repo puede ser de terceros: con
-# un enlace decidiría qué fichero de fuera se inyecta y dónde se escribe el checkpoint (con prompts).
-nucleo_enlazado() { [ -L "$1/.claude/estado" ] || [ -L "$1/.claude/estado/nucleo.md" ]; }
+# nucleo_enlazado <raíz>: .claude, .claude/estado o nucleo.md es un symlink, o la ruta resuelta de nucleo.md
+# cae fuera de la raíz. El repo puede ser de terceros: con un enlace decidiría qué fichero de fuera se
+# inyecta y dónde se escribe el checkpoint (con prompts). Con `.claude` enlazado, mirar solo estado/ y
+# nucleo.md no bastaba. realpath falla cerrado: sin resolver, se da por enlazado.
+nucleo_enlazado() {
+  [ -L "$1/.claude" ] || [ -L "$1/.claude/estado" ] || [ -L "$1/.claude/estado/nucleo.md" ] && return 0
+  local r e
+  r=$(realpath -m -- "$1" 2>/dev/null) && e=$(realpath -m -- "$1/.claude/estado/nucleo.md" 2>/dev/null) || return 0
+  case $e in "$r"/*) return 1 ;; esac
+  return 0
+}
+
+# nucleo_tope <contexto>: recorta a 9 500 chars (el harness manda a fichero lo que pasa de 10 000; las rutas no
+# tienen tope) y, si recortó, cierra el <nucleo-datos> que pudiera haber quedado abierto.
+nucleo_tope() {
+  local c=$1
+  [ "${#c}" -le 9500 ] || c="${c:0:9460}"$'\n[recortado]\n</nucleo-datos>'
+  printf '%s' "$c"
+}
 
 # nucleo_ctx <transcript>: "tokens pct", con pct sobre el airbag (ventana − 33 000, la línea en la
 # que compacta solo). Nada si el transcript no trae uso. La ventana es min(la del modelo, el env), como
@@ -55,9 +71,18 @@ nucleo_ctx() {
 # Bytes (LC_ALL=C): el tope protege el límite del harness, que se mide en la salida entera.
 nucleo_emitir() {
   [ -f "$1" ] || return 0
-  LC_ALL=C awk -v f="$1" -v kb="$(( ($(wc -c <"$1") + 1023) / 1024 ))" -v sec=3000 -v tope=6500 '
+  LC_ALL=C awk -v f="$1" -v kb="$(( ($(wc -c <"$1") + 1023) / 1024 ))" -v sec=3000 -v tope=6500 -v res=700 '
     BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|") }
-    function sale(s) { out = out s "\n"; usado += length(s) + 1 }
+    # «Paso actual» y «Siguiente acción» tienen reserva propia (res bytes cada una, fuera del tope): con un
+    # nucleo de 20 KB el presupuesto se gastaba por orden y eran justo las dos que se perdían.
+    # Corte por bytes sin partir un carácter UTF-8: si el byte siguiente es de continuación, el corte cayó
+    # dentro de uno y se quita el inicio huérfano con sus continuaciones (octales: valen en gawk y mawk).
+    function corta(l, n,   r) {
+      r = substr(l, 1, n)
+      if (substr(l, n + 1, 1) ~ /[\200-\277]/) sub(/[\300-\377][\200-\277]*$/, "", r)
+      return r
+    }
+    function sale(s) { out = out s "\n"; if (!rsv) usado += length(s) + 1 }
     # ### también: las sesiones escriben la tarea como «## TAREA ACTUAL» con sus secciones en ###. Si nombra
     # una sección aún no vista es cabecera; si no, es contenido solo bajo un ## de plantilla (padre: «### Fase 1»
     # en «## Plan»); bajo otro ## cierra y cuenta en fuera, para que «### Hecho» no se cuele en Pendientes.
@@ -81,17 +106,25 @@ nucleo_emitir() {
     }
     /^#(#|##)? / && !cerca && ($0 !~ /^### / || (c != "" && !visto[c]) || !padre) {
       if ($0 ~ /^### / && viva && !padre && (c == "" || visto[c])) cerradas++
-      viva = 0; dentro = 0
-      if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; sale(substr($0, 1, 200)) } else fuera++; next }
+      viva = 0; dentro = 0; rsv = 0
+      if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; sale(corta($0, 200)) } else fuera++; next }
       if ($0 ~ /^## /) padre = (c != "")
-      if (c == "" || visto[c]++) { fuera++; next }
-      if (usado + length($0) > tope) { omitidas = omitidas " «" substr(t, 1, 80) "»"; next }
+      # Repetido: solo entra si la primera copia quedó vacía (plantilla con «## Pendientes» y, después, el
+      # «## Pendientes y riesgos» de /handoff); con contenido sigue ganando la primera. Los marcadores
+      # <!-- … --> de la plantilla no cuentan como contenido (si no, «Encargo original» y «Plan» del
+      # handoff se descartaban como repetidos de un Objetivo y un Plan que solo tenían el marcador).
+      if (c == "" || (visto[c] && con[c])) { fuera++; next }
+      visto[c] = 1; actual = c; coment = 0; rsv = (c == "Paso actual" || c == "Siguiente acción")
+      if (!rsv && usado + length($0) > tope) { omitidas = omitidas " «" corta(t, 80) "»"; next }
       viva = 1; sale($0); next
     }
     viva {
-      resto = sec - dentro; if (tope - usado < resto) resto = tope - usado
+      resto = (rsv ? res : sec) - dentro; if (!rsv && tope - usado < resto) resto = tope - usado
+      if (coment) { if (index($0, "-->")) coment = 0 }
+      else if ($0 ~ /^[ \t]*<!--/) { if (!index($0, "-->")) coment = 1; else { t2 = $0; sub(/.*-->/, "", t2); if (t2 ~ /[^ \t]/) con[actual]++ } }
+      else if ($0 ~ /[^ \t]/) con[actual]++
       if (length($0) < resto) { sale($0); dentro += length($0) + 1; next }
-      sale(substr($0, 1, resto > 0 ? resto : 0)); viva = 0
+      sale(corta($0, resto > 0 ? resto : 0)); viva = 0
       sale("[recortado: sección incompleta.]"); recortes++
     }
     END {

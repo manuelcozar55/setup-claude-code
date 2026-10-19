@@ -9,6 +9,17 @@ etiquetado.
 
 ### Added
 
+- **Corpus adversario de E5 como suite: `test_guards_corpus.sh`.** El corpus de la campaña
+  E5 (`fixtures/guards-corpus.tsv`, una columna de esperado y otra del guard que respondió) tiene
+  715 filas; 119 se ejecutan contra los cuatro guards bash en un repo temporal en rama de feature
+  (336 aserciones, 0 falsos negativos). Las otras 596 se omiten con motivo contado: 110 de otras
+  herramientas, 483 que solo vieron Sentinel o smart_approve (Sentinel y write-guard se cubren en
+  `test_guards.sh`) y 3 sin expectativa. Los guards de antes de este cambio también la
+  pasan: es una red contra regresiones, no el test rojo de los hallazgos (eso es `test_guards.sh`).
+  Los 3 «falsos positivos» del corpus son el borrado recursivo forzado de `build/`, que el hook
+  deniega por diseño documentado, y la suite los fija como `BLOCK` (`DISENO_FP=allow` los cambia
+  si se decide lo contrario). Suma la suite 41 a Makefile, `ci.yml` y las cifras de la doc.
+
 - **Handoff automático y `/nueva` en cockpit 0.4.0.** Al cerrar un turno del bucle principal
   con el contexto por encima del umbral (70 % del límite de autocompactación por defecto;
   `COCKPIT_AUTO_HANDOFF=off` lo desactiva, un entero 50-95 lo cambia), el mod guarda el estado
@@ -129,6 +140,23 @@ etiquetado.
 
 ### Changed
 
+- **`05-security.md` declara el límite que ninguna regex cubre.** Los guards ven el texto del
+  comando, no el argv que el shell construirá (`F=-rf; rm $F`, `rm -rf $(echo /)`, `eval`,
+  `bash -c "$X"`); la capa de permisos de Claude Code es la última barrera.
+
+- **`iocs.json` declara el preflight que exige y `doctor` lo comprueba (auditoría E6 #27).**
+  `iocs.json` e `iocs.example.json` llevan `"min_preflight_version": 2`,
+  `sentinel_preflight.py` una constante `PREFLIGHT_VERSION = 2` (sin ella, un preflight de
+  antes de este cambio cuenta como v1) y `doctor.sh` avisa con `WARN` si el instalado es más
+  viejo que lo que pide el iocs de al lado; si coincide, `PASS`. Antes un iocs nuevo con un
+  preflight viejo se quedaba a medias sin avisar (las reglas de tubería cuentan con la unión de
+  continuaciones del código nuevo). 3 casos nuevos en `test_doctor.sh`. Cambio mínimo y
+  localizado (bloque 2c); la deriva de `hooks/lib/` y `sentinel/` es del PR4.
+- **Contrato de salida de `echo $X_TOKEN`: de `additionalContext` a `deny`.** Quien tuviera un
+  flujo que expande una variable sensible (`curl -H "Authorization: $GITHUB_TOKEN"`) pasa de un
+  aviso a un bloqueo; la salida es `env_vars` en `~/.claude/sentinel-allowlist.json`, como
+  antes para los avisos.
+
 - **Los hooks Python arrancan con `python3 -I -S`** (`optional-hook.sh`). Medido: 22 → 8 ms
   por hook, porque `site` cargaba apport y un `.pth` editable que apunta a `/mnt/c`,
   escribible desde Windows, dentro de cada guard. Los cinco hooks solo usan stdlib;
@@ -202,6 +230,65 @@ etiquetado.
 
 ### Fixed
 
+- **`branch-guard.sh`: las redirecciones no cuentan como operandos del push (E7.3 CR-2).** `git push origin 2>&1`, `... 2>&1 | tail -3` y `git push -u origin >/dev/null` con main activa daban rc 0, porque `2>&1` pasaba a ser el destino. Se descartan los operandos `^[0-9]*[<>]` y `^&>`. Límite: una redirección con espacio (`> fichero`) deja el nombre del fichero como operando.
+- **`branch-guard.sh`: con `--repo`/`--repo=` todos los posicionales son refspecs (E7.3 CR-3).** El guard tomaba el primero por remoto, así que `git push --repo=origin main` desde una feature pasaba (3576d87 lo bloqueaba).
+
+- **cockpit 0.4.1: el handoff rechaza también un `.claude` enlazado y ya no confunde una sección final sin salto con un cuerpo.** `refuseLinks` solo miraba `estado/`, `nucleo.md` y `nucleo.prev-*`; con `.claude -> otro sitio` el enlace es el padre y `runHandoff` leía y escribía a través de él, justo lo que los hooks del kit (`nucleo_enlazado`) ya rechazan. Ahora lista `.claude` desde su padre y aborta con aviso. `bodyOf` devolvía la cabecera entera si no había `\n` tras ella (`## Objetivo` como última línea), así que `missingFixed` la daba por rellena y nunca se pedía ni se rellenaba; ahora devuelve vacío, y el relleno de `mergeNucleo` cubre ese caso. Tests: `handoff.test.tsx` (68 pass). Límite: solo se comprueba `.claude`, no ancestros más arriba.
+
+- **`install.sh --plan` ya no puede borrar tu instalación (E6 #1, crítico).** El modo plan
+  hacía un borrado recursivo forzado de `MCHARNESS_OUT` (por defecto `$PWD/.mcharness-out`) sin
+  comprobar nada: apuntarlo a `CLAUDE_HOME`, a un padre suyo o a un directorio cualquiera
+  lo vaciaba. Ahora, sin `MCHARNESS_OUT`, el plan se genera en un `mktemp -d` nuevo (no hay
+  nada previo que borrar; se conserva a propósito porque el texto manda copiar a mano desde
+  ahí). Con `MCHARNESS_OUT`, solo se usa si no existe, está vacío o lleva el marcador
+  `.mcharness-out-marker` que escribe el propio script; cualquier solape con `CLAUDE_HOME`
+  (iguales o una contiene a la otra, con `realpath -m`) o un directorio ajeno sin marcador
+  termina en exit 1 con mensaje, sin borrar nada. Cambio de comportamiento: ya no existe el
+  directorio por defecto `$PWD/.mcharness-out`; el plan queda en `/tmp/mcharness-plan.*`
+  (o `$TMPDIR`), que el script no limpia. 25 aserciones nuevas (las de #12 y #27 incluidas) en
+  `test_install_diff_first.sh` (rojas contra `3ea7442`, verdes ahora).
+
+- **`settings.json` enlazado se conserva al fusionar (E6 #12).** `install_settings` hacía `mv`
+  del merge sobre el enlace y lo sustituía por un fichero regular, rompiendo el repo propio
+  al que apuntaba. Ahora fusiona a través del enlace (temporal junto al destino real, backup
+  bajo el nombre del enlace) y el enlace sigue siendo enlace. Límite declarado: `install_file`
+  sigue omitiendo los demás enlaces sin tocarlos; solo `settings.json` se escribe a través.
+
+- **Mensaje de `--plan` veraz y `test_statusline.sh` con mawk (E6 #27).** `--plan` sobre un
+  `CLAUDE_HOME` que no es repo git decía «es tu propio repo git (con remoto)»; ahora dice
+  «Modo --plan» y «solo muestra lo que se instalaría», y el texto de repo git queda para
+  cuando de verdad lo es. Las 2 aserciones de «ancho 80/50» fallaban con mawk 1.3.4 porque su
+  `length()` cuenta bytes y parte los caracteres UTF-8; se miden con `${#}` de bash
+  (`LC_ALL=C.UTF-8`). La suite da 30/30 con gawk y con mawk. Sin efecto en producción.
+
+- **`nucleo_emitir` reserva sitio para «Paso actual» y «Siguiente acción».** El tope de 6 500 B se
+  gastaba por orden y con un nucleo de 12-20 KB se perdían justo esas dos. Ahora tienen reserva
+  propia de 700 B cada una, fuera del tope; el recorte cae sobre Plan, Pendientes, Comandos y
+  Ficheros. Total máximo de la emisión ≈ 7 900 B. Con un nucleo de 12 y de 20 KB ambas salen.
+- **El corte por bytes no parte un carácter UTF-8** (título, cabecera y sección recortada); se
+  detecta el byte de continuación con octales, igual en gawk y mawk.
+- **El recorte a 9 500 de `session-start-clear.sh`/`-compact.sh` cierra siempre `<nucleo-datos>`**
+  (`nucleo_tope`, con rutas de ~1 800 caracteres quedaba abierto).
+- **`session-start.sh`**: sin entradas imprimía dos ceros (`grep -c … || echo 0`); la ruta de la
+  memoria codifica como Claude Code (todo no alfanumérico → `-`, así `.claude` → `-claude` en
+  `--claude`), con el `/`→`-` anterior de respaldo.
+- **`nucleo-nudge.sh` (PostToolUse)** lee primero el transcript y la marca de banda: bajo el 50 %
+  o con la banda ya avisada no lanza `git` ni mira el nucleo. Efecto lateral: la marca también se
+  rearma con el nucleo fresco.
+- **`pre-compact.sh` rota checkpoints también por número** (`NUCLEO_CHECKPOINT_KEEP`, 5 por defecto,
+  contando el nuevo), además de los 14 días. Su `.gitignore` pasa de `checkpoint-compact-*` a
+  `checkpoint-compact*` para cubrir el respaldo sin hash `checkpoint-compact.md` (sin
+  `session_id`); los `.gitignore` ya creados reciben la línea nueva.
+- **`doctor.sh` compara también `hooks/lib/` y `sentinel/`** en el chequeo de deriva
+  kit/desplegado (WARN, como el resto). `iocs.json` personalizado saldrá como deriva.
+- **`narthex-post-mcp.py`: `log()` captura `OSError`** y avisa por stderr; antes un directorio de
+  auditoría no escribible llegaba al `except` de `main` y el hook salía 0 sin emitir el aviso
+  al modelo.
+
+Subsección: Fixed (cockpit 0.4.1)
+
+- **El handoff del cockpit ya no pierde escrituras concurrentes ni deja el Objetivo vacío (E6 #7, #11).** El fork tarda segundos y `prev` se leía antes: una escritura de otra sesión o del hook PreCompact se perdía y el respaldo `nucleo.prev-*` no era la versión reemplazada, mientras se anunciaba «Guardado». Ahora `nucleo.md` se relee tras el fork y, si difiere, el handoff aborta con «nucleo.md cambió durante el handoff» sin escribir ni limpiar. «Objetivo» (el nombre de la plantilla del kit) se protege como «Encargo original» y, si está vacío (o solo tiene el marcador `<!-- -->`), el prompt lo pide y la fusión lo rellena; lo que ya tiene contenido sigue byte a byte. `prev` escapa `</nucleo-actual>` dentro del bloque de datos y los títulos se comparan sin acentos ni mayúsculas (`Siguiente acción` = `siguiente accion`). Si `estado/`, `nucleo.md` o una copia `nucleo.prev-*` son enlaces simbólicos, el handoff no lee ni escribe. 7 tests nuevos (66 en el mod). Límites: una escritura entre la relectura y la escritura final no es detectable (la API no tiene reemplazo atómico); los enlaces se detectan con `find -type l` porque `$.fs` no tiene lstat, y solo se miran `estado/` y sus entradas directas, no los directorios superiores.
+
 - **`nucleo_ctx` medía sobre 200k en modelos de 1M.** Exigía `[1m]` en el id, y Opus 4.7+,
   Opus 5, Fable y Sonnet 5 traen 1M sin sufijo: con el alias `opus` el aviso marcaba ~30 % de
   más. La ventana sale ahora también del id del último assistant del transcript, en la misma
@@ -209,6 +296,10 @@ etiquetado.
   modelo que nombra. El aviso del 70 % declara el fin de fase como parada válida y el del 85 %
   remite al handoff automático, salvo con `COCKPIT_AUTO_HANDOFF=off`.
 
+- **`nucleo_emitir` perdía los pendientes de `/handoff`**: con un `nucleo.md` sembrado desde la plantilla (`## Pendientes` vacío) el handoff escribe `## Pendientes y riesgos` más abajo y, al ganar la primera copia, lo inyectado traía la sección vacía y ninguna señal más que «fuera de forma» (visto e2e en Debian con Haiku y Sonnet). Ahora una sección repetida entra si la primera quedó vacía; con contenido sigue ganando la primera. Tests en `test_nucleo_lib.sh`; verificado con gawk y mawk.
+  Los marcadores `<!-- … -->` de la plantilla (Objetivo, Plan) tampoco cuentan como contenido: sin eso el
+  «Encargo original» y el «Plan» del handoff se descartaban como repetidos (hallazgo de /code-review, E6).
+- **`test_harness_structure.sh` sin gitleaks**: el grep de respaldo no llevaba `\<` delante de `sk-` y casaba con el fixture kebab «risk-mitigation-…» de `test_scan_secrets.sh`, así que la suite fallaba en cualquier máquina sin gitleaks (visto en Debian 13). Mismo límite de palabra que `kit/scan-secrets.sh`.
 - **Sentinel: los ficheros de clave se miran por palabra de shell y por su papel, no por
   regex sobre el comando.** Las seis regex de extensión (`.pem`, `.key`, `.p12`, `.pfx`,
   `.jks`, `.keystore`) miraban subcadenas y en la instalación real dieron 245 denegaciones
@@ -397,6 +488,93 @@ etiquetado.
   habiendo juzgado cero. Y el modo nuevo trae su propia sonda de falsabilidad: sobre una
   sección fabricada que escribe una cifra falsa, `claim_omiso` sigue enrojeciendo — lo que
   había que demostrar no es que sepa omitir, sino que omitir no le quitó el juicio.
+
+### Security
+
+- **`branch-guard.sh` vuelve a ver el push que va dentro de `bash -c`, `sh -c`, `eval`, `ssh host`, `xargs` y `find -exec` (E7.3 CR-1).** El guard de la normalización (PR2) solo inspeccionaba segmentos cuyo ejecutable era `git`, y el guard de texto de 3576d87 bloqueaba esas grafias (rc 2): regresión, rc 0 con la rama protegida como destino. Ahora, si el ejecutable no es `git` pero el segmento nombra `git`, la cadena interior se vuelve a normalizar y se analiza con la misma lógica (hasta 3 niveles); `echo`, `printf`, `grep` y similares quedan fuera para que la prosa con un push dentro no dé falsos positivos. Latencia: 24 ms por invocación (25 antes; presupuesto 150). Límite: la cadena construida con variables sigue fuera de alcance.
+- **`branch-guard.sh` bloquea `--all`, `--branches` y `--mirror` (E7.3 CR-8).** Empujan todas las ramas, las protegidas incluidas, y se trataban como opciones sin destino. Límite declarado en `docs/05-security.md`: con `push.default=upstream` y un upstream de nombre distinto al de la rama local, el `git push` a secas no se resuelve (el guard no lee la configuración de git).
+- **`destructive-guard.sh`: un `..` tras el directorio seguro ya no exime el `rm -rf` (E7.3 CR-4).** `rm -rf ~/dist/../Documents` y `rm -rf ~/node_modules/../<claves>` salían con rc 0 porque la exención miraba `/dir/` como subcadena. Se cierra en el check 5 y en el check 1 (texto, anterior a E7: mismo agujero, arreglo local de una condición). `rm -rf dist/..` pasa a ser sensible. `rm -rf ../node_modules` sigue permitido (el `..` va antes, no después).
+
+- **Los cuatro guards bash leen el comando normalizado, no el texto crudo (E6 4, 5, 6, 9).** Cada
+  guard comparaba el literal con su propia regex y fallaba por separado ante las mismas grafías:
+  un `#` dentro de comillas cortaba el escaneo (`git commit -m "fix #12" && git reset --hard`
+  pasaba), `git -C dir reset --hard`, `sudo git …`, `/usr/bin/git`, `git clean --force -d`,
+  `rm -rv`, `rm -R` y `rm -rf --` salían de los patrones, la continuación `\`+salto de línea
+  partía el pipe-a-shell en dos líneas, `git push origin "main"`, `git push` a secas y
+  `git push origin HEAD` con main activa pasaban (y `main-menu` daba falso positivo), y
+  `git -C . add <fichero de entorno>` no llegaba al filtro. Nueva `hooks/lib/cmdnorm.sh` (se
+  instala con el resto de `hooks/lib/*`): una sola pasada de awk POSIX, con mawk y gawk dando el
+  mismo resultado, que une continuaciones, quita comentarios solo fuera de comillas, descomilla
+  tokens y reconoce los prefijos `sudo`/`env`/`command`/`nice`/`timeout N`/`VAR=x`, la ruta del
+  ejecutable y las opciones globales de git (`-C`, `-c`, `--git-dir`, `--work-tree`…).
+  `block-dangerous-commands.sh` escanea el texto normalizado; `destructive-guard.sh` conserva sus
+  checks (siguen viendo lo que va dentro de un `bash -c`) y suma uno por comando simple que cubre
+  `-R`, `-rv`, `--` y las rutas sensibles sin `-f` (`git clean -n` y `--dry-run` no se deniegan);
+  `branch-guard.sh` resuelve el destino real (refspec implícito o `HEAD` → rama actual con
+  `git symbolic-ref`, en el cwd del hook o el que fijen `git -C`/`cd`) y compara por igualdad de
+  token; `secret-guard.sh` evalúa la exención del fichero de ejemplo por operando y contempla
+  `-A`/`--all`/`.` con el repo resuelto por `-C`/`cd`. Tests: `test_guards.sh` pasa de 399 a
+  503 casos (+104: 6 de continuaciones, 37 de `destructive-guard`, 34 de `branch-guard`, 27 de
+  `secret-guard`), cada uno rojo antes del arreglo; `test_guards_falsifiability.sh` fija ahora
+  **28** casos `BLOCK` (eran 10) y README y onboarding citan la cifra nueva. Latencia medida
+  (20 invocaciones por guard, media; HOME limpio, ext4): 11/12/11/7 ms → 16/16/13/11 ms
+  (block-dangerous / destructive / branch / secret), +18 ms en la suma de los cuatro (de ~41 a
+  ~59 ms), dentro del presupuesto de 150 ms de la cadena. Límites declarados: sigue siendo el
+  texto, no el argv (`F=-rf; rm $F`, `eval`, `bash -c "$X"`, sustituciones), `bash -c "git reset
+  --hard"` solo lo ve el check heredado de `rm`, no el de git, y `git push --all` no se
+  contempla; si `lib/cmdnorm.sh` falta o awk falla, los guards deniegan (fail-closed nuevo, hasta
+  ahora no dependían de ninguna lib).
+
+- **Sentinel juzga cada URL, cada ruta y cada variable por separado (auditoría E6 #2, #3, #10,
+  #14, #15).** Seis huecos reproducidos con comandos normales: un host permitido en un
+  comentario (`# https://github.com`) o en una segunda URL eximía todo el comando del bloqueo de
+  exfiltración; un ejecutable bajo `/tmp` (`/tmp/bin/cat clave.key`) eximía sus argumentos porque
+  `is_allowed_path` recibía el comando entero; Grep (`glob`), Glob (`pattern`) y NotebookEdit
+  (`notebook_path`) leían directorios de claves porque `PATH_FIELDS` era cerrado; un comodín
+  (`~/.s*/id_rsa`) o un `..` intermedio (`~/.aws/../.aws/config`) esquivaban las rutas literales
+  de `iocs.json` (21 de 320 en el corpus de E5); y las variables sensibles solo avisaban, con la
+  regex `(?i).*_TOKEN$` anclada al final del comando entero. Ahora: `without_allowed_urls` quita
+  solo las URL permitidas y el resto se sigue comprobando (una URL no permitida basta para
+  bloquear); la exención de ruta solo vale en campos que son una ruta (`file_path`, `path`,
+  `notebook_path`, `file`, `filename`, `glob`, `pattern`), nunca en `command`, `url`, etc.;
+  `PATH_FIELDS` se abre a esos campos (el `pattern` de Grep queda fuera: es una regex sobre
+  contenido); las rutas se comparan normalizadas (`~`, `$HOME`, `..`, llaves), con comodines
+  contra los componentes de cada patrón (el `*` no cruza un punto inicial y un `*` pelado solo
+  cuenta en el nivel de fichero de un directorio oculto: `~/.aws/*` se deniega, `ls /etc/*` y
+  `ls ~/.config/*` no) y por nombre base para las claves de `~/.ssh` (`id_ed25519`) cuando es
+  una ruta entera; y leer una variable sensible (`$X`, `${X}`, `printenv X`) pasa de aviso a
+  deny, con la regex aplicada a cada nombre. Nombrarla sin leerla (un mensaje de commit) sigue
+  siendo aviso. Las 16 filas SOLO-AVISO y las 21 de ruta del corpus de E5, más 11 sondas de
+  tubería, son ahora casos de `test_guards.sh`; las 69 filas A de Bash del corpus siguen en
+  ALLOW. Latencia de Sentinel sin cambio medido: mediana de 20 invocaciones 47-52 ms antes y
+  45-47 ms después (ruido de la máquina; el coste es una pasada de regex por campo). Límites
+  declarados: `ls /etc/*` y `cat /etc/*` no se tratan como lectura de `/etc/shadow`; el nombre
+  base `id_rsa` como palabra suelta de un comando es prosa y no se deniega; `export X_TOKEN=…`
+  y los volcados `env`/`printenv` sin operandos solo avisan o pasan (no leen una variable
+  concreta); un comando entero sigue sin exención de ruta, así que `cat /tmp/x.pem` se deniega
+  como antes; una herramienta de terceros que nombre su ruta con otra clave no se ve.
+
+- **Tubería al shell en Sentinel: `sudo bash`, `env bash`, `|&`, ruta absoluta y continuación
+  (auditoría E6 #6, parte Sentinel).** Las dos regex de `iocs.json` (`curl`/`wget` … `| shell`)
+  no veían `| sudo bash`, `| env bash`, `|& sh`, `| /bin/bash`, `| dash`, `| node` ni
+  `curl x \`+salto de línea`| bash`; además `| sha256sum` se bloqueaba por casar el prefijo
+  `sh`. Ahora aceptan prefijos (`sudo`, `doas`, `env`, `nohup`, `exec`, `command`, `stdbuf`, con
+  opciones y `VAR=val`), `|&`, ruta del intérprete y exigen fin de palabra; el código une
+  `\`+salto de línea antes de casar. Límite: `sudo -u root bash` (opción con valor) y `sh -c
+  "$(curl …)"` no los ve Sentinel; los cubre `block-dangerous-commands.sh` (PR2).
+
+Subseccion: Security (E6 #13 y #16)
+
+- **`write-guard` dejaba pasar claves de proyecto de OpenAI, dos herramientas de escritura y todo `.env.example`.** `sk-proj-…` y `sk-svcacct-…` llevan guiones y no casaban con `sk-[a-zA-Z0-9]{20,}`; el matcher de `settings.json` era `Write|Edit`, asi que `MultiEdit` (`edits[].new_string`) y `NotebookEdit` (`new_source`, `notebook_path`) escribian sin escaneo; los ficheros `.env.example/.template/.sample/.dist` estaban exentos aunque contuvieran una clave real; y cualquier excepcion del hook acababa en `exit 0` (permitir). Ahora: patron nuevo para ambos prefijos, matcher `Write|Edit|MultiEdit|NotebookEdit` y el hook lee el campo de cada herramienta; en ficheros exentos siguen bloqueando los secretos de alta confianza (OpenAI, AWS, GitHub, PEM…) salvo que el valor parezca placeholder (`xxxx`, `changeme`, `your-`/`your_`, `<…>`, `example`) y las asignaciones genericas siguen exentas; y el hook falla cerrado: JSON invalido o excepcion → `exit 2` con mensaje en stderr. Cubierto por 16 casos nuevos en `test_guards.sh` (seccion 16). Latencia: 20 invocaciones del hook en 0,56 s (~28 ms cada una, cadena sin cambios de coste). Limites declarados: un valor real al que se le pegue `xxxx`/`changeme` dentro del mismo token en un fichero de ejemplo pasa como placeholder; el fail-closed es solo de `write-guard`: `smart_approve.py` y `stale-read-guard.py` siguen fail-open por diseno.
+
+- **`nucleo_enlazado` mira los tres componentes y la ruta resuelta.** Solo comprobaba `estado/` y
+  `nucleo.md`: con `.claude -> /otro/sitio` los hooks de estado inyectaban ficheros ajenos y
+  `pre-compact.sh` escribía checkpoints con prompts fuera del repo. Ahora `.claude`, `estado` y
+  `nucleo.md` se rechazan si son symlink, y `realpath -m` del nucleo debe quedar dentro de la
+  raíz (si no se resuelve, falla cerrado). `session-start-compact.sh` tampoco inyecta un
+  checkpoint que sea un enlace. Límite declarado: un `~/.claude` enlazado a propósito (dotfiles)
+  desactiva el estado en `$HOME`; `pre-compact.sh` no necesita guarda propia del checkpoint
+  porque publica con `mv` (reemplaza el enlace, no escribe a su destino).
 
 ## [1.2.0] - 2026-09-04
 

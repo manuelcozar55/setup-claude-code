@@ -123,14 +123,18 @@ def scan(text: str) -> list[dict]:
 
 def log(tool: str, findings: list[dict]) -> None:
     log_path = Path.home() / ".claude" / "audit-logs" / "narthex.jsonl"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("a") as f:
-        json.dump({
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "tool": tool,
-            "findings": findings,
-        }, f)
-        f.write("\n")
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a") as f:
+            json.dump({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "tool": tool,
+                "findings": findings,
+            }, f)
+            f.write("\n")
+    except OSError as e:
+        # Sin captura, el fallo llegaba al except de main y el hook salia 0 sin avisar al modelo.
+        print(f"narthex: no se pudo escribir el log de auditoria {log_path}: {e}", file=sys.stderr)
 
 
 def main() -> None:

@@ -41,4 +41,4 @@ $T
 </nucleo-datos>"
 
 # Las rutas no tienen tope: con una larga el total pasaba de 10 000.
-sale "${CTX:0:9500}"
+sale "$(nucleo_tope "$CTX")"

@@ -49,4 +49,15 @@ for _ in 1 2 3 4 5; do
   [ "$ms" -lt "$best" ] && best=$ms
 done
 ok "tiempo < 50 ms (mejor de 5: ${best} ms)" "$([ "$best" -lt 50 ] && echo si)" si
+# --- #24: camino caliente: bajo el 50 % (y con la banda ya avisada) no se lanza git ni se mira el nucleo ---
+mkdir -p "$T/fakebin"; printf '#!/bin/sh\ntouch "%s/git-lanzado"\nexec /usr/bin/git "$@"\n' "$T" >"$T/fakebin/git"; chmod +x "$T/fakebin/git"
+runf() { jq -cn --arg c "$R" --arg s "$1" --arg t "$T/$2.jsonl" '{session_id:$s,transcript_path:$t,cwd:$c,tool_name:"Bash"}' | PATH="$T/fakebin:$PATH" bash "$H"; }
+rm -f "$T/git-lanzado"; touch -d '-30 minutes' "$NUC"
+runf s20 p20 >/dev/null
+ok "20 %: no lanza git" "$([ -e "$T/git-lanzado" ] && echo lanzado || echo no)" no
+runf s21 p60 >/dev/null
+ok "60 % y nucleo viejo: sí lo lanza (control de la sonda)" "$([ -e "$T/git-lanzado" ] && echo lanzado || echo no)" lanzado
+rm -f "$T/git-lanzado"; runf s21 p60 >/dev/null
+ok "banda ya avisada: no lanza git" "$([ -e "$T/git-lanzado" ] && echo lanzado || echo no)" no
+
 exit $FAIL

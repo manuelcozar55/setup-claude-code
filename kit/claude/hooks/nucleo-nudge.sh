@@ -13,18 +13,20 @@ case "${SID:-}" in ''|*[!A-Za-z0-9_-]*) exit 0;; esac   # va a un nombre de fich
 [ -f "${TP:-}" ] || exit 0
 # shellcheck source=SCRIPTDIR/lib/nucleo.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
-RAIZ=$(nucleo_raiz "${CWD:-$PWD}")
-nucleo_enlazado "$RAIZ" && exit 0
-NUC="$RAIZ/.claude/estado/nucleo.md"
-MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
-EDAD=$(( $(date +%s) - ${MT:-0} ))
-[ -z "$MT" ] || [ "$EDAD" -gt 600 ] || exit 0
+# Lo barato primero (transcript y marca de banda): bajo el 50 % o con la banda ya avisada no se lanza git
+# ni se mira el nucleo. Efecto: la marca también se rearma con el nucleo fresco.
 read -r _ PCT <<<"$(nucleo_ctx "$TP")"
 [ -n "${PCT:-}" ] || exit 0
 MARCA=$HOME/.claude/session-logs/nudge-$SID
 if [ "$PCT" -ge 85 ]; then B=85; elif [ "$PCT" -ge 70 ]; then B=70; elif [ "$PCT" -ge 50 ]; then B=50
 else [ -s "$MARCA" ] && : >"$MARCA"; exit 0; fi
 command grep -qx "$B" "$MARCA" 2>/dev/null && exit 0
+RAIZ=$(nucleo_raiz "${CWD:-$PWD}")
+nucleo_enlazado "$RAIZ" && exit 0
+NUC="$RAIZ/.claude/estado/nucleo.md"
+MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
+EDAD=$(( $(date +%s) - ${MT:-0} ))
+[ -z "$MT" ] || [ "$EDAD" -gt 600 ] || exit 0
 mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
 if [ -n "$MT" ]; then
   M="CONTEXTO $PCT % del airbag. nucleo.md lleva $((EDAD / 60)) min sin actualizar: antes de la siguiente herramienta actualiza Paso actual / Siguiente acción / Pendientes en $NUC."

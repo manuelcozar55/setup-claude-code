@@ -28,7 +28,7 @@ con remoto), corre el oráculo y `doctor.sh`. Requisitos, pasos a mano y desinst
 ## 2 · Verificar de verdad
 
 ```bash
-make test          # 40 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
+make test          # 41 suites en bash puro, sin red, ~58 s. exit 0 o no está hecho.
 bash kit/doctor.sh # estado de ESTA máquina
 ```
 
@@ -41,7 +41,7 @@ Cómo leer `doctor.sh`:
 
 Y no te creas que los guards funcionan porque lo diga el README: neutraliza uno y mira qué
 pasa. `bash kit/test/test_guards_falsifiability.sh` desactiva un guard real y exige que eso
-rompa exactamente 10 casos `BLOCK` conocidos. Si desactivarlo no rompiera nada, la suite no
+rompa exactamente 28 casos `BLOCK` conocidos. Si desactivarlo no rompiera nada, la suite no
 estaría midiendo nada.
 
 ## 3 · Cuando algo va mal

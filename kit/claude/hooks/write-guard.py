@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-write-guard.py — PreToolUse hook for Write and Edit tools.
+write-guard.py — PreToolUse hook for Write, Edit, MultiEdit and NotebookEdit.
 Scans content being written/edited for hardcoded secrets before the write
 completes. Advisory output via additionalContext; blocks on high-confidence hits.
 
@@ -15,6 +15,7 @@ SECRET_PATTERNS: list[tuple[str, str, bool]] = [
     # (pattern, label, should_block)
     (r"sk-ant-[a-zA-Z0-9\-_]{20,}", "Anthropic API key", True),
     (r"sk-[a-zA-Z0-9]{20,}", "OpenAI API key", True),
+    (r"sk-(?:proj|svcacct)-[a-zA-Z0-9\-_]{20,}", "OpenAI project/service-account key", True),
     (r"sk_live_[a-zA-Z0-9]{24}", "Stripe live secret key", True),
     (r"sk_test_[a-zA-Z0-9]{24}", "Stripe test secret key", True),
     (r"AKIA[0-9A-Z]{16}", "AWS Access Key ID", True),
@@ -36,6 +37,10 @@ SECRET_PATTERNS: list[tuple[str, str, bool]] = [
 
 SAFE_PATHS = {".env.example", ".env.template", ".env.sample", ".env.dist"}
 
+# Fragmentos que delatan un valor de ejemplo: en ficheros exentos (.env.example) solo
+# los secretos de alta confianza que NO los contienen bloquean.
+PLACEHOLDER = re.compile(r"(?i)x{4,}|changeme|your[-_]|<[^>]*>|example")
+
 COMPILED = [(re.compile(p), label, block) for p, label, block in SECRET_PATTERNS]
 
 
@@ -46,6 +51,11 @@ def get_content(data: dict) -> tuple[str, str]:
         return inp.get("content", ""), inp.get("file_path", "")
     if tool == "Edit":
         return inp.get("new_string", ""), inp.get("file_path", "")
+    if tool == "MultiEdit":
+        edits = inp.get("edits", [])
+        return "\n".join(e.get("new_string", "") for e in edits), inp.get("file_path", "")
+    if tool == "NotebookEdit":
+        return inp.get("new_source", ""), inp.get("notebook_path", "")
     return "", ""
 
 
@@ -54,10 +64,14 @@ def is_safe_path(path: str) -> bool:
     return name in SAFE_PATHS
 
 
-def scan(content: str) -> list[tuple[str, bool]]:
+def scan(content: str, safe: bool = False) -> list[tuple[str, bool]]:
     findings = []
     for compiled, label, block in COMPILED:
-        if compiled.search(content):
+        if safe:
+            # Fichero de ejemplo: solo alta confianza y sin pinta de placeholder.
+            if block and any(not PLACEHOLDER.search(m.group(0)) for m in compiled.finditer(content)):
+                findings.append((label, block))
+        elif compiled.search(content):
             findings.append((label, block))
     return findings
 
@@ -65,14 +79,17 @@ def scan(content: str) -> list[tuple[str, bool]]:
 def main() -> None:
     data = json.load(sys.stdin)
     tool = data.get("tool_name", "")
-    if tool not in ("Write", "Edit"):
+    if tool not in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
         sys.exit(0)
 
     content, path = get_content(data)
-    if not content or is_safe_path(path):
+    if not content:
         sys.exit(0)
 
-    findings = scan(content)
+    safe = is_safe_path(path)
+    findings = scan(content, safe)
+    if safe and not findings:
+        sys.exit(0)
     if not findings:
         if tool == "Write" and len(content.splitlines()) > 150 and not Path(path).exists():
             print(json.dumps({
@@ -114,7 +131,11 @@ def main() -> None:
         }))
 
 
+# Fail-closed solo aqui: un fallo del guard no puede dejar pasar una escritura con secretos.
+# smart_approve.py y stale-read-guard.py siguen fail-open por diseno (solo aconsejan).
 try:
     main()
-except Exception:
-    sys.exit(0)
+except Exception as exc:
+    print(f"WRITE-GUARD ERROR: no se pudo analizar la escritura ({type(exc).__name__}: {exc}); "
+          "se bloquea por seguridad (fail-closed).", file=sys.stderr)
+    sys.exit(2)
