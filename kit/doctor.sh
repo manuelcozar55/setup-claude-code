@@ -21,6 +21,11 @@ if [ -f "$CLAUDE_HOME/settings.json" ] && jq empty "$CLAUDE_HOME/settings.json" 
 else
   fail "settings.json ausente o inválido"
 fi
+# 1b. disableAllHooks: true apaga todos los hooks, guards incluidos, aunque cada fichero este en su
+# sitio: el resto de checks saldria en verde sobre un kit que no protege nada. install.sh lo respeta y avisa.
+if jq -e '.disableAllHooks == true' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1; then
+  fail "settings.json tiene disableAllHooks: true: no corre ningun hook, tampoco los guards. Quita la clave"
+fi
 
 # 2. hooks referenciados existen y son ejecutables
 if [ -f "$CLAUDE_HOME/settings.json" ]; then

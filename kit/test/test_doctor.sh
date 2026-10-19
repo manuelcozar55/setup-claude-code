@@ -162,4 +162,14 @@ printf '# mis cosas\n%s\n' '@AGENTS.md' > "$CLAUDE_HOME/CLAUDE.md"
 set +e; out="$(dr)"; set -e
 ck "$(echo "$out" | grep -c '^WARN .*@AGENTS.md')" "0" "doctor sin WARN si CLAUDE.md importa @AGENTS.md"
 
+# disableAllHooks: true apaga todos los hooks, guards incluidos, con cada fichero en su sitio: la fusion
+# de install.sh lo respeta (es tuyo) y avisa, y doctor no puede dar OK sobre eso.
+jq '.disableAllHooks = true' "$CLAUDE_HOME/settings.json" > "$tmp/s.json" && cp "$tmp/s.json" "$CLAUDE_HOME/settings.json"
+set +e; out="$(dr)"; rc=$?; set -e
+ck "$(echo "$out" | grep -c '^FAIL .*disableAllHooks')" "1" "doctor FAIL con disableAllHooks: true"
+ck "$rc" "1" "doctor sale 1 con disableAllHooks: true"
+jq '.disableAllHooks = false' "$CLAUDE_HOME/settings.json" > "$tmp/s.json" && cp "$tmp/s.json" "$CLAUDE_HOME/settings.json"
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c '^FAIL .*disableAllHooks')" "0" "disableAllHooks: false no es FAIL"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
