@@ -8,7 +8,10 @@
 # vacía. Camino caliente: corre tras cada herramienta.
 set -u
 IN=$(cat)
-{ read -r SID; read -r TP; read -r CWD; } < <(jq -r '.session_id // "", .transcript_path // "", .cwd // ""' <<<"$IN" 2>/dev/null)
+{ read -r SID; read -r TP; read -r CWD; read -r AID; } < <(jq -r '.session_id // "", .transcript_path // "", .cwd // "", .agent_id // ""' <<<"$IN" 2>/dev/null)
+# agent_id solo viene dentro de un subagente (code.claude.com/docs/en/hooks): el aviso es para el hilo
+# principal, que es quien escribe nucleo.md y cierra el turno; un Explore recibió «actualiza nucleo.md».
+[ -z "${AID:-}" ] || exit 0
 case "${SID:-}" in ''|*[!A-Za-z0-9_-]*) exit 0;; esac   # va a un nombre de fichero
 [ -f "${TP:-}" ] || exit 0
 # shellcheck source=SCRIPTDIR/lib/nucleo.sh
