@@ -17,6 +17,12 @@ ck "$([ -x "$CLAUDE_HOME/hooks/branch-guard.sh" ] && echo y)" "y" "hook ejecutab
 ck "$([ -f "$CLAUDE_HOME/sentinel/sentinel_preflight.py" ] && echo y)" "y" "instala sentinel"
 ck "$([ -f "$CLAUDE_HOME/hooks/lib/nucleo.sh" ] && echo y)" "y" "instala hooks/lib"
 ck "$([ -f "$CLAUDE_HOME/templates/nucleo.md" ] && echo y)" "y" "instala templates"
+ck "$([ -x "$CLAUDE_HOME/bin/handoff" ] && [ -x "$CLAUDE_HOME/bin/oraculo" ] && echo y)" "y" "instala bin/handoff y bin/oraculo ejecutables"
+ck "$(grep -c "ln -sf \"$CLAUDE_HOME/bin/handoff\" \"\$HOME/.local/bin/handoff\"" "$tmp/install.log")" "1" "imprime la orden de enlace de handoff a ~/.local/bin"
+ck "$(grep -c "ln -sf \"$CLAUDE_HOME/bin/oraculo\" \"\$HOME/.local/bin/oraculo\"" "$tmp/install.log")" "1" "imprime la orden de enlace de oraculo a ~/.local/bin"
+# En el plan diff-first los bin entran como cualquier otro fichero del kit (y con el modo ejecutable).
+set +e; MCHARNESS_OUT="$tmp/plan-bin" bash "$KIT/install.sh" --plan >"$tmp/plan.log" 2>&1; set -e
+ck "$([ -x "$tmp/plan-bin/bin/handoff" ] && grep -c 'bin/handoff' "$tmp/plan.log" | grep -qv '^0$' && echo y)" "y" "el plan diff-first incluye bin/handoff ejecutable"
 
 # Idempotencia + backup: modifica un fichero que el KIT posee, reinstala, debe backupear.
 # Se usa .gitleaks.toml y no CLAUDE.md: CLAUDE.md son TUS instrucciones y desde ahora no se
