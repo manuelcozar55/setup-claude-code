@@ -227,6 +227,14 @@ echo previo-CK >"$CK"
 { printf '%s\n' '{"type":"user","message":{"content":"MSG-UNO"}}' '{"type":"user","message":{"content":"MSG-DOS"}}'; printf '{"type":"user","message":{"cont'; } >"$TPC"
 jq -cn --arg c "$R" --arg t "$TPC" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: línea final truncada → escribe el checkpoint con los 2 mensajes válidos" "$(command grep -c 'MSG-UNO\|MSG-DOS' "$CK"),$(command grep -c previo-CK "$CK")" 2,0
+# Un registro JSON válido con message, payload o un elemento de content que no es objeto hacía abortar a jq
+# («Cannot index string») y se perdía el checkpoint entero, también lo válido que venía detrás.
+for raro in '{"type":"user","message":"x"}' '{"type":"event_msg","payload":"x"}' '{"type":"user","message":{"content":["x"]}}'; do
+  echo previo-CK >"$CK"
+  printf '%s\n' "$raro" '{"type":"user","message":{"content":"MSG-TRAS-RARO"}}' >"$TPC"
+  jq -cn --arg c "$R" --arg t "$TPC" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
+  ok "pre-compact: registro $raro → publica el checkpoint con el mensaje válido de después" "$(command grep -c MSG-TRAS-RARO "$CK"),$(command grep -c previo-CK "$CK")" 1,0
+done
 echo previo-CK >"$CK"; : >"$T/sin-leer.jsonl"; printf '%s\n' '{"type":"user","message":{"content":"X"}}' >"$T/sin-leer.jsonl"; chmod 000 "$T/sin-leer.jsonl"
 if [ ! -r "$T/sin-leer.jsonl" ]; then
   jq -cn --arg c "$R" --arg t "$T/sin-leer.jsonl" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
