@@ -9,6 +9,15 @@ etiquetado.
 
 ### Added
 
+- **Estado v3: núcleo y CLI.** `nucleo_raiz` ya no toma por proyecto un directorio sin git, `$HOME` ni `~/.claude`: imprime `$HOME` y sale con rc 1. `NUCLEO_TOPE` (6500) vive solo en `lib/nucleo.sh`. Una tarea = una sesión dueña (`.claude/estado/.dueno`, TTL 4 h, `NUCLEO_DUENO_TTL`): SessionStart la reclama o avisa a la ajena, y el nudge de contexto calla a quien no es dueña y al 70 % remite a `handoff`. La emisión sigue el orden D5, omite los `[x]` del Plan y deja `recortes.log`. Plantilla `nucleo.md` en orden D5, sin cifras, con correcciones fechadas, rangos de ficheros y `→ rc=N`.
+- **Nuevos CLIs `bin/oraculo` y `bin/handoff`** (bash + jq; `install.sh` los copia a `$CLAUDE_HOME/bin/` y imprime el enlace a `~/.local/bin`). `oraculo -- <cmd>` corre con `pipefail`, imprime las últimas 40 líneas y `rc=N`, y anota en `verificaciones.log`. `handoff --desde` valida el borrador contra la plantilla, conserva Objetivo, une las Invariantes por líneas, mueve los `[x]` a `diario.md` con comando y hash, pliega el rc, rota 3 copias y recorta al tope omitiendo secciones enteras; `--solo`, `--commit`, `--migrar`, `--estado`. Exit 0/2/3/4.
+- **cockpit 0.5.0**: `/handoff` y el handoff automático delegan la fusión en `~/.claude/bin/handoff --desde` (el fork solo redacta el borrador, con los campos de la decisión 13; borrador en fichero temporal 600). Exit 2/3/4 con mensajes claros y un reintento en el 4; sin binario, aviso con la orden de instalación y sin fusión de reserva. Fuera `mergeNucleo`, `keepCopies`, `excludeState` y la tabla de alias. Raíz según la decisión 6 (`$HOME`, `$HOME/.claude/**` y fuera de git no son proyecto). El dock muestra dueño y % del tope leyendo `handoff --estado`. Tests: 89 (antes 82); `test_mod_cockpit.sh` comprueba que no quedan funciones de fusión en TS.
+- La plantilla pública `CLAUDE.md` cita `oraculo -- <cmd>` (rc real), el cambio mínimo por parche y `handoff` como parada de fin de fase al 70 %; `deep-change` aclara que una rama nunca aísla configuración viva y que cada `[x]` cerrado va a diario con su comando y hash. `test_claude_md_template.sh` fija cada frase.
+- Nuevo `bash-write-guard.sh` (PreToolUse Bash, timeout 5): deniega secretos en heredoc, `>`, `>>`, `tee` y `sed -i`; salida en bash puro si el comando no escribe; 64 KB < 1 s.
+- Lista única de patrones de secreto en `hooks/lib/secret-patterns` (TSV), compartida con `write-guard.py` (que falla cerrado sin ella); test de paridad Python re / grep -E.
+- `block-dangerous-commands.sh`: ask para `gh pr|issue close|merge` y `sudo apt|apt-get|dnf|pip`; `--no-verify` sigue en deny.
+- Sentinel: `~/.aws/` protegido como directorio; `secrets.token_hex` pasa (fijado). El falso positivo de lectura de config no se reprodujo: sin cambio de lógica.
+- Nuevo `scripts/guards-cpu.sh` (p50/p95 de CPU de la cadena Bash): antes p95 205 ms, después 222 ms (p50 176 -> 163).
 - **Corpus adversario de E5 como suite: `test_guards_corpus.sh`.** El corpus de la campaña
   E5 (`fixtures/guards-corpus.tsv`, una columna de esperado y otra del guard que respondió) tiene
   715 filas; 119 se ejecutan contra los cuatro guards bash en un repo temporal en rama de feature
@@ -245,6 +254,7 @@ etiquetado.
 
 ### Removed
 
+- Eliminado `smart_approve.py` (fallaba abierto sin settings.json); filas del corpus reatribuidas; `STUB_BLOCK_CASES` sigue en 28; deny del kit intactos.
 - **Headroom se retira del kit.** Medido sobre 12 322 peticiones reales: ahorro propio
   0,2-0,6 % del coste, latencia añadida p50 40 ms, y el 89 % del «ahorro» que enseñaba su
   medidor era la búsqueda nativa de herramientas de Claude Code. Salen `install.sh
