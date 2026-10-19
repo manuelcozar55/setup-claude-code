@@ -129,7 +129,7 @@ find /* -delete
 find /etc -delete
 find /var -delete
 find /home -delete
-find /home/u/docs -delete
+find /home/usuario/docs -delete
 find /mnt/c -delete
 sudo find / -delete
 bash -c "find . -delete"
