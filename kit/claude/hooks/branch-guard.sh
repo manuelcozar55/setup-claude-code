@@ -65,6 +65,7 @@ for seg in "${CMDN_SEGS[@]}"; do
         --repo=*) repo=1 ;;
         -o|--push-option|--receive-pack|--exec) skip=1 ;;
         --tags) tags=1 ;;
+        --all|--branches|--mirror) block "$a (empuja todas las ramas, las protegidas incluidas)" ;;
       esac
       continue
     fi

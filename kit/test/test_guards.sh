@@ -545,6 +545,12 @@ expect "branch-guard (E7.3, main activa): --repo=origin sin refspec denegado" "$
 for c in 'git push --repo=origin feature' 'git push --repo origin feature' 'git push --repo=origin'; do
   expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
 done
+# Revision E7.3 (CR-8): --all, --branches y --mirror empujan todas las ramas, las protegidas
+# incluidas, desde cualquier rama activa.
+for c in 'git push --all origin' 'git push origin --all' 'git push --branches origin' 'git push --mirror' 'git push --mirror origin'; do
+  expect "branch-guard (E7.3, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+expect "branch-guard (E7.3, feature activa): --all-ish en un nombre de rama NO denegado" "$(run_bg "$BR_FEAT" 'git push origin all')" ALLOW
 rm -rf "$BR_MAIN" "$BR_FEAT" "$BR_NONE"
 
 # Las TRES grafias del borrado de una rama remota. Solo `--delete` estaba cubierta: contra rama
