@@ -27,6 +27,9 @@ export type TaskRow = { id: string; subject: string; status: 'pending' | 'in_pro
 
 export type Handoff = { phase: 'idle' | 'confirm' | 'working' | 'done' | 'error'; msg?: string }
 
+// `handoff --estado`: the share of the cap and who owns the state (null: nobody, or no project).
+export type Estado = { pct: number; bytes: number; tope: number; dueno: { sesion: string; vigente: boolean; isMine: boolean } | null }
+
 export type Turn = { isRunning: boolean; startedAt: number; activity: string; mission: string }
 
 declare module 'claude-code' {
@@ -43,6 +46,7 @@ declare module 'claude-code' {
       handoff: Handoff
       turn: Turn
       now: number
+      estado: Estado | null
       isMissionOpen: boolean
       isAutoQueued: boolean
       isVetoed: boolean
