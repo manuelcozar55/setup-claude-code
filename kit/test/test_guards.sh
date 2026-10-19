@@ -1135,6 +1135,78 @@ if [ "$wg_rc" -eq 2 ] && [ -n "$wg_err" ]; then pass=$((pass+1)); else fail=$((f
 wg_err=$(printf '{"tool_name":"Write","tool_input":{"content":7,"file_path":"/tmp/x"}}' | "$PY" "$KIT/claude/hooks/write-guard.py" 2>&1 >/dev/null); wg_rc=$?
 if [ "$wg_rc" -eq 2 ] && [ -n "$wg_err" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: write-guard excepcion interna: rc=$wg_rc (esperado 2 con stderr)"; fi
 
+# 17) Lista unica de patrones de secreto (W2, decision 7): write-guard.py y bash-write-guard.sh la leen
+# de lib/secret-patterns (TSV etiqueta, accion, ERE). Es un subconjunto ERE a proposito: lo que Python
+# `re` y `grep -E` interpretan igual. Los (?i) y el lookahead (Twilio, asignacion generica) no caben en
+# ERE y se quedan en write-guard.py, declarados alli. Esta paridad es lo que impide que las dos copias
+# diverjan sin que nadie lo vea: cada muestra tiene que dar el MISMO conjunto de etiquetas en los dos.
+SP="$KIT/claude/hooks/lib/secret-patterns"
+sp_samples=$(mktemp)
+{
+  wg_k sk-ant-; echo; wg_k sk-; echo; wg_k sk-proj-; echo; wg_k sk-svcacct-; echo
+  printf 'sk_li''ve_%s\n' abcdefghijklmnopqrstuvwx
+  printf 'sk_te''st_%s\n' abcdefghijklmnopqrstuvwx
+  echo "$wg_aws"
+  printf 'AI''za%s\n' abcdefghijklmnopqrstuvwxyz0123456789A
+  printf 'gh''p_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  printf 'gh''o_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  printf 'github_''pat_%s\n' "$(printf 'a%.0s' $(seq 1 82))"
+  printf 'xox''b-123-abcDEF-ghi\n'
+  printf 'xox''p-123-abcDEF-ghi\n'
+  echo "$wg_pem"; echo "-----BEGIN RSA PRIV""ATE KEY-----"
+  printf 'np''m_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  printf 'S''G.%s.%s\n' abcdefghijklmnopqrstuv abcdefghijklmnopqrstuvwxyz0123456789abcdefg
+  printf 'da''pi%s\n' abcdefghijklmnopqrstuvwxyz012345
+  printf 'DefaultEndpointsProtocol=https;''AccountName=x\n'
+  printf 'ey''Jhbgcioijiuzi1.ey''Jzdwiioixmjm0.sflkxwrjsmeka4wo\n'
+  echo 'sk-corto'; echo 'texto normal con sk y AKIA sueltos'; echo 'secrets.token_hex(16)'
+} > "$sp_samples"
+sp_py=$("$PY" - "$SP" "$sp_samples" <<'PYSP'
+import re, sys
+try:
+    rows = [l.rstrip("\n").split("\t") for l in open(sys.argv[1]) if l.strip() and not l.startswith("#")]
+except OSError:
+    rows = []
+for i, line in enumerate(open(sys.argv[2]).read().splitlines()):
+    for label, action, ere in rows:
+        if re.search(ere, line):
+            print(i, label)
+PYSP
+)
+sp_grep=""
+if [ -f "$SP" ]; then
+  while IFS=$'\t' read -r sp_label sp_action sp_ere; do
+    case $sp_label in ''|'#'*) continue ;; esac
+    sp_i=0
+    while IFS= read -r sp_line; do
+      printf '%s' "$sp_line" | grep -qE -e "$sp_ere" && sp_grep+="$sp_i $sp_label"$'\n'
+      sp_i=$((sp_i+1))
+    done < "$sp_samples"
+  done < "$SP"
+fi
+sp_n=$(printf '%s' "$sp_py" | grep -c .)
+if [ -f "$SP" ] && [ "$sp_n" -ge 20 ] && [ "$(printf '%s\n' "$sp_py" | sort)" = "$(printf '%s' "$sp_grep" | sort)" ]; then
+  pass=$((pass+1))
+else
+  fail=$((fail+1)); echo "FAIL: secret-patterns: paridad Python re / grep -E ($sp_n coincidencias; falta el fichero o divergen)"
+fi
+rm -f "$sp_samples"
+# Un patron que grep -E no compila lo convertiria en un no-op silencioso en el guard de bash.
+sp_bad=0
+if [ -f "$SP" ]; then
+  while IFS=$'\t' read -r sp_label sp_action sp_ere; do
+    case $sp_label in ''|'#'*) continue ;; esac
+    case $sp_action in block|advise) ;; *) sp_bad=1 ;; esac
+    printf 'x' | grep -qE -e "$sp_ere"; [ $? -ge 2 ] && sp_bad=1
+  done < "$SP"
+fi
+if [ -f "$SP" ] && [ "$sp_bad" -eq 0 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: secret-patterns: accion invalida o ERE que grep no compila"; fi
+# write-guard.py carga la lista; sin ella falla cerrado en vez de dejar pasar escrituras sin escanear.
+WG_ALONE=$(mktemp -d); cp "$KIT/claude/hooks/write-guard.py" "$WG_ALONE/"
+wg_err=$(wg_json Write /tmp/x.py "texto normal" | "$PY" "$WG_ALONE/write-guard.py" 2>&1 >/dev/null); wg_rc=$?
+if [ "$wg_rc" -eq 2 ] && [ -n "$wg_err" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: write-guard sin lib/secret-patterns: rc=$wg_rc (esperado 2 con stderr)"; fi
+rm -r -- "$WG_ALONE"
+
 rm -rf "$SG_DIR"
 rm -rf "$GUARDS_TEST_HOME" "$FIELDS_HOME"
 echo "PASS=$pass FAIL=$fail"; [ $fail -eq 0 ]
