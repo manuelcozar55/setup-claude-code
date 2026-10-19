@@ -119,6 +119,16 @@ expect "from secrets import permitido"           "$(run_sentinel "python3 -c 'fr
 expect "secrets.yaml como fichero denegado"      "$(run_sentinel 'cat secrets.yaml')"                      "$IOCS_WANT"
 expect "directorio de AWS en el home denegado"        "$(run_sentinel 'ls ~/.aws/')"                            "$IOCS_WANT"
 expect "sso/cache de AWS en el home denegado"         "$(run_sentinel 'cat ~/.aws/sso/cache/x.json')"           "$IOCS_WANT"
+# R2 SEC-3: .aws/credentials tambien en ruta relativa y con el nombre entrecomillado (como .ssh).
+expect "aws: credentials en ruta relativa denegado"   "$(run_sentinel 'cd ~ && cat .aws/credentials')"        "$IOCS_WANT"
+expect "aws: config en ruta relativa denegado"        "$(run_sentinel 'cd ~ && cat .aws/config')"             "$IOCS_WANT"
+expect "aws: nombre entrecomillado denegado"          "$(run_sentinel 'cat ~/".aws"/credentials')"            "$IOCS_WANT"
+expect "aws: Read relativo de .aws/credentials denegado" "$(run_sentinel_read .aws/credentials)"              "$IOCS_WANT"
+# R2 SEC-4: secrets.* con mas extensiones de datos; `secrets` sin extension y el modulo Python siguen pasando.
+for sx in toml ini conf cfg tfvars; do
+  expect "secrets.$sx como fichero denegado"          "$(run_sentinel "cat secrets.$sx")"                     "$IOCS_WANT"
+done
+expect "secrets sin extension permitido"              "$(run_sentinel 'ls secrets')"                          ALLOW
 # Lectura de la config del propio harness: Sentinel no la deniega (el falso positivo no se reprodujo en
 # el kit ni en el Sentinel vivo; la proteccion de ESCRIBIR esos ficheros es de permissions.deny y de los
 # guards de Bash). Se fija aqui para que una clasificacion de verbos futura no la rompa.
@@ -1143,6 +1153,9 @@ wg_expect "sk-svcacct- en Write"       BLOCK Write /tmp/x.py "KEY = $(wg_k sk-sv
 wg_expect "sk-proj- en Edit"           BLOCK Edit /tmp/x.py "$(wg_k sk-proj-)"
 wg_expect "sk-proj- en MultiEdit"      BLOCK MultiEdit /tmp/x.py "$(wg_k sk-proj-)"
 wg_expect "sk-proj- en NotebookEdit"   BLOCK NotebookEdit /tmp/x.ipynb "$(wg_k sk-proj-)"
+wg_expect "R2: ghs_ en Write"          BLOCK Write /tmp/x.py "T = $(printf 'gh''s_%s' abcdefghijklmnopqrstuvwxyz0123456789)"
+wg_expect "R2: ghu_ en Write"          BLOCK Write /tmp/x.py "T = $(printf 'gh''u_%s' abcdefghijklmnopqrstuvwxyz0123456789)"
+wg_expect "R2: PEM cifrada en Write"   BLOCK Write /tmp/k.pem "-----BEGIN ENCRYPTED PRIV""ATE KEY-----"
 wg_expect "MultiEdit sin secretos"     ALLOW MultiEdit /tmp/x.py "texto normal"
 wg_expect "NotebookEdit sin secretos"  ALLOW NotebookEdit /tmp/x.ipynb "print(1)"
 wg_expect ".env.example con clave real" BLOCK Write /tmp/.env.example "OPENAI_API_KEY=$(wg_k sk-proj-)"
@@ -1173,6 +1186,9 @@ sp_samples=$(mktemp)
   printf 'AI''za%s\n' abcdefghijklmnopqrstuvwxyz0123456789A
   printf 'gh''p_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
   printf 'gh''o_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  printf 'gh''s_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  printf 'gh''u_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  echo "-----BEGIN ENCRYPTED PRIV""ATE KEY-----"
   printf 'github_''pat_%s\n' "$(printf 'a%.0s' $(seq 1 82))"
   printf 'xox''b-123-abcDEF-ghi\n'
   printf 'xox''p-123-abcDEF-ghi\n'
@@ -1251,6 +1267,12 @@ $wg_pem
 EOF")" BLOCK
 expect "bash-write: > sin secreto permitido"           "$(run_bwg 'echo hola > notas.txt')" ALLOW
 expect "bash-write: sed -i sin secreto permitido"      "$(run_bwg "sed -i 's/a/b/' notas.txt")" ALLOW
+# R2 SEC-2: `-i` detras de un script con ; | & (tambien entre comillas) tambien escribe.
+expect "bash-write: sed -E con | y -i detras denegado"  "$(run_bwg "sed -E 's/(a|b)/$bwg_key/' -i f")" BLOCK
+expect "bash-write: sed con ; y -i detras denegado"     "$(run_bwg "sed 's/a/$bwg_key/;s/b/c/' -i f")" BLOCK
+expect "bash-write: sed con & y -i detras denegado"     "$(run_bwg "sed 's&a&$bwg_key&' -i f")" BLOCK
+expect "bash-write: sed -n sin -i con clave permitido"  "$(run_bwg "sed -n 's/(a|b)/$bwg_key/p' f")" ALLOW
+expect "bash-write: sed -i detras sin clave permitido"  "$(run_bwg "sed -E 's/(a|b)/x/' -i f")" ALLOW
 expect "bash-write: leer con secreto en el literal permitido" "$(run_bwg "grep -rn $bwg_key src/")" ALLOW
 expect "bash-write: JWT (aviso, no bloqueo) permitido" "$(run_bwg "echo ey""Jhbgcioijiuzi1.ey""Jzdwiioixmjm0.sflkxwrjsmeka4wo > t.txt")" ALLOW
 # Salida rapida en bash puro: sin `>`, `<<`, `tee` ni `sed` no se lanza ni jq. Con el PATH vacio solo
