@@ -46,6 +46,19 @@ ck "$(has "$A" 'recuerda <términos>')" "y" "AGENTS.md ensena recuerda"
 ck "$(grep -liE 'headroom|\[1m\]|ventana de 1M|ccstatusline|/home/|~/work|~/repos' "$C" "$A" | wc -l | tr -d ' ')" "0" \
   "sin Headroom, ventana 1M, ccstatusline ni rutas privadas"
 
+# v3: las reglas que la auditoria encontro mentirosas (oraculo, parche, parada de fase).
+D="$KIT/claude/skills/deep-change/SKILL.md"
+# shellcheck disable=SC2016 # los backticks son los del markdown, literales
+ck "$(grep -cF '`oraculo -- <cmd>`' "$C")" "1" "CLAUDE.md cita oraculo una vez, con su forma"
+# shellcheck disable=SC2016
+ck "$(grep -cF '`handoff`' "$C")" "1" "CLAUDE.md cita handoff una vez"
+ck "$(has "$C" 'Cambio mínimo por parche; nunca reescribir un fichero entero')" "y" "parche minimo en vez de reescribir"
+ck "$(has "$C" 'Fin de fase = parada válida')" "y" "fin de fase es parada valida"
+ck "$(has "$C" 'autocompact es solo el airbag')" "y" "autocompact queda de airbag"
+ck "$(has "$D" 'una rama nunca aísla configuración viva')" "y" "deep-change: una rama no aisla config viva"
+# shellcheck disable=SC2016
+ck "$(has "$D" 'cada `[x]` cerrado va a diario con su comando y hash')" "y" "deep-change: [x] cerrado va a diario con comando y hash"
+
 # Falsabilidad del comprobador de rutas: una ruta inventada de cada forma debe salir.
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 printf '@NO-EXISTE.md\nlee ~/.claude/skills/no-existe/SKILL.md\n' > "$T/roto.md"

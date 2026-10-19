@@ -56,8 +56,9 @@ user's package-manager, browser and approval preferences over generic skill defa
    problem first, then prove the fix. Run the real tests / drive the real path, on what CI
    will see (untracked files included). **Evidence before "done"**: the oracle's exit code,
    not its last lines.
-6. **Contain risk.** Build and validate in an **isolated copy** (a `/final`-style folder, a
-   branch, a worktree). Applying to production / live config / shared state is a **separate,
+6. **Contain risk.** Build and validate in an **isolated copy** (a `/final`-style folder or a
+   worktree; a branch alone does not count: una rama nunca aísla configuración viva, because live config sits
+   outside the checkout). Applying to production / live config / shared state is a **separate,
    authorized step**. An existing explicit instruction to apply the reviewed changes satisfies
    this gate; do not ask again. Back up before overwriting anything you did not create.
 7. **Be honest about cost/benefit.** Rate proposals on real axes (benefit · risk/availability
@@ -66,7 +67,8 @@ user's package-manager, browser and approval preferences over generic skill defa
 ## Two non-negotiable habits (the part tooling won't do for you)
 
 **Change record = commits + nucleo, nothing else.** Each commit says what and why; each `[x]`
-in nucleo's Plan names the command that verified it; the PR description summarises both. No
+in nucleo's Plan names the command that verified it, and cada `[x]` cerrado va a diario con su comando y hash
+(`handoff` moves it); the PR description summarises both. No
 separate `*-cambios.md`: two sessions in a row left it empty (measured 2026-10-14). The Stop
 hook flags a commit of this session that leaves nucleo stale. nucleo's `## Ficheros tocados`
 lists every file you changed, and for files outside git (live config) its backup path.
