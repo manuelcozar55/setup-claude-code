@@ -117,8 +117,8 @@ expect "jq test(.key|.pem) permitido"            "$(run_sentinel "jq -r '.[] | s
 expect "secrets.token_hex de Python permitido"   "$(run_sentinel "python3 -c 'import secrets; print(secrets.token_hex(16))'")" ALLOW
 expect "from secrets import permitido"           "$(run_sentinel "python3 -c 'from secrets import token_urlsafe'")" ALLOW
 expect "secrets.yaml como fichero denegado"      "$(run_sentinel 'cat secrets.yaml')"                      "$IOCS_WANT"
-expect "~/.aws/ como directorio denegado"        "$(run_sentinel 'ls ~/.aws/')"                            "$IOCS_WANT"
-expect "~/.aws/sso/cache denegado"               "$(run_sentinel 'cat ~/.aws/sso/cache/x.json')"           "$IOCS_WANT"
+expect "directorio de AWS en el home denegado"        "$(run_sentinel 'ls ~/.aws/')"                            "$IOCS_WANT"
+expect "sso/cache de AWS en el home denegado"         "$(run_sentinel 'cat ~/.aws/sso/cache/x.json')"           "$IOCS_WANT"
 # Lectura de la config del propio harness: Sentinel no la deniega (el falso positivo no se reprodujo en
 # el kit ni en el Sentinel vivo; la proteccion de ESCRIBIR esos ficheros es de permissions.deny y de los
 # guards de Bash). Se fija aqui para que una clasificacion de verbos futura no la rompa.
