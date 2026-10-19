@@ -230,6 +230,11 @@ etiquetado.
 
 ### Fixed
 
+- **`branch-guard.sh`: las redirecciones no cuentan como operandos del push (E7.3 CR-2).** `git push origin 2>&1`, `... 2>&1 | tail -3` y `git push -u origin >/dev/null` con main activa daban rc 0, porque `2>&1` pasaba a ser el destino. Se descartan los operandos `^[0-9]*[<>]` y `^&>`. Límite: una redirección con espacio (`> fichero`) deja el nombre del fichero como operando.
+- **`branch-guard.sh`: con `--repo`/`--repo=` todos los posicionales son refspecs (E7.3 CR-3).** El guard tomaba el primero por remoto, así que `git push --repo=origin main` desde una feature pasaba (3576d87 lo bloqueaba).
+
+- **cockpit 0.4.1: el handoff rechaza también un `.claude` enlazado y ya no confunde una sección final sin salto con un cuerpo.** `refuseLinks` solo miraba `estado/`, `nucleo.md` y `nucleo.prev-*`; con `.claude -> otro sitio` el enlace es el padre y `runHandoff` leía y escribía a través de él, justo lo que los hooks del kit (`nucleo_enlazado`) ya rechazan. Ahora lista `.claude` desde su padre y aborta con aviso. `bodyOf` devolvía la cabecera entera si no había `\n` tras ella (`## Objetivo` como última línea), así que `missingFixed` la daba por rellena y nunca se pedía ni se rellenaba; ahora devuelve vacío, y el relleno de `mergeNucleo` cubre ese caso. Tests: `handoff.test.tsx` (68 pass). Límite: solo se comprueba `.claude`, no ancestros más arriba.
+
 - **`install.sh --plan` ya no puede borrar tu instalación (E6 #1, crítico).** El modo plan
   hacía un borrado recursivo forzado de `MCHARNESS_OUT` (por defecto `$PWD/.mcharness-out`) sin
   comprobar nada: apuntarlo a `CLAUDE_HOME`, a un padre suyo o a un directorio cualquiera
@@ -485,6 +490,10 @@ Subsección: Fixed (cockpit 0.4.1)
   había que demostrar no es que sepa omitir, sino que omitir no le quitó el juicio.
 
 ### Security
+
+- **`branch-guard.sh` vuelve a ver el push que va dentro de `bash -c`, `sh -c`, `eval`, `ssh host`, `xargs` y `find -exec` (E7.3 CR-1).** El guard de la normalización (PR2) solo inspeccionaba segmentos cuyo ejecutable era `git`, y el guard de texto de 3576d87 bloqueaba esas grafias (rc 2): regresión, rc 0 con la rama protegida como destino. Ahora, si el ejecutable no es `git` pero el segmento nombra `git`, la cadena interior se vuelve a normalizar y se analiza con la misma lógica (hasta 3 niveles); `echo`, `printf`, `grep` y similares quedan fuera para que la prosa con un push dentro no dé falsos positivos. Latencia: 24 ms por invocación (25 antes; presupuesto 150). Límite: la cadena construida con variables sigue fuera de alcance.
+- **`branch-guard.sh` bloquea `--all`, `--branches` y `--mirror` (E7.3 CR-8).** Empujan todas las ramas, las protegidas incluidas, y se trataban como opciones sin destino. Límite declarado en `docs/05-security.md`: con `push.default=upstream` y un upstream de nombre distinto al de la rama local, el `git push` a secas no se resuelve (el guard no lee la configuración de git).
+- **`destructive-guard.sh`: un `..` tras el directorio seguro ya no exime el `rm -rf` (E7.3 CR-4).** `rm -rf ~/dist/../Documents` y `rm -rf ~/node_modules/../<claves>` salían con rc 0 porque la exención miraba `/dir/` como subcadena. Se cierra en el check 5 y en el check 1 (texto, anterior a E7: mismo agujero, arreglo local de una condición). `rm -rf dist/..` pasa a ser sensible. `rm -rf ../node_modules` sigue permitido (el `..` va antes, no después).
 
 - **Los cuatro guards bash leen el comando normalizado, no el texto crudo (E6 4, 5, 6, 9).** Cada
   guard comparaba el literal con su propia regex y fallaba por separado ante las mismas grafías:
