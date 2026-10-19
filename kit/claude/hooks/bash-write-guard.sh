@@ -43,7 +43,11 @@ COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/nul
 WRITES=0
 [[ $COMMAND == *'>'* || $COMMAND == *'<<'* ]] && WRITES=1
 [[ $COMMAND =~ (^|[^[:alnum:]_])tee([^[:alnum:]_]|$) ]] && WRITES=1
-[[ $COMMAND =~ (^|[^[:alnum:]_])sed[[:space:]]([^;&|]*[[:space:]])?(-[a-zA-Z]*i|--in-place) ]] && WRITES=1
+if [[ $COMMAND =~ (^|[^[:alnum:]_])sed[[:space:]] ]]; then
+  # Dos pruebas separadas a proposito: un `;`, `|` o `&` dentro del script (o entre comillas) no deja
+  # que una sola regex llegue al `-i` que va detras. Un falso positivo solo cuesta un grep.
+  [[ $COMMAND =~ [[:space:]]-[a-zA-Z]*i || $COMMAND == *--in-place* ]] && WRITES=1
+fi
 (( WRITES )) || exit 0
 
 PATTERNS="$(dirname "${BASH_SOURCE[0]}")/lib/secret-patterns"

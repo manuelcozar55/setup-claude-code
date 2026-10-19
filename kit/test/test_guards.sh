@@ -1251,6 +1251,12 @@ $wg_pem
 EOF")" BLOCK
 expect "bash-write: > sin secreto permitido"           "$(run_bwg 'echo hola > notas.txt')" ALLOW
 expect "bash-write: sed -i sin secreto permitido"      "$(run_bwg "sed -i 's/a/b/' notas.txt")" ALLOW
+# R2 SEC-2: `-i` detras de un script con ; | & (tambien entre comillas) tambien escribe.
+expect "bash-write: sed -E con | y -i detras denegado"  "$(run_bwg "sed -E 's/(a|b)/$bwg_key/' -i f")" BLOCK
+expect "bash-write: sed con ; y -i detras denegado"     "$(run_bwg "sed 's/a/$bwg_key/;s/b/c/' -i f")" BLOCK
+expect "bash-write: sed con & y -i detras denegado"     "$(run_bwg "sed 's&a&$bwg_key&' -i f")" BLOCK
+expect "bash-write: sed -n sin -i con clave permitido"  "$(run_bwg "sed -n 's/(a|b)/$bwg_key/p' f")" ALLOW
+expect "bash-write: sed -i detras sin clave permitido"  "$(run_bwg "sed -E 's/(a|b)/x/' -i f")" ALLOW
 expect "bash-write: leer con secreto en el literal permitido" "$(run_bwg "grep -rn $bwg_key src/")" ALLOW
 expect "bash-write: JWT (aviso, no bloqueo) permitido" "$(run_bwg "echo ey""Jhbgcioijiuzi1.ey""Jzdwiioixmjm0.sflkxwrjsmeka4wo > t.txt")" ALLOW
 # Salida rapida en bash puro: sin `>`, `<<`, `tee` ni `sed` no se lanza ni jq. Con el PATH vacio solo
