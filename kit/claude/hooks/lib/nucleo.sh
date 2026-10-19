@@ -4,14 +4,18 @@
 # o dentro de .claude/ salía un nucleo anidado o ninguno. Y la inyección cortaba por bytes un fichero
 # convertido en diario: por encima de 10 000 chars el harness manda la salida a fichero.
 
-# nucleo_raiz <cwd>: raíz del proyecto dueño de <raíz>/.claude/estado/nucleo.md. Toplevel git de
-# CLAUDE_PROJECT_DIR (o del cwd); sin git, ese mismo directorio. Lo que cae dentro de $HOME/.claude sube
-# a $HOME: desde $HOME/.claude/estado el nucleo es $HOME/.claude/estado/nucleo.md, no uno anidado. Solo
-# ese: un worktree de `claude --worktree` vive en <repo>/.claude/worktrees/<rama> y es su propia raíz.
+# Tope único (bytes) de lo que se inyecta del nucleo, y de lo que `handoff` deja escrito. El único sitio con la cifra.
+NUCLEO_TOPE=${NUCLEO_TOPE:-6500}
+
+# nucleo_raiz <cwd>: raíz del proyecto dueño de <raíz>/.claude/estado/nucleo.md = toplevel git de
+# CLAUDE_PROJECT_DIR (o del cwd), rc 0. Sin proyecto —un directorio sin git, $HOME o lo que cuelga de
+# $HOME/.claude (que es un repo git, pero de configuración)— imprime $HOME y sale con rc 1: es el valor que
+# los hooks ya leen como «sin proyecto» (índice de tareas, nada de nucleo propio). Un worktree de
+# `claude --worktree` vive en <repo>/.claude/worktrees/<rama> y es su propia raíz.
 nucleo_raiz() {
   local base=${CLAUDE_PROJECT_DIR:-$1} r
-  r=$(git -C "$base" rev-parse --show-toplevel 2>/dev/null) || r=$base
-  case $r in "$HOME/.claude" | "$HOME/.claude/"*) r=$HOME ;; esac
+  r=$(git -C "$base" rev-parse --show-toplevel 2>/dev/null) || r=$HOME
+  case $r in "$HOME" | "$HOME/.claude" | "$HOME/.claude/"*) printf '%s\n' "$HOME"; return 1 ;; esac
   printf '%s\n' "$r"
 }
 
@@ -215,8 +219,8 @@ nucleo_emitir() {
   [ -f "$1" ] || return 0
   local kb=$(( ($(wc -c <"$1") + 1023) / 1024 )) rs
   # Dos pasadas: la primera mide lo que ocupan las reservadas (no depende del tope); la segunda reparte el resto.
-  rs=$(_nucleo_emitir_awk "$1" "$kb" 6500 medir)
-  _nucleo_emitir_awk "$1" "$kb" "$(( 6500 - ${rs:-0} ))" | sed 's|</|<\\/|g'
+  rs=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" medir)
+  _nucleo_emitir_awk "$1" "$kb" "$(( NUCLEO_TOPE - ${rs:-0} ))" | sed 's|</|<\\/|g'
 }
 
 # _nucleo_emitir_awk <fichero> <kb> <tope> [medir]: la emisión; con «medir», solo los bytes de las reservadas.

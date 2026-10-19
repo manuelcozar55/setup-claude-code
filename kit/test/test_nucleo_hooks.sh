@@ -29,6 +29,8 @@ NUC=$R/.claude/estado/nucleo.md
     for _ in $(seq 1 259); do echo "línea de diario $i con texto de relleno para engordar el fichero hasta 78 KB"; done
   done; } >"$NUC"
 echo 'CAMBIOS-MARCA' >"$R/registro-cambios.md"
+# Un proyecto sin nucleo todavía (decisión 6: sin git no hay proyecto, y los casos «sin nucleo» lo necesitan).
+mkdir -p "$T/sin-nucleo"; git -C "$T/sin-nucleo" init -q
 # Transcript: un assistant con 120 000 tokens (72 % del airbag de 167 000) y un mensaje humano.
 TP=$T/t.jsonl
 { jq -cn '{type:"user",message:{content:"MENSAJE-HUMANO"}}'
@@ -58,7 +60,7 @@ ok "compact: línea de datos antes de cada envoltorio" "$(command grep -B1 '^<nu
 ok "compact: Paso actual vivo" "$(command grep -c 'PASO-VIVO' <<<"$C")" 1
 ok "compact: checkpoint recortado a 1 500" "$(command grep -c 'COLA-CHECKPOINT' <<<"$C")" 0
 ok "compact: sin *-cambios.md" "$(command grep -c 'CAMBIOS-MARCA' <<<"$C")" 0
-ok "compact: sin nucleo pide crearlo con la plantilla" "$(ev "$T" s9 | bash "$H/session-start-compact.sh" | ctx | command grep -c 'templates/nucleo.md')" 1
+ok "compact: sin nucleo pide crearlo con la plantilla" "$(ev "$T/sin-nucleo" s9 | bash "$H/session-start-compact.sh" | ctx | command grep -c 'templates/nucleo.md')" 1
 
 # nucleo.md es del repo (clonado o no): sus «Comandos de verificación» y su «Siguiente acción» no se
 # ejecutan solos. Con un allow amplio, un repo hostil corría su oráculo al arrancar sin pregunta.

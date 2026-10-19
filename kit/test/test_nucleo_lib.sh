@@ -17,6 +17,19 @@ ok "subdirectorio de un repo → raíz del repo" "$(nuc "$T/repo/a/b")" "$T/repo
 ok "cwd \$HOME/.claude/estado → no anidado" "$(nuc "$HOME/.claude/estado")" "$HOME/.claude/estado/nucleo.md"
 ok "cwd \$HOME/.claude → no anidado" "$(nuc "$HOME/.claude")" "$HOME/.claude/estado/nucleo.md"
 ok "CLAUDE_PROJECT_DIR manda sobre el cwd" "$(CLAUDE_PROJECT_DIR=$T/repo/a nucleo_raiz "$HOME")" "$T/repo"
+# Decisión 6: $HOME, $HOME/.claude/** y un directorio sin git no son proyecto. Salen con rc 1 y la raíz $HOME,
+# que es lo que los hooks ya leen como «sin proyecto»; un repo (también bajo ~) sigue siendo su propia raíz.
+mkdir -p "$T/sin-git/x" "$HOME/work/r6"; git -C "$HOME/work/r6" init -q
+ok "sin proyecto: directorio sin git → \$HOME y rc 1" "$(nucleo_raiz "$T/sin-git/x"; echo "rc=$?")" "$HOME
+rc=1"
+ok "sin proyecto: \$HOME → rc 1" "$(nucleo_raiz "$HOME" >/dev/null; echo "rc=$?")" "rc=1"
+ok "sin proyecto: \$HOME/.claude/estado → \$HOME y rc 1" "$(nucleo_raiz "$HOME/.claude/estado"; echo "rc=$?")" "$HOME
+rc=1"
+ok "proyecto: repo bajo \$HOME → su raíz y rc 0" "$(nucleo_raiz "$HOME/work/r6"; echo "rc=$?")" "$HOME/work/r6
+rc=0"
+# Tope único: el literal solo vive en la lib; los demás lo leen de NUCLEO_TOPE.
+ok "tope único: NUCLEO_TOPE=6500 en la lib" "$NUCLEO_TOPE" 6500
+ok "tope único: el literal 6500 no está en otro hook ni CLI" "$(command grep -rlE '6 ?500' "$(dirname "$L")/.." "$(dirname "$L")/../../bin" 2>/dev/null | command grep -vc '/lib/nucleo.sh$')" 0
 
 # Un nucleo convertido en diario: 4 cabeceras «TAREA ACTUAL», secciones repetidas, ~78 KB.
 G=$T/grande.md
