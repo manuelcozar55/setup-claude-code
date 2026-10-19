@@ -1,0 +1,347 @@
+#!/usr/bin/env bash
+# handoff — el estado de un proyecto (.claude/estado/nucleo.md) entre sesiones. Válido en Claude Code, Codex y
+# opencode. El modelo redacta un borrador; este CLI decide: valida las cabeceras contra la plantilla, fusiona sin
+# tocar Objetivo ni Invariantes, mueve los pasos [x] a diario.md, pliega el rc de `oraculo`, rota copias, recorta
+# al tope (NUCLEO_TOPE, de la lib) y libera al dueño. Por qué fuera del modelo: reescribir el estado entero cada
+# vez es lo que pierde detalle, y el tope y la forma no pueden depender de que el modelo se acuerde.
+set -euo pipefail
+
+uso() {
+  cat <<'EOF'
+uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
+     handoff --migrar DIR
+     handoff --estado [--raiz DIR]
+--desde   fusiona el borrador (secciones «## » de la plantilla; «Pendientes y riesgos» vale por «Pendientes») en
+          <raíz>/.claude/estado/nucleo.md: Objetivo e Invariantes del nucleo no se tocan (de Invariantes solo se
+          añaden líneas «Corrección AAAA-MM-DD: …», las 3 últimas); los [x] del Plan pasan a diario.md con su
+          comando y el hash de HEAD; el último rc de verificaciones.log se pliega en «Comandos de verificación»;
+          se guarda nucleo.prev-* (3 copias) y se recorta al tope omitiendo secciones enteras desde el final.
+  --solo    no fusiona: el borrador sustituye al nucleo (se sigue validando).
+  --commit  además hace commit solo de .claude/estado/ (para repos propios); sin él, .claude/estado/ se añade
+            a .git/info/exclude.
+  --sesion  id de la sesión que cierra: el dueño solo se libera si es ella (o no hay dueño vigente).
+--migrar  archiva el nucleo heredado de DIR en DIR/.claude/estado/archivo/ y lo anota en el diario; nunca borra.
+--estado  una línea JSON: raíz, nucleo, bytes, tope, pct y dueño (sin proyecto: {"raiz":null}).
+Raíz: la del directorio actual (raíz git; no $HOME ni un directorio sin git) o --raiz DIR.
+Salida: 0 ok · 2 borrador inválido (stderr nombra la cabecera) · 3 sin proyecto · 4 nucleo.md cambió durante la
+fusión (reintenta) · 1 otro error · 64 uso erróneo.
+EOF
+}
+
+SELF=$(readlink -f -- "$0" 2>/dev/null || realpath -- "$0" 2>/dev/null || printf '%s' "$0")
+# shellcheck source=SCRIPTDIR/../hooks/lib/nucleo.sh
+. "$(dirname "$SELF")/../hooks/lib/nucleo.sh"
+
+die() { local rc=$1; shift; echo "handoff: $*" >&2; exit "$rc"; }
+iso_de() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
+
+MODO="" DESDE="" MIGRAR="" RAIZ_ARG="" SESION="" SOLO=0 COMMIT=0
+while [ $# -gt 0 ]; do
+  case $1 in
+    -h | --help) uso; exit 0 ;;
+    --desde | --migrar | --raiz | --sesion)
+      [ $# -ge 2 ] || { echo "uso: handoff: a $1 le falta su argumento (handoff --help)" >&2; exit 64; }
+      case $1 in
+        --desde) MODO=desde; DESDE=$2 ;;
+        --migrar) MODO=migrar; MIGRAR=$2 ;;
+        --raiz) RAIZ_ARG=$2 ;;
+        --sesion) SESION=$2 ;;
+      esac
+      shift 2 ;;
+    --estado) MODO=estado; shift ;;
+    --solo) SOLO=1; shift ;;
+    --commit) COMMIT=1; shift ;;
+    *) echo "uso: handoff: opción desconocida «$1» (handoff --help)" >&2; exit 64 ;;
+  esac
+done
+[ -n "$MODO" ] || { echo "uso: handoff --desde BORRADOR.md | --migrar DIR | --estado (handoff --help)" >&2; exit 64; }
+
+# La raíz de proyecto, o rc 1 sin tocar nada (decisión 6: ni $HOME, ni ~/.claude, ni un directorio sin git).
+resolver_raiz() {
+  if [ -n "$RAIZ_ARG" ]; then RAIZ=$(CLAUDE_PROJECT_DIR=$RAIZ_ARG nucleo_raiz "$RAIZ_ARG") || RAIZ=""
+  else RAIZ=$(nucleo_raiz "$PWD") || RAIZ=""
+  fi
+  [ -n "$RAIZ" ]
+}
+
+if [ "$MODO" = estado ]; then
+  if ! resolver_raiz || nucleo_enlazado "$RAIZ"; then echo '{"raiz":null}'; exit 3; fi
+  NUC=$RAIZ/.claude/estado/nucleo.md
+  B=0; [ ! -f "$NUC" ] || B=$(wc -c <"$NUC" | tr -d ' ')
+  DJ=null
+  if D=$(nucleo_dueno "$RAIZ"); then
+    V=false; ! nucleo_dueno_vigente "$RAIZ" >/dev/null || V=true
+    DJ=$(jq -cn --arg s "${D% *}" --arg d "$(iso_de "${D#* }")" --argjson v "$V" '{sesion:$s,desde:$d,vigente:$v}')
+  fi
+  jq -cn --arg r "$RAIZ" --arg n "$NUC" --argjson b "$B" --argjson t "$NUCLEO_TOPE" --argjson p "$((B * 100 / NUCLEO_TOPE))" --argjson d "$DJ" \
+    '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d}'
+  exit 0
+fi
+
+# ---------------------------------------------------------------- --desde
+[ "$MODO" = desde ] || die 64 "modo sin implementar"
+[ -f "$DESDE" ] && [ -r "$DESDE" ] || die 2 "no puedo leer el borrador «$DESDE»"
+[ "$(wc -c <"$DESDE")" -le 262144 ] || die 2 "el borrador pasa de 256 KB: un estado no es un volcado"
+resolver_raiz || die 3 "sin proyecto (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
+nucleo_enlazado "$RAIZ" && die 3 "$RAIZ/.claude o su estado es un enlace o apunta fuera del proyecto: no escribo nada"
+E=$RAIZ/.claude/estado; NUC=$E/nucleo.md; DIARIO=$E/diario.md; VLOG=$E/verificaciones.log
+HOY=$(date -u +%F)
+
+W=$(mktemp -d "${TMPDIR:-/tmp}/handoff.XXXXXX")
+trap 'rm -rf -- "$W"' EXIT
+
+# norm <título>: NORM = minúsculas, sin acentos y con espacios simples (también con mayúsculas acentuadas en LC_ALL=C).
+norm() {
+  local t=${1,,}
+  t=${t//á/a}; t=${t//é/e}; t=${t//í/i}; t=${t//ó/o}; t=${t//ú/u}; t=${t//ü/u}; t=${t//ñ/n}
+  t=${t//Á/a}; t=${t//É/e}; t=${t//Í/i}; t=${t//Ó/o}; t=${t//Ú/u}; t=${t//Ü/u}; t=${t//Ñ/n}
+  t=${t//$'\t'/ }
+  while [[ $t == *"  "* ]]; do t=${t//  / }; done
+  t=${t# }; NORM=${t% }
+}
+# clave <título>: KEY = clave de la sección; Objetivo/Encargo original y Invariantes son familias por prefijo
+# (como la tabla que hoy tiene el mod cockpit); «Pendientes y riesgos» es un alias de «pendientes».
+clave() {
+  norm "$1"
+  case $NORM in
+    objetivo* | "encargo original"*) KEY=objetivo ;;
+    invariantes*) KEY=invariantes ;;
+    "pendientes y riesgos") KEY=pendientes ;;
+    *) KEY=$NORM ;;
+  esac
+}
+admitida() {
+  case $1 in
+    objetivo | invariantes | "paso actual" | "siguiente accion" | "comandos de verificacion" | plan | pendientes | "ficheros tocados" | "no repetir") return 0 ;;
+  esac
+  return 1
+}
+# titulo_de <título>: el título con el que se escribe (el alias vuelve a su nombre de plantilla).
+titulo_de() { norm "$1"; if [ "$NORM" = "pendientes y riesgos" ]; then TITULO=Pendientes; else TITULO=$1; fi; }
+# fin_nl <variable>: asegura el salto de línea final (no vale $(…), que se los come).
+fin_nl() { local -n r=$1; case $r in *$'\n') ;; *) r+=$'\n' ;; esac; }
+
+# parsear <fichero>: PHEAD (lo anterior a la primera «## »), PK[] claves, PTIT[] títulos, PT[] texto con su
+# cabecera y salto final. Una «## » dentro de una cerca ``` o ~~~ es contenido.
+parsear() {
+  local line cerca=0 i=-1
+  PHEAD=""; PK=(); PTIT=(); PT=()
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    if [[ $line =~ ^[[:space:]]*(\`\`\`|~~~) ]]; then cerca=$((1 - cerca)); fi
+    if [ "$cerca" -eq 0 ] && [[ $line == '## '* ]]; then
+      i=$((i + 1)); PTIT[i]=${line#\#\# }; clave "${PTIT[i]}"; PK[i]=$KEY; PT[i]=$line$'\n'
+    elif [ "$i" -lt 0 ]; then PHEAD+=$line$'\n'
+    else PT[i]+=$line$'\n'
+    fi
+  done <"$1"
+}
+# vacio <texto de sección>: rc 0 si, sin la cabecera ni los comentarios <!-- -->, no queda nada.
+vacio() {
+  local t=${1#*$'\n'}
+  [ "$t" != "$1" ] || return 0
+  awk 'BEGIN { c = 0 }
+    { l = $0; o = ""
+      while (l != "") {
+        if (c) { i = index(l, "-->"); if (!i) { l = ""; break } l = substr(l, i + 3); c = 0 }
+        else { i = index(l, "<!--"); if (!i) { o = o l; l = "" } else { o = o substr(l, 1, i - 1); l = substr(l, i + 4); c = 1 } }
+      }
+      if (o ~ /[^ \t]/) f = 1 }
+    END { exit f ? 1 : 0 }' <<<"$t"
+}
+
+# --- el borrador: se valida entero antes de tocar nada ---
+parsear "$DESDE"
+DHEAD=$PHEAD; DK=("${PK[@]}"); DTIT=("${PTIT[@]}"); DT=("${PT[@]}")
+[ "${#DK[@]}" -gt 0 ] || die 2 "el borrador no trae ninguna sección «## »"
+if [ -n "${DHEAD//[$' \t\r\n']/}" ]; then
+  while IFS= read -r l; do
+    [[ -z ${l//[$' \t\r']/} || $l == '# '* ]] || die 2 "hay texto antes de la primera cabecera «## »: «${l:0:60}»"
+  done <<<"$DHEAD"
+fi
+VISTAS=" "
+for ((i = 0; i < ${#DK[@]}; i++)); do
+  admitida "${DK[i]}" || die 2 "cabecera no admitida «${DTIT[i]}» (admitidas: Objetivo, Invariantes, Paso actual, Siguiente acción, Comandos de verificación, Plan, Pendientes, Ficheros tocados, No repetir)"
+  case $VISTAS in *" ${DK[i]} "*) die 2 "cabecera repetida «${DTIT[i]}»" ;; esac
+  VISTAS+="${DK[i]} "
+done
+dindice() { local j; DI=-1; for ((j = 0; j < ${#DK[@]}; j++)); do [ "${DK[j]}" != "$1" ] || { DI=$j; return 0; }; done; }
+
+# --- el nucleo actual ---
+OLD_CK=ausente; [ ! -f "$NUC" ] || OLD_CK=$(cksum <"$NUC")
+HAYVIEJO=0; [ -f "$NUC" ] && [ -s "$NUC" ] && HAYVIEJO=1
+[ "$HAYVIEJO" -eq 0 ] || cp -- "$NUC" "$W/viejo.md"
+
+RK=(); RT=(); HEAD="# Estado"$'\n'$'\n'
+if [ "$HAYVIEJO" -eq 1 ]; then
+  parsear "$W/viejo.md"
+  OK=("${PK[@]}"); OT=("${PT[@]}"); HEAD=$PHEAD
+  [ -n "$HEAD" ] || HEAD="# Estado"$'\n'$'\n'
+  USADAS=" "; CAMBIADAS=" "
+  for ((i = 0; i < ${#OK[@]}; i++)); do
+    k=${OK[i]}; dindice "$k"; di=$DI
+    case $k in
+      objetivo | invariantes)
+        if ! vacio "${OT[i]}"; then
+          t=${OT[i]}
+          if [ "$k" = invariantes ] && [ "$di" -ge 0 ]; then
+            while IFS= read -r l; do
+              [[ $l =~ ^[[:space:]]*[-*][[:space:]]*[Cc]orrecci[oó]n ]] || continue
+              case $'\n'"$t" in *$'\n'"$l"$'\n'*) ;; *) fin_nl t; t+=$l$'\n' ;; esac
+            done <<<"${DT[di]#*$'\n'}"
+          fi
+          [ "$di" -lt 0 ] || USADAS+="$k "
+          RK+=("$k"); RT+=("$t")
+        elif [ "$di" -ge 0 ] && ! vacio "${DT[di]}"; then
+          USADAS+="$k "; RK+=("$k"); RT+=("${OT[i]%%$'\n'*}"$'\n'"${DT[di]#*$'\n'}")
+        else RK+=("$k"); RT+=("${OT[i]}")
+        fi ;;
+      *)
+        if [ "$di" -ge 0 ] && [[ $CAMBIADAS != *" $k "* ]]; then
+          titulo_de "${DTIT[di]}"; USADAS+="$k "; CAMBIADAS+="$k "
+          RK+=("$k"); RT+=("## $TITULO"$'\n'"${DT[di]#*$'\n'}")
+        elif [[ $CAMBIADAS == *" $k "* ]]; then :
+        else RK+=("$k"); RT+=("${OT[i]}")
+        fi ;;
+    esac
+  done
+  for ((j = 0; j < ${#DK[@]}; j++)); do
+    [[ $USADAS == *" ${DK[j]} "* ]] && continue
+    titulo_de "${DTIT[j]}"; RK+=("${DK[j]}"); RT+=("## $TITULO"$'\n'"${DT[j]#*$'\n'}")
+  done
+else
+  for ((j = 0; j < ${#DK[@]}; j++)); do titulo_de "${DTIT[j]}"; RK+=("${DK[j]}"); RT+=("## $TITULO"$'\n'"${DT[j]#*$'\n'}"); done
+fi
+
+# Correcciones literales: solo las 3 últimas (decisión 13).
+for ((i = 0; i < ${#RK[@]}; i++)); do
+  [ "${RK[i]}" = invariantes ] || continue
+  n=$(command grep -c -E '^[[:space:]]*[-*][[:space:]]*[Cc]orrecci[oó]n' <<<"${RT[i]}" || true)
+  if [ "${n:-0}" -gt 3 ]; then
+    corte=$((n - 3)); out=""
+    while IFS= read -r l; do
+      if [[ $l =~ ^[[:space:]]*[-*][[:space:]]*[Cc]orrecci[oó]n ]] && [ "$corte" -gt 0 ]; then corte=$((corte - 1)); continue; fi
+      out+=$l$'\n'
+    done <<<"${RT[i]}"
+    RT[i]=$out
+  fi
+done
+
+# Los [x] del Plan (fuera de las cercas) salen del nucleo y van a diario con su comando y el hash de HEAD.
+: >"$W/hechos"
+for ((i = 0; i < ${#RK[@]}; i++)); do
+  [ "${RK[i]}" = plan ] || continue
+  RT[i]=$(awk -v d="$W/hechos" '
+    /^[ \t]*(```|~~~)/ { c = !c }
+    !c && /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { print > d; next }
+    { print }' <<<"${RT[i]}")$'\n'
+done
+
+# El último rc de cada comando de verificaciones.log, junto a su línea de «Comandos de verificación».
+LCMD=(); LRC=()
+if [ -f "$VLOG" ]; then
+  while IFS=$'\t' read -r _ rc cmd; do
+    [ -n "${cmd:-}" ] || continue
+    case $rc in '' | *[!0-9]*) continue ;; esac
+    nl=()
+    for ((j = 0; j < ${#LCMD[@]}; j++)); do
+      if [ "${LCMD[j]}" != "$cmd" ]; then nl+=("$j"); fi
+    done
+    NC=(); NR=(); for j in "${nl[@]}"; do NC+=("${LCMD[j]}"); NR+=("${LRC[j]}"); done
+    LCMD=("${NC[@]}" "$cmd"); LRC=("${NR[@]}" "$rc")
+  done < <(tail -n 100 "$VLOG")
+fi
+if [ "${#LCMD[@]}" -gt 0 ]; then
+  ult=$((${#LCMD[@]} - 1)); casada=0; ci=-1
+  for ((i = 0; i < ${#RK[@]}; i++)); do [ "${RK[i]}" != "comandos de verificacion" ] || ci=$i; done
+  if [ "$ci" -ge 0 ]; then
+    out=""; prim=1
+    while IFS= read -r l; do
+      if [ "$prim" -eq 1 ]; then prim=0; out+=$l$'\n'; continue; fi
+      if [[ $l != '<!--'* ]]; then
+        for ((j = ${#LCMD[@]} - 1; j >= 0; j--)); do
+          [[ $l == *"${LCMD[j]}"* ]] || continue
+          l="${l%% → rc=[0-9]*} → rc=${LRC[j]}"
+          [ "$j" -ne "$ult" ] || casada=1
+          break
+        done
+      fi
+      out+=$l$'\n'
+    done <<<"${RT[ci]}"
+    if [ "$casada" -eq 0 ]; then fin_nl out; out+="- \`${LCMD[ult]}\` → rc=${LRC[ult]}"$'\n'; fi
+    RT[ci]=$out
+  else
+    RK+=("comandos de verificacion"); RT+=("## Comandos de verificación"$'\n'"- \`${LCMD[ult]}\` → rc=${LRC[ult]}"$'\n')
+  fi
+fi
+
+# armar: el nucleo entero con su cabecera (sin la nota de recorte previa) y, si se omitió algo, la nota nueva.
+OMITIDAS=""
+armar() {
+  local h="" l t i
+  while IFS= read -r l; do case $l in '> handoff '*) ;; *) h+=$l$'\n' ;; esac; done <<<"${HEAD%$'\n'}"
+  [ -z "$OMITIDAS" ] || h+="> handoff $HOY: omitidas por tope (copia en diario.md):$OMITIDAS"$'\n'
+  t=$h
+  for ((i = 0; i < ${#RK[@]}; i++)); do [ -z "${RT[i]}" ] || { fin_nl "RT[$i]"; t+=${RT[i]}; }; done
+  TEXTO=$t
+}
+bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
+armar
+AVISOS=""
+# Se omiten secciones enteras desde el final del orden D5 (Objetivo e Invariantes no se tocan); lo omitido va al diario.
+for k in "no repetir" "ficheros tocados" pendientes plan "comandos de verificacion" "siguiente accion" "paso actual"; do
+  [ "$(bytes "$TEXTO")" -gt "$NUCLEO_TOPE" ] || break
+  for ((i = 0; i < ${#RK[@]}; i++)); do
+    [ "${RK[i]}" = "$k" ] && [ -n "${RT[i]}" ] || continue
+    t=${RT[i]%%$'\n'*}; t=${t#\#\# }
+    printf '## %s omitido por tope: %s\n%s\n' "$HOY" "$t" "${RT[i]#*$'\n'}" >>"$W/omitido"
+    OMITIDAS+=" $t"
+    RT[i]=""; armar
+  done
+done
+[ -z "$OMITIDAS" ] || AVISOS="omitidas por tope (${NUCLEO_TOPE} B), copia en diario.md:$OMITIDAS"
+if [ "$(bytes "$TEXTO")" -gt "$NUCLEO_TOPE" ]; then
+  AVISOS+="${AVISOS:+; }Objetivo e Invariantes solos pasan del tope: no se tocan, muévelos a diario.md a mano"
+fi
+
+# --- escritura ---
+[ -z "${NUCLEO_FUSION_PAUSA:-}" ] || sleep "$NUCLEO_FUSION_PAUSA"
+NEW_CK=ausente; [ ! -f "$NUC" ] || NEW_CK=$(cksum <"$NUC")
+[ "$NEW_CK" = "$OLD_CK" ] || die 4 "nucleo.md cambió mientras se fusionaba (otra sesión): no lo piso; reintenta"
+mkdir -p "$E"
+if [ "$HAYVIEJO" -eq 1 ]; then
+  P=$E/nucleo.prev-$(date -u +%Y%m%dT%H%M%SZ).md
+  [ ! -e "$P" ] || P=${P%.md}-$$.md
+  cp -- "$W/viejo.md" "$P"
+  mapfile -t COPIAS < <(printf '%s\n' "$E"/nucleo.prev-*.md | sort)
+  for ((i = 0; i < ${#COPIAS[@]} - 3; i++)); do rm -f -- "${COPIAS[i]}"; done
+fi
+TMP=$(mktemp "$E/.nucleo.XXXXXX")
+printf '%s' "$TEXTO" >"$TMP"
+mv -f -- "$TMP" "$NUC"
+
+HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
+{
+  [ -s "$DIARIO" ] || printf '# Diario\n'
+  while IFS= read -r l; do
+    l=${l#"${l%%[![:space:]]*}"}; l=${l#[-*] }; l=${l#[0-9]*. }; l=${l#\[[xX]\]}; l=${l# }
+    [ -z "$l" ] || printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
+  done <"$W/hechos"
+  [ ! -s "$W/omitido" ] || cat "$W/omitido"
+} >>"$DIARIO"
+
+nucleo_registrar "$RAIZ"
+if EX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
+  case $EX in /*) ;; *) EX=$RAIZ/$EX ;; esac
+  mkdir -p "$(dirname "$EX")" 2>/dev/null || true
+  command grep -qFx '.claude/estado/' "$EX" 2>/dev/null || printf '.claude/estado/\n' >>"$EX" 2>/dev/null || true
+fi
+
+# El dueño: solo lo libera quien lo es (o nadie lo es ya).
+if D=$(nucleo_dueno "$RAIZ"); then
+  if [ -z "$SESION" ] || [ "${D% *}" = "$SESION" ] || ! nucleo_dueno_vigente "$RAIZ" >/dev/null; then rm -f -- "$E/.dueno"
+  else AVISOS+="${AVISOS:+; }la sesión dueña es otra (${D% *}): no se libera"
+  fi
+fi
+[ -z "$AVISOS" ] || echo "handoff: $AVISOS" >&2
+echo "handoff: $NUC escrito ($(bytes "$TEXTO") B de $NUCLEO_TOPE)"

@@ -304,4 +304,160 @@ ok "oraculo: --help sale 0" "$(orc --help 2>&1 | head -n 1 | command grep -c '^u
 mkdir -p "$T/ro-enl/.claude"; git -C "$T/ro-enl" init -q; ln -s "$T/destino" "$T/ro-enl/.claude/estado"
 ok "oraculo: .claude/estado enlazado → no escribe en el destino" "$(cd "$T/ro-enl" && bash "$BIN/oraculo" -- true >/dev/null; ls -A "$T/destino" | command grep -c verificaciones)" 0
 
+# shellcheck disable=SC2016  # los acentos graves de los literales son markdown, no sustituciones
+# --- v3: handoff --estado / --desde / --migrar (el modelo redacta el borrador; el CLI valida, fusiona y recorta) ---
+mkrepo() { mkdir -p "$1"; git -C "$1" init -q; git -C "$1" config user.email t@t; git -C "$1" config user.name t
+  git -C "$1" commit -q --allow-empty -m base; }
+HR=$T/ho; mkrepo "$HR"
+ho() { (cd "$HR" && bash "$BIN/handoff" "$@"); }
+HNUC=$HR/.claude/estado/nucleo.md; HDIA=$HR/.claude/estado/diario.md
+OUT=$(ho --help 2>&1); RC=$?
+ok "handoff: --help sale 0 y empieza por «uso: handoff»" "$RC,$(head -n 1 <<<"$OUT" | command grep -c '^uso: handoff')" "0,1"
+ok "handoff: sin modo es un uso erróneo (64)" "$(ho >/dev/null 2>&1; echo $?)" 64
+
+# -- --estado --
+ok "estado: sin proyecto → {\"raiz\":null} y exit 3" "$(cd "$T/ro-sin-git" && bash "$BIN/handoff" --estado; echo "rc=$?")" '{"raiz":null}
+rc=3'
+E=$(ho --estado)
+ok "estado: proyecto sin nucleo → bytes 0, tope 6500, dueño null" "$(jq -c '[.raiz == "'"$HR"'", .nucleo == "'"$HNUC"'", .bytes, .tope, .pct, .dueno] | @json' <<<"$E")" '"[true,true,0,6500,0,null]"'
+mkdir -p "$HR/.claude/estado"; head -c 650 /dev/zero | tr '\0' x >"$HNUC"
+printf 'sesion=ses1\ndesde=%s\n' "$(date +%s)" >"$HR/.claude/estado/.dueno"
+E=$(ho --estado)
+ok "estado: bytes y pct del tope" "$(jq -c '[.bytes, .pct] | @json' <<<"$E")" '"[650,10]"'
+ok "estado: dueño vigente con su sesión y desde ISO" "$(jq -r '[.dueno.sesion, .dueno.vigente, (.dueno.desde | test("^20[0-9-]+T[0-9:]+Z$"))] | @json' <<<"$E")" '["ses1",true,true]'
+printf 'sesion=ses1\ndesde=%s\n' "$(( $(date +%s) - 20000 ))" >"$HR/.claude/estado/.dueno"
+ok "estado: dueño caducado → vigente false" "$(ho --estado | jq -r '.dueno.vigente')" false
+ok "estado: --raiz D" "$(cd "$T/ro-sin-git" && bash "$BIN/handoff" --estado --raiz "$HR" | jq -r '.raiz')" "$HR"
+ok "estado: es una sola línea JSON" "$(ho --estado | wc -l)" 1
+unlink "$HNUC"; unlink "$HR/.claude/estado/.dueno"
+
+# -- --desde: primera vez --
+cat >"$T/b1.md" <<'EOF'
+## Encargo original (literal)
+OBJ-1 literal
+## Invariantes
+INV-1 no tocar Y
+## Plan
+- [x] paso-uno — make test
+- [ ] paso-dos
+## Paso actual
+PASO-1
+## Siguiente acción
+SIG-1
+## Pendientes y riesgos
+- (persona) PEND-1
+## Ficheros tocados
+- /x/y.sh:L1-5 — algo
+## Comandos de verificación
+- `make test` — esperado verde
+- `bash x.sh` — esperado 0
+EOF
+OUT=$(ho --desde "$T/b1.md" --sesion ses1 2>&1); RC=$?
+ok "desde: primera vez → exit 0 y crea nucleo.md" "$RC,$([ -f "$HNUC" ] && echo si)" "0,si"
+ok "desde: empieza por el título y trae las secciones" "$(head -n 1 "$HNUC"),$(command grep -c '^## ' "$HNUC")" "# Estado,8"
+ok "desde: el alias «Pendientes y riesgos» se escribe como «Pendientes»" "$(command grep -c '^## Pendientes$' "$HNUC"),$(command grep -c 'Pendientes y riesgos' "$HNUC")" "1,0"
+ok "desde: los [x] del Plan salen del nucleo" "$(command grep -c 'paso-uno' "$HNUC"),$(command grep -c 'paso-dos' "$HNUC")" "0,1"
+H0=$(git -C "$HR" rev-parse --short HEAD)
+ok "desde: el [x] va a diario.md con su comando y el hash de HEAD" "$(command grep -c "paso-uno — make test.*$H0" "$HDIA")" 1
+ok "desde: .claude/estado/ queda excluido sin tocar .gitignore" "$(command grep -cFx '.claude/estado/' "$HR/.git/info/exclude"),$(git -C "$HR" status --short)" "1,"
+ok "desde: registra la raíz para el índice de ~" "$(command grep -cFx "$HR" "$HOME/.claude/estado/raices")" 1
+ok "desde: el nucleo cabe en el tope" "$([ "$(wc -c <"$HNUC")" -le 6500 ] && echo si)" si
+ok "desde: no deja temporales en estado/" "$(ls -A "$HR/.claude/estado" | command grep -c '^\.nucleo\.')" 0
+
+# -- --desde: fusión (Objetivo e Invariantes de la persona no se tocan) --
+cp "$HNUC" "$T/nucleo-antes.md"
+cat >"$T/b2.md" <<'EOF'
+## Objetivo
+OBJ-OTRO que el modelo quiere imponer
+## Invariantes
+INV-OTRO que el modelo quiere imponer
+## Paso actual
+PASO-2
+## Siguiente acción
+SIG-2
+EOF
+ho --desde "$T/b2.md" >/dev/null 2>&1; RC=$?
+ok "fusión: Objetivo e Invariantes del nucleo intactos" "$RC,$(command grep -c 'OBJ-1 literal' "$HNUC"),$(command grep -c 'INV-1 no tocar Y' "$HNUC"),$(command grep -c 'OTRO' "$HNUC")" "0,1,1,0"
+ok "fusión: la sección del borrador sustituye a la suya" "$(command grep -c 'PASO-2' "$HNUC"),$(command grep -c 'PASO-1' "$HNUC")" "1,0"
+ok "fusión: lo que el borrador no trae se conserva (Plan, Pendientes, Ficheros)" "$(command grep -c 'paso-dos\|PEND-1\|x/y.sh' "$HNUC")" 3
+ok "fusión: nucleo.prev-* guarda el estado anterior" "$(command grep -lF 'PASO-1' "$HR"/.claude/estado/nucleo.prev-*.md | wc -l)" 1
+# Un nucleo con el Objetivo vacío (plantilla) lo rellena el borrador.
+printf '# Estado\n## Objetivo\n<!-- c -->\n## Paso actual\nviejo\n' >"$T/n-vacio.md"
+HE=$T/hoe; mkrepo "$HE"; mkdir -p "$HE/.claude/estado"; cp "$T/n-vacio.md" "$HE/.claude/estado/nucleo.md"
+printf '## Objetivo\nOBJ-RELLENO\n## Paso actual\nnuevo\n' >"$T/b-relleno.md"
+(cd "$HE" && bash "$BIN/handoff" --desde "$T/b-relleno.md" >/dev/null 2>&1)
+ok "fusión: Objetivo vacío lo rellena el borrador" "$(command grep -c 'OBJ-RELLENO' "$HE/.claude/estado/nucleo.md")" 1
+
+# -- --desde: correcciones literales (decisión 13): se añaden a Invariantes, máx. 3, las más recientes --
+for i in 1 2 3 4; do
+  printf '## Invariantes\n- Corrección 2026-10-1%s: «no hagas COR-%s»\n## Paso actual\np%s\n' "$i" "$i" "$i" >"$T/bc$i.md"
+  ho --desde "$T/bc$i.md" >/dev/null 2>&1
+done
+ok "correcciones: quedan las 3 últimas, la primera cae" "$(command grep -c 'COR-' "$HNUC"),$(command grep -c 'COR-1' "$HNUC"),$(command grep -c 'COR-4' "$HNUC")" "3,0,1"
+ok "correcciones: INV-1 sigue intacto debajo" "$(command grep -c 'INV-1 no tocar Y' "$HNUC")" 1
+ho --desde "$T/bc4.md" >/dev/null 2>&1
+ok "correcciones: repetir la misma no la duplica" "$(command grep -c 'COR-4' "$HNUC")" 1
+ok "rotación: como mucho 3 nucleo.prev-*" "$(ls "$HR"/.claude/estado/nucleo.prev-*.md | wc -l)" 3
+
+# -- --desde: rc de oraculo plegado en «Comandos de verificación» --
+printf '2026-10-19T10:00:00Z\t1\tmake test\n2026-10-19T10:01:00Z\t5\tzzz-nuevo\n' >"$HR/.claude/estado/verificaciones.log"
+ho --desde "$T/b1.md" >/dev/null 2>&1
+ok "rc: «→ rc=N» junto al comando que coincide" "$(command grep -c '`make test` — esperado verde → rc=1$' "$HNUC")" 1
+ok "rc: un comando sin entrada en el log queda sin rc" "$(command grep -c '`bash x.sh` — esperado 0$' "$HNUC")" 1
+ok "rc: el último comando del log, si no estaba, se añade" "$(command grep -c '^- `zzz-nuevo` → rc=5$' "$HNUC")" 1
+ho --desde "$T/b1.md" >/dev/null 2>&1
+ok "rc: repetir el handoff no duplica la anotación" "$(command grep -c 'rc=1' "$HNUC"),$(command grep -c 'zzz-nuevo' "$HNUC")" "1,1"
+
+# -- --desde: tope --
+HT=$T/hot; mkrepo "$HT"
+{ printf '## Objetivo\nO\n## Paso actual\nPA\n## Pendientes\n'; head -c 4000 /dev/zero | tr '\0' p; printf '\n## Ficheros tocados\n'; head -c 4000 /dev/zero | tr '\0' f; printf '\n'; } >"$T/b-grande.md"
+OUT=$(cd "$HT" && bash "$BIN/handoff" --desde "$T/b-grande.md" 2>&1); RC=$?
+TN=$HT/.claude/estado/nucleo.md
+ok "tope: el nucleo escrito no pasa de NUCLEO_TOPE y sale 0" "$RC,$([ "$(wc -c <"$TN")" -le 6500 ] && echo si)" "0,si"
+ok "tope: se omite la sección del final del orden D5 (Ficheros tocados) y se dice" "$(command grep -c '^## Ficheros tocados' "$TN"),$(command grep -c '^## Pendientes' "$TN"),$(command grep -ci 'omit.*Ficheros tocados' <<<"$OUT")" "0,1,1"
+ok "tope: lo omitido se conserva en diario.md" "$(command grep -c 'omitido por tope.*Ficheros tocados' "$HT/.claude/estado/diario.md")" 1
+ok "tope: la nota queda en el nucleo (fuera de las secciones)" "$(command grep -c '^> handoff .*omitidas por tope' "$TN")" 1
+ok "tope: NUCLEO_TOPE manda sobre el defecto" "$(cd "$HT" && NUCLEO_TOPE=300 bash "$BIN/handoff" --desde "$T/b-grande.md" >/dev/null 2>&1; [ "$(wc -c <"$TN")" -le 300 ] && echo si || wc -c <"$TN")" si
+
+# -- --desde: borradores inválidos (exit 2) --
+cp "$HNUC" "$T/nucleo-antes.md"
+printf '## Paso actual\nx\n## Chistes\nja\n' >"$T/bad1.md"
+ERR=$(ho --desde "$T/bad1.md" 2>&1 >/dev/null); RC=$?
+ok "inválido: cabecera desconocida → exit 2 y stderr la nombra" "$RC,$(command grep -c 'Chistes' <<<"$ERR")" "2,1"
+ok "inválido: no escribe nada" "$(cmp -s "$HNUC" "$T/nucleo-antes.md" && echo igual)" igual
+printf 'hola, aquí tienes:\n## Paso actual\nx\n' >"$T/bad2.md"
+ok "inválido: texto antes de la primera cabecera → exit 2" "$(ho --desde "$T/bad2.md" >/dev/null 2>&1; echo $?)" 2
+printf '## Paso actual\nx\n## Paso actual\ny\n' >"$T/bad3.md"
+ERR=$(ho --desde "$T/bad3.md" 2>&1 >/dev/null); RC=$?
+ok "inválido: cabecera repetida → exit 2 y la nombra" "$RC,$(command grep -c 'Paso actual' <<<"$ERR")" "2,1"
+printf 'solo texto\n' >"$T/bad4.md"
+ok "inválido: sin ninguna cabecera → exit 2" "$(ho --desde "$T/bad4.md" >/dev/null 2>&1; echo $?)" 2
+ok "inválido: borrador inexistente → exit 2" "$(ho --desde "$T/no-existe.md" >/dev/null 2>&1; echo $?)" 2
+ok "inválido: --solo también valida" "$(ho --desde "$T/bad1.md" --solo >/dev/null 2>&1; echo $?)" 2
+# shellcheck disable=SC2016 # la cerca markdown es literal
+printf '%s\n' '## Paso actual' '```' '## Chistes' '```' >"$T/ok-cerca.md"
+ok "válido: un «## » dentro de una cerca no es cabecera" "$(ho --desde "$T/ok-cerca.md" >/dev/null 2>&1; echo $?)" 0
+# Paridad de alias con el mod cockpit (mientras su tabla viva en register.tsx; pasa si ya no está).
+REG=$KIT/mods/cockpit/hooks/register.tsx
+ALIAS=$(sed -n "s/^const ALIAS[^{]*{ *\(.*[^ ]\) *}.*/\1/p" "$REG" 2>/dev/null)
+N=0; BAD=0
+while IFS= read -r par; do
+  [ -n "$par" ] || continue
+  a=$(sed -n "s/^'\([^']*\)': *'\([^']*\)'.*/\1/p" <<<"$par"); v=$(sed -n "s/^'\([^']*\)': *'\([^']*\)'.*/\2/p" <<<"$par")
+  [ -n "$a" ] || continue
+  N=$((N + 1)); printf '## %s\nPEND-ALIAS-%s\n' "$a" "$N" >"$T/b-alias.md"
+  ho --desde "$T/b-alias.md" >/dev/null 2>&1 && command grep -q "^## $v\$" "$HNUC" && ! command grep -q "^## $a\$" "$HNUC" || BAD=$((BAD + 1))
+done < <(tr ',' '\n' <<<"$ALIAS" | sed 's/^ *//')
+ok "paridad de alias con register.tsx (si la tabla sigue ahí): ninguno falla" "$BAD" 0
+
+# -- --desde: sin proyecto, enlazado y carrera --
+ok "sin proyecto: exit 3 y no escribe" "$(cd "$T/ro-sin-git" && bash "$BIN/handoff" --desde "$T/b1.md" >/dev/null 2>&1; echo "$?,$([ -e "$T/ro-sin-git/.claude" ] && echo escribio || echo no)")" "3,no"
+ok "sin proyecto: desde ~ tampoco (exit 3)" "$(cd "$HOME" && bash "$BIN/handoff" --desde "$T/b1.md" >/dev/null 2>&1; echo $?)" 3
+HL=$T/hol; mkrepo "$HL"; mkdir -p "$HL/.claude" "$T/destino-l"; ln -s "$T/destino-l" "$HL/.claude/estado"
+ok "estado enlazado: exit 3 y no escribe en el destino" "$(cd "$HL" && bash "$BIN/handoff" --desde "$T/b1.md" >/dev/null 2>&1; echo "$?,$(ls -A "$T/destino-l" | wc -l)")" "3,0"
+cp "$HNUC" "$T/nucleo-antes.md"
+( NUCLEO_FUSION_PAUSA=1 ho --desde "$T/b2.md" >/dev/null 2>"$T/e4.txt"; echo $? >"$T/rc4.txt" ) &
+sleep 0.3; echo '## Pendientes (otra sesión)' >>"$HNUC"; wait
+ok "carrera: si nucleo.md cambia durante la fusión → exit 4 y no pisa" "$(cat "$T/rc4.txt"),$(tail -n 1 "$HNUC")" "4,## Pendientes (otra sesión)"
+
 exit $FAIL
