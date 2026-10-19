@@ -71,6 +71,18 @@ else
   ck n y "un sentinel_preflight.py desplegado modificado a mano produce WARN de deriva"
 fi
 
+# iocs.json es dato que la persona personaliza por diseno: editarlo no es deriva de codigo y el
+# consejo de reinstalar pisaria sus datos (E7.3 CR-10). Solo el codigo de sentinel/ entra en la deriva.
+bash "$KIT/install.sh" >/dev/null 2>&1
+jq '.personal = true' "$CLAUDE_HOME/sentinel/iocs.json" > "$tmp/iocs.mio" && cp "$tmp/iocs.mio" "$CLAUDE_HOME/sentinel/iocs.json"
+out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
+       bash "$KIT/doctor.sh" 2>&1)"
+if echo "$out" | grep -qE '^WARN .*difieren de los del kit.*iocs'; then
+  ck n y "un iocs.json personalizado no produce WARN de deriva"
+else
+  ck y y "un iocs.json personalizado no produce WARN de deriva"
+fi
+
 # La capa de IOCs se busca donde la busca el hook, no en una sola ruta fija.
 # El defecto: en una instalacion donde sentinel vive FUERA de CLAUDE_HOME, doctor avisaba de
 # que la capa estaba inactiva cuando en realidad cargaba 31 patrones de ruta. Un aviso falso

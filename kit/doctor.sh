@@ -46,10 +46,12 @@ fi
 # version endurecida en un lado y la antigua en el otro, y nadie lo noto.
 derivados=0; derivados_lista=""
 # hooks/lib/ y sentinel/ tambien: nucleo.sh y sentinel_preflight.py gobiernan hooks enteros y antes quedaban fuera.
-for src in "$KIT"/claude/hooks/* "$KIT"/claude/hooks/lib/* "$KIT"/sentinel/*; do
+# De sentinel/ solo el codigo (*.py): iocs.json es dato que la persona personaliza por diseno y
+# reinstalar para "alinearlo" pisaria sus datos; su acoplamiento con el preflight lo cubre 2d.
+for src in "$KIT"/claude/hooks/* "$KIT"/claude/hooks/lib/* "$KIT"/sentinel/*.py; do
   [ -f "$src" ] || continue
   case "$src" in
-    "$KIT"/sentinel/*) nombre="sentinel/$(basename "$src")"; dst="$CLAUDE_HOME/$nombre" ;;
+    "$KIT"/sentinel/*.py) nombre="sentinel/$(basename "$src")"; dst="$CLAUDE_HOME/$nombre" ;;
     "$KIT"/claude/hooks/lib/*) nombre="lib/$(basename "$src")"; dst="$CLAUDE_HOME/hooks/$nombre" ;;
     *) nombre="$(basename "$src")"; dst="$CLAUDE_HOME/hooks/$nombre" ;;
   esac

@@ -1,8 +1,10 @@
 #!/bin/bash
 # shellcheck disable=SC2015  # «cond && pass=$((pass+1)) || bad»: la rama del medio es una asignacion y nunca falla.
-# test_guards_corpus.sh — el corpus adversario de la campana E5 (715 sondas medidas en Debian) como
-# suite data-driven contra los CUATRO guards bash: block-dangerous-commands, destructive-guard,
-# branch-guard y secret-guard. Corre contra los ficheros del propio kit.
+# test_guards_corpus.sh — el corpus adversario de la campana E5 como suite data-driven contra los
+# CUATRO guards bash: block-dangerous-commands, destructive-guard, branch-guard y secret-guard. Corre
+# contra los ficheros del propio kit. Cifra honesta: el fixture tiene 715 filas; 119 se ejecutan sobre
+# los guards bash (336 aserciones); Sentinel y write-guard se cubren en test_guards.sh (secciones
+# Sentinel y write-guard), no aqui.
 #
 # Fixture: fixtures/guards-corpus.tsv, 7 columnas: id, clase, comando, esperado (B bloquear, A permitir,
 # ASK pedir confirmacion, ? sin expectativa), observado en E5, hook(s) que respondieron, veredicto de E5.
@@ -11,7 +13,7 @@
 # repo. Esas rutas solo las leen Sentinel y write-guard.
 #
 # Reglas, por fila:
-#   - Read/Write/Edit/MultiEdit/NotebookEdit: no son comandos Bash -> skip (Sentinel y write-guard: PR3/PR6).
+#   - Read/Write/Edit/MultiEdit/NotebookEdit: no son comandos Bash -> skip (otra herramienta; Sentinel y write-guard viven en test_guards.sh).
 #   - esperado A: los cuatro guards tienen que dejarlo pasar.
 #   - esperado B con algun guard bash entre los que respondieron en E5: cada uno de ESOS guards bloquea.
 #   - esperado B que E5 solo vio caer en Sentinel/smart_approve (o que nadie vio): skip, salvo en las clases que
@@ -29,7 +31,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 H="${CORPUS_HOOKS_DIR:-$KIT/claude/hooks}"
 FIXTURE="${CORPUS_FIXTURE:-$HERE/fixtures/guards-corpus.tsv}"
 DISENO_FP="${DISENO_FP:-block}"
-pass=0; fail=0; skip_otra=0; skip_pr3=0; skip_sin=0; ran=0; blocks_checked=0
+pass=0; fail=0; skip_otra=0; skip_sentinel=0; skip_sin=0; ran=0; blocks_checked=0
 
 T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
 mkdir -p "$T/home/.claude"
@@ -93,7 +95,7 @@ while IFS=$'\037' read -r id cls cmd exp _ hook verd; do
         blocks_checked=$((blocks_checked+1))
         [ "$got" = BLOCK ] && pass=$((pass+1)) || bad "falso negativo: ningun guard bash lo bloquea"
       else
-        skip_pr3=$((skip_pr3+1))
+        skip_sentinel=$((skip_sentinel+1))
       fi ;;
     *) skip_sin=$((skip_sin+1)) ;;
   esac
@@ -103,5 +105,6 @@ done < <(awk -F'\t' -v OFS='\037' '{ $1=$1; print }' "$FIXTURE")
 [ "$ran" -ge 100 ] && [ "$blocks_checked" -ge 40 ] && pass=$((pass+1)) \
   || { fail=$((fail+1)); echo "FAIL: el corpus ejecuto solo $ran filas ($blocks_checked bloqueos); se esperaban >=100 y >=40"; }
 
-echo "filas ejecutadas=$ran  skip(otra herramienta)=$skip_otra  skip(Sentinel/write-guard: PR3/PR6)=$skip_pr3  skip(sin expectativa)=$skip_sin"
+echo "filas ejecutadas=$ran  aserciones=$pass"
+echo "skips: otra herramienta (Read/Write/Edit...)=$skip_otra  solo Sentinel/smart_approve, cubiertos en test_guards.sh=$skip_sentinel  sin expectativa=$skip_sin"
 echo "PASS=$pass FAIL=$fail"; [ $fail -eq 0 ]
