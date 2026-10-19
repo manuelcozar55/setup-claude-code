@@ -83,6 +83,14 @@ ok "desde ~/.claude también es ~" "$(run "$HOME/.claude" | ctx | command grep -
 mkdir -p "$HOME/.claude/estado"; printf '## Objetivo\nOBJ-HEREDADO\n' >"$HOME/.claude/estado/nucleo.md"
 C=$(run "$HOME" | ctx)
 ok "desde ~: el nucleo heredado va en el índice y no como nucleo" "$(command grep -c 'heredado de ~.*OBJ-HEREDADO' <<<"$C"),$(command grep -c '<nucleo-datos' <<<"$C")" 1,0
+# H3: /clear en un directorio sin nucleo no se registra; un registro de 300 raíces no frena el arranque desde ~.
+SN=$T/sinnucleo; mkdir -p "$SN"; git -C "$SN" init -q
+run "$SN" >/dev/null
+ok "H3: arrancar en un directorio sin nucleo no lo registra" "$(command grep -cFx "$SN" "$REG")" 0
+for i in $(seq 1 120); do mkdir -p "$T/rr/r$i/.claude/estado"; printf '## Objetivo\no%s\n## Paso actual\np\n' "$i" >"$T/rr/r$i/.claude/estado/nucleo.md"; done
+for i in $(seq 1 300); do echo "$T/rr/r$(( i % 120 + 1 ))"; done >"$REG"
+t0=$(date +%s%N); C=$(run "$HOME" | ctx); ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+ok "H3: ~ con 300 raíces registradas → < 1,5 s (${ms} ms) y con índice" "$([ "$ms" -lt 1500 ] && command grep -q '^<indice-tareas>$' <<<"$C" && echo si)" si
 # K4/concurrencia: `git status` refresca el índice y crearía index.lock bajo otra sesión del mismo repo.
 mkdir -p "$T/gitlog" "$T/stubbin"; REALGIT=$(command -v git)
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/args"\nexec "%s" "$@"\n' "$T/gitlog" "$REALGIT" >"$T/stubbin/git"; chmod +x "$T/stubbin/git"

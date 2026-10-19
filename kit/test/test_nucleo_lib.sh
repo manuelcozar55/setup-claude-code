@@ -251,6 +251,8 @@ ok "corte: aun así se avisa del recorte" "$(nucleo_emitir "$U" | command grep -
 # --- K6 (D1): registro de raíces e índice derivado de ~ ---
 export NUCLEO_REGISTRO=$T/reg/raices
 mkdir -p "$T/reg"
+# H3 (cambio de especificación): solo se registra una raíz con nucleo.md propio; las altas de abajo lo crean antes.
+for d in p1 p9; do mkdir -p "$T/$d/.claude/estado"; : >"$T/$d/.claude/estado/nucleo.md"; done
 nucleo_registrar "$T/p1"; nucleo_registrar "$T/p1"; nucleo_registrar "$HOME"
 ok "registro: idempotente (dos altas, una línea) y sin \$HOME" "$(wc -l <"$NUCLEO_REGISTRO")" 1
 ok "registro: crea el directorio que falta" "$(NUCLEO_REGISTRO=$T/reg/nuevo/sub/raices nucleo_registrar "$T/p9"; cat "$T/reg/nuevo/sub/raices")" "$T/p9"
@@ -292,6 +294,44 @@ IX=$(nucleo_indice)
 ok "índice: líneas largas → objetivo y paso ≤ 80 y total ≤ 2 500" "$(command grep -c 'o\{81\}\|q\{81\}' <<<"$IX"),$([ "${#IX}" -le 2500 ] && echo si)" 0,si
 rm -f "$HOME/.claude/estado/nucleo.md"
 ok "índice: registro ausente y sin heredado → nada" "$(NUCLEO_REGISTRO=$T/no-existe nucleo_indice)" ""
+# --- H3: el registro solo admite raíces con nucleo propio y no enlazado, y su coste está acotado ---
+export NUCLEO_REGISTRO=$T/h3/raices; mkdir -p "$T/h3/sin" "$T/h3/enl-e"
+nucleo_registrar "$T/h3/sin"
+ok "H3: raíz sin nucleo.md → no se registra" "$(cat "$NUCLEO_REGISTRO" 2>/dev/null | wc -l)" 0
+mkdir -p "$T/h3/enl/.claude"; ln -s "$T/h3/enl-e" "$T/h3/enl/.claude/estado"
+nucleo_registrar "$T/h3/enl"
+ok "H3: raíz con .claude/estado enlazado → no se registra" "$(cat "$NUCLEO_REGISTRO" 2>/dev/null | wc -l)" 0
+mkdir -p "$T/h3/rr"; for i in $(seq 1 120); do mkpn "$T/h3/rr/r$i" "o$i" "p" "2026-01-01 12:00 UTC"; done
+for i in $(seq 1 100); do echo "$T/h3/rr/r$i"; echo "$T/h3/rr/borrada$i"; done >"$NUCLEO_REGISTRO"
+nucleo_registrar "$T/h3/rr/r110"
+ok "H3: pasadas 100 líneas se reescribe sin duplicados ni raíces sin nucleo (101 únicas)" "$(wc -l <"$NUCLEO_REGISTRO"),$(sort "$NUCLEO_REGISTRO" | uniq -d | wc -l),$(command grep -c borrada "$NUCLEO_REGISTRO")" 101,0,0
+ok "H3: la reescritura no deja temporales y conserva la nueva al final" "$(find "$T/h3" -maxdepth 1 -name 'raices.*' | wc -l),$(tail -n 1 "$NUCLEO_REGISTRO")" "0,$T/h3/rr/r110"
+for i in $(seq 1 300); do echo "$T/h3/rr/r$(( i % 120 + 1 ))"; done >"$NUCLEO_REGISTRO"
+ok "H3: al leer procesa como máximo 50 raíces únicas" "$(nucleo_indice | command grep -c '^- .* · o[0-9]* · paso')" 15
+printf '%s\n' "$T/h3/rr/r1" "$T/h3/sin" >"$NUCLEO_REGISTRO"
+ok "H3: nucleo_indice comprueba -f antes de nucleo_enlazado (raíz sin nucleo no sale)" "$(nucleo_indice | command grep -c 'h3/sin')" 0
+t0=$(date +%s%N); for i in $(seq 1 120); do echo "$T/h3/rr/r$i"; done >"$NUCLEO_REGISTRO"; for i in $(seq 1 180); do echo "$T/h3/rr/r$(( i % 120 + 1 ))"; done >>"$NUCLEO_REGISTRO"
+nucleo_indice >/dev/null; ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+ok "H3: índice con 300 líneas de registro < 1,5 s (${ms} ms)" "$([ "$ms" -lt 1500 ] && echo si)" si
+
+# --- H4: el registro nace con modo 600 y su directorio con 700 ---
+( umask 022; NUCLEO_REGISTRO=$T/h4/nuevo/raices nucleo_registrar "$T/p1" )
+ok "H4: fichero 600 y directorio 700 aunque el umask sea 022" "$(stat -c %a "$T/h4/nuevo/raices"),$(stat -c %a "$T/h4/nuevo")" 600,700
+
+# --- H5: el índice quita marcadores de lista y descarta lo cerrado ---
+export NUCLEO_REGISTRO=$T/h5/raices; mkdir -p "$T/h5"
+mkdir -p "$T/h5/a/.claude/estado"
+printf '## Objetivo\n- obj a\n## Paso actual\n1. paso uno\n## Pendientes\n- [x] (persona) hecho\n- [X] (persona) hecho2\n- [ ] (persona) abrir\n* (persona) abrir2\n' >"$T/h5/a/.claude/estado/nucleo.md"
+echo "$T/h5/a" >"$NUCLEO_REGISTRO"; IX=$(nucleo_indice)
+ok "H5: sin marcador en objetivo y paso" "$(command grep -c ' · obj a · paso: paso uno · ' <<<"$IX")" 1
+ok "H5: (persona) sin [ ] ni marcador, y las [x] no salen" "$(command grep -c '^- a: (persona) abrir$\|^- a: (persona) abrir2$' <<<"$IX"),$(command grep -c 'hecho' <<<"$IX")" 2,0
+
+# --- H6: sin caracteres bidi ni separadores Unicode en lo que inyectan <git-hechos> e <indice-tareas> ---
+RLO=$(printf '\342\200\256'); LS=$(printf '\342\200\250'); LRI=$(printf '\342\201\246')
+printf '## Objetivo\nob%sj%sx%sy\n## Paso actual\np\n' "$RLO" "$LS" "$LRI" >"$T/h5/a/.claude/estado/nucleo.md"
+ok "H6: índice sin U+202E, U+2028 ni U+2066 (el resto del texto queda)" "$(nucleo_indice | LC_ALL=C command grep -c "$RLO\|$LS\|$LRI"),$(nucleo_indice | command grep -c 'objxy')" "0,1"
+git init -q "$T/h6"; git -C "$T/h6" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "asu${RLO}nto${LS}fin"
+ok "H6: git-hechos sin bidi y con el asunto" "$(nucleo_git_hechos "$T/h6" | LC_ALL=C command grep -c "$RLO\|$LS"),$(nucleo_git_hechos "$T/h6" | command grep -c 'asuntofin')" "0,1"
 unset NUCLEO_REGISTRO
 
 exit $FAIL
