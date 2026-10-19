@@ -475,8 +475,8 @@ test('cabeceras con y sin acento son la misma clave', () => {
   expect(mergeNucleo('# T\n## Siguiente acción\nviejo\n', '## SIGUIENTE ACCION\nnuevo\n')).toBe('# T\n## SIGUIENTE ACCION\nnuevo\n')
 })
 
-for (const link of [EST, `${EST}/nucleo.md`, `${EST}/nucleo.prev-20261001T000000.md`]) {
-  test(`enlaces: ${link.slice(EST.length) || 'estado/'} simbólico se rechaza sin leer ni escribir`, async ($, on) => {
+for (const link of ['/work/proyecto/.claude', EST, `${EST}/nucleo.md`, `${EST}/nucleo.prev-20261001T000000.md`]) {
+  test(`enlaces: ${link.slice(EST.length) || (link === EST ? 'estado/' : '.claude/')} simbólico se rechaza sin leer ni escribir`, async ($, on) => {
     let forks = 0
     on('model.fork', () => {
       forks++
@@ -489,3 +489,15 @@ for (const link of [EST, `${EST}/nucleo.md`, `${EST}/nucleo.prev-20261001T000000
     expect(forks).toBe(0)
   })
 }
+
+test('Objetivo como última línea sin salto: cuenta como vacío, se pide y se rellena', async ($, on) => {
+  let prompt = ''
+  on('model.fork', (_, e) => {
+    prompt = e.prompt
+    return { value: { isAnswered: true, text: '## Encargo original (literal)\nhaz X\n## Invariantes\n- no tocar Y\n', usage: {} } } as never
+  })
+  const r = repo(on, { [`${EST}/nucleo.md`]: '# Estado\n## Invariantes\n- a\n## Objetivo' }, { isIgnored: true })
+  await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(prompt).toContain('Encargo original')
+  expect(r.files[`${EST}/nucleo.md`]).toContain('## Objetivo\nhaz X')
+})

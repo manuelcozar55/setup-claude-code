@@ -378,9 +378,12 @@ const readState = async ($: $, path: string) => ((await $.fs.exists(path)) ? awa
 
 // A symlink at estado/, nucleo.md or a nucleo.prev-* copy would make the handoff read or write elsewhere.
 // find does not follow its starting point, so it lists dir itself when dir is a link. The API has no lstat.
+// A linked .claude is the parent of dir, so find dir never sees it: list it from its own parent.
 async function refuseLinks($: $, dir: string) {
-  const out = (await $.process.run(['find', dir, '-maxdepth', '1', '-type', 'l']).catch(() => null))?.stdout ?? ''
-  const links = out.split('\n').map(l => l.trim()).filter(l => l === dir || /\/nucleo\.(md|prev-[^/]+\.md)$/.test(l))
+  const claude = dir.slice(0, dir.lastIndexOf('/'))
+  const find = async (argv: string[]) => (await $.process.run(['find', ...argv]).catch(() => null))?.stdout ?? ''
+  const out = (await find([dir, '-maxdepth', '1', '-type', 'l'])) + '\n' + (await find([claude.slice(0, claude.lastIndexOf('/')) || '/', '-maxdepth', '1', '-name', '.claude', '-type', 'l']))
+  const links = out.split('\n').map(l => l.trim()).filter(l => l === dir || l === claude || /\/nucleo\.(md|prev-[^/]+\.md)$/.test(l))
   if (links.length) throw new Error(`enlaces simbólicos en ${links.join(', ')}: no leo ni escribo; sustitúyelos por ficheros normales`)
 }
 
