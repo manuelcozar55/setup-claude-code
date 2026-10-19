@@ -11,6 +11,10 @@
 
 ## Cómo se carga
 
+**Versión de Claude Code.** El mod se probó con Claude Code 2.1.292 (`claude --version`). No se ha comprobado una versión mínima: los mods son de acceso temprano y pueden cambiar entre versiones. Comprueba la tuya antes de instalar y, si algo no carga, `claude plugin validate kit/mods/cockpit` dice qué falla.
+
+**Sigue `main`.** El marketplace no fija una versión: instala lo último de la rama `main`, no el tag con el que instalaste el kit. Para fijar una versión, instala desde una copia del tag.
+
 Este repo es un marketplace (`.claude-plugin/marketplace.json`). Para todas tus sesiones, en scope user, desde el prompt de una sesión de terminal:
 
 ```
@@ -32,7 +36,7 @@ claude --plugin-dir <ruta>/kit/mods/cockpit
 ```
 
 - Sin argumentos: guarda el documento y hace `/clear`. El mod no envía ningún prompt: el hook `kit/claude/hooks/session-start-clear.sh` (SessionStart `startup|clear|resume`) entrega `nucleo.md` a la sesión nueva como datos, con el protocolo de arranque (con proyecto llega además un bloque `<git-hechos>` con `git log --oneline -5` y `git status --short` que calcula el hook, así que el paso 1 ya no pide ejecutarlos; después, propuesta del oráculo rápido; si el estado contradice a git, manda git; ningún comando del nucleo, tampoco la «Siguiente acción», corre sin que confirmes). Desde `~` (o `~/.claude`) no se inyecta un nucleo sino un `<indice-tareas>` (también tras compactar; el aviso de contexto y la puerta de commit tampoco tratan el nucleo de `~` como propio), derivado del registro `~/.claude/estado/raices`, con las líneas `(persona)` de los pendientes de cada tarea. Pulsa Enter sobre el prompt que el mod deja relleno (si no pudo rellenarlo, te dice qué escribir). Así un mensaje tuyo enviado durante el `/clear` no compite con un prompt del mod.
-- `solo`: guarda el documento y no limpia nada.
+- `solo`: guarda el documento y no limpia nada. No confundir con el CLI: `/handoff solo` es el argumento del mod (guarda sin `/clear`), mientras que `handoff --solo` es una opción del CLI y significa otra cosa: el borrador sustituye al `nucleo.md` entero en vez de fusionarse.
 - El resto del texto es el **foco**: el documento se adapta a lo que hará la próxima sesión.
 - En la banda sobre el prompt, el botón `handoff` (`h`) pide confirmación con tres acciones: `[guardar + /clear]`, `[solo guardar]` y `[no guardar + /clear]` (limpia el contexto sin escribir handoff), dibujadas sin cromo y sin tecla propia: un clic o Enter bajo el foco. Para cancelar, vuelve a pulsar `handoff`. Durante un turno en marcha solo queda `solo guardar`.
 
@@ -46,7 +50,7 @@ El documento es `.claude/estado/nucleo.md` de la raíz del proyecto, la convenci
 $HOME/.claude/bin/handoff --desde <borrador> --raiz <raíz> --sesion <id>
 ```
 
-Si el binario no existe el mod avisa con la orden de instalación (`kit/install.sh`, que copia `handoff` y `oraculo` en `~/.claude/bin`) y no hay fusión de reserva en TypeScript.
+Si el binario no existe el mod avisa con la orden de instalación (`bash kit/install.sh`, que copia `handoff` y `oraculo` en `~/.claude/bin`) y no hay fusión de reserva en TypeScript.
 
 | Exit | Significado | Qué dice la UI |
 |---|---|---|

@@ -403,9 +403,10 @@ No son garantías absolutas: son defensa en profundidad, con sus límites docume
 
 ## Quick start
 
-Linux o WSL2, con `bash`, `git`, `make`, `python3` ≥ 3.10 y `jq`. `make bootstrap` desde un clon
-instala el kit (diff-first si tu `~/.claude` es un repo con remoto), corre la suite y `doctor.sh`;
-`bash uninstall.sh` lo revierte. El procedimiento completo, paso a paso y con lo opcional
+Linux o WSL2, con `bash`, `git`, `make`, `python3` ≥ 3.10 y `jq`. Para usar el kit: `bash kit/install.sh`
+y `bash kit/doctor.sh` desde un clon (diff-first si tu `~/.claude` es un repo con remoto); primer día
+guiado en [`kit/docs/10-onboarding.md`](kit/docs/10-onboarding.md). `make bootstrap` es para quien
+trabaja en este repo: además crea el perfil del harness y corre la suite. `bash uninstall.sh` lo revierte. El procedimiento completo, paso a paso y con lo opcional
 (`.env`, venv de tools, plugins, Capa 2 de secretos), vive solo en [`kit/docs/02-install.md`](kit/docs/02-install.md).
 
 ## Qué incluye

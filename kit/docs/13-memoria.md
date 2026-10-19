@@ -42,7 +42,7 @@ fichero; si el índice pasa de 60 líneas, se fusionan o se retiran memorias obs
 ## `recuerda`
 
 [`scripts/recuerda`](../../scripts/recuerda) es un atajo de
-[`scripts/recall.py`](../../scripts/recall.py). Enlázalo en tu `PATH` una vez:
+[`scripts/recall.py`](../../scripts/recall.py). Es opcional: `install.sh` no lo instala. Si lo quieres, enlázalo en tu `PATH` una vez desde el clon (no borres el clon después):
 
 ```bash
 ln -sf "$PWD/scripts/recuerda" ~/.local/bin/recuerda
