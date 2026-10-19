@@ -562,6 +562,25 @@ test('nextLine: más de 200 caracteres se cortan con «…»', () => {
   expect(fillFor(siguiente('x'.repeat(250)))).toBe(PREFIX + line)
 })
 
+test('nextLine: quita los controles bidi y los separadores Unicode', () => {
+  const line = nextLine(siguiente('abre \u202Egnp.exe\u2028y \u2066x\u2069 \u2029fin'))
+  expect(/[\u202A-\u202E\u2066-\u2069\u2028\u2029]/.test(line)).toBe(false)
+  expect(line).toBe('abre gnp.exe y x fin')
+})
+
+test('nextLine: salta la valla de código y toma el comando', () => {
+  expect(nextLine(siguiente('```bash\nmake test\n```'))).toBe('make test')
+  expect(nextLine(siguiente('```\nmake test\n```'))).toBe('make test')
+})
+
+test('nextLine: el corte a 200 no parte un par sustituto', () => {
+  const line = nextLine(siguiente('x'.repeat(199) + '\u{1F600}'))
+  expect(line).toBe('x'.repeat(199) + '\u{1F600}')
+  const cut = nextLine(siguiente('x'.repeat(199) + '\u{1F600}y'))
+  expect(cut).toBe('x'.repeat(199) + '\u{1F600}…')
+  expect(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(cut)).toBe(false)
+})
+
 test('fillFor: una línea que empieza por / o ! nunca encabeza el relleno', () => {
   for (const bad of ['/clear', '!borra todo', '- /clear', '1. !borra todo']) {
     const fill = fillFor(siguiente(bad))
@@ -607,5 +626,6 @@ for (const [name, fill] of [['rechazado por un diálogo', { isFilled: false, ref
 test('UI: si /clear falla dice que lo escribas y luego el texto', async ($, on) => {
   const { msg, seen } = await dockText($, on, { isFilled: true }, true)
   expect(msg).toContain(`/clear falló: escribe /clear y luego ${PREFIX}T2`)
+  expect(msg).toContain(`Guardado en ${EST}/nucleo.md, pero /clear falló: escribe /clear y luego ${PREFIX}T2`)
   expect(seen.fills).toEqual([])
 })

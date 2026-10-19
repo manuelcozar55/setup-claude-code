@@ -315,9 +315,11 @@ export function nextLine(doc: string) {
   const sec = sections(doc).list.find(s => s.key.startsWith('siguiente accion'))
   const line = bodyOf(sec?.text ?? '')
     .split('\n')
-    .map(l => l.replace(/^\s*(?:[-*]|\d+\.)\s+/, '').replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim())
-    .find(l => l !== '')
-  return line === undefined ? '' : line.length > 200 ? `${line.slice(0, 200)}…` : line
+    .map(l => l.replace(/^\s*(?:[-*]|\d+\.)\s+/, '').replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim())
+    .find(l => l !== '' && !l.startsWith('```'))
+  if (line === undefined) return ''
+  const chars = Array.from(line)
+  return chars.length > 200 ? `${chars.slice(0, 200).join('')}…` : line
 }
 // The fixed prefix keeps the draft from starting with «/» or «!»: it cannot run a command or switch to bash mode.
 export const fillFor = (doc: string) => {
@@ -348,7 +350,8 @@ async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefine
         msg: filled?.isFilled ? 'Contexto limpio; revisa el prompt y pulsa Enter para seguir' : `Contexto limpio; escribe: ${fill}`,
       }))
     } catch {
-      await update($, handoff, (): Handoff => ({ phase: 'error', msg: fill ? `/clear falló: escribe /clear y luego ${fill}` : '/clear falló: escríbelo tú' }))
+      const saved = path ? `Guardado en ${path}, pero ` : ''
+      await update($, handoff, (): Handoff => ({ phase: 'error', msg: fill ? `${saved}/clear falló: escribe /clear y luego ${fill}` : `${saved}/clear falló: escríbelo tú` }))
     }
   })
 }
