@@ -1314,7 +1314,7 @@ hr_check "ningun hook del kit cablea 'rtk hook claude' y ninguna linea lo afirma
 NUTMP=$(mktemp -d) || exit 1
 jq '.hooks.PreToolUse += [{"matcher":"Bash","hooks":[{"type":"command","command":"$HOME/.claude/hooks/optional-hook.sh rtk hook claude","timeout":10}]}]' \
   "$SETTINGS" > "$NUTMP/s-mas-rtk.json"
-jq 'del(.enabledPlugins["codex@openai-codex"])' "$SETTINGS" > "$NUTMP/s-menos-plugin.json"
+jq 'del(.enabledPlugins["skill-creator@claude-plugins-official"])' "$SETTINGS" > "$NUTMP/s-menos-plugin.json"
 # shellcheck disable=SC2016 # los backticks son los del markdown de 05-security.md, literales
 sed 's/6 hooks `PreToolUse`/9 hooks `PreToolUse`/' "$SECDOC"          > "$NUTMP/d-cadena.md"
 # shellcheck disable=SC2016 # idem
