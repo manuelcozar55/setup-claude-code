@@ -230,7 +230,7 @@ hijos con su `parent_id`, en el proyecto `mcharness-evals`.
   fricción de permisos en vez de competencia del agente.
 
 `auto` sí ejecuta Edit/Write/Bash sin prompt interactivo, y sigue invocando los
-hooks `PreToolUse` normales (secret-guard, sentinel, smart_approve) más el
+hooks `PreToolUse` normales (secret-guard, sentinel, bash-write-guard) más el
 clasificador propio de Claude Code — el aislamiento por `mktemp -d` de `run.sh`
 no depende solo de este flag.
 

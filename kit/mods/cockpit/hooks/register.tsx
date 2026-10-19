@@ -381,7 +381,7 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
   try {
     const { root, dir, path, bin } = await resolveRoot($)
     if (root === null) throw new Error(NO_PROJECT)
-    if (!(await $.fs.exists(bin))) throw new Error(`falta ${bin}: instala el kit (kit/install.sh --apply copia handoff y oraculo en ~/.claude/bin)`)
+    if (!(await $.fs.exists(bin))) throw new Error(`falta ${bin}: ejecuta kit/install.sh, que copia handoff y oraculo a ~/.claude/bin (si ~/.claude es tu repo git, genera un plan diff-first: cópialos desde él)`)
     await refuseLinks($, dir)
     const prev = await readState($, path)
     const reply = await $.model.fork({ prompt: HANDOFF_PROMPT + (prev ? prevNote(prev) : firstNote) + (focus ? focusNote(focus) : '') })

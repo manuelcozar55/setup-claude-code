@@ -45,7 +45,7 @@ if [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null
 fi
 
 # --- Puerta de dependencia: jq ----------------------------------------------
-# jq no es opcional: los cuatro guards de Bash leen el comando del payload de
+# jq no es opcional: los cinco guards de Bash leen el comando del payload de
 # PreToolUse con jq, y fallan en CERRADO si no esta (deniegan en vez de permitir
 # en silencio). Instalar sin jq dejaria un kit que bloquea cada comando de Bash,
 # asi que se para aqui, antes de escribir nada, y con la orden que lo arregla.
@@ -53,8 +53,8 @@ if ! command -v jq >/dev/null 2>&1; then
   cat >&2 <<EOF
 ==> Falta jq, y este kit lo necesita.
 
-Los cuatro guards de Bash (block-dangerous-commands, branch-guard,
-destructive-guard, secret-guard) leen el comando con jq. Sin jq no pueden
+Los cinco guards de Bash (block-dangerous-commands, branch-guard,
+destructive-guard, secret-guard, bash-write-guard) leen el comando con jq. Sin jq no pueden
 decidir, y fallan en cerrado: DENIEGAN todo comando de Bash. Instalarlo asi
 te dejaria Claude Code bloqueado, asi que no se instala nada.
 
