@@ -1,6 +1,6 @@
 # ADR 004 — Ni el coach ni los sensores bloquean la ejecución
 
-**Fecha:** 2026-08-21 · **Estado:** aceptada
+**Fecha:** 2026-08-21 · **Estado:** sustituida (parcialmente por ADR 009 y 010; `block-dangerous-commands.sh` ya deniega y el verify-gate emite `block` en modo autónomo)
 
 ## Contexto
 
