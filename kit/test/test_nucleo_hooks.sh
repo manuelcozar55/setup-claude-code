@@ -434,6 +434,10 @@ printf 'solo texto\n' >"$T/bad4.md"
 ok "inválido: sin ninguna cabecera → exit 2" "$(ho --desde "$T/bad4.md" >/dev/null 2>&1; echo $?)" 2
 ok "inválido: borrador inexistente → exit 2" "$(ho --desde "$T/no-existe.md" >/dev/null 2>&1; echo $?)" 2
 ok "inválido: --solo también valida" "$(ho --desde "$T/bad1.md" --solo >/dev/null 2>&1; echo $?)" 2
+printf '## No repetir\nx\n' >"$T/bad5.md"
+ok "inválido: «No repetir» no es cabecera de la plantilla (exit 2)" "$(ho --desde "$T/bad5.md" >/dev/null 2>&1; echo $?)" 2
+printf '## Plan\n- [ ] a\n## Objetivo\nO\n## Paso actual\nx\n' >"$T/ord.md"; printf '## Paso actual\nx\n## Plan\n- [ ] a\n## Objetivo\nO\n' >"$T/ord2.md"
+ok "válido: la validación va por nombres, no por orden" "$(ho --desde "$T/ord.md" >/dev/null 2>&1; echo $?),$(ho --desde "$T/ord2.md" >/dev/null 2>&1; echo $?)" "0,0"
 # shellcheck disable=SC2016 # la cerca markdown es literal
 printf '%s\n' '## Paso actual' '```' '## Chistes' '```' >"$T/ok-cerca.md"
 ok "válido: un «## » dentro de una cerca no es cabecera" "$(ho --desde "$T/ok-cerca.md" >/dev/null 2>&1; echo $?)" 0

@@ -90,16 +90,27 @@ $EDITOR $HOME/.claude/.env
 
 Rellena `ANTHROPIC_API_KEY` y, si la usas, `PERPLEXITY_API_KEY`. El fichero `.env` **nunca** se sube al repo (el hook `secret-guard.sh` y el gate `scan-secrets.sh` están precisamente para que no ocurra por descuido).
 
+## Paso 3b · CLIs `handoff` y `oraculo`
+
+`install.sh` copia `bin/handoff` y `bin/oraculo` a `$CLAUDE_HOME/bin/` (diff-first, ejecutables) e imprime la orden
+para enlazarlos a tu `PATH`:
+
+```bash
+mkdir -p "$HOME/.local/bin" && ln -sf "$CLAUDE_HOME/bin/handoff" "$HOME/.local/bin/handoff" && ln -sf "$CLAUDE_HOME/bin/oraculo" "$HOME/.local/bin/oraculo"
+```
+
+Son bash + `jq`, sin red, y valen igual en Claude Code, Codex y opencode (`handoff --help`, `oraculo --help`).
+
 ## Paso 4 · Venv de herramientas
 
-Los hooks del kit (Sentinel, `smart_approve.py`) se ejecutan preferentemente con el Python de un venv dedicado:
+Los hooks del kit (Sentinel y los guards en Python) se ejecutan preferentemente con el Python de un venv dedicado:
 
 ```bash
 python3 -m venv $HOME/.venvs/tools
 $HOME/.venvs/tools/bin/pip install -r requirements-tools.txt
 ```
 
-Este paso es opcional. `settings.json` no invoca el venv directamente: llama a `hooks/optional-hook.sh --python`, que prefiere `$HOME/.venvs/tools/bin/python3`, cae al `python3` del sistema si no existe, y solo si no hay ninguno de los dos deja el hook en no-op silencioso. Como `sentinel_preflight.py` y `smart_approve.py` usan solo la librería estándar, con el `python3` del sistema siguen funcionando. Lo que se pierde sin el venv son los CLIs de `requirements-tools.txt` (`markitdown`, `ast-grep-cli`, `basedpyright`, `ruff`) y `pyyaml`, que es lo que `kit/evals/run.sh` necesita para leer las tareas. `doctor.sh` lo refleja: el venv ausente es `WARN`, no `FAIL`. Si prefieres exponer los CLIs instalados en tu `PATH` general:
+Este paso es opcional. `settings.json` no invoca el venv directamente: llama a `hooks/optional-hook.sh --python`, que prefiere `$HOME/.venvs/tools/bin/python3`, cae al `python3` del sistema si no existe, y solo si no hay ninguno de los dos deja el hook en no-op silencioso. Como `sentinel_preflight.py` usa solo la librería estándar, con el `python3` del sistema siguen funcionando. Lo que se pierde sin el venv son los CLIs de `requirements-tools.txt` (`markitdown`, `ast-grep-cli`, `basedpyright`, `ruff`) y `pyyaml`, que es lo que `kit/evals/run.sh` necesita para leer las tareas. `doctor.sh` lo refleja: el venv ausente es `WARN`, no `FAIL`. Si prefieres exponer los CLIs instalados en tu `PATH` general:
 
 ```bash
 ln -sf $HOME/.venvs/tools/bin/ruff $HOME/.local/bin/ruff
