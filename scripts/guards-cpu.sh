@@ -8,7 +8,12 @@
 #
 # Uso:  scripts/guards-cpu.sh [--settings FICHERO]
 # Env:  GUARDS_CPU_REPS (repeticiones por comando, 1)  GUARDS_CPU_P95_MAX (ms, 300)
-# Salida: p50 y p95 en ms por llamada; exit 1 si el p95 supera GUARDS_CPU_P95_MAX.
+#       GUARDS_CPU_BIG_MAX (ms por hook en las muestras grandes, 1000)
+# Salida: p50, p95 y max en ms por llamada; exit 1 si el p95 supera GUARDS_CPU_P95_MAX.
+# Aparte, muestras GRANDES (64 y 128 KB en una linea, 32 KB de segmentos; con la orden peligrosa al final) medidas hook a hook: con ~20
+# muestras el p95 es la segunda mayor y las esconde, y el timeout (10 s) se aplica a cada hook, no a la
+# cadena. Falla (exit 1) si algun hook gasta mas de GUARDS_CPU_BIG_MAX en una de ellas: un hook que pasa
+# de su timeout no bloquea, y el tamano del comando seria una forma de saltarse los guards.
 #
 # Corre sobre un HOME temporal con los hooks y Sentinel del kit copiados, de modo que no
 # lee ni escribe el ~/.claude de quien lo ejecuta (ni su log de auditoria).
@@ -18,6 +23,7 @@ SETTINGS="$ROOT/kit/claude/settings.json"
 [ "${1:-}" = "--settings" ] && { SETTINGS=$2; shift 2; }
 REPS=${GUARDS_CPU_REPS:-1}
 MAX=${GUARDS_CPU_P95_MAX:-300}
+BIG_MAX=${GUARDS_CPU_BIG_MAX:-1000}
 command -v jq >/dev/null || { echo "falta jq" >&2; exit 2; }
 
 T=$(mktemp -d); trap 'rm -r -- "$T"' EXIT
@@ -78,4 +84,24 @@ pct() { local i=$(( (n * $1 + 99) / 100 )); echo "${sorted[i - 1]}"; }
 p50=$(pct 50); p95=$(pct 95)
 echo "hooks en la cadena: ${#CHAIN[@]}   llamadas medidas: $n   (CPU user+sys por llamada)"
 echo "p50=${p50} ms  p95=${p95} ms  max=${sorted[n - 1]} ms  objetivo p95 < ${MAX} ms"
-[ "$p95" -lt "$MAX" ]
+
+BODY128=$(head -c 122880 /dev/zero | tr '\0' 'a')
+BODYSEMI=$(yes ab | head -c 32768 | tr '\n' ';')
+DANGER='git push --for''ce origin main'
+BIGLABEL=("64 KB una linea" "120 KB una linea" "32 KB de segmentos")
+BIGCMD=("echo $BODY64; $DANGER" "echo $BODY128; $DANGER" "echo $BODYSEMI; $DANGER")
+big_fail=0
+for ((b = 0; b < ${#BIGCMD[@]}; b++)); do
+  printf '%s' "${BIGCMD[b]}" > "$T/big.cmd"
+  jq -nc --rawfile c "$T/big.cmd" '{tool_name:"Bash",tool_input:{command:$c}}' > "$T/big.json"
+  worst=0; worst_h=""
+  for h in "${CHAIN[@]}"; do
+    t=$({ time bash -c "$h" < "$T/big.json" >/dev/null 2>&1; } 2>&1)
+    read -r u s <<<"$t"
+    ms=$(awk -v u="$u" -v s="$s" 'BEGIN { printf "%d", (u + s) * 1000 + 0.5 }')
+    [ "$ms" -gt "$worst" ] && { worst=$ms; worst_h=${h##*/}; }
+  done
+  echo "grande (${BIGLABEL[b]}): peor hook ${worst} ms (${worst_h%% *})  tope ${BIG_MAX} ms"
+  [ "$worst" -lt "$BIG_MAX" ] || big_fail=1
+done
+[ "$p95" -lt "$MAX" ] && [ "$big_fail" -eq 0 ]

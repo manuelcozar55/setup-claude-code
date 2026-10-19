@@ -1277,6 +1277,53 @@ EOF")" BLOCK
 bwg_to=$(jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | endswith("/bash-write-guard.sh")) | .timeout] | join(",")' "$KIT/claude/settings.json")
 if [ "$bwg_to" = 5 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: bash-write-guard no esta en la cadena PreToolUse/Bash del settings con timeout 5 (timeouts: '$bwg_to')"; fi
 
+# Tamano del comando (v3 W5). Claude Code mata el hook al pasar su timeout y la herramienta se
+# ejecuta: un guard lento falla EN ABIERTO, asi que el tamano del comando era una forma de saltarse
+# todos. Un comando de 64 KB en UNA linea costaba 11-15 s en Sentinel (`.*_TOKEN$` buscada en una
+# palabra de 64 KB) y 3-4 s en cada guard (`${x#*sep}` en cmdnorm.sh): ambos cuadraticos. La orden
+# peligrosa va al FINAL, donde un guard que se rinde o se pasa de tiempo la dejaria pasar. Cada
+# guard debe denegar y gastar menos de 1 s de CPU (user+sys).
+big_body=$(head -c 65536 /dev/zero | tr '\0' 'a')
+big_guard() { # $1 etiqueta, $2 cwd, $3 comando peligroso, resto = el guard (argv)
+  local label=$1 cwd=$2 danger=$3 payload out t u s ms
+  shift 3
+  payload=$(jq -nc --arg c "echo $big_body; $danger" '{tool_name:"Bash",tool_input:{command:$c}}')
+  TIMEFORMAT='%3U %3S'
+  t=$({ time { out=$(cd "$cwd" && printf '%s' "$payload" | HOME="$GUARDS_TEST_HOME" CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" "$@" 2>&1); echo "$out" > "$GUARDS_TEST_HOME/big.out"; }; } 2>&1)
+  read -r u s <<<"$t"
+  ms=$(awk -v u="$u" -v s="$s" 'BEGIN { printf "%d", (u + s) * 1000 + 0.5 }')
+  expect "$label: 64 KB en una linea con la orden peligrosa al final denegado" "$(cat "$GUARDS_TEST_HOME/big.out")" BLOCK
+  if [ "$ms" -lt 1000 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: $label: 64 KB gasto ${ms} ms de CPU (tope 1000)"; fi
+}
+printf 'SECRET=1\n' > "$SG_DIR/.env"
+big_guard "block-dangerous"  "$SG_DIR" 'git push --force origin main' bash "$KIT/claude/hooks/block-dangerous-commands.sh"
+big_guard "branch-guard"     "$SG_DIR"   'git push origin main'       bash "$KIT/claude/hooks/branch-guard.sh"
+big_guard "destructive"      "$SG_DIR" 'git reset --hard'            bash "$KIT/claude/hooks/destructive-guard.sh"
+big_guard "secret-guard"     "$SG_DIR" 'git add .env'                bash "$KIT/claude/hooks/secret-guard.sh"
+big_guard "sentinel"         "$SG_DIR" 'cat ~/.ssh/id_rsa'           "$PY" "$KIT/sentinel/sentinel_preflight.py"
+rm -f "$SG_DIR/.env"
+
+# Por encima de 128 KB ningun guard se arriesga: pide confirmacion (ask, no deny ni silencio) y dice
+# que se use Write. El peor caso lineal por debajo del tope son ~2 s de CPU con 10 s de timeout (los
+# guards corren a la vez: con 2 nucleos y tope de 256 KB rozaria el timeout); sin tope, 1 MB lo
+# cruzaria y el guard fallaria en abierto. 140 KB: justo por encima del tope.
+big_over=$(head -c 140000 /dev/zero | tr '\0' 'a')
+big_ask() { # $1 etiqueta, resto = el guard (argv)
+  local label=$1 payload out
+  shift
+  printf 'echo %s; git push --force origin main' "$big_over" > "$GUARDS_TEST_HOME/big.cmd"  # jq --arg no admite >128 KB
+  payload=$(jq -nc --rawfile c "$GUARDS_TEST_HOME/big.cmd" '{tool_name:"Bash",tool_input:{command:$c}}')
+  out=$(cd "$SG_DIR" && printf '%s' "$payload" | HOME="$GUARDS_TEST_HOME" CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" "$@" 2>&1)
+  if [ "$(jq -r '.hookSpecificOutput.permissionDecision' <<<"$out" 2>/dev/null)" = ask ] && grep -q 'herramienta Write' <<<"$out"; then
+    pass=$((pass+1))
+  else fail=$((fail+1)); echo "FAIL: $label: 140 KB no pide confirmacion con aviso de Write (salida: ${out:0:200})"; fi
+}
+big_ask "block-dangerous" bash "$KIT/claude/hooks/block-dangerous-commands.sh"
+big_ask "branch-guard"    bash "$KIT/claude/hooks/branch-guard.sh"
+big_ask "destructive"     bash "$KIT/claude/hooks/destructive-guard.sh"
+big_ask "secret-guard"    bash "$KIT/claude/hooks/secret-guard.sh"
+big_ask "sentinel"        "$PY" "$KIT/sentinel/sentinel_preflight.py"
+
 rm -rf "$SG_DIR"
 rm -rf "$GUARDS_TEST_HOME" "$FIELDS_HOME"
 echo "PASS=$pass FAIL=$fail"; [ $fail -eq 0 ]
