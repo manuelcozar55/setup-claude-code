@@ -239,7 +239,7 @@ if [ "$HAYVIEJO" -eq 1 ] && [ "$SOLO" -eq 0 ]; then
           RK+=("$k"); RT+=("$t")
         elif [ "$di" -ge 0 ] && ! vacio "${DT[di]}"; then
           USADAS+="$k "; RK+=("$k"); RT+=("${OT[i]%%$'\n'*}"$'\n'"${DT[di]#*$'\n'}")
-        else RK+=("$k"); RT+=("${OT[i]}")
+        else [ "$di" -lt 0 ] || USADAS+="$k "; RK+=("$k"); RT+=("${OT[i]}")
         fi ;;
       *)
         if [ "$di" -ge 0 ] && [[ $CAMBIADAS != *" $k "* ]]; then

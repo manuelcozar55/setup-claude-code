@@ -222,11 +222,25 @@ for modo in basura ausente; do
   ok "pre-compact transcript $modo: exit 0, conserva el checkpoint anterior y avisa" "$RC,$(cat "$CK"),$([ -s "$T/c-err" ] && echo aviso)" "0,previo-CK,aviso"
   ok "pre-compact transcript $modo: sin temporales" "$(find "$R/.claude/estado" -name '.checkpoint-compact.*' | wc -l | tr -d ' ')" 0
 done
+# Sin checkpoint previo, «anterior conservado» mentía: se sigue sin publicar, pero el aviso dice que no había ninguno.
+NPS='s-sin-previo'; NPO=$R/.claude/estado/checkpoint-compact-$(printf '%s' "$NPS" | sha256sum | cut -d' ' -f1).md
+ev "$R" "$NPS" "$T/no-existe.jsonl" | bash "$H/pre-compact.sh" 2>"$T/c-err"; RC=$?
+ok "pre-compact transcript ausente sin checkpoint previo: exit 0, no publica y avisa de que no había ninguno" "$RC,$([ -e "$NPO" ] && echo publicado || echo no),$(command grep -c 'no había ninguno' "$T/c-err"),$(command grep -c 'anterior conservado' "$T/c-err")" "0,no,1,0"
+ev "$R" "$NPS" "$TP" | PATH="$T/mvfalso:$PATH" bash "$H/pre-compact.sh" 2>"$T/c-err"
+ok "pre-compact: publicación fallida sin checkpoint previo tampoco dice «anterior conservado»" "$([ -e "$NPO" ] && echo publicado || echo no),$(command grep -c 'no había ninguno' "$T/c-err"),$(command grep -c 'anterior conservado' "$T/c-err")" "no,1,0"
 # Claude Code sigue añadiendo líneas mientras corre el hook: la última puede estar a medias.
 echo previo-CK >"$CK"
 { printf '%s\n' '{"type":"user","message":{"content":"MSG-UNO"}}' '{"type":"user","message":{"content":"MSG-DOS"}}'; printf '{"type":"user","message":{"cont'; } >"$TPC"
 jq -cn --arg c "$R" --arg t "$TPC" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: línea final truncada → escribe el checkpoint con los 2 mensajes válidos" "$(command grep -c 'MSG-UNO\|MSG-DOS' "$CK"),$(command grep -c previo-CK "$CK")" 2,0
+# Un registro JSON válido con message, payload o un elemento de content que no es objeto hacía abortar a jq
+# («Cannot index string») y se perdía el checkpoint entero, también lo válido que venía detrás.
+for raro in '{"type":"user","message":"x"}' '{"type":"event_msg","payload":"x"}' '{"type":"user","message":{"content":["x"]}}'; do
+  echo previo-CK >"$CK"
+  printf '%s\n' "$raro" '{"type":"user","message":{"content":"MSG-TRAS-RARO"}}' >"$TPC"
+  jq -cn --arg c "$R" --arg t "$TPC" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
+  ok "pre-compact: registro $raro → publica el checkpoint con el mensaje válido de después" "$(command grep -c MSG-TRAS-RARO "$CK"),$(command grep -c previo-CK "$CK")" 1,0
+done
 echo previo-CK >"$CK"; : >"$T/sin-leer.jsonl"; printf '%s\n' '{"type":"user","message":{"content":"X"}}' >"$T/sin-leer.jsonl"; chmod 000 "$T/sin-leer.jsonl"
 if [ ! -r "$T/sin-leer.jsonl" ]; then
   jq -cn --arg c "$R" --arg t "$T/sin-leer.jsonl" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
@@ -637,5 +651,14 @@ IR=$T/ini-raiz; mkdir -p "$IR"; git -C "$IR" init -q
 OUT=$(cd "$T/ini-fuera" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar --raiz "$IR" 2>&1); RC=$?
 ok "iniciar: --raiz DIR crea el nucleo en esa raíz" "$RC,$([ -f "$IR/.claude/estado/nucleo.md" ] && echo si)" "0,si"
 ok "iniciar: aparece en handoff --help" "$(bash "$BIN/handoff" --help | command grep -c '^     handoff --iniciar')" "1"
+# Primer día: el nucleo recién iniciado, copiado como borrador con solo Objetivo relleno. Invariantes, vacía en
+# los dos, se copiaba del nucleo sin darse por usada y el borrador la volvía a añadir: una más en cada fusión.
+IP=$T/ini-pegada; mkdir -p "$IP"; git -C "$IP" init -q
+(cd "$IP" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar >/dev/null 2>&1)
+awk '{ print } /^## Objetivo$/ { print "OBJ-DIA1" }' "$IP/.claude/estado/nucleo.md" >"$T/b-pegada.md"
+for n in 1 2; do
+  (cd "$IP" && bash "$BIN/handoff" --desde "$T/b-pegada.md" >/dev/null 2>&1); RC=$?
+  ok "iniciar + --desde (fusión $n): una cabecera de cada sección, 8 en total, y el Objetivo una vez" "$RC,$(command grep -c '^## ' "$IP/.claude/estado/nucleo.md"),$(sed -n 's/^## //p' "$IP/.claude/estado/nucleo.md" | paste -sd,),$(command grep -c 'OBJ-DIA1' "$IP/.claude/estado/nucleo.md")" "0,8,$(sed -n 's/^## //p' "$KIT/claude/templates/nucleo.md" | paste -sd,),1"
+done
 
 exit $FAIL
