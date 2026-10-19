@@ -131,7 +131,7 @@ DENY_RULES=(
   # --force-with-lease y --force-if-includes siguen cayendo por la regla de --force.
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--force'        "BLOCKED: git push --force"
   '\bgit\b[^;&|]*\bpush\b[^;&|]*\s-[A-Za-z]*f'  "BLOCKED: git push -f / -uf (force push)"
-  '\bgit\b[^;&|]*\bpush\b[^;&|]*\s\+[^ ]*:'     "BLOCKED: git push +refspec (forced refspec)"
+  '\bgit\b[^;&|]*\bpush\b[^;&|]*\s\+[A-Za-z0-9_./@-]'  "BLOCKED: git push +refspec (forced refspec)"
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--mirror'       "BLOCKED: git push --mirror (can delete remote refs)"
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--delete'       "BLOCKED: git push --delete (deletes a remote branch)"
   # Las otras dos grafias del mismo borrado. Medido: contra rama protegida las tres caian, pero
