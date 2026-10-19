@@ -64,6 +64,12 @@ ok "desde ~/.claude también es ~" "$(run "$HOME/.claude" | ctx | command grep -
 mkdir -p "$HOME/.claude/estado"; printf '## Objetivo\nOBJ-HEREDADO\n' >"$HOME/.claude/estado/nucleo.md"
 C=$(run "$HOME" | ctx)
 ok "desde ~: el nucleo heredado va en el índice y no como nucleo" "$(command grep -c 'heredado de ~.*OBJ-HEREDADO' <<<"$C"),$(command grep -c '<nucleo-datos' <<<"$C")" 1,0
+# K4/concurrencia: `git status` refresca el índice y crearía index.lock bajo otra sesión del mismo repo.
+mkdir -p "$T/gitlog" "$T/stubbin"; REALGIT=$(command -v git)
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/args"\nexec "%s" "$@"\n' "$T/gitlog" "$REALGIT" >"$T/stubbin/git"; chmod +x "$T/stubbin/git"
+jq -cn --arg c "$G" '{cwd:$c,session_id:"s",source:"clear"}' | PATH="$T/stubbin:$PATH" bash "$H" >/dev/null
+ok "git del hook: sin index.lock tras ejecutarlo" "$([ -e "$G/.git/index.lock" ] && echo hay || echo no)" no
+ok "git del hook: log y status llevan --no-optional-locks" "$(command grep -c -- '--no-optional-locks .* \(log\|status\)' "$T/gitlog/args")" 2
 N=$T/nogit; mkdir -p "$N/.claude/estado"; printf '# N\n## Objetivo\nx\n' >"$N/.claude/estado/nucleo.md"
 C=$(run "$N" | ctx)
 ok "sin git: sin bloque git-hechos y paso 1 antiguo" "$(command grep -c '^<git-hechos' <<<"$C"),$(command grep -cF 'Ejecuta `git log --oneline -5` y `git status`' <<<"$C")" 0,1
