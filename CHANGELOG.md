@@ -7,6 +7,42 @@ etiquetado.
 
 ## [Unreleased]
 
+Que un compañero instale el kit en limpio (WSL2 Ubuntu) y tenga el estado v3 operativo desde la
+primera sesión: `install.sh` deja `handoff` y `oraculo` en el PATH, `doctor.sh` comprueba que
+están, `handoff --iniciar` crea el primer `nucleo.md` y `10-onboarding.md` es la guía del primer
+día. Además se cierran dos huecos de los guards y el `settings.json` del kit pasa a ser techo
+también sin política gestionada.
+
+### Added
+
+- `install.sh` enlaza `handoff` y `oraculo` en `~/.local/bin` (solo sobre hueco libre o enlace propio; nunca pisa uno ajeno), avisa si `~/.local/bin` no está en el PATH y, con un `CLAUDE.md` previo sin `@AGENTS.md`, termina con un aviso visible (plantilla en `CLAUDE.kit.md`). En diff-first lo pone en el plan sin escribir. El aviso de credenciales solo sale si la plantilla existe.
+- `doctor.sh`: FAIL si falta `bin/handoff`, `bin/oraculo` o `templates/nucleo.md`; WARN si no se resuelven en el PATH o si `CLAUDE.md` no importa `AGENTS.md`.
+- `handoff --iniciar [--raiz D]` crea el primer `nucleo.md` desde la plantilla (nunca sobrescribe; exit 3 sin proyecto).
+
+### Changed
+
+- Plantilla `settings.json` genérica: `model` pasa a `"opus"` (Opus 4.7+ trae 1M sin sufijo), `allow` queda en `Bash(uv tool list)`, se retiran `codex`, `understand-anything` y `frontend-design` con sus marketplaces, y se registra `setup-claude-code` para que `esenciales` no quede colgado.
+- `AGENTS.md` instalado: la mención a `recuerda` pasa a condicional (el instalador no lo instala).
+- `templates/nucleo.md`: el comentario de cabecera pasa dentro de «Objetivo» y el orden de secciones coincide con el que `handoff` escribe.
+
+### Fixed
+
+- `pre-compact.sh`: si el transcript declarado falta, no se puede leer o no tiene ninguna línea JSON (o jq falla), no se publica checkpoint y se conserva el anterior (`pipefail`); una línea final a medias se descarta y se conservan los mensajes válidos. Acepta también los mensajes de Codex (`event_msg/user_message`).
+- La plantilla `nucleo.md` pegada tal cual como borrador de `handoff --desde` ya no da rc 2.
+- Tests: las suites que instalan usan `HOME` falso para no enlazar en el `~/.local/bin` real; la etiqueta de `test_session_start_clear.sh` indica el tope real (9 500).
+
+### Security
+
+- Guards: el refspec forzado sin `:` (`+main`, también `+HEAD:main` y `+refs/heads/master`) y `find . -delete` / `find ./ -delete` ya se bloquean como el resto de force-push y `find -delete` destructivos. Casos rojos primero en `test_guards_falsifiability.sh`, con negativos legítimos.
+- `settings.json` del kit: `disableBypassPermissionsMode: "disable"` y cuatro `Read(...)` deny (claves SSH, credenciales de nube, `.env*`, `secrets.*`), para que el kit sea techo también sin política gestionada.
+
+### Documentation
+
+- **Guía del primer día para un compañero.** `kit/docs/10-onboarding.md` pasa a ser la guía genérica (WSL2 Ubuntu): prerrequisitos con `apt`, `bash kit/install.sh`, `doctor.sh`, primer proyecto con `git init` + `handoff --iniciar`, bucle diario `oraculo --` → `/handoff` o `handoff --desde` → `/clear` y tabla de fallos. `make bootstrap` deja de ser la vía de quien solo usa el kit.
+- `02-install.md` documenta los enlaces de `handoff` y `oraculo` en `~/.local/bin`, el aviso de `@AGENTS.md` con un `CLAUDE.md` previo, las comprobaciones nuevas de `doctor.sh`, que la fusión de `settings.json` sustituye los hooks propios por los del kit (con backup) y que el modelo se fija con `"model": "opus"` (sin `[1m]` en Opus 4.7+).
+- `11-cockpit.md`: instalación, versión probada de Claude Code (2.1.292, sin mínimo comprobado), que sigue `main`, y `/handoff solo` frente a `handoff --solo`. La ruta de 7 días pasa a la plantilla de `nucleo.md` de v3 y a `handoff --desde`.
+- ADR 004 (sustituida en parte), 007 (no implementada) y 011 (issues sin re-verificar) con su estado real.
+
 ## [1.3.0] - 2026-10-19
 
 Dos frentes. El primero, **que el estado de una tarea sobreviva a la compactación sin depender de
