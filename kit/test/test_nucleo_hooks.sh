@@ -108,7 +108,7 @@ ok "symlink: clear no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/sess
 
 # --- resume con la caché caducada: aviso a la persona; sin caducar o con poco contexto, nada ---
 rs() { ev "$1" s7 "" resume | jq -c --argjson e "$2" --argjson k "$3" '.prompt_cache_likely_expired=$e | .context_tokens=$k' \
-  | bash "$H/session-start-clear.sh"; }
+  | NUCLEO_DUENO_TTL=0 bash "$H/session-start-clear.sh"; }  # TTL 0: aquí no se prueba el dueño
 ok "resume caducado: aviso de /handoff" "$(rs "$R/sub" true 150000 | jq -r '.systemMessage // ""' | command grep -c '/handoff')" 1
 ok "resume caducado: el nucleo se sigue inyectando" "$(rs "$R/sub" true 150000 | ctx | command grep -c PASO-VIVO)" 1
 ok "resume caducado sin nucleo: solo el aviso" "$(rs "$T/sin-nucleo" true 150000 | jq -r 'keys|join(",")')" systemMessage
@@ -118,7 +118,7 @@ ok "resume con poco contexto: sin aviso" "$(rs "$R/sub" true 50000 | jq -r '.sys
 ok "resume con context_tokens no numérico: sin aviso" "$(rs "$R/sub" true '"x"' | jq -r '.systemMessage // "nada"')" nada
 # fork trae los mismos campos (doc), pero el filtro solo acepta resume: el matcher del kit no lo lanza en fork.
 ok "fork caducado: sin aviso" "$(ev "$R/sub" s7 "" fork | jq -c '.prompt_cache_likely_expired=true | .context_tokens=150000' \
-  | bash "$H/session-start-clear.sh" | jq -r '.systemMessage // "nada"')" nada
+  | NUCLEO_DUENO_TTL=0 bash "$H/session-start-clear.sh" | jq -r '.systemMessage // "nada"')" nada
 ok "clear sin nucleo: no emite nada" "$(ev "$T/sin-nucleo" s7 "" clear | bash "$H/session-start-clear.sh")" ""
 ok "symlink: compact no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-FUERA)" 0
 ok "symlink: nudge calla" "$(jq -cn --arg c "$R3" --arg t "$TP" '{session_id:"s6",transcript_path:$t,cwd:$c}' | bash "$H/nucleo-nudge.sh")" ""
@@ -254,5 +254,32 @@ G=$(ev "$HOME" s44 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh")
 ok "K8 gauge en ~: la puerta de commit no se evalúa (ni fila ni bloqueo)" "$(jq -r '.decision // "nada"' <<<"$G"),$(wc -l <"$HOME/.claude/session-logs/gate-nucleo.log")" nada,0
 ok "K8 gauge en ~: el aviso de contexto sigue saliendo" "$(jq -r '.systemMessage // empty' <<<"$G" | command grep -c '% del airbag')" 1
 unlink "$HN"
+
+# --- v3: una tarea = una sesión dueña (.claude/estado/.dueno: sesion=, desde=<epoch>) ---
+RD=$T/rd; mkdir -p "$RD/.claude/estado"; git -C "$RD" init -q; printf '## Objetivo\nOBJ-DUENO\n## Paso actual\nPASO-DUENO\n' >"$RD/.claude/estado/nucleo.md"
+DU=$RD/.claude/estado/.dueno
+dsid() { sed -n 's/^sesion=//p' "$DU" 2>/dev/null; }
+OUT=$(ev "$RD" sA "" startup | bash "$H/session-start-clear.sh")
+ok "dueño: la primera sesión lo reclama (sesion= y desde= numérico)" "$(dsid),$(sed -n 's/^desde=//p' "$DU" | command grep -c '^[0-9][0-9]*$')" sA,1
+ok "dueño: la primera sesión no recibe aviso de otra" "$(jq -r '.systemMessage // "nada"' <<<"$OUT")" nada
+OUT=$(ev "$RD" sB "" startup | bash "$H/session-start-clear.sh")
+ok "dueño: la segunda sesión recibe aviso (persona y modelo) nombrando a la dueña" "$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -c sA),$(ctx <<<"$OUT" | command grep -c 'sA')" 1,1
+ok "dueño: el aviso no bloquea: el nucleo se inyecta igual" "$(ctx <<<"$OUT" | command grep -c PASO-DUENO)" 1
+ok "dueño: la segunda sesión no pisa al dueño" "$(dsid)" sA
+ok "dueño: la dueña que reanuda no recibe aviso (misma sesión)" "$(ev "$RD" sA "" resume | bash "$H/session-start-clear.sh" | jq -r '.systemMessage // "nada"')" nada
+printf 'sesion=sA\ndesde=%s\n' "$(( $(date +%s) - 20000 ))" >"$DU"
+OUT=$(ev "$RD" sB "" startup | bash "$H/session-start-clear.sh")
+ok "dueño: con el TTL vencido (14 400 s) la segunda reclama sin avisar" "$(dsid),$(jq -r '.systemMessage // "nada"' <<<"$OUT")" sB,nada
+printf 'sesion=sA\ndesde=%s\n' "$(( $(date +%s) - 100 ))" >"$DU"
+ok "dueño: NUCLEO_DUENO_TTL=50 vence uno de hace 100 s" "$(ev "$RD" sC "" startup | NUCLEO_DUENO_TTL=50 bash "$H/session-start-clear.sh" >/dev/null; dsid)" sC
+printf 'sesion=sA\ndesde=1\n' >"$DU"; ev "$RD" sA "" resume | NUCLEO_DUENO_TTL=999999999999 bash "$H/session-start-clear.sh" >/dev/null
+ok "dueño: la dueña que reanuda refresca desde=" "$(sed -n 's/^desde=//p' "$DU" | awk '{print ($1 > 1000000000)}')" 1
+printf 'basura\n' >"$DU"; ev "$RD" sD "" startup | bash "$H/session-start-clear.sh" >/dev/null
+ok "dueño: un .dueno ilegible equivale a sin dueño" "$(dsid)" sD
+RN=$T/rn; mkdir -p "$RN"; git -C "$RN" init -q
+ev "$RN" sA "" startup | bash "$H/session-start-clear.sh" >/dev/null
+ok "dueño: sin .claude/estado no se crea nada (no ensucia repos ajenos)" "$([ -e "$RN/.claude" ] && echo hay || echo no)" no
+ev "$HOME" sA "" startup | bash "$H/session-start-clear.sh" >/dev/null
+ok "dueño: desde ~ no se reclama nada" "$([ -e "$HOME/.claude/estado/.dueno" ] && echo hay || echo no)" no
 
 exit $FAIL

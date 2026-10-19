@@ -31,6 +31,50 @@ nucleo_enlazado() {
   return 0
 }
 
+# Una tarea = una sesión dueña. <raíz>/.claude/estado/.dueno: «sesion=<session_id>» y «desde=<epoch>»; vigente
+# mientras ahora − desde < NUCLEO_DUENO_TTL (14 400 s por omisión). Sin pid: el hook no sabe el de claude.
+# Lo reclama SessionStart, lo libera `handoff`; un .dueno ilegible o caducado equivale a no tener dueño.
+
+# nucleo_dueno <raíz>: «<sesión> <desde>» si hay un dueño legible (vigente o no); rc 1 si no.
+nucleo_dueno() {
+  local k v s="" d=""
+  [ -f "$1/.claude/estado/.dueno" ] || return 1
+  while IFS='=' read -r k v || [ -n "$k" ]; do
+    case $k in sesion) s=$v ;; desde) d=$v ;; esac
+  done <"$1/.claude/estado/.dueno"
+  case $d in '' | *[!0-9]*) return 1 ;; esac
+  case $s in '' | *[!A-Za-z0-9_-]*) return 1 ;; esac
+  printf '%s %s\n' "$s" "$d"
+}
+
+# nucleo_dueno_vigente <raíz>: imprime «<sesión> <desde>» y rc 0 si el dueño no ha caducado.
+nucleo_dueno_vigente() {
+  local d ttl=${NUCLEO_DUENO_TTL:-14400}
+  d=$(nucleo_dueno "$1") || return 1
+  case $ttl in '' | *[!0-9]*) ttl=14400 ;; esac
+  [ $(( $(date +%s) - ${d#* } )) -lt "$ttl" ] || return 1
+  printf '%s\n' "$d"
+}
+
+# nucleo_dueno_ajeno <raíz> <sesión>: rc 0 si hay un dueño vigente y no es <sesión>; imprime su id.
+nucleo_dueno_ajeno() {
+  local d
+  d=$(nucleo_dueno_vigente "$1") || return 1
+  [ "${d% *}" != "$2" ] || return 1
+  printf '%s\n' "${d% *}"
+}
+
+# nucleo_dueno_reclamar <raíz> <sesión>: escribe el dueño (temporal + mv: un .dueno enlazado se sustituye, no se
+# sigue). Solo si <raíz>/.claude/estado ya existe: no se crean directorios en repos que no usan estado.
+nucleo_dueno_reclamar() {
+  local d=$1/.claude/estado tmp
+  [ -d "$d" ] || return 0
+  tmp=$(mktemp "$d/.dueno.XXXXXX" 2>/dev/null) || return 0
+  printf 'sesion=%s\ndesde=%s\n' "$2" "$(date +%s)" >"$tmp"
+  mv -f "$tmp" "$d/.dueno" 2>/dev/null || rm -f "$tmp"
+  return 0
+}
+
 # nucleo_tope <contexto>: recorta a 9 500 chars (el harness manda a fichero lo que pasa de 10 000; las rutas no
 # tienen tope) y, si recortó, cierra el <nucleo-datos> que pudiera haber quedado abierto.
 nucleo_tope() {

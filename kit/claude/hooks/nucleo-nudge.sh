@@ -35,6 +35,8 @@ if [ "$RAIZ" = "$HOME" ]; then
   [ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, deja su estado donde corresponda y cierra el turno."
   [ "$B" = 85 ] && M="$M Cierra el turno ya."
 else
+# Una tarea = una sesión dueña: quien no lo es calla (el aviso le pediría escribir el nucleo de otra).
+nucleo_dueno_ajeno "$RAIZ" "$SID" >/dev/null && exit 0
 MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
 EDAD=$(( $(date +%s) - ${MT:-0} ))
 [ -z "$MT" ] || [ "$EDAD" -gt 600 ] || exit 0
@@ -44,7 +46,7 @@ if [ -n "$MT" ]; then
 else
   M="CONTEXTO $PCT % del airbag y no hay nucleo.md: antes de la siguiente herramienta créalo en $NUC con la forma de \$HOME/.claude/templates/nucleo.md."
 fi
-[ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno."
+[ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno. Cierra la fase con \`handoff\` (handoff --desde <borrador>)."
 A="con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff."
 [ "${COCKPIT_AUTO_HANDOFF:-}" = off ] && A="el handoff automático está desactivado; la persona hará /handoff."
 [ "$B" = 85 ] && M="$M Cierra el turno ya: $A"
