@@ -242,8 +242,12 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
 # handoff y oraculo se llaman a pelo en las instrucciones y los hooks: sin estar en el PATH, «command not
 # found». Se enlazan en ~/.local/bin SOLO si el hueco esta libre o ya es un enlace nuestro (a $CLAUDE_HOME/bin):
 # un fichero o un enlace ajeno es de la persona y no se pisa.
+# Y solo si CLAUDE_HOME es ~/.claude: una instalacion de prueba (tests, CI, CLAUDE_HOME=/ruta/alternativa)
+# enlazaba en el ~/.local/bin real y, al borrar su ruta, dejaba enlaces colgantes que ya no se reparaban
+# (contaban como ajenos). Con otro CLAUDE_HOME se imprimen las ordenes y no se escribe.
 LOCAL_BIN="$HOME/.local/bin"
 CLIS="handoff oraculo"
+clis_enlazables() { [ "$(realpath -m -- "$CLAUDE_HOME")" = "$(realpath -m -- "$HOME/.claude")" ]; }
 cli_estado() {  # nombre -> libre | nuestro | ajeno
   local dst="$LOCAL_BIN/$1"
   if [ -L "$dst" ]; then
@@ -255,6 +259,11 @@ cli_estado() {  # nombre -> libre | nuestro | ajeno
 enlazar_clis() {
   local c st
   LINK_AJENOS=""
+  if ! clis_enlazables; then
+    echo "   CLAUDE_HOME ($CLAUDE_HOME) no es $HOME/.claude: no se toca $LOCAL_BIN. Si quieres los enlaces:"
+    for c in $CLIS; do echo "     ln -s \"$CLAUDE_HOME/bin/$c\" \"$LOCAL_BIN/$c\""; done
+    return 0
+  fi
   for c in $CLIS; do
     st="$(cli_estado "$c")"
     case "$st" in
@@ -346,9 +355,14 @@ run_diff_first() {
     echo "==> --plan solo muestra lo que se instalaria; $CLAUDE_HOME no se ha tocado. Que hacer:"
   fi
   echo
-  echo "==> En modo aplicar (--apply) tambien se enlazarian handoff y oraculo en $LOCAL_BIN (solo si el hueco"
-  echo "    esta libre o ya es un enlace a $CLAUDE_HOME/bin). Estado ahora:"
-  for c in $CLIS; do echo "      $c: $(cli_estado "$c")"; done
+  if clis_enlazables; then
+    echo "==> En modo aplicar (--apply) tambien se enlazarian handoff y oraculo en $LOCAL_BIN (solo si el hueco"
+    echo "    esta libre o ya es un enlace a $CLAUDE_HOME/bin). Estado ahora:"
+    for c in $CLIS; do echo "      $c: $(cli_estado "$c")"; done
+  else
+    echo "==> En modo aplicar (--apply) no se tocaria $LOCAL_BIN: CLAUDE_HOME no es $HOME/.claude."
+    echo "    Se imprimirian las ordenes ln -s para que enlaces tu, si quieres."
+  fi
   cat <<EOF
       1. Revisa arriba los ficheros nuevos/modificados (arbol completo en $out).
       2. Copia a mano lo que quieras adoptar de $out a $CLAUDE_HOME.

@@ -74,6 +74,8 @@ Por defecto instala en `$HOME/.claude`. Si quieres probarlo primero en una ruta 
 CLAUDE_HOME=/ruta/alternativa bash install.sh
 ```
 
+Con un `CLAUDE_HOME` que no es `$HOME/.claude` el instalador no toca `~/.local/bin`: imprime las órdenes `ln -s` de `handoff` y `oraculo` por si quieres enlazarlos tú (Paso 3b).
+
 `install.sh` es idempotente: si vuelves a ejecutarlo, cualquier fichero que fuera a pisar se guarda antes con backup en `$CLAUDE_HOME/backups/<fecha>-<pid>-<aleatorio>/`, y nunca sobreescribe sin copia; reinstalar sin cambios no crea un segundo backup. Copia (no enlaza) `settings.json`, `CLAUDE.md`, los hooks, los agentes, las skills del método y Sentinel. `settings.json` se **fusiona** con `jq`, no se pisa: tus claves propias (permisos, `env`, plugins) sobreviven, y un symlink no se toca. Una excepción importante: **los hooks del kit sustituyen a los tuyos**. Si ya tenías hooks en `settings.json`, tras instalar solo quedan los del kit. Los tuyos siguen en la copia de seguridad (`$CLAUDE_HOME/backups/<fecha>-…/settings.json`): recupéralos de ahí y añádelos a mano. La otra excepción es `permissions.disableBypassPermissionsMode`: queda en `"disable"` siempre, también en el árbol del plan diff-first, y si tu valor era otro el instalador lo dice. Dos claves tuyas que dejan al kit sin efecto se respetan, pero se avisan al final: `disableAllHooks: true` (no corre ningún hook, tampoco los guards; `doctor.sh` lo marca `FAIL`) y `permissions.defaultMode: "bypassPermissions"` (con `"disable"` queda inerte).
 
 **Si ya tenías un `CLAUDE.md`.** El instalador no lo toca y deja la plantilla del kit en `CLAUDE.kit.md`. Al terminar te avisa de lo que falta: añade la línea `@AGENTS.md` a tu `CLAUDE.md` para que Claude Code cargue las reglas del kit (`AGENTS.md` sí se instala). Sin esa línea los hooks funcionan, pero el modelo no conoce la convención de `nucleo.md` ni los comandos `handoff` y `oraculo`. `doctor.sh` lo marca con un `WARN`. Para el resto de la plantilla (sección «Contexto»), copia lo que quieras de `CLAUDE.kit.md`.
@@ -105,7 +107,7 @@ Rellena `ANTHROPIC_API_KEY` y, si la usas, `PERPLEXITY_API_KEY`. El fichero `.en
 - `~/.local/bin/handoff` → `$CLAUDE_HOME/bin/handoff`
 - `~/.local/bin/oraculo` → `$CLAUDE_HOME/bin/oraculo`
 
-Reglas del enlace: solo se crea si no existe nada con ese nombre, o si ya era un enlace a `$CLAUDE_HOME/bin`. Nunca pisa un fichero tuyo ni un enlace a otro sitio: en ese caso te avisa y lo dejas tú como prefieras. En modo diff-first no escribe nada y lo anota en el plan.
+Reglas del enlace: solo se crea si `CLAUDE_HOME` es `$HOME/.claude` y además no existe nada con ese nombre, o ya era un enlace a `$CLAUDE_HOME/bin`. Con otro `CLAUDE_HOME` (una ruta de prueba, la CI) no escribe en `~/.local/bin`, porque al borrar esa ruta los enlaces quedarían colgando: imprime las órdenes `ln -s` y las ejecutas tú si quieres. Nunca pisa un fichero tuyo ni un enlace a otro sitio: en ese caso te avisa y lo dejas tú como prefieras. En modo diff-first no escribe nada y lo anota en el plan.
 
 Si `~/.local/bin` no está en tu `PATH`, el instalador lo dice al final. En Debian y Ubuntu esa carpeta entra en el `PATH` al iniciar sesión **solo si ya existía**: si la acaba de crear el instalador, **abre una terminal nueva** antes de usar los comandos. Compruébalo con `command -v handoff oraculo`.
 
