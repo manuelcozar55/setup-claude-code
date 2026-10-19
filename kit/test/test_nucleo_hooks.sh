@@ -15,6 +15,7 @@ export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PROJ
 mkdir -p "$HOME"
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
+nent() { find "$1" -mindepth 1 -maxdepth 1 "${@:2}" | wc -l | tr -d ' '; }
 ctx() { jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null; }
 ev() { jq -cn --arg c "$1" --arg s "$2" --arg t "${3:-}" --arg src "${4:-}" \
   '{cwd:$c,session_id:$s,transcript_path:$t,source:$src,trigger:"auto"}'; }
@@ -284,7 +285,7 @@ ok "dueño: desde ~ no se reclama nada" "$([ -e "$HOME/.claude/estado/.dueno" ] 
 
 # --- v3: oraculo — el rc real (pipefail), últimas 40 líneas y registro en verificaciones.log ---
 BIN=$KIT/claude/bin
-RO=$T/ro; mkdir -p "$RO/sub" "$T/ro-sin-git"; git -C "$RO" init -q
+RO=$T/ro; mkdir -p "$RO/sub" "$RO/.claude/estado" "$T/ro-sin-git"; git -C "$RO" init -q
 orc() { (cd "$RO/sub" && bash "$BIN/oraculo" "$@"); }
 OUT=$(orc -- 'false | cat'); RC=$?
 ok "oraculo: pipefail → el rc de false, no el de cat (sale y lo imprime)" "$RC,$(tail -n 1 <<<"$OUT")" "1,rc=1"
@@ -302,7 +303,7 @@ ok "oraculo: sin proyecto devuelve su rc y no escribe nada" "$RC,$(tail -n 1 <<<
 ok "oraculo: sin -- es un uso erróneo (64) y habla español" "$(orc true 2>&1 >/dev/null | head -n 1 | command grep -c '^uso: oraculo'),$(orc true >/dev/null 2>&1; echo $?)" "1,64"
 ok "oraculo: --help sale 0" "$(orc --help 2>&1 | head -n 1 | command grep -c '^uso: oraculo'),$(orc --help >/dev/null 2>&1; echo $?)" "1,0"
 mkdir -p "$T/ro-enl/.claude"; git -C "$T/ro-enl" init -q; ln -s "$T/destino" "$T/ro-enl/.claude/estado"
-ok "oraculo: .claude/estado enlazado → no escribe en el destino" "$(cd "$T/ro-enl" && bash "$BIN/oraculo" -- true >/dev/null; ls -A "$T/destino" | command grep -c verificaciones)" 0
+ok "oraculo: .claude/estado enlazado → no escribe en el destino" "$(cd "$T/ro-enl" && bash "$BIN/oraculo" -- true >/dev/null; nent "$T/destino" -name 'verificaciones*')" 0
 
 # shellcheck disable=SC2016  # los acentos graves de los literales son markdown, no sustituciones
 # --- v3: handoff --estado / --desde / --migrar (el modelo redacta el borrador; el CLI valida, fusiona y recorta) ---
@@ -362,7 +363,7 @@ ok "desde: el [x] va a diario.md con su comando y el hash de HEAD" "$(command gr
 ok "desde: .claude/estado/ queda excluido sin tocar .gitignore" "$(command grep -cFx '.claude/estado/' "$HR/.git/info/exclude"),$(git -C "$HR" status --short)" "1,"
 ok "desde: registra la raíz para el índice de ~" "$(command grep -cFx "$HR" "$HOME/.claude/estado/raices")" 1
 ok "desde: el nucleo cabe en el tope" "$([ "$(wc -c <"$HNUC")" -le 6500 ] && echo si)" si
-ok "desde: no deja temporales en estado/" "$(ls -A "$HR/.claude/estado" | command grep -c '^\.nucleo\.')" 0
+ok "desde: no deja temporales en estado/" "$(nent "$HR/.claude/estado" -name '.nucleo.*')" 0
 
 # -- --desde: fusión (Objetivo e Invariantes de la persona no se tocan) --
 cp "$HNUC" "$T/nucleo-antes.md"
@@ -397,13 +398,16 @@ ok "invariantes: unión por líneas, se conservan todas (nunca se borra una) y e
 ok "correcciones: INV-1 sigue intacto debajo" "$(command grep -c 'INV-1 no tocar Y' "$HNUC")" 1
 ho --desde "$T/bc4.md" >/dev/null 2>&1
 ok "correcciones: repetir la misma no la duplica" "$(command grep -c 'COR-4' "$HNUC")" 1
-ok "rotación: como mucho 3 nucleo.prev-*" "$(ls "$HR"/.claude/estado/nucleo.prev-*.md | wc -l)" 3
+ok "rotación: como mucho 3 nucleo.prev-*" "$(nent "$HR/.claude/estado" -name 'nucleo.prev-*.md')" 3
 
 # -- --desde: rc de oraculo plegado en «Comandos de verificación» --
 printf '2026-10-19T10:00:00Z\t1\tmake test\n2026-10-19T10:01:00Z\t5\tzzz-nuevo\n' >"$HR/.claude/estado/verificaciones.log"
 ho --desde "$T/b1.md" >/dev/null 2>&1
+# shellcheck disable=SC2016  # los acentos graves del patrón son literales de markdown
 ok "rc: «→ rc=N» junto al comando que coincide" "$(command grep -c '`make test` — esperado verde → rc=1$' "$HNUC")" 1
+# shellcheck disable=SC2016  # los acentos graves del patrón son literales de markdown
 ok "rc: un comando sin entrada en el log queda sin rc" "$(command grep -c '`bash x.sh` — esperado 0$' "$HNUC")" 1
+# shellcheck disable=SC2016  # los acentos graves del patrón son literales de markdown
 ok "rc: el último comando del log, si no estaba, se añade" "$(command grep -c '^- `zzz-nuevo` → rc=5$' "$HNUC")" 1
 ho --desde "$T/b1.md" >/dev/null 2>&1
 ok "rc: repetir el handoff no duplica la anotación" "$(command grep -c 'rc=1' "$HNUC"),$(command grep -c 'zzz-nuevo' "$HNUC")" "1,1"
@@ -417,7 +421,7 @@ ok "tope: el nucleo escrito no pasa de NUCLEO_TOPE y sale 0" "$RC,$([ "$(wc -c <
 ok "tope: se omite la sección del final del orden D5 (Ficheros tocados) y se dice" "$(command grep -c '^## Ficheros tocados' "$TN"),$(command grep -c '^## Pendientes' "$TN"),$(command grep -ci 'omit.*Ficheros tocados' <<<"$OUT")" "0,1,1"
 ok "tope: lo omitido se conserva en diario.md" "$(command grep -c 'omitido por tope.*Ficheros tocados' "$HT/.claude/estado/diario.md")" 1
 ok "tope: la nota queda en el nucleo (fuera de las secciones)" "$(command grep -c '^> handoff .*omitidas por tope' "$TN")" 1
-ok "tope: NUCLEO_TOPE manda sobre el defecto" "$(cd "$HT" && NUCLEO_TOPE=300 bash "$BIN/handoff" --desde "$T/b-grande.md" >/dev/null 2>&1; [ "$(wc -c <"$TN")" -le 300 ] && echo si || wc -c <"$TN")" si
+ok "tope: NUCLEO_TOPE manda sobre el defecto" "$(cd "$HT" && NUCLEO_TOPE=300 bash "$BIN/handoff" --desde "$T/b-grande.md" >/dev/null 2>&1; if [ "$(wc -c <"$TN")" -le 300 ]; then echo si; else wc -c <"$TN"; fi)" si
 
 # -- --desde: borradores inválidos (exit 2) --
 cp "$HNUC" "$T/nucleo-antes.md"
@@ -458,7 +462,7 @@ ok "paridad de alias con register.tsx (si la tabla sigue ahí): ninguno falla" "
 ok "sin proyecto: exit 3 y no escribe" "$(cd "$T/ro-sin-git" && bash "$BIN/handoff" --desde "$T/b1.md" >/dev/null 2>&1; echo "$?,$([ -e "$T/ro-sin-git/.claude" ] && echo escribio || echo no)")" "3,no"
 ok "sin proyecto: desde ~ tampoco (exit 3)" "$(cd "$HOME" && bash "$BIN/handoff" --desde "$T/b1.md" >/dev/null 2>&1; echo $?)" 3
 HL=$T/hol; mkrepo "$HL"; mkdir -p "$HL/.claude" "$T/destino-l"; ln -s "$T/destino-l" "$HL/.claude/estado"
-ok "estado enlazado: exit 3 y no escribe en el destino" "$(cd "$HL" && bash "$BIN/handoff" --desde "$T/b1.md" >/dev/null 2>&1; echo "$?,$(ls -A "$T/destino-l" | wc -l)")" "3,0"
+ok "estado enlazado: exit 3 y no escribe en el destino" "$(cd "$HL" && bash "$BIN/handoff" --desde "$T/b1.md" >/dev/null 2>&1; echo "$?,$(nent "$T/destino-l")")" "3,0"
 cp "$HNUC" "$T/nucleo-antes.md"
 ( NUCLEO_FUSION_PAUSA=1 ho --desde "$T/b2.md" >/dev/null 2>"$T/e4.txt"; echo $? >"$T/rc4.txt" ) &
 sleep 0.3; echo '## Pendientes (otra sesión)' >>"$HNUC"; wait
@@ -507,12 +511,81 @@ AR=$(ls "$MG"/.claude/estado/archivo/nucleo-*.md 2>/dev/null)
 ok "migrar: exit 0, el nucleo ya no está en su sitio y sí en archivo/" "$RC,$([ -e "$MG/.claude/estado/nucleo.md" ] && echo sigue || echo movido),$(echo "$AR" | wc -l)" "0,movido,1"
 ok "migrar: el archivado conserva el contenido" "$(command grep -c HEREDADO-X "$AR")" 1
 ok "migrar: entrada en diario.md" "$(command grep -c 'archivado.*archivo/nucleo-' "$MG/.claude/estado/diario.md")" 1
-ok "migrar: dos veces no pierde el primero (nada que migrar → exit 0)" "$(cd "$T/ro-sin-git" && bash "$BIN/handoff" --migrar "$MG" >/dev/null 2>&1; echo "$?,$(ls "$MG"/.claude/estado/archivo | wc -l)")" "0,1"
+ok "migrar: dos veces no pierde el primero (nada que migrar → exit 0)" "$(cd "$T/ro-sin-git" && bash "$BIN/handoff" --migrar "$MG" >/dev/null 2>&1; echo "$?,$(nent "$MG/.claude/estado/archivo")")" "0,1"
 printf 'otro\n' >"$MG/.claude/estado/nucleo.md"; sleep 1
 (cd "$T/ro-sin-git" && bash "$BIN/handoff" --migrar "$MG" >/dev/null 2>&1)
-ok "migrar: un segundo nucleo no pisa al archivado antes" "$(ls "$MG"/.claude/estado/archivo | wc -l)" 2
+ok "migrar: un segundo nucleo no pisa al archivado antes" "$(nent "$MG/.claude/estado/archivo")" 2
 ok "migrar: directorio inexistente → exit 1" "$(bash "$BIN/handoff" --migrar "$T/no-existe" >/dev/null 2>&1; echo $?)" 1
 MS=$T/migs; mkdir -p "$MS/.claude/estado" "$T/fuera-mig"; printf 'F\n' >"$T/fuera-mig/n.md"; ln -s "$T/fuera-mig/n.md" "$MS/.claude/estado/nucleo.md"
-ok "migrar: un nucleo enlazado no se toca (exit 1)" "$(bash "$BIN/handoff" --migrar "$MS" >/dev/null 2>&1; echo "$?,$(ls "$T/fuera-mig" | wc -l)")" "1,1"
+ok "migrar: un nucleo enlazado no se toca (exit 3)" "$(bash "$BIN/handoff" --migrar "$MS" >/dev/null 2>&1; echo "$?,$(nent "$T/fuera-mig")")" "3,1"
+
+# --- ronda 1 de la revisión de v3 (CR-1…CR-5) ---
+# CR-1: una sección vacía del borrador conserva la del nucleo (como Objetivo); `- (nada)` es la forma de vaciarla.
+H1=$T/cr1; mkrepo "$H1"
+printf '## Objetivo\nO1\n## Plan\n- [ ] a-pendiente\n- [x] b-hecho — make t\n## Ficheros tocados\n- f.sh\n' >"$T/cr1-a.md"
+(cd "$H1" && bash "$BIN/handoff" --desde "$T/cr1-a.md" >/dev/null 2>&1)
+printf '## Paso actual\nP2\n## Plan\n## Ficheros tocados\n<!-- vacio -->\n' >"$T/cr1-b.md"
+(cd "$H1" && bash "$BIN/handoff" --desde "$T/cr1-b.md" >/dev/null 2>&1); RC=$?
+ok "CR-1: un Plan y unos Ficheros vacíos en el borrador conservan los del nucleo" "$RC,$(command grep -c 'a-pendiente' "$H1/.claude/estado/nucleo.md"),$(command grep -c 'f.sh' "$H1/.claude/estado/nucleo.md")" "0,1,1"
+ok "CR-1: el [x] del Plan viejo no se pierde (está en diario.md)" "$(command grep -c 'b-hecho' "$H1/.claude/estado/diario.md")" 1
+printf '## Plan\n- (nada)\n' >"$T/cr1-c.md"
+(cd "$H1" && bash "$BIN/handoff" --desde "$T/cr1-c.md" >/dev/null 2>&1)
+ok "CR-1: «- (nada)» sí vacía la sección" "$(command grep -c 'a-pendiente' "$H1/.claude/estado/nucleo.md"),$(command grep -c '(nada)' "$H1/.claude/estado/nucleo.md")" "0,1"
+
+# CR-2: al recortar, primero las secciones ajenas a la plantilla (desde el final); «Paso actual» sobrevive.
+H2=$T/cr2; mkrepo "$H2"; mkdir -p "$H2/.claude/estado"
+{ printf '## Objetivo\nO\n## Paso actual\nPASO-VIEJO\n## TAREA EXTRA\n'; head -c 9000 /dev/zero | tr '\0' x; printf '\n'; } >"$H2/.claude/estado/nucleo.md"
+printf '## Paso actual\nPASO-CR2\n' >"$T/cr2-b.md"
+OUT=$(cd "$H2" && bash "$BIN/handoff" --desde "$T/cr2-b.md" 2>&1); RC=$?
+ok "CR-2: con una sección ajena de 9 KB el nucleo queda ≤ 6500 B y «Paso actual» sigue" "$RC,$([ "$(wc -c <"$H2/.claude/estado/nucleo.md")" -le 6500 ] && echo si),$(command grep -c 'PASO-CR2' "$H2/.claude/estado/nucleo.md")" "0,si,1"
+ok "CR-2: el aviso nombra la sección omitida (no culpa a Objetivo e Invariantes) y va al diario" "$(command grep -c 'omitidas por tope.*TAREA EXTRA' <<<"$OUT"),$(command grep -c 'Objetivo e Invariantes solos' <<<"$OUT"),$(command grep -c 'omitido por tope: TAREA EXTRA' "$H2/.claude/estado/diario.md")" "1,0,1"
+
+# CR-3: --commit tras una ejecución sin --commit (que dejó .claude/estado/ en info/exclude).
+H3=$T/cr3; mkrepo "$H3"
+(cd "$H3" && bash "$BIN/handoff" --desde "$T/b1.md" >/dev/null 2>&1)
+printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$H3/.claude/estado/.dueno"; printf 'x\n' >"$H3/.claude/estado/verificaciones.log"
+(cd "$H3" && bash "$BIN/handoff" --desde "$T/b1.md" --commit >/dev/null 2>&1); RC=$?
+ok "CR-3: --commit tras una ejecución sin él sale 0 y crea el commit docs(estado)" "$RC,$(git -C "$H3" log -1 --format=%s | command grep -c '^docs(estado)')" "0,1"
+ok "CR-3: el commit solo lleva nucleo y diario (ni .dueno, ni verificaciones.log, ni prev)" "$(git -C "$H3" show --name-only --format= HEAD | command grep -c 'nucleo.md\|diario.md'),$(git -C "$H3" show --name-only --format= HEAD | command grep -c 'dueno\|verificaciones\|prev')" "2,0"
+ok "CR-3: el dueño se libera" "$([ -e "$H3/.claude/estado/.dueno" ] && echo sigue || echo libre)" libre
+printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$H3/.claude/estado/.dueno"
+(cd "$H3" && printf 'z\n' >>"$H3/.git/info/exclude" && chmod a-w "$H3/.git/index" 2>/dev/null; bash "$BIN/handoff" --desde "$T/b2.md" --commit >/dev/null 2>&1; chmod u+w "$H3/.git/index")
+ok "CR-3: el dueño se libera aunque el commit falle (o no hubiera nada que fallar)" "$([ -e "$H3/.claude/estado/.dueno" ] && echo sigue || echo libre)" libre
+
+# CR-5: oraculo no crea .claude/estado en un repo que no lo usa.
+H5=$T/cr5; mkrepo "$H5"
+OUT=$(cd "$H5" && bash "$BIN/oraculo" -- true); RC=$?
+ok "CR-5: oraculo en un repo sin estado: rc 0 y el árbol sigue limpio" "$RC,$(git -C "$H5" status --porcelain | wc -l)" "0,0"
+
+# CR-4: tras /clear la sesión nueva reclama al dueño vigente de otra sesión y lo nombra en UNA línea informativa.
+RC4=$T/cr4; mkdir -p "$RC4/.claude/estado"; git -C "$RC4" init -q; printf '## Objetivo\nOBJ\n## Paso actual\nPASO-CR4\n' >"$RC4/.claude/estado/nucleo.md"
+D4=$RC4/.claude/estado/.dueno
+printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$D4"
+OUT=$(ev "$RC4" sB "" clear | bash "$H/session-start-clear.sh")
+ok "CR-4: source=clear reclama aunque haya otro dueño vigente" "$(sed -n 's/^sesion=//p' "$D4")" sB
+ok "CR-4: source=clear informa una vez y nombra al dueño anterior" "$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -c 'sA'),$(jq -r '.systemMessage // ""' <<<"$OUT" | wc -l)" "1,1"
+ok "CR-4: source=clear no manda al modelo a no escribir el nucleo" "$(ctx <<<"$OUT" | command grep -c 'otra sesión dueña')" 0
+printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$D4"
+OUT=$(ev "$RC4" sB "" startup | bash "$H/session-start-clear.sh")
+ok "CR-4: source=startup con dueño ajeno vigente sigue avisando y sin reclamar" "$(sed -n 's/^sesion=//p' "$D4"),$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -c 'sA')" "sA,1"
+ok "CR-4: source=clear sin dueño previo no avisa" "$(rm -f "$D4"; ev "$RC4" sC "" clear | bash "$H/session-start-clear.sh" | jq -r '.systemMessage // "nada"')" nada
+
+# SEC-1: ningún enlace simbólico dentro de .claude/estado/ se sigue al escribir (el repo puede ser ajeno).
+S1=$T/sec1; mkrepo "$S1"; mkdir -p "$S1/.claude/estado"; printf 'INTACTO\n' >"$T/sec1-fuera.txt"
+printf '## Paso actual\nP\n## Plan\n- [x] echo INJECTED-LINE\n' >"$T/sec1-b.md"
+ln -s "$T/sec1-fuera.txt" "$S1/.claude/estado/diario.md"
+OUT=$(cd "$S1" && bash "$BIN/handoff" --desde "$T/sec1-b.md" 2>&1); RC=$?
+ok "SEC-1: diario.md enlazado → handoff sale 3, no escribe y el externo no cambia" "$RC,$(cat "$T/sec1-fuera.txt"),$([ -e "$S1/.claude/estado/nucleo.md" ] && echo escribio || echo no)" "3,INTACTO,no"
+ok "SEC-1: el mensaje de handoff dice por qué" "$(command grep -c 'enlace' <<<"$OUT")" 1
+rm "$S1/.claude/estado/diario.md"; ln -s "$T/sec1-fuera.txt" "$S1/.claude/estado/verificaciones.log"
+OUT=$(cd "$S1" && bash "$BIN/oraculo" -- 'echo corre'); RC=$?
+ok "SEC-1: verificaciones.log enlazado → oraculo ejecuta, rc 0 y el externo no cambia" "$RC,$(tail -n 2 <<<"$OUT" | head -n 1),$(cat "$T/sec1-fuera.txt")" "0,corre,INTACTO"
+rm "$S1/.claude/estado/verificaciones.log"; ln -s "$T/sec1-fuera.txt" "$S1/.claude/estado/.gitignore"
+(cd "$S1" && bash "$BIN/handoff" --desde "$T/sec1-b.md" --commit >/dev/null 2>&1); RC=$?
+ok "SEC-1: .gitignore enlazado con --commit → exit 3 y el externo no cambia" "$RC,$(cat "$T/sec1-fuera.txt")" "3,INTACTO"
+S2=$T/sec2; mkdir -p "$S2/.claude/estado" "$T/sec2-fuera"; git -C "$S2" init -q; printf '# E\n## Objetivo\nX\n' >"$S2/.claude/estado/nucleo.md"
+ln -s "$T/sec2-fuera" "$S2/.claude/estado/archivo"
+OUT=$(bash "$BIN/handoff" --migrar "$S2" 2>&1); RC=$?
+ok "SEC-1: --migrar con archivo/ enlazado → exit 3, el destino externo queda vacío y el nucleo en su sitio" "$RC,$(nent "$T/sec2-fuera"),$([ -f "$S2/.claude/estado/nucleo.md" ] && echo sigue)" "3,0,sigue"
 
 exit $FAIL

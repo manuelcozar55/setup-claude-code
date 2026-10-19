@@ -15,7 +15,8 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
           <raíz>/.claude/estado/nucleo.md: Objetivo e Invariantes del nucleo no se tocan (de Invariantes se añaden las líneas
           nuevas del borrador, sin borrar nunca una); los [x] del Plan pasan a diario.md con su
           comando y el hash de HEAD; el último rc de verificaciones.log se pliega en «Comandos de verificación»;
-          se guarda nucleo.prev-* (3 copias) y se recorta al tope omitiendo secciones enteras desde el final.
+          una sección vacía del borrador (sin cuerpo o solo comentarios) conserva la del nucleo; para vaciarla
+          se escribe «- (nada)»; se guarda nucleo.prev-* (3 copias) y se recorta al tope omitiendo secciones enteras (primero las ajenas a la plantilla, desde el final).
   --solo    no fusiona: el borrador sustituye al nucleo (se sigue validando).
   --commit  además hace commit solo de .claude/estado/ (para repos propios); sin él, .claude/estado/ se añade
             a .git/info/exclude.
@@ -23,7 +24,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
 --migrar  archiva el nucleo heredado de DIR en DIR/.claude/estado/archivo/ y lo anota en el diario; nunca borra.
 --estado  una línea JSON: raíz, nucleo, bytes, tope, pct y dueño (sin proyecto: {"raiz":null}).
 Raíz: la del directorio actual (raíz git; no $HOME ni un directorio sin git) o --raiz DIR.
-Salida: 0 ok · 2 borrador inválido (stderr nombra la cabecera) · 3 sin proyecto · 4 nucleo.md cambió durante la
+Salida: 0 ok · 2 borrador inválido (stderr nombra la cabecera) · 3 sin proyecto o con enlaces simbólicos en estado/ · 4 nucleo.md cambió durante la
 fusión (reintenta) · 1 otro error · 64 uso erróneo.
 EOF
 }
@@ -82,7 +83,7 @@ fi
 if [ "$MODO" = migrar ]; then
   [ -d "$MIGRAR" ] || die 1 "no existe el directorio «$MIGRAR»"
   ME=$MIGRAR/.claude/estado; MN=$ME/nucleo.md
-  if [ -L "$MIGRAR/.claude" ] || [ -L "$ME" ] || [ -L "$MN" ]; then die 1 "$MN es un enlace o cuelga de uno: no lo toco"; fi
+  if nucleo_enlazado "$MIGRAR"; then die 3 "$ME tiene un enlace simbólico (o cuelga de uno): no escribo nada"; fi
   [ -f "$MN" ] || { echo "handoff: nada que migrar: no existe $MN"; exit 0; }
   mkdir -p "$ME/archivo"
   AR=$ME/archivo/nucleo-$(date -u +%Y%m%dT%H%M%SZ).md
@@ -97,7 +98,7 @@ fi
 [ -f "$DESDE" ] && [ -r "$DESDE" ] || die 2 "no puedo leer el borrador «$DESDE»"
 [ "$(wc -c <"$DESDE")" -le 262144 ] || die 2 "el borrador pasa de 256 KB: un estado no es un volcado"
 resolver_raiz || die 3 "sin proyecto (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
-nucleo_enlazado "$RAIZ" && die 3 "$RAIZ/.claude o su estado es un enlace o apunta fuera del proyecto: no escribo nada"
+nucleo_enlazado "$RAIZ" && die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
 E=$RAIZ/.claude/estado; NUC=$E/nucleo.md; DIARIO=$E/diario.md; VLOG=$E/verificaciones.log
 HOY=$(date -u +%F)
 
@@ -219,7 +220,9 @@ if [ "$HAYVIEJO" -eq 1 ] && [ "$SOLO" -eq 0 ]; then
       *)
         if [ "$di" -ge 0 ] && [[ $CAMBIADAS != *" $k "* ]]; then
           titulo_de "${DTIT[di]}"; USADAS+="$k "; CAMBIADAS+="$k "
-          RK+=("$k"); RT+=("## $TITULO"$'\n'"${DT[di]#*$'\n'}")
+          if vacio "${DT[di]}" && ! vacio "${OT[i]}"; then RK+=("$k"); RT+=("${OT[i]}")
+          else RK+=("$k"); RT+=("## $TITULO"$'\n'"${DT[di]#*$'\n'}")
+          fi
         elif [[ $CAMBIADAS == *" $k "* ]]; then :
         else RK+=("$k"); RT+=("${OT[i]}")
         fi ;;
@@ -294,15 +297,23 @@ armar() {
 bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
 armar
 AVISOS=""
-# Se omiten secciones enteras desde el final del orden D5 (Objetivo e Invariantes no se tocan); lo omitido va al diario.
-for k in "no repetir" "ficheros tocados" pendientes plan "comandos de verificacion" "siguiente accion" "paso actual"; do
+# Se omiten secciones enteras: primero las ajenas a la plantilla (desde el final), luego las de plantilla desde el
+# final del orden D5 (Objetivo e Invariantes no se tocan); lo omitido va al diario.
+omitir() {
+  local t=${RT[$1]%%$'\n'*}; t=${t#\#\# }
+  printf '## %s omitido por tope: %s\n%s\n' "$HOY" "$t" "${RT[$1]#*$'\n'}" >>"$W/omitido"
+  OMITIDAS+=" $t"
+  RT[$1]=""; armar
+}
+for ((i = ${#RK[@]} - 1; i >= 0; i--)); do
+  [ "$(bytes "$TEXTO")" -gt "$NUCLEO_TOPE" ] || break
+  admitida "${RK[i]}" || [ -z "${RT[i]}" ] || omitir "$i"
+done
+for k in "ficheros tocados" pendientes plan "comandos de verificacion" "siguiente accion" "paso actual"; do
   [ "$(bytes "$TEXTO")" -gt "$NUCLEO_TOPE" ] || break
   for ((i = 0; i < ${#RK[@]}; i++)); do
     [ "${RK[i]}" = "$k" ] && [ -n "${RT[i]}" ] || continue
-    t=${RT[i]%%$'\n'*}; t=${t#\#\# }
-    printf '## %s omitido por tope: %s\n%s\n' "$HOY" "$t" "${RT[i]#*$'\n'}" >>"$W/omitido"
-    OMITIDAS+=" $t"
-    RT[i]=""; armar
+    omitir "$i"
   done
 done
 [ -z "$OMITIDAS" ] || AVISOS="omitidas por tope (${NUCLEO_TOPE} B), copia en diario.md:$OMITIDAS"
@@ -338,15 +349,18 @@ HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
 } >>"$DIARIO"
 
 nucleo_registrar "$RAIZ"
+ERRC=""
 if [ "$COMMIT" -eq 1 ]; then
   GI=$E/.gitignore
   for pat in .dueno verificaciones.log recortes.log 'nucleo.prev-*' 'checkpoint-compact*'; do
     command grep -qFx -- "$pat" "$GI" 2>/dev/null || printf '%s\n' "$pat" >>"$GI"
   done
+  # -f: una ejecución previa sin --commit dejó .claude/estado/ en info/exclude. Solo lo que se versiona; nunca lo efímero.
   PATHS=(.claude/estado/nucleo.md .claude/estado/diario.md .claude/estado/.gitignore)
-  git -C "$RAIZ" add -- "${PATHS[@]}" || die 1 "nucleo.md escrito, pero git add falló"
-  if ! git -C "$RAIZ" diff --cached --quiet -- "${PATHS[@]}"; then
-    git -C "$RAIZ" commit -q -m "docs(estado): handoff de $HOY" -- "${PATHS[@]}" || die 1 "nucleo.md escrito, pero el commit falló"
+  [ ! -d "$E/archivo" ] || PATHS+=(.claude/estado/archivo)
+  if ! git -C "$RAIZ" add -f -- "${PATHS[@]}"; then ERRC="nucleo.md escrito, pero git add falló"
+  elif ! git -C "$RAIZ" diff --cached --quiet -- "${PATHS[@]}"; then
+    git -C "$RAIZ" commit -q -m "docs(estado): handoff de $HOY" -- "${PATHS[@]}" || ERRC="nucleo.md escrito, pero el commit falló"
   fi
 elif EX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
   case $EX in /*) ;; *) EX=$RAIZ/$EX ;; esac
@@ -362,3 +376,4 @@ if D=$(nucleo_dueno "$RAIZ"); then
 fi
 [ -z "$AVISOS" ] || echo "handoff: $AVISOS" >&2
 echo "handoff: $NUC escrito ($(bytes "$TEXTO") B de $NUCLEO_TOPE)"
+[ -z "$ERRC" ] || die 1 "$ERRC"

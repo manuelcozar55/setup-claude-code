@@ -1,5 +1,5 @@
 # Estado
-<!-- Solo estas secciones se re-inyectan, en este orden, y la cola es lo que se recorta. Lo cerrado e histórico va a diario.md, que nunca se inyecta; `handoff` lo mueve. -->
+<!-- Solo estas secciones se re-inyectan, en este orden, y la cola es lo que se recorta. Lo cerrado e histórico va a diario.md, que nunca se inyecta; `handoff` lo mueve. Una sección vacía en un borrador conserva la anterior; para vaciarla escribe `- (nada)`. -->
 ## Objetivo
 <!-- literal de la persona y cómo se acotó; no se reescribe -->
 ## Invariantes
