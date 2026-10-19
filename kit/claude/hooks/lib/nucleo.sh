@@ -38,14 +38,15 @@ nucleo_tope() {
 # nucleo_git_hechos <raíz>: bloque <git-hechos> con `git log --oneline -5` y `git status --short` (máx. 15
 # líneas + «(+N más)»), tope ~1 200 chars, para que el modelo no gaste su primer turno en algo determinista.
 # Nada si no hay git o si git falla o expira (2 s). core.fsmonitor=false: un .git/config ajeno no ejecuta
-# código desde este hook. Los asuntos de commit y los nombres de fichero son DATOS: sin caracteres de control
+# código desde este hook; --no-optional-locks: status no refresca el índice (otra sesión puede estar
+# trabajando en el mismo repo y se encontraría un index.lock). Los asuntos de commit y los nombres de fichero son DATOS: sin caracteres de control
 # y con `</` escapado, para que no cierren el bloque ni el <nucleo-datos>.
 nucleo_git_hechos() {
   command -v git >/dev/null 2>&1 || return 0
   local tm=() lg st n b
   command -v timeout >/dev/null 2>&1 && tm=(timeout 2)
-  lg=$("${tm[@]}" git -c core.fsmonitor=false -C "$1" log --oneline -5 2>/dev/null) || return 0
-  st=$("${tm[@]}" git -c core.fsmonitor=false -C "$1" status --short 2>/dev/null) || return 0
+  lg=$("${tm[@]}" git --no-optional-locks -c core.fsmonitor=false -C "$1" log --oneline -5 2>/dev/null) || return 0
+  st=$("${tm[@]}" git --no-optional-locks -c core.fsmonitor=false -C "$1" status --short 2>/dev/null) || return 0
   n=$(printf '%s\n' "$st" | sed -n '$=')
   [ "${n:-0}" -le 15 ] || st="$(printf '%s\n' "$st" | head -n 15)"$'\n'"(+$((n - 15)) más)"
   b=$(printf 'git log --oneline -5:\n%s\ngit status --short:\n%s\n' "$lg" "${st:-(limpio)}" | LC_ALL=C tr -d '\000-\010\013-\037\177' | sed 's|</|<\\/|g')
@@ -176,14 +177,23 @@ nucleo_ctx() {
 # Bytes (LC_ALL=C): el tope protege el límite del harness, que se mide en la salida entera.
 nucleo_emitir() {
   [ -f "$1" ] || return 0
-  LC_ALL=C awk -v f="$1" -v kb="$(( ($(wc -c <"$1") + 1023) / 1024 ))" -v sec=3000 -v tope=4300 -v res=700 '
+  local kb=$(( ($(wc -c <"$1") + 1023) / 1024 )) rs
+  # Dos pasadas: la primera mide lo que ocupan las reservadas (no depende del tope); la segunda reparte el resto.
+  rs=$(_nucleo_emitir_awk "$1" "$kb" 6500 medir)
+  _nucleo_emitir_awk "$1" "$kb" "$(( 6500 - ${rs:-0} ))" | sed 's|</|<\\/|g'
+}
+
+# _nucleo_emitir_awk <fichero> <kb> <tope> [medir]: la emisión; con «medir», solo los bytes de las reservadas.
+_nucleo_emitir_awk() {
+  LC_ALL=C awk -v f="$1" -v kb="$2" -v sec=3000 -v tope="$3" -v res=700 -v medir="${4:-}" '
     BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|") }
     # «Paso actual», «Siguiente acción» y «Comandos de verificación» tienen reserva propia (res bytes cada
-    # una, fuera del tope): con un nucleo de 20 KB el presupuesto se gastaba por orden y eran justo las que
-    # se perdían (la tercera es lo que pide el paso 1 del protocolo de arranque).
+    # una): con un nucleo de 20 KB el presupuesto se gastaba por orden y eran justo las que se perdían (la
+    # tercera es lo que pide el paso 1 del protocolo de arranque). Cuentan DENTRO del tope único de 6 500:
+    # el resto de secciones recibe 6 500 menos lo que las reservadas ocuparon de verdad (tope llega ya
+    # descontado), así con reservadas cortas casi no se nota y con las tres llenas (~2 200) quedan ~4 300.
     # Presupuesto del contexto de SessionStart (nucleo_tope: 9 500): protocolo ~1 000 + <git-hechos> ≤ 1 200 +
-    # envoltorio ~150 + esta emisión, que en el peor caso es título 200 + tope 4 300 + 3 × (res 700 + cabecera)
-    # + avisos ≈ 7 000. Por eso el tope por orden bajó de 6 500 a 4 300 al sumar la tercera reserva.
+    # envoltorio ~150 + esta emisión (≤ 6 500 + avisos ~450) ≈ 9 300.
     # Corte por bytes sin partir un carácter UTF-8: si el byte siguiente es de continuación, el corte cayó
     # dentro de uno y se quita el inicio huérfano con sus continuaciones (octales: valen en gawk y mawk).
     function corta(l, n,   r) {
@@ -191,7 +201,7 @@ nucleo_emitir() {
       if (substr(l, n + 1, 1) ~ /[\200-\277]/) sub(/[\300-\377][\200-\277]*$/, "", r)
       return r
     }
-    function sale(s) { out = out s "\n"; if (!rsv) usado += length(s) + 1 }
+    function sale(s) { out = out s "\n"; if (rsv) ocupado += length(s) + 1; else usado += length(s) + 1 }
     # ### también: las sesiones escriben la tarea como «## TAREA ACTUAL» con sus secciones en ###. Si nombra
     # una sección aún no vista es cabecera; si no, es contenido solo bajo un ## de plantilla (padre: «### Fase 1»
     # en «## Plan»); bajo otro ## cierra y cuenta en fuera, para que «### Hecho» no se cuele en Pendientes.
@@ -237,11 +247,12 @@ nucleo_emitir() {
       sale("[recortado: sección incompleta.]"); recortes++
     }
     END {
+      if (medir != "") { print ocupado + 0; exit }
       printf "%s", out
       if (cercas % 2) print "[cercas sin equilibrar: se ignoran; un # comentario dentro de un bloque puede cortar su sección]"
       if (omitidas != "") print "[recortado por tope: se omiten" omitidas ".]"
       if (recortes || omitidas != "" || cerradas || cercas % 2) print "[LEE " f " antes de actuar: lo inyectado está incompleto.]"
       if (fuera || kb > 12) print "[fuera de forma: " fuera + 0 " secciones / " kb " KB → muévelas a diario.md, que nunca se inyecta" \
         (cerradas ? " (un ### sin nombre de plantilla cerró una sección: si era un subapartado, escríbelo con ####)" : "") "]"
-    }' "$1" "$1" | sed 's|</|<\\/|g'
+    }' "$1" "$1"
 }
