@@ -138,6 +138,18 @@ etiquetado.
   subagent-driven-development 10, finishing-a-development-branch 3,
   dispatching-parallel-agents 3, systematic-debugging 2; las otras 9, 0).
 
+- **Arranque desde `~`: `<indice-tareas>` en vez del nucleo compartido (handoff v2, D1).** `session-start-clear.sh`
+  ya no inyecta el nucleo de `~`; emite un `<indice-tareas>` derivado (`nucleo_indice`) de los
+  nucleos de las raíces registradas en `~/.claude/estado/raices` (máx. 15 por fecha, el heredado de
+  `~` primero y marcado, hasta 8 pendientes `(persona)`, tope ~2 500 caracteres, datos escapados). El
+  hook registra cada raíz de proyecto al arrancar (idempotente). La plantilla del nucleo pide marcar
+  `(persona)` lo que solo puede hacer la persona.
+
+- **Arranque con `<git-hechos>`.** El hook calcula `git log --oneline -5` y `git status --short`
+  (timeout 2 s, `core.fsmonitor=false`, `--no-optional-locks` para no dejar un `index.lock` bajo otra
+  sesión del mismo repo, ≤ 1 200 caracteres, `</` escapado) y los inyecta entre la línea de datos y
+  `<nucleo-datos>`.
+
 ### Changed
 
 - **`05-security.md` declara el límite que ninguna regex cubre.** Los guards ven el texto del
@@ -206,6 +218,24 @@ etiquetado.
   `THIRD-PARTY.md` a las condiciones—, que es un nombre que el detector ignora por
   convención. `README.md` explica el porqué en el sitio donde alguien lo busca. No cambia
   ninguna condición de licencia: cambia qué fichero las contiene.
+
+- **Protocolo de arranque, paso 1.** Con `<git-hechos>` ya no pide repetir `git log` ni `git status`;
+  sin git, o si falla, queda el paso 1 anterior.
+
+- **`nucleo_emitir`: tope único de 6 500 con reservas dentro.** «Paso actual», «Siguiente acción» y
+  «Comandos de verificación» tienen reserva propia (hasta 700 bytes cada una) y se miden primero; el
+  resto recibe 6 500 menos eso. Con reservas cortas el Plan conserva su espacio y con las tres llenas
+  quedan ~4 300; peor caso total ~9 300, dentro de los 9 500 de protocolo + git-hechos + nucleo.
+
+- **Cockpit 0.4.2: el primer mensaje tras `/clear` dice qué se va a hacer.** El relleno del prompt era un
+  «sigue con la Siguiente acción…» genérico y la persona aprobaba a ciegas. Ahora es «adelante con la
+  Siguiente acción de .claude/estado/nucleo.md: <primera línea de «Siguiente acción»>», sacada del
+  documento ya fusionado (sin marcador de lista ni caracteres de control, ≤ 200 caracteres con «…»); el
+  prefijo fijo impide que empiece por `/` o `!`, y sin línea queda el genérico. Los mensajes de la UI
+  salen del resultado de `$.prompt.fill`: «revisa el prompt y pulsa Enter para seguir», «escribe:
+  <texto>» si no se rellenó, «/clear falló: escribe /clear y luego <texto>»; desaparece toda instrucción
+  «escribe «sigue»». Cambio de especificación: el test del handoff automático espera ahora el relleno
+  informado. `/nueva` no cambia.
 
 ### Removed
 
@@ -483,6 +513,16 @@ Subsección: Fixed (cockpit 0.4.1)
   habiendo juzgado cero. Y el modo nuevo trae su propia sonda de falsabilidad: sobre una
   sección fabricada que escribe una cifra falsa, `claim_omiso` sigue enrojeciendo — lo que
   había que demostrar no es que sepa omitir, sino que omitir no le quitó el juicio.
+
+- **Cockpit 0.4.2: el handoff ya no duplica «Pendientes».** El prompt del fork pedía «## Pendientes y
+  riesgos» y la plantilla usa «## Pendientes»: la fusión no las emparejaba, la del fork se añadía al
+  final y `nucleo_emitir` inyectaba la vieja. Ahora el prompt usa las cabeceras de la plantilla (con la
+  marca `(persona)`), una tabla de alias pliega «Pendientes y riesgos» a «Pendientes» y, cuando el fork
+  devuelve la sección, sustituye la primera aparición y elimina las repetidas (su texto queda en
+  `nucleo.prev-*`).
+
+- **`nucleo-nudge.sh` ignora a los subagentes** (`agent_id` no vacío): un Explore recibía «CONTEXTO 55 %…
+  actualiza nucleo.md».
 
 ### Security
 
