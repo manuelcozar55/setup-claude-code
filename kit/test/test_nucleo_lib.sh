@@ -17,6 +17,19 @@ ok "subdirectorio de un repo → raíz del repo" "$(nuc "$T/repo/a/b")" "$T/repo
 ok "cwd \$HOME/.claude/estado → no anidado" "$(nuc "$HOME/.claude/estado")" "$HOME/.claude/estado/nucleo.md"
 ok "cwd \$HOME/.claude → no anidado" "$(nuc "$HOME/.claude")" "$HOME/.claude/estado/nucleo.md"
 ok "CLAUDE_PROJECT_DIR manda sobre el cwd" "$(CLAUDE_PROJECT_DIR=$T/repo/a nucleo_raiz "$HOME")" "$T/repo"
+# Decisión 6: $HOME, $HOME/.claude/** y un directorio sin git no son proyecto. Salen con rc 1 y la raíz $HOME,
+# que es lo que los hooks ya leen como «sin proyecto»; un repo (también bajo ~) sigue siendo su propia raíz.
+mkdir -p "$T/sin-git/x" "$HOME/work/r6"; git -C "$HOME/work/r6" init -q
+ok "sin proyecto: directorio sin git → \$HOME y rc 1" "$(nucleo_raiz "$T/sin-git/x"; echo "rc=$?")" "$HOME
+rc=1"
+ok "sin proyecto: \$HOME → rc 1" "$(nucleo_raiz "$HOME" >/dev/null; echo "rc=$?")" "rc=1"
+ok "sin proyecto: \$HOME/.claude/estado → \$HOME y rc 1" "$(nucleo_raiz "$HOME/.claude/estado"; echo "rc=$?")" "$HOME
+rc=1"
+ok "proyecto: repo bajo \$HOME → su raíz y rc 0" "$(nucleo_raiz "$HOME/work/r6"; echo "rc=$?")" "$HOME/work/r6
+rc=0"
+# Tope único: el literal solo vive en la lib; los demás lo leen de NUCLEO_TOPE.
+ok "tope único: NUCLEO_TOPE=6500 en la lib" "$NUCLEO_TOPE" 6500
+ok "tope único: el literal 6500 no está en otro hook ni CLI" "$(command grep -rlE '6 ?500' "$(dirname "$L")/.." "$(dirname "$L")/../../bin" 2>/dev/null | command grep -vc '/lib/nucleo.sh$')" 0
 
 # Un nucleo convertido en diario: 4 cabeceras «TAREA ACTUAL», secciones repetidas, ~78 KB.
 G=$T/grande.md
@@ -34,7 +47,7 @@ ok "contiene el paso vivo, no los viejos" "$(command grep -c 'PASO-VIVO' <<<"$S"
 ok "avisa fuera de forma" "$(command grep -c '^\[fuera de forma: .* KB → muévelas a diario.md' <<<"$S")" 1
 
 P=$T/peque.md
-{ printf '# Estado\n'; for s in Objetivo Invariantes Plan 'Paso actual' 'Siguiente acción' Pendientes 'Comandos de verificación' 'Ficheros tocados'; do
+{ printf '# Estado\n'; for s in Objetivo Invariantes 'Paso actual' 'Siguiente acción' 'Comandos de verificación' Plan Pendientes 'Ficheros tocados'; do
     printf '## %s\n' "$s"; for _ in $(seq 1 3); do echo "$s: contenido en forma, acentos ñ y «comillas», ochenta chars"; done; done; } >"$P"
 ok "fixture de ~2 KB" "$(( ($(wc -c <"$P") + 512) / 1024 ))" 2
 ok "fichero en forma → íntegro" "$(nucleo_emitir "$P" | cmp -s - "$P" && echo si)" si
@@ -59,6 +72,34 @@ ok "un título de 1 MB no salta el tope" "$(S=$(nucleo_emitir "$T/titulo.md"); [
 G2=$T/ruta-larga-$(printf '%0200d' 0)/$(printf '%0200d' 1); mkdir -p "$G2"
 for s in Objetivo Plan Pendientes; do printf '## %s\n' "$s"; head -c 4000 /dev/zero | tr '\0' x; echo; done >"$G2/nucleo.md"
 ok "la ruta se cita una sola vez" "$(nucleo_emitir "$G2/nucleo.md" | command grep -o "$G2" | wc -l)" 1
+
+# --- v3 (D5): orden de emisión Objetivo · Invariantes · Paso actual · Siguiente acción · Comandos de verificación ·
+# Plan · Pendientes · Ficheros tocados, sea cual sea el del fichero; del Plan solo entran los [ ] ---
+F=$T/orden.md
+printf '%s\n' '# Estado' '## Ficheros tocados' 'F-1' '## Pendientes' 'PE-1' '## Plan' '- [x] hecho-1 — make test' '- [ ] abierto-1' '  - [x] sub-hecho' '1. [X] hecho-2' '## Comandos de verificación' 'C-1' \
+  '## Siguiente acción' 'SA-1' '## Paso actual' 'PA-1' '## Invariantes' 'I-1' '## Objetivo' 'O-1' '## No repetir' 'NR-1' >"$F"
+ok "orden D5 en la emisión" "$(nucleo_emitir "$F" | command grep -v '^#' | command grep -v '^$' | paste -sd,)" "O-1,I-1,PA-1,SA-1,C-1,- [ ] abierto-1,PE-1,F-1,NR-1"
+ok "el título del fichero va primero" "$(nucleo_emitir "$F" | head -n 1)" "# Estado"
+ok "Plan: los [x] no se emiten" "$(nucleo_emitir "$F" | command grep -c 'hecho-\|sub-hecho')" 0
+printf '%s\n' '## Plan' '```' '- [x] en-cerca' '```' '- [ ] fuera' >"$T/plan-cerca.md"
+ok "Plan: un [x] dentro de una cerca sí se conserva" "$(nucleo_emitir "$T/plan-cerca.md" | command grep -c 'en-cerca')" 1
+# Log de recortes: solo cuando se recorta, junto al nucleo, acotado.
+mkdir -p "$T/rec"
+{ echo '# Estado'; for sx in Objetivo Invariantes Plan 'Paso actual' Pendientes; do echo "## $sx"; head -c 4000 /dev/zero | tr '\0' x; echo; done; } >"$T/rec/nucleo.md"
+nucleo_emitir "$T/rec/nucleo.md" >/dev/null
+ok "recortes.log: una línea «ISO<TAB>bytes<TAB>aviso» al recortar" "$(awk -F'\t' 'END { print NR, ($1 ~ /^20[0-9-]+T[0-9:]+Z$/), ($2 ~ /^[0-9]+$/), ($3 ~ /recortado/) }' "$T/rec/recortes.log")" "1 1 1 1"
+mkdir -p "$T/rec2"; cp "$P" "$T/rec2/nucleo.md"; nucleo_emitir "$T/rec2/nucleo.md" >/dev/null
+ok "recortes.log: sin recorte no se escribe" "$([ -e "$T/rec2/recortes.log" ] && echo hay || echo no)" no
+for _ in $(seq 1 120); do nucleo_emitir "$T/rec/nucleo.md" >/dev/null; done
+ok "recortes.log: acotado (≤ 100 líneas)" "$([ "$(wc -l <"$T/rec/recortes.log")" -le 100 ] && echo si)" si
+
+# --- plantilla publicada: orden D5, sin cifras de tope, y los tres campos baratos de la decisión 13 ---
+TPL=$(dirname "$L")/../../templates/nucleo.md
+ok "plantilla: cabeceras en el orden D5" "$(sed -n 's/^## //p' "$TPL" | paste -sd,)" "Objetivo,Invariantes,Paso actual,Siguiente acción,Comandos de verificación,Plan,Pendientes,Ficheros tocados"
+ok "plantilla: sin cifra de tope (KB ni 6500)" "$(command grep -ciE '[0-9] ?KB|6 ?500' "$TPL")" 0
+ok "plantilla: correcciones literales con fecha, en Invariantes" "$(awk '/^## /{s=$0} s=="## Invariantes" && /Corrección/' "$TPL" | command grep -c 'AAAA-MM-DD')" 1
+ok "plantilla: ficheros calientes con rango ruta:L120-180" "$(command grep -c 'ruta:L120-180' "$TPL")" 1
+ok "plantilla: → rc=N junto a cada comando" "$(command grep -c '→ rc=N' "$TPL")" 1
 
 # `claude --worktree` crea el worktree en <repo>/.claude/worktrees/<rama>: es su propia raíz (rama y
 # nucleo suyos), no el repo padre. Solo $HOME/.claude sube a su padre.

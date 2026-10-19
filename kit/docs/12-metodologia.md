@@ -111,14 +111,26 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
   estratega, implementador autónomo, revisores, explorador y verificador).
 - El prompt a un subagente **apunta a un fichero de spec**; no lo pega. Cada uno es dueño de
   sus ficheros, y ninguno hace commit ni push: lo hace el hilo principal.
-- El estado de una tarea larga vive **en disco**, en `.claude/estado/nucleo.md`: objetivo,
-  invariantes, plan, paso actual, pendientes y comandos de verificación. Se actualiza al abrir
-  la tarea, antes de delegar y al cerrar cada fase; tras una compactación se lee antes de
-  actuar. Es lo que permite sobrevivir a un contexto que se compacta a mitad de un encargo.
+- El estado de una tarea larga vive **en disco**, en `.claude/estado/nucleo.md` de la raíz git del proyecto
+  (una tarea = un worktree = un nucleo = una sesión dueña; `$HOME`, `~/.claude` y un directorio sin git no son
+  proyecto). Secciones, en el orden en que se inyectan: Objetivo, Invariantes, Paso actual, Siguiente acción,
+  Comandos de verificación, Plan, Pendientes y Ficheros tocados (plantilla en `templates/nucleo.md`). Se
+  actualiza al abrir la tarea, antes de delegar y al cerrar cada fase; tras una compactación se lee antes de
+  actuar. Lo cerrado va a `diario.md`, que nunca se inyecta. El índice de tareas que ve una sesión abierta
+  desde `~` se **deriva** de los nucleos vivos: no hay nadie que lo escriba, así que no puede desviarse.
+- **`oraculo -- <cmd>`** ejecuta una verificación con `pipefail`, imprime las últimas 40 líneas y `rc=N`, sale
+  con ese rc y lo anota en `.claude/estado/verificaciones.log`: `cmd | tail` devolvía el rc de `tail`.
+- **`handoff --desde <borrador>`** cierra la fase: el modelo redacta el borrador y el CLI decide. Valida las
+  cabeceras, conserva Objetivo, une las Invariantes por líneas (nunca borra una), mueve los `[x]` del Plan a
+  `diario.md` con su comando y hash, pliega el último rc de `oraculo`, rota tres copias `nucleo.prev-*`, recorta
+  al tope omitiendo secciones enteras desde el final y libera al dueño. `--solo`, `--commit`, `--migrar <dir>`
+  y `--estado` (JSON de una línea) completan el contrato.
+- Dueño: `.claude/estado/.dueno` (`sesion=`, `desde=`) lo reclama SessionStart; la sesión ajena recibe un aviso
+  y su nudge de contexto calla; caduca a las 4 h (`NUCLEO_DUENO_TTL`).
 
 ## 6 · Cambiar de sesión y cerrar el ciclo
 
-- **`/handoff`** (mod [`cockpit`](11-cockpit.md)) escribe un documento de traspaso —objetivo,
+- **`/handoff`** (mod [`cockpit`](11-cockpit.md), o `handoff --desde` a mano en cualquier runtime) escribe un documento de traspaso —objetivo,
   invariantes, plan, paso actual, pendientes, comandos de verificación—, limpia el contexto y
   retoma desde él. Con `solo` guarda el documento y no limpia nada.
   El cockpit lo lanza solo al cerrar un turno con el contexto al 70 % del límite de autocompactación

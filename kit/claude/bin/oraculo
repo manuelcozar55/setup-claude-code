@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# oraculo — ejecuta una verificación y dice la verdad sobre su rc. Válido en Claude Code, Codex y opencode.
+# Por qué: `cmd | tail -n 40` devuelve el rc de tail y un test rojo parece verde. Aquí el comando corre con
+# pipefail, se imprimen sus últimas 40 líneas y `rc=N`, y se sale con N. Si hay proyecto, la ejecución queda en
+# <raíz>/.claude/estado/verificaciones.log (`ISO<TAB>rc<TAB>comando`), que `handoff` pliega en el nucleo.
+set -euo pipefail
+
+uso() {
+  cat <<'EOF'
+uso: oraculo [--raiz DIR] -- <comando…>
+Ejecuta el comando con pipefail, imprime sus últimas 40 líneas y «rc=N», y sale con N.
+Con una sola palabra tras -- se interpreta como línea de shell (admite tuberías); con varias, como argv.
+Si hay proyecto (raíz git; no $HOME ni un directorio sin git) añade «ISO<TAB>rc<TAB>comando» a
+<raíz>/.claude/estado/verificaciones.log. --raiz DIR elige el proyecto en vez del directorio actual.
+Sale con el rc del comando; 64 si el uso es erróneo.
+EOF
+}
+
+SELF=$(readlink -f -- "$0" 2>/dev/null || realpath -- "$0" 2>/dev/null || printf '%s' "$0")
+# shellcheck source=SCRIPTDIR/../hooks/lib/nucleo.sh
+. "$(dirname "$SELF")/../hooks/lib/nucleo.sh"
+
+RAIZ_ARG=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    -h | --help) uso; exit 0 ;;
+    --raiz) [ $# -ge 2 ] || { echo "uso: oraculo [--raiz DIR] -- <comando…> (a --raiz le falta el directorio)" >&2; exit 64; }
+      RAIZ_ARG=$2; shift 2 ;;
+    --) shift; break ;;
+    *) { echo "uso: oraculo [--raiz DIR] -- <comando…> (falta --, o «$1» no es una opción)"; } >&2; exit 64 ;;
+  esac
+done
+[ $# -gt 0 ] || { echo "uso: oraculo [--raiz DIR] -- <comando…> (falta el comando)" >&2; exit 64; }
+
+OUT=$(mktemp "${TMPDIR:-/tmp}/oraculo.XXXXXX")
+trap 'rm -f -- "$OUT"' EXIT
+
+CMD="$*"
+set +e
+if [ $# -eq 1 ]; then bash -o pipefail -c "$1" >"$OUT" 2>&1 </dev/null
+else bash -o pipefail -c 'exec "$@"' oraculo "$@" >"$OUT" 2>&1 </dev/null
+fi
+RC=$?
+set -e
+
+if [ -n "$RAIZ_ARG" ]; then RAIZ=$(CLAUDE_PROJECT_DIR=$RAIZ_ARG nucleo_raiz "$RAIZ_ARG") || RAIZ=""
+else RAIZ=$(nucleo_raiz "$PWD") || RAIZ=""
+fi
+if [ -n "$RAIZ" ] && ! nucleo_enlazado "$RAIZ"; then
+  LOG=$RAIZ/.claude/estado/verificaciones.log
+  CMD=$(printf '%s' "${CMD:0:500}" | tr '\n\t' '  ')
+  if mkdir -p "$RAIZ/.claude/estado" 2>/dev/null && printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "$CMD" >>"$LOG" 2>/dev/null; then
+    if [ "$(wc -l <"$LOG")" -gt 400 ]; then tail -n 200 "$LOG" >"$LOG.tmp" && mv -f "$LOG.tmp" "$LOG"; fi
+  fi
+fi
+# Se imprime al final: si quien lee cierra la tubería a medias (| head), el registro ya está escrito.
+tail -n 40 "$OUT" || true
+echo "rc=$RC" || true
+exit "$RC"

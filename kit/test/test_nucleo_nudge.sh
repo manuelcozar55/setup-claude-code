@@ -58,6 +58,21 @@ ok "K8 ~ al 85 %: cierra el turno, sin prometer handoff" "$(command grep -c 'Cie
 echo x >"$NUC"; touch -d '-30 minutes' "$NUC"
 ok "K8 en proyecto: igual que antes" "$(run s54 p60 | ctx | command grep -c "actualiza Paso actual / Siguiente acción / Pendientes en $NUC")" 1
 
+# v3: una tarea = una sesión dueña (.claude/estado/.dueno). Quien no lo es calla: el aviso le pediría escribir
+# el nucleo de otra. Con el dueño caducado, o sin dueño, avisa cualquiera.
+echo x >"$NUC"; touch -d '-30 minutes' "$NUC"
+printf 'sesion=duena1\ndesde=%s\n' "$(date +%s)" >"$R/.claude/estado/.dueno"
+ok "dueño: otra sesión al 60 % calla" "$(run s70 p60)" ""
+ok "dueño: la dueña sí avisa" "$(run duena1 p60 | ctx | command grep -c '60 % del airbag')" 1
+ok "dueño: callar no gasta la banda (al ceder el dueño avisa)" "$(printf 'sesion=duena1\ndesde=1\n' >"$R/.claude/estado/.dueno"; run s70 p60 | ctx | command grep -c '60 % del airbag')" 1
+printf 'basura\n' >"$R/.claude/estado/.dueno"
+ok "dueño ilegible: avisa cualquiera" "$(run s71 p60 | ctx | command grep -c '60 % del airbag')" 1
+unlink "$R/.claude/estado/.dueno"
+# v3: al 70 % se propone cerrar la fase con el CLI `handoff` (sin cockpit tampoco hay que esperar a la persona).
+C=$(run s72 p72 | ctx)
+ok "70 %: propone cerrar la fase con handoff" "$(command grep -c 'handoff' <<<"$C")" 1
+ok "60 %: aún no habla de handoff" "$(run s73 p60 | ctx | command grep -c 'handoff')" 0
+
 # Camino caliente: corre tras CADA herramienta. Se mide el camino largo (nucleo rancio, transcript
 # leído, banda ya avisada). Mejor de 5: en un runner cargado una sola medida miente.
 echo x >"$NUC"; touch -d '-30 minutes' "$NUC"

@@ -4,14 +4,18 @@
 # o dentro de .claude/ salía un nucleo anidado o ninguno. Y la inyección cortaba por bytes un fichero
 # convertido en diario: por encima de 10 000 chars el harness manda la salida a fichero.
 
-# nucleo_raiz <cwd>: raíz del proyecto dueño de <raíz>/.claude/estado/nucleo.md. Toplevel git de
-# CLAUDE_PROJECT_DIR (o del cwd); sin git, ese mismo directorio. Lo que cae dentro de $HOME/.claude sube
-# a $HOME: desde $HOME/.claude/estado el nucleo es $HOME/.claude/estado/nucleo.md, no uno anidado. Solo
-# ese: un worktree de `claude --worktree` vive en <repo>/.claude/worktrees/<rama> y es su propia raíz.
+# Tope único (bytes) de lo que se inyecta del nucleo, y de lo que `handoff` deja escrito. El único sitio con la cifra.
+NUCLEO_TOPE=${NUCLEO_TOPE:-6500}
+
+# nucleo_raiz <cwd>: raíz del proyecto dueño de <raíz>/.claude/estado/nucleo.md = toplevel git de
+# CLAUDE_PROJECT_DIR (o del cwd), rc 0. Sin proyecto —un directorio sin git, $HOME o lo que cuelga de
+# $HOME/.claude (que es un repo git, pero de configuración)— imprime $HOME y sale con rc 1: es el valor que
+# los hooks ya leen como «sin proyecto» (índice de tareas, nada de nucleo propio). Un worktree de
+# `claude --worktree` vive en <repo>/.claude/worktrees/<rama> y es su propia raíz.
 nucleo_raiz() {
   local base=${CLAUDE_PROJECT_DIR:-$1} r
-  r=$(git -C "$base" rev-parse --show-toplevel 2>/dev/null) || r=$base
-  case $r in "$HOME/.claude" | "$HOME/.claude/"*) r=$HOME ;; esac
+  r=$(git -C "$base" rev-parse --show-toplevel 2>/dev/null) || r=$HOME
+  case $r in "$HOME" | "$HOME/.claude" | "$HOME/.claude/"*) printf '%s\n' "$HOME"; return 1 ;; esac
   printf '%s\n' "$r"
 }
 
@@ -24,6 +28,50 @@ nucleo_enlazado() {
   local r e
   r=$(realpath -m -- "$1" 2>/dev/null) && e=$(realpath -m -- "$1/.claude/estado/nucleo.md" 2>/dev/null) || return 0
   case $e in "$r"/*) return 1 ;; esac
+  return 0
+}
+
+# Una tarea = una sesión dueña. <raíz>/.claude/estado/.dueno: «sesion=<session_id>» y «desde=<epoch>»; vigente
+# mientras ahora − desde < NUCLEO_DUENO_TTL (14 400 s por omisión). Sin pid: el hook no sabe el de claude.
+# Lo reclama SessionStart, lo libera `handoff`; un .dueno ilegible o caducado equivale a no tener dueño.
+
+# nucleo_dueno <raíz>: «<sesión> <desde>» si hay un dueño legible (vigente o no); rc 1 si no.
+nucleo_dueno() {
+  local k v s="" d=""
+  [ -f "$1/.claude/estado/.dueno" ] || return 1
+  while IFS='=' read -r k v || [ -n "$k" ]; do
+    case $k in sesion) s=$v ;; desde) d=$v ;; esac
+  done <"$1/.claude/estado/.dueno"
+  case $d in '' | *[!0-9]*) return 1 ;; esac
+  case $s in '' | *[!A-Za-z0-9_-]*) return 1 ;; esac
+  printf '%s %s\n' "$s" "$d"
+}
+
+# nucleo_dueno_vigente <raíz>: imprime «<sesión> <desde>» y rc 0 si el dueño no ha caducado.
+nucleo_dueno_vigente() {
+  local d ttl=${NUCLEO_DUENO_TTL:-14400}
+  d=$(nucleo_dueno "$1") || return 1
+  case $ttl in '' | *[!0-9]*) ttl=14400 ;; esac
+  [ $(( $(date +%s) - ${d#* } )) -lt "$ttl" ] || return 1
+  printf '%s\n' "$d"
+}
+
+# nucleo_dueno_ajeno <raíz> <sesión>: rc 0 si hay un dueño vigente y no es <sesión>; imprime su id.
+nucleo_dueno_ajeno() {
+  local d
+  d=$(nucleo_dueno_vigente "$1") || return 1
+  [ "${d% *}" != "$2" ] || return 1
+  printf '%s\n' "${d% *}"
+}
+
+# nucleo_dueno_reclamar <raíz> <sesión>: escribe el dueño (temporal + mv: un .dueno enlazado se sustituye, no se
+# sigue). Solo si <raíz>/.claude/estado ya existe: no se crean directorios en repos que no usan estado.
+nucleo_dueno_reclamar() {
+  local d=$1/.claude/estado tmp
+  [ -d "$d" ] || return 0
+  tmp=$(mktemp "$d/.dueno.XXXXXX" 2>/dev/null) || return 0
+  printf 'sesion=%s\ndesde=%s\n' "$2" "$(date +%s)" >"$tmp"
+  mv -f "$tmp" "$d/.dueno" 2>/dev/null || rm -f "$tmp"
   return 0
 }
 
@@ -213,10 +261,24 @@ nucleo_ctx() {
 # Bytes (LC_ALL=C): el tope protege el límite del harness, que se mide en la salida entera.
 nucleo_emitir() {
   [ -f "$1" ] || return 0
-  local kb=$(( ($(wc -c <"$1") + 1023) / 1024 )) rs
+  local kb=$(( ($(wc -c <"$1") + 1023) / 1024 )) rs out
   # Dos pasadas: la primera mide lo que ocupan las reservadas (no depende del tope); la segunda reparte el resto.
-  rs=$(_nucleo_emitir_awk "$1" "$kb" 6500 medir)
-  _nucleo_emitir_awk "$1" "$kb" "$(( 6500 - ${rs:-0} ))" | sed 's|</|<\\/|g'
+  rs=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" medir)
+  out=$(_nucleo_emitir_awk "$1" "$kb" "$(( NUCLEO_TOPE - ${rs:-0} ))" | sed 's|</|<\\/|g')
+  [ -z "$out" ] || printf '%s\n' "$out"
+  case $out in *'[recortado'* | *'[LEE '*) _nucleo_log_recorte "$1" "$out" ;; esac
+  return 0
+}
+
+# _nucleo_log_recorte <nucleo> <emisión>: «ISO<TAB>bytes<TAB>avisos» en recortes.log junto al nucleo, para que
+# se vea cuándo y cuánto se recorta lo inyectado. Acotado: pasadas 100 líneas queda en las últimas 50. Nunca
+# rompe el hook.
+_nucleo_log_recorte() {
+  local log=${1%/*}/recortes.log av
+  av=$(printf '%s\n' "$2" | command grep '^\[\(recortado\|LEE\|fuera de forma\|cercas\)' | tr '\n\t' '  ')
+  printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${#2}" "$av" >>"$log" 2>/dev/null || return 0
+  [ "$(wc -l <"$log")" -le 100 ] || { tail -n 50 "$log" >"$log.tmp" 2>/dev/null && mv -f "$log.tmp" "$log" 2>/dev/null; }
+  return 0
 }
 
 # _nucleo_emitir_awk <fichero> <kb> <tope> [medir]: la emisión; con «medir», solo los bytes de las reservadas.
@@ -239,7 +301,7 @@ _nucleo_emitir_awk() {
       if (substr(l, n + 1, 1) ~ /[\200-\277]/) sub(/[\300-\377][\200-\277]*$/, "", r)
       return r
     }
-    function sale(s) { out = out s "\n"; if (rsv) ocupado += length(s) + 1; else usado += length(s) + 1 }
+    function sale(s) { buf[cur] = buf[cur] s "\n"; if (rsv) ocupado += length(s) + 1; else usado += length(s) + 1 }
     # ### también: las sesiones escriben la tarea como «## TAREA ACTUAL» con sus secciones en ###. Si nombra
     # una sección aún no vista es cabecera; si no, es contenido solo bajo un ## de plantilla (padre: «### Fase 1»
     # en «## Plan»); bajo otro ## cierra y cuenta en fuera, para que «### Hecho» no se cuele en Pendientes.
@@ -264,7 +326,7 @@ _nucleo_emitir_awk() {
     /^#(#|##)? / && !cerca && ($0 !~ /^### / || (c != "" && !visto[c]) || !padre) {
       if ($0 ~ /^### / && viva && !padre && (c == "" || visto[c])) cerradas++
       viva = 0; dentro = 0; rsv = 0
-      if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; sale(corta($0, 200)) } else fuera++; next }
+      if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; cur = "#"; sale(corta($0, 200)) } else fuera++; next }
       if ($0 ~ /^## /) padre = (c != "")
       # Repetido: solo entra si la primera copia quedó vacía (plantilla con «## Pendientes» y, después, el
       # «## Pendientes y riesgos» de /handoff); con contenido sigue ganando la primera. Los marcadores
@@ -273,8 +335,10 @@ _nucleo_emitir_awk() {
       if (c == "" || (visto[c] && con[c])) { fuera++; next }
       visto[c] = 1; actual = c; coment = 0; rsv = (c == "Paso actual" || c == "Siguiente acción" || c == "Comandos de verificación")
       if (!rsv && usado + length($0) > tope) { omitidas = omitidas " «" corta(t, 80) "»"; next }
-      viva = 1; sale($0); next
+      viva = 1; cur = c; sale($0); next
     }
+    # Del Plan solo se emiten los pasos abiertos: los [x] ya están en diario.md (y fuera de una cerca).
+    viva && actual == "Plan" && !cerca && $0 ~ /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { next }
     viva {
       resto = (rsv ? res : sec) - dentro; if (!rsv && tope - usado < resto) resto = tope - usado
       if (coment) { if (index($0, "-->")) coment = 0 }
@@ -286,7 +350,10 @@ _nucleo_emitir_awk() {
     }
     END {
       if (medir != "") { print ocupado + 0; exit }
-      printf "%s", out
+      # Orden de emisión (D5), no el del fichero: lo que más urge retomar va primero y lo que se recorta es la cola.
+      printf "%s", buf["#"]
+      m = split("Objetivo|Invariantes|Paso actual|Siguiente acción|Comandos de verificación|Plan|Pendientes|Ficheros tocados|No repetir", ord, "|")
+      for (i = 1; i <= m; i++) printf "%s", buf[ord[i]]
       if (cercas % 2) print "[cercas sin equilibrar: se ignoran; un # comentario dentro de un bloque puede cortar su sección]"
       if (omitidas != "") print "[recortado por tope: se omiten" omitidas ".]"
       if (recortes || omitidas != "" || cerradas || cercas % 2) print "[LEE " f " antes de actuar: lo inyectado está incompleto.]"
