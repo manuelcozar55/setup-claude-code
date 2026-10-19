@@ -9,11 +9,12 @@ etiquetado.
 
 ### Added
 
-- **Corpus adversario de E5 como suite: `test_guards_corpus.sh`.** Las 715 sondas de la campaña
-  E5 (`fixtures/guards-corpus.tsv`, una columna de esperado y otra del guard que respondió) se
-  ejecutan contra los cuatro guards bash en un repo temporal en rama de feature: 119 filas
-  ejecutadas, 0 falsos negativos, 593 omitidas con motivo contado (Sentinel y write-guard para
-  PR3/PR6, otras herramientas, sin expectativa). Los guards de antes de este cambio también la
+- **Corpus adversario de E5 como suite: `test_guards_corpus.sh`.** El corpus de la campaña
+  E5 (`fixtures/guards-corpus.tsv`, una columna de esperado y otra del guard que respondió) tiene
+  715 filas; 119 se ejecutan contra los cuatro guards bash en un repo temporal en rama de feature
+  (336 aserciones, 0 falsos negativos). Las otras 596 se omiten con motivo contado: 110 de otras
+  herramientas, 483 que solo vieron Sentinel o smart_approve (Sentinel y write-guard se cubren en
+  `test_guards.sh`) y 3 sin expectativa. Los guards de antes de este cambio también la
   pasan: es una red contra regresiones, no el test rojo de los hallazgos (eso es `test_guards.sh`).
   Los 3 «falsos positivos» del corpus son el borrado recursivo forzado de `build/`, que el hook
   deniega por diseño documentado, y la suite los fija como `BLOCK` (`DISENO_FP=allow` los cambia
