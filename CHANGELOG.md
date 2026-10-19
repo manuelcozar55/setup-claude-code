@@ -7,6 +7,17 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-19
+
+Dos frentes. El primero, **que el estado de una tarea sobreviva a la compactación sin depender de
+que el modelo se acuerde**: el cockpit lanza el handoff solo, entre turnos (ADR 013), y el estado
+pasa a vivir por raíz git, con una sesión dueña, escrito por dos CLIs del kit, `handoff` y `oraculo`,
+que validan, fusionan y anotan el rc real (ADR 014). El segundo, **cerrar guards que fallaban en
+abierto**: un comando de 64 KB hacía que los guards de Bash se pasaran de su timeout y la herramienta
+se ejecutara; se cierran los hallazgos de la revisión del 16-oct sobre instalador, normalización de
+comandos, Sentinel, estado y write-guard; entra `bash-write-guard.sh`, que mira lo que Bash escribe,
+y sale `smart_approve.py`, que fallaba en abierto sin `settings.json`.
+
 ### Added
 
 - **Estado v3: núcleo y CLI.** `nucleo_raiz` ya no toma por proyecto un directorio sin git, `$HOME` ni `~/.claude`: imprime `$HOME` y sale con rc 1. `NUCLEO_TOPE` (6500) vive solo en `lib/nucleo.sh`. Una tarea = una sesión dueña (`.claude/estado/.dueno`, TTL 4 h, `NUCLEO_DUENO_TTL`): SessionStart la reclama o avisa a la ajena, y el nudge de contexto calla a quien no es dueña y al 70 % remite a `handoff`. La emisión sigue el orden D5, omite los `[x]` del Plan y deja `recortes.log`. Plantilla `nucleo.md` en orden D5, sin cifras, con correcciones fechadas, rangos de ficheros y `→ rc=N`.
@@ -1875,7 +1886,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/manuelcozar55/setup-claude-code/releases/tag/v1.0.0
