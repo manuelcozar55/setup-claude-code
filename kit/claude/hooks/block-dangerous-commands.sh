@@ -131,7 +131,7 @@ DENY_RULES=(
   # --force-with-lease y --force-if-includes siguen cayendo por la regla de --force.
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--force'        "BLOCKED: git push --force"
   '\bgit\b[^;&|]*\bpush\b[^;&|]*\s-[A-Za-z]*f'  "BLOCKED: git push -f / -uf (force push)"
-  '\bgit\b[^;&|]*\bpush\b[^;&|]*\s\+[A-Za-z0-9_./@-]'  "BLOCKED: git push +refspec (forced refspec)"
+  # El refspec forzado (`+rama`) no va en esta tabla: se decide sobre tokens, mas abajo.
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--mirror'       "BLOCKED: git push --mirror (can delete remote refs)"
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--delete'       "BLOCKED: git push --delete (deletes a remote branch)"
   # Las otras dos grafias del mismo borrado. Medido: contra rama protegida las tres caian, pero
@@ -208,6 +208,60 @@ if [[ $COMMAND == *git* ]]; then
   sed -E "s/\"[^\"]*\"|'[^']*'//g" <<<"$COMMAND" \
     | LC_ALL=C grep -qiE '\bgit\b[^;&|]*\b(commit|push)\b[^;&|]*--no-verify|\bgit\b[^;&|]*\bcommit\b[^;&|]*\s-[a-z]*n' \
     && deny "BLOCKED: --no-verify salta los hooks de git; arregla el hook que falla"
+fi
+
+# Refspec forzado (`git push origin +rama`): fuerza igual que --force. Sobre el texto fallaba en las
+# dos direcciones: `\s\+` no veia el `+` tras una comilla (`'+rama'`, `"+HEAD"`) ni delante de una
+# variable (`+$B`), y cualquier `push ... +palabra` disparaba aunque fuera `git stash push -m "wip
+# +x"` o un mensaje de commit. Ahora cuenta solo un operando de `git push` (el subcomando, tras las
+# opciones globales que ya aparta cmdnorm) que, descomillado, empieza por `+`; el argumento de `-o`
+# y compania no es operando. Como en branch-guard.sh, la cadena de un `bash -c`, `eval`, `ssh`,
+# `xargs`... se vuelve a normalizar, hasta 3 niveles; lo que solo muestra texto no cuenta.
+# Cada cadena anidada cuesta un awk (~3 ms): sin tope, 12 KB de `x git;` eran 7 s de CPU, y un guard
+# que pasa de su timeout deja ejecutar el comando ENTERO. Solo se vuelve a normalizar la cadena que
+# puede llevar el refspec (push y +), y pasadas 16 se deniega: fallar cerrado.
+NEST=0
+forced_refspec() {
+  local depth=$1 seg a i inner skip dd rc
+  local -a T segs
+  segs=("${CMDN_SEGS[@]}")
+  for seg in "${segs[@]}"; do
+    [[ $seg == *push* && $seg == *+* ]] || continue
+    cmdn_fields "$seg"
+    if [[ ${T[1]:-} != git ]]; then
+      (( depth < 3 )) || continue
+      case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') continue ;; esac
+      for (( i = 2; i < ${#T[@]}; i++ )); do
+        a=${T[i]}
+        [[ $a == *git* ]] || continue
+        inner=$a
+        [[ $a == git || $a == */git ]] && printf -v inner '%s ' "${T[@]:i}"
+        [[ $inner == *push* && $inner == *+* ]] || continue
+        (( ++NEST > 16 )) && return 2
+        cmdn_parse "$inner" || continue
+        forced_refspec $(( depth + 1 )); rc=$?
+        (( rc == 1 )) || return $rc
+      done
+      continue
+    fi
+    [[ ${T[2]:-} == push ]] || continue
+    skip=0; dd=0
+    for a in "${T[@]:3}"; do
+      if (( skip )); then skip=0; continue; fi
+      if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
+      if (( ! dd )) && [[ $a == -* ]]; then
+        case $a in --repo|-o|--push-option|--receive-pack|--exec) skip=1 ;; esac
+        continue
+      fi
+      [[ $a == +* ]] && return 0
+    done
+  done
+  return 1
+}
+if [[ $COMMAND == *git* && $COMMAND == *push* && $COMMAND == *+* ]]; then
+  forced_refspec 0; rc_refspec=$?
+  (( rc_refspec == 0 )) && deny "BLOCKED: git push +refspec (forced refspec)"
+  (( rc_refspec == 2 )) && deny "BLOCKED: mas de 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"
 fi
 
 # LC_ALL=C en los grep: con UTF-8 la union de patrones deja de ir por el automata y recorre el
