@@ -551,6 +551,19 @@ for c in 'git push --all origin' 'git push origin --all' 'git push --branches or
   expect "branch-guard (E7.3, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
 done
 expect "branch-guard (E7.3, feature activa): --all-ish en un nombre de rama NO denegado" "$(run_bg "$BR_FEAT" 'git push origin all')" ALLOW
+# Revision E7.3 (CR-1): el guard solo miraba segmentos cuyo ejecutable era git, y el guard de
+# texto de 3576d87 bloqueaba estas siete grafias (regresion de PR2). Se analiza la cadena interior.
+for c in 'bash -c "git push origin main"' "sh -c 'git push origin main'" 'eval "git push origin main"' \
+         'ssh host git push origin main' 'xargs git push origin main' 'find . -exec git push origin main \;' \
+         'bash -c "cd /tmp && git push origin master"' 'sudo bash -c "git push origin main"' \
+         'bash -c "bash -c \"git push origin main\""'; do
+  expect "branch-guard (E7.3, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+expect "branch-guard (E7.3, main activa): bash -c con push implicito denegado" "$(run_bg "$BR_MAIN" 'bash -c "git push"')" BLOCK
+for c in 'bash -c "git push origin feature"' 'ssh host git status' 'bash -c "echo main"' 'echo "git push origin main"' \
+         'printf "%s" "git push origin main"' 'xargs git status main' 'find . -name main'; do
+  expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
 rm -rf "$BR_MAIN" "$BR_FEAT" "$BR_NONE"
 
 # Las TRES grafias del borrado de una rama remota. Solo `--delete` estaba cubierta: contra rama

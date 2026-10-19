@@ -50,10 +50,35 @@ block() {
   exit 2
 }
 
-for seg in "${CMDN_SEGS[@]}"; do
+# Un segmento cuyo ejecutable no es git puede llevar un push dentro: `bash -c "git push ..."`, `eval`,
+# `ssh host git push ...`, `xargs git push ...`, `find -exec git push ...`. El guard de texto de 3576d87
+# los veia y la normalizacion los dejo pasar; ahora la cadena interior (un argumento con git, o los
+# argumentos desde el token `git`) se vuelve a normalizar y se analiza igual, hasta 3 niveles. Los
+# comandos que solo muestran texto (echo, grep...) no cuentan: `echo "git push origin main"` es prosa.
+# La expansion de variables sigue fuera de alcance (docs/05-security.md).
+scan() {
+  local depth=$1 seg a i inner cwd0 first ref dst t cur
+  local skip dd tags repo
+  local -a T segs ops targets gopts
+  segs=("${CMDN_SEGS[@]}")
+  for seg in "${segs[@]}"; do
   cmdn_fields "$seg"
   cmdn_track_cd
-  [[ ${T[1]:-} == git && ${T[2]:-} == push ]] || continue
+  if [[ ${T[1]:-} != git ]]; then
+    [[ $seg == *git* && $depth -lt 3 ]] || continue
+    case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') continue ;; esac
+    for (( i = 2; i < ${#T[@]}; i++ )); do
+      a=${T[i]}
+      [[ $a == *git* ]] || continue
+      inner=$a
+      [[ $a == git || $a == */git ]] && printf -v inner '%s ' "${T[@]:i}"
+      cwd0=$CMDN_CWD
+      cmdn_parse "$inner" && { CMDN_CWD=$cwd0; scan $(( depth + 1 )); }
+      CMDN_CWD=$cwd0
+    done
+    continue
+  fi
+  [[ ${T[2]:-} == push ]] || continue
 
   ops=(); skip=0; dd=0; tags=0; repo=0
   for a in "${T[@]:3}"; do
@@ -93,6 +118,8 @@ for seg in "${CMDN_SEGS[@]}"; do
   for t in "${targets[@]}"; do
     [[ -n $t ]] && is_protected "$t" && block "$t"
   done
-done
+  done
+}
 
+scan 0
 exit 0
