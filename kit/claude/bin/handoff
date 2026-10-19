@@ -9,6 +9,7 @@ set -euo pipefail
 uso() {
   cat <<'EOF'
 uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
+     handoff --iniciar [--raiz DIR]
      handoff --migrar DIR
      handoff --estado [--raiz DIR]
 --desde   fusiona el borrador (secciones «## » de la plantilla; «Pendientes y riesgos» vale por «Pendientes») en
@@ -21,6 +22,8 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
   --commit  además hace commit solo de .claude/estado/ (para repos propios); sin él, .claude/estado/ se añade
             a .git/info/exclude.
   --sesion  id de la sesión que cierra: el dueño solo se libera si es ella (o no hay dueño vigente).
+--iniciar crea <raíz>/.claude/estado/nucleo.md desde $CLAUDE_HOME/templates/nucleo.md (el primero del proyecto) y añade
+          .claude/estado/ a .git/info/exclude; si ya existe no lo toca (sale 0 y lo dice).
 --migrar  archiva el nucleo heredado de DIR en DIR/.claude/estado/archivo/ y lo anota en el diario; nunca borra.
 --estado  una línea JSON: raíz, nucleo, bytes, tope, pct y dueño (sin proyecto: {"raiz":null}).
 Raíz: la del directorio actual (raíz git; no $HOME ni un directorio sin git) o --raiz DIR.
@@ -50,12 +53,13 @@ while [ $# -gt 0 ]; do
       esac
       shift 2 ;;
     --estado) MODO=estado; shift ;;
+    --iniciar) MODO=iniciar; shift ;;
     --solo) SOLO=1; shift ;;
     --commit) COMMIT=1; shift ;;
     *) echo "uso: handoff: opción desconocida «$1» (handoff --help)" >&2; exit 64 ;;
   esac
 done
-[ -n "$MODO" ] || { echo "uso: handoff --desde BORRADOR.md | --migrar DIR | --estado (handoff --help)" >&2; exit 64; }
+[ -n "$MODO" ] || { echo "uso: handoff --desde BORRADOR.md | --iniciar | --migrar DIR | --estado (handoff --help)" >&2; exit 64; }
 
 # La raíz de proyecto, o rc 1 sin tocar nada (decisión 6: ni $HOME, ni ~/.claude, ni un directorio sin git).
 resolver_raiz() {
@@ -76,6 +80,26 @@ if [ "$MODO" = estado ]; then
   fi
   jq -cn --arg r "$RAIZ" --arg n "$NUC" --argjson b "$B" --argjson t "$NUCLEO_TOPE" --argjson p "$((B * 100 / NUCLEO_TOPE))" --argjson d "$DJ" \
     '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d}'
+  exit 0
+fi
+
+# ---------------------------------------------------------------- --iniciar
+if [ "$MODO" = iniciar ]; then
+  resolver_raiz || die 3 "sin proyecto (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
+  nucleo_enlazado "$RAIZ" && die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
+  PLANTILLA=${CLAUDE_HOME:-$HOME/.claude}/templates/nucleo.md
+  [ -f "$PLANTILLA" ] || PLANTILLA=$(dirname "$SELF")/../templates/nucleo.md
+  [ -f "$PLANTILLA" ] || die 1 "no encuentro la plantilla templates/nucleo.md (¿instalaste el kit?)"
+  E=$RAIZ/.claude/estado
+  if [ -e "$E/nucleo.md" ]; then echo "handoff: $E/nucleo.md ya existe: no se toca"; exit 0; fi
+  mkdir -p "$E"
+  cp -- "$PLANTILLA" "$E/nucleo.md"
+  if EX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
+    case $EX in /*) ;; *) EX=$RAIZ/$EX ;; esac
+    mkdir -p "$(dirname "$EX")" 2>/dev/null || true
+    command grep -qFx '.claude/estado/' "$EX" 2>/dev/null || printf '.claude/estado/\n' >>"$EX" 2>/dev/null || true
+  fi
+  echo "handoff: $E/nucleo.md creado desde la plantilla"
   exit 0
 fi
 

@@ -40,6 +40,32 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   [ "$miss" -eq 0 ] && pass "hooks referenciados presentes y ejecutables  (fuente: jq .hooks + test -e/-x)"
 fi
 
+# 2b0. CLIs del flujo de estado y plantilla. Sin bin/handoff, bin/oraculo o templates/nucleo.md el flujo v3
+# no arranca: es FAIL. Que no esten en el PATH es WARN (se resuelve con una terminal nueva o el enlace).
+for cli in handoff oraculo; do
+  if [ -x "$CLAUDE_HOME/bin/$cli" ]; then
+    pass "bin/$cli presente y ejecutable  (fuente: test -x)"
+  else
+    fail "falta $CLAUDE_HOME/bin/$cli o no es ejecutable (reinstala: bash $KIT/install.sh)"
+  fi
+  if command -v "$cli" >/dev/null 2>&1; then
+    pass "$cli se resuelve en el PATH  (fuente: command -v)"
+  else
+    warn "$cli no se resuelve en tu PATH: ln -sf \"$CLAUDE_HOME/bin/$cli\" \"\$HOME/.local/bin/$cli\" y abre una terminal nueva (comprueba que ~/.local/bin esta en el PATH)"
+  fi
+done
+if [ -f "$CLAUDE_HOME/templates/nucleo.md" ]; then
+  pass "templates/nucleo.md presente  (fuente: test -f)"
+else
+  fail "falta $CLAUDE_HOME/templates/nucleo.md (reinstala: bash $KIT/install.sh)"
+fi
+# El CLAUDE.md debe importar AGENTS.md: sin el, AGENTS.md esta instalado pero nadie lo lee.
+if [ -f "$CLAUDE_HOME/CLAUDE.md" ] && command grep -qE '@[^[:space:]]*AGENTS\.md' "$CLAUDE_HOME/CLAUDE.md"; then
+  pass "CLAUDE.md importa AGENTS.md  (fuente: grep @AGENTS.md)"
+else
+  warn "tu CLAUDE.md no contiene @AGENTS.md: añadelo (la plantilla del kit esta en CLAUDE.kit.md)"
+fi
+
 # 2c. Deriva entre lo que el kit trae y lo desplegado. Es WARN y no FAIL: personalizar un
 # hook es legitimo. Pero si divergen y no lo sabes, el kit deja de reproducir tu maquina, y
 # eso ya paso: dos guards llevaban meses distintos entre el kit y su copia de origen, con la

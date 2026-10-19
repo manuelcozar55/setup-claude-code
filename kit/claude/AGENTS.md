@@ -45,7 +45,7 @@ Se aclara *antes* de empezar. Una vez en marcha, nada de «¿sigo?»: ejecuta ha
 
 ## Memoria compartida
 Los tres runtimes comparten un almacén: un hecho por fichero con frontmatter (`name`, `description`, `metadata.type`) e índice de una línea por memoria en `MEMORY.md`.
-- Consultar, nunca leer enteras: `recuerda <términos>` (párrafos que coinciden, sin acentos ni mayúsculas), `recuerda -l` (índice), `recuerda -f <slug>` (una completa).
-- Índice: `recuerda -l`; Claude Code además inyecta `MEMORY.md`.
+- Si tienes `recuerda` (kit/docs/13; no lo instala `install.sh`), consulta con él, nunca leas las memorias enteras: `recuerda <términos>` (párrafos que coinciden, sin acentos ni mayúsculas), `recuerda -l` (índice), `recuerda -f <slug>` (una completa).
+- Índice: `recuerda -l` (si lo tienes); Claude Code además inyecta `MEMORY.md`.
 - Antes de crear una memoria, búscala: se actualiza la existente, no se duplica.
 - Las memorias nunca salen a un servicio externo.

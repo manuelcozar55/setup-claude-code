@@ -18,7 +18,7 @@ mkdir -p "$tmp/home/.headroom/logs" "$tmp/home/.config"
 run_doctor(){ env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
   bash "$KIT/doctor.sh" >/dev/null 2>&1; }
 
-bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
 set +e; run_doctor; rc=$?; set -e
 ck "$rc" "0" "doctor PASS sobre instalación limpia"
 
@@ -28,7 +28,7 @@ set +e; run_doctor; rc=$?; set -e
 ck "$rc" "1" "doctor FAIL con hook ausente"
 
 # Hook presente pero NO ejecutable -> FAIL
-bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
 chmod -x "$CLAUDE_HOME/hooks/branch-guard.sh"
 set +e; run_doctor; rc=$?; set -e
 ck "$rc" "1" "doctor FAIL con hook no ejecutable"
@@ -36,7 +36,7 @@ ck "$rc" "1" "doctor FAIL con hook no ejecutable"
 # Deriva entre el kit y lo desplegado -> WARN (no FAIL: personalizar es legitimo).
 # El defecto que lo motiva: dos guards llevaban meses distintos entre el kit y su copia de
 # origen, la version endurecida en un lado y la antigua en el otro, sin que nadie lo notara.
-bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
 out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
        bash "$KIT/doctor.sh" 2>&1)"
 if echo "$out" | grep -q 'coinciden byte a byte con los del kit'; then
@@ -55,7 +55,7 @@ fi
 
 # La deriva tambien cubre hooks/lib/ (nucleo.sh, del que dependen los hooks de estado) y sentinel/
 # (sentinel_preflight.py): antes solo se comparaba hooks/*, y esos dos podian divergir sin aviso.
-bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
 echo "# tocado a mano" >> "$CLAUDE_HOME/hooks/lib/nucleo.sh"
 echo "# tocado a mano" >> "$CLAUDE_HOME/sentinel/sentinel_preflight.py"
 out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
@@ -73,7 +73,7 @@ fi
 
 # iocs.json es dato que la persona personaliza por diseno: editarlo no es deriva de codigo y el
 # consejo de reinstalar pisaria sus datos (E7.3 CR-10). Solo el codigo de sentinel/ entra en la deriva.
-bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
 jq '.personal = true' "$CLAUDE_HOME/sentinel/iocs.json" > "$tmp/iocs.mio" && cp "$tmp/iocs.mio" "$CLAUDE_HOME/sentinel/iocs.json"
 out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
        bash "$KIT/doctor.sh" 2>&1)"
@@ -87,7 +87,7 @@ fi
 # El defecto: en una instalacion donde sentinel vive FUERA de CLAUDE_HOME, doctor avisaba de
 # que la capa estaba inactiva cuando en realidad cargaba 31 patrones de ruta. Un aviso falso
 # gasta la credibilidad de los verdaderos.
-bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
 # El kit SI distribuye iocs.json (la capa activa de fabrica), asi que para probar el aviso
 # hay que quitarlo. Antes solo venia iocs.example.json y cada instalacion arrancaba con la
 # capa apagada y un WARN que nadie lee.
@@ -132,5 +132,34 @@ if echo "$out" | grep -qE '^WARN .*iocs\.json exige sentinel_preflight\.py v2 y 
 else
   ck n y "un preflight sin constante de version cuenta como v1 y produce WARN"
 fi
+
+# CLIs del flujo de estado: sin bin/handoff, bin/oraculo o templates/nucleo.md el flujo v3 no arranca -> FAIL.
+# En PATH ausente -> WARN; CLAUDE.md sin @AGENTS.md -> WARN. (Antes doctor daba OK con bin/ borrado.)
+HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
+mv "$CLAUDE_HOME/bin/handoff" "$tmp/handoff.bak"
+set +e; out="$(dr)"; rc=$?; set -e
+ck "$(echo "$out" | grep -c '^FAIL .*bin/handoff')" "1" "doctor FAIL si falta bin/handoff"
+set +e; dr >/dev/null; rc=$?; set -e
+ck "$rc" "1" "doctor sale 1 si falta bin/handoff"
+mv "$tmp/handoff.bak" "$CLAUDE_HOME/bin/handoff"
+mv "$CLAUDE_HOME/bin/oraculo" "$tmp/oraculo.bak"
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c '^FAIL .*bin/oraculo')" "1" "doctor FAIL si falta bin/oraculo"
+mv "$tmp/oraculo.bak" "$CLAUDE_HOME/bin/oraculo"
+mv "$CLAUDE_HOME/templates/nucleo.md" "$tmp/nucleo.bak"
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c '^FAIL .*templates/nucleo.md')" "1" "doctor FAIL si falta templates/nucleo.md"
+mv "$tmp/nucleo.bak" "$CLAUDE_HOME/templates/nucleo.md"
+set +e; out="$(PATH="$tmp/home/.local/bin:$PATH" dr)"; set -e
+ck "$(echo "$out" | grep -c '^PASS .*handoff se resuelve en el PATH')" "1" "doctor PASS si handoff esta en el PATH"
+set +e; out="$(PATH="$(dirname "$(command -v jq)"):/usr/bin:/bin" dr)"; rc=$?; set -e
+ck "$(echo "$out" | grep -cE '^WARN .*handoff no se resuelve en tu PATH')" "1" "doctor WARN si handoff no esta en el PATH"
+ck "$rc" "0" "handoff fuera del PATH es WARN: doctor sigue en rc 0"
+printf '# mis cosas\n' > "$CLAUDE_HOME/CLAUDE.md"
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*@AGENTS.md')" "1" "doctor WARN si CLAUDE.md no importa @AGENTS.md"
+printf '# mis cosas\n%s\n' '@AGENTS.md' > "$CLAUDE_HOME/CLAUDE.md"
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*@AGENTS.md')" "0" "doctor sin WARN si CLAUDE.md importa @AGENTS.md"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
