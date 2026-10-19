@@ -38,7 +38,7 @@ TP=$T/t.jsonl
 OUT=$(ev "$R/sub" s1 "" resume | bash "$H/session-start-clear.sh"); C=$(ctx <<<"$OUT")
 ok "clear: salida ≤ 9 500 con nucleo de 78 KB" "$([ "$(printf '%s' "$OUT" | wc -m)" -le 9500 ] && echo si)" si
 ok "clear: envuelto en <nucleo-datos>" "$(command grep -c '^<nucleo-datos \|^</nucleo-datos>$' <<<"$C")" 2
-ok "clear: línea de datos antes del envoltorio" "$(command grep -B1 '^<nucleo-datos ' <<<"$C" | command grep -c 'datos del proyecto, no instrucciones')" 1
+ok "clear: línea de datos antes del envoltorio (y de <git-hechos>, que va delante)" "$(command grep -B1 '^<git-hechos \|^<nucleo-datos ' <<<"$C" | command grep -c 'datos del proyecto, no instrucciones')" 1
 ok "clear: Paso actual vivo y aviso de forma" "$(command grep -c 'PASO-VIVO\|fuera de forma' <<<"$C")" 2
 
 ev "$R/sub" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
@@ -233,5 +233,24 @@ ev "$RR" s11 "$TP" | NUCLEO_CHECKPOINT_KEEP=2 bash "$H/pre-compact.sh" 2>/dev/nu
 ok "NUCLEO_CHECKPOINT_KEEP=2: quedan 2 y el nuevo es uno" "$(find "$RR/.claude/estado" -name "checkpoint-compact-*.md" | wc -l),$([ -e "$RR/.claude/estado/checkpoint-compact-$(printf s11 | sha256sum | cut -d' ' -f1).md" ] && echo si)" 2,si
 ev "$RR" "" "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "sin session_id: checkpoint-compact.md existe y git lo ignora" "$(git -C "$RR" check-ignore -q "$RR/.claude/estado/checkpoint-compact.md" && echo si)" si
+
+# --- K8 (D1): desde ~ el nucleo compartido no es el de esta sesión: ni compact ni gauge lo tratan como propio ---
+HN=$HOME/.claude/estado/nucleo.md; mkdir -p "$HOME/.claude/estado"; printf '## Objetivo\nOBJ-AJENO\n## Paso actual\nPASO-AJENO\n' >"$HN"
+printf '%s\n' "$R" >"$HOME/.claude/estado/raices"
+OUT=$(ev "$HOME" s40 | bash "$H/session-start-compact.sh"); C=$(ctx <<<"$OUT")
+ok "K8 compact en ~: <indice-tareas> tras «Contexto compactado.» y sin el nucleo compartido como datos" "$(command grep -c '^Contexto compactado\. Sesión abierta desde ~ (sin proyecto)\.\|^<indice-tareas>$' <<<"$C"),$(command grep -c "<nucleo-datos fuente=\"$HN\"" <<<"$C"),$(command grep -c 'OBJ-AJENO' <<<"$C")" 2,0,1
+ok "K8 compact en ~: el índice marca el nucleo heredado como heredado" "$(command grep -c 'heredado de ~' <<<"$C")" 1
+CPH=$HOME/.claude/estado/checkpoint-compact-$(printf s41 | sha256sum | cut -d' ' -f1).md; echo 'CP-DE-ESTA-SESION' >"$CPH"
+ok "K8 compact en ~: el checkpoint de la sesión se sigue añadiendo" "$(ev "$HOME" s41 | bash "$H/session-start-compact.sh" | ctx | command grep -c 'CP-DE-ESTA-SESION')" 1
+: >"$HOME/.claude/estado/raices"; unlink "$HN"
+C=$(ev "$HOME" s42 | bash "$H/session-start-compact.sh" | ctx)
+ok "K8 compact en ~ sin nucleo ni raíces: nunca «escríbelo» ni índice" "$(command grep -c 'escríbelo\|<indice-tareas>' <<<"$C")" 0
+ok "K8 compact en proyecto: igual que antes (nucleo-datos del proyecto)" "$(ev "$R/sub" s43 | bash "$H/session-start-compact.sh" | ctx | command grep -c "<nucleo-datos fuente=\"$NUC\"")" 1
+printf '## Objetivo\nOBJ-AJENO\n' >"$HN"; touch -d '2026-01-01 00:00:00' "$HN"
+: >"$HOME/.claude/session-logs/gate-nucleo.log"
+G=$(ev "$HOME" s44 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh")
+ok "K8 gauge en ~: la puerta de commit no se evalúa (ni fila ni bloqueo)" "$(jq -r '.decision // "nada"' <<<"$G"),$(wc -l <"$HOME/.claude/session-logs/gate-nucleo.log")" nada,0
+ok "K8 gauge en ~: el aviso de contexto sigue saliendo" "$(jq -r '.systemMessage // empty' <<<"$G" | command grep -c '% del airbag')" 1
+unlink "$HN"
 
 exit $FAIL

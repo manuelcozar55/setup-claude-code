@@ -29,6 +29,11 @@ C90=$(run s1 p90 | ctx)
 ok "85 %: cierra ya; handoff y /clear automáticos con cockpit" "$(command grep -c 'Cierra el turno ya: con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff\.' <<<"$C90")" 1
 ok "85 % ≤ 400 chars" "$([ "${#C90}" -le 400 ] && echo si)" si
 ok "85 % con COCKPIT_AUTO_HANDOFF=off: no promete handoff automático" "$(COCKPIT_AUTO_HANDOFF=off run s7 p90 | ctx | command grep -c 'Cierra el turno ya: el handoff automático está desactivado; la persona hará /handoff\.')" 1
+# K7: un subagente (agent_id no vacío) no recibe el aviso: no es quien escribe nucleo.md ni quien decide cerrar.
+runa() { jq -cn --arg c "$R" --arg s "$1" --arg t "$T/$2.jsonl" --arg a "$3" '{session_id:$s,transcript_path:$t,cwd:$c,tool_name:"Bash",agent_id:$a}' | bash "$H"; }
+ok "subagente (agent_id) al 60 % → vacío" "$(runa s30 p60 x)" ""
+ok "agent_id vacío → avisa como el hilo principal" "$(runa s31 p60 '' | ctx | command grep -c '60 % del airbag')" 1
+ok "el subagente no gasta la banda del hilo principal" "$(run s30 p60 | ctx | command grep -c '60 % del airbag')" 1
 ok "otra sesión tiene sus propias bandas" "$(run s2 p60 | ctx | command grep -c '60 % del airbag')" 1
 # Compactar no cambia el session_id: sin rearme, solo avisaba en el primer ciclo de la sesión.
 run s5 p60 >/dev/null; run s5 p20 >/dev/null
@@ -39,6 +44,19 @@ rm -f "$NUC"
 ok "sin nucleo → pide crearlo con la plantilla" "$(run s4 p60 | ctx | command grep -c "créalo en $NUC con la forma de .*templates/nucleo.md")" 1
 ok "session_id con barras → nada (va a un nombre de fichero)" "$(run '../x' p60)" ""
 ok "stdin roto → nada y exit 0" "$(echo 'no json' | bash "$H"; echo "rc=$?")" "rc=0"
+
+# K8 (D1): desde ~ el aviso no nombra ni ordena el nucleo compartido, que puede ser de otra tarea.
+runh() { jq -cn --arg c "$HOME" --arg s "$1" --arg t "$T/$2.jsonl" '{session_id:$s,transcript_path:$t,cwd:$c,tool_name:"Bash"}' | bash "$H"; }
+HN=$HOME/.claude/estado/nucleo.md; mkdir -p "$HOME/.claude/estado"; echo x >"$HN"; touch -d '-30 minutes' "$HN"
+C=$(runh s50 p60 | ctx)
+ok "K8 ~ al 60 %: avisa sin la ruta del nucleo de ~ y dice «desde ~»" "$(command grep -c 'CONTEXTO 60 % del airbag\. Sesión abierta desde ~: no tiene nucleo propio\.' <<<"$C"),$(command grep -cF "$HN" <<<"$C"),$(command grep -c 'actualiza Paso actual' <<<"$C")" 1,0,0
+unlink "$HN"
+ok "K8 ~ sin nucleo: el mismo aviso, sin «créalo»" "$(runh s51 p60 | ctx | command grep -c 'desde ~'),$(runh s51b p60 | ctx | command grep -c 'créalo')" 1,0
+ok "K8 ~ al 70 %: conserva la coletilla de banda" "$(runh s52 p72 | ctx | command grep -c 'Fin de fase = parada válida')" 1
+C=$(runh s53 p90 | ctx)
+ok "K8 ~ al 85 %: cierra el turno, sin prometer handoff" "$(command grep -c 'Cierra el turno ya\.' <<<"$C"),$(command grep -c 'handoff' <<<"$C")" 1,0
+echo x >"$NUC"; touch -d '-30 minutes' "$NUC"
+ok "K8 en proyecto: igual que antes" "$(run s54 p60 | ctx | command grep -c "actualiza Paso actual / Siguiente acción / Pendientes en $NUC")" 1
 
 # Camino caliente: corre tras CADA herramienta. Se mide el camino largo (nucleo rancio, transcript
 # leído, banda ya avisada). Mejor de 5: en un runner cargado una sola medida miente.

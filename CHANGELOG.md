@@ -138,6 +138,24 @@ etiquetado.
   subagent-driven-development 10, finishing-a-development-branch 3,
   dispatching-parallel-agents 3, systematic-debugging 2; las otras 9, 0).
 
+- **Arranque desde `~`: `<indice-tareas>` en vez del nucleo compartido (handoff v2, D1).** `session-start-clear.sh`
+  ya no inyecta el nucleo de `~`; emite un `<indice-tareas>` derivado (`nucleo_indice`) de los
+  nucleos de las raíces registradas en `~/.claude/estado/raices` (máx. 15 por fecha, el heredado de
+  `~` primero y marcado, hasta 8 pendientes `(persona)`, tope ~2 500 caracteres, datos escapados,
+  sin marcadores de lista ni `[x]` ni controles bidi). El hook registra cada raíz de proyecto al
+  arrancar (idempotente) y solo si tiene `.claude/estado/nucleo.md` propio y no enlazado; el
+  registro se crea con modo 600 (directorio 700), pasadas 100 líneas se reescribe de forma atómica
+  sin duplicados ni raíces sin nucleo, y el índice lee como máximo las 50 últimas únicas. Lo mismo
+  vale tras compactar: `session-start-compact.sh` inyecta el índice (con «Contexto compactado.»
+  delante, vía `nucleo_indice_ctx`) en vez del nucleo compartido y nunca manda «escríbelo»;
+  `nucleo-nudge.sh` y `stop-context-gauge.sh` tampoco tratan el nucleo de `~` como de la sesión (K8). La plantilla del nucleo pide marcar
+  `(persona)` lo que solo puede hacer la persona.
+
+- **Arranque con `<git-hechos>`.** El hook calcula `git log --oneline -5` y `git status --short`
+  (`timeout -k 1 1`, `--no-show-signature`, `core.fsmonitor=false`, `--no-optional-locks` para no dejar un `index.lock` bajo otra
+  sesión del mismo repo, ≤ 1 200 caracteres, `</` escapado) y los inyecta entre la línea de datos y
+  `<nucleo-datos>`.
+
 ### Changed
 
 - **`05-security.md` declara el límite que ninguna regex cubre.** Los guards ven el texto del
@@ -206,6 +224,24 @@ etiquetado.
   `THIRD-PARTY.md` a las condiciones—, que es un nombre que el detector ignora por
   convención. `README.md` explica el porqué en el sitio donde alguien lo busca. No cambia
   ninguna condición de licencia: cambia qué fichero las contiene.
+
+- **Protocolo de arranque, paso 1.** Con `<git-hechos>` ya no pide repetir `git log` ni `git status`;
+  sin git, o si falla, queda el paso 1 anterior.
+
+- **`nucleo_emitir`: tope único de 6 500 con reservas dentro.** «Paso actual», «Siguiente acción» y
+  «Comandos de verificación» tienen reserva propia (hasta 700 bytes cada una) y se miden primero; el
+  resto recibe 6 500 menos eso. Con reservas cortas el Plan conserva su espacio y con las tres llenas
+  quedan ~4 300; peor caso total ≈ 9 400 (el test mide 8 677), dentro de los 9 500 de protocolo + git-hechos + nucleo.
+
+- **Cockpit 0.4.2: el primer mensaje tras `/clear` dice qué se va a hacer.** El relleno del prompt era un
+  «sigue con la Siguiente acción…» genérico y la persona aprobaba a ciegas. Ahora es «adelante con la
+  Siguiente acción de .claude/estado/nucleo.md: <primera línea de «Siguiente acción»>», sacada del
+  documento ya fusionado (sin marcador de lista ni caracteres de control, ≤ 200 caracteres con «…»); el
+  prefijo fijo impide que empiece por `/` o `!`, y sin línea queda el genérico. Los mensajes de la UI
+  salen del resultado de `$.prompt.fill`: «revisa el prompt y pulsa Enter para seguir», «escribe:
+  <texto>» si no se rellenó, «/clear falló: escribe /clear y luego <texto>»; desaparece toda instrucción
+  «escribe «sigue»». Cambio de especificación: el test del handoff automático espera ahora el relleno
+  informado. `/nueva` no cambia.
 
 ### Removed
 
@@ -489,6 +525,26 @@ Subsección: Fixed (cockpit 0.4.1)
   sección fabricada que escribe una cifra falsa, `claim_omiso` sigue enrojeciendo — lo que
   había que demostrar no es que sepa omitir, sino que omitir no le quitó el juicio.
 
+- **Cockpit 0.4.2: el handoff ya no duplica «Pendientes».** El prompt del fork pedía «## Pendientes y
+  riesgos» y la plantilla usa «## Pendientes»: la fusión no las emparejaba, la del fork se añadía al
+  final y `nucleo_emitir` inyectaba la vieja. Ahora el prompt usa las cabeceras de la plantilla (con la
+  marca `(persona)`), una tabla de alias pliega «Pendientes y riesgos» a «Pendientes» y, cuando el fork
+  devuelve la sección, sustituye la primera aparición y elimina las repetidas (su texto queda en
+  `nucleo.prev-*`).
+
+- **`nucleo-nudge.sh` ignora a los subagentes** (`agent_id` no vacío): un Explore recibía «CONTEXTO 55 %…
+  actualiza nucleo.md».
+
+- **Cockpit 0.4.2: `nextLine` sin bidi ni vallas.** Sustituye por espacio U+202A-202E, U+2066-2069 y
+  U+2028-2029 (un U+202E en la Siguiente acción invertía en pantalla lo que la persona aprueba con
+  Enter), salta las vallas de código (```` ``` ````, ```` ```bash ````) y toma el primer comando; el corte
+  a 200 va por puntos de código y no parte un par sustituto. Si `/clear` falla, el mensaje vuelve a
+  decir dónde quedó el estado: «Guardado en <ruta>, pero /clear falló: escribe /clear y luego <texto>».
+
+- **`<git-hechos>` ejecutaba `git log` sin `--no-show-signature`:** un repo con `log.showSignature=true`
+  y `gpg.program=<script>` ejecutaba ese script en `SessionStart`. Ahora la firma no se consulta y las
+  dos llamadas de git usan `timeout -k 1 1`.
+
 ### Security
 
 - **`branch-guard.sh` vuelve a ver el push que va dentro de `bash -c`, `sh -c`, `eval`, `ssh host`, `xargs` y `find -exec` (E7.3 CR-1).** El guard de la normalización (PR2) solo inspeccionaba segmentos cuyo ejecutable era `git`, y el guard de texto de 3576d87 bloqueaba esas grafias (rc 2): regresión, rc 0 con la rama protegida como destino. Ahora, si el ejecutable no es `git` pero el segmento nombra `git`, la cadena interior se vuelve a normalizar y se analiza con la misma lógica (hasta 3 niveles); `echo`, `printf`, `grep` y similares quedan fuera para que la prosa con un push dentro no dé falsos positivos. Latencia: 24 ms por invocación (25 antes; presupuesto 150). Límite: la cadena construida con variables sigue fuera de alcance.
@@ -575,6 +631,12 @@ Subseccion: Security (E6 #13 y #16)
   checkpoint que sea un enlace. Límite declarado: un `~/.claude` enlazado a propósito (dotfiles)
   desactiva el estado en `$HOME`; `pre-compact.sh` no necesita guarda propia del checkpoint
   porque publica con `mv` (reemplaza el enlace, no escribe a su destino).
+
+- **`<git-hechos>` e `<indice-tareas>` eliminan U+202A-202E, U+2066-2069 y U+2028-2029** (controles
+  bidi y separadores de línea) de los datos de repos ajenos. Sin arreglo, declarado: el filtro `clean`
+  de `git status` (Claude Code ya ejecuta `git status` en el mismo cwd al arrancar, así que no se
+  amplía la superficie); el orden del índice por mtime de un nucleo ajeno solo afecta a la prioridad;
+  `agent_id` lo pone el harness.
 
 ## [1.2.0] - 2026-09-04
 

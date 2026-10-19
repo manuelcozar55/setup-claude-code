@@ -8,7 +8,10 @@
 # vacía. Camino caliente: corre tras cada herramienta.
 set -u
 IN=$(cat)
-{ read -r SID; read -r TP; read -r CWD; } < <(jq -r '.session_id // "", .transcript_path // "", .cwd // ""' <<<"$IN" 2>/dev/null)
+{ read -r SID; read -r TP; read -r CWD; read -r AID; } < <(jq -r '.session_id // "", .transcript_path // "", .cwd // "", .agent_id // ""' <<<"$IN" 2>/dev/null)
+# agent_id solo viene dentro de un subagente (code.claude.com/docs/en/hooks): el aviso es para el hilo
+# principal, que es quien escribe nucleo.md y cierra el turno; un Explore recibió «actualiza nucleo.md».
+[ -z "${AID:-}" ] || exit 0
 case "${SID:-}" in ''|*[!A-Za-z0-9_-]*) exit 0;; esac   # va a un nombre de fichero
 [ -f "${TP:-}" ] || exit 0
 # shellcheck source=SCRIPTDIR/lib/nucleo.sh
@@ -24,6 +27,14 @@ command grep -qx "$B" "$MARCA" 2>/dev/null && exit 0
 RAIZ=$(nucleo_raiz "${CWD:-$PWD}")
 nucleo_enlazado "$RAIZ" && exit 0
 NUC="$RAIZ/.claude/estado/nucleo.md"
+# D1: desde ~ el nucleo compartido puede ser de otra tarea: el aviso no lo nombra, no se calla por su edad
+# y no promete handoff (el automático está desactivado en ~).
+if [ "$RAIZ" = "$HOME" ]; then
+  mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
+  M="CONTEXTO $PCT % del airbag. Sesión abierta desde ~: no tiene nucleo propio. Si trabajas en una tarea, deja su estado en el nucleo de su proyecto; el de ~ actualízalo solo si su Objetivo es tu tarea."
+  [ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, deja su estado donde corresponda y cierra el turno."
+  [ "$B" = 85 ] && M="$M Cierra el turno ya."
+else
 MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
 EDAD=$(( $(date +%s) - ${MT:-0} ))
 [ -z "$MT" ] || [ "$EDAD" -gt 600 ] || exit 0
@@ -37,5 +48,6 @@ fi
 A="con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff."
 [ "${COCKPIT_AUTO_HANDOFF:-}" = off ] && A="el handoff automático está desactivado; la persona hará /handoff."
 [ "$B" = 85 ] && M="$M Cierra el turno ya: $A"
+fi
 jq -cn --arg c "$M" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$c}}'
 exit 0

@@ -5,7 +5,7 @@
 ## Qué hace
 
 - **`/handoff`**: pide al modelo las secciones del estado que cambian, las fusiona en `.claude/estado/nucleo.md` y limpia el contexto (`/clear`); la sesión nueva lo recibe del hook `SessionStart`.
-- **Handoff automático**: al cerrar un turno con el contexto al 70 % del límite de autocompactación, el mod guarda el estado con el handoff de siempre, hace `/clear` y deja «sigue…» escrito en el prompt.
+- **Handoff automático**: al cerrar un turno con el contexto al 70 % del límite de autocompactación, el mod guarda el estado con el handoff de siempre, hace `/clear` y deja escrito en el prompt «adelante con la Siguiente acción…: <su primera línea>».
 - **`/nueva <tarea>`**: cambia de tarea. Archiva el `nucleo.md` actual, limpia el contexto y deja la tarea nueva en el prompt.
 - **Agent Dock**: un panel lateral con la misión en curso y los subagentes en cuatro secciones fijas (trabajando, en cola, parados, hechos). También lleva el vigía de contexto con handoff sobre el prompt y `/simple` (modo de pasos con resumen corto).
 
@@ -31,14 +31,14 @@ claude --plugin-dir <ruta>/kit/mods/cockpit
 /handoff [solo] [foco de la próxima sesión]
 ```
 
-- Sin argumentos: guarda el documento y hace `/clear`. El mod no envía ningún prompt: el hook `kit/claude/hooks/session-start-clear.sh` (SessionStart `startup|clear|resume`) entrega `nucleo.md` a la sesión nueva como datos, con el protocolo de arranque (`git log --oneline -5`, `git status` y propuesta del oráculo rápido; si el estado contradice a git, manda git; ningún comando del nucleo, tampoco la «Siguiente acción», corre sin que confirmes). Escribe «sigue» para retomar. Así un mensaje tuyo enviado durante el `/clear` no compite con un prompt del mod.
+- Sin argumentos: guarda el documento y hace `/clear`. El mod no envía ningún prompt: el hook `kit/claude/hooks/session-start-clear.sh` (SessionStart `startup|clear|resume`) entrega `nucleo.md` a la sesión nueva como datos, con el protocolo de arranque (con proyecto llega además un bloque `<git-hechos>` con `git log --oneline -5` y `git status --short` que calcula el hook, así que el paso 1 ya no pide ejecutarlos; después, propuesta del oráculo rápido; si el estado contradice a git, manda git; ningún comando del nucleo, tampoco la «Siguiente acción», corre sin que confirmes). Desde `~` (o `~/.claude`) no se inyecta un nucleo sino un `<indice-tareas>` (también tras compactar; el aviso de contexto y la puerta de commit tampoco tratan el nucleo de `~` como propio), derivado del registro `~/.claude/estado/raices`, con las líneas `(persona)` de los pendientes de cada tarea. Pulsa Enter sobre el prompt que el mod deja relleno (si no pudo rellenarlo, te dice qué escribir). Así un mensaje tuyo enviado durante el `/clear` no compite con un prompt del mod.
 - `solo`: guarda el documento y no limpia nada.
 - El resto del texto es el **foco**: el documento se adapta a lo que hará la próxima sesión.
 - En la banda sobre el prompt, el botón `handoff` (`h`) pide confirmación con tres acciones: `[guardar + /clear]`, `[solo guardar]` y `[no guardar + /clear]` (limpia el contexto sin escribir handoff), dibujadas sin cromo y sin tecla propia: un clic o Enter bajo el foco. Para cancelar, vuelve a pulsar `handoff`. Durante un turno en marcha solo queda `solo guardar`.
 
 El documento es `.claude/estado/nucleo.md` de la raíz git del cwd (si no es repo, del cwd): la convención de estado que ya leen CLAUDE.md, los hooks PreCompact y la re-inyección tras compactar. El fork devuelve solo las secciones que cambian y el código las fusiona: «Encargo original» (o «Objetivo», el nombre de la plantilla del kit) e «Invariantes» se conservan byte a byte aunque el modelo las devuelva, salvo que estén vacías: entonces el fork las rellena. Los títulos se comparan sin acentos ni mayúsculas. Si `nucleo.md` cambia mientras el fork trabaja (otra sesión, el hook PreCompact), no se sobrescribe y se avisa. Si `.claude/estado/`, `nucleo.md` o una copia `nucleo.prev-*` son enlaces simbólicos, el handoff se niega a leer y escribir; y las secciones que el fork no trae se quedan como estaban. Si no existe, el fork extrae además el encargo y los invariantes para crear el esqueleto. La versión anterior se copia a `nucleo.prev-<sello UTC>.md` y se guardan las 3 últimas. Si la respuesta no trae ninguna sección `## `, no se escribe nada. En un repo git, si `.claude/estado/` no está ignorado se añade a `.git/info/exclude`. Antes de escribirlo se redactan claves conocidas (`sk-`, `ghp_`, `AKIA`, `xox*`, JWT) y asignaciones tipo `password=`/`token:` como `[REDACTADO]`. También cubre `Bearer …`, bloques `PRIVATE KEY`, credenciales en URLs (`esquema://usuario:clave@`), `github_pat_`/`glpat-` y valores entrecomillados (incluido JSON). Es una red de seguridad parcial y no garantiza nada: la redacción principal la hace el prompt de handoff, y el filtro solo recoge lo que el modelo deje pasar.
 
-Secciones fijas (las escribe el fork una sola vez): Encargo original (literal) · Invariantes. Secciones que actualiza cada handoff: Plan (`[x]` con el comando que lo verificó / `[ ]`) · Paso actual · Siguiente acción · Pendientes y riesgos · Ficheros tocados (los de fuera de git con su copia de seguridad) · Comandos de verificación · No repetir. No duplica specs, planes, issues ni commits: los referencia por ruta o URL.
+Secciones fijas (las escribe el fork una sola vez): Encargo original (literal) · Invariantes. Secciones que actualiza cada handoff: Plan (`[x]` con el comando que lo verificó / `[ ]`) · Paso actual · Siguiente acción · Pendientes (incluye riesgos; las líneas que solo puede hacer la persona empiezan por `(persona)` y el índice de `~` las reúne) · Ficheros tocados (los de fuera de git con su copia de seguridad) · Comandos de verificación · No repetir. No duplica specs, planes, issues ni commits: los referencia por ruta o URL.
 
 ```mermaid
 flowchart LR
@@ -51,7 +51,7 @@ flowchart LR
   G --> H["Hook SessionStart(clear):<br/>nucleo.md como datos"]
   G -.->|"falla"| I["Escribe /clear a mano"]
   T["Turno principal cerrado<br/>(contexto ≥ umbral)"] -->|"automático"| B
-  G -->|"automático"| P["Rellena el prompt:<br/>«sigue con la Siguiente acción»"]
+  G -->|"automático"| P["Rellena el prompt:<br/>«adelante con la Siguiente acción…: primera línea»"]
 ```
 
 ## Handoff automático
@@ -62,7 +62,7 @@ Se activa solo, sin comando.
 
 1. Guarda el estado con el mismo handoff que `/handoff`.
 2. Hace `/clear` desde `$.clock.after`: dentro del hook que el turno espera, el motor lo rechaza.
-3. Deja «sigue con la Siguiente acción de .claude/estado/nucleo.md» en el prompt, sin enviarlo.
+3. Deja «adelante con la Siguiente acción de .claude/estado/nucleo.md: <primera línea de «Siguiente acción»>» en el prompt, sin enviarlo: así aprobarás sabiendo qué sigue. La línea sale del documento ya fusionado, sin marcador de lista ni caracteres de control y cortada a 200 caracteres; el prefijo fijo impide que el relleno empiece por `/` o `!`. Sin esa línea, el relleno es «sigue con la Siguiente acción de .claude/estado/nucleo.md». La UI cuenta lo que pasó: «revisa el prompt y pulsa Enter», «escribe: <texto>» si el prompt no se pudo rellenar, o «/clear falló: escribe /clear y luego <texto>».
 
 Rellena el prompt (`$.prompt.fill`) y no lo envía (`prompt.submit`) porque un prompt enviado tras `/clear` se perdía (14-oct). La sesión nueva recibe `nucleo.md` del hook `SessionStart`, como en `/handoff`; tú pulsas Enter.
 
@@ -109,7 +109,7 @@ Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`.
 ```bash
 cd kit/mods/cockpit
 claude plugin validate .                          # Validation passed
-claude plugin test .                              # 57 pass, 0 fail (21 nuevos en tests/handoff.test.tsx)
+claude plugin test .                              # 82 pass, 0 fail (tests/handoff.test.tsx lleva los del handoff)
 pnpm dlx --package=typescript@5 tsc -p .          # rc=0
 bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin red ni claude
 ```
@@ -120,7 +120,7 @@ bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin r
 
 ## Limitaciones conocidas
 
-- **`/clear` lanzado desde el mod no está verificado en una sesión interactiva.** Se comprobó de punta a punta con el arnés de tests, no a mano. Si falla, el mod deja el documento guardado; escribe `/clear` y luego «sigue».
+- **`/clear` lanzado desde el mod no está verificado en una sesión interactiva.** Se comprobó de punta a punta con el arnés de tests, no a mano. Si falla, el mod deja el documento guardado; escribe `/clear` y luego el texto que te indica el mod.
 - **Sin verificar en una sesión interactiva** (solo con el arnés de tests): el `/clear` lanzado desde el temporizador tras un turno, el relleno del prompt después de él, el comportamiento del motor tras varios vetos de compactación seguidos y el coste del fork del handoff al 70 % de contexto.
 - **El clic sobre el dock solo llega en pantalla completa**: es donde el terminal reporta clics (y donde existe el dock lateral). Con el pane encajado sobre el prompt, enfócalo (`ctrl+x tab`) y usa la tecla `m` o Tab + Enter.
 - El redactor de secretos es un último recurso parcial; revisa el documento antes de compartirlo.

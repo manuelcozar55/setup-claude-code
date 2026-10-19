@@ -1,6 +1,6 @@
 import { expect, mock, test, type TestBody } from 'claude-code/testing'
 
-import { mergeNucleo, redact } from '../hooks/register'
+import { HANDOFF_PROMPT, fillFor, mergeNucleo, nextLine, redact } from '../hooks/register'
 
 const RUN = { args: '', origin: { kind: 'composer' as const }, presentation: { isFullscreen: true, columns: 160 } }
 // Fake secrets assembled at runtime so secret scanners don't flag the test itself.
@@ -160,14 +160,14 @@ test('redact cubre Bearer, claves privadas, URLs con credenciales, pat de GitHub
 
 // ── Automatic handoff, compaction veto and /nueva
 const DONE_TURN = { answer: 'ok', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' as const }
-const FILL = 'sigue con la Siguiente acción de .claude/estado/nucleo.md'
+const FILL = 'adelante con la Siguiente acción de .claude/estado/nucleo.md: T2'
 const PLAN = '## Plan\n- [ ] T2\n## Siguiente acción\nT2\n'
 
 // The context read is throttled by the clock (it starts at 0), so tests that read it twice start it at 10 s.
 // The engine beneath the mod: usage (limit 180k = 200k - 20k buffer), agents, fork, clear and fill.
 function auto(
   on: Parameters<TestBody>[1],
-  o: { tokens: number; window?: number; agents?: { id: string; status: string }[]; usageFailsAfter?: number; forkText?: string },
+  o: { tokens: number; window?: number; agents?: { id: string; status: string }[]; usageFailsAfter?: number; forkText?: string; fill?: { isFilled: boolean; refusal?: 'dialog' } | 'throws'; clearFails?: boolean },
 ) {
   const seen = { forks: 0, cleared: 0, fills: [] as string[], toasts: [] as string[], usageCalls: 0 }
   on('session.usage', () => {
@@ -190,12 +190,14 @@ function auto(
     return { value: { isAnswered: true, text: o.forkText ?? PLAN, usage: {} } } as never
   })
   on('command.run', (_, e) => {
+    if (e.command === 'clear' && o.clearFails) throw new Error('rechazado')
     if (e.command === 'clear') seen.cleared++
     return { text: '' }
   })
   on('prompt.fill', (_, e) => {
     seen.fills.push(e.text)
-    return { isFilled: true } as never
+    if (o.fill === 'throws') throw new Error('sin caja')
+    return (o.fill ?? { isFilled: true }) as never
   })
   on('turn.complete', (_, e) => ({ text: e.answer }) as never)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
@@ -500,4 +502,130 @@ test('Objetivo como última línea sin salto: cuenta como vacío, se pide y se r
   await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
   expect(prompt).toContain('Encargo original')
   expect(r.files[`${EST}/nucleo.md`]).toContain('## Objetivo\nhaz X')
+})
+
+// A hooks module cannot read files, so the template (kit/claude/templates/nucleo.md) is copied here.
+const TEMPLATE = '# Estado\n<!-- c -->\n## Objetivo\n<!-- c -->\n## Invariantes\n## Plan\n<!-- c -->\n## Paso actual\n## Siguiente acción\n## Pendientes\n## Comandos de verificación\n## Ficheros tocados\n'
+// ── K1: «Pendientes y riesgos» is an alias of the template's «Pendientes»
+test('fusión: la sección del fork sustituye a la primera Pendientes y borra las repetidas, incluido el alias', () => {
+  const prev = '## Plan\n- p\n## Pendientes\n- viejo\n## Ficheros tocados\n- f\n## Pendientes y riesgos\n- otro\n## Pendientes\n- tercero\n'
+  const doc = mergeNucleo(prev, '## Pendientes\n- nuevo\n')
+  expect(doc).toBe('## Plan\n- p\n## Pendientes\n- nuevo\n## Ficheros tocados\n- f\n')
+})
+
+test('fusión: «Pendientes y riesgos» del fork cae bajo «## Pendientes» en su sitio, sin añadir nada al final', () => {
+  const doc = mergeNucleo(TEMPLATE, '## Pendientes y riesgos\n- r\n')
+  expect(doc).toContain('## Pendientes\n- r\n')
+  expect(doc).not.toContain('y riesgos')
+  expect(doc.match(/^## Pendientes/gm)).toHaveLength(1)
+  expect(doc.indexOf('- r')).toBeLessThan(doc.indexOf('## Comandos de verificación'))
+  expect(doc.indexOf('- r')).toBeGreaterThan(doc.indexOf('## Siguiente acción'))
+})
+
+test('fusión: si el fork no devuelve Pendientes, los duplicados de prev no se tocan', () => {
+  const prev = '## Pendientes\n- a\n## Pendientes y riesgos\n- b\n'
+  expect(mergeNucleo(prev, '## Plan\n- x\n')).toBe(prev + '## Plan\n- x\n')
+})
+
+test('HANDOFF_PROMPT pide las cabeceras de la plantilla y no «Pendientes y riesgos»', () => {
+  expect(HANDOFF_PROMPT).not.toContain('Pendientes y riesgos')
+  const mutable = [...TEMPLATE.matchAll(/^## (.+)$/gm)].map(m => m[1] as string).filter(t => !/^(Objetivo|Invariantes)/.test(t))
+  expect(mutable.length).toBeGreaterThan(3)
+  for (const t of mutable) expect(HANDOFF_PROMPT).toContain(`## ${t}`)
+  expect(HANDOFF_PROMPT).toContain('(persona)')
+})
+
+// ── K2: the first message after /clear carries the next action
+const siguiente = (body: string) => `## Plan\n- [ ] a\n## Siguiente acción\n${body}\n## Pendientes\n- p\n`
+const BARE = 'sigue con la Siguiente acción de .claude/estado/nucleo.md'
+const PREFIX = 'adelante con la Siguiente acción de .claude/estado/nucleo.md: '
+
+test('nextLine: primera línea con contenido, sin marcador de lista, comentarios ni controles', () => {
+  expect(nextLine(siguiente('T2'))).toBe('T2')
+  expect(nextLine(siguiente('- T2 con `make test`'))).toBe('T2 con `make test`')
+  expect(nextLine(siguiente('* T2'))).toBe('T2')
+  expect(nextLine(siguiente('1. T2\n2. T3'))).toBe('T2')
+  expect(nextLine(siguiente('<!-- pon una -->\n\n  corre   la\tsuite \u0007 ya\n- otra'))).toBe('corre la suite ya')
+  expect(nextLine('## Siguiente acción (una sola)\nT9\n')).toBe('T9')
+})
+
+test('nextLine: sin sección, vacía o solo con comentario no hay línea y el relleno es el genérico', () => {
+  expect(nextLine('## Plan\n- x\n')).toBe('')
+  expect(nextLine(siguiente(''))).toBe('')
+  expect(nextLine(siguiente('<!-- una -->\n'))).toBe('')
+  expect(fillFor(siguiente('<!-- una -->'))).toBe(BARE)
+})
+
+test('nextLine: más de 200 caracteres se cortan con «…»', () => {
+  const line = nextLine(siguiente('x'.repeat(250)))
+  expect(line).toBe('x'.repeat(200) + '…')
+  expect(fillFor(siguiente('x'.repeat(250)))).toBe(PREFIX + line)
+})
+
+test('nextLine: quita los controles bidi y los separadores Unicode', () => {
+  const line = nextLine(siguiente('abre \u202Egnp.exe\u2028y \u2066x\u2069 \u2029fin'))
+  expect(/[\u202A-\u202E\u2066-\u2069\u2028\u2029]/.test(line)).toBe(false)
+  expect(line).toBe('abre gnp.exe y x fin')
+})
+
+test('nextLine: salta la valla de código y toma el comando', () => {
+  expect(nextLine(siguiente('```bash\nmake test\n```'))).toBe('make test')
+  expect(nextLine(siguiente('```\nmake test\n```'))).toBe('make test')
+})
+
+test('nextLine: el corte a 200 no parte un par sustituto', () => {
+  const line = nextLine(siguiente('x'.repeat(199) + '\u{1F600}'))
+  expect(line).toBe('x'.repeat(199) + '\u{1F600}')
+  const cut = nextLine(siguiente('x'.repeat(199) + '\u{1F600}y'))
+  expect(cut).toBe('x'.repeat(199) + '\u{1F600}…')
+  expect(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(cut)).toBe(false)
+})
+
+test('fillFor: una línea que empieza por / o ! nunca encabeza el relleno', () => {
+  for (const bad of ['/clear', '!borra todo', '- /clear', '1. !borra todo']) {
+    const fill = fillFor(siguiente(bad))
+    expect(fill.startsWith(PREFIX)).toBe(true)
+    expect(/^[/!]/.test(fill)).toBe(false)
+  }
+})
+
+test('handoff: el relleno lleva la primera línea de «Siguiente acción» del documento final', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1000, forkText: '## Siguiente acción\n- /clear y luego T7\n' })
+  repo(on, { [`${EST}/nucleo.md`]: PREV }, { isIgnored: true })
+  await $.command.run({ ...RUN, command: 'handoff', args: '' })
+  await clock.advance(400)
+  expect(seen.fills).toEqual([PREFIX + '/clear y luego T7'])
+})
+
+// What the dock says once the clear is done, read from the drawn text.
+const BAND = { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 200, scroll: { offset: 0, bodyRows: 20 }, view: {} }
+async function dockText($: any, on: any, fill: { isFilled: boolean; refusal?: 'dialog' } | 'throws', clearFails = false) {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1000, forkText: '## Siguiente acción\nT2\n', fill, clearFails })
+  repo(on, { [`${EST}/nucleo.md`]: PREV }, { isIgnored: true })
+  await $.command.run({ ...RUN, command: 'handoff', args: '' })
+  await clock.advance(400)
+  const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  const line = await ui.find({ text: /^[✓✗] / })
+  return { seen, msg: line?.text ?? '' }
+}
+test('UI: con el relleno aceptado dice que revises el prompt y no manda escribir «sigue»', async ($, on) => {
+  const { msg } = await dockText($, on, { isFilled: true })
+  expect(msg).toContain('Contexto limpio; revisa el prompt y pulsa Enter para seguir')
+  expect(msg).not.toContain('sigue')
+})
+
+for (const [name, fill] of [['rechazado por un diálogo', { isFilled: false, refusal: 'dialog' as const }], ['rechazado por un hook', { isFilled: false }], ['fallido', 'throws' as const]] as const) {
+  test(`UI: con el relleno ${name} dice el texto que hay que escribir`, async ($, on) => {
+    const { msg } = await dockText($, on, fill)
+    expect(msg).toContain(`Contexto limpio; escribe: ${PREFIX}T2`)
+  })
+}
+
+test('UI: si /clear falla dice que lo escribas y luego el texto', async ($, on) => {
+  const { msg, seen } = await dockText($, on, { isFilled: true }, true)
+  expect(msg).toContain(`/clear falló: escribe /clear y luego ${PREFIX}T2`)
+  expect(msg).toContain(`Guardado en ${EST}/nucleo.md, pero /clear falló: escribe /clear y luego ${PREFIX}T2`)
+  expect(seen.fills).toEqual([])
 })

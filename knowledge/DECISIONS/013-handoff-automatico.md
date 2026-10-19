@@ -48,3 +48,11 @@ Documentado en `kit/docs/11-cockpit.md`.
   contexto a mitad de tarea.
 - **Activarlo en `$HOME` antes del plan v3:** el `nucleo.md` es compartido y el handoff
   fusionaría en él el estado de otra tarea.
+
+## Nota 2026-10-19
+
+El relleno pasa a ser informado (cockpit 0.4.2): «adelante con la Siguiente acción de
+.claude/estado/nucleo.md: <primera línea>», en lugar del «sigue…» genérico; sigue sin enviarse
+(`prompt.fill`, no `prompt.submit`: el motivo del 14-oct no cambia) y su prefijo fijo impide que empiece
+por `/` o `!`. Los mensajes de la UI salen del resultado de `prompt.fill`. Además, la plantilla y el
+prompt del fork usan la misma cabecera «Pendientes» y la fusión pliega el alias «Pendientes y riesgos».
