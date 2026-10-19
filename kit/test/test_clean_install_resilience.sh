@@ -83,7 +83,7 @@ want "esperaba >=8 permisos, hay $n_allow" [ "$n_allow" -ge 8 ]
 # --- 4. instalacion limpia en un CLAUDE_HOME temporal ----------------------
 TMP_HOME="$(mktemp -d)"
 export CLAUDE_HOME="$TMP_HOME/.claude"
-if GITLEAKS_AUTO_INSTALL=n bash "$KIT/install.sh" >/dev/null 2>&1; then ok; else ko "install.sh fallo en un CLAUDE_HOME limpio"; fi
+if HOME="$TMP_HOME" GITLEAKS_AUTO_INSTALL=n bash "$KIT/install.sh" >/dev/null 2>&1; then ok; else ko "install.sh fallo en un CLAUDE_HOME limpio"; fi
 want "optional-hook.sh no quedo instalado y ejecutable" [ -x "$CLAUDE_HOME/hooks/optional-hook.sh" ]
 
 # --- 5. la prueba funcional: la cadena PreToolUse en una maquina pelada ----

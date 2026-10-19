@@ -17,7 +17,7 @@ RESTRICTED="$tmp/restrictedbin"; mkdir -p "$RESTRICTED"
 # `jq` va en la lista por la misma razon que en test_install_gitleaks.sh: install.sh lo exige en
 # una puerta de dependencia y sin el aborta a proposito. Lo que aqui se mide es un checksum de
 # gitleaks que no coincide, no la ausencia de jq.
-for b in bash uname date cp mkdir chmod cmp dirname basename sed sha256sum tar install mktemp cat rm jq; do
+for b in bash uname date cp mkdir ln readlink chmod cmp dirname basename sed sha256sum tar install mktemp cat rm jq; do
   p="$(command -v "$b" 2>/dev/null || true)"
   [ -n "$p" ] && ln -sf "$p" "$RESTRICTED/$b"
 done
@@ -73,7 +73,7 @@ cat > "$FAKEBIN/gitleaks" <<'EOF'
 echo "gitleaks version 8.30.1 (stub)"
 EOF
 chmod +x "$FAKEBIN/gitleaks"
-PATH="$FAKEBIN:$RESTRICTED" CLAUDE_HOME="$CLAUDE_HOME" bash "$KIT/install.sh" < /dev/null >/dev/null 2>&1
+HOME="$FAKEHOME" PATH="$FAKEBIN:$RESTRICTED" CLAUDE_HOME="$CLAUDE_HOME" bash "$KIT/install.sh" < /dev/null >/dev/null 2>&1
 ck "$([ -f "$CLAUDE_HOME/.gitleaks-checksum-mismatch" ] && echo si || echo no)" "no" "la marca se limpia cuando gitleaks pasa a estar presente"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

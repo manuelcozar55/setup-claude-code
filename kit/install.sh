@@ -178,11 +178,14 @@ install_settings() {  # src dst
 # CLAUDE.md y AGENTS.md son instrucciones que escribes tu: no se pisan si ya las has tocado. Se
 # deja la del kit al lado, como CLAUDE.kit.md o AGENTS.kit.md, y se avisa. Reemplazarla borraba
 # trabajo irrecuperable por fusion automatica -- una prosa no se puede fusionar como un JSON.
+CLAUDE_MD_PREVIO=0
 install_claude_md() {  # src dst
   local src="$1" dst="$2"
   if [ ! -f "$dst" ]; then cp -p "$src" "$dst"; return; fi
   if cmp -s "$src" "$dst"; then return; fi
   local n; n="$(basename "$dst" .md)"
+  # Un CLAUDE.md propio sin el import deja AGENTS.md instalado pero sin que nadie lo lea.
+  if [ "$n" = "CLAUDE" ] && ! command grep -qE '^[[:space:]]*@[^[:space:]]*AGENTS\.md' "$dst"; then CLAUDE_MD_PREVIO=1; fi
   cp -p "$src" "$(dirname "$dst")/$n.kit.md"
   echo "   $n.md ya existe y la has modificado: NO se toca."
   echo "   La version del kit queda en $n.kit.md para que compares y copies lo que quieras."
@@ -211,6 +214,39 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   mkdir -p "$base/hooks/git"
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
   chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit "$base"/statusline-command.sh "$base"/bin/* 2>/dev/null || true
+}
+
+# handoff y oraculo se llaman a pelo en las instrucciones y los hooks: sin estar en el PATH, «command not
+# found». Se enlazan en ~/.local/bin SOLO si el hueco esta libre o ya es un enlace nuestro (a $CLAUDE_HOME/bin):
+# un fichero o un enlace ajeno es de la persona y no se pisa.
+LOCAL_BIN="$HOME/.local/bin"
+CLIS="handoff oraculo"
+cli_estado() {  # nombre -> libre | nuestro | ajeno
+  local dst="$LOCAL_BIN/$1"
+  if [ -L "$dst" ]; then
+    case "$(readlink "$dst")" in "$CLAUDE_HOME/bin/"*) echo nuestro ;; *) echo ajeno ;; esac
+  elif [ -e "$dst" ]; then echo ajeno
+  else echo libre
+  fi
+}
+enlazar_clis() {
+  local c st
+  LINK_AJENOS=""
+  for c in $CLIS; do
+    st="$(cli_estado "$c")"
+    case "$st" in
+      ajeno) LINK_AJENOS="$LINK_AJENOS $c"
+             echo "   AVISO: $LOCAL_BIN/$c ya existe y no es un enlace a $CLAUDE_HOME/bin: no se toca." >&2 ;;
+      *) mkdir -p "$LOCAL_BIN"; ln -sfn "$CLAUDE_HOME/bin/$c" "$LOCAL_BIN/$c"
+         echo "   enlace: $LOCAL_BIN/$c -> $CLAUDE_HOME/bin/$c" ;;
+    esac
+  done
+}
+aviso_path() {
+  case ":$PATH:" in *":$LOCAL_BIN:"*) return 0 ;; esac
+  echo "==> AVISO: $LOCAL_BIN no esta en tu PATH, asi que handoff y oraculo no se encontraran."
+  echo "    Abre una terminal nueva (Debian/Ubuntu lo añade al iniciar sesion si la carpeta ya existe)"
+  echo "    o añade a tu ~/.bashrc:  export PATH=\"\$HOME/.local/bin:\$PATH\""
 }
 
 run_diff_first() {
@@ -285,6 +321,10 @@ run_diff_first() {
     echo
     echo "==> --plan solo muestra lo que se instalaria; $CLAUDE_HOME no se ha tocado. Que hacer:"
   fi
+  echo
+  echo "==> En modo aplicar (--apply) tambien se enlazarian handoff y oraculo en $LOCAL_BIN (solo si el hueco"
+  echo "    esta libre o ya es un enlace a $CLAUDE_HOME/bin). Estado ahora:"
+  for c in $CLIS; do echo "      $c: $(cli_estado "$c")"; done
   cat <<EOF
       1. Revisa arriba los ficheros nuevos/modificados (arbol completo en $out).
       2. Copia a mano lo que quieras adoptar de $out a $CLAUDE_HOME.
@@ -408,10 +448,23 @@ if [ "$gl_rc" -eq 2 ]; then
 fi
 
 echo "==> Config instalada. Terceros (ver docs/): agent-browser, venv de tools. Plugins: install-plugins.sh."
-echo "==> CLIs handoff y oraculo (valen en Claude Code, Codex y opencode). Enlázalos a tu PATH:"
-echo "       mkdir -p \"\$HOME/.local/bin\" && ln -sf \"$CLAUDE_HOME/bin/handoff\" \"\$HOME/.local/bin/handoff\" && ln -sf \"$CLAUDE_HOME/bin/oraculo\" \"\$HOME/.local/bin/oraculo\""
-echo "==> Rellena tus claves:  cp $KIT/.env.example \$HOME/.claude/.env  &&  editar"
+echo "==> CLIs handoff y oraculo (valen en Claude Code, Codex y opencode):"
+enlazar_clis
+if [ -f "$KIT/.env.example" ]; then
+  echo "==> Rellena tus claves:  cp $KIT/.env.example \$HOME/.claude/.env  &&  editar"
+else
+  echo "==> Plantilla de credenciales no incluida: los servicios externos son opcionales."
+fi
 echo "==> Capa 2 de secretos (gitleaks pre-commit) es opt-in, por repositorio. Actívala DONDE QUIERAS con:"
 echo "       bash $KIT/install.sh --enable-secrets-layer2   # ejecútalo dentro del repo a proteger"
 echo "    o el one-liner manual:  git config core.hooksPath \"$CLAUDE_HOME/hooks/git\""
 echo "==> Verifica:            bash $KIT/doctor.sh"
+if [ "$CLAUDE_MD_PREVIO" -eq 1 ]; then
+  echo
+  echo "==> AVISO: ya tenias un CLAUDE.md y no se ha tocado. Añade @AGENTS.md a tu CLAUDE.md;"
+  echo "    la plantilla del kit quedo en CLAUDE.kit.md. Sin eso, Claude no lee las instrucciones del kit."
+fi
+aviso_path
+if [ -n "${LINK_AJENOS:-}" ]; then
+  echo "==> AVISO: no se enlazo$LINK_AJENOS (ya existia en $LOCAL_BIN). Usa la ruta $CLAUDE_HOME/bin/<nombre> o resuelve el conflicto."
+fi

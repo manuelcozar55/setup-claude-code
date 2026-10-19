@@ -18,7 +18,7 @@ ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT 
 
 # --- Caso 1: HOME temporal normal (no es repo git) -> escribe, como siempre
 export CLAUDE_HOME="$tmp/dot-normal"
-bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/fakehome" bash "$KIT/install.sh" >/dev/null 2>&1
 ck "$([ -f "$CLAUDE_HOME/CLAUDE.md" ] && echo y || echo n)" "y" "HOME temporal normal: install.sh sigue escribiendo (comportamiento intacto)"
 
 # --- Caso 2: CLAUDE_HOME ES un repo git con remoto -> NO escribe, sale 0 ---
@@ -29,7 +29,7 @@ git -C "$CLAUDE_HOME" remote add origin https://example.com/claude-config-privat
 echo "MIO, NO TOCAR" > "$CLAUDE_HOME/CLAUDE.md"
 
 set +e
-out="$(MCHARNESS_OUT="$tmp/out-1" bash "$KIT/install.sh" 2>&1)"; rc=$?
+out="$(HOME="$tmp/fakehome" MCHARNESS_OUT="$tmp/out-1" bash "$KIT/install.sh" 2>&1)"; rc=$?
 set -e
 ck "$rc" "0" "CLAUDE_HOME repo git con remoto: install.sh sale con exit 0 (no es un error)"
 ck "$(cat "$CLAUDE_HOME/CLAUDE.md")" "MIO, NO TOCAR" "CLAUDE_HOME repo git con remoto: NO se escribe encima"
@@ -39,7 +39,7 @@ ck "$(echo "$out" | grep -qic -- '--apply' && echo y || echo n)" "y" "la salida 
 
 # --- Caso 3: --apply en ese mismo escenario -> SI escribe -------------------
 set +e
-MCHARNESS_OUT="$tmp/out-2" bash "$KIT/install.sh" --apply >/dev/null 2>&1; rc3=$?
+HOME="$tmp/fakehome" MCHARNESS_OUT="$tmp/out-2" bash "$KIT/install.sh" --apply >/dev/null 2>&1; rc3=$?
 set -e
 ck "$rc3" "0" "--apply sobre CLAUDE_HOME (repo git con remoto): sale con exit 0"
 ck "$([ -f "$CLAUDE_HOME/settings.json" ] && echo y || echo n)" "y" "--apply SI escribe (instala settings.json)"
@@ -52,7 +52,7 @@ ck "$(cat "$CLAUDE_HOME/CLAUDE.md")" "MIO, NO TOCAR" "--apply NO pisa un CLAUDE.
 ck "$([ -f "$CLAUDE_HOME/CLAUDE.kit.md" ] && echo y || echo n)" "y" "--apply deja la version del kit en CLAUDE.kit.md"
 # Y el mecanismo de backup sigue vivo bajo --apply, sobre un fichero que el kit SI posee.
 echo "# MOD" >> "$CLAUDE_HOME/.gitleaks.toml"
-set +e; MCHARNESS_OUT="$tmp/out-3" bash "$KIT/install.sh" --apply >/dev/null 2>&1; set -e
+set +e; HOME="$tmp/fakehome" MCHARNESS_OUT="$tmp/out-3" bash "$KIT/install.sh" --apply >/dev/null 2>&1; set -e
 ck "$(find "$CLAUDE_HOME/backups" -mindepth 2 -maxdepth 2 -name .gitleaks.toml 2>/dev/null | wc -l | tr -d ' ')" "1" "--apply sigue haciendo backup de lo que el kit SI posee"
 
 # --- Caso 4: --plan fuerza el modo diff aunque NO sea un repo git ----------
@@ -72,14 +72,14 @@ export CLAUDE_HOME="$tmp/dot-git-sin-remoto"
 mkdir -p "$CLAUDE_HOME"
 git -C "$CLAUDE_HOME" init -q
 set +e
-bash "$KIT/install.sh" >/dev/null 2>&1; rc5=$?
+HOME="$tmp/fakehome" bash "$KIT/install.sh" >/dev/null 2>&1; rc5=$?
 set -e
 ck "$rc5" "0" "repo git SIN remoto: install.sh sale 0"
 ck "$([ -f "$CLAUDE_HOME/CLAUDE.md" ] && echo y || echo n)" "y" "repo git SIN remoto NO activa el modo diff (escribe igual, falsabilidad del check)"
 
 # --- Hallazgo E6-1: --plan nunca borra lo que no escribio el, ni solapa con CLAUDE_HOME ---
 export CLAUDE_HOME="$tmp/dot-solape"
-bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/fakehome" bash "$KIT/install.sh" >/dev/null 2>&1
 echo "MIO" > "$CLAUDE_HOME/mio.txt"
 for o in "$CLAUDE_HOME" "$CLAUDE_HOME/sub/plan" "$tmp" "$CLAUDE_HOME/../dot-solape/."; do
   set +e; MCHARNESS_OUT="$o" bash "$KIT/install.sh" --plan >/dev/null 2>&1; rc=$?; set -e
@@ -114,7 +114,7 @@ export CLAUDE_HOME="$tmp/dot-link"
 mkdir -p "$CLAUDE_HOME" "$tmp/repo-propio"
 echo '{"model":"mi-modelo","env":{"MIA":"1"}}' > "$tmp/repo-propio/settings.json"
 ln -s "$tmp/repo-propio/settings.json" "$CLAUDE_HOME/settings.json"
-set +e; bash "$KIT/install.sh" --apply >/dev/null 2>&1; rc=$?; set -e
+set +e; HOME="$tmp/fakehome" bash "$KIT/install.sh" --apply >/dev/null 2>&1; rc=$?; set -e
 ck "$rc" "0" "--apply con settings.json enlazado: exit 0"
 ck "$([ -L "$CLAUDE_HOME/settings.json" ] && echo y || echo n)" "y" "--apply conserva settings.json como enlace"
 ck "$(readlink "$CLAUDE_HOME/settings.json")" "$tmp/repo-propio/settings.json" "--apply no cambia el destino del enlace"

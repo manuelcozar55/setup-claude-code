@@ -5,6 +5,8 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 
+# HOME falso: install.sh enlaza handoff y oraculo en $HOME/.local/bin y no debe tocar el de quien corre el test.
+export HOME="$tmp/home"; mkdir -p "$HOME"
 export CLAUDE_HOME="$tmp/dot"
 # Con `set -e` y la salida a /dev/null, un fallo aqui mataba la suite con rc=1 y CERO salida:
 # rojo correcto pero imposible de diagnosticar. Se captura para que el rojo diga por que.
@@ -18,8 +20,26 @@ ck "$([ -f "$CLAUDE_HOME/sentinel/sentinel_preflight.py" ] && echo y)" "y" "inst
 ck "$([ -f "$CLAUDE_HOME/hooks/lib/nucleo.sh" ] && echo y)" "y" "instala hooks/lib"
 ck "$([ -f "$CLAUDE_HOME/templates/nucleo.md" ] && echo y)" "y" "instala templates"
 ck "$([ -x "$CLAUDE_HOME/bin/handoff" ] && [ -x "$CLAUDE_HOME/bin/oraculo" ] && echo y)" "y" "instala bin/handoff y bin/oraculo ejecutables"
-ck "$(grep -c "ln -sf \"$CLAUDE_HOME/bin/handoff\" \"\$HOME/.local/bin/handoff\"" "$tmp/install.log")" "1" "imprime la orden de enlace de handoff a ~/.local/bin"
-ck "$(grep -c "ln -sf \"$CLAUDE_HOME/bin/oraculo\" \"\$HOME/.local/bin/oraculo\"" "$tmp/install.log")" "1" "imprime la orden de enlace de oraculo a ~/.local/bin"
+ck "$(readlink "$HOME/.local/bin/handoff")" "$CLAUDE_HOME/bin/handoff" "crea el enlace ~/.local/bin/handoff -> bin/handoff"
+ck "$(readlink "$HOME/.local/bin/oraculo")" "$CLAUDE_HOME/bin/oraculo" "crea el enlace ~/.local/bin/oraculo -> bin/oraculo"
+ck "$(grep -c 'no esta en tu PATH' "$tmp/install.log")" "1" "avisa si ~/.local/bin no esta en el PATH"
+ck "$(grep -c 'CLAUDE.kit.md' "$tmp/install.log")" "0" "sin CLAUDE.md previo no hay aviso de @AGENTS.md"
+set +e; PATH="$HOME/.local/bin:$PATH" bash "$KIT/install.sh" >"$tmp/install2.log" 2>&1; set -e
+ck "$(grep -c 'no esta en tu PATH' "$tmp/install2.log")" "0" "con ~/.local/bin en el PATH no hay aviso"
+ck "$(readlink "$HOME/.local/bin/handoff")" "$CLAUDE_HOME/bin/handoff" "reinstalar mantiene el enlace propio"
+# Un fichero o un enlace ajeno no se pisa: se avisa.
+rm "$HOME/.local/bin/handoff" "$HOME/.local/bin/oraculo"
+printf 'mio\n' > "$HOME/.local/bin/handoff"; ln -s /bin/true "$HOME/.local/bin/oraculo"
+set +e; bash "$KIT/install.sh" >"$tmp/install3.log" 2>&1; set -e
+ck "$(cat "$HOME/.local/bin/handoff")" "mio" "no pisa un fichero ajeno en ~/.local/bin"
+ck "$(readlink "$HOME/.local/bin/oraculo")" "/bin/true" "no pisa un enlace ajeno en ~/.local/bin"
+ck "$(grep -c 'no se enlazo' "$tmp/install3.log")" "1" "avisa de los enlaces que no pudo crear"
+rm "$HOME/.local/bin/handoff" "$HOME/.local/bin/oraculo"
+# diff-first (--plan): no escribe en ~/.local/bin, lo pone en el plan.
+set +e; MCHARNESS_OUT="$tmp/plan-ln" bash "$KIT/install.sh" --plan >"$tmp/plan-ln.log" 2>&1; set -e
+ck "$([ -e "$HOME/.local/bin/handoff" ] && echo y || echo n)" "n" "--plan no crea enlaces"
+ck "$(grep -c 'se enlazarian handoff y oraculo' "$tmp/plan-ln.log")" "1" "--plan lo dice en el plan"
+bash "$KIT/install.sh" >/dev/null 2>&1
 # En el plan diff-first los bin entran como cualquier otro fichero del kit (y con el modo ejecutable).
 set +e; MCHARNESS_OUT="$tmp/plan-bin" bash "$KIT/install.sh" --plan >"$tmp/plan.log" 2>&1; set -e
 ck "$([ -x "$tmp/plan-bin/bin/handoff" ] && grep -c 'bin/handoff' "$tmp/plan.log" | grep -qv '^0$' && echo y)" "y" "el plan diff-first incluye bin/handoff ejecutable"
@@ -45,6 +65,13 @@ if command -v jq >/dev/null 2>&1; then
      "$CLAUDE_HOME/settings.json" > "$tmp2" && mv "$tmp2" "$CLAUDE_HOME/settings.json"
   printf '# mis instrucciones a mano\nno me borres\n' > "$CLAUDE_HOME/CLAUDE.md"
   rm -f "$CLAUDE_HOME/CLAUDE.kit.md"
+  set +e; bash "$KIT/install.sh" >"$tmp/prev.log" 2>&1; set -e
+  ck "$(grep -c '@AGENTS.md' "$tmp/prev.log")" "1" "con CLAUDE.md previo sin import: aviso con @AGENTS.md"
+  ck "$(grep -c 'CLAUDE.kit.md' "$tmp/prev.log" | awk '{print ($1>=1)}')" "1" "el aviso nombra CLAUDE.kit.md"
+  printf '# mio\n%s\n' '@AGENTS.md' > "$CLAUDE_HOME/CLAUDE.md"
+  set +e; bash "$KIT/install.sh" >"$tmp/prev2.log" 2>&1; set -e
+  ck "$(grep -c 'Añade @AGENTS.md' "$tmp/prev2.log")" "0" "si tu CLAUDE.md ya importa @AGENTS.md no hay aviso"
+  printf '# mis instrucciones a mano\nno me borres\n' > "$CLAUDE_HOME/CLAUDE.md"
   set +e; bash "$KIT/install.sh" >/dev/null 2>&1; set -e
 
   ck "$(jq -r '.env.MI_CLAVE // "AUSENTE"' "$CLAUDE_HOME/settings.json")" "mia" "reinstalar conserva tus claves de env"
@@ -58,6 +85,12 @@ if command -v jq >/dev/null 2>&1; then
 else
   echo "skip - jq ausente: no se prueba la fusion de settings.json"
 fi
+
+# El aviso de credenciales solo recomienda copiar la plantilla si existe.
+cp -a "$KIT" "$tmp/kit-sin-env"; rm -f "$tmp/kit-sin-env/.env.example"
+set +e; bash "$tmp/kit-sin-env/install.sh" >"$tmp/sin-env.log" 2>&1; set -e
+ck "$(grep -c 'cp .*\.env\.example' "$tmp/sin-env.log")" "0" "sin plantilla de credenciales no manda copiarla"
+ck "$(grep -c 'cp .*\.env\.example' "$tmp/install.log")" "$([ -f "$KIT/.env.example" ] && echo 1 || echo 0)" "con plantilla en el kit si manda copiarla"
 
 # Regresion 2026-09-02: un __pycache__ dentro del kit rompia el bucle `cp` de install.sh
 # ("cp: -r not specified; omitting directory"), el instalador salia rc=1 y dejaba la

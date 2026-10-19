@@ -40,7 +40,7 @@ free_port() { "$PY" -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));
 
 install_clean() { # imprime CLAUDE_HOME
   local h; h="$(mktemp -d)"
-  CLAUDE_HOME="$h/.claude" GITLEAKS_AUTO_INSTALL=n bash "$KIT/install.sh" >/dev/null 2>&1
+  HOME="$h" CLAUDE_HOME="$h/.claude" GITLEAKS_AUTO_INSTALL=n bash "$KIT/install.sh" >/dev/null 2>&1
   echo "$h/.claude"
 }
 
