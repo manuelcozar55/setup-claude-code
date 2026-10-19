@@ -630,6 +630,17 @@ for c in 'git commit -m "git reset --hard"' 'git reset --soft HEAD~1' 'echo "run
   expect "destructive: $c NO denegado" "$(run_dg "$c")" ALLOW
 done
 
+# Revision E7.3 (CR-4): la exencion de directorio seguro miraba `/dir/` como subcadena, asi que un
+# `..` tras el nombre seguro eximia una ruta que escapa de el. Lo vale para el check 1 (texto) y el 5.
+for c in 'rm -rf ~/dist/../Documents' 'rm -rf ~/node_modules/../.ssh' 'rm -rf dist/..' \
+         'rm -rf ./node_modules/x/../..' 'rm -rf $HOME/build/../Documents' 'rm -rf "$HOME/dist/../Documents"' \
+         'sudo rm -rf ~/tmp/../Documents' 'rm -rf ~/dist/foo/../../Documents'; do
+  expect "destructive (E7.3): $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'rm -rf ./node_modules/x' 'rm -rf ~/node_modules/x' 'rm -rf ../node_modules' 'rm -rf dist build' 'rm -rf ~/dist'; do
+  expect "destructive (E7.3): $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+
 # El check 4 (find -delete) bloqueaba con exit 2 pero era el unico que no llamaba a
 # log_block: el bloqueo ocurria y no quedaba registrado, asi que el log de auditoria daba
 # una imagen falsa de lo que el guard habia hecho. Se mide el REGISTRO, no solo el bloqueo,
