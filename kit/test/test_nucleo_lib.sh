@@ -93,6 +93,14 @@ ok "recortes.log: sin recorte no se escribe" "$([ -e "$T/rec2/recortes.log" ] &&
 for _ in $(seq 1 120); do nucleo_emitir "$T/rec/nucleo.md" >/dev/null; done
 ok "recortes.log: acotado (≤ 100 líneas)" "$([ "$(wc -l <"$T/rec/recortes.log")" -le 100 ] && echo si)" si
 
+# --- plantilla publicada: orden D5, sin cifras de tope, y los tres campos baratos de la decisión 13 ---
+TPL=$(dirname "$L")/../../templates/nucleo.md
+ok "plantilla: cabeceras en el orden D5" "$(sed -n 's/^## //p' "$TPL" | paste -sd,)" "Objetivo,Invariantes,Paso actual,Siguiente acción,Comandos de verificación,Plan,Pendientes,Ficheros tocados"
+ok "plantilla: sin cifra de tope (KB ni 6500)" "$(command grep -ciE '[0-9] ?KB|6 ?500' "$TPL")" 0
+ok "plantilla: correcciones literales con fecha, en Invariantes" "$(awk '/^## /{s=$0} s=="## Invariantes" && /Corrección/' "$TPL" | command grep -c 'AAAA-MM-DD')" 1
+ok "plantilla: ficheros calientes con rango ruta:L120-180" "$(command grep -c 'ruta:L120-180' "$TPL")" 1
+ok "plantilla: → rc=N junto a cada comando" "$(command grep -c '→ rc=N' "$TPL")" 1
+
 # `claude --worktree` crea el worktree en <repo>/.claude/worktrees/<rama>: es su propia raíz (rama y
 # nucleo suyos), no el repo padre. Solo $HOME/.claude sube a su padre.
 git -C "$T/repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
