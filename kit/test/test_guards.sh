@@ -527,6 +527,15 @@ expect "branch-guard (fuera de repo): main explicito denegado"                  
 expect "branch-guard: git -C a un repo en main denegado desde fuera"    "$(run_bg "$BR_NONE" "git -C $BR_MAIN push")" BLOCK
 expect "branch-guard: git -C a un repo en feature NO denegado"          "$(run_bg "$BR_NONE" "git -C $BR_FEAT push")" ALLOW
 expect "branch-guard: cd a un repo en main + push denegado"             "$(run_bg "$BR_NONE" "cd $BR_MAIN && git push")" BLOCK
+# Revision E7.3 (CR-2): las redirecciones no son operandos del push. Con `2>&1` como segundo
+# posicional el destino pasaba a ser `2>&1` y el push implicito a main se escapaba.
+for c in 'git push origin 2>&1' 'git push origin 2>&1 | tail -3' 'git push -u origin >/dev/null' 'git push origin &>/dev/null'; do
+  expect "branch-guard (E7.3, main activa): $c denegado" "$(run_bg "$BR_MAIN" "$c")" BLOCK
+done
+for c in 'git push origin feature 2>&1' 'git push -u origin >/dev/null' 'git push origin 2>&1 | tail -3'; do
+  expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
+expect "branch-guard (E7.3, feature activa): main con 2>&1 denegado" "$(run_bg "$BR_FEAT" 'git push origin main 2>&1')" BLOCK
 rm -rf "$BR_MAIN" "$BR_FEAT" "$BR_NONE"
 
 # Las TRES grafias del borrado de una rama remota. Solo `--delete` estaba cubierta: contra rama

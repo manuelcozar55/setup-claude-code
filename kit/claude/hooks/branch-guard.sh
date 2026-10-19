@@ -66,6 +66,7 @@ for seg in "${CMDN_SEGS[@]}"; do
       esac
       continue
     fi
+    [[ $a =~ ^[0-9]*[\<\>] || $a == '&>'* ]] && continue
     ops+=("$a")
   done
 
