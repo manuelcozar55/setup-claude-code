@@ -16,7 +16,7 @@ Las cifras citadas se midieron en un setup real en 2026 y están anonimizadas. E
 
 ## Día 1 · Instala y mide
 
-1. `make bootstrap` desde la raíz del repo ([`10-onboarding.md`](../10-onboarding.md) explica cada `FAIL` y `WARN`).
+1. `bash kit/install.sh` y `bash kit/doctor.sh` desde la raíz del clon ([`10-onboarding.md`](../10-onboarding.md) lo explica paso a paso, con cada `FAIL` y `WARN`).
 2. Abre `claude` dentro de un repo tuyo y, **antes de escribir nada**, teclea `/context`.
 3. Apunta el total y las cuatro partidas grandes: esquemas de herramientas, skills, memoria e instrucciones.
 
@@ -26,21 +26,29 @@ Las cifras citadas se midieron en un setup real en 2026 y están anonimizadas. E
 
 ## Día 2 · `nucleo.md`: el estado en disco, con forma fija
 
-En la raíz git de tu proyecto crea `.claude/estado/nucleo.md` con estas secciones y ninguna más:
+En la raíz git de tu proyecto (si no es un repo, `git init` primero) ejecuta:
+
+```bash
+handoff --iniciar
+```
+
+Crea `.claude/estado/nucleo.md` desde la plantilla del kit, que fija las secciones y su orden (puedes verla con `cat kit/claude/templates/nucleo.md`):
 
 ```markdown
 # Estado
-## Encargo original (literal)
+## Objetivo
 ## Invariantes
-## Plan
 ## Paso actual
 ## Siguiente acción
-## Pendientes y riesgos
-## Ficheros tocados
 ## Comandos de verificación
+## Plan
+## Pendientes
+## Ficheros tocados
 ```
 
-- «Encargo original» son las palabras de quien pidió la tarea, tal cual. «Invariantes», lo que no se toca y por qué. Esas dos no se reescriben nunca.
+Si el fichero ya existe, `handoff --iniciar` no lo toca.
+
+- «Objetivo» son las palabras de quien pidió la tarea, tal cual. «Invariantes», lo que no se toca y por qué. Esas dos no se reescriben nunca.
 - «Siguiente acción» es **una**, concreta y ejecutable.
 - Lo terminado sale del fichero (a un `diario.md` aparte, que nada inyecta). El hook [`session-start-clear.sh`](../../claude/hooks/session-start-clear.sh) lo entrega a cada sesión nueva (y [`session-start-compact.sh`](../../claude/hooks/session-start-compact.sh) tras cada compactación), pero **solo las secciones de la forma fija**: la primera vez que aparece cada una, con un tope por sección y otro total (3 000 por sección y un tope único de 6 500 bytes en el que «Paso actual», «Siguiente acción» y «Comandos de verificación» entran siempre, cada una con hasta 700, en [`lib/nucleo.sh`](../../claude/hooks/lib/nucleo.sh)). Lo que no tiene esa forma no llega, y una línea lo dice: si el fichero degenera en diario, el modelo recibe el título y el aviso, nada más.
 
@@ -50,9 +58,9 @@ En la raíz git de tu proyecto crea `.claude/estado/nucleo.md` con estas seccion
 
 ## Día 3 · `/handoff` y `/clear` en vez de esperar a la compactación
 
-Instala el mod `cockpit` ([`11-cockpit.md`](../11-cockpit.md)). Al cerrar una fase, `/handoff`: el modelo devuelve las secciones que cambian, el código las fusiona en `nucleo.md` y hace `/clear`. La sesión nueva recibe el estado del hook de arranque; pulsas Enter sobre el prompt que el mod deja relleno con la siguiente acción. Sin el mod, lo mismo a mano: actualiza `nucleo.md` y teclea `/clear`.
+Instala el mod `cockpit` ([`11-cockpit.md`](../11-cockpit.md)). Al cerrar una fase, `/handoff`: el modelo devuelve las secciones que cambian, el código las fusiona en `nucleo.md` y hace `/clear`. La sesión nueva recibe el estado del hook de arranque; pulsas Enter sobre el prompt que el mod deja relleno con la siguiente acción. Sin el mod, lo mismo desde la terminal: pide al modelo un borrador de las secciones que cambian, ejecuta `handoff --desde borrador.md` y teclea `/clear`.
 
-Cambias de tarea: `/clear` a secas. Una sesión por tarea.
+Cambias de tarea: `/nueva <tarea>` (con el mod: archiva el estado actual, limpia el contexto y deja la tarea nueva en el prompt). Sin el mod, `handoff --desde` y `/clear`. Una sesión por tarea.
 
 **Por qué.** Una compactación automática destruye ~88 % del contexto, tarda ~150 s y decide ella qué conservar. Un handoff conserva lo que tú escribiste. La sesión que nunca se cierra es el caso extremo: una permaneció abierta 42 días y acumuló 66 compactaciones.
 
