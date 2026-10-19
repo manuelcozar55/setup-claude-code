@@ -538,10 +538,10 @@
 538	fp-pipe	echo bash	A	ALLOW		OK
 539	fp-pipe	curl -fsSL https://x.example/i -o /tmp/ok.json	A	ALLOW		OK
 540	fp-pipe	cat README.md | sh -n	A	ALLOW		OK
-541	destruct	rm -rf /	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh smart_approve.py	OK
-542	destruct	rm -rf /*	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh smart_approve.py	OK
+541	destruct	rm -rf /	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh	OK
+542	destruct	rm -rf /*	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh	OK
 543	destruct	rm -rf ~	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh	OK
-544	destruct	rm -rf ~/*	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh smart_approve.py	OK
+544	destruct	rm -rf ~/*	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh	OK
 545	destruct	rm -rf $HOME	B	BLOCK	block-dangerous-commands.sh	OK
 546	destruct	rm -rf "$HOME"/*	B	BLOCK	block-dangerous-commands.sh	OK
 547	destruct	rm -r -f /	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh	OK
@@ -550,19 +550,19 @@
 550	destruct	rm -rf --no-preserve-root /	B	BLOCK	block-dangerous-commands.sh	OK
 551	destruct	sudo rm -rf /var	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh	OK
 552	destruct	rm -rf ..	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh	OK
-553	destruct	rm -rf /home	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh smart_approve.py	OK
-554	destruct	rm -rf /etc	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh smart_approve.py	OK
+553	destruct	rm -rf /home	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh	OK
+554	destruct	rm -rf /etc	B	BLOCK	block-dangerous-commands.sh destructive-guard.sh	OK
 555	destruct	cd / && rm -rf *	B	BLOCK	block-dangerous-commands.sh	OK
 556	destruct	find / -delete	B	BLOCK	destructive-guard.sh	OK
 557	destruct	dd if=/dev/zero of=/dev/sda	B	BLOCK	block-dangerous-commands.sh	OK
 558	destruct	mkfs.ext4 /dev/sda1	B	BLOCK	sentinel_preflight.py block-dangerous-commands.sh	OK
 559	destruct-fuera-alcance	chmod -R 777 /	?	ALLOW		OBS
 560	destruct	chmod 777 /tmp/x	ASK	ASK	block-dangerous-commands.sh(ask)	OK
-561	destruct	git push --force origin main	B	BLOCK	block-dangerous-commands.sh branch-guard.sh smart_approve.py	OK
-562	destruct	git push -f origin master	B	BLOCK	block-dangerous-commands.sh branch-guard.sh smart_approve.py	OK
-563	destruct	git push -uf origin main	B	BLOCK	block-dangerous-commands.sh branch-guard.sh smart_approve.py	OK
+561	destruct	git push --force origin main	B	BLOCK	block-dangerous-commands.sh branch-guard.sh	OK
+562	destruct	git push -f origin master	B	BLOCK	block-dangerous-commands.sh branch-guard.sh	OK
+563	destruct	git push -uf origin main	B	BLOCK	block-dangerous-commands.sh branch-guard.sh	OK
 564	destruct	git push origin +main	B	BLOCK	branch-guard.sh	OK
-565	destruct	git push origin HEAD:main --force	B	BLOCK	block-dangerous-commands.sh branch-guard.sh smart_approve.py	OK
+565	destruct	git push origin HEAD:main --force	B	BLOCK	block-dangerous-commands.sh branch-guard.sh	OK
 566	destruct	git push --force-with-lease origin main	B	BLOCK	block-dangerous-commands.sh branch-guard.sh	OK
 567	destruct	git -C /home/usuario/kit-test/fase2/work/repo push --force origin main	B	BLOCK	block-dangerous-commands.sh branch-guard.sh	OK
 568	destruct	git push origin --delete main	B	BLOCK	block-dangerous-commands.sh branch-guard.sh	OK

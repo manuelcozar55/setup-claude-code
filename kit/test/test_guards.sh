@@ -2,8 +2,8 @@
 # shellcheck disable=SC2015  # «cond && pass=$((pass+1)) || { fail=...; }»: la rama del medio
 # es una asignacion y nunca falla, asi que aqui si es un if abreviado. El CI corre shellcheck
 # -x sin -S y un aviso info basta para ponerlo rojo.
-# test_guards.sh — regresión de la cadena PreToolUse (Sentinel, smart_approve,
-# secret-guard). Corre contra los ficheros del propio kit, no contra una
+# test_guards.sh — regresión de la cadena PreToolUse (Sentinel, los guards de Bash, write-guard
+# y bash-write-guard). Corre contra los ficheros del propio kit, no contra una
 # instalación.
 #
 # SECRET_GUARD_BIN es sobreescribible a propósito: kit/test/test_guards_falsifiability.sh
@@ -16,32 +16,25 @@ PY="${PYTHON3:-python3}"
 SG="${SECRET_GUARD_BIN:-$KIT/claude/hooks/secret-guard.sh}"
 pass=0; fail=0
 
-# smart_approve.py decide BLOCK/ALLOW leyendo permissions.deny de
-# $HOME/.claude/settings.json (ver kit/claude/hooks/smart_approve.py). Sin
-# ese fichero (p.ej. un runner de CI con HOME limpio) devuelve ALLOW siempre
-# y los casos BLOCK de mas abajo (rm -rf /, force push) caen en falso -- la
-# suite mediria el HOME de quien la ejecuta, no el repo. Se fabrica un HOME
-# de prueba con las mismas reglas deny que distribuye el kit, para que el
-# resultado sea el mismo en cualquier maquina.
+# HOME de prueba: ningun guard debe medir el HOME de quien ejecuta la suite. El settings.json vacio
+# es solo un fichero que existe (el caso de Write sobre fichero existente de mas abajo).
 GUARDS_TEST_HOME=$(mktemp -d)
 mkdir -p "$GUARDS_TEST_HOME/.claude"
-jq '{permissions: {deny: (.permissions.deny // [])}}' "$KIT/claude/settings.json" \
-  > "$GUARDS_TEST_HOME/.claude/settings.json"
+printf '{}\n' > "$GUARDS_TEST_HOME/.claude/settings.json"
 
 # HOME de prueba tambien aqui: cada deny se apunta en $HOME/.claude/audit-logs/sentinel.jsonl, y con
 # el HOME real la suite inflaba el recuento diario de denegaciones del log de quien la corre.
 run_sentinel() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$GUARDS_TEST_HOME" "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1; }
-run_smart()    { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$GUARDS_TEST_HOME" "$PY" "$KIT/claude/hooks/smart_approve.py" 2>&1; }
+run_blockdc() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1; }
 expect() { # $1 desc, $2 salida, $3 BLOCK|ALLOW
   if [ "$3" = BLOCK ]; then echo "$2" | grep -qiE 'deny|blocked' && r=OK || r=FAIL
   else echo "$2" | grep -qiE 'deny|blocked' && r=FAIL || r=OK; fi
   if [ "$r" = OK ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: $1"; fi
 }
-# Calibracion: sentinel_preflight.py no cubre "rm -rf /" (iocs.json dangerous_commands
-# no tiene patron rm-rf; eso lo cubren permissions.deny via smart_approve, y los 2
-# hooks a retirar). Se testea via run_smart, coherente con el criterio de exito que
-# empareja "rm -rf / y force-push" bajo smart_approve tras la reduccion de cadena.
-expect "rm -rf raiz bloqueado"        "$(run_smart 'rm -rf /')"                             BLOCK
+# Calibracion: sentinel_preflight.py no cubre "rm -rf /" (iocs.json dangerous_commands no tiene
+# patron rm-rf); lo deniega block-dangerous-commands.sh, y permissions.deny lo repite en la capa
+# de permisos. Se testea contra el guard, que es lo que este kit ejecuta.
+expect "rm -rf raiz bloqueado"        "$(run_blockdc 'rm -rf /')"                             BLOCK
 expect "localhost permitido"           "$(run_sentinel 'curl http://127.0.0.1:8787/health')" ALLOW
 expect "comando normal permitido"      "$(run_sentinel 'ls -la /tmp/proyectos')"             ALLOW
 
@@ -478,21 +471,20 @@ sys.exit(0 if ok else 1)' "$KIT/sentinel" 2>&1) && pass=$((pass+1)) \
   || { fail=$((fail+1)); echo "FAIL: _BARE_SHELL no declara exactamente los prefijos de _PREFIXES con True/False/tupla${bare_err:+: $bare_err}"; }
 # En codigo, un tramo con forma de ruta (/, ./, ../, ~/) se mira entero.
 expect "clave: dir.p12 en ruta de codigo"        "$(run_sentinel "node -e 'fs.readdirSync(/etc/ssl/dir.p12/x)'")" "$IOCS_WANT"
-expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK
-expect "force push compuesto denegado" "$(run_smart 'echo ok && git push -f origin main')"   BLOCK
-expect "comando normal en smart"       "$(run_smart 'git status')"                           ALLOW
+expect "force push directo denegado"   "$(run_blockdc 'git push --force origin main')"         BLOCK
+expect "force push compuesto denegado" "$(run_blockdc 'echo ok && git push -f origin main')"   BLOCK
+expect "comando normal en el guard"       "$(run_blockdc 'git status')"                           ALLOW
 
 # Flags cortos AGRUPADOS. `git push -uf origin main` fuerza igual que `--force`, pero no
 # contiene "-f" como token suelto: la regex del guard ('-f\b') y los globs deny lo dejaban
 # pasar los dos. El agujero estaba justo en la proteccion que el kit anuncia como dura, y
 # ninguno de los dos casos de arriba lo tocaba. Se cubren las dos capas por separado
 # porque fallaban por separado.
-run_blockdc() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1; }
 expect "guard: -uf agrupado denegado"     "$(run_blockdc 'git push -uf origin main')"        BLOCK
 expect "guard: -fu agrupado denegado"     "$(run_blockdc 'git push -fu origin main')"        BLOCK
 expect "guard: --follow-tags NO denegado" "$(run_blockdc 'git push --follow-tags origin v1')" ALLOW
-expect "deny-list: -uf agrupado denegado" "$(run_smart 'git push -uf origin main')"          BLOCK
-expect "deny-list: -fu agrupado denegado" "$(run_smart 'git push -fu origin main')"          BLOCK
+expect "deny-list: -uf agrupado denegado" "$(run_blockdc 'git push -uf origin main')"          BLOCK
+expect "deny-list: -fu agrupado denegado" "$(run_blockdc 'git push -fu origin main')"          BLOCK
 
 # Huecos de force-push medidos: estos cinco comandos pasaban los CINCO guards. La causa
 # no era la lista de patrones sino su ancla: block-dangerous-commands.sh exigia
@@ -683,18 +675,16 @@ else
   fail=$((fail+1)); echo "FAIL: guard: npm publish debe seguir pidiendo confirmacion (ask)"
 fi
 
-# Hallazgo de seguridad documentado (no un bug de esta suite): smart_approve.py
-# falla ABIERTO si $HOME/.claude/settings.json no existe o no tiene
-# permissions.deny -- sin ese fichero, deny_rules queda vacio y todo se
-# permite, incluido 'rm -rf /'. Ocurre en una instalacion a medias (kit
-# instalado pero settings.json aun no colocado) o si el fichero se borra o
-# corrompe. Se fija aqui en vez de esconderlo: este test se ROMPE (deja de
-# dar ALLOW) el dia que alguien cierre ese fallo-abierto, y es la senal de
-# que hay que venir a actualizarlo, no relajarlo antes de tiempo.
+# smart_approve.py se eliminó (decisión 3 del plan v3): descomponía los compuestos contra
+# permissions.deny y fallaba ABIERTO sin settings.json (un runner con HOME limpio permitía
+# rm -rf /). Los guards de Bash miran el comando entero con sus propias reglas, no leen
+# settings.json, y ese hueco de arranque ya no existe: con un HOME sin settings el guard
+# sigue denegando, y un compuesto con un force push sigue en BLOCK (casos de arriba).
 NO_SETTINGS_HOME=$(mktemp -d)
-run_smart_no_settings() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$NO_SETTINGS_HOME" "$PY" "$KIT/claude/hooks/smart_approve.py" 2>&1; }
-expect "smart_approve.py sin settings.json falla ABIERTO (permite rm -rf /; ver comentario)" \
-  "$(run_smart_no_settings 'rm -rf /')" ALLOW
+expect "sin settings.json el guard sigue denegando (rm -rf /, sin fallo abierto)" \
+  "$(printf '{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}' | HOME="$NO_SETTINGS_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1)" BLOCK
+expect "sin settings.json un compuesto con force push sigue en BLOCK" \
+  "$(printf '{"tool_name":"Bash","tool_input":{"command":"echo ok && git push -f origin main"}}' | HOME="$NO_SETTINGS_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1)" BLOCK
 rm -rf "$NO_SETTINGS_HOME"
 
 # --- secret-guard.sh: guard simple por NOMBRE (Capa 1). El escaneo de

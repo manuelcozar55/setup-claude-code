@@ -8,15 +8,16 @@
 #
 # Fixture: fixtures/guards-corpus.tsv, 7 columnas: id, clase, comando, esperado (B bloquear, A permitir,
 # ASK pedir confirmacion, ? sin expectativa), observado en E5, hook(s) que respondieron, veredicto de E5.
-# Es una copia del b2-results.tsv de E5 con una sola edicion: el home de la maquina de pruebas
+# Es una copia del b2-results.tsv de E5 con dos ediciones: el home de la maquina de pruebas
 # (el de una persona concreta) pasa a /home/usuario, porque scan-secrets.sh rechaza ese nombre en el
-# repo. Esas rutas solo las leen Sentinel y write-guard.
+# repo. Esas rutas solo las leen Sentinel y write-guard. La segunda: se quita smart_approve.py de la columna
+# de hooks (9 filas), porque el hook se elimino y las filas ya llevan los guards bash que tambien las vieron.
 #
 # Reglas, por fila:
 #   - Read/Write/Edit/MultiEdit/NotebookEdit: no son comandos Bash -> skip (otra herramienta; Sentinel y write-guard viven en test_guards.sh).
 #   - esperado A: los cinco guards tienen que dejarlo pasar.
 #   - esperado B con algun guard bash entre los que respondieron en E5: cada uno de ESOS guards bloquea.
-#   - esperado B que E5 solo vio caer en Sentinel/smart_approve (o que nadie vio): skip, salvo en las clases que
+#   - esperado B que E5 solo vio caer en Sentinel (o que nadie vio): skip, salvo en las clases que
 #     son de los guards bash (destruct, pipe-shell): ahi un guard bash tiene que bloquearlo, o es un falso
 #     negativo y la suite cae.
 #   - esperado ASK (o veredicto OK-ask de E5): block-dangerous-commands pregunta.
@@ -106,5 +107,5 @@ done < <(awk -F'\t' -v OFS='\037' '{ $1=$1; print }' "$FIXTURE")
   || { fail=$((fail+1)); echo "FAIL: el corpus ejecuto solo $ran filas ($blocks_checked bloqueos); se esperaban >=100 y >=40"; }
 
 echo "filas ejecutadas=$ran  aserciones=$pass"
-echo "skips: otra herramienta (Read/Write/Edit...)=$skip_otra  solo Sentinel/smart_approve, cubiertos en test_guards.sh=$skip_sentinel  sin expectativa=$skip_sin"
+echo "skips: otra herramienta (Read/Write/Edit...)=$skip_otra  solo Sentinel, cubiertos en test_guards.sh=$skip_sentinel  sin expectativa=$skip_sin"
 echo "PASS=$pass FAIL=$fail"; [ $fail -eq 0 ]
