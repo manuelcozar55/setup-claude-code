@@ -13,7 +13,7 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 | `node` ≥ 20 + `pnpm` | runtime de Claude Code y de agent-browser | `node --version` · `pnpm --version` |
 | `python3` (≥ 3.10) + `venv` | Sentinel y los hooks Python corren sobre un venv propio, nunca sobre el Python del sistema | `python3 --version` |
 | `gh` (GitHub CLI) | flujo de PRs desde Claude Code | `gh --version` |
-| `jq` | **obligatorio**: `install.sh` aborta si falta (fusiona `settings.json` con `jq`), los cuatro guards de Bash leen el payload con `jq` y sin él fallan en cerrado —deniegan en vez de permitir en silencio—, y `doctor.sh` lo marca `FAIL` | `jq --version` |
+| `jq` | **obligatorio**: `install.sh` aborta si falta (fusiona `settings.json` con `jq`), los cinco guards de Bash leen el payload con `jq` y sin él fallan en cerrado —deniegan en vez de permitir en silencio—, y `doctor.sh` lo marca `FAIL` | `jq --version` |
 | `uv` | gestor de paquetes Python que usa el kit vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
 | `gitleaks` (opcional, versión fijada `8.30.1`) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Si no lo tienes, `install.sh` te ofrece instalarlo (release oficial, verificado contra un checksum SHA-256 fijado en este repo — no descargado de la red —, nunca `curl \| bash`): confirma con `y`, o exporta `GITLEAKS_AUTO_INSTALL=1` para saltarte el prompt en un entorno no interactivo. Si el checksum no coincide, la instalación de `gitleaks` no rompe el resto (degrada a la Capa 1), pero deja una marca en `$CLAUDE_HOME/.gitleaks-checksum-mismatch` que `doctor.sh` reporta como `FAIL`. Ver `docs/05-security.md` | `gitleaks version` |
 
@@ -90,16 +90,27 @@ $EDITOR $HOME/.claude/.env
 
 Rellena `ANTHROPIC_API_KEY` y, si la usas, `PERPLEXITY_API_KEY`. El fichero `.env` **nunca** se sube al repo (el hook `secret-guard.sh` y el gate `scan-secrets.sh` están precisamente para que no ocurra por descuido).
 
+## Paso 3b · CLIs `handoff` y `oraculo`
+
+`install.sh` copia `bin/handoff` y `bin/oraculo` a `$CLAUDE_HOME/bin/` (diff-first, ejecutables) e imprime la orden
+para enlazarlos a tu `PATH`:
+
+```bash
+mkdir -p "$HOME/.local/bin" && ln -sf "$CLAUDE_HOME/bin/handoff" "$HOME/.local/bin/handoff" && ln -sf "$CLAUDE_HOME/bin/oraculo" "$HOME/.local/bin/oraculo"
+```
+
+Son bash + `jq`, sin red, y valen igual en Claude Code, Codex y opencode (`handoff --help`, `oraculo --help`).
+
 ## Paso 4 · Venv de herramientas
 
-Los hooks del kit (Sentinel, `smart_approve.py`) se ejecutan preferentemente con el Python de un venv dedicado:
+Los hooks del kit (Sentinel y los guards en Python) se ejecutan preferentemente con el Python de un venv dedicado:
 
 ```bash
 python3 -m venv $HOME/.venvs/tools
 $HOME/.venvs/tools/bin/pip install -r requirements-tools.txt
 ```
 
-Este paso es opcional. `settings.json` no invoca el venv directamente: llama a `hooks/optional-hook.sh --python`, que prefiere `$HOME/.venvs/tools/bin/python3`, cae al `python3` del sistema si no existe, y solo si no hay ninguno de los dos deja el hook en no-op silencioso. Como `sentinel_preflight.py` y `smart_approve.py` usan solo la librería estándar, con el `python3` del sistema siguen funcionando. Lo que se pierde sin el venv son los CLIs de `requirements-tools.txt` (`markitdown`, `ast-grep-cli`, `basedpyright`, `ruff`) y `pyyaml`, que es lo que `kit/evals/run.sh` necesita para leer las tareas. `doctor.sh` lo refleja: el venv ausente es `WARN`, no `FAIL`. Si prefieres exponer los CLIs instalados en tu `PATH` general:
+Este paso es opcional. `settings.json` no invoca el venv directamente: llama a `hooks/optional-hook.sh --python`, que prefiere `$HOME/.venvs/tools/bin/python3`, cae al `python3` del sistema si no existe, y solo si no hay ninguno de los dos deja el hook en no-op silencioso. Como `sentinel_preflight.py` usa solo la librería estándar, con el `python3` del sistema siguen funcionando. Lo que se pierde sin el venv son los CLIs de `requirements-tools.txt` (`markitdown`, `ast-grep-cli`, `basedpyright`, `ruff`) y `pyyaml`, que es lo que `kit/evals/run.sh` necesita para leer las tareas. `doctor.sh` lo refleja: el venv ausente es `WARN`, no `FAIL`. Si prefieres exponer los CLIs instalados en tu `PATH` general:
 
 ```bash
 ln -sf $HOME/.venvs/tools/bin/ruff $HOME/.local/bin/ruff

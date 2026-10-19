@@ -39,6 +39,7 @@ fi
 # de ejemplo se evaluaba sobre TODO el comando (`git add .env.example .env` pasaba) y `--all` no existia.
 # shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit." >&2; exit 2; }
+cmdn_oversize "$COMMAND" && exit 0
 if ! cmdn_parse "$COMMAND"; then
   echo "BLOCKED (fail-closed): awk no pudo normalizar el comando; secret-guard no puede evaluarlo." >&2
   exit 2

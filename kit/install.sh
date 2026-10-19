@@ -45,7 +45,7 @@ if [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null
 fi
 
 # --- Puerta de dependencia: jq ----------------------------------------------
-# jq no es opcional: los cuatro guards de Bash leen el comando del payload de
+# jq no es opcional: los cinco guards de Bash leen el comando del payload de
 # PreToolUse con jq, y fallan en CERRADO si no esta (deniegan en vez de permitir
 # en silencio). Instalar sin jq dejaria un kit que bloquea cada comando de Bash,
 # asi que se para aqui, antes de escribir nada, y con la orden que lo arregla.
@@ -53,8 +53,8 @@ if ! command -v jq >/dev/null 2>&1; then
   cat >&2 <<EOF
 ==> Falta jq, y este kit lo necesita.
 
-Los cuatro guards de Bash (block-dangerous-commands, branch-guard,
-destructive-guard, secret-guard) leen el comando con jq. Sin jq no pueden
+Los cinco guards de Bash (block-dangerous-commands, branch-guard,
+destructive-guard, secret-guard, bash-write-guard) leen el comando con jq. Sin jq no pueden
 decidir, y fallan en cerrado: DENIEGAN todo comando de Bash. Instalarlo asi
 te dejaria Claude Code bloqueado, asi que no se instala nada.
 
@@ -190,7 +190,7 @@ install_claude_md() {  # src dst
 
 install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   local base="$1" f rel
-  mkdir -p "$base/hooks/lib" "$base/agents" "$base/sentinel" "$base/templates"
+  mkdir -p "$base/hooks/lib" "$base/agents" "$base/sentinel" "$base/templates" "$base/bin"
   install_claude_md "$KIT/claude/CLAUDE.md"       "$base/CLAUDE.md"
   install_claude_md "$KIT/claude/AGENTS.md"       "$base/AGENTS.md"
   install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
@@ -205,11 +205,12 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   done < <(find "$KIT/claude/skills" -type f -print0 2>/dev/null)
   for f in "$KIT"/claude/hooks/*;  do [ -f "$f" ] && install_file "$f" "$base/hooks/$(basename "$f")"; done
   for f in "$KIT"/claude/hooks/lib/*; do [ -f "$f" ] && install_file "$f" "$base/hooks/lib/$(basename "$f")"; done
+  for f in "$KIT"/claude/bin/*;    do [ -f "$f" ] && install_file "$f" "$base/bin/$(basename "$f")"; done
   for f in "$KIT"/claude/templates/*; do [ -f "$f" ] && install_file "$f" "$base/templates/$(basename "$f")"; done
   for f in "$KIT"/sentinel/*;      do [ -f "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
   mkdir -p "$base/hooks/git"
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
-  chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit "$base"/statusline-command.sh 2>/dev/null || true
+  chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit "$base"/statusline-command.sh "$base"/bin/* 2>/dev/null || true
 }
 
 run_diff_first() {
@@ -407,6 +408,8 @@ if [ "$gl_rc" -eq 2 ]; then
 fi
 
 echo "==> Config instalada. Terceros (ver docs/): agent-browser, venv de tools. Plugins: install-plugins.sh."
+echo "==> CLIs handoff y oraculo (valen en Claude Code, Codex y opencode). Enlázalos a tu PATH:"
+echo "       mkdir -p \"\$HOME/.local/bin\" && ln -sf \"$CLAUDE_HOME/bin/handoff\" \"\$HOME/.local/bin/handoff\" && ln -sf \"$CLAUDE_HOME/bin/oraculo\" \"\$HOME/.local/bin/oraculo\""
 echo "==> Rellena tus claves:  cp $KIT/.env.example \$HOME/.claude/.env  &&  editar"
 echo "==> Capa 2 de secretos (gitleaks pre-commit) es opt-in, por repositorio. Actívala DONDE QUIERAS con:"
 echo "       bash $KIT/install.sh --enable-secrets-layer2   # ejecútalo dentro del repo a proteger"

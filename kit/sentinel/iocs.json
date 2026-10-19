@@ -13,6 +13,7 @@
       "~/.ssh/config",
       "~/.ssh/known_hosts",
       "~/.ssh/authorized_keys",
+      "~/.aws/",
       "~/.aws/credentials",
       "~/.aws/config",
       "~/.gnupg/",
@@ -29,7 +30,7 @@
     "regex_patterns": [
       "(?i)(^|[/\\\\])\\.env(rc|\\.(?!(?:example|template|sample|dist))[a-z].*)?(?=$|[\\s\"'/:,;])",
       "(?i)credentials?\\.json",
-      "(?i)secrets?\\.(json|ya?ml|env|txt)",
+      "(?i)secrets?\\.(json|ya?ml|env|txt|toml|ini|conf|cfg|tfvars)",
       "(?i)api[_-]?keys?\\.(json|txt|env)",
       "(?i)private[_-]?key"
     ],

@@ -132,14 +132,34 @@ END {
 }
 '
 
+# Tope de tamano. Los guards son lineales (256 KB: peor caso medido ~4 s de CPU cada uno, y corren a la
+# vez: con 2 nucleos rozan los 10 s de timeout; con 128 KB, ~2 s), pero un hook que pasa de su timeout
+# NO bloquea: la herramienta se ejecuta. Por encima del tope el guard no se arriesga a quedarse sin
+# tiempo y pide confirmacion, que es fallar CERRADO.
+CMDN_MAX_BYTES=131072
+
+# cmdn_oversize "$COMMAND": si pasa del tope imprime la decision `ask` y devuelve 0; si no, devuelve 1.
+cmdn_oversize() {
+  local LC_ALL=C
+  (( ${#1} > CMDN_MAX_BYTES )) || return 1
+  jq -n --arg r "Confirm: el comando pesa $(( ${#1} / 1024 )) KB (tope $(( CMDN_MAX_BYTES / 1024 )) KB): los guards no pueden analizarlo dentro de su timeout, y un guard que se pasa de tiempo deja ejecutar la herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto." '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "ask",
+      permissionDecisionReason: $r
+    }
+  }'
+}
+
 cmdn_parse() {
   local out rest line
   CMDN_SEGS=(); CMDN_CWD=""
   if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]]; then
     CMDN_TEXT=$1; return 1
   fi
-  CMDN_TEXT=${out%%"$CMDN_RS"*}
-  rest=${out#*"$CMDN_RS"}
+  # `${out%%…*}` y `${out#*…}` prueban cada longitud de prefijo: cuadráticos (64 KB ≈ 1,5 s de CPU,
+  # el timeout del hook corre en abierto). `read` parte en el primer separador en una pasada.
+  IFS=$CMDN_RS read -r -d '' CMDN_TEXT rest <<<"$out"
   while IFS= read -r line; do
     [[ -n $line ]] && CMDN_SEGS+=("$line")
   done <<<"$rest"

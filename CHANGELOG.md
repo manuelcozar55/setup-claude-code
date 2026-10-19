@@ -9,6 +9,15 @@ etiquetado.
 
 ### Added
 
+- **Estado v3: núcleo y CLI.** `nucleo_raiz` ya no toma por proyecto un directorio sin git, `$HOME` ni `~/.claude`: imprime `$HOME` y sale con rc 1. `NUCLEO_TOPE` (6500) vive solo en `lib/nucleo.sh`. Una tarea = una sesión dueña (`.claude/estado/.dueno`, TTL 4 h, `NUCLEO_DUENO_TTL`): SessionStart la reclama o avisa a la ajena, y el nudge de contexto calla a quien no es dueña y al 70 % remite a `handoff`. La emisión sigue el orden D5, omite los `[x]` del Plan y deja `recortes.log`. Plantilla `nucleo.md` en orden D5, sin cifras, con correcciones fechadas, rangos de ficheros y `→ rc=N`.
+- **Nuevos CLIs `bin/oraculo` y `bin/handoff`** (bash + jq; `install.sh` los copia a `$CLAUDE_HOME/bin/` y imprime el enlace a `~/.local/bin`). `oraculo -- <cmd>` corre con `pipefail`, imprime las últimas 40 líneas y `rc=N`, y anota en `verificaciones.log`. `handoff --desde` valida el borrador contra la plantilla, conserva Objetivo, une las Invariantes por líneas, mueve los `[x]` a `diario.md` con comando y hash, pliega el rc, rota 3 copias y recorta al tope omitiendo secciones enteras; `--solo`, `--commit`, `--migrar`, `--estado`. Exit 0/2/3/4.
+- **cockpit 0.5.0**: `/handoff` y el handoff automático delegan la fusión en `~/.claude/bin/handoff --desde` (el fork solo redacta el borrador, con los campos de la decisión 13; borrador en fichero temporal 600). Exit 2/3/4 con mensajes claros y un reintento en el 4; sin binario, aviso con la orden de instalación y sin fusión de reserva. Fuera `mergeNucleo`, `keepCopies`, `excludeState` y la tabla de alias. Raíz según la decisión 6 (`$HOME`, `$HOME/.claude/**` y fuera de git no son proyecto). El dock muestra dueño y % del tope leyendo `handoff --estado`. Tests: 89 (antes 82); `test_mod_cockpit.sh` comprueba que no quedan funciones de fusión en TS.
+- La plantilla pública `CLAUDE.md` cita `oraculo -- <cmd>` (rc real), el cambio mínimo por parche y `handoff` como parada de fin de fase al 70 %; `deep-change` aclara que una rama nunca aísla configuración viva y que cada `[x]` cerrado va a diario con su comando y hash. `test_claude_md_template.sh` fija cada frase.
+- Nuevo `bash-write-guard.sh` (PreToolUse Bash, timeout 5): deniega secretos en heredoc, `>`, `>>`, `tee` y `sed -i`; salida en bash puro si el comando no escribe; 64 KB < 1 s.
+- Lista única de patrones de secreto en `hooks/lib/secret-patterns` (TSV), compartida con `write-guard.py` (que falla cerrado sin ella); test de paridad Python re / grep -E.
+- `block-dangerous-commands.sh`: ask para `gh pr|issue close|merge` y `sudo apt|apt-get|dnf|pip`; `--no-verify` sigue en deny.
+- Sentinel: `~/.aws/` protegido como directorio; `secrets.token_hex` pasa (fijado). El falso positivo de lectura de config no se reprodujo: sin cambio de lógica.
+- Nuevo `scripts/guards-cpu.sh` (p50/p95 de CPU de la cadena Bash): antes p95 205 ms, después 222 ms (p50 176 -> 163).
 - **Corpus adversario de E5 como suite: `test_guards_corpus.sh`.** El corpus de la campaña
   E5 (`fixtures/guards-corpus.tsv`, una columna de esperado y otra del guard que respondió) tiene
   715 filas; 119 se ejecutan contra los cuatro guards bash en un repo temporal en rama de feature
@@ -245,6 +254,7 @@ etiquetado.
 
 ### Removed
 
+- Eliminado `smart_approve.py` (fallaba abierto sin settings.json); filas del corpus reatribuidas; `STUB_BLOCK_CASES` sigue en 28; deny del kit intactos.
 - **Headroom se retira del kit.** Medido sobre 12 322 peticiones reales: ahorro propio
   0,2-0,6 % del coste, latencia añadida p50 40 ms, y el 89 % del «ahorro» que enseñaba su
   medidor era la búsqueda nativa de herramientas de Claude Code. Salen `install.sh
@@ -266,6 +276,17 @@ etiquetado.
 
 ### Fixed
 
+- `handoff`: una sección vacía del borrador (sin cuerpo o solo comentarios) conserva la del nucleo; para vaciarla, `- (nada)`. Antes borraba el Plan y sus `[x]`.
+- `handoff`: al recortar al tope se omiten primero las secciones ajenas a la plantilla; el nucleo escrito ya no supera `NUCLEO_TOPE` por una sección extra y el aviso nombra lo realmente omitido.
+- `handoff --commit` funciona tras una ejecución sin `--commit` (`git add -f` solo de nucleo, diario, .gitignore y archivo/) y libera el dueño aunque falle el commit.
+- `oraculo` solo anota en `verificaciones.log` si `.claude/estado/` ya existe: no ensucia repos ajenos.
+- SessionStart: con `source=clear` la sesión nueva reclama el dueño anterior y lo nombra en una línea informativa.
+- Seguridad: `nucleo_enlazado` rechaza cualquier enlace simbólico directo dentro de `.claude/estado/` (diario.md, verificaciones.log, .gitignore, archivo); `handoff` (también `--migrar`) sale 3 sin escribir y `oraculo` ejecuta pero no anota.
+- Tests: `shellcheck -x` limpio en `test_nucleo_hooks.sh`.
+- `bash-write-guard.sh`: `sed ... -i` / `--in-place` detrás de un script con `;`, `|` o `&` (también entre comillas) vuelve a escanearse; antes pasaba con una clave dentro.
+- Sentinel: `.aws/credentials` y `.aws/config` se deniegan también en ruta relativa (`cd ~ && cat .aws/credentials`) y con el nombre entrecomillado (`~/".aws"/credentials`).
+- Sentinel: el ioc `secrets.*` cubre además `toml`, `ini`, `conf`, `cfg` y `tfvars` (`secrets.token_hex` de Python sigue permitido).
+- `lib/secret-patterns`: añade `BEGIN ENCRYPTED PRIVATE KEY` y los tokens de GitHub `ghs_` y `ghu_`.
 - **`branch-guard.sh`: las redirecciones no cuentan como operandos del push (E7.3 CR-2).** `git push origin 2>&1`, `... 2>&1 | tail -3` y `git push -u origin >/dev/null` con main activa daban rc 0, porque `2>&1` pasaba a ser el destino. Se descartan los operandos `^[0-9]*[<>]` y `^&>`. Límite: una redirección con espacio (`> fichero`) deja el nombre del fichero como operando.
 - **`branch-guard.sh`: con `--repo`/`--repo=` todos los posicionales son refspecs (E7.3 CR-3).** El guard tomaba el primero por remoto, así que `git push --repo=origin main` desde una feature pasaba (3576d87 lo bloqueaba).
 
@@ -547,6 +568,18 @@ Subsección: Fixed (cockpit 0.4.1)
 
 ### Security
 
+- Los guards de Bash ya no fallan en abierto por el tamano del comando. Un comando de 64 KB en una
+  linea costaba 9-15 s de CPU en Sentinel y 2-4 s en cada guard, y un hook que pasa de su timeout (10 s)
+  no bloquea: la herramienta se ejecuta. Causas: `${x#*sep}` en `cmdnorm.sh` (cuadratico), los `grep`
+  de `block-dangerous-commands.sh` en UTF-8 (ahora `LC_ALL=C`, 64 KB de segmentos: 13 s a 0,4 s) y
+  `(?i).*_TOKEN$` buscada en una palabra larga en Sentinel. Ahora todos son lineales (256 KB: 0,3-0,6 s
+  en una linea, ~4 s en el peor caso de 128 000 segmentos).
+- Por encima de 128 KB (con 256 KB el peor caso, ~4 s de CPU por guard y los seis a la vez, rozaba el
+  timeout en una máquina de 2 núcleos), block-dangerous, branch-guard, destructive-guard, secret-guard y Sentinel piden
+  confirmacion (`ask`) y sugieren la herramienta Write para contenidos grandes, en vez de arriesgar el
+  timeout.
+- `scripts/guards-cpu.sh` mide muestras grandes hook a hook y falla si alguno pasa de 1000 ms: con ~20
+  muestras el p95 las escondia (antes: p95 181 ms con max 15 886 ms).
 - **`branch-guard.sh` vuelve a ver el push que va dentro de `bash -c`, `sh -c`, `eval`, `ssh host`, `xargs` y `find -exec` (E7.3 CR-1).** El guard de la normalización (PR2) solo inspeccionaba segmentos cuyo ejecutable era `git`, y el guard de texto de 3576d87 bloqueaba esas grafias (rc 2): regresión, rc 0 con la rama protegida como destino. Ahora, si el ejecutable no es `git` pero el segmento nombra `git`, la cadena interior se vuelve a normalizar y se analiza con la misma lógica (hasta 3 niveles); `echo`, `printf`, `grep` y similares quedan fuera para que la prosa con un push dentro no dé falsos positivos. Latencia: 24 ms por invocación (25 antes; presupuesto 150). Límite: la cadena construida con variables sigue fuera de alcance.
 - **`branch-guard.sh` bloquea `--all`, `--branches` y `--mirror` (E7.3 CR-8).** Empujan todas las ramas, las protegidas incluidas, y se trataban como opciones sin destino. Límite declarado en `docs/05-security.md`: con `push.default=upstream` y un upstream de nombre distinto al de la rama local, el `git push` a secas no se resuelve (el guard no lee la configuración de git).
 - **`destructive-guard.sh`: un `..` tras el directorio seguro ya no exime el `rm -rf` (E7.3 CR-4).** `rm -rf ~/dist/../Documents` y `rm -rf ~/node_modules/../<claves>` salían con rc 0 porque la exención miraba `/dir/` como subcadena. Se cierra en el check 5 y en el check 1 (texto, anterior a E7: mismo agujero, arreglo local de una condición). `rm -rf dist/..` pasa a ser sensible. `rm -rf ../node_modules` sigue permitido (el `..` va antes, no después).

@@ -2,8 +2,8 @@
 # shellcheck disable=SC2015  # «cond && pass=$((pass+1)) || { fail=...; }»: la rama del medio
 # es una asignacion y nunca falla, asi que aqui si es un if abreviado. El CI corre shellcheck
 # -x sin -S y un aviso info basta para ponerlo rojo.
-# test_guards.sh — regresión de la cadena PreToolUse (Sentinel, smart_approve,
-# secret-guard). Corre contra los ficheros del propio kit, no contra una
+# test_guards.sh — regresión de la cadena PreToolUse (Sentinel, los guards de Bash, write-guard
+# y bash-write-guard). Corre contra los ficheros del propio kit, no contra una
 # instalación.
 #
 # SECRET_GUARD_BIN es sobreescribible a propósito: kit/test/test_guards_falsifiability.sh
@@ -16,32 +16,25 @@ PY="${PYTHON3:-python3}"
 SG="${SECRET_GUARD_BIN:-$KIT/claude/hooks/secret-guard.sh}"
 pass=0; fail=0
 
-# smart_approve.py decide BLOCK/ALLOW leyendo permissions.deny de
-# $HOME/.claude/settings.json (ver kit/claude/hooks/smart_approve.py). Sin
-# ese fichero (p.ej. un runner de CI con HOME limpio) devuelve ALLOW siempre
-# y los casos BLOCK de mas abajo (rm -rf /, force push) caen en falso -- la
-# suite mediria el HOME de quien la ejecuta, no el repo. Se fabrica un HOME
-# de prueba con las mismas reglas deny que distribuye el kit, para que el
-# resultado sea el mismo en cualquier maquina.
+# HOME de prueba: ningun guard debe medir el HOME de quien ejecuta la suite. El settings.json vacio
+# es solo un fichero que existe (el caso de Write sobre fichero existente de mas abajo).
 GUARDS_TEST_HOME=$(mktemp -d)
 mkdir -p "$GUARDS_TEST_HOME/.claude"
-jq '{permissions: {deny: (.permissions.deny // [])}}' "$KIT/claude/settings.json" \
-  > "$GUARDS_TEST_HOME/.claude/settings.json"
+printf '{}\n' > "$GUARDS_TEST_HOME/.claude/settings.json"
 
 # HOME de prueba tambien aqui: cada deny se apunta en $HOME/.claude/audit-logs/sentinel.jsonl, y con
 # el HOME real la suite inflaba el recuento diario de denegaciones del log de quien la corre.
 run_sentinel() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$GUARDS_TEST_HOME" "$PY" "$KIT/sentinel/sentinel_preflight.py" 2>&1; }
-run_smart()    { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$GUARDS_TEST_HOME" "$PY" "$KIT/claude/hooks/smart_approve.py" 2>&1; }
+run_blockdc() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1; }
 expect() { # $1 desc, $2 salida, $3 BLOCK|ALLOW
   if [ "$3" = BLOCK ]; then echo "$2" | grep -qiE 'deny|blocked' && r=OK || r=FAIL
   else echo "$2" | grep -qiE 'deny|blocked' && r=FAIL || r=OK; fi
   if [ "$r" = OK ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: $1"; fi
 }
-# Calibracion: sentinel_preflight.py no cubre "rm -rf /" (iocs.json dangerous_commands
-# no tiene patron rm-rf; eso lo cubren permissions.deny via smart_approve, y los 2
-# hooks a retirar). Se testea via run_smart, coherente con el criterio de exito que
-# empareja "rm -rf / y force-push" bajo smart_approve tras la reduccion de cadena.
-expect "rm -rf raiz bloqueado"        "$(run_smart 'rm -rf /')"                             BLOCK
+# Calibracion: sentinel_preflight.py no cubre "rm -rf /" (iocs.json dangerous_commands no tiene
+# patron rm-rf); lo deniega block-dangerous-commands.sh, y permissions.deny lo repite en la capa
+# de permisos. Se testea contra el guard, que es lo que este kit ejecuta.
+expect "rm -rf raiz bloqueado"        "$(run_blockdc 'rm -rf /')"                             BLOCK
 expect "localhost permitido"           "$(run_sentinel 'curl http://127.0.0.1:8787/health')" ALLOW
 expect "comando normal permitido"      "$(run_sentinel 'ls -la /tmp/proyectos')"             ALLOW
 
@@ -118,6 +111,31 @@ expect "node -e con o.key permitido"             "$(run_sentinel 'node -e "conso
 expect "a.key.json permitido"                    "$(run_sentinel 'cat a.key.json')"                        ALLOW
 expect "Read de config.key.ts permitido"         "$(run_sentinel_read /src/config.key.ts)"                 ALLOW
 expect "jq test(.key|.pem) permitido"            "$(run_sentinel "jq -r '.[] | select(.f | test(\"\\\\.key|\\\\.pem\"))' x.json")" ALLOW
+# W2, decision 5. `secrets.token_hex` es el modulo secrets de Python, no un fichero: el ioc de nombre
+# (secrets.json|yaml|env|txt) solo casa un nombre de fichero con extension de datos. Y ~/.aws/ se protege
+# como DIRECTORIO (el sso/cache con tokens vivos no es credentials ni config, y listarlo lo enumera).
+expect "secrets.token_hex de Python permitido"   "$(run_sentinel "python3 -c 'import secrets; print(secrets.token_hex(16))'")" ALLOW
+expect "from secrets import permitido"           "$(run_sentinel "python3 -c 'from secrets import token_urlsafe'")" ALLOW
+expect "secrets.yaml como fichero denegado"      "$(run_sentinel 'cat secrets.yaml')"                      "$IOCS_WANT"
+expect "directorio de AWS en el home denegado"        "$(run_sentinel 'ls ~/.aws/')"                            "$IOCS_WANT"
+expect "sso/cache de AWS en el home denegado"         "$(run_sentinel 'cat ~/.aws/sso/cache/x.json')"           "$IOCS_WANT"
+# R2 SEC-3: .aws/credentials tambien en ruta relativa y con el nombre entrecomillado (como .ssh).
+expect "aws: credentials en ruta relativa denegado"   "$(run_sentinel 'cd ~ && cat .aws/credentials')"        "$IOCS_WANT"
+expect "aws: config en ruta relativa denegado"        "$(run_sentinel 'cd ~ && cat .aws/config')"             "$IOCS_WANT"
+expect "aws: nombre entrecomillado denegado"          "$(run_sentinel 'cat ~/".aws"/credentials')"            "$IOCS_WANT"
+expect "aws: Read relativo de .aws/credentials denegado" "$(run_sentinel_read .aws/credentials)"              "$IOCS_WANT"
+# R2 SEC-4: secrets.* con mas extensiones de datos; `secrets` sin extension y el modulo Python siguen pasando.
+for sx in toml ini conf cfg tfvars; do
+  expect "secrets.$sx como fichero denegado"          "$(run_sentinel "cat secrets.$sx")"                     "$IOCS_WANT"
+done
+expect "secrets sin extension permitido"              "$(run_sentinel 'ls secrets')"                          ALLOW
+# Lectura de la config del propio harness: Sentinel no la deniega (el falso positivo no se reprodujo en
+# el kit ni en el Sentinel vivo; la proteccion de ESCRIBIR esos ficheros es de permissions.deny y de los
+# guards de Bash). Se fija aqui para que una clasificacion de verbos futura no la rompa.
+expect "cat de settings.json permitido"          "$(run_sentinel 'cat ~/.claude/settings.json')"           ALLOW
+expect "sed -n de settings.json permitido"       "$(run_sentinel 'sed -n 1,20p ~/.claude/settings.json')"  ALLOW
+expect "jq de settings.json permitido"           "$(run_sentinel 'jq .permissions ~/.claude/settings.json')" ALLOW
+expect "grep de /etc/claude-code permitido"      "$(run_sentinel 'grep -n deny /etc/claude-code/managed-settings.json')" ALLOW
 expect "jq division .a/.key permitida"           "$(run_sentinel "jq '.a/.key' f.json")"                   ALLOW
 # Ronda 1 de la revision. Llaves: bash no expande entre comillas, y la expansion tiene tope; pasado el
 # tope en texto sin comillas se deniega (antes, un JSON entre comillas colgaba el hook y mas de 8 llaves
@@ -463,21 +481,20 @@ sys.exit(0 if ok else 1)' "$KIT/sentinel" 2>&1) && pass=$((pass+1)) \
   || { fail=$((fail+1)); echo "FAIL: _BARE_SHELL no declara exactamente los prefijos de _PREFIXES con True/False/tupla${bare_err:+: $bare_err}"; }
 # En codigo, un tramo con forma de ruta (/, ./, ../, ~/) se mira entero.
 expect "clave: dir.p12 en ruta de codigo"        "$(run_sentinel "node -e 'fs.readdirSync(/etc/ssl/dir.p12/x)'")" "$IOCS_WANT"
-expect "force push directo denegado"   "$(run_smart 'git push --force origin main')"         BLOCK
-expect "force push compuesto denegado" "$(run_smart 'echo ok && git push -f origin main')"   BLOCK
-expect "comando normal en smart"       "$(run_smart 'git status')"                           ALLOW
+expect "force push directo denegado"   "$(run_blockdc 'git push --force origin main')"         BLOCK
+expect "force push compuesto denegado" "$(run_blockdc 'echo ok && git push -f origin main')"   BLOCK
+expect "comando normal en el guard"       "$(run_blockdc 'git status')"                           ALLOW
 
 # Flags cortos AGRUPADOS. `git push -uf origin main` fuerza igual que `--force`, pero no
 # contiene "-f" como token suelto: la regex del guard ('-f\b') y los globs deny lo dejaban
 # pasar los dos. El agujero estaba justo en la proteccion que el kit anuncia como dura, y
 # ninguno de los dos casos de arriba lo tocaba. Se cubren las dos capas por separado
 # porque fallaban por separado.
-run_blockdc() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1; }
 expect "guard: -uf agrupado denegado"     "$(run_blockdc 'git push -uf origin main')"        BLOCK
 expect "guard: -fu agrupado denegado"     "$(run_blockdc 'git push -fu origin main')"        BLOCK
 expect "guard: --follow-tags NO denegado" "$(run_blockdc 'git push --follow-tags origin v1')" ALLOW
-expect "deny-list: -uf agrupado denegado" "$(run_smart 'git push -uf origin main')"          BLOCK
-expect "deny-list: -fu agrupado denegado" "$(run_smart 'git push -fu origin main')"          BLOCK
+expect "deny-list: -uf agrupado denegado" "$(run_blockdc 'git push -uf origin main')"          BLOCK
+expect "deny-list: -fu agrupado denegado" "$(run_blockdc 'git push -fu origin main')"          BLOCK
 
 # Huecos de force-push medidos: estos cinco comandos pasaban los CINCO guards. La causa
 # no era la lista de patrones sino su ancla: block-dangerous-commands.sh exigia
@@ -668,18 +685,16 @@ else
   fail=$((fail+1)); echo "FAIL: guard: npm publish debe seguir pidiendo confirmacion (ask)"
 fi
 
-# Hallazgo de seguridad documentado (no un bug de esta suite): smart_approve.py
-# falla ABIERTO si $HOME/.claude/settings.json no existe o no tiene
-# permissions.deny -- sin ese fichero, deny_rules queda vacio y todo se
-# permite, incluido 'rm -rf /'. Ocurre en una instalacion a medias (kit
-# instalado pero settings.json aun no colocado) o si el fichero se borra o
-# corrompe. Se fija aqui en vez de esconderlo: este test se ROMPE (deja de
-# dar ALLOW) el dia que alguien cierre ese fallo-abierto, y es la senal de
-# que hay que venir a actualizarlo, no relajarlo antes de tiempo.
+# smart_approve.py se eliminó (decisión 3 del plan v3): descomponía los compuestos contra
+# permissions.deny y fallaba ABIERTO sin settings.json (un runner con HOME limpio permitía
+# rm -rf /). Los guards de Bash miran el comando entero con sus propias reglas, no leen
+# settings.json, y ese hueco de arranque ya no existe: con un HOME sin settings el guard
+# sigue denegando, y un compuesto con un force push sigue en BLOCK (casos de arriba).
 NO_SETTINGS_HOME=$(mktemp -d)
-run_smart_no_settings() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | HOME="$NO_SETTINGS_HOME" "$PY" "$KIT/claude/hooks/smart_approve.py" 2>&1; }
-expect "smart_approve.py sin settings.json falla ABIERTO (permite rm -rf /; ver comentario)" \
-  "$(run_smart_no_settings 'rm -rf /')" ALLOW
+expect "sin settings.json el guard sigue denegando (rm -rf /, sin fallo abierto)" \
+  "$(printf '{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}' | HOME="$NO_SETTINGS_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1)" BLOCK
+expect "sin settings.json un compuesto con force push sigue en BLOCK" \
+  "$(printf '{"tool_name":"Bash","tool_input":{"command":"echo ok && git push -f origin main"}}' | HOME="$NO_SETTINGS_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1)" BLOCK
 rm -rf "$NO_SETTINGS_HOME"
 
 # --- secret-guard.sh: guard simple por NOMBRE (Capa 1). El escaneo de
@@ -1060,6 +1075,24 @@ bdc "git commit -nm"          "git commit -nm x"                 deny
 bdc "--no-verify en mensaje"  "git commit -m \"skip --no-verify docs\""  allow
 bdc "-n en mensaje"           "git commit -m \"add -nightly build\""     allow
 bdc "git commit --no-edit"    "git commit --amend --no-edit"     allow
+# W2, decision 1: operaciones sobre issues/PRs y paquetes de sistema piden confirmacion (ask), y
+# --no-verify NO pasa a ask: sigue en deny (arriba y aqui, para que un cambio de nivel lo rompa).
+bdc "gh pr close"             "gh pr close 12"                   ask
+bdc "gh pr merge"             "gh pr merge 12 --squash"          ask
+bdc "gh issue close"          "gh issue close 7 -c hecho"        ask
+bdc "gh -R pr merge"          "gh -R org/repo pr merge 3"        ask
+bdc "gh pr view"              "gh pr view 12"                    allow
+bdc "gh pr list"              "gh pr list --state closed"        allow
+bdc "gh issue view"           "gh issue view 7 --json state"     allow
+bdc "gh pr create"            "gh pr create --title merge"       allow
+bdc "sudo apt"                "sudo apt install jq"              ask
+bdc "sudo apt-get"            "sudo apt-get update"              ask
+bdc "sudo dnf"                "sudo dnf install jq"              ask
+bdc "sudo pip"                "sudo pip install requests"        ask
+bdc "sudo -E apt"             "sudo -E apt install jq"           ask
+bdc "apt sin sudo"            "apt list --installed"             allow
+bdc "sudo ls"                 "sudo ls /root"                    allow
+bdc "--no-verify sigue en deny" "git commit --no-verify -m x"    deny
 # E7 PR2, hallazgo 6: la continuacion `\`+salto de linea partia el pipe-a-shell en dos lineas y esquivaba la regla.
 NL=$'\n'; BS=$'\\'
 bdc "continuacion antes del pipe"      "curl $U $BS${NL}$P $B"            deny
@@ -1120,6 +1153,9 @@ wg_expect "sk-svcacct- en Write"       BLOCK Write /tmp/x.py "KEY = $(wg_k sk-sv
 wg_expect "sk-proj- en Edit"           BLOCK Edit /tmp/x.py "$(wg_k sk-proj-)"
 wg_expect "sk-proj- en MultiEdit"      BLOCK MultiEdit /tmp/x.py "$(wg_k sk-proj-)"
 wg_expect "sk-proj- en NotebookEdit"   BLOCK NotebookEdit /tmp/x.ipynb "$(wg_k sk-proj-)"
+wg_expect "R2: ghs_ en Write"          BLOCK Write /tmp/x.py "T = $(printf 'gh''s_%s' abcdefghijklmnopqrstuvwxyz0123456789)"
+wg_expect "R2: ghu_ en Write"          BLOCK Write /tmp/x.py "T = $(printf 'gh''u_%s' abcdefghijklmnopqrstuvwxyz0123456789)"
+wg_expect "R2: PEM cifrada en Write"   BLOCK Write /tmp/k.pem "-----BEGIN ENCRYPTED PRIV""ATE KEY-----"
 wg_expect "MultiEdit sin secretos"     ALLOW MultiEdit /tmp/x.py "texto normal"
 wg_expect "NotebookEdit sin secretos"  ALLOW NotebookEdit /tmp/x.ipynb "print(1)"
 wg_expect ".env.example con clave real" BLOCK Write /tmp/.env.example "OPENAI_API_KEY=$(wg_k sk-proj-)"
@@ -1134,6 +1170,181 @@ wg_err=$(printf 'no es json' | "$PY" "$KIT/claude/hooks/write-guard.py" 2>&1 >/d
 if [ "$wg_rc" -eq 2 ] && [ -n "$wg_err" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: write-guard JSON invalido: rc=$wg_rc (esperado 2 con stderr)"; fi
 wg_err=$(printf '{"tool_name":"Write","tool_input":{"content":7,"file_path":"/tmp/x"}}' | "$PY" "$KIT/claude/hooks/write-guard.py" 2>&1 >/dev/null); wg_rc=$?
 if [ "$wg_rc" -eq 2 ] && [ -n "$wg_err" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: write-guard excepcion interna: rc=$wg_rc (esperado 2 con stderr)"; fi
+
+# 17) Lista unica de patrones de secreto (W2, decision 7): write-guard.py y bash-write-guard.sh la leen
+# de lib/secret-patterns (TSV etiqueta, accion, ERE). Es un subconjunto ERE a proposito: lo que Python
+# `re` y `grep -E` interpretan igual. Los (?i) y el lookahead (Twilio, asignacion generica) no caben en
+# ERE y se quedan en write-guard.py, declarados alli. Esta paridad es lo que impide que las dos copias
+# diverjan sin que nadie lo vea: cada muestra tiene que dar el MISMO conjunto de etiquetas en los dos.
+SP="$KIT/claude/hooks/lib/secret-patterns"
+sp_samples=$(mktemp)
+{
+  wg_k sk-ant-; echo; wg_k sk-; echo; wg_k sk-proj-; echo; wg_k sk-svcacct-; echo
+  printf 'sk_li''ve_%s\n' abcdefghijklmnopqrstuvwx
+  printf 'sk_te''st_%s\n' abcdefghijklmnopqrstuvwx
+  echo "$wg_aws"
+  printf 'AI''za%s\n' abcdefghijklmnopqrstuvwxyz0123456789A
+  printf 'gh''p_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  printf 'gh''o_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  printf 'gh''s_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  printf 'gh''u_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  echo "-----BEGIN ENCRYPTED PRIV""ATE KEY-----"
+  printf 'github_''pat_%s\n' "$(printf 'a%.0s' $(seq 1 82))"
+  printf 'xox''b-123-abcDEF-ghi\n'
+  printf 'xox''p-123-abcDEF-ghi\n'
+  echo "$wg_pem"; echo "-----BEGIN RSA PRIV""ATE KEY-----"
+  printf 'np''m_%s\n' abcdefghijklmnopqrstuvwxyz0123456789
+  printf 'S''G.%s.%s\n' abcdefghijklmnopqrstuv abcdefghijklmnopqrstuvwxyz0123456789abcdefg
+  printf 'da''pi%s\n' abcdefghijklmnopqrstuvwxyz012345
+  printf 'DefaultEndpointsProtocol=https;''AccountName=x\n'
+  printf 'ey''Jhbgcioijiuzi1.ey''Jzdwiioixmjm0.sflkxwrjsmeka4wo\n'
+  echo 'sk-corto'; echo 'texto normal con sk y AKIA sueltos'; echo 'secrets.token_hex(16)'
+} > "$sp_samples"
+sp_py=$("$PY" - "$SP" "$sp_samples" <<'PYSP'
+import re, sys
+try:
+    rows = [l.rstrip("\n").split("\t") for l in open(sys.argv[1]) if l.strip() and not l.startswith("#")]
+except OSError:
+    rows = []
+for i, line in enumerate(open(sys.argv[2]).read().splitlines()):
+    for label, action, ere in rows:
+        if re.search(ere, line):
+            print(i, label)
+PYSP
+)
+sp_grep=""
+if [ -f "$SP" ]; then
+  while IFS=$'\t' read -r sp_label sp_action sp_ere; do
+    case $sp_label in ''|'#'*) continue ;; esac
+    sp_i=0
+    while IFS= read -r sp_line; do
+      printf '%s' "$sp_line" | grep -qE -e "$sp_ere" && sp_grep+="$sp_i $sp_label"$'\n'
+      sp_i=$((sp_i+1))
+    done < "$sp_samples"
+  done < "$SP"
+fi
+sp_n=$(printf '%s' "$sp_py" | grep -c .)
+if [ -f "$SP" ] && [ "$sp_n" -ge 20 ] && [ "$(printf '%s\n' "$sp_py" | sort)" = "$(printf '%s' "$sp_grep" | sort)" ]; then
+  pass=$((pass+1))
+else
+  fail=$((fail+1)); echo "FAIL: secret-patterns: paridad Python re / grep -E ($sp_n coincidencias; falta el fichero o divergen)"
+fi
+rm -f "$sp_samples"
+# Un patron que grep -E no compila lo convertiria en un no-op silencioso en el guard de bash.
+sp_bad=0
+if [ -f "$SP" ]; then
+  while IFS=$'\t' read -r sp_label sp_action sp_ere; do
+    case $sp_label in ''|'#'*) continue ;; esac
+    case $sp_action in block|advise) ;; *) sp_bad=1 ;; esac
+    printf 'x' | grep -qE -e "$sp_ere"; [ $? -ge 2 ] && sp_bad=1
+  done < "$SP"
+fi
+if [ -f "$SP" ] && [ "$sp_bad" -eq 0 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: secret-patterns: accion invalida o ERE que grep no compila"; fi
+# write-guard.py carga la lista; sin ella falla cerrado en vez de dejar pasar escrituras sin escanear.
+WG_ALONE=$(mktemp -d); cp "$KIT/claude/hooks/write-guard.py" "$WG_ALONE/"
+wg_err=$(wg_json Write /tmp/x.py "texto normal" | "$PY" "$WG_ALONE/write-guard.py" 2>&1 >/dev/null); wg_rc=$?
+if [ "$wg_rc" -eq 2 ] && [ -n "$wg_err" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: write-guard sin lib/secret-patterns: rc=$wg_rc (esperado 2 con stderr)"; fi
+rm -r -- "$WG_ALONE"
+
+# 18) bash-write-guard.sh (W2): lo que write-guard.py hace con Write/Edit, para el contenido que Bash
+# escribe con heredoc, `>`, `>>`, `tee` y `sed -i` (Edit(...) y write-guard no frenan a Bash). Usa la
+# misma lista (lib/secret-patterns). Solo las filas `block`: el aviso del JWT lo da write-guard.py.
+BWG="$KIT/claude/hooks/bash-write-guard.sh"
+run_bwg() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$GUARDS_TEST_HOME" bash "$BWG" 2>&1; }
+bwg_key=$(wg_k sk-ant-)
+expect "bash-write: heredoc con secreto denegado"      "$(run_bwg "cat > cfg.py <<'EOF'
+KEY = \"$bwg_key\"
+EOF")" BLOCK
+expect "bash-write: heredoc sin secreto permitido"     "$(run_bwg "cat > cfg.py <<'EOF'
+KEY = os.environ['KEY']
+EOF")" ALLOW
+expect "bash-write: > con secreto denegado"            "$(run_bwg "echo $bwg_key > .tokens")" BLOCK
+expect "bash-write: >> con secreto denegado"           "$(run_bwg "echo \"$wg_aws\" >> notas.txt")" BLOCK
+expect "bash-write: tee con secreto denegado"          "$(run_bwg "echo $bwg_key | tee out.txt")" BLOCK
+expect "bash-write: sed -i con secreto denegado"       "$(run_bwg "sed -i 's/X/$bwg_key/' cfg.py")" BLOCK
+expect "bash-write: PEM en heredoc denegado"           "$(run_bwg "cat > k <<EOF
+$wg_pem
+EOF")" BLOCK
+expect "bash-write: > sin secreto permitido"           "$(run_bwg 'echo hola > notas.txt')" ALLOW
+expect "bash-write: sed -i sin secreto permitido"      "$(run_bwg "sed -i 's/a/b/' notas.txt")" ALLOW
+# R2 SEC-2: `-i` detras de un script con ; | & (tambien entre comillas) tambien escribe.
+expect "bash-write: sed -E con | y -i detras denegado"  "$(run_bwg "sed -E 's/(a|b)/$bwg_key/' -i f")" BLOCK
+expect "bash-write: sed con ; y -i detras denegado"     "$(run_bwg "sed 's/a/$bwg_key/;s/b/c/' -i f")" BLOCK
+expect "bash-write: sed con & y -i detras denegado"     "$(run_bwg "sed 's&a&$bwg_key&' -i f")" BLOCK
+expect "bash-write: sed -n sin -i con clave permitido"  "$(run_bwg "sed -n 's/(a|b)/$bwg_key/p' f")" ALLOW
+expect "bash-write: sed -i detras sin clave permitido"  "$(run_bwg "sed -E 's/(a|b)/x/' -i f")" ALLOW
+expect "bash-write: leer con secreto en el literal permitido" "$(run_bwg "grep -rn $bwg_key src/")" ALLOW
+expect "bash-write: JWT (aviso, no bloqueo) permitido" "$(run_bwg "echo ey""Jhbgcioijiuzi1.ey""Jzdwiioixmjm0.sflkxwrjsmeka4wo > t.txt")" ALLOW
+# Salida rapida en bash puro: sin `>`, `<<`, `tee` ni `sed` no se lanza ni jq. Con el PATH vacio solo
+# el builtin puede contestar; y con una escritura el mismo PATH tiene que fallar CERRADO (sin jq).
+bwg_pay() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1"; }
+bwg_fast=$(bwg_pay 'ls -la src' | PATH=/nonexistent /bin/bash "$BWG" 2>&1); bwg_rc=$?
+if [ "$bwg_rc" -eq 0 ] && [ -z "$bwg_fast" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: bash-write-guard: la salida temprana no es bash puro (rc=$bwg_rc, salida=$bwg_fast)"; fi
+bwg_slow=$(bwg_pay 'echo hola > a.txt' | PATH=/nonexistent /bin/bash "$BWG" 2>&1)
+expect "bash-write: escritura sin jq falla cerrada"  "$bwg_slow" BLOCK
+# Cuerpo de 64 KB: tiene que decidir en menos de 1 s, con y sin secreto al final.
+bwg_body=$(for i in $(seq 1 1000); do echo "linea $i de texto normal con algo de contenido ok"; done | head -c 65536)
+bwg_t0=$(date +%s%N)
+bwg_big=$(run_bwg "cat > big.txt <<'EOF'
+$bwg_body
+EOF")
+bwg_ms=$(( ($(date +%s%N) - bwg_t0) / 1000000 ))
+expect "bash-write: 64 KB sin secreto permitido"     "$bwg_big" ALLOW
+if [ "$bwg_ms" -lt 1000 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: bash-write-guard: 64 KB tardo ${bwg_ms} ms (tope 1000)"; fi
+expect "bash-write: 64 KB con secreto al final denegado" "$(run_bwg "cat > big.txt <<'EOF'
+$bwg_body
+$bwg_key
+EOF")" BLOCK
+# Esta suite fija ademas que el guard esta cableado: con timeout 5 en la cadena de Bash.
+bwg_to=$(jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | endswith("/bash-write-guard.sh")) | .timeout] | join(",")' "$KIT/claude/settings.json")
+if [ "$bwg_to" = 5 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: bash-write-guard no esta en la cadena PreToolUse/Bash del settings con timeout 5 (timeouts: '$bwg_to')"; fi
+
+# Tamano del comando (v3 W5). Claude Code mata el hook al pasar su timeout y la herramienta se
+# ejecuta: un guard lento falla EN ABIERTO, asi que el tamano del comando era una forma de saltarse
+# todos. Un comando de 64 KB en UNA linea costaba 11-15 s en Sentinel (`.*_TOKEN$` buscada en una
+# palabra de 64 KB) y 3-4 s en cada guard (`${x#*sep}` en cmdnorm.sh): ambos cuadraticos. La orden
+# peligrosa va al FINAL, donde un guard que se rinde o se pasa de tiempo la dejaria pasar. Cada
+# guard debe denegar y gastar menos de 1 s de CPU (user+sys).
+big_body=$(head -c 65536 /dev/zero | tr '\0' 'a')
+big_guard() { # $1 etiqueta, $2 cwd, $3 comando peligroso, resto = el guard (argv)
+  local label=$1 cwd=$2 danger=$3 payload out t u s ms
+  shift 3
+  payload=$(jq -nc --arg c "echo $big_body; $danger" '{tool_name:"Bash",tool_input:{command:$c}}')
+  TIMEFORMAT='%3U %3S'
+  t=$({ time { out=$(cd "$cwd" && printf '%s' "$payload" | HOME="$GUARDS_TEST_HOME" CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" "$@" 2>&1); echo "$out" > "$GUARDS_TEST_HOME/big.out"; }; } 2>&1)
+  read -r u s <<<"$t"
+  ms=$(awk -v u="$u" -v s="$s" 'BEGIN { printf "%d", (u + s) * 1000 + 0.5 }')
+  expect "$label: 64 KB en una linea con la orden peligrosa al final denegado" "$(cat "$GUARDS_TEST_HOME/big.out")" BLOCK
+  if [ "$ms" -lt 1000 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: $label: 64 KB gasto ${ms} ms de CPU (tope 1000)"; fi
+}
+printf 'SECRET=1\n' > "$SG_DIR/.env"
+big_guard "block-dangerous"  "$SG_DIR" 'git push --force origin main' bash "$KIT/claude/hooks/block-dangerous-commands.sh"
+big_guard "branch-guard"     "$SG_DIR"   'git push origin main'       bash "$KIT/claude/hooks/branch-guard.sh"
+big_guard "destructive"      "$SG_DIR" 'git reset --hard'            bash "$KIT/claude/hooks/destructive-guard.sh"
+big_guard "secret-guard"     "$SG_DIR" 'git add .env'                bash "$KIT/claude/hooks/secret-guard.sh"
+big_guard "sentinel"         "$SG_DIR" 'cat ~/.ssh/id_rsa'           "$PY" "$KIT/sentinel/sentinel_preflight.py"
+rm -f "$SG_DIR/.env"
+
+# Por encima de 128 KB ningun guard se arriesga: pide confirmacion (ask, no deny ni silencio) y dice
+# que se use Write. El peor caso lineal por debajo del tope son ~2 s de CPU con 10 s de timeout (los
+# guards corren a la vez: con 2 nucleos y tope de 256 KB rozaria el timeout); sin tope, 1 MB lo
+# cruzaria y el guard fallaria en abierto. 140 KB: justo por encima del tope.
+big_over=$(head -c 140000 /dev/zero | tr '\0' 'a')
+big_ask() { # $1 etiqueta, resto = el guard (argv)
+  local label=$1 payload out
+  shift
+  printf 'echo %s; git push --force origin main' "$big_over" > "$GUARDS_TEST_HOME/big.cmd"  # jq --arg no admite >128 KB
+  payload=$(jq -nc --rawfile c "$GUARDS_TEST_HOME/big.cmd" '{tool_name:"Bash",tool_input:{command:$c}}')
+  out=$(cd "$SG_DIR" && printf '%s' "$payload" | HOME="$GUARDS_TEST_HOME" CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" "$@" 2>&1)
+  if [ "$(jq -r '.hookSpecificOutput.permissionDecision' <<<"$out" 2>/dev/null)" = ask ] && grep -q 'herramienta Write' <<<"$out"; then
+    pass=$((pass+1))
+  else fail=$((fail+1)); echo "FAIL: $label: 140 KB no pide confirmacion con aviso de Write (salida: ${out:0:200})"; fi
+}
+big_ask "block-dangerous" bash "$KIT/claude/hooks/block-dangerous-commands.sh"
+big_ask "branch-guard"    bash "$KIT/claude/hooks/branch-guard.sh"
+big_ask "destructive"     bash "$KIT/claude/hooks/destructive-guard.sh"
+big_ask "secret-guard"    bash "$KIT/claude/hooks/secret-guard.sh"
+big_ask "sentinel"        "$PY" "$KIT/sentinel/sentinel_preflight.py"
 
 rm -rf "$SG_DIR"
 rm -rf "$GUARDS_TEST_HOME" "$FIELDS_HOME"

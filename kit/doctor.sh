@@ -163,14 +163,14 @@ fi
 # 4. venv de tools (opcional -> WARN)
 if [ -x "$HOME/.venvs/tools/bin/python3" ]; then pass "venv tools presente"; else warn "venv tools ausente (opcional; ver docs/02-install.md)"; fi
 
-# 4b. interprete para los hooks Python (smart_approve, sentinel_preflight).
+# 4b. interprete para los hooks Python (sentinel_preflight, write-guard).
 # No es FAIL: optional-hook.sh los convierte en no-op si no hay interprete, y el
 # resto de la cadena (los guards de bash) sigue protegiendo. Pero conviene
-# saberlo, porque son dos capas menos.
+# saberlo, porque son capas menos.
 if [ -x "$HOME/.venvs/tools/bin/python3" ] || command -v python3 >/dev/null 2>&1; then
   pass "interprete para hooks Python disponible  (fuente: venv o python3 del sistema)"
 else
-  warn "sin python3: smart_approve y el preflight de Sentinel quedan en no-op (los guards de bash siguen activos)"
+  warn "sin python3: el preflight de Sentinel y write-guard quedan en no-op (los guards de bash siguen activos)"
 fi
 
 # 5. Enrutado de la API: si algo enruta a un proxy, ese proxy TIENE que contestar.

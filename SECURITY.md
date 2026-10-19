@@ -57,8 +57,8 @@ Code 2.1.259:
 Y lo que esta capa **no** cubre: una regla `Edit(...)` no frena a `Bash`. Un
 `sed -i`, un `tee`, un `>` o un `cp` sobre el mismo fichero llegan por otra
 herramienta y por otra ruta de decisión, y esa es la mitad que sostienen los
-guards de la Capa 1 y `smart_approve.py`, que descompone los comandos
-compuestos antes de comprobarlos. Las dos mitades hacen falta: con una sola, el
+guards de la Capa 1, que normalizan los comandos compuestos antes de
+comprobarlos, y `bash-write-guard.sh`, que mira lo que Bash escribe. Las dos mitades hacen falta: con una sola, el
 fichero queda protegido por un lado y abierto por el otro. Detalle operativo en
 [`kit/docs/05-security.md`](kit/docs/05-security.md).
 

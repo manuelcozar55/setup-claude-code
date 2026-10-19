@@ -46,6 +46,7 @@ command_allowlisted && exit 0
 # shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" 2>/dev/null \
   || deny "BLOCKED (fail-closed): falta lib/cmdnorm.sh junto al guard; reinstala el kit."
+cmdn_oversize "$COMMAND" && exit 0
 cmdn_parse "$COMMAND" \
   || deny "BLOCKED (fail-closed): awk no pudo normalizar el comando, asi que este guard no puede evaluarlo."
 COMMAND=$CMDN_TEXT
@@ -178,6 +179,12 @@ ASK_RULES=(
   '\bchmod\s+777'                     "Confirm: chmod 0777 sets world-writable permissions"
   '\bssh-keygen\b'                    "Confirm: ssh-keygen — will this overwrite an existing key?"
 
+  # Cerrar o fusionar un issue/PR y tocar paquetes del sistema se confirman: no son irreversibles
+  # como un rm -rf, pero la politica de la casa exige que lo decida una persona. `--no-verify`
+  # NO esta aqui a proposito: sigue en DENY (decision 1 del plan v3).
+  '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*(pr|issue)\s+(close|merge)\b'  "Confirm: gh pr/issue close|merge — closes or merges on the remote"
+  '\bsudo\s+(-[A-Za-z-]+\s+)*(apt|apt-get|dnf|pip3?)\b'          "Confirm: sudo apt/apt-get/dnf/pip — installs or removes system packages"
+
   # ── DATABASE OPERATIONS (ASK — HITL) ───────────────────────────────────────
   '\bDROP\s+DATABASE\b'   "Confirm: DROP DATABASE — irreversible data loss"
   '\bDROP\s+TABLE\b'      "Confirm: DROP TABLE — irreversible data loss"
@@ -199,17 +206,21 @@ ASK_RULES=(
 # entre comillas: en el mensaje (`git commit -m "skip --no-verify docs"`) es texto, no un flag.
 if [[ $COMMAND == *git* ]]; then
   sed -E "s/\"[^\"]*\"|'[^']*'//g" <<<"$COMMAND" \
-    | grep -qiE '\bgit\b[^;&|]*\b(commit|push)\b[^;&|]*--no-verify|\bgit\b[^;&|]*\bcommit\b[^;&|]*\s-[a-z]*n' \
+    | LC_ALL=C grep -qiE '\bgit\b[^;&|]*\b(commit|push)\b[^;&|]*--no-verify|\bgit\b[^;&|]*\bcommit\b[^;&|]*\s-[a-z]*n' \
     && deny "BLOCKED: --no-verify salta los hooks de git; arregla el hook que falla"
 fi
 
+# LC_ALL=C en los grep: con UTF-8 la union de patrones deja de ir por el automata y recorre el
+# comando con retroceso, cuadratico en una linea larga (32 KB = 2,8 s, 64 KB = 13 s de CPU, y el
+# timeout del hook corre en abierto). Los patrones son ASCII; en C solo cambia que un byte no
+# ASCII pegado a una palabra ya no cuenta como letra para \b, que es el lado seguro.
 UNION=''
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do UNION+="|${DENY_RULES[i]}"; done
 for ((i = 0; i < ${#ASK_RULES[@]}; i += 2)); do UNION+="|${ASK_RULES[i]}"; done
 # `|| exit 0` confundia "no ha emparejado" (grep rc=1) con "la regex no compila" (grep rc=2):
 # un solo patron mal formado en la tabla convertia TODO el blocklist en un permiso silencioso,
 # porque el error de grep sale por stderr y con exit 0 no se muestra. Se distinguen los dos.
-echo "$COMMAND" | grep -qiE "${UNION#|}"
+echo "$COMMAND" | LC_ALL=C grep -qiE "${UNION#|}"
 rc_union=$?
 if [ "$rc_union" -ge 2 ]; then
   deny "BLOCKED: el blocklist no compila (grep rc=$rc_union); se deniega por seguridad"
@@ -217,10 +228,10 @@ fi
 [ "$rc_union" -eq 0 ] || exit 0
 
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do
-  echo "$COMMAND" | grep -qiE "${DENY_RULES[i]}" && deny "${DENY_RULES[i + 1]}"
+  echo "$COMMAND" | LC_ALL=C grep -qiE "${DENY_RULES[i]}" && deny "${DENY_RULES[i + 1]}"
 done
 for ((i = 0; i < ${#ASK_RULES[@]}; i += 2)); do
-  echo "$COMMAND" | grep -qiE "${ASK_RULES[i]}" && ask "${ASK_RULES[i + 1]}"
+  echo "$COMMAND" | LC_ALL=C grep -qiE "${ASK_RULES[i]}" && ask "${ASK_RULES[i + 1]}"
 done
 
 exit 0

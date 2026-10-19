@@ -97,9 +97,10 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/args"\nexec "%s" "$@"\n' "$T/gitlo
 jq -cn --arg c "$G" '{cwd:$c,session_id:"s",source:"clear"}' | PATH="$T/stubbin:$PATH" bash "$H" >/dev/null
 ok "git del hook: sin index.lock tras ejecutarlo" "$([ -e "$G/.git/index.lock" ] && echo hay || echo no)" no
 ok "git del hook: log y status llevan --no-optional-locks" "$(command grep -c -- '--no-optional-locks .* \(log\|status\)' "$T/gitlog/args")" 2
-N=$T/nogit; mkdir -p "$N/.claude/estado"; printf '# N\n## Objetivo\nx\n' >"$N/.claude/estado/nucleo.md"
+N=$T/nogit; mkdir -p "$N/.claude/estado"; git -C "$N" init -q  # sin commits: git log falla, y un directorio sin git ya no es proyecto (decisión 6)
+ printf '# N\n## Objetivo\nx\n' >"$N/.claude/estado/nucleo.md"
 C=$(run "$N" | ctx)
-ok "sin git: sin bloque git-hechos y paso 1 antiguo" "$(command grep -c '^<git-hechos' <<<"$C"),$(command grep -cF 'Ejecuta `git log --oneline -5` y `git status`' <<<"$C")" 0,1
+ok "git que falla: sin bloque git-hechos y paso 1 antiguo" "$(command grep -c '^<git-hechos' <<<"$C"),$(command grep -cF 'Ejecuta `git log --oneline -5` y `git status`' <<<"$C")" 0,1
 { echo '## Encargo original'; echo CABEZA; head -c 20000 /dev/zero | tr '\0' 'a'; echo; echo '## Comandos de verificación'; echo COLA; } >"$R/.claude/estado/nucleo.md"
 C=$(run "$R" | ctx)
 ok "recorta a 8 KB" "$([ "${#C}" -le 9500 ] && echo si)" si
@@ -107,5 +108,6 @@ ok "recorte conserva cabeza" "$(command grep -c CABEZA <<<"$C")" 1
 ok "recorte conserva cola" "$(command grep -c COLA <<<"$C")" 1
 ok "recorte declarado" "$(command grep -c 'recortado' <<<"$C")" 1
 ok "source startup también emite" "$(run "$R" startup | jq -r '.hookSpecificOutput.hookEventName')" SessionStart
-ok "stdin roto: exit 0 y nada" "$(cd "$T" && echo "no json" | bash "$H"; echo "rc=$?")" "rc=0"
+mkdir -p "$T/vacio"; git -C "$T/vacio" init -q
+ok "stdin roto: exit 0 y nada" "$(cd "$T/vacio" && echo "no json" | bash "$H"; echo "rc=$?")" "rc=0"
 exit $FAIL

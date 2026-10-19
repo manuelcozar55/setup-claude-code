@@ -29,6 +29,7 @@ fi
 # anterior: solo cuenta lo que el comando nombra.
 # shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit." >&2; exit 2; }
+cmdn_oversize "$COMMAND" && exit 0
 if ! cmdn_parse "$COMMAND"; then
   echo "BLOCKED (fail-closed): awk no pudo normalizar el comando; branch-guard no puede evaluarlo." >&2
   exit 2

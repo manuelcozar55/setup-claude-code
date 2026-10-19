@@ -56,3 +56,13 @@ El relleno pasa a ser informado (cockpit 0.4.2): «adelante con la Siguiente acc
 (`prompt.fill`, no `prompt.submit`: el motivo del 14-oct no cambia) y su prefijo fijo impide que empiece
 por `/` o `!`. Los mensajes de la UI salen del resultado de `prompt.fill`. Además, la plantilla y el
 prompt del fork usan la misma cabecera «Pendientes» y la fusión pliega el alias «Pendientes y riesgos».
+
+## Nota 2026-10-19 (cockpit 0.5.0, plan v3)
+
+El mod deja de fusionar: el fork redacta un borrador con las secciones de la plantilla, se escribe a un
+fichero temporal propio (600, borrado siempre) y se entrega a `$HOME/.claude/bin/handoff --desde`, que valida
+y fusiona. Se retiran de TypeScript `mergeNucleo`, `keepCopies`, `excludeState` y la tabla de alias, y el
+mod no tiene fusión de reserva: sin el binario avisa con la orden de instalación. La raíz sigue la decisión 6
+(`$HOME` y `$HOME/.claude/**` no son proyecto; sin git, tampoco), así que el handoff ya no actúa en `~` ni
+fuera de git, y el dock lee dueño y % del tope de `handoff --estado`. Sigue siendo `prompt.fill`, no
+`prompt.submit` (enmienda E3). Exit 4 del CLI se reintenta una vez.

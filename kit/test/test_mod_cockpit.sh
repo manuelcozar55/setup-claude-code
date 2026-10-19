@@ -24,10 +24,18 @@ check "$(grep -c 'claude-plugin/types' "$MOD/.gitignore")" "1" "tipos generados 
 check "$(find "$MOD" -name node_modules -prune -o -path '*/.claude/*' -print | wc -l | tr -d ' ')" "0" "sin estado privado (.claude/)"
 check "$(leaks "$MOD")" "0" "sin terminos privados en el mod"
 
+# El handoff lo fusiona el CLI (kit/claude/bin/handoff): el mod solo redacta el borrador y lo delega.
+MERGE='mergeNucleo|keepCopies|excludeState|ALIAS'
+merges() { grep -cE "$MERGE" "$1" || true; }
+check "$(merges "$MOD/hooks/register.tsx")" "0" "sin funciones de fusion en TS (las hace el CLI handoff)"
+check "$(grep -c '/\.claude/bin/handoff' "$MOD/hooks/register.tsx")" "1" "el mod delega en \$HOME/.claude/bin/handoff"
+
 # Falsabilidad: un termino privado plantado tiene que dar rojo.
 cp -R "$MOD" "$tmp/mod"
 printf 'x %s\n' "ci""rce" > "$tmp/mod/hooks/planted.txt"
 check "$(leaks "$tmp/mod")" "1" "falsabilidad: termino privado plantado detectado"
+printf 'export function mergeNucleo() {}\n' >> "$tmp/mod/hooks/register.tsx"
+check "$(merges "$tmp/mod/hooks/register.tsx")" "1" "falsabilidad: una funcion de fusion plantada detectada"
 
 if command -v claude >/dev/null 2>&1; then
   set +e; (cd "$MOD" && claude plugin validate . >/dev/null 2>&1); rc=$?; set -e
