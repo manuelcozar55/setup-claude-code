@@ -310,6 +310,21 @@ async function syncAgents($: $) {
   }
 }
 
+// First line of «Siguiente acción» in the saved state: what the person approves when the prompt comes back filled.
+export function nextLine(doc: string) {
+  const sec = sections(doc).list.find(s => s.key.startsWith('siguiente accion'))
+  const line = bodyOf(sec?.text ?? '')
+    .split('\n')
+    .map(l => l.replace(/^\s*(?:[-*]|\d+\.)\s+/, '').replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim())
+    .find(l => l !== '')
+  return line === undefined ? '' : line.length > 200 ? `${line.slice(0, 200)}…` : line
+}
+// The fixed prefix keeps the draft from starting with «/» or «!»: it cannot run a command or switch to bash mode.
+export const fillFor = (doc: string) => {
+  const line = nextLine(doc)
+  return line ? `adelante con la Siguiente acción de .claude/estado/nucleo.md: ${line}` : CONTINUE
+}
+
 // Leave the press/command dispatch before clearing the conversation under it.
 // After a clear that carries a saved state, the prompt box is filled (never submitted) with a
 // line to continue: the SessionStart(clear) hook hands nucleo.md to the new session, and a
@@ -323,13 +338,17 @@ async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefine
         return
       }
       await $.command.run({ command: 'clear' })
-      await update($, handoff, (): Handoff => ({ phase: 'done', msg: path ? `Contexto limpio; la sesión nueva carga ${path}: escribe «sigue»` : 'Contexto limpio' }))
-      if (fill) await $.prompt.fill({ text: fill }).catch(() => undefined)
-    } catch {
+      if (!fill) {
+        await update($, handoff, (): Handoff => ({ phase: 'done', msg: 'Contexto limpio' }))
+        return
+      }
+      const filled = await $.prompt.fill({ text: fill }).catch(() => null)
       await update($, handoff, (): Handoff => ({
-        phase: 'error',
-        msg: path ? `Guardado en ${path}, pero /clear falló: escribe /clear y luego «sigue»` : '/clear falló: escríbelo tú',
+        phase: 'done',
+        msg: filled?.isFilled ? 'Contexto limpio; revisa el prompt y pulsa Enter para seguir' : `Contexto limpio; escribe: ${fill}`,
       }))
+    } catch {
+      await update($, handoff, (): Handoff => ({ phase: 'error', msg: fill ? `/clear falló: escribe /clear y luego ${fill}` : '/clear falló: escríbelo tú' }))
     }
   })
 }
@@ -420,7 +439,7 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
       await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${path}` }))
       return
     }
-    await clearAfter($, path)
+    await clearAfter($, path, fillFor(doc))
   } catch (err) {
     await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}` }))
   }
