@@ -1,6 +1,6 @@
 import { expect, mock, test, type TestBody } from 'claude-code/testing'
 
-import { mergeNucleo, redact } from '../hooks/register'
+import { HANDOFF_PROMPT, mergeNucleo, redact } from '../hooks/register'
 
 const RUN = { args: '', origin: { kind: 'composer' as const }, presentation: { isFullscreen: true, columns: 160 } }
 // Fake secrets assembled at runtime so secret scanners don't flag the test itself.
@@ -500,4 +500,35 @@ test('Objetivo como última línea sin salto: cuenta como vacío, se pide y se r
   await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
   expect(prompt).toContain('Encargo original')
   expect(r.files[`${EST}/nucleo.md`]).toContain('## Objetivo\nhaz X')
+})
+
+// A hooks module cannot read files, so the template (kit/claude/templates/nucleo.md) is copied here.
+const TEMPLATE = '# Estado\n<!-- c -->\n## Objetivo\n<!-- c -->\n## Invariantes\n## Plan\n<!-- c -->\n## Paso actual\n## Siguiente acción\n## Pendientes\n## Comandos de verificación\n## Ficheros tocados\n'
+// ── K1: «Pendientes y riesgos» is an alias of the template's «Pendientes»
+test('fusión: la sección del fork sustituye a la primera Pendientes y borra las repetidas, incluido el alias', () => {
+  const prev = '## Plan\n- p\n## Pendientes\n- viejo\n## Ficheros tocados\n- f\n## Pendientes y riesgos\n- otro\n## Pendientes\n- tercero\n'
+  const doc = mergeNucleo(prev, '## Pendientes\n- nuevo\n')
+  expect(doc).toBe('## Plan\n- p\n## Pendientes\n- nuevo\n## Ficheros tocados\n- f\n')
+})
+
+test('fusión: «Pendientes y riesgos» del fork cae bajo «## Pendientes» en su sitio, sin añadir nada al final', () => {
+  const doc = mergeNucleo(TEMPLATE, '## Pendientes y riesgos\n- r\n')
+  expect(doc).toContain('## Pendientes\n- r\n')
+  expect(doc).not.toContain('y riesgos')
+  expect(doc.match(/^## Pendientes/gm)).toHaveLength(1)
+  expect(doc.indexOf('- r')).toBeLessThan(doc.indexOf('## Comandos de verificación'))
+  expect(doc.indexOf('- r')).toBeGreaterThan(doc.indexOf('## Siguiente acción'))
+})
+
+test('fusión: si el fork no devuelve Pendientes, los duplicados de prev no se tocan', () => {
+  const prev = '## Pendientes\n- a\n## Pendientes y riesgos\n- b\n'
+  expect(mergeNucleo(prev, '## Plan\n- x\n')).toBe(prev + '## Plan\n- x\n')
+})
+
+test('HANDOFF_PROMPT pide las cabeceras de la plantilla y no «Pendientes y riesgos»', () => {
+  expect(HANDOFF_PROMPT).not.toContain('Pendientes y riesgos')
+  const mutable = [...TEMPLATE.matchAll(/^## (.+)$/gm)].map(m => m[1] as string).filter(t => !/^(Objetivo|Invariantes)/.test(t))
+  expect(mutable.length).toBeGreaterThan(3)
+  for (const t of mutable) expect(HANDOFF_PROMPT).toContain(`## ${t}`)
+  expect(HANDOFF_PROMPT).toContain('(persona)')
 })
