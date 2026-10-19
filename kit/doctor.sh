@@ -110,7 +110,7 @@ if [ -n "$ioc_file" ]; then
   esac
 fi
 
-# 2d. statusLine: si settings.json la declara, su comando tiene que resolverse.
+# 2e. statusLine: si settings.json la declara, su comando tiene que resolverse.
 # Claude Code no avisa de nada aqui: medido en 2.1.258, un exit != 0 o un stdout vacio dejan
 # la barra EN BLANCO en silencio y stderr se descarta. Ya paso: una instalacion escribio
 # settings.json entero con cp -p y se llevo la clave statusLine por delante; 15 minutos con
