@@ -56,7 +56,7 @@ Cambias de tarea: `/clear` a secas. Una sesión por tarea.
 
 **Por qué.** Una compactación automática destruye ~88 % del contexto, tarda ~150 s y decide ella qué conservar. Un handoff conserva lo que tú escribiste. La sesión que nunca se cierra es el caso extremo: una permaneció abierta 42 días y acumuló 66 compactaciones.
 
-**Hecho cuando** has hecho el ciclo completo una vez y la sesión nueva empezó con el `git log` y el `git status` que el hook ya calculó (el bloque `<git-hechos>`), sin gastar el primer turno en pedirlos. Si abres `claude` en `~` no hay protocolo: el hook inyecta un `<indice-tareas>` con las tareas que conoce.
+**Hecho cuando** has hecho el ciclo completo una vez y la sesión nueva empezó con el `git log` y el `git status` que el hook ya calculó (el bloque `<git-hechos>`), sin gastar el primer turno en pedirlos. Si abres `claude` en `~` no hay protocolo: el hook inyecta un `<indice-tareas>` con las tareas que conoce, también tras compactar.
 
 ## Día 4 · Los hooks: qué incidente evita cada uno
 
