@@ -1,6 +1,6 @@
 # Estado
-<!-- Solo estas secciones se re-inyectan, en este orden, y la cola es lo que se recorta. Lo cerrado e histórico va a diario.md, que nunca se inyecta; `handoff` lo mueve. Una sección vacía en un borrador conserva la anterior; para vaciarla escribe `- (nada)`. -->
 ## Objetivo
+<!-- Solo estas secciones se re-inyectan, en este orden, y la cola es lo que se recorta. Lo cerrado e histórico va a diario.md, que nunca se inyecta; `handoff` lo mueve. Una sección vacía en un borrador conserva la anterior; para vaciarla escribe `- (nada)`. -->
 <!-- literal de la persona y cómo se acotó; no se reescribe -->
 ## Invariantes
 <!-- lo que no se toca, con su porqué; incluye las correcciones literales de la persona, con fecha: `- Corrección AAAA-MM-DD: «sus palabras»`. `handoff` solo añade líneas, nunca borra. -->
