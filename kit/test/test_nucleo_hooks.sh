@@ -282,4 +282,26 @@ ok "dueño: sin .claude/estado no se crea nada (no ensucia repos ajenos)" "$([ -
 ev "$HOME" sA "" startup | bash "$H/session-start-clear.sh" >/dev/null
 ok "dueño: desde ~ no se reclama nada" "$([ -e "$HOME/.claude/estado/.dueno" ] && echo hay || echo no)" no
 
+# --- v3: oraculo — el rc real (pipefail), últimas 40 líneas y registro en verificaciones.log ---
+BIN=$KIT/claude/bin
+RO=$T/ro; mkdir -p "$RO/sub" "$T/ro-sin-git"; git -C "$RO" init -q
+orc() { (cd "$RO/sub" && bash "$BIN/oraculo" "$@"); }
+OUT=$(orc -- 'false | cat'); RC=$?
+ok "oraculo: pipefail → el rc de false, no el de cat (sale y lo imprime)" "$RC,$(tail -n 1 <<<"$OUT")" "1,rc=1"
+OUT=$(orc -- 'seq 1 100'); RC=$?
+ok "oraculo: solo las últimas 40 líneas y rc=0" "$RC,$(head -n 1 <<<"$OUT"),$(wc -l <<<"$OUT"),$(tail -n 1 <<<"$OUT")" "0,61,41,rc=0"
+ok "oraculo: varias palabras tras -- se ejecutan como argv" "$(orc -- printf '%s\n' 'a b' | head -n 1)" "a b"
+ok "oraculo: el rc del comando es el suyo" "$(orc -- 'exit 7' >/dev/null; echo $?)" 7
+ok "oraculo: stderr entra en la salida" "$(orc -- 'echo ERR-X >&2' | command grep -c ERR-X)" 1
+VL=$RO/.claude/estado/verificaciones.log
+ok "oraculo: proyecto → «ISO<TAB>rc<TAB>cmd» en verificaciones.log (raíz del repo, desde un subdirectorio)" "$(tail -n 1 "$VL" | awk -F'\t' '{ print ($1 ~ /^20[0-9-]+T[0-9:]+Z$/), $2, $3 }')" "1 0 echo ERR-X >&2"
+ok "oraculo: una línea por ejecución" "$(wc -l <"$VL")" 5
+ok "oraculo: --raiz D apunta a otro proyecto" "$(cd "$T/ro-sin-git" && bash "$BIN/oraculo" --raiz "$RO" -- true >/dev/null; tail -n 1 "$VL" | cut -f3)" true
+OUT=$(cd "$T/ro-sin-git" && bash "$BIN/oraculo" -- 'exit 3'); RC=$?
+ok "oraculo: sin proyecto devuelve su rc y no escribe nada" "$RC,$(tail -n 1 <<<"$OUT"),$([ -e "$T/ro-sin-git/.claude" ] || [ -e "$HOME/.claude/estado/verificaciones.log" ] && echo escribio || echo no)" "3,rc=3,no"
+ok "oraculo: sin -- es un uso erróneo (64) y habla español" "$(orc true 2>&1 >/dev/null | head -n 1 | command grep -c '^uso: oraculo'),$(orc true >/dev/null 2>&1; echo $?)" "1,64"
+ok "oraculo: --help sale 0" "$(orc --help 2>&1 | head -n 1 | command grep -c '^uso: oraculo'),$(orc --help >/dev/null 2>&1; echo $?)" "1,0"
+mkdir -p "$T/ro-enl/.claude"; git -C "$T/ro-enl" init -q; ln -s "$T/destino" "$T/ro-enl/.claude/estado"
+ok "oraculo: .claude/estado enlazado → no escribe en el destino" "$(cd "$T/ro-enl" && bash "$BIN/oraculo" -- true >/dev/null; ls -A "$T/destino" | command grep -c verificaciones)" 0
+
 exit $FAIL
