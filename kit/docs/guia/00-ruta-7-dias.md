@@ -42,7 +42,7 @@ En la raíz git de tu proyecto crea `.claude/estado/nucleo.md` con estas seccion
 
 - «Encargo original» son las palabras de quien pidió la tarea, tal cual. «Invariantes», lo que no se toca y por qué. Esas dos no se reescriben nunca.
 - «Siguiente acción» es **una**, concreta y ejecutable.
-- Lo terminado sale del fichero (a un `diario.md` aparte, que nada inyecta). El hook [`session-start-clear.sh`](../../claude/hooks/session-start-clear.sh) lo entrega a cada sesión nueva (y [`session-start-compact.sh`](../../claude/hooks/session-start-compact.sh) tras cada compactación), pero **solo las secciones de la forma fija**: la primera vez que aparece cada una, con un tope por sección y otro total (3 000 y 6 500 bytes, en [`lib/nucleo.sh`](../../claude/hooks/lib/nucleo.sh)). Lo que no tiene esa forma no llega, y una línea lo dice: si el fichero degenera en diario, el modelo recibe el título y el aviso, nada más.
+- Lo terminado sale del fichero (a un `diario.md` aparte, que nada inyecta). El hook [`session-start-clear.sh`](../../claude/hooks/session-start-clear.sh) lo entrega a cada sesión nueva (y [`session-start-compact.sh`](../../claude/hooks/session-start-compact.sh) tras cada compactación), pero **solo las secciones de la forma fija**: la primera vez que aparece cada una, con un tope por sección y otro total (3 000 y 4 300 bytes, más una reserva de 700 para «Paso actual», «Siguiente acción» y «Comandos de verificación», en [`lib/nucleo.sh`](../../claude/hooks/lib/nucleo.sh)). Lo que no tiene esa forma no llega, y una línea lo dice: si el fichero degenera en diario, el modelo recibe el título y el aviso, nada más.
 
 **Por qué.** El 75 % de las compactaciones medidas llegaron con el estado sin tocar en los 20 turnos previos: lo que sobrevivió fue un estado viejo. Y un `nucleo.md` que degeneró en diario llegó a 78 KB con cuatro «TAREA ACTUAL»: se inyectaba troceado y la siguiente acción vigente quedaba en el centro cortado. Lo ves con salidas reales en [`02-sesion-real.md`](02-sesion-real.md).
 
@@ -56,7 +56,7 @@ Cambias de tarea: `/clear` a secas. Una sesión por tarea.
 
 **Por qué.** Una compactación automática destruye ~88 % del contexto, tarda ~150 s y decide ella qué conservar. Un handoff conserva lo que tú escribiste. La sesión que nunca se cierra es el caso extremo: una permaneció abierta 42 días y acumuló 66 compactaciones.
 
-**Hecho cuando** has hecho el ciclo completo una vez y la sesión nueva empezó por `git log --oneline -5` y `git status`, como pide el protocolo que inyecta el hook.
+**Hecho cuando** has hecho el ciclo completo una vez y la sesión nueva empezó con el `git log` y el `git status` que el hook ya calculó (el bloque `<git-hechos>`), sin gastar el primer turno en pedirlos. Si abres `claude` en `~` no hay protocolo: el hook inyecta un `<indice-tareas>` con las tareas que conoce.
 
 ## Día 4 · Los hooks: qué incidente evita cada uno
 

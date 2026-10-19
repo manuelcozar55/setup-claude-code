@@ -53,6 +53,93 @@ nucleo_git_hechos() {
   printf '<git-hechos calculado="%s">\n%s\n</git-hechos>' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$b"
 }
 
+# nucleo_registrar <raíz>: añade la raíz a ${NUCLEO_REGISTRO:-$HOME/.claude/estado/raices} (una por línea) si
+# no está, para que las sesiones abiertas en $HOME listen las tareas sin heredar el nucleo de ninguna. $HOME
+# no se registra. Idempotente y sin romper el hook si no se puede escribir.
+nucleo_registrar() {
+  local reg=${NUCLEO_REGISTRO:-$HOME/.claude/estado/raices}
+  [ "$1" != "$HOME" ] || return 0
+  case $1 in /*) ;; *) return 0 ;; esac
+  case $1 in *[[:cntrl:]]*) return 0 ;; esac
+  command grep -Fxq -- "$1" "$reg" 2>/dev/null && return 0
+  { mkdir -p "$(dirname "$reg")" && printf '%s\n' "$1" >>"$reg"; } 2>/dev/null
+  return 0
+}
+
+# nucleo_mtime <fichero>: mtime en segundos. GNU stat; si no, date -r o find -printf (coreutils ajenos).
+nucleo_mtime() {
+  local m
+  m=$(stat -c %Y "$1" 2>/dev/null)
+  case $m in '' | *[!0-9]*) m=$(date -r "$1" +%s 2>/dev/null) ;; esac
+  case $m in '' | *[!0-9]*) m=$(find "$1" -maxdepth 0 -printf '%T@' 2>/dev/null); m=${m%%.*} ;; esac
+  case $m in '' | *[!0-9]*) m=0 ;; esac
+  printf '%s\n' "$m"
+}
+
+# nucleo_indice: líneas de índice de las tareas registradas (nucleo_registrar), derivadas de sus nucleos;
+# nada si no hay ninguna. Función pura sobre el registro: no escribe. Por raíz con nucleo.md existente y no
+# enlazado (nucleo_enlazado): «- <ruta> · <Objetivo ≤ 80> · paso: <Paso actual ≤ 80> · <AAAA-MM-DD>», las 15
+# más recientes. El nucleo heredado $HOME/.claude/estado/nucleo.md va primero y marcado. Después, hasta 8
+# líneas «(persona)» de los Pendientes, con el nombre corto de la raíz. Todo es DATO de repos ajenos: sin
+# caracteres de control, `</` escapado y tope ~2 500 chars (por líneas enteras).
+nucleo_indice() {
+  local reg=${NUCLEO_REGISTRO:-$HOME/.claude/estado/raices} r nuc mt k v obj paso d nom key rows="" her="" pers="" seen="" out="" l
+  while IFS= read -r r || [ -n "$r" ]; do
+    case $r in /*) ;; *) continue ;; esac
+    case $r in *[[:cntrl:]]*) continue ;; esac
+    [ -d "$r" ] || continue
+    nucleo_enlazado "$r" && continue
+    nuc=$r/.claude/estado/nucleo.md
+    [ -f "$nuc" ] || continue
+    case $'\n'"$seen" in *$'\n'"$r"$'\n'*) continue ;; esac
+    seen="${seen:-}$r"$'\n'
+    mt=$(nucleo_mtime "$nuc"); obj="(sin objetivo)"; paso="(sin paso)"
+    d=$r; case $r in "$HOME"/*) d="~${r#"$HOME"}" ;; esac
+    nom=${r##*/}; key=$mt
+    # shellcheck disable=SC2088  # la «~» es literal: se muestra tal cual
+    if [ "$r" = "$HOME" ]; then d="~/.claude/estado/nucleo.md (heredado de ~; si lo continúas, léelo antes de actuar)"; nom="~"; key=9999999999; fi
+    while IFS=$'\t' read -r k v; do
+      case $k in
+        O) obj=$v ;;
+        P) paso=$v ;;
+        N) pers="$pers$key"$'\t'"- $nom: $v"$'\n' ;;
+      esac
+    done < <(LC_ALL=C awk '
+      function corta(l, n,   r) {
+        r = substr(l, 1, n)
+        if (substr(l, n + 1, 1) ~ /[\200-\277]/) sub(/[\300-\377][\200-\277]*$/, "", r)
+        return r
+      }
+      /^#(#|##)? / {
+        t = $0; sub(/^#(#|##)? /, "", t); sec = ""; coment = 0
+        if (index(t, "Objetivo") == 1 || index(t, "Encargo original") == 1) sec = "O"
+        else if (index(t, "Paso actual") == 1) sec = "P"
+        else if (index(t, "Pendientes") == 1) sec = "N"
+        next
+      }
+      sec == "" { next }
+      coment { if (index($0, "-->")) coment = 0; next }
+      /^[ \t]*<!--/ { if (!index($0, "-->")) coment = 1; next }
+      {
+        l = $0; gsub(/[[:cntrl:]]/, " ", l); sub(/^ +/, "", l); sub(/ +$/, "", l)
+        if (l == "") next
+        if (sec == "N") { if (index(l, "(persona)") && ++np <= 8) print "N\t" corta(l, 80) }
+        else if (!hecho[sec]++) print sec "\t" corta(l, 80)
+      }' "$nuc")
+    l="$key"$'\t'"- $d · $obj · paso: $paso · $(date -u -d "@$mt" +%F 2>/dev/null || date -u -r "$mt" +%F 2>/dev/null)"$'\n'
+    if [ "$r" = "$HOME" ]; then her=$l; else rows="$rows$l"; fi
+  done < <(printf '%s\n' "$HOME"; cat "$reg" 2>/dev/null)
+  [ -n "$rows$her" ] || return 0
+  rows=$(printf '%s%s' "$her" "$(printf '%s' "$rows" | sort -t$'\t' -k1,1rn | head -n 15)" | cut -f2-)
+  pers=$(printf '%s' "$pers" | sort -t$'\t' -s -k1,1rn | head -n 8 | cut -f2-)
+  while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    [ $(( ${#out} + ${#l} + 1 )) -le 2500 ] || { out="$out"$'\n[recortado]'; break; }
+    out="${out:+$out$'\n'}$l"
+  done < <(printf '%s\n%s\n' "$rows" "$pers" | LC_ALL=C tr -d '\000-\010\013-\037\177' | sed 's|</|<\\/|g')
+  printf '%s\n' "$out"
+}
+
 # nucleo_ctx <transcript>: "tokens pct", con pct sobre el airbag (ventana − 33 000, la línea en la
 # que compacta solo). Nada si el transcript no trae uso. La ventana es min(la del modelo, el env), como
 # en el binario: el modelo tiene 1M con [1m] en el id (ANTHROPIC_MODEL o `model` de settings.json) o si es
