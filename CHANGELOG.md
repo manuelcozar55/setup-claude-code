@@ -276,6 +276,17 @@ etiquetado.
 
 ### Fixed
 
+- `handoff`: una sección vacía del borrador (sin cuerpo o solo comentarios) conserva la del nucleo; para vaciarla, `- (nada)`. Antes borraba el Plan y sus `[x]`.
+- `handoff`: al recortar al tope se omiten primero las secciones ajenas a la plantilla; el nucleo escrito ya no supera `NUCLEO_TOPE` por una sección extra y el aviso nombra lo realmente omitido.
+- `handoff --commit` funciona tras una ejecución sin `--commit` (`git add -f` solo de nucleo, diario, .gitignore y archivo/) y libera el dueño aunque falle el commit.
+- `oraculo` solo anota en `verificaciones.log` si `.claude/estado/` ya existe: no ensucia repos ajenos.
+- SessionStart: con `source=clear` la sesión nueva reclama el dueño anterior y lo nombra en una línea informativa.
+- Seguridad: `nucleo_enlazado` rechaza cualquier enlace simbólico directo dentro de `.claude/estado/` (diario.md, verificaciones.log, .gitignore, archivo); `handoff` (también `--migrar`) sale 3 sin escribir y `oraculo` ejecuta pero no anota.
+- Tests: `shellcheck -x` limpio en `test_nucleo_hooks.sh`.
+- `bash-write-guard.sh`: `sed ... -i` / `--in-place` detrás de un script con `;`, `|` o `&` (también entre comillas) vuelve a escanearse; antes pasaba con una clave dentro.
+- Sentinel: `.aws/credentials` y `.aws/config` se deniegan también en ruta relativa (`cd ~ && cat .aws/credentials`) y con el nombre entrecomillado (`~/".aws"/credentials`).
+- Sentinel: el ioc `secrets.*` cubre además `toml`, `ini`, `conf`, `cfg` y `tfvars` (`secrets.token_hex` de Python sigue permitido).
+- `lib/secret-patterns`: añade `BEGIN ENCRYPTED PRIVATE KEY` y los tokens de GitHub `ghs_` y `ghu_`.
 - **`branch-guard.sh`: las redirecciones no cuentan como operandos del push (E7.3 CR-2).** `git push origin 2>&1`, `... 2>&1 | tail -3` y `git push -u origin >/dev/null` con main activa daban rc 0, porque `2>&1` pasaba a ser el destino. Se descartan los operandos `^[0-9]*[<>]` y `^&>`. Límite: una redirección con espacio (`> fichero`) deja el nombre del fichero como operando.
 - **`branch-guard.sh`: con `--repo`/`--repo=` todos los posicionales son refspecs (E7.3 CR-3).** El guard tomaba el primero por remoto, así que `git push --repo=origin main` desde una feature pasaba (3576d87 lo bloqueaba).
 
@@ -557,6 +568,18 @@ Subsección: Fixed (cockpit 0.4.1)
 
 ### Security
 
+- Los guards de Bash ya no fallan en abierto por el tamano del comando. Un comando de 64 KB en una
+  linea costaba 9-15 s de CPU en Sentinel y 2-4 s en cada guard, y un hook que pasa de su timeout (10 s)
+  no bloquea: la herramienta se ejecuta. Causas: `${x#*sep}` en `cmdnorm.sh` (cuadratico), los `grep`
+  de `block-dangerous-commands.sh` en UTF-8 (ahora `LC_ALL=C`, 64 KB de segmentos: 13 s a 0,4 s) y
+  `(?i).*_TOKEN$` buscada en una palabra larga en Sentinel. Ahora todos son lineales (256 KB: 0,3-0,6 s
+  en una linea, ~4 s en el peor caso de 128 000 segmentos).
+- Por encima de 128 KB (con 256 KB el peor caso, ~4 s de CPU por guard y los seis a la vez, rozaba el
+  timeout en una máquina de 2 núcleos), block-dangerous, branch-guard, destructive-guard, secret-guard y Sentinel piden
+  confirmacion (`ask`) y sugieren la herramienta Write para contenidos grandes, en vez de arriesgar el
+  timeout.
+- `scripts/guards-cpu.sh` mide muestras grandes hook a hook y falla si alguno pasa de 1000 ms: con ~20
+  muestras el p95 las escondia (antes: p95 181 ms con max 15 886 ms).
 - **`branch-guard.sh` vuelve a ver el push que va dentro de `bash -c`, `sh -c`, `eval`, `ssh host`, `xargs` y `find -exec` (E7.3 CR-1).** El guard de la normalización (PR2) solo inspeccionaba segmentos cuyo ejecutable era `git`, y el guard de texto de 3576d87 bloqueaba esas grafias (rc 2): regresión, rc 0 con la rama protegida como destino. Ahora, si el ejecutable no es `git` pero el segmento nombra `git`, la cadena interior se vuelve a normalizar y se analiza con la misma lógica (hasta 3 niveles); `echo`, `printf`, `grep` y similares quedan fuera para que la prosa con un push dentro no dé falsos positivos. Latencia: 24 ms por invocación (25 antes; presupuesto 150). Límite: la cadena construida con variables sigue fuera de alcance.
 - **`branch-guard.sh` bloquea `--all`, `--branches` y `--mirror` (E7.3 CR-8).** Empujan todas las ramas, las protegidas incluidas, y se trataban como opciones sin destino. Límite declarado en `docs/05-security.md`: con `push.default=upstream` y un upstream de nombre distinto al de la rama local, el `git push` a secas no se resuelve (el guard no lee la configuración de git).
 - **`destructive-guard.sh`: un `..` tras el directorio seguro ya no exime el `rm -rf` (E7.3 CR-4).** `rm -rf ~/dist/../Documents` y `rm -rf ~/node_modules/../<claves>` salían con rc 0 porque la exención miraba `/dir/` como subcadena. Se cierra en el check 5 y en el check 1 (texto, anterior a E7: mismo agujero, arreglo local de una condición). `rm -rf dist/..` pasa a ser sensible. `rm -rf ../node_modules` sigue permitido (el `..` va antes, no después).
