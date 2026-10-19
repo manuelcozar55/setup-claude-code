@@ -26,4 +26,7 @@ ok "sin restos de LangSmith" "$(command grep -ci 'langsmith' "$S")" 0
 ok "allow sin comodines que ejecutan código (uv tool, rtk, graphify, npx…)" "$(q '[.permissions.allow[]? | select(test("^Bash\\((uv tool|uv run|uvx|rtk|graphify|npx|pnpm dlx|pnpm exec|python3?|node|bash|sh) \\*\\)$"))] | join(" ")')" ""
 ok "todo hook registrado existe en el kit" "$(q '.hooks[][].hooks[].command' | command grep -o 'hooks/[A-Za-z0-9_.-]*' | sort -u \
   | while read -r h; do [ -f "$(dirname "$S")/$h" ] || echo "$h"; done)" ""
+ok "sin smart_approve en el settings (eliminado, decisión 3 del plan v3)" "$(command grep -c 'smart_approve' "$S")" 0
+ok "cadena PreToolUse/Bash = los cinco guards bash, en orden" "$(q '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[].command | capture("hooks/(?<n>[a-z-]+)\\.sh").n] | join(" ")')" "block-dangerous-commands branch-guard destructive-guard secret-guard bash-write-guard"
+ok "deny del kit intactos aunque la política gestionada los repita (decisión 2)" "$(q '[.permissions.deny[] | select(. == "Bash(rm -rf /*)" or . == "Bash(rm -rf ~/*)" or . == "Bash(git push --force *)")] | length')" 3
 exit $FAIL

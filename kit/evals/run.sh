@@ -160,7 +160,7 @@ open(os.path.join(m,'_prompt.txt'),'w').write(t['prompt'])
     # permisos y las tareas que requieren Edit/Bash miden friccion de permisos
     # en vez de comportamiento. --dangerously-skip-permissions y bypassPermissions
     # estan bloqueados como root; "auto" no lo esta y sigue invocando los hooks
-    # PreToolUse (secret-guard, sentinel, smart_approve) mas el clasificador
+    # PreToolUse (secret-guard, bash-write-guard, sentinel) mas el clasificador
     # propio de Claude Code, asi que el aislamiento del mktemp -d no depende
     # solo de este flag. Ver README.md para el detalle completo.
     claude "${ARMFLAGS[@]}" -p "$(cat "$m/_prompt.txt")" --permission-mode auto --output-format stream-json --verbose > "$m/_run.jsonl" 2>"$m/_run.err"

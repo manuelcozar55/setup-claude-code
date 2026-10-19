@@ -131,7 +131,7 @@ Todos estos van en `02-install.md`; recordatorio de la pila que usa el setup com
 | Herramienta | Para qué | Verifica con |
 |---|---|---|
 | `uv` | gestor de paquetes Python; el kit lo usa vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
-| venv de tools (`$HOME/.venvs/tools`) | ejecuta Sentinel y `smart_approve.py` con un Python propio, no el del sistema (ver `02-install.md`, paso 4) | `test -x $HOME/.venvs/tools/bin/python3` |
+| venv de tools (`$HOME/.venvs/tools`) | ejecuta Sentinel y `write-guard.py` con un Python propio, no el del sistema (ver `02-install.md`, paso 4) | `test -x $HOME/.venvs/tools/bin/python3` |
 | `rtk` | filtra la salida de los comandos de shell antes de que entre en contexto; el kit no lo cablea, se invoca a mano (`rtk proxy <comando>`) | `rtk --version` |
 | `pnpm` | instala `agent-browser` y otros paquetes globales de Node | `pnpm --version` |
 

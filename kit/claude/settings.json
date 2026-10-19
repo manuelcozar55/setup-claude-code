@@ -92,8 +92,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/smart_approve.py",
-            "timeout": 10
+            "command": "$HOME/.claude/hooks/bash-write-guard.sh",
+            "timeout": 5
           }
         ]
       },

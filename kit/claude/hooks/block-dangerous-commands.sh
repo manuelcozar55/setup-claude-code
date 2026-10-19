@@ -178,6 +178,12 @@ ASK_RULES=(
   '\bchmod\s+777'                     "Confirm: chmod 0777 sets world-writable permissions"
   '\bssh-keygen\b'                    "Confirm: ssh-keygen — will this overwrite an existing key?"
 
+  # Cerrar o fusionar un issue/PR y tocar paquetes del sistema se confirman: no son irreversibles
+  # como un rm -rf, pero la politica de la casa exige que lo decida una persona. `--no-verify`
+  # NO esta aqui a proposito: sigue en DENY (decision 1 del plan v3).
+  '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*(pr|issue)\s+(close|merge)\b'  "Confirm: gh pr/issue close|merge — closes or merges on the remote"
+  '\bsudo\s+(-[A-Za-z-]+\s+)*(apt|apt-get|dnf|pip3?)\b'          "Confirm: sudo apt/apt-get/dnf/pip — installs or removes system packages"
+
   # ── DATABASE OPERATIONS (ASK — HITL) ───────────────────────────────────────
   '\bDROP\s+DATABASE\b'   "Confirm: DROP DATABASE — irreversible data loss"
   '\bDROP\s+TABLE\b'      "Confirm: DROP TABLE — irreversible data loss"

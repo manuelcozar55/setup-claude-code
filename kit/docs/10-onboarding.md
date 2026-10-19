@@ -21,7 +21,7 @@ pelada: `kit/test/test_clean_install_resilience.sh`.
 
 ## 1 · Instalar
 
-Linux o WSL2, con `jq` (dependencia dura de cuatro guards). Desde un clon, `make bootstrap` crea tu
+Linux o WSL2, con `jq` (dependencia dura de cinco guards). Desde un clon, `make bootstrap` crea tu
 `config/profile.yaml`, instala el kit en `~/.claude` con backup (o enseña el diff, si es un repo
 con remoto), corre el oráculo y `doctor.sh`. Requisitos, pasos a mano y desinstalación: [`02-install.md`](02-install.md).
 
