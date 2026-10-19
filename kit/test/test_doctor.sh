@@ -155,6 +155,15 @@ ck "$(echo "$out" | grep -c '^PASS .*handoff se resuelve en el PATH')" "1" "doct
 set +e; out="$(PATH="$(dirname "$(command -v jq)"):/usr/bin:/bin" dr)"; rc=$?; set -e
 ck "$(echo "$out" | grep -cE '^WARN .*handoff no se resuelve en tu PATH')" "1" "doctor WARN si handoff no esta en el PATH"
 ck "$rc" "0" "handoff fuera del PATH es WARN: doctor sigue en rc 0"
+ck "$(echo "$out" | grep -c 'ln -sf')" "0" "la sugerencia usa ln -s, nunca ln -sf (pisaria un hueco ajeno)"
+# Un handoff ajeno primero en el PATH no es el del kit, y command -v daba PASS igual: se compara readlink -f.
+mkdir -p "$tmp/ajeno-bin"; printf '#!/bin/sh\necho otro\n' > "$tmp/ajeno-bin/handoff"; chmod +x "$tmp/ajeno-bin/handoff"
+set +e; out="$(PATH="$tmp/ajeno-bin:$tmp/home/.local/bin:$PATH" dr)"; rc=$?; set -e
+ck "$(echo "$out" | grep -cF "WARN · handoff del PATH es $tmp/ajeno-bin/handoff")" "1" "doctor WARN, con la ruta, si el handoff del PATH es ajeno"
+ck "$(echo "$out" | grep -c '^PASS .*handoff se resuelve en el PATH')" "0" "un handoff ajeno en el PATH no da PASS"
+ck "$(echo "$out" | grep -c '^PASS .*oraculo se resuelve en el PATH')" "1" "el oraculo enlazado al kit sigue en PASS (falsabilidad del caso)"
+ck "$(echo "$out" | grep -c 'ln -sf')" "0" "con un handoff ajeno tampoco se sugiere ln -sf"
+ck "$rc" "0" "un handoff ajeno en el PATH es WARN: doctor sigue en rc 0"
 printf '# mis cosas\n' > "$CLAUDE_HOME/CLAUDE.md"
 set +e; out="$(dr)"; set -e
 ck "$(echo "$out" | grep -c '^WARN .*@AGENTS.md')" "1" "doctor WARN si CLAUDE.md no importa @AGENTS.md"

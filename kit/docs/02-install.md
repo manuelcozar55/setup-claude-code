@@ -147,7 +147,7 @@ bash doctor.sh
 
 - `$CLAUDE_HOME/bin/handoff`, `$CLAUDE_HOME/bin/oraculo` y `$CLAUDE_HOME/templates/nucleo.md` existen. Si falta alguno es `FAIL`: repite `bash install.sh`.
 - `settings.json` no tiene `disableAllHooks: true`. Con esa clave no corre ningún hook, tampoco los guards, y es `FAIL`: quítala.
-- `handoff` y `oraculo` se resuelven en tu `PATH`. Si no, `WARN`: abre una terminal nueva o revisa el Paso 3b.
+- `handoff` y `oraculo` se resuelven en tu `PATH` y son los del kit (`readlink -f` igual al de `$CLAUDE_HOME/bin/<cli>`). Si no se resuelven, `WARN`: abre una terminal nueva o revisa el Paso 3b. Si el primero del `PATH` es otro programa con ese nombre, también `WARN`, con su ruta: la sugerencia es `ln -s`, nunca `ln -sf`, porque pisaría ese otro.
 - Tu `$CLAUDE_HOME/CLAUDE.md` contiene `@AGENTS.md` (o `@…AGENTS.md`). Si no, `WARN`: ver el aviso del Paso 2. Los `WARN` son aceptables cuando corresponden a un componente opcional que aún no has instalado (el venv de tools, `rtk`, `gitleaks`): el setup base funciona sin ellos, degradando con elegancia en vez de romperse.
 
 Un caso **no** degrada con elegancia y por eso es `FAIL`: que `ANTHROPIC_BASE_URL` enrute la API a un proxy que no contesta. Ahí Claude Code se queda sin poder hablar con la API, y el síntoma no se parece a un problema de configuración. El `settings.json` que distribuye el kit no fija esa variable: si `doctor.sh` la encuentra, viene de tu config (por ejemplo, restos de un proxy que ya no usas) y basta con quitarla.

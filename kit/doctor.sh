@@ -53,10 +53,15 @@ for cli in handoff oraculo; do
   else
     fail "falta $CLAUDE_HOME/bin/$cli o no es ejecutable (reinstala: bash $KIT/install.sh)"
   fi
-  if command -v "$cli" >/dev/null 2>&1; then
-    pass "$cli se resuelve en el PATH  (fuente: command -v)"
+  # Resolverse no basta: un $cli ajeno primero en el PATH daba PASS y la persona corria otro programa.
+  # La sugerencia es ln -s y no -sf: -sf pisaria justo el hueco ajeno que install.sh no toca.
+  cli_ruta="$(command -v "$cli" 2>/dev/null)"
+  if [ -z "$cli_ruta" ]; then
+    warn "$cli no se resuelve en tu PATH: ln -s \"$CLAUDE_HOME/bin/$cli\" \"\$HOME/.local/bin/$cli\" y abre una terminal nueva (comprueba que ~/.local/bin esta en el PATH)"
+  elif [ "$(readlink -f -- "$cli_ruta")" = "$(readlink -f -- "$CLAUDE_HOME/bin/$cli")" ]; then
+    pass "$cli se resuelve en el PATH  (fuente: command -v + readlink -f)"
   else
-    warn "$cli no se resuelve en tu PATH: ln -sf \"$CLAUDE_HOME/bin/$cli\" \"\$HOME/.local/bin/$cli\" y abre una terminal nueva (comprueba que ~/.local/bin esta en el PATH)"
+    warn "$cli del PATH es $cli_ruta, que no es $CLAUDE_HOME/bin/$cli: usa esa ruta o resuelve el conflicto (si retiras el otro: ln -s \"$CLAUDE_HOME/bin/$cli\" \"\$HOME/.local/bin/$cli\")"
   fi
 done
 if [ -f "$CLAUDE_HOME/templates/nucleo.md" ]; then
