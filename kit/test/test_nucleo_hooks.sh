@@ -637,5 +637,14 @@ IR=$T/ini-raiz; mkdir -p "$IR"; git -C "$IR" init -q
 OUT=$(cd "$T/ini-fuera" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar --raiz "$IR" 2>&1); RC=$?
 ok "iniciar: --raiz DIR crea el nucleo en esa raíz" "$RC,$([ -f "$IR/.claude/estado/nucleo.md" ] && echo si)" "0,si"
 ok "iniciar: aparece en handoff --help" "$(bash "$BIN/handoff" --help | command grep -c '^     handoff --iniciar')" "1"
+# Primer día: el nucleo recién iniciado, copiado como borrador con solo Objetivo relleno. Invariantes, vacía en
+# los dos, se copiaba del nucleo sin darse por usada y el borrador la volvía a añadir: una más en cada fusión.
+IP=$T/ini-pegada; mkdir -p "$IP"; git -C "$IP" init -q
+(cd "$IP" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar >/dev/null 2>&1)
+awk '{ print } /^## Objetivo$/ { print "OBJ-DIA1" }' "$IP/.claude/estado/nucleo.md" >"$T/b-pegada.md"
+for n in 1 2; do
+  (cd "$IP" && bash "$BIN/handoff" --desde "$T/b-pegada.md" >/dev/null 2>&1); RC=$?
+  ok "iniciar + --desde (fusión $n): una cabecera de cada sección, 8 en total, y el Objetivo una vez" "$RC,$(command grep -c '^## ' "$IP/.claude/estado/nucleo.md"),$(sed -n 's/^## //p' "$IP/.claude/estado/nucleo.md" | paste -sd,),$(command grep -c 'OBJ-DIA1' "$IP/.claude/estado/nucleo.md")" "0,8,$(sed -n 's/^## //p' "$KIT/claude/templates/nucleo.md" | paste -sd,),1"
+done
 
 exit $FAIL
