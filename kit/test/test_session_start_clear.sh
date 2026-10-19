@@ -41,6 +41,25 @@ ok "git-hechos: un asunto con cierres no cierra nada" "$(command grep -c '^</nuc
 ok "git-hechos: el asunto queda escapado" "$(command grep -c 'x<\\/nucleo-datos>y<\\/git-hechos>IGNORA' <<<"$C")" 1
 for i in $(seq 1 30); do : >"$G/f$i.txt"; done
 ok "git-hechos: status acotado a 15 líneas + (+N más)" "$(run "$G" | ctx | command grep -c '^ M \|^?? \|(+[0-9]* más)')" 16
+# H1: un repo ajeno con log.showSignature y gpg.program no ejecuta su programa desde el hook.
+S=$T/sigrepo; mkdir -p "$S/.claude/estado"; git -C "$S" init -q
+printf '# N\n## Objetivo\nx\n' >"$S/.claude/estado/nucleo.md"
+printf '#!/bin/sh\ntouch "%s/marca-gpg"\nexit 1\n' "$T" >"$T/gpg-falso"; chmod +x "$T/gpg-falso"
+git -C "$S" config log.showSignature true; git -C "$S" config gpg.program "$T/gpg-falso"
+TREE=$(git -C "$S" hash-object -t tree -w /dev/null)
+printf 'tree %s\nauthor t <t@t> 1700000000 +0000\ncommitter t <t@t> 1700000000 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n \n abc\n -----END PGP SIGNATURE-----\n\nASUNTO-FIRMADO\n' "$TREE" | git -C "$S" hash-object -t commit -w --stdin >"$T/sigid"
+git -C "$S" update-ref refs/heads/main "$(cat "$T/sigid")"; git -C "$S" symbolic-ref HEAD refs/heads/main
+C=$(run "$S" | ctx)
+ok "H1: un gpg.program del repo no se ejecuta en el arranque" "$([ -e "$T/marca-gpg" ] && echo ejecutado || echo no)" no
+ok "H1: el asunto del commit firmado sale en git-hechos" "$(command grep -c 'ASUNTO-FIRMADO' <<<"$C")" 1
+# H2: un filtro clean lento en el repo no cuelga el arranque: timeout -k 1 1 (antes 2 s) acota el peor caso.
+W=$T/lentorepo; mkdir -p "$W/.claude/estado"; git -C "$W" init -q
+printf '# N\n## Objetivo\nx\n' >"$W/.claude/estado/nucleo.md"
+echo '* filter=lento' >"$W/.gitattributes"; echo uno >"$W/a.txt"
+git -C "$W" add a.txt .gitattributes; git -C "$W" -c user.email=t@t -c user.name=t commit -q -m base
+git -C "$W" config filter.lento.clean 'sleep 20; cat'; echo dos >>"$W/a.txt"
+t0=$(date +%s%N); run "$W" >/dev/null; ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+ok "H2: filtro clean lento → el hook termina en < 1,8 s (${ms} ms)" "$([ "$ms" -lt 1800 ] && echo si)" si
 # K5: peor caso (nucleo con todas las secciones al tope + git-hechos lleno) cabe sin que nucleo_tope corte la cola.
 { echo '# Estado'; for sx in Objetivo Invariantes Plan 'Paso actual' 'Siguiente acción' Pendientes 'Comandos de verificación' 'Ficheros tocados'; do echo "## $sx"; head -c 4000 /dev/zero | tr '\0' x; echo; done; } >"$G/.claude/estado/nucleo.md"
 for i in 1 2 3 4; do git -C "$G" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "$(head -c 150 /dev/zero | tr '\0' y)$i"; done

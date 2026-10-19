@@ -37,15 +37,16 @@ nucleo_tope() {
 
 # nucleo_git_hechos <raíz>: bloque <git-hechos> con `git log --oneline -5` y `git status --short` (máx. 15
 # líneas + «(+N más)»), tope ~1 200 chars, para que el modelo no gaste su primer turno en algo determinista.
-# Nada si no hay git o si git falla o expira (2 s). core.fsmonitor=false: un .git/config ajeno no ejecuta
-# código desde este hook; --no-optional-locks: status no refresca el índice (otra sesión puede estar
+# Nada si no hay git o si git falla o expira (`timeout -k 1 1`: peor caso acotado, y mata lo que quede vivo).
+# core.fsmonitor=false y log --no-show-signature (como el git log de Claude Code): un .git/config ajeno no
+# ejecuta código desde este hook (log.showSignature + gpg.program lo hacía); --no-optional-locks: status no refresca el índice (otra sesión puede estar
 # trabajando en el mismo repo y se encontraría un index.lock). Los asuntos de commit y los nombres de fichero son DATOS: sin caracteres de control
 # y con `</` escapado, para que no cierren el bloque ni el <nucleo-datos>.
 nucleo_git_hechos() {
   command -v git >/dev/null 2>&1 || return 0
   local tm=() lg st n b
-  command -v timeout >/dev/null 2>&1 && tm=(timeout 2)
-  lg=$("${tm[@]}" git --no-optional-locks -c core.fsmonitor=false -C "$1" log --oneline -5 2>/dev/null) || return 0
+  command -v timeout >/dev/null 2>&1 && tm=(timeout -k 1 1)
+  lg=$("${tm[@]}" git --no-optional-locks -c core.fsmonitor=false -C "$1" log --no-show-signature --oneline -5 2>/dev/null) || return 0
   st=$("${tm[@]}" git --no-optional-locks -c core.fsmonitor=false -C "$1" status --short 2>/dev/null) || return 0
   n=$(printf '%s\n' "$st" | sed -n '$=')
   [ "${n:-0}" -le 15 ] || st="$(printf '%s\n' "$st" | head -n 15)"$'\n'"(+$((n - 15)) más)"
