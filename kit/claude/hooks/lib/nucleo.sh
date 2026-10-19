@@ -261,10 +261,24 @@ nucleo_ctx() {
 # Bytes (LC_ALL=C): el tope protege el límite del harness, que se mide en la salida entera.
 nucleo_emitir() {
   [ -f "$1" ] || return 0
-  local kb=$(( ($(wc -c <"$1") + 1023) / 1024 )) rs
+  local kb=$(( ($(wc -c <"$1") + 1023) / 1024 )) rs out
   # Dos pasadas: la primera mide lo que ocupan las reservadas (no depende del tope); la segunda reparte el resto.
   rs=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" medir)
-  _nucleo_emitir_awk "$1" "$kb" "$(( NUCLEO_TOPE - ${rs:-0} ))" | sed 's|</|<\\/|g'
+  out=$(_nucleo_emitir_awk "$1" "$kb" "$(( NUCLEO_TOPE - ${rs:-0} ))" | sed 's|</|<\\/|g')
+  [ -z "$out" ] || printf '%s\n' "$out"
+  case $out in *'[recortado'* | *'[LEE '*) _nucleo_log_recorte "$1" "$out" ;; esac
+  return 0
+}
+
+# _nucleo_log_recorte <nucleo> <emisión>: «ISO<TAB>bytes<TAB>avisos» en recortes.log junto al nucleo, para que
+# se vea cuándo y cuánto se recorta lo inyectado. Acotado: pasadas 100 líneas queda en las últimas 50. Nunca
+# rompe el hook.
+_nucleo_log_recorte() {
+  local log=${1%/*}/recortes.log av
+  av=$(printf '%s\n' "$2" | command grep '^\[\(recortado\|LEE\|fuera de forma\|cercas\)' | tr '\n\t' '  ')
+  printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${#2}" "$av" >>"$log" 2>/dev/null || return 0
+  [ "$(wc -l <"$log")" -le 100 ] || { tail -n 50 "$log" >"$log.tmp" 2>/dev/null && mv -f "$log.tmp" "$log" 2>/dev/null; }
+  return 0
 }
 
 # _nucleo_emitir_awk <fichero> <kb> <tope> [medir]: la emisión; con «medir», solo los bytes de las reservadas.
@@ -287,7 +301,7 @@ _nucleo_emitir_awk() {
       if (substr(l, n + 1, 1) ~ /[\200-\277]/) sub(/[\300-\377][\200-\277]*$/, "", r)
       return r
     }
-    function sale(s) { out = out s "\n"; if (rsv) ocupado += length(s) + 1; else usado += length(s) + 1 }
+    function sale(s) { buf[cur] = buf[cur] s "\n"; if (rsv) ocupado += length(s) + 1; else usado += length(s) + 1 }
     # ### también: las sesiones escriben la tarea como «## TAREA ACTUAL» con sus secciones en ###. Si nombra
     # una sección aún no vista es cabecera; si no, es contenido solo bajo un ## de plantilla (padre: «### Fase 1»
     # en «## Plan»); bajo otro ## cierra y cuenta en fuera, para que «### Hecho» no se cuele en Pendientes.
@@ -312,7 +326,7 @@ _nucleo_emitir_awk() {
     /^#(#|##)? / && !cerca && ($0 !~ /^### / || (c != "" && !visto[c]) || !padre) {
       if ($0 ~ /^### / && viva && !padre && (c == "" || visto[c])) cerradas++
       viva = 0; dentro = 0; rsv = 0
-      if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; sale(corta($0, 200)) } else fuera++; next }
+      if ($0 ~ /^# /) { padre = 0; if (!titulo) { titulo = 1; cur = "#"; sale(corta($0, 200)) } else fuera++; next }
       if ($0 ~ /^## /) padre = (c != "")
       # Repetido: solo entra si la primera copia quedó vacía (plantilla con «## Pendientes» y, después, el
       # «## Pendientes y riesgos» de /handoff); con contenido sigue ganando la primera. Los marcadores
@@ -321,8 +335,10 @@ _nucleo_emitir_awk() {
       if (c == "" || (visto[c] && con[c])) { fuera++; next }
       visto[c] = 1; actual = c; coment = 0; rsv = (c == "Paso actual" || c == "Siguiente acción" || c == "Comandos de verificación")
       if (!rsv && usado + length($0) > tope) { omitidas = omitidas " «" corta(t, 80) "»"; next }
-      viva = 1; sale($0); next
+      viva = 1; cur = c; sale($0); next
     }
+    # Del Plan solo se emiten los pasos abiertos: los [x] ya están en diario.md (y fuera de una cerca).
+    viva && actual == "Plan" && !cerca && $0 ~ /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { next }
     viva {
       resto = (rsv ? res : sec) - dentro; if (!rsv && tope - usado < resto) resto = tope - usado
       if (coment) { if (index($0, "-->")) coment = 0 }
@@ -334,7 +350,10 @@ _nucleo_emitir_awk() {
     }
     END {
       if (medir != "") { print ocupado + 0; exit }
-      printf "%s", out
+      # Orden de emisión (D5), no el del fichero: lo que más urge retomar va primero y lo que se recorta es la cola.
+      printf "%s", buf["#"]
+      m = split("Objetivo|Invariantes|Paso actual|Siguiente acción|Comandos de verificación|Plan|Pendientes|Ficheros tocados|No repetir", ord, "|")
+      for (i = 1; i <= m; i++) printf "%s", buf[ord[i]]
       if (cercas % 2) print "[cercas sin equilibrar: se ignoran; un # comentario dentro de un bloque puede cortar su sección]"
       if (omitidas != "") print "[recortado por tope: se omiten" omitidas ".]"
       if (recortes || omitidas != "" || cerradas || cercas % 2) print "[LEE " f " antes de actuar: lo inyectado está incompleto.]"

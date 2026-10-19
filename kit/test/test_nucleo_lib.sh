@@ -47,7 +47,7 @@ ok "contiene el paso vivo, no los viejos" "$(command grep -c 'PASO-VIVO' <<<"$S"
 ok "avisa fuera de forma" "$(command grep -c '^\[fuera de forma: .* KB → muévelas a diario.md' <<<"$S")" 1
 
 P=$T/peque.md
-{ printf '# Estado\n'; for s in Objetivo Invariantes Plan 'Paso actual' 'Siguiente acción' Pendientes 'Comandos de verificación' 'Ficheros tocados'; do
+{ printf '# Estado\n'; for s in Objetivo Invariantes 'Paso actual' 'Siguiente acción' 'Comandos de verificación' Plan Pendientes 'Ficheros tocados'; do
     printf '## %s\n' "$s"; for _ in $(seq 1 3); do echo "$s: contenido en forma, acentos ñ y «comillas», ochenta chars"; done; done; } >"$P"
 ok "fixture de ~2 KB" "$(( ($(wc -c <"$P") + 512) / 1024 ))" 2
 ok "fichero en forma → íntegro" "$(nucleo_emitir "$P" | cmp -s - "$P" && echo si)" si
@@ -72,6 +72,26 @@ ok "un título de 1 MB no salta el tope" "$(S=$(nucleo_emitir "$T/titulo.md"); [
 G2=$T/ruta-larga-$(printf '%0200d' 0)/$(printf '%0200d' 1); mkdir -p "$G2"
 for s in Objetivo Plan Pendientes; do printf '## %s\n' "$s"; head -c 4000 /dev/zero | tr '\0' x; echo; done >"$G2/nucleo.md"
 ok "la ruta se cita una sola vez" "$(nucleo_emitir "$G2/nucleo.md" | command grep -o "$G2" | wc -l)" 1
+
+# --- v3 (D5): orden de emisión Objetivo · Invariantes · Paso actual · Siguiente acción · Comandos de verificación ·
+# Plan · Pendientes · Ficheros tocados, sea cual sea el del fichero; del Plan solo entran los [ ] ---
+F=$T/orden.md
+printf '%s\n' '# Estado' '## Ficheros tocados' 'F-1' '## Pendientes' 'PE-1' '## Plan' '- [x] hecho-1 — make test' '- [ ] abierto-1' '  - [x] sub-hecho' '1. [X] hecho-2' '## Comandos de verificación' 'C-1' \
+  '## Siguiente acción' 'SA-1' '## Paso actual' 'PA-1' '## Invariantes' 'I-1' '## Objetivo' 'O-1' '## No repetir' 'NR-1' >"$F"
+ok "orden D5 en la emisión" "$(nucleo_emitir "$F" | command grep -v '^#' | command grep -v '^$' | paste -sd,)" "O-1,I-1,PA-1,SA-1,C-1,- [ ] abierto-1,PE-1,F-1,NR-1"
+ok "el título del fichero va primero" "$(nucleo_emitir "$F" | head -n 1)" "# Estado"
+ok "Plan: los [x] no se emiten" "$(nucleo_emitir "$F" | command grep -c 'hecho-\|sub-hecho')" 0
+printf '%s\n' '## Plan' '```' '- [x] en-cerca' '```' '- [ ] fuera' >"$T/plan-cerca.md"
+ok "Plan: un [x] dentro de una cerca sí se conserva" "$(nucleo_emitir "$T/plan-cerca.md" | command grep -c 'en-cerca')" 1
+# Log de recortes: solo cuando se recorta, junto al nucleo, acotado.
+mkdir -p "$T/rec"
+{ echo '# Estado'; for sx in Objetivo Invariantes Plan 'Paso actual' Pendientes; do echo "## $sx"; head -c 4000 /dev/zero | tr '\0' x; echo; done; } >"$T/rec/nucleo.md"
+nucleo_emitir "$T/rec/nucleo.md" >/dev/null
+ok "recortes.log: una línea «ISO<TAB>bytes<TAB>aviso» al recortar" "$(awk -F'\t' 'END { print NR, ($1 ~ /^20[0-9-]+T[0-9:]+Z$/), ($2 ~ /^[0-9]+$/), ($3 ~ /recortado/) }' "$T/rec/recortes.log")" "1 1 1 1"
+mkdir -p "$T/rec2"; cp "$P" "$T/rec2/nucleo.md"; nucleo_emitir "$T/rec2/nucleo.md" >/dev/null
+ok "recortes.log: sin recorte no se escribe" "$([ -e "$T/rec2/recortes.log" ] && echo hay || echo no)" no
+for _ in $(seq 1 120); do nucleo_emitir "$T/rec/nucleo.md" >/dev/null; done
+ok "recortes.log: acotado (≤ 100 líneas)" "$([ "$(wc -l <"$T/rec/recortes.log")" -le 100 ] && echo si)" si
 
 # `claude --worktree` crea el worktree en <repo>/.claude/worktrees/<rama>: es su propia raíz (rama y
 # nucleo suyos), no el repo padre. Solo $HOME/.claude sube a su padre.
