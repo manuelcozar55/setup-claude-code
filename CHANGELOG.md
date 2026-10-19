@@ -10,8 +10,9 @@ etiquetado.
 Que un compañero instale el kit en limpio (WSL2 Ubuntu) y tenga el estado v3 operativo desde la
 primera sesión: `install.sh` deja `handoff` y `oraculo` en el PATH, `doctor.sh` comprueba que
 están, `handoff --iniciar` crea el primer `nucleo.md` y `10-onboarding.md` es la guía del primer
-día. Además se cierran dos huecos de los guards y el `settings.json` del kit pasa a ser techo
-también sin política gestionada.
+día. Además, los guards de refspec forzado y de `find -delete` se deciden sobre tokens,
+`branch-guard.sh` deja de fallar en abierto con comandos largos y el `settings.json` del kit pasa a
+ser techo también sin política gestionada.
 
 ### Added
 
@@ -30,11 +31,19 @@ también sin política gestionada.
 - `pre-compact.sh`: si el transcript declarado falta, no se puede leer o no tiene ninguna línea JSON (o jq falla), no se publica checkpoint y se conserva el anterior (`pipefail`); una línea final a medias se descarta y se conservan los mensajes válidos. Acepta también los mensajes de Codex (`event_msg/user_message`).
 - La plantilla `nucleo.md` pegada tal cual como borrador de `handoff --desde` ya no da rc 2.
 - Tests: las suites que instalan usan `HOME` falso para no enlazar en el `~/.local/bin` real; la etiqueta de `test_session_start_clear.sh` indica el tope real (9 500).
+- `handoff --desde` ya no duplica «Objetivo» ni «Invariantes» cuando la sección del nucleo y la del borrador son solo comentario (el nucleo recién iniciado pegado como borrador crecía una cabecera en cada fusión).
+- `pre-compact.sh`: un registro JSON válido con `message`, `payload` o un elemento de `content` que no es objeto se salta en vez de abortar jq y perder el checkpoint entero.
+- `pre-compact.sh`: sin checkpoint previo, el aviso de fallo (transcript ausente o publicación fallida) dice que no había ninguno en vez de «anterior conservado».
+- `install.sh` solo enlaza `handoff` y `oraculo` en `~/.local/bin` si `CLAUDE_HOME` resuelve a `$HOME/.claude`; con otro (prueba, CI) imprime las órdenes `ln -s` y no escribe, para no dejar enlaces colgantes en el bin real. El plan diff-first deja de prometer los enlaces en ese caso.
+- `doctor.sh`: un `handoff` u `oraculo` del PATH cuyo `readlink -f` no es el de `$CLAUDE_HOME/bin/<cli>` da WARN con su ruta (antes PASS); las sugerencias usan `ln -s`, nunca `ln -sf`.
 
 ### Security
 
-- Guards: el refspec forzado sin `:` (`+main`, también `+HEAD:main` y `+refs/heads/master`) y `find . -delete` / `find ./ -delete` ya se bloquean como el resto de force-push y `find -delete` destructivos. Casos rojos primero en `test_guards_falsifiability.sh`, con negativos legítimos.
+- Guards: el refspec forzado de `git push` (`+main`, `+HEAD:main`, `+refs/heads/master`, `+feature`) se bloquea como el resto de force-push. Se decide sobre tokens de `git push`: cae también entre comillas o con variable (`'+feature'`, `"+HEAD"`, `+$B`, `+${B}`, `+$(…)`) y dentro de `bash -c`, y no da falso positivo en `git stash push -m "wip +login"`, mensajes de commit, `git log --grep "push +1"` ni el argumento de `-o`. Casos rojos primero en `test_guards_falsifiability.sh`, con negativos legítimos.
+- Guards: `find … -delete` se decide sobre tokens y por familia de ruta. El directorio actual (`.`, `./`, `./.`, `*`, `./*`, sin ruta; también tras `-L`/`-H`/`--` o entre comillas) se bloquea salvo filtro por nombre o ruta (`find . -name '*.pyc' -delete` pasa). Una ruta amplia (`..` y lo que sube de él, `~`, `$HOME`, `/`, `/*`, `/etc`, todo `/home/…` y `/mnt/…`) se bloquea siempre. `build` o `/tmp/x` pasan. Citarlo en `echo`, `grep` o un mensaje de commit ya no bloquea.
+- Guards: las cadenas anidadas que `block-dangerous-commands.sh`, `destructive-guard.sh` y `branch-guard.sh` vuelven a analizar llevan un tope de 16; pasado el tope se deniega. `branch-guard.sh` solo mira los segmentos con `push` (y los `cd`): antes, 12 KB de `x git;` costaban 7 s de CPU y 128 KB pasaban de 20 s, con un timeout de 10 s y sin envoltorio, así que el guard fallaba en abierto. Ahora son 0,06 s y 0,4 s.
 - `settings.json` del kit: `disableBypassPermissionsMode: "disable"` y cuatro `Read(...)` deny (claves SSH, credenciales de nube, `.env*`, `secrets.*`), para que el kit sea techo también sin política gestionada.
+- Fusión de `settings.json`: `permissions.disableBypassPermissionsMode` queda en `"disable"` siempre (gana el kit, y se dice si tu valor era otro). Un `disableAllHooks: true` o un `permissions.defaultMode: "bypassPermissions"` previos se respetan, pero `install.sh` avisa al final, también en el plan diff-first; `doctor.sh` da FAIL con `disableAllHooks: true`.
 
 ### Documentation
 
