@@ -57,12 +57,18 @@ block() {
 # argumentos desde el token `git`) se vuelve a normalizar y se analiza igual, hasta 3 niveles. Los
 # comandos que solo muestran texto (echo, grep...) no cuentan: `echo "git push origin main"` es prosa.
 # La expansion de variables sigue fuera de alcance (docs/05-security.md).
+# Cada cadena anidada cuesta un awk (~3 ms): sin tope, 12 KB de `x git;` eran 7 s de CPU y 128 KB pasaban
+# de 20 s. Este guard corre con timeout 10 y sin envoltorio, y un hook que pasa de su timeout deja
+# ejecutar el comando: fallaba en abierto. Solo se miran los segmentos con push (y los `cd`, que fijan el
+# repo), solo se vuelve a normalizar la cadena que lleva push, y pasadas 16 se bloquea: fallar cerrado.
+NEST=0
 scan() {
-  local depth=$1 seg a i inner cwd0 first ref dst t cur
+  local depth=$1 seg a i inner cwd0 first ref dst t cur rc
   local skip dd tags repo
   local -a T segs ops targets gopts
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
+  [[ $seg == *push* || $seg == "$CMDN_US"cd"$CMDN_US"* ]] || continue
   cmdn_fields "$seg"
   cmdn_track_cd
   if [[ ${T[1]:-} != git ]]; then
@@ -73,9 +79,12 @@ scan() {
       [[ $a == *git* ]] || continue
       inner=$a
       [[ $a == git || $a == */git ]] && printf -v inner '%s ' "${T[@]:i}"
-      cwd0=$CMDN_CWD
-      cmdn_parse "$inner" && { CMDN_CWD=$cwd0; scan $(( depth + 1 )); }
+      [[ $inner == *push* ]] || continue
+      (( ++NEST > 16 )) && return 2
+      cwd0=$CMDN_CWD; rc=0
+      cmdn_parse "$inner" && { CMDN_CWD=$cwd0; scan $(( depth + 1 )); rc=$?; }
       CMDN_CWD=$cwd0
+      (( rc == 2 )) && return 2
     done
     continue
   fi
@@ -120,7 +129,12 @@ scan() {
     [[ -n $t ]] && is_protected "$t" && block "$t"
   done
   done
+  return 0
 }
 
-scan 0
+scan 0; rc=$?
+if (( rc == 2 )); then
+  echo "BLOCKED: mas de 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos." >&2
+  exit 2
+fi
 exit 0
