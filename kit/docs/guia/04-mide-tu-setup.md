@@ -58,8 +58,9 @@ Leen `$CLAUDE_PROJECTS_DIR` (por defecto, las transcripciones de `~/.claude/proj
 Cada llamada a `Bash` pasa por la cadena de guards de `PreToolUse` en serie, y cada guard arranca procesos. Mide un guard con una entrada sintética, en tu máquina:
 
 ```bash
-echo '{"tool_name":"Bash","tool_input":{"command":"git status"}}' > /tmp/entrada.json
-time bash ~/.claude/hooks/block-dangerous-commands.sh < /tmp/entrada.json
+entrada="$(mktemp)"
+echo '{"tool_name":"Bash","tool_input":{"command":"git status"}}' > "$entrada"
+time bash ~/.claude/hooks/block-dangerous-commands.sh < "$entrada"
 ```
 
 Si añades un hook propio, mídelo igual antes de dejarlo: un hook en el camino caliente (todas las herramientas, todos los prompts) se paga cientos de veces por sesión. El kit lo dice de su propia cadena en [`05-security.md`](../05-security.md#los-guards-de-bash-y-git).

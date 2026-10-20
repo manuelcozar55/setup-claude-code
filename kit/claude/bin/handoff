@@ -10,6 +10,7 @@ uso() {
   cat <<'EOF'
 uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
      handoff --iniciar [--raiz DIR]
+     handoff --informe TEMA [--raiz DIR]
      handoff --migrar DIR
      handoff --estado [--raiz DIR]
 --desde   fusiona el borrador (secciones «## » de la plantilla; «Pendientes y riesgos» vale por «Pendientes») en
@@ -23,7 +24,10 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
             a .git/info/exclude.
   --sesion  id de la sesión que cierra: el dueño solo se libera si es ella (o no hay dueño vigente).
 --iniciar crea <raíz>/.claude/estado/nucleo.md desde $CLAUDE_HOME/templates/nucleo.md (el primero del proyecto) y añade
-          .claude/estado/ a .git/info/exclude; si ya existe no lo toca (sale 0 y lo dice).
+          .claude/estado/ a .git/info/exclude; si ya existe no lo toca (sale 0 y lo dice). En cualquier caso deja
+          listos informes/ y checkpoints/ y un .gitignore interno con «*» (nada de ahí va a git).
+--informe crea <raíz>/.claude/estado/informes/AAAA-MM-DD-TEMA/ e imprime su ruta absoluta: es donde van los informes,
+          briefs y salidas de un agente, en vez del scratchpad. TEMA se sanea (sin «/» ni «..»); si queda vacío, sale 64.
 --migrar  archiva el nucleo heredado de DIR en DIR/.claude/estado/archivo/ y lo anota en el diario; nunca borra.
 --estado  una línea JSON: raíz, nucleo, bytes, tope, pct y dueño (sin proyecto: {"raiz":null}).
 Raíz: la del directorio actual (raíz git; no $HOME ni un directorio sin git) o --raiz DIR.
@@ -39,15 +43,16 @@ SELF=$(readlink -f -- "$0" 2>/dev/null || realpath -- "$0" 2>/dev/null || printf
 die() { local rc=$1; shift; echo "handoff: $*" >&2; exit "$rc"; }
 iso_de() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 
-MODO="" DESDE="" MIGRAR="" RAIZ_ARG="" SESION="" SOLO=0 COMMIT=0
+MODO="" DESDE="" MIGRAR="" TEMA="" RAIZ_ARG="" SESION="" SOLO=0 COMMIT=0
 while [ $# -gt 0 ]; do
   case $1 in
     -h | --help) uso; exit 0 ;;
-    --desde | --migrar | --raiz | --sesion)
+    --desde | --migrar | --informe | --raiz | --sesion)
       [ $# -ge 2 ] || { echo "uso: handoff: a $1 le falta su argumento (handoff --help)" >&2; exit 64; }
       case $1 in
         --desde) MODO=desde; DESDE=$2 ;;
         --migrar) MODO=migrar; MIGRAR=$2 ;;
+        --informe) MODO=informe; TEMA=$2 ;;
         --raiz) RAIZ_ARG=$2 ;;
         --sesion) SESION=$2 ;;
       esac
@@ -59,7 +64,7 @@ while [ $# -gt 0 ]; do
     *) echo "uso: handoff: opción desconocida «$1» (handoff --help)" >&2; exit 64 ;;
   esac
 done
-[ -n "$MODO" ] || { echo "uso: handoff --desde BORRADOR.md | --iniciar | --migrar DIR | --estado (handoff --help)" >&2; exit 64; }
+[ -n "$MODO" ] || { echo "uso: handoff --desde BORRADOR.md | --iniciar | --informe TEMA | --migrar DIR | --estado (handoff --help)" >&2; exit 64; }
 
 # La raíz de proyecto, o rc 1 sin tocar nada (decisión 6: ni $HOME, ni ~/.claude, ni un directorio sin git).
 resolver_raiz() {
@@ -90,9 +95,8 @@ if [ "$MODO" = iniciar ]; then
   PLANTILLA=${CLAUDE_HOME:-$HOME/.claude}/templates/nucleo.md
   [ -f "$PLANTILLA" ] || PLANTILLA=$(dirname "$SELF")/../templates/nucleo.md
   [ -f "$PLANTILLA" ] || die 1 "no encuentro la plantilla templates/nucleo.md (¿instalaste el kit?)"
-  E=$RAIZ/.claude/estado
+  E=$(nucleo_estado_dir "$RAIZ") || die 1 "no puedo escribir ni en $RAIZ/.claude/estado ni en el directorio de usuario"
   if [ -e "$E/nucleo.md" ]; then echo "handoff: $E/nucleo.md ya existe: no se toca"; exit 0; fi
-  mkdir -p "$E"
   cp -- "$PLANTILLA" "$E/nucleo.md"
   if EX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
     case $EX in /*) ;; *) EX=$RAIZ/$EX ;; esac
@@ -100,6 +104,19 @@ if [ "$MODO" = iniciar ]; then
     command grep -qFx '.claude/estado/' "$EX" 2>/dev/null || printf '.claude/estado/\n' >>"$EX" 2>/dev/null || true
   fi
   echo "handoff: $E/nucleo.md creado desde la plantilla"
+  exit 0
+fi
+
+# ---------------------------------------------------------------- --informe
+if [ "$MODO" = informe ]; then
+  resolver_raiz || die 3 "sin proyecto (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
+  T=${TEMA//\//-}; T=${T//../-}
+  T=$(printf '%s' "$T" | LC_ALL=C tr -c 'A-Za-z0-9._-' '-' | LC_ALL=C tr -s '-')
+  T=${T#"${T%%[!.-]*}"}; T=${T%"${T##*[!.-]}"}
+  [ -n "$T" ] || { echo "uso: handoff: el tema no deja nada tras sanearlo (handoff --help)" >&2; exit 64; }
+  E=$(nucleo_estado_dir "$RAIZ") || die 3 "no puedo escribir el estado de $RAIZ (¿enlaces simbólicos, o sin permiso aquí y en el directorio de usuario?)"
+  mkdir -p -- "$E/informes/$(date +%F)-$T" || die 1 "no puedo crear el directorio del informe"
+  printf '%s\n' "$E/informes/$(date +%F)-$T"
   exit 0
 fi
 
@@ -123,7 +140,8 @@ fi
 [ "$(wc -c <"$DESDE")" -le 262144 ] || die 2 "el borrador pasa de 256 KB: un estado no es un volcado"
 resolver_raiz || die 3 "sin proyecto (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
 nucleo_enlazado "$RAIZ" && die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
-E=$RAIZ/.claude/estado; NUC=$E/nucleo.md; DIARIO=$E/diario.md; VLOG=$E/verificaciones.log
+E=$(nucleo_estado_dir "$RAIZ") || die 3 "no puedo escribir el estado de $RAIZ (sin permiso aquí y en el directorio de usuario)"
+NUC=$E/nucleo.md; DIARIO=$E/diario.md; VLOG=$E/verificaciones.log
 HOY=$(date -u +%F)
 
 W=$(mktemp -d "${TMPDIR:-/tmp}/handoff.XXXXXX")

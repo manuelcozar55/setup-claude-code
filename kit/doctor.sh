@@ -365,6 +365,26 @@ else
   warn "no estas dentro de un repo git: no se puede comprobar la Capa 2 (core.hooksPath)"
 fi
 
+# 5d2. Estado del proyecto actual (ADR 016): .claude/estado/ lleva los prompts de la persona y los informes, y
+# nunca va a git. Si no esta ignorado y tiene ficheros sin rastrear, el siguiente `git add -A` los comitea (el
+# .gitignore interno con «*» lo crea nucleo_estado_dir; un estado anterior a esa version no lo tiene).
+# informes/ crece sin tope propio: avisa al pasar de DOCTOR_INFORMES_MB (50 por omision).
+estado_raiz="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$estado_raiz" ] && [ -d "$estado_raiz/.claude/estado" ]; then
+  estado_suelto="$(git -C "$estado_raiz" ls-files -o --exclude-standard -- .claude/estado 2>/dev/null | head -n 1)"
+  if [ -n "$estado_suelto" ]; then
+    warn "$estado_raiz/.claude/estado/ no esta ignorado y tiene ficheros sin rastrear (p. ej. $estado_suelto): printf '*\\n' > .claude/estado/.gitignore, o bash $CLAUDE_HOME/bin/handoff --iniciar"
+  else
+    pass "estado del proyecto ignorado o sin ficheros sueltos  (fuente: git ls-files -o --exclude-standard)"
+  fi
+  informes_kb="$(du -sk "$estado_raiz/.claude/estado/informes" 2>/dev/null | cut -f1)"
+  informes_mb="${DOCTOR_INFORMES_MB:-50}"
+  case "$informes_mb" in ''|*[!0-9]*) informes_mb=50 ;; esac
+  if [ "${informes_kb:-0}" -gt $((informes_mb * 1024)) ]; then
+    warn "$estado_raiz/.claude/estado/informes/ pesa $((informes_kb / 1024)) MB (> $informes_mb MB): archiva o borra los informes que ya no hagan falta"
+  fi
+fi
+
 # 6. gate de secretos sobre el kit
 if bash "$KIT/scan-secrets.sh" "$KIT" >/dev/null 2>&1; then pass "kit sin secretos  (fuente: scan-secrets.sh)"; else fail "scan-secrets detectó material sensible en el kit"; fi
 

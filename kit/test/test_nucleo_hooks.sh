@@ -45,10 +45,10 @@ ok "clear: línea de datos antes del envoltorio (y de <git-hechos>, que va delan
 ok "clear: Paso actual vivo y aviso de forma" "$(command grep -c 'PASO-VIVO\|fuera de forma' <<<"$C")" 2
 
 ev "$R/sub" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
-CP=$(ls "$R"/.claude/estado/checkpoint-compact-*.md 2>/dev/null)
+CP=$(ls "$R"/.claude/estado/checkpoints/checkpoint-compact-*.md 2>/dev/null)
 ok "pre-compact: checkpoint por sesión en .claude/estado de la raíz" "$([ -n "$CP" ] && echo si)" si
 ok "pre-compact: el checkpoint trae mensaje humano y pendientes" "$(command grep -c 'MENSAJE-HUMANO\|PENDIENTE-1' "$CP")" 2
-ok "pre-compact: .gitignore propio con checkpoint-compact*" "$(cat "$R/.claude/estado/.gitignore" 2>/dev/null)" 'checkpoint-compact*'
+ok "pre-compact: .gitignore interno con «*»" "$(cat "$R/.claude/estado/.gitignore" 2>/dev/null)" '*'
 ok "pre-compact: git ignora el checkpoint" "$(git -C "$R" check-ignore -q "$CP" && echo si)" si
 L=$(tail -1 "$HOME/.claude/session-logs/nucleo-freshness.log" 2>/dev/null)
 ok "pre-compact: KPI «ts sesión ctx% edad_s»" "$(awk '{print NF, $2, $3, ($4 ~ /^[0-9]+$/)}' <<<"$L")" "4 s1 71 1"
@@ -152,22 +152,21 @@ printf 'SECRETO-CHECKPOINT\n' >"$T/fuera-cp.md"
 ln -s "$T/fuera-cp.md" "$R9/.claude/estado/checkpoint-compact-$(printf s9 | sha256sum | cut -d' ' -f1).md"
 ok "symlink checkpoint: compact no lo inyecta" "$(ev "$R9" s9 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-CHECKPOINT)" 0
 
-# --- pre-compact: no ensucia repos sin nucleo y su checkpoint queda ignorado aunque ya hubiera .gitignore ---
+# --- pre-compact: un repo sin estado lo recibe ignorado (git status limpio); con .gitignore previo sin «*» el checkpoint también queda ignorado ---
 R5=$T/r5; mkdir -p "$R5"; git -C "$R5" init -q
 ev "$R5" s7 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
-ok "pre-compact: repo sin .claude/estado → git status limpio" "$(git -C "$R5" status --short -uall)" ""
+ok "pre-compact: repo sin .claude/estado → lo crea ignorado y git status limpio" "$(git -C "$R5" status --short -uall),$([ -d "$R5/.claude/estado/checkpoints" ] && echo si)" ",si"
 mkdir -p "$R5/.claude/estado"; printf 'diario.md' >"$R5/.claude/estado/.gitignore"
 ev "$R5" s7 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: con .gitignore previo el checkpoint queda ignorado" "$(git -C "$R5" status --short -uall)" "?? .claude/estado/.gitignore"
-ok "pre-compact: el .gitignore previo conserva lo suyo" "$(cat "$R5/.claude/estado/.gitignore")" "diario.md
-checkpoint-compact*"
+ok "pre-compact: el .gitignore previo no se toca (informes/ y checkpoints/ llevan el suyo)" "$(cat "$R5/.claude/estado/.gitignore"),$(cat "$R5/.claude/estado/checkpoints/.gitignore")" "diario.md,*"
 
 # --- pre-compact: sin git y sin estado no crea nada; rota checkpoints de más de 14 días ---
 # Medido en una instalación vieja: 47 .claude/estado basura bajo el home, uno por cada cwd.
 mkdir -p "$T/sin-git"
 ev "$T/sin-git" s8 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: dir sin git ni estado → no crea .claude" "$(ls -A "$T/sin-git")" ""
-VIEJO=$R/.claude/estado/checkpoint-compact-viejo.md; NUEVO=$R/.claude/estado/checkpoint-compact-nuevo.md
+VIEJO=$R/.claude/estado/checkpoints/checkpoint-compact-viejo.md; NUEVO=$R/.claude/estado/checkpoints/checkpoint-compact-nuevo.md
 touch -d '20 days ago' "$VIEJO"; touch -d '2 days ago' "$NUEVO"; touch -d '20 days ago' "$NUC"
 ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: rota el checkpoint de 20 días" "$([ -e "$VIEJO" ] && echo sigue || echo rotado)" rotado
@@ -179,7 +178,7 @@ touch -d '20 days ago' "$VIEJO"
 mkdir -p "$T/mvfalso"; printf '#!/bin/sh\nexit 1\n' >"$T/mvfalso/mv"; chmod +x "$T/mvfalso/mv"
 ev "$R" s1 "$TP" | PATH="$T/mvfalso:$PATH" bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: si falla la publicación, el checkpoint viejo se conserva" "$([ -e "$VIEJO" ] && echo si)" si
-OUT1=$R/.claude/estado/checkpoint-compact-$(printf s1 | sha256sum | cut -d' ' -f1).md
+OUT1=$R/.claude/estado/checkpoints/checkpoint-compact-$(printf s1 | sha256sum | cut -d' ' -f1).md
 touch -d '20 days ago' "$OUT1"
 ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: el checkpoint recién publicado no se rota" "$([ -e "$OUT1" ] && [ -z "$(find "$OUT1" -mtime +14)" ] && echo si)" si
@@ -211,7 +210,7 @@ ok "pre-compact: un TERM durante la rotación no deja temporal del log" "$(find 
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
 
 # --- estado (pre-compact y plantilla): un transcript ilegible no pisa el checkpoint bueno ---
-CK=$R/.claude/estado/checkpoint-compact.md
+CK=$R/.claude/estado/checkpoints/checkpoint-compact.md
 TPC=$T/transcript-c.jsonl
 for modo in basura ausente; do
   echo previo-CK >"$CK"
@@ -223,7 +222,7 @@ for modo in basura ausente; do
   ok "pre-compact transcript $modo: sin temporales" "$(find "$R/.claude/estado" -name '.checkpoint-compact.*' | wc -l | tr -d ' ')" 0
 done
 # Sin checkpoint previo, «anterior conservado» mentía: se sigue sin publicar, pero el aviso dice que no había ninguno.
-NPS='s-sin-previo'; NPO=$R/.claude/estado/checkpoint-compact-$(printf '%s' "$NPS" | sha256sum | cut -d' ' -f1).md
+NPS='s-sin-previo'; NPO=$R/.claude/estado/checkpoints/checkpoint-compact-$(printf '%s' "$NPS" | sha256sum | cut -d' ' -f1).md
 ev "$R" "$NPS" "$T/no-existe.jsonl" | bash "$H/pre-compact.sh" 2>"$T/c-err"; RC=$?
 ok "pre-compact transcript ausente sin checkpoint previo: exit 0, no publica y avisa de que no había ninguno" "$RC,$([ -e "$NPO" ] && echo publicado || echo no),$(command grep -c 'no había ninguno' "$T/c-err"),$(command grep -c 'anterior conservado' "$T/c-err")" "0,no,1,0"
 ev "$R" "$NPS" "$TP" | PATH="$T/mvfalso:$PATH" bash "$H/pre-compact.sh" 2>"$T/c-err"
@@ -275,14 +274,14 @@ ok "session-start: sin memoria conserva el aviso" "$(cd "$T/sin-git" && bash "$H
 
 # --- #25: rotación por número además de por edad (conserva 5; NUCLEO_CHECKPOINT_KEEP); #sin-sid: el respaldo sin hash también se ignora ---
 RR=$T/rr; mkdir -p "$RR/.claude/estado"; git -C "$RR" init -q; printf '## Objetivo\nx\n' >"$RR/.claude/estado/nucleo.md"
-for i in 1 2 3 4 5 6 7 8; do : >"$RR/.claude/estado/checkpoint-compact-n$i.md"; touch -d "-$((10 - i)) hours" "$RR/.claude/estado/checkpoint-compact-n$i.md"; done
+for i in 1 2 3 4 5 6 7 8; do mkdir -p "$RR/.claude/estado/checkpoints"; : >"$RR/.claude/estado/checkpoints/checkpoint-compact-n$i.md"; touch -d "-$((10 - i)) hours" "$RR/.claude/estado/checkpoints/checkpoint-compact-n$i.md"; done
 ev "$RR" s11 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "rotación por número: quedan 5 (incluido el nuevo)" "$(find "$RR/.claude/estado" -name "checkpoint-compact-*.md" | wc -l)" 5
-ok "rotación por número: se van los más viejos, no los recientes" "$([ ! -e "$RR/.claude/estado/checkpoint-compact-n1.md" ] && [ -e "$RR/.claude/estado/checkpoint-compact-n8.md" ] && echo si)" si
+ok "rotación por número: se van los más viejos, no los recientes" "$([ ! -e "$RR/.claude/estado/checkpoints/checkpoint-compact-n1.md" ] && [ -e "$RR/.claude/estado/checkpoints/checkpoint-compact-n8.md" ] && echo si)" si
 ev "$RR" s11 "$TP" | NUCLEO_CHECKPOINT_KEEP=2 bash "$H/pre-compact.sh" 2>/dev/null
-ok "NUCLEO_CHECKPOINT_KEEP=2: quedan 2 y el nuevo es uno" "$(find "$RR/.claude/estado" -name "checkpoint-compact-*.md" | wc -l),$([ -e "$RR/.claude/estado/checkpoint-compact-$(printf s11 | sha256sum | cut -d' ' -f1).md" ] && echo si)" 2,si
+ok "NUCLEO_CHECKPOINT_KEEP=2: quedan 2 y el nuevo es uno" "$(find "$RR/.claude/estado" -name "checkpoint-compact-*.md" | wc -l),$([ -e "$RR/.claude/estado/checkpoints/checkpoint-compact-$(printf s11 | sha256sum | cut -d' ' -f1).md" ] && echo si)" 2,si
 ev "$RR" "" "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
-ok "sin session_id: checkpoint-compact.md existe y git lo ignora" "$(git -C "$RR" check-ignore -q "$RR/.claude/estado/checkpoint-compact.md" && echo si)" si
+ok "sin session_id: checkpoint-compact.md existe y git lo ignora" "$(git -C "$RR" check-ignore -q "$RR/.claude/estado/checkpoints/checkpoint-compact.md" && echo si)" si
 
 # --- K8 (D1): desde ~ el nucleo compartido no es el de esta sesión: ni compact ni gauge lo tratan como propio ---
 HN=$HOME/.claude/estado/nucleo.md; mkdir -p "$HOME/.claude/estado"; printf '## Objetivo\nOBJ-AJENO\n## Paso actual\nPASO-AJENO\n' >"$HN"
@@ -660,5 +659,39 @@ for n in 1 2; do
   (cd "$IP" && bash "$BIN/handoff" --desde "$T/b-pegada.md" >/dev/null 2>&1); RC=$?
   ok "iniciar + --desde (fusión $n): una cabecera de cada sección, 8 en total, y el Objetivo una vez" "$RC,$(command grep -c '^## ' "$IP/.claude/estado/nucleo.md"),$(sed -n 's/^## //p' "$IP/.claude/estado/nucleo.md" | paste -sd,),$(command grep -c 'OBJ-DIA1' "$IP/.claude/estado/nucleo.md")" "0,8,$(sed -n 's/^## //p' "$KIT/claude/templates/nucleo.md" | paste -sd,),1"
 done
+
+# --- ADR 016 (W1): el estado siempre existe y nunca va a git ---
+W1=$T/w1; mkrepo "$W1"
+(cd "$W1" && bash "$BIN/oraculo" -- true >/dev/null 2>&1)
+ok "oraculo: en un repo sin estado crea verificaciones.log y git status sigue limpio" "$([ -s "$W1/.claude/estado/verificaciones.log" ] && echo si),$(git -C "$W1" status --porcelain -uall)" "si,"
+W2=$T/w2; mkrepo "$W2"
+ev "$W2" s-w1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: en un repo sin estado escribe en checkpoints/ y git status queda limpio" "$(find "$W2/.claude/estado/checkpoints" -name 'checkpoint-compact-*.md' | wc -l | tr -d ' '),$(git -C "$W2" status --porcelain -uall)" "1,"
+ok "compact: lee el checkpoint de checkpoints/" "$(ev "$W2" s-w1 | bash "$H/session-start-compact.sh" | ctx | command grep -c 'Checkpoint previo a compactar')" 1
+W3=$T/w3; mkrepo "$W3"; mkdir -p "$W3/.claude/estado/checkpoints"
+for i in 1 2 3 4 5 6 7; do f=$W3/.claude/estado/checkpoints/checkpoint-compact-v$i.md; : >"$f"; touch -d "-$((i * 4)) days" "$f"; done
+ev "$W3" s-w3 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact con 7 checkpoints viejos: quedan ≤ 5 y ninguno de más de 14 días" "$([ "$(find "$W3/.claude/estado/checkpoints" -name 'checkpoint-compact-*.md' | wc -l)" -le 5 ] && echo si),$(find "$W3/.claude/estado/checkpoints" -name 'checkpoint-compact-*.md' -mtime +14 | wc -l | tr -d ' ')" "si,0"
+if [ "$(id -u)" -ne 0 ]; then
+  W4=$T/w4; mkrepo "$W4"; chmod a-w "$W4"
+  ev "$W4" s-w4 "$TP" | bash "$H/pre-compact.sh" 2>"$T/w4-err"
+  ok "pre-compact: raíz de solo lectura → el checkpoint cae al directorio de usuario y avisa" "$(find "$HOME/.claude/estado" -path '*/w4-*/checkpoints/checkpoint-compact-*.md' | wc -l | tr -d ' '),$(command grep -c 'no admite escritura' "$T/w4-err")" "1,1"
+  chmod u+w "$W4"
+fi
+W5=$T/w5; mkrepo "$W5"
+ho5() { (cd "$W5" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" "$@"); }
+ho5 --iniciar >/dev/null 2>&1
+ok "handoff --iniciar: deja informes/, checkpoints/ y el .gitignore con «*»" "$([ -d "$W5/.claude/estado/informes" ] && [ -d "$W5/.claude/estado/checkpoints" ] && echo si),$(cat "$W5/.claude/estado/.gitignore")" 'si,*'
+ok "handoff --help nombra --informe" "$(ho5 --help | command grep -c -- '--informe')" 2
+IR=$(ho5 --informe tema 2>&1); RC=$?
+ok "handoff --informe tema: imprime la ruta absoluta de informes/AAAA-MM-DD-tema y existe" "$RC,$([ "$IR" = "$W5/.claude/estado/informes/$(date +%F)-tema" ] && [ -d "$IR" ] && echo si)" "0,si"
+IR=$(ho5 --informe 'a/../b' 2>&1); RC=$?
+ok "handoff --informe «a/../b»: sanea (sin «/» ni «..») y queda dentro de informes/" "$RC,$IR" "0,$W5/.claude/estado/informes/$(date +%F)-a-b"
+ok "handoff --informe «../..»: no queda nada que usar → 64" "$(ho5 --informe '../..' >/dev/null 2>&1; echo $?)" 64
+ok "handoff --informe sin tema: 64" "$(ho5 --informe >/dev/null 2>&1; echo $?)" 64
+echo x >"$IR/informe.md"
+printf '## Plan\n- [x] hecho-w1\n' >"$T/b-w1.md"
+ho5 --desde "$T/b-w1.md" --commit >/dev/null 2>&1
+ok "handoff --commit: versiona nucleo, diario y .gitignore, nunca informes/ ni checkpoints/" "$(git -C "$W5" ls-files .claude/estado | paste -sd,),$(git -C "$W5" status --porcelain -uall)" ".claude/estado/.gitignore,.claude/estado/diario.md,.claude/estado/nucleo.md,"
 
 exit $FAIL
