@@ -109,3 +109,55 @@ fecha | sesión | modelo | turnos | correcciones | tool calls | oráculo ejecuta
 | fecha | sesión | modelo | turnos | corr. | tools | oráculo | técnica |
 |---|---|---|---|---|---|---|---|
 | 2026-08-21 | mcharness v0.1.0 | opus-5 | — | 1 (rechazo de ejecutar la suite ajena) | — | **sí** · `make test` → exit 0, 22 s | backup falsable, baseline sellada, canal de sensado caracterizado |
+
+---
+
+## Contexto de arranque, línea base (ADR 018) — 2026-10-20
+
+Comando: `bash scripts/contexto-base.sh` (inventario, sin red) y `bash scripts/contexto-base.sh --pagar` (primer turno real).
+`claude` 2.1.304 · modelos `claude-haiku-5-5` (cuatro corridas) y `claude-opus-5-5` (una) · base `81dbdb6`.
+Inventario: dos ejecuciones, `diff` vacío. Gasto de la medida: 0,11 USD con las corridas de diagnóstico.
+
+### Por canal (peor caso razonable, `nucleo.md` de 8 KB)
+
+| Canal | Caracteres | Bytes |
+|---|---:|---:|
+| Instrucciones globales (`CLAUDE.md` + `@AGENTS.md`) | 5.460 | 5.548 |
+| SessionStart startup / clear (`session-start-clear.sh`) | 5.199 | 5.224 |
+| SessionStart resume (con aviso de caché caducada) | 5.366 | 5.394 |
+| SessionStart compact | 3.935 | 3.940 |
+| SessionStart memoria (`session-start.sh`, sin memoria) | 76 | 76 |
+| PostToolUse `nucleo-nudge` (airbag 85 %) | 348 | 351 |
+| Stop `stop-context-gauge` (≥ 60 %) | 249 | 249 |
+| UserPromptSubmit | 0 | 0 |
+| Agentes: suma de las 8 `description` | 2.303 | 2.309 |
+| Skills: suma de las `description` (retro y to-questionnaire no cuentan: `disable-model-invocation`) | 758 | 758 |
+
+Los tres canales que más pesan: instrucciones globales (5.460), SessionStart con `nucleo.md` (5.199) y las
+descripciones de agentes (2.303). startup, clear, resume y compact son eventos alternativos: no se suman.
+Límites del inventario: el `nucleo.md` sintético (8.192 B, cuatro commits) no es el peor caso del test de
+`nucleo.sh` (8.677 chars); `write-guard`, `stale-read-guard` y `narthex-post-mcp` solo avisan ante un evento
+concreto y no se miden aquí.
+
+### Primer turno real (`claude -p`, prompt «Responde solo: ok»)
+
+Tokens de entrada = `input + cache_creation + cache_read`.
+
+| Configuración | Modelo | Tokens de entrada | `total_cost_usd` |
+|---|---|---:|---:|
+| sin kit (`--safe-mode`) | haiku | 15.113 | 0,0008 |
+| con kit (proyecto, `--setting-sources project`) | haiku | 20.634 | 0,0023 |
+| con kit + `nucleo.md` lleno | haiku | 23.383 | 0,0030 |
+| con kit | opus | 19.458 | 0,0830 |
+| configuración viva de quien mide, sin aislar (no reproducible) | haiku | 29.631 | 0,0041 |
+
+Deltas: el kit añade 5.521 tokens sobre «sin kit»; el `nucleo.md` lleno, 2.749 más. Con opus la misma
+configuración da 19.458 frente a 20.634 en haiku (×0,94). El coste de haiku sale bajo porque ~9,7 k tokens
+del prefijo vienen de caché; el de opus es una sola corrida con prefijo casi sin caché.
+
+Aislamiento: `CLAUDE_CONFIG_DIR` vacío pide login (las credenciales no se copian), así que «con kit» carga el
+kit instalado con `install.sh` en un `CLAUDE_HOME` de `mktemp` como **proyecto** y con `--setting-sources
+project`; los hooks corren con `HOME` de `mktemp`. Comprobado: sin plugins ni MCP ni skills del usuario, y el
+modelo solo cita la política gestionada y el `CLAUDE.md` del kit. **La política gestionada de
+`/etc/claude-code/` (incluido su `CLAUDE.md`) está en todas las cifras**, también en «sin kit»; Debian sin ella
+dará el número limpio. `--safe-mode` y `--setting-sources` son los modos de la 2.1.304.
