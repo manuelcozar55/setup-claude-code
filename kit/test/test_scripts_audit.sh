@@ -49,7 +49,7 @@ bat() {  # $1 = carpeta de salida; el resto, asignaciones make. Deja el rc de ma
 bat "$tmp/bat-ok"
 ck "$brc" "0" "bateria: con los cuatro verdes sale 0"
 ck "$(cat "$tmp/bat-ok"/{make,sc,scan,gl}.rc | tr '\n' ' ')" "0 0 0 0 " "bateria: escribe los cuatro .rc"
-ck "$(ls "$tmp/bat-ok"/{make,sc,scan,gl}.log 2>/dev/null | wc -l | tr -d ' ')" "4" "bateria: escribe los cuatro .log"
+ck "$(for x in make sc scan gl; do [ -f "$tmp/bat-ok/$x.log" ] && echo y; done | wc -l | tr -d ' ')" "4" "bateria: escribe los cuatro .log"
 ck "$(grep -c '^make=0 sc=0 scan=0 gl=0$' "$tmp/bat-ok.out")" "1" "bateria: imprime el resumen make=0 sc=0 scan=0 gl=0"
 printf '#!/bin/sh\necho "SC2086 simulado"\nexit 1\n' > "$tmp/sc-malo"; chmod +x "$tmp/sc-malo"
 bat "$tmp/bat-sc" BATERIA_SHELLCHECK="$tmp/sc-malo"
