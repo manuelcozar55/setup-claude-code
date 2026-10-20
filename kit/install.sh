@@ -276,6 +276,12 @@ enlazar_clis() {
 }
 aviso_path() {
   case ":$PATH:" in *":$LOCAL_BIN:"*) return 0 ;; esac
+  # Con CLAUDE_HOME no estandar no se enlazo nada: decir que "no se encontraran" suena a que si estan enlazados.
+  if ! clis_enlazables; then
+    echo "==> AVISO: $LOCAL_BIN no esta en tu PATH. No se enlazo nada: si creas los enlaces de arriba, tendras que"
+    echo "    añadir esa carpeta al PATH para usarlos por su nombre; sin enlaces, usa la ruta $CLAUDE_HOME/bin/<nombre>."
+    return 0
+  fi
   echo "==> AVISO: $LOCAL_BIN no esta en tu PATH, asi que handoff y oraculo no se encontraran."
   echo "    Abre una terminal nueva (Debian/Ubuntu lo añade al iniciar sesion si la carpeta ya existe)"
   echo "    o añade a tu ~/.bashrc:  export PATH=\"\$HOME/.local/bin:\$PATH\""
