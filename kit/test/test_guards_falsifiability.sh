@@ -198,6 +198,29 @@ nest_case destructive-guard.sh allow 18000 "x find"
 nest_case branch-guard.sh deny 2000 "x 'git stash push'"
 nest_case branch-guard.sh allow 2000 "x git"
 nest_case branch-guard.sh allow 21000 "x git"
+# S-N1: el tope de 16 cuenta cadenas ANIDADAS, no segmentos. Con `git push;` repetido, branch-guard
+# lanzaba un `git symbolic-ref` por segmento (3,3 ms cada uno: 108 KB = 36 s, y el hook muere a los 10 s
+# y deja ejecutar el comando entero). La rama actual se calcula una vez por repo; el push a rama
+# protegida del final tiene que seguir denegandose, y en menos de 2 s.
+SN1_REPO=$(mktemp -d)
+git -C "$SN1_REPO" init -q && git -C "$SN1_REPO" symbolic-ref HEAD refs/heads/feat
+sn1_case() { # $1 veces, $2 segmento que se repite, $3 comando final
+  local cmd payload t0 ms rc
+  cmd=$(for ((i = 0; i < $1; i++)); do printf '%s;' "$2"; done)
+  payload=$(jq -n --arg c "${cmd}$3" '{tool_name:"Bash",tool_input:{command:$c}}')
+  n_block=$((n_block+1))
+  t0=$(date +%s%N)
+  (cd "$SN1_REPO" && printf '%s' "$payload" | timeout 20 bash "$HOOKS/branch-guard.sh" >/dev/null 2>&1); rc=$?
+  ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+  if [ "$rc" -ne 2 ]; then
+    bypass_fail=$((bypass_fail+1)); echo "FAIL: branch-guard: $1 x «$2» + «$3» dio rc=$rc y se esperaba 2 (${ms} ms)"
+  elif [ "$ms" -ge 2000 ]; then
+    bypass_fail=$((bypass_fail+1)); echo "FAIL: branch-guard: $1 x «$2» + «$3» tardo ${ms} ms (tope 2000)"
+  fi
+}
+sn1_case 12000 "git push" "git push origin main"
+sn1_case 5000 "git push origin feat" "git push origin main"
+rm -r -- "$SN1_REPO"
 rm -rf "$BYPASS_HOME"
 if [ "$bypass_fail" -ne 0 ]; then
   echo "FAIL: $bypass_fail casos de bypass/negativos incorrectos."

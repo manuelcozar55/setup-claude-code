@@ -62,6 +62,19 @@ block() {
 # ejecutar el comando: fallaba en abierto. Solo se miran los segmentos con push (y los `cd`, que fijan el
 # repo), solo se vuelve a normalizar la cadena que lleva push, y pasadas 16 se bloquea: fallar cerrado.
 NEST=0
+# La rama actual se calcula una vez por (cwd, opciones globales de git): `git push;` repetido miles de
+# veces lanzaba un symbolic-ref (3,3 ms) por segmento y pasaba del timeout igual que las cadenas
+# anidadas. Pasados 16 repos distintos se deniega: fallar cerrado.
+declare -A CURS=()
+NCUR=0
+cur_branch() {
+  local key="$CMDN_CWD|${T[0]:-}"
+  if [[ -z ${CURS[$key]+x} ]]; then
+    (( ++NCUR > 16 )) && return 2
+    CURS[$key]=$(git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" symbolic-ref --short -q HEAD 2>/dev/null)
+  fi
+  cur=${CURS[$key]}
+}
 scan() {
   local depth=$1 seg a i inner cwd0 first ref dst t cur rc
   local skip dd tags repo
@@ -109,7 +122,7 @@ scan() {
   done
 
   IFS=$CMDN_GS read -r -a gopts <<<"${T[0]}"
-  cur=$(git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" symbolic-ref --short -q HEAD 2>/dev/null)
+  cur_branch || return 2
 
   # Con --repo el remoto ya viene dado y todos los posicionales son refspecs.
   first=1; (( repo )) && first=0
@@ -134,7 +147,7 @@ scan() {
 
 scan 0; rc=$?
 if (( rc == 2 )); then
-  echo "BLOCKED: mas de 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos." >&2
+  echo "BLOCKED: mas de 16 comandos anidados (bash -c, ssh, xargs...) o repos distintos con git push: no caben en el timeout del guard; dividelo en comandos cortos." >&2
   exit 2
 fi
 exit 0
