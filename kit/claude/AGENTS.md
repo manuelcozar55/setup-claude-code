@@ -48,6 +48,10 @@ Se aclara *antes* de empezar. Una vez en marcha, nada de «¿sigo?»: ejecuta ha
 - Los informes, briefs y salidas de un agente van a `handoff --informe <tema>`: imprime `.claude/estado/informes/AAAA-MM-DD-<tema>/` y el brief lleva esa ruta, no un `/tmp`.
 - Lo compartido y curado (decisiones, oráculos, errores) sigue en `knowledge/`, versionado.
 
+## Delegación
+- Al hilo principal vuelve la conclusión (≤ 8 líneas) y la ruta de `RESULTADO.md`, nunca el volcado: el detalle va a `handoff --informe <tema>`.
+- `RESULTADO.md`: línea 1 `estado: completado|fallido|parcial`; línea 2 el comando que lo verifica.
+
 ## Memoria compartida
 Los tres runtimes comparten un almacén: un hecho por fichero con frontmatter (`name`, `description`, `metadata.type`) e índice de una línea por memoria en `MEMORY.md`.
 - Si tienes `recuerda` (kit/docs/13; no lo instala `install.sh`), consulta con él, nunca leas las memorias enteras: `recuerda <términos>` (párrafos que coinciden, sin acentos ni mayúsculas), `recuerda -l` (índice), `recuerda -f <slug>` (una completa).

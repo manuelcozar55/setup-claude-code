@@ -43,6 +43,8 @@ python3 scripts/nucleo_audit.py
 
 Leen `$CLAUDE_PROJECTS_DIR` (por defecto, las transcripciones de `~/.claude/projects/`). Para la memoria, [`scripts/recuerda`](../../../scripts/recuerda) y [`13-memoria.md`](../13-memoria.md).
 
+Lo que el kit mete en el contexto al arrancar se mide por canal con `bash scripts/contexto-base.sh` (sin red; `--pagar` añade el primer turno real). `kit/test/test_presupuesto_contexto.sh` falla si un canal pasa de su tope; la tabla de topes y su medida están en `knowledge/COST-LOG.md`.
+
 | Métrica | Medido en 2026 | Objetivo |
 |---|---|---|
 | Compactaciones manuales (`/compact`, `/handoff`) | 0 % | ≥ 50 % |
