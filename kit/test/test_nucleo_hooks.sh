@@ -464,8 +464,8 @@ HT=$T/hot; mkrepo "$HT"
 OUT=$(cd "$HT" && bash "$BIN/handoff" --desde "$T/b-grande.md" 2>&1); RC=$?
 TN=$HT/.claude/estado/nucleo.md
 ok "tope: el nucleo escrito no pasa de NUCLEO_TOPE y sale 0" "$RC,$([ "$(wc -c <"$TN")" -le 6500 ] && echo si)" "0,si"
-ok "tope: se omite la sección del final del orden D5 (Ficheros tocados) y se dice" "$(command grep -c '^## Ficheros tocados' "$TN"),$(command grep -c '^## Pendientes' "$TN"),$(command grep -ci 'omit.*Ficheros tocados' <<<"$OUT")" "0,1,1"
-ok "tope: lo omitido se conserva en diario.md" "$(command grep -c 'omitido por tope.*Ficheros tocados' "$HT/.claude/estado/diario.md")" 1
+ok "tope: se omite Pendientes antes que Ficheros tocados (W2: lo exige deep-change) y se dice" "$(command grep -c '^## Ficheros tocados' "$TN"),$(command grep -c '^## Pendientes' "$TN"),$(command grep -ci 'omit.*Pendientes' <<<"$OUT")" "1,0,1"
+ok "tope: lo omitido se conserva en diario.md" "$(command grep -c 'omitido por tope.*Pendientes' "$HT/.claude/estado/diario.md")" 1
 ok "tope: la nota queda en el nucleo (fuera de las secciones)" "$(command grep -c '^> handoff .*omitidas por tope' "$TN")" 1
 ok "tope: NUCLEO_TOPE manda sobre el defecto" "$(cd "$HT" && NUCLEO_TOPE=300 bash "$BIN/handoff" --desde "$T/b-grande.md" >/dev/null 2>&1; if [ "$(wc -c <"$TN")" -le 300 ]; then echo si; else wc -c <"$TN"; fi)" si
 
@@ -693,5 +693,35 @@ echo x >"$IR/informe.md"
 printf '## Plan\n- [x] hecho-w1\n' >"$T/b-w1.md"
 ho5 --desde "$T/b-w1.md" --commit >/dev/null 2>&1
 ok "handoff --commit: versiona nucleo, diario y .gitignore, nunca informes/ ni checkpoints/" "$(git -C "$W5" ls-files .claude/estado | paste -sd,),$(git -C "$W5" status --porcelain -uall)" ".claude/estado/.gitignore,.claude/estado/diario.md,.claude/estado/nucleo.md,"
+# --- W2: handoff híbrido por defecto (aviso de edad tras compactar, ruta del kit, Ficheros tocados reservado) ---
+W=$T/w2h; mkdir -p "$W/.claude/estado"; git -C "$W" init -q; WN=$W/.claude/estado/nucleo.md
+{ echo '## Objetivo'; echo 'W2-OBJ'; } >"$WN"
+wavisa() { ev "$W" "$1" | bash "$H/session-start-compact.sh" | ctx | command grep -c 'Aviso del hook'; }
+touch -d '-30 minutes' "$WN"
+ok "W2 compact: nucleo viejo y sesión sin dueño rival → aviso de edad" "$(wavisa w1)" 1
+ok "W2 compact: segunda compactación sin cambios en nucleo → sin aviso repetido" "$(wavisa w1)" 0
+ok "W2 compact: el aviso va fuera del bloque de datos" "$(ev "$W" w1b | bash "$H/session-start-compact.sh" | ctx | awk '/^<nucleo-datos/{d=1} /Aviso del hook/{if(d)x=1} END{print x+0}')" 0
+touch -d '-20 minutes' "$WN"
+ok "W2 compact: el nucleo cambió y sigue viejo → avisa otra vez" "$(wavisa w1)" 1
+touch "$WN"
+ok "W2 compact: nucleo fresco → sin aviso" "$(wavisa w2)" 0
+touch -d '-30 minutes' "$WN"
+printf 'sesion=otra\ndesde=%s\n' "$(date +%s)" >"$W/.claude/estado/.dueno"
+ok "W2 compact: sesión ajena → silencio" "$(wavisa w3)" 0
+rm -f "$W/.claude/estado/.dueno"
+ok "W2 compact: el aviso con handoff fuera del PATH lleva la ruta del kit" "$(ev "$W" w4 | PATH=/usr/bin:/bin bash "$H/session-start-compact.sh" | ctx | command grep -c "$HOME/.claude/bin/handoff --desde")" 1
+{ echo '## Objetivo'; head -c 12000 /dev/zero | tr '\0' o; echo; } >"$WN"; touch -d '-30 minutes' "$WN"
+WO=$(ev "$W" w5 | bash "$H/session-start-compact.sh"); WC=$(ctx <<<"$WO")
+ok "W2 compact: con aviso y nucleo enorme sigue ≤ 9 500 y el aviso sobrevive" "$([ "${#WC}" -le 9500 ] && echo si),$(command grep -c 'Aviso del hook' <<<"$WC")" "si,1"
+# gauge y nudge sin handoff en el PATH: ruta del kit (y existe en la instalación de prueba)
+mkdir -p "$HOME/.claude/bin"; : >"$HOME/.claude/bin/handoff"; chmod +x "$HOME/.claude/bin/handoff"
+WG=$(ev "$R" w6 "$TP" | PATH=/usr/bin:/bin bash "$H/stop-context-gauge.sh" | jq -r '.systemMessage // empty')
+WP=$(sed -n 's/.*`\([^ ]*\) --desde.*/\1/p' <<<"$WG")
+ok "W2 gauge: sin handoff en el PATH enseña una ruta absoluta que existe" "$WP,$([ -x "$WP" ] && echo si)" "$HOME/.claude/bin/handoff,si"
+# --desde: «Ficheros tocados» sobrevive junto a Paso actual, Siguiente acción y Comandos
+WT=$T/w2t; mkdir -p "$WT"; git -C "$WT" init -q
+{ printf '## Objetivo\nO\n## Paso actual\nPA\n## Siguiente acción\nSA\n## Comandos de verificación\n- `make test`\n## Plan\n'; head -c 6800 /dev/zero | tr '\0' l; printf '\n## Pendientes\n'; head -c 4000 /dev/zero | tr '\0' p; printf '\n## Ficheros tocados\n- a.sh\n- b.sh\n'; } >"$T/w2-b.md"
+(cd "$WT" && bash "$BIN/handoff" --desde "$T/w2-b.md" >/dev/null 2>&1); RC=$?
+ok "W2 --desde: sobre el tope sobreviven Paso actual, Siguiente acción, Comandos y Ficheros tocados" "$RC,$(sed -n 's/^## //p' "$WT/.claude/estado/nucleo.md" | paste -sd,)" "0,Objetivo,Paso actual,Siguiente acción,Comandos de verificación,Ficheros tocados"
 
 exit $FAIL

@@ -100,7 +100,7 @@ Abre `nucleo.md` y rellena **Objetivo** (las palabras de quien pidió la tarea) 
    ```
 
    Imprime las últimas 40 líneas y `rc=N`, sale con ese código y lo anota en `.claude/estado/verificaciones.log`. Así el estado guarda qué se verificó y con qué resultado.
-2. **Cierra la fase.** Con el mod: `/handoff`. Sin el mod: pide al modelo un borrador de las secciones que cambian y ejecuta `handoff --desde borrador.md`. `handoff --estado` te dice cuánto del tope ocupa el estado.
+2. **Cierra la fase.** Con el mod: `/handoff`. Sin el mod (el defecto): checkpoint + reinyección + aviso; `/handoff` es manual, así que pide al modelo un borrador de las secciones que cambian y ejecuta `handoff --desde borrador.md`; el cockpit es la opción automática. `handoff --estado` te dice cuánto del tope ocupa el estado.
 3. **Limpia el contexto con `/clear`.** La sesión nueva recibe `nucleo.md` y un resumen de `git` sin que lo pidas. Para cambiar de tarea, `/nueva <tarea>` (con el mod).
 
 Una sesión por tarea. Esperar a la compactación automática pierde contexto; este bucle conserva lo que tú dejaste escrito. Para el hábito día a día, sigue la [ruta de 7 días](guia/00-ruta-7-dias.md).

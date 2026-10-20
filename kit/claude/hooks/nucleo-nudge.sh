@@ -46,7 +46,8 @@ if [ -n "$MT" ]; then
 else
   M="CONTEXTO $PCT % del airbag y no hay nucleo.md: antes de la siguiente herramienta créalo en $NUC con la forma de \$HOME/.claude/templates/nucleo.md."
 fi
-[ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno. Cierra la fase con \`handoff\` (handoff --desde <borrador>)."
+HO=handoff; command -v handoff >/dev/null 2>&1 || HO=$HOME/.claude/bin/handoff
+[ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno. Cierra la fase con \`$HO --desde <borrador>\`."
 A="con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff."
 [ "${COCKPIT_AUTO_HANDOFF:-}" = off ] && A="el handoff automático está desactivado; la persona hará /handoff."
 [ "$B" = 85 ] && M="$M Cierra el turno ya: $A"

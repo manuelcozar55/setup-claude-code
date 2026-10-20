@@ -44,6 +44,26 @@ if [ -f "$CP" ] && [ ! -L "$CP" ]; then
 $(LC_ALL=C head -c 1500 "$CP" | sed 's|</|<\\/|g')
 </nucleo-datos>"
 fi
+# Aviso de edad (instrucción del hook, fuera del bloque de datos y antes de él: el tope recorta por el final).
+# Solo la sesión dueña y con nucleo.md de más de 10 min (la regla de nucleo-nudge.sh). La marca guarda el mtime
+# avisado: una segunda compactación con el nucleo sin cambios no repite, y como solo avisa si el mtime difiere de
+# la marca, no hay bucle.
+if [ "$RAIZ" != "$HOME" ] && [ -f "$NUC" ] && [ ! -L "$NUC" ]; then
+  case "${SID:-}" in ''|*[!A-Za-z0-9_-]*) ;; *)
+    if ! nucleo_dueno_ajeno "$RAIZ" "$SID" >/dev/null; then
+      MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
+      MARCA=$HOME/.claude/session-logs/compact-aviso-$SID
+      case "${MT:-x}" in *[!0-9]*) ;; *)
+        if [ $(( $(date +%s) - MT )) -gt 600 ] && [ "$(cat "$MARCA" 2>/dev/null)" != "$MT" ]; then
+          HO=handoff; command -v handoff >/dev/null 2>&1 || HO=$HOME/.claude/bin/handoff
+          mkdir -p "$(dirname "$MARCA")" && echo "$MT" >"$MARCA"
+          CTX="Aviso del hook: $NUC lleva más de 10 min sin actualizarse y se acaba de compactar. Antes de seguir, actualiza Paso actual / Siguiente acción / Pendientes / Ficheros tocados con \`$HO --desde <borrador>\`.
+$CTX"
+        fi;;
+      esac
+    fi;;
+  esac
+fi
 [ -n "$CTX" ] || exit 0
 # Las rutas no tienen tope: con una larga el total pasaba de 10 000.
 jq -cn --arg c "$(nucleo_tope "$CTX")" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
