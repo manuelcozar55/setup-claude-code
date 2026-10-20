@@ -33,6 +33,43 @@ nucleo_enlazado() {
   return 0
 }
 
+# nucleo_estado_fallback <raíz>: ~/.claude/estado/<nombre>-<hash de la ruta>/, el sitio al que cae la escritura si el
+# proyecto no admite escritura. El hash evita que dos repos con el mismo basename compartan directorio. Solo calcula la
+# ruta: no crea nada (los lectores la usan también).
+nucleo_estado_fallback() {
+  local n=${1##*/} h
+  n=$(printf '%s' "$n" | LC_ALL=C tr -c 'A-Za-z0-9._-' '_')
+  h=$(printf '%s' "$1" | cksum | cut -d' ' -f1)
+  printf '%s/.claude/estado/%s-%s\n' "$HOME" "${n:-raiz}" "$h"
+}
+
+# nucleo_estado_dir <raíz>: imprime el directorio donde se escribe el estado de <raíz> y lo deja listo: crea al vuelo
+# .claude/estado/{informes,checkpoints}, cada uno con un .gitignore interno de «*» (el patrón de pytest o ruff: sirve en
+# cualquier clon sin tocar el .gitignore del dueño), y lo mismo en estado/ si no tiene .gitignore (uno previo, de
+# `handoff --commit`, se respeta). Es la única puerta de escritura: hooks y CLIs la usan, nadie hace mkdir por su cuenta.
+# Si el proyecto no admite escritura cae a nucleo_estado_fallback y lo avisa por stderr: la escritura no se pierde.
+# rc 1 y nada impreso sin proyecto (la raíz es $HOME: no se crea nada en ~) o con enlaces (nucleo_enlazado).
+# Idempotente: con todo en su sitio no lanza ningún proceso.
+nucleo_estado_dir() {
+  local d=$1/.claude/estado s
+  [ "$1" != "$HOME" ] || return 1
+  nucleo_enlazado "$1" && return 1
+  if [ -f "$d/informes/.gitignore" ] && [ -f "$d/checkpoints/.gitignore" ] && [ -f "$d/.gitignore" ] && [ -w "$d" ]; then
+    printf '%s\n' "$d"; return 0
+  fi
+  if mkdir -p "$d/informes" "$d/checkpoints" 2>/dev/null && [ -w "$d" ]; then
+    [ -e "$d/.gitignore" ] || printf '*\n' >"$d/.gitignore" 2>/dev/null
+    for s in informes checkpoints; do [ -e "$d/$s/.gitignore" ] || printf '*\n' >"$d/$s/.gitignore" 2>/dev/null; done
+    if [ -f "$d/.gitignore" ] && [ -f "$d/informes/.gitignore" ] && [ -f "$d/checkpoints/.gitignore" ]; then
+      printf '%s\n' "$d"; return 0
+    fi
+  fi
+  d=$(nucleo_estado_fallback "$1")
+  mkdir -p "$d/informes" "$d/checkpoints" 2>/dev/null && [ -w "$d" ] || return 1
+  echo "nucleo: $1/.claude/estado no admite escritura; el estado va a $d" >&2
+  printf '%s\n' "$d"
+}
+
 # Una tarea = una sesión dueña. <raíz>/.claude/estado/.dueno: «sesion=<session_id>» y «desde=<epoch>»; vigente
 # mientras ahora − desde < NUCLEO_DUENO_TTL (14 400 s por omisión). Sin pid: el hook no sabe el de claude.
 # Lo reclama SessionStart, lo libera `handoff`; un .dueno ilegible o caducado equivale a no tener dueño.

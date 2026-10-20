@@ -3,9 +3,9 @@
 # una línea de KPI: ¿llega nucleo.md fresco a la compactación?
 # stdin: {"trigger":"manual|auto","session_id":"...","transcript_path":"...","cwd":"..."}
 # El campo es `trigger`; `triggerReason` no existe en el binario.
-# El checkpoint lo re-inyecta session-start-compact.sh (recortado). Vive junto a nucleo.md, en
-# <raíz>/.claude/estado/ (solo si ya existe: un repo sin nucleo no se ensucia), con una línea en su
-# .gitignore para no colarse en un commit: trae los últimos prompts de la persona.
+# El checkpoint lo re-inyecta session-start-compact.sh (recortado). Vive en <raíz>/.claude/estado/checkpoints/,
+# que nucleo_estado_dir crea si falta junto con su .gitignore interno (trae los últimos prompts de la
+# persona: nunca a git). Desde ~ no hay proyecto: solo se escribe donde ya hubiera un estado/ heredado.
 # Observacional: nunca bloquea (exit 0 siempre).
 set -u
 IN=$(cat)
@@ -17,10 +17,10 @@ CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
 RAIZ=$(nucleo_raiz "$CWD")
 nucleo_enlazado "$RAIZ" && exit 0
-ESTADO="$RAIZ/.claude/estado"
+NUC="$RAIZ/.claude/estado/nucleo.md"
 
 # KPI: ts sesión ctx% edad_nucleo_s (-1 si no existe). Se mide con nucleo_audit o con awk.
-MT=$(stat -c %Y "$ESTADO/nucleo.md" 2>/dev/null || stat -f %m "$ESTADO/nucleo.md" 2>/dev/null)
+MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
 PCT=$( { [ -n "$TP" ] && nucleo_ctx "$TP"; } | cut -d' ' -f2)
 mkdir -p "$HOME/.claude/session-logs" 2>/dev/null \
   && printf '%s %s %s %s\n' "$(date +%FT%T%z)" "${SID:--}" "${PCT:--}" "$([ -n "$MT" ] && echo $(( $(date +%s) - MT )) || echo -1)" \
@@ -40,17 +40,23 @@ if [ "$(wc -l <"$FLOG" 2>/dev/null || echo 0)" -gt 2000 ] && FTMP=$(mktemp "$FLO
 fi
 FTMP=
 
-[ -d "$ESTADO" ] || exit 0
-GI=$ESTADO/.gitignore
-if [ ! -L "$GI" ] && ! command grep -qsx 'checkpoint-compact\*' "$GI"; then
-  [ -s "$GI" ] && [ -n "$(tail -c1 "$GI")" ] && echo >>"$GI"
-  echo 'checkpoint-compact*' >>"$GI"
+if [ "$RAIZ" = "$HOME" ]; then
+  ESTADO="$RAIZ/.claude/estado"; CPD=$ESTADO
+  [ -d "$ESTADO" ] || exit 0
+  GI=$ESTADO/.gitignore
+  if [ ! -L "$GI" ] && ! command grep -qsx 'checkpoint-compact\*' "$GI"; then
+    [ -s "$GI" ] && [ -n "$(tail -c1 "$GI")" ] && echo >>"$GI"
+    echo 'checkpoint-compact*' >>"$GI"
+  fi
+else
+  ESTADO=$(nucleo_estado_dir "$RAIZ") || exit 0
+  CPD=$ESTADO/checkpoints
 fi
-OUT="$ESTADO/checkpoint-compact.md"
-[ -n "$SID" ] && OUT="$ESTADO/checkpoint-compact-$(printf '%s' "$SID" | sha256sum | cut -d' ' -f1).md"
+OUT="$CPD/checkpoint-compact.md"
+[ -n "$SID" ] && OUT="$CPD/checkpoint-compact-$(printf '%s' "$SID" | sha256sum | cut -d' ' -f1).md"
 # El aviso de fallo no promete un checkpoint anterior si esta sesión aún no tiene ninguno.
 PREVIO='anterior conservado'; [ -e "$OUT" ] || PREVIO='no había ninguno anterior'
-TMP=$(mktemp "$ESTADO/.checkpoint-compact.XXXXXX") || exit 0
+TMP=$(mktemp "$CPD/.checkpoint-compact.XXXXXX") || exit 0
 trap 'rm -f -- "$TMP"' EXIT
 trap 'exit 0' HUP INT TERM
 (
@@ -88,7 +94,7 @@ trap 'exit 0' HUP INT TERM
       | tail -3 | cut -c1-400 | sed 's/^/- /'
   fi
   echo; echo "## pendientes declarados"
-  command grep -hE '^\s*- \[ \]' "$ESTADO/nucleo.md" 2>/dev/null | head -15 || true
+  command grep -hE '^\s*- \[ \]' "$NUC" 2>/dev/null | head -15 || true
 ) > "$TMP" 2>/dev/null
 # shellcheck disable=SC2181  # `if ! (…)` apagaría el set -e de dentro
 [ "$?" -eq 0 ] || { echo "[PreCompact] fallo al generar checkpoint; $PREVIO" >&2; exit 0; }
@@ -97,10 +103,10 @@ mv -f -- "$TMP" "$OUT" 2>/dev/null || { echo "[PreCompact] fallo al publicar che
 # publicar el nuevo, así un fallo de arriba no deja sin checkpoint viejo ni nuevo; $OUT no se toca.
 # Por edad (14 días) y por número (NUCLEO_CHECKPOINT_KEEP, 5 por defecto, contando el nuevo): con muchas
 # sesiones al día la edad sola dejaba decenas de ficheros con prompts.
-find "$ESTADO" -maxdepth 1 -type f -name 'checkpoint-compact-*.md' ! -path "$OUT" -mtime +14 -delete 2>/dev/null
+find "$CPD" -maxdepth 1 -type f -name 'checkpoint-compact-*.md' ! -path "$OUT" -mtime +14 -delete 2>/dev/null
 KEEP=${NUCLEO_CHECKPOINT_KEEP:-5}
 case $KEEP in ''|*[!0-9]*|0) KEEP=5 ;; esac
-find "$ESTADO" -maxdepth 1 -type f -name 'checkpoint-compact-*.md' ! -path "$OUT" -printf '%T@ %p\n' 2>/dev/null \
+find "$CPD" -maxdepth 1 -type f -name 'checkpoint-compact-*.md' ! -path "$OUT" -printf '%T@ %p\n' 2>/dev/null \
   | sort -rn | tail -n +"$KEEP" | cut -d' ' -f2- | while IFS= read -r f; do rm -f -- "$f"; done
 echo "[PreCompact] ($TRIGGER) checkpoint en $OUT" >&2
 exit 0

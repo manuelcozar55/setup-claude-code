@@ -15,8 +15,14 @@ nucleo_enlazado "$RAIZ" && exit 0
 ESTADO="$RAIZ/.claude/estado"
 NUC="$ESTADO/nucleo.md"
 SID=$(jq -r '.session_id // empty' <<<"$IN" 2>/dev/null)
-CP="$ESTADO/checkpoint-compact.md"
-[ -n "$SID" ] && CP="$ESTADO/checkpoint-compact-$(printf '%s' "$SID" | sha256sum | cut -d' ' -f1).md"
+CPN=checkpoint-compact.md
+[ -n "$SID" ] && CPN="checkpoint-compact-$(printf '%s' "$SID" | sha256sum | cut -d' ' -f1).md"
+# checkpoints/ (pre-compact.sh), su sitio de caída bajo ~ y el sitio viejo (instalaciones anteriores).
+CP=$ESTADO/checkpoints/$CPN
+if [ ! -e "$CP" ]; then
+  CP=$(nucleo_estado_fallback "$RAIZ")/checkpoints/$CPN
+  [ -e "$CP" ] || CP=$ESTADO/$CPN
+fi
 
 # D1: desde ~ el nucleo compartido puede ser de otra tarea: índice de tareas (el de session-start-clear.sh), nunca
 # el nucleo ni la orden de escribirlo. El checkpoint de abajo es de ESTA sesión y se añade igual.

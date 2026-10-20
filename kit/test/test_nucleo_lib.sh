@@ -373,6 +373,35 @@ printf '## Objetivo\nob%sj%sx%sy\n## Paso actual\np\n' "$RLO" "$LS" "$LRI" >"$T/
 ok "H6: índice sin U+202E, U+2028 ni U+2066 (el resto del texto queda)" "$(nucleo_indice | LC_ALL=C command grep -c "$RLO\|$LS\|$LRI"),$(nucleo_indice | command grep -c 'objxy')" "0,1"
 git init -q "$T/h6"; git -C "$T/h6" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "asu${RLO}nto${LS}fin"
 ok "H6: git-hechos sin bidi y con el asunto" "$(nucleo_git_hechos "$T/h6" | LC_ALL=C command grep -c "$RLO\|$LS"),$(nucleo_git_hechos "$T/h6" | command grep -c 'asuntofin')" "0,1"
+# --- ADR 016: nucleo_estado_dir, la única puerta de escritura del estado ---
+EG=$T/eg; git init -q "$EG"; git -C "$EG" -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+ED=$(nucleo_estado_dir "$EG" 2>/dev/null)
+ok "estado_dir: repo sin estado → imprime <raíz>/.claude/estado" "$ED" "$EG/.claude/estado"
+ok "estado_dir: crea informes/, checkpoints/ y .gitignore con «*»" "$([ -d "$ED/informes" ] && [ -d "$ED/checkpoints" ] && echo si),$(cat "$ED/.gitignore" 2>/dev/null)" 'si,*'
+echo x >"$ED/nucleo.md"; echo x >"$ED/informes/i.md"; echo x >"$ED/checkpoints/c.md"
+ok "estado_dir: git status --porcelain vacío tras escribir" "$(git -C "$EG" status --porcelain -uall)" ""
+git -C "$EG" add -A
+ok "estado_dir: git add -A no añade nada" "$(git -C "$EG" diff --cached --name-only)" ""
+git clone -q "$EG" "$T/eg-clon" 2>/dev/null; ECD=$(nucleo_estado_dir "$T/eg-clon" 2>/dev/null); echo x >"$ECD/informes/i.md"
+ok "estado_dir: un clon nuevo (otro info/exclude) sigue limpio" "$(git -C "$T/eg-clon" status --porcelain -uall)" ""
+ok "estado_dir: idempotente (misma ruta, el contenido no se toca)" "$(nucleo_estado_dir "$EG" 2>/dev/null),$(cat "$ED/nucleo.md")" "$ED,x"
+mkdir -p "$T/eg-prev/.claude/estado"; git init -q "$T/eg-prev"; printf 'diario.md\n' >"$T/eg-prev/.claude/estado/.gitignore"
+nucleo_estado_dir "$T/eg-prev" >/dev/null 2>&1; echo x >"$T/eg-prev/.claude/estado/informes/i.md"
+ok "estado_dir: un .gitignore previo sin «*» se respeta y informes/ queda ignorado" "$(cat "$T/eg-prev/.claude/estado/.gitignore"),$(git -C "$T/eg-prev" status --porcelain -uall | command grep -c informes)" "diario.md,0"
+ok "estado_dir: sin proyecto (\$HOME) → rc 1 y no crea nada" "$(nucleo_estado_dir "$HOME" 2>&1; echo "rc=$?"),$([ -e "$HOME/.claude/estado/informes" ] && echo creado || echo no)" "rc=1,no"
+mkdir -p "$T/eg-enl/.claude"; git init -q "$T/eg-enl"; ln -s "$T" "$T/eg-enl/.claude/estado"
+ok "estado_dir: con estado/ enlazado → rc 1" "$(nucleo_estado_dir "$T/eg-enl" >/dev/null 2>&1; echo $?)" 1
+t0=$(date +%s%N)
+for _ in $(seq 1 20); do nucleo_estado_dir "$EG" >/dev/null 2>&1; done
+ok "estado_dir: ya preparado cuesta ≤ 50 ms por llamada" "$([ $(( ($(date +%s%N) - t0) / 20000000 )) -le 50 ] && echo si)" si
+if [ "$(id -u)" -ne 0 ]; then
+  mkdir -p "$T/a/proy" "$T/b/proy"; git init -q "$T/a/proy"; git init -q "$T/b/proy"; chmod a-w "$T/a/proy" "$T/b/proy"
+  FA=$(nucleo_estado_dir "$T/a/proy" 2>"$T/eg-err"); FB=$(nucleo_estado_dir "$T/b/proy" 2>/dev/null)
+  ok "estado_dir: raíz de solo lectura → cae a ~/.claude/estado/<proyecto>-<hash>/, avisa y existe" "$([ "${FA#"$HOME"/.claude/estado/proy-}" != "$FA" ] && [ -d "$FA/informes" ] && echo si),$(command grep -c 'no admite escritura' "$T/eg-err")" "si,1"
+  ok "estado_dir: dos repos con el mismo basename no comparten el directorio de caída" "$([ "$FA" != "$FB" ] && echo si)" si
+  chmod u+w "$T/a/proy" "$T/b/proy"
+fi
+
 unset NUCLEO_REGISTRO
 
 exit $FAIL
