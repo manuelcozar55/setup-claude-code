@@ -181,4 +181,38 @@ jq '.disableAllHooks = false' "$CLAUDE_HOME/settings.json" > "$tmp/s.json" && cp
 set +e; out="$(dr)"; set -e
 ck "$(echo "$out" | grep -c '^FAIL .*disableAllHooks')" "0" "disableAllHooks: false no es FAIL"
 
+
+# M5 residuo: env.CC_ALLOW_DESTRUCTIVE=1 apaga destructive-guard.sh y sobrevive a la fusion de install.sh.
+cp "$CLAUDE_HOME/settings.json" "$tmp/s.bak"
+jq '.env.CC_ALLOW_DESTRUCTIVE = "1"' "$tmp/s.bak" > "$CLAUDE_HOME/settings.json"
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*CC_ALLOW_DESTRUCTIVE')" "1" "doctor WARN con env.CC_ALLOW_DESTRUCTIVE=1"
+jq '.env.CC_ALLOW_DESTRUCTIVE = "0"' "$tmp/s.bak" > "$CLAUDE_HOME/settings.json"
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*CC_ALLOW_DESTRUCTIVE')" "0" "CC_ALLOW_DESTRUCTIVE=0 no es WARN"
+cp "$tmp/s.bak" "$CLAUDE_HOME/settings.json"
+
+# Version minima de claude (rev-B IMPORTANTE 6): WARN si falta o es menor que la que exige la politica gestionada (2.1.289).
+fake_claude() {  # $1 = version que imprime
+  mkdir -p "$tmp/fk-$1"; printf '#!/bin/sh\necho "%s (Claude Code)"\n' "$1" > "$tmp/fk-$1/claude"; chmod +x "$tmp/fk-$1/claude"
+}
+fake_claude 2.1.100; fake_claude 2.1.289; fake_claude 2.2.0
+set +e; out="$(PATH="$tmp/fk-2.1.100:$PATH" dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*claude.*2\.1\.100.*2\.1\.289')" "1" "doctor WARN con claude 2.1.100 (< 2.1.289)"
+set +e; out="$(PATH="$tmp/fk-2.1.289:$PATH" dr)"; set -e
+ck "$(echo "$out" | grep -c '^PASS .*claude 2\.1\.289')" "1" "claude 2.1.289 (la minima justa) es PASS"
+set +e; out="$(PATH="$tmp/fk-2.2.0:$PATH" dr)"; set -e
+ck "$(echo "$out" | grep -c '^PASS .*claude 2\.2\.0')" "1" "claude 2.2.0 es PASS (comparacion por version, no por texto)"
+farm="$tmp/sinclaude"; mkdir -p "$farm"
+IFS=: read -ra dirs <<< "$PATH"
+for d in "${dirs[@]}"; do
+  [ -d "$d" ] || continue
+  for f in "$d"/*; do
+    b="${f##*/}"
+    [ -e "$f" ] && [ "$b" != claude ] && [ ! -e "$farm/$b" ] && ln -s "$f" "$farm/$b"
+  done
+done
+ck "$(PATH="$farm" bash -c 'command -v claude >/dev/null 2>&1 && echo y || echo n')" "n" "el PATH de la granja no tiene claude (falsabilidad del caso)"
+set +e; out="$(PATH="$farm" dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*claude.*no se encuentra')" "1" "doctor WARN si claude no esta en el PATH"
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

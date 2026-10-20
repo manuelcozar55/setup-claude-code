@@ -27,6 +27,28 @@ if jq -e '.disableAllHooks == true' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1
   fail "settings.json tiene disableAllHooks: true: no corre ningun hook, tampoco los guards. Quita la clave"
 fi
 
+# 1c. env.CC_ALLOW_DESTRUCTIVE=1 apaga destructive-guard.sh (su linea 10). La fusion de install.sh respeta tu env,
+# asi que un 1 previo sobrevive a reinstalar. Es WARN: puede ser deliberado, pero no debe pasar inadvertido.
+if jq -e '(.env.CC_ALLOW_DESTRUCTIVE // "" | tostring) == "1"' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1; then
+  warn "settings.json tiene env.CC_ALLOW_DESTRUCTIVE=1: destructive-guard.sh esta apagado. Quita la clave para recuperar esa proteccion"
+fi
+
+# 1d. Version de claude. La minima es la que exige la politica gestionada (requiredMinimumVersion); el repo no
+# declaraba otra. WARN y no FAIL: el kit funciona con otra, pero no esta probado. Comparacion por version (sort -V).
+CLAUDE_MIN_VERSION="2.1.289"
+if ! command -v claude >/dev/null 2>&1; then
+  warn "claude no se encuentra en el PATH: instala Claude Code (version minima $CLAUDE_MIN_VERSION) y comprueba con claude --version"
+else
+  claude_v="$(timeout 10 claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  if [ -z "$claude_v" ]; then
+    warn "no se pudo leer la version de claude (claude --version); la minima es $CLAUDE_MIN_VERSION"
+  elif [ "$(printf '%s\n%s\n' "$CLAUDE_MIN_VERSION" "$claude_v" | sort -V | head -1)" = "$CLAUDE_MIN_VERSION" ]; then
+    pass "claude $claude_v (minima $CLAUDE_MIN_VERSION)  (fuente: claude --version)"
+  else
+    warn "claude $claude_v es anterior a la minima $CLAUDE_MIN_VERSION: actualizalo (claude update)"
+  fi
+fi
+
 # 2. hooks referenciados existen y son ejecutables
 if [ -f "$CLAUDE_HOME/settings.json" ]; then
   # shellcheck disable=SC2016 # patron literal para grep -oE, no interpolacion de shell
