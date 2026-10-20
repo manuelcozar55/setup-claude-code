@@ -219,7 +219,7 @@ GENERICOS=" script.sh script-que-lo-contiene.sh "
 missing=""
 while IFS= read -r s; do
   case "$GENERICOS" in *" $s "*) continue;; esac
-  find . -name "$s" -not -path './.git/*' | grep -q . || missing="$missing $s"
+  find . -name "$s" -not -path './.git/*' -not -path './.claude/estado/*' | grep -q . || missing="$missing $s"
 done <<< "$(grep -rhoE '\b[a-z0-9][a-z0-9_-]*\.sh\b' "${DOCS[@]}" "$EVALDOC" | sort -u)"
 if [ -z "$missing" ]; then
   echo "ok - todos los .sh citados en la doc existen en el repo"; pass=$((pass+1))
@@ -1298,14 +1298,36 @@ rtk_no_cableado() {
 }
 # La lista se calcula aqui y no dentro del comprobador, como el resto de §5: asi la sonda
 # de falsabilidad puede interrogarlo sobre copias deformadas. `grep -rl` y no `git grep`
-# para no depender de que el arbol sea un repo con indice.
-RTK_FICHEROS=$(grep -rl 'rtk hook claude' . --exclude-dir=.git 2>/dev/null \
+# para no depender de que el arbol sea un repo con indice. En un repo, solo lo versionado o por
+# versionar (`ls-files -co --exclude-standard`): lo ignorado (informes, checkpoints) no es del repo.
+rtk_lista() { (cd "$1" && { git ls-files -co --exclude-standard 2>/dev/null || find . -type f -not -path './.git/*'; } \
+               | tr '\n' '\0' | xargs -0 grep -l 'rtk hook claude' 2>/dev/null \
                | sed 's|^\./||' \
                | grep -vE '^(CHANGELOG\.md|knowledge/|kit/test/test_doc_claims\.sh)' \
-               | sort | tr '\n' ' ')
+               | sort | tr '\n' ' '); }
+RTK_FICHEROS=$(rtk_lista .)
 # shellcheck disable=SC2086 # la lista de ficheros se parte a proposito
 hr_check "ningun hook del kit cablea 'rtk hook claude' y ninguna linea lo afirma en presente" \
   rtk_no_cableado "$SETTINGS" $RTK_FICHEROS
+
+# Lo ignorado (informes, checkpoints, estado de otra sesion) no es del repo: un informe guardado
+# en su sitio no puede romper `make test`. Repo desechable con uno ignorado y un fichero versionado.
+RTKTMP=$(mktemp -d)
+git -C "$RTKTMP" init -q
+mkdir -p "$RTKTMP/.claude/estado/informes/2026-10-20-x"
+printf '*\n' > "$RTKTMP/.claude/estado/.gitignore"
+printf 'rtk hook claude\n' > "$RTKTMP/.claude/estado/informes/2026-10-20-x/informe.md"
+printf 'rtk hook claude\n' > "$RTKTMP/versionado.md"
+git -C "$RTKTMP" add versionado.md
+rtk_ign=$(rtk_lista "$RTKTMP")
+if [ "$rtk_ign" = "versionado.md " ]; then
+  echo "ok - el barrido de 'rtk hook claude' ignora lo no versionado (un informe no rompe make test)"
+  pass=$((pass+1))
+else
+  echo "NOT ok - el barrido de 'rtk hook claude' recorre lo ignorado: $rtk_ign"
+  fail=$((fail+1))
+fi
+rm -rf -- "$RTKTMP"
 
 # Falsabilidad de los cuatro comprobadores de esta seccion: cada caso deforma una COPIA con
 # la averia exacta que su comprobador persigue -del lado del settings y del lado del
