@@ -117,4 +117,12 @@ ck "$(grep -c 'omitting directory' "$tmp/pyc.log" || true)" "0" "install.sh no i
 ck "$([ -f "$tmp/dot2/sentinel/sentinel_preflight.py" ] && echo y)" "y" "sentinel se instala con __pycache__ presente"
 ck "$([ -d "$tmp/dot2/sentinel/__pycache__" ] && echo y || echo n)" "n" "el __pycache__ no viaja a CLAUDE_HOME"
 
+# N2: con CLAUDE_HOME no estandar no se enlaza nada; el aviso de PATH no puede decir que
+# handoff y oraculo "no se encontraran" (no estan enlazados) y debe orientar a lo que si hay que hacer.
+rm -f "$tmp/home/.local/bin/handoff" "$tmp/home/.local/bin/oraculo"
+set +e; CLAUDE_HOME="$tmp/otro" bash "$KIT/install.sh" >"$tmp/otro.log" 2>&1; set -e
+ck "$(grep -c 'no se encontraran' "$tmp/otro.log" || true)" "0" "CLAUDE_HOME no estandar: el aviso de PATH no da por enlazados handoff y oraculo"
+ck "$(grep -c "ln -s \"$tmp/otro/bin/handoff\"" "$tmp/otro.log" || true)" "1" "CLAUDE_HOME no estandar: imprime la orden ln -s"
+ck "$([ -e "$HOME/.local/bin/handoff" ] && echo y || echo n)" "n" "CLAUDE_HOME no estandar: no crea enlaces"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
