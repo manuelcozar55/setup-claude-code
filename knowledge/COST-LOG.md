@@ -161,3 +161,33 @@ project`; los hooks corren con `HOME` de `mktemp`. Comprobado: sin plugins ni MC
 modelo solo cita la política gestionada y el `CLAUDE.md` del kit. **La política gestionada de
 `/etc/claude-code/` (incluido su `CLAUDE.md`) está en todas las cifras**, también en «sin kit»; Debian sin ella
 dará el número limpio. `--safe-mode` y `--setting-sources` son los modos de la 2.1.304.
+
+### Presupuesto por canal, después (ADR 018, W4b) — 2026-10-20
+
+Sin recortes: la medida no señala ninguno que se pueda hacer sin tocar reglas (no hay duplicados exactos entre
+`CLAUDE.md` y `AGENTS.md`; seguridad y triggers de `description` no se tocan), así que no hay corrida de pago.
+`test_presupuesto_contexto.sh` mide con `contexto-base.sh --peor`: `nucleo.md` de 24 KB (los topes de `nucleo.sh`
+lo recortan), repo con ruta de ~200 chars, dueño ajeno, tareas sucias, checkpoint de compact y la entrada que
+dispara cada guard. Tope = medida + 10 %, subido a la centena (SessionStart: 9.500, el de `nucleo_tope`).
+`systemMessage` (aviso de caché caducada) no cuenta en SessionStart: lo ve la persona, no el modelo.
+
+| Canal (caracteres) | W4a, 8 KB | Ahora, 8 KB | Peor caso | Tope |
+|---|---:|---:|---:|---:|
+| Instrucciones globales | 5.460 | 6.233 | 6.233 | 6.900 |
+| SessionStart compact | 3.935 | 4.221 | 9.488 | 9.500 |
+| SessionStart startup / clear / resume | 5.199 / 5.199 / 5.366 | 5.199 / 5.199 / 5.199 | 9.488 | 9.500 |
+| SessionStart memoria | 76 | 76 | 76 | 100 |
+| PostToolUse `nucleo-nudge` | 348 | 348 | 535 | 600 |
+| Stop `context-gauge` | 249 | 316 | 316 | 400 |
+| write-guard (fichero nuevo >150 líneas / secretos, deniega) | — | 206 / 289 | 393 / 476 | 500 / 600 |
+| stale-read-guard | — | 502 | 689 | 800 |
+| narthex (15 frases + invisibles) | — | 1.196 | 1.196 | 1.400 |
+| Agentes: suma / mayor `description` | 2.303 / — | 2.303 / 392 | 2.303 / 392 | 2.600 / 500 |
+| Skills: suma | 758 | 758 | 758 | 900 |
+| Bloque de agentes (W3) | — | — | — | 800 (SKIP hasta fusionar W3) |
+
+De W4a a hoy las instrucciones globales suben 773 chars: ~510 de la oleada 1 (reglas de estado, dónde se escribe
+cada cosa) y 260 de la sección «Delegación». resume ya no suma el aviso de caché (antes 5.366). El tope de
+SessionStart del peor caso (9.488) queda a 12 chars del de `nucleo_tope`: cualquier texto nuevo allí lo recorta la cola.
+Propuesta (no aplicada): si hay que recortar, el candidato es el protocolo de arranque de `session-start-clear.sh`
+(~1.100 chars), no las instrucciones globales.
