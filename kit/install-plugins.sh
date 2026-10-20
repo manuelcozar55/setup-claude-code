@@ -14,12 +14,17 @@ for a in "$@"; do
   esac
 done
 
+# El marketplace del kit va fijado al tag de VERSION (como el ref de claude/settings.json): sin ref seguia main.
+# `owner/repo@ref` es la sintaxis de `marketplace add` (code.claude.com/docs/en/plugins/marketplace-reference).
+# read y no cat: PATH puede ser minimo (los tests corren con solo dobles).
+KIT_REF=""; read -r KIT_REF < "${BASH_SOURCE[0]%/*}/../VERSION" || true
+KIT_MARKETPLACE="manuelcozar55/setup-claude-code${KIT_REF:+@v$KIT_REF}"
 # "<repo del marketplace> <plugin>@<marketplace>"; el marketplace oficial ya viene registrado.
 RECOMMENDED=(
   "- frontend-design@claude-plugins-official"
   "DietrichGebert/ponytail ponytail@ponytail"
   "nextlevelbuilder/ui-ux-pro-max-skill ui-ux-pro-max@ui-ux-pro-max-skill"
-  "manuelcozar55/setup-claude-code cockpit@setup-claude-code"
+  "$KIT_MARKETPLACE cockpit@setup-claude-code"
   "- esenciales@setup-claude-code"  # mismo marketplace que cockpit, ya registrado en la linea anterior
 )
 # impeccable descarga un binario y lo ejecuta desde hooks en cada edicion: solo a peticion.

@@ -181,9 +181,9 @@ install_settings() {  # src dst
   fi
 }
 
-# Dos claves tuyas dejan al kit sin efecto, y la fusion las respeta porque son tuyas: se avisa.
+# Tres claves tuyas dejan al kit sin efecto, y la fusion las respeta porque son tuyas: se avisa.
 # disableAllHooks apaga todos los hooks, guards incluidos; defaultMode bypassPermissions pide el
-# modo sin permisos, que el "disable" del kit deja inerte. Se mira el fichero que queda: al
+# modo sin permisos, que el "disable" del kit deja inerte; env.CC_ALLOW_DESTRUCTIVE=1 apaga destructive-guard.sh. Se mira el fichero que queda: al
 # aplicar, el ya fusionado; en el plan, el instalado.
 avisos_settings() {  # settings.json
   local f="$1"
@@ -191,6 +191,11 @@ avisos_settings() {  # settings.json
   if jq -e '.disableAllHooks == true' "$f" >/dev/null; then
     echo "==> AVISO: $f tiene disableAllHooks: true: no corre ningun hook, tampoco los guards del kit."
     echo "    Quita la clave para tener la proteccion del kit. doctor.sh lo marca como FAIL."
+  fi
+  # CC_ALLOW_DESTRUCTIVE=1 apaga destructive-guard.sh. La fusion respeta tu env, asi que un 1 previo sobrevive.
+  if jq -e '(.env.CC_ALLOW_DESTRUCTIVE // "" | tostring) == "1"' "$f" >/dev/null; then
+    echo "==> AVISO: $f tiene env.CC_ALLOW_DESTRUCTIVE=1: destructive-guard.sh queda apagado."
+    echo "    Quita la clave para tener esa proteccion del kit. doctor.sh lo marca como WARN."
   fi
   if jq -e '.permissions.defaultMode == "bypassPermissions"' "$f" >/dev/null; then
     echo "==> AVISO: $f tiene permissions.defaultMode: bypassPermissions. Con disableBypassPermissionsMode"
@@ -251,7 +256,9 @@ clis_enlazables() { [ "$(realpath -m -- "$CLAUDE_HOME")" = "$(realpath -m -- "$H
 cli_estado() {  # nombre -> libre | nuestro | ajeno
   local dst="$LOCAL_BIN/$1"
   if [ -L "$dst" ]; then
-    case "$(readlink "$dst")" in "$CLAUDE_HOME/bin/"*) echo nuestro ;; *) echo ajeno ;; esac
+    # Ruta canonica y no prefijo de texto: bin/../../x empezaba por "$CLAUDE_HOME/bin/" y contaba como nuestro.
+    # realpath -m resuelve el enlace aunque este colgante; nuestro = su destino vive en nuestro bin/.
+    if [ "$(dirname -- "$(realpath -m -- "$dst")")" = "$(realpath -m -- "$CLAUDE_HOME/bin")" ]; then echo nuestro; else echo ajeno; fi
   elif [ -e "$dst" ]; then echo ajeno
   else echo libre
   fi
@@ -266,12 +273,21 @@ enlazar_clis() {
   fi
   for c in $CLIS; do
     st="$(cli_estado "$c")"
-    case "$st" in
-      ajeno) LINK_AJENOS="$LINK_AJENOS $c"
-             echo "   AVISO: $LOCAL_BIN/$c ya existe y no es un enlace a $CLAUDE_HOME/bin: no se toca." >&2 ;;
-      *) mkdir -p "$LOCAL_BIN"; ln -sfn "$CLAUDE_HOME/bin/$c" "$LOCAL_BIN/$c"
-         echo "   enlace: $LOCAL_BIN/$c -> $CLAUDE_HOME/bin/$c" ;;
-    esac
+    # Sin forzar el enlace (ni -f): si entre la comprobacion y el ln aparece algo, ln falla y se trata como ajeno en vez de pisarlo.
+    # Un enlace nuestro con otra grafia o colgante se retira (solo es un enlace) y se recrea con la ruta exacta.
+    if [ "$st" = nuestro ] && [ "$(readlink "$LOCAL_BIN/$c")" != "$CLAUDE_HOME/bin/$c" ]; then
+      rm -f -- "${LOCAL_BIN:?}/$c"; st=libre
+    fi
+    if [ "$st" = libre ]; then
+      mkdir -p "$LOCAL_BIN"
+      ln -s "$CLAUDE_HOME/bin/$c" "$LOCAL_BIN/$c" 2>/dev/null || st=ajeno
+    fi
+    if [ "$st" = ajeno ]; then
+      LINK_AJENOS="$LINK_AJENOS $c"
+      echo "   AVISO: $LOCAL_BIN/$c ya existe y no es un enlace a $CLAUDE_HOME/bin: no se toca." >&2
+    else
+      echo "   enlace: $LOCAL_BIN/$c -> $CLAUDE_HOME/bin/$c"
+    fi
   done
 }
 aviso_path() {

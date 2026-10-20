@@ -167,4 +167,19 @@ run
 ck "$(sha256sum "$S" | cut -d' ' -f1)" "$sha" "idempotencia: fusionar dos veces no cambia el fichero"
 ck "$(backups)" "$n" "idempotencia: la segunda fusion no genera un backup nuevo (no hubo cambio)"
 
+# --- Caso j: env.CC_ALLOW_DESTRUCTIVE=1 previo (M5 residuo) -> la fusion lo respeta (es tuyo) y avisa ---
+# CC_ALLOW_DESTRUCTIVE=1 apaga destructive-guard.sh (kit/claude/hooks/destructive-guard.sh:10): sobrevivia
+# a la fusion sin una linea de aviso.
+seed j <<'EOF'
+{ "env": { "CC_ALLOW_DESTRUCTIVE": "1" } }
+EOF
+run
+ck "$(jq -r '.env.CC_ALLOW_DESTRUCTIVE' "$S")" "1" "CC_ALLOW_DESTRUCTIVE previo: sigue (es tuyo, no se borra)"
+ck "$(dice 'AVISO.*CC_ALLOW_DESTRUCTIVE')" "y" "CC_ALLOW_DESTRUCTIVE=1 previo -> aviso visible"
+seed j2 <<'EOF'
+{ "env": { "CC_ALLOW_DESTRUCTIVE": "0" } }
+EOF
+run
+ck "$(dice 'AVISO.*CC_ALLOW_DESTRUCTIVE')" "n" "CC_ALLOW_DESTRUCTIVE=0 no avisa (falsabilidad del caso)"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

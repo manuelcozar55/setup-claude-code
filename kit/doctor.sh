@@ -27,6 +27,29 @@ if jq -e '.disableAllHooks == true' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1
   fail "settings.json tiene disableAllHooks: true: no corre ningun hook, tampoco los guards. Quita la clave"
 fi
 
+# 1c. env.CC_ALLOW_DESTRUCTIVE=1 apaga destructive-guard.sh (su linea 10). La fusion de install.sh respeta tu env,
+# asi que un 1 previo sobrevive a reinstalar. Es WARN: puede ser deliberado, pero no debe pasar inadvertido.
+if jq -e '(.env.CC_ALLOW_DESTRUCTIVE // "" | tostring) == "1"' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1; then
+  warn "settings.json tiene env.CC_ALLOW_DESTRUCTIVE=1: destructive-guard.sh esta apagado. Quita la clave para recuperar esa proteccion"
+fi
+
+# 1d. Version de claude. CLAUDE_PROBADA es la version con la que se probo el kit, la misma que cita
+# docs/10-onboarding.md (test_doctor.sh lo comprueba); no hay minima comprobada. WARN y no FAIL: con otra
+# puede funcionar, pero no esta probado. Comparacion por version (sort -V).
+CLAUDE_PROBADA="2.1.292"
+if ! command -v claude >/dev/null 2>&1; then
+  warn "claude no se encuentra en el PATH: instala Claude Code (el kit se probo con $CLAUDE_PROBADA) y comprueba con claude --version"
+else
+  claude_v="$(timeout 10 claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  if [ -z "$claude_v" ]; then
+    warn "no se pudo leer la version de claude (claude --version); el kit se probo con $CLAUDE_PROBADA"
+  elif [ "$(printf '%s\n%s\n' "$CLAUDE_PROBADA" "$claude_v" | sort -V | head -1)" = "$CLAUDE_PROBADA" ]; then
+    pass "claude $claude_v (kit probado con $CLAUDE_PROBADA)  (fuente: claude --version)"
+  else
+    warn "claude $claude_v es anterior a $CLAUDE_PROBADA, la version con la que se probo el kit: actualizalo (claude update)"
+  fi
+fi
+
 # 2. hooks referenciados existen y son ejecutables
 if [ -f "$CLAUDE_HOME/settings.json" ]; then
   # shellcheck disable=SC2016 # patron literal para grep -oE, no interpolacion de shell

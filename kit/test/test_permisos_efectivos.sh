@@ -166,7 +166,13 @@ ck "$([ "$falsified" -eq 3 ] && echo y || echo n)" "y" "los 3 checks demuestran 
 # code.claude.com/docs/en/permissions: `~/` desde el home, `//ruta` absoluto; una deny de
 # usuario vale en cualquier proyecto solo con `//**/...`.
 ck "$(jq -r '.permissions.disableBypassPermissionsMode // "-"' "$KIT_SETTINGS")" "disable" "kit/claude/settings.json desactiva el modo bypassPermissions"
-for regla in 'Read(~/.ssh/**)' 'Read(~/.aws/**)' 'Read(//**/.env*)' 'Read(//**/secrets.*)'; do
+# L3: tambien .gnupg y .netrc (lectura), y la ESCRITURA de todo lo anterior (la politica gestionada prohibe
+# editarlos, y sin politica el kit era el unico techo). Un deny no admite excepciones: Read(//**/.env*) cubre
+# tambien .env.example y secrets.* cubre secrets.py -- falso positivo conocido y declarado, no se rodea con allow.
+for regla in 'Read(~/.ssh/**)' 'Read(~/.aws/**)' 'Read(//**/.env*)' 'Read(//**/secrets.*)' \
+             'Read(~/.gnupg/**)' 'Read(~/.netrc)' \
+             'Edit(~/.ssh/**)' 'Edit(~/.aws/**)' 'Edit(~/.gnupg/**)' 'Edit(~/.netrc)' \
+             'Edit(//**/.env*)' 'Edit(//**/secrets.*)'; do
   ck "$(jq -r --arg r "$regla" '(.permissions.deny // []) | index($r) != null' "$KIT_SETTINGS")" "true" "el kit deniega $regla"
 done
 
