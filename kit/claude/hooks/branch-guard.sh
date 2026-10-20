@@ -135,7 +135,7 @@ scan() {
     (( tags )) || targets+=("$cur")
   else
     for ref in "${ops[@]:first}"; do
-      ref=${ref#+}
+      ref=${ref#\$}; ref=${ref#+}
       dst=$ref
       [[ $ref == *:* ]] && dst=${ref##*:}
       [[ $dst == HEAD ]] && dst=$cur

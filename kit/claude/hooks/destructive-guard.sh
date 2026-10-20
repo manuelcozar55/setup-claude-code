@@ -91,7 +91,7 @@ fi
 # `find . -name '*.pyc' -delete` y hasta un `echo` o un mensaje de commit que lo citara. La ruta son
 # los operandos entre las opciones iniciales de find (-H -L -P -O<n> -D x --) y el primer token de
 # expresion (-..., `(`, `!`); sin ruta, `.`. Tres familias, con la ruta normalizada (`./.` es `.`):
-#   - cwd (`.`, y `*` o `./*`, que es su contenido): bloquea salvo que la expresion filtre por nombre
+#   - cwd (`.`, y `*`, `.*`, `{a,b}`... o `./*`, que son su contenido): bloquea salvo que la expresion filtre por nombre
 #     o ruta (-name, -path, -regex...).
 #   - amplia (`..` y lo que sube de el, `~`, `$HOME`, `/`, `/*`, un solo componente absoluto como
 #     /etc, y todo /home/... y /mnt/...): bloquea siempre, con filtro o sin el.
@@ -114,7 +114,7 @@ find_path_class() {
   done
   if (( abs )); then
     if (( ${#out[@]} <= 1 )) || [[ ${out[0]} == home || ${out[0]} == mnt ]]; then FCLASS=amplia; else FCLASS=resto; fi
-  elif (( ${#out[@]} == 0 )) || [[ ${#out[@]} == 1 && ${out[0]} == '*' ]]; then FCLASS=cwd
+  elif (( ${#out[@]} == 0 )) || [[ ${#out[@]} == 1 && ${out[0]} == *['*?[{']* ]]; then FCLASS=cwd
   elif [[ ${out[0]} == .. ]]; then FCLASS=amplia
   else FCLASS=resto
   fi

@@ -256,7 +256,7 @@ forced_refspec() {
         case $a in --repo|-o|--push-option|--receive-pack|--exec) skip=1 ;; esac
         continue
       fi
-      [[ $a == +* ]] && return 0
+      [[ $a == +* || $a == '$'+* ]] && return 0
     done
   done
   return 1

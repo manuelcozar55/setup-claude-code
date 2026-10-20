@@ -589,6 +589,7 @@ for c in "echo 'git push origin main' | bash" "echo 'git push origin main' | sh"
          "python3 -c \"import subprocess; subprocess.run(['git', 'push', 'origin', 'main'])\""; do
   expect "branch-guard (S-N4, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
 done
+expect "branch-guard (S-N5, feature activa): refspec ANSI-C \$'main' denegado" "$(run_bg "$BR_FEAT" "git push origin \$'main'")" BLOCK
 for c in "echo 'git push origin main' | cat" "echo hi | bash" "python3 -c \"print('git push origin main')\""; do
   expect "branch-guard (S-N4, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
 done

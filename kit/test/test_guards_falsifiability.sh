@@ -157,6 +157,13 @@ python3 -c "import os; os.system('git push origin +f')"
 find . -print0 | xargs -0 rm
 find . -type f -print0 | xargs -0 rm -f
 find .. -name x | xargs rm
+find .* -delete
+find ?* -delete
+find [!.]* -delete
+find .[!.]* -delete
+find {a,b} -delete
+find ./.* -delete
+git push origin $'+feature'
 rm -r "$HOME/x"
 EOF
 while IFS= read -r c; do
@@ -182,6 +189,9 @@ find . -path './build/*' -delete
 find . -type f -name '*.tmp' -mtime +7 -delete
 find . -name x -type f -delete
 find . -name '*.pyc' | xargs rm
+find .* -name '*.pyc' -delete
+find {a,b} -name '*.pyc' -delete
+git push origin $'feature'
 find build -print0 | xargs -0 rm
 echo "find . -delete" | cat
 echo hi | bash
