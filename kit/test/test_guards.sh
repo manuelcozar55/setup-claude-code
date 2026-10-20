@@ -553,6 +553,15 @@ for c in 'git push origin feature 2>&1' 'git push -u origin >/dev/null' 'git pus
   expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
 done
 expect "branch-guard (E7.3, feature activa): main con 2>&1 denegado" "$(run_bg "$BR_FEAT" 'git push origin main 2>&1')" BLOCK
+# S-N7: la redireccion pegada al operando (`main>/dev/null`) hacia que el destino fuese `main>/dev/null`.
+for c in 'git push origin main>/dev/null' 'git push origin main>log' 'git push origin "main">/dev/null' \
+         'git push origin main&>/dev/null'; do
+  expect "branch-guard (S-N7, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+expect "branch-guard (S-N7, main activa): HEAD>/dev/null denegado" "$(run_bg "$BR_MAIN" 'git push origin HEAD>/dev/null')" BLOCK
+for c in 'git push origin feature>/dev/null' 'git push origin main2>&1'; do
+  expect "branch-guard (S-N7, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
 # Revision E7.3 (CR-3): con --repo, git trata TODOS los posicionales como refspecs; el guard
 # tomaba el primero por remoto y `git push --repo=origin main` desde una feature pasaba.
 for c in 'git push --repo=origin main' 'git push --repo origin main'; do

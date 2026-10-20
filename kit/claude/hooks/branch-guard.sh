@@ -122,6 +122,8 @@ scan() {
       continue
     fi
     [[ $a =~ ^[0-9]*[\<\>] || $a == '&>'* ]] && continue
+    # Redireccion pegada al operando (`main>/dev/null`, `main&>log`): el operando acaba donde empieza.
+    if [[ $a == *[\<\>]* ]]; then a=${a%%[<>]*}; a=${a%&}; [[ -n $a ]] || continue; fi
     ops+=("$a")
   done
 
