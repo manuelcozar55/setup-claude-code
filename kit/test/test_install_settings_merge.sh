@@ -182,4 +182,24 @@ EOF
 run
 ck "$(dice 'AVISO.*CC_ALLOW_DESTRUCTIVE')" "n" "CC_ALLOW_DESTRUCTIVE=0 no avisa (falsabilidad del caso)"
 
+# --- Caso k: marketplace del kit ya registrado sin ref (o con el de otra version) -> el ref sigue a VERSION ---
+# Con la entrada vieja intacta, `marketplace add <repo>@v<VERSION>` de install-plugins.sh falla («its source
+# doesn't match its extraKnownMarketplaces entry», medido con claude 2.1.304) y el cockpit sigue a main:
+# se adelanta a ~/.claude/bin/handoff. Tus otros marketplaces no se tocan.
+ref="v$(cat "$KIT/../VERSION")"
+ck "$(jq -r '.extraKnownMarketplaces["setup-claude-code"].source.ref' "$KIT/claude/settings.json")" "$ref" "la plantilla fija el marketplace del kit a v<VERSION> (premisa del caso)"
+for previo in '' '"ref": "v0.0.1",'; do
+seed k <<EOF
+{ "extraKnownMarketplaces": {
+    "setup-claude-code": { "source": { $previo "source": "github", "repo": "manuelcozar55/setup-claude-code" } },
+    "otro": { "source": { "source": "github", "repo": "alguien/otro", "ref": "main" } } } }
+EOF
+run
+caso="${previo:+con ref viejo}"; caso="${caso:-sin ref}"
+ck "$(jq -r '.extraKnownMarketplaces["setup-claude-code"].source.ref' "$S")" "$ref" "marketplace del kit $caso: queda en $ref"
+ck "$(jq -c '.extraKnownMarketplaces.otro' "$S")" '{"source":{"source":"github","repo":"alguien/otro","ref":"main"}}' "otro marketplace tuyo: intacto"
+done
+# Por la misma razon, `plugin install cockpit --marketplace <repo>` sin ref falla con el marketplace ya fijado.
+ck "$(grep -rl -- '--marketplace manuelcozar55' "$KIT/docs" "$KIT/../README.md" | wc -l)" "0" "ninguna doc instala el cockpit con --marketplace <repo> sin ref"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
