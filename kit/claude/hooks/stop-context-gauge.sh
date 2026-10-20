@@ -18,7 +18,8 @@ MSG=""
 
 read -r CTX PCT <<<"$(nucleo_ctx "$TP")"
 if [ -n "${PCT:-}" ] && [ "$PCT" -ge 60 ]; then
-  MSG="Contexto $CTX tok ($PCT % del airbag). Fase cerrada: /handoff (cockpit: deja el estado en .claude/estado/nucleo.md y retoma limpio); sin cockpit, actualiza nucleo.md y /clear (el hook de arranque lo re-inyecta). Si no, delega el resto a subagentes."
+  HO=handoff; command -v handoff >/dev/null 2>&1 || HO=$HOME/.claude/bin/handoff
+  MSG="Contexto $CTX tok ($PCT % del airbag). Fase cerrada: /handoff (cockpit: deja el estado en .claude/estado/nucleo.md y retoma limpio); sin cockpit, actualiza nucleo.md con \`$HO --desde <borrador>\` y /clear (el hook de arranque lo re-inyecta). Si no, delega el resto a subagentes."
 fi
 
 # 2) Gate: un `git commit` lanzado EN ESTE transcript es posterior a nucleo.md. No vale «HEAD es

@@ -17,7 +17,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
           nuevas del borrador, sin borrar nunca una); los [x] del Plan pasan a diario.md con su
           comando y el hash de HEAD; el último rc de verificaciones.log se pliega en «Comandos de verificación»;
           una sección vacía del borrador (sin cuerpo o solo comentarios) conserva la del nucleo; para vaciarla
-          se escribe «- (nada)»; se guarda nucleo.prev-* (3 copias) y se recorta al tope omitiendo secciones enteras (primero las ajenas a la plantilla, desde el final).
+          se escribe «- (nada)»; se guarda nucleo.prev-* (3 copias) y se recorta al tope omitiendo secciones enteras (primero las ajenas a la plantilla, desde el final; luego Pendientes, Plan, Ficheros tocados, Comandos, Siguiente acción y Paso actual).
   --solo    no fusiona: el borrador sustituye al nucleo (se sigue validando).
   --commit  además hace commit solo de .claude/estado/ (para repos propios); sin él, .claude/estado/ se añade
             a .git/info/exclude.
@@ -333,7 +333,7 @@ for ((i = ${#RK[@]} - 1; i >= 0; i--)); do
   [ "$(bytes "$TEXTO")" -gt "$NUCLEO_TOPE" ] || break
   admitida "${RK[i]}" || [ -z "${RT[i]}" ] || omitir "$i"
 done
-for k in "ficheros tocados" pendientes plan "comandos de verificacion" "siguiente accion" "paso actual"; do
+for k in pendientes plan "ficheros tocados" "comandos de verificacion" "siguiente accion" "paso actual"; do
   [ "$(bytes "$TEXTO")" -gt "$NUCLEO_TOPE" ] || break
   for ((i = 0; i < ${#RK[@]}; i++)); do
     [ "${RK[i]}" = "$k" ] && [ -n "${RT[i]}" ] || continue

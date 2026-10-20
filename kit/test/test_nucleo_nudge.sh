@@ -93,4 +93,11 @@ ok "60 % y nucleo viejo: sí lo lanza (control de la sonda)" "$([ -e "$T/git-lan
 rm -f "$T/git-lanzado"; runf s21 p60 >/dev/null
 ok "banda ya avisada: no lanza git" "$([ -e "$T/git-lanzado" ] && echo lanzado || echo no)" no
 
+# --- W2: sin handoff en el PATH el texto del 70 % lleva la ruta del kit, y esa ruta existe ---
+mkdir -p "$HOME/.claude/bin"; : >"$HOME/.claude/bin/handoff"; chmod +x "$HOME/.claude/bin/handoff"
+touch -d '-30 minutes' "$NUC"
+WC=$(PATH=/usr/bin:/bin run s40 p72 | ctx); WP=$(sed -n 's/.*`\([^ ]*\) --desde.*/\1/p' <<<"$WC")
+ok "W2 nudge: sin handoff en el PATH enseña la ruta absoluta y existe" "$WP,$([ -x "$WP" ] && echo si)" "$HOME/.claude/bin/handoff,si"
+ok "W2 nudge 70 % con la ruta ≤ 600 chars" "$([ "${#WC}" -le 600 ] && echo si)" si
+
 exit $FAIL
