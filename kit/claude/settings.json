@@ -26,7 +26,15 @@
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
       "Read(//**/.env*)",
-      "Read(//**/secrets.*)"
+      "Read(//**/secrets.*)",
+      "Read(~/.gnupg/**)",
+      "Read(~/.netrc)",
+      "Edit(~/.ssh/**)",
+      "Edit(~/.aws/**)",
+      "Edit(~/.gnupg/**)",
+      "Edit(~/.netrc)",
+      "Edit(//**/.env*)",
+      "Edit(//**/secrets.*)"
     ],
     "disableBypassPermissionsMode": "disable"
   },
@@ -211,7 +219,8 @@
     "setup-claude-code": {
       "source": {
         "source": "github",
-        "repo": "manuelcozar55/setup-claude-code"
+        "repo": "manuelcozar55/setup-claude-code",
+        "ref": "v1.3.0"
       }
     }
   },

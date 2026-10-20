@@ -29,6 +29,8 @@ done
 ck "$(grep -c 'superpowers@' "$log")" "0" "--apply ya no instala superpowers (lo sustituye esenciales)"
 ck "$(grep -c 'marketplace add DietrichGebert/ponytail --scope user' "$log")" "1" "--apply registra el marketplace de ponytail"
 ck "$(grep -c 'impeccable\|find-skills' "$log")" "0" "sin --with-optional no entra lo opcional"
+read -r KV < "$HERE/../../VERSION"
+ck "$(grep -c "^claude plugin marketplace add manuelcozar55/setup-claude-code@v$KV --scope user\$" "$log")" "1" "L4: el marketplace del kit se registra fijado al tag v$KV (como el ref de settings.json)"
 ck "$(grep -c '^claude plugin marketplace add' "$log")" "3" "solo registra los 3 marketplaces externos (el oficial ya viene)"
 
 run --apply --with-optional; ck "$?" "0" "--with-optional: exit 0"

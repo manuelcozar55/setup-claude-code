@@ -36,4 +36,10 @@ ok "ni oraculo ni handoff en allow (envuelven comandos arbitrarios)" "$(q '[.per
 ok "todo plugin de terceros tiene su marketplace en extraKnownMarketplaces" "$(q '(.extraKnownMarketplaces // {} | keys) as $k | [.enabledPlugins | keys[] | split("@")[1] | select(. != "claude-plugins-official") | select(. as $m | $k | index($m) | not)] | join(" ")')" ""
 ok "marketplace setup-claude-code apunta a manuelcozar55/setup-claude-code" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.repo')" manuelcozar55/setup-claude-code
 ok "sin plugins personales ni de contexto caro (codex, understand-anything, frontend-design)" "$(q '[.enabledPlugins | keys[] | select(test("^(codex|understand-anything|frontend-design)@"))] | length')" 0
+# L4: el marketplace del kit va fijado al tag de esta version (source.ref de la fuente github, doc oficial
+# code.claude.com/docs/en/plugins/marketplace-reference#marketplace-sources). Sin ref seguia la rama por defecto:
+# un push a main del repo del marketplace llegaba a todos los companeros. Al subir VERSION hay que subir el ref.
+V="$(cat "$(dirname "$S")/../../VERSION" 2>/dev/null)"
+ok "marketplace setup-claude-code: source github" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.source')" github
+ok "marketplace setup-claude-code: ref = v<VERSION> (hoy v$V)" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.ref')" "v$V"
 exit $FAIL
