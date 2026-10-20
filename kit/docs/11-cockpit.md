@@ -13,7 +13,7 @@
 
 **Versión de Claude Code.** El mod se probó con Claude Code 2.1.292 (`claude --version`). No se ha comprobado una versión mínima: los mods son de acceso temprano y pueden cambiar entre versiones. Comprueba la tuya antes de instalar y, si algo no carga, `claude plugin validate kit/mods/cockpit` dice qué falla.
 
-**Sigue `main`.** El marketplace no fija una versión: instala lo último de la rama `main`, no el tag con el que instalaste el kit. Para fijar una versión, instala desde una copia del tag.
+**Va con la versión del kit.** El marketplace no fija una versión: instala lo último de la rama `main`, no el tag con el que instalaste el kit. Por eso el kit y el cockpit se actualizan juntos: tras pasar el kit a otra versión (ver «Actualizar» en [`02-install.md`](02-install.md)), ejecuta también `claude plugin update cockpit@setup-claude-code`. Para fijar una versión, instala desde una copia del tag.
 
 Este repo es un marketplace (`.claude-plugin/marketplace.json`). Para todas tus sesiones, en scope user, desde el prompt de una sesión de terminal:
 
@@ -40,9 +40,9 @@ claude --plugin-dir <ruta>/kit/mods/cockpit
 - El resto del texto es el **foco**: el documento se adapta a lo que hará la próxima sesión.
 - En la banda sobre el prompt, el botón `handoff` (`h`) pide confirmación con tres acciones: `[guardar + /clear]`, `[solo guardar]` y `[no guardar + /clear]` (limpia el contexto sin escribir handoff), dibujadas sin cromo y sin tecla propia: un clic o Enter bajo el foco. Para cancelar, vuelve a pulsar `handoff`. Durante un turno en marcha solo queda `solo guardar`.
 
-El documento es `.claude/estado/nucleo.md` de la raíz del proyecto, la convención de estado que ya leen CLAUDE.md, los hooks PreCompact y la re-inyección tras compactar. **La raíz sigue la decisión 6 del plan v3:** la raíz git del cwd de la sesión, salvo que sea `$HOME` o cuelgue de `$HOME/.claude`; sin git tampoco hay proyecto. Sin proyecto el mod no hace fork ni escribe nada y lo dice.
+El documento es `.claude/estado/nucleo.md` de la raíz del proyecto, la convención de estado que ya leen CLAUDE.md, los hooks PreCompact y la re-inyección tras compactar. **La raíz es** la raíz git del cwd de la sesión, salvo que sea `$HOME` o cuelgue de `$HOME/.claude`; sin git tampoco hay proyecto. Sin proyecto el mod no hace fork ni escribe nada y lo dice.
 
-**Reparto de trabajo.** El fork del modelo solo redacta un borrador con las secciones de la plantilla (`kit/claude/templates/nucleo.md`): Plan, Paso actual, Siguiente acción, Pendientes, Comandos de verificación y Ficheros tocados, y Objetivo e Invariantes cuando faltan o están vacíos. Pide además los tres campos baratos de la decisión 13: las correcciones literales de la persona (hasta 3 líneas, con fecha, en Invariantes), los ficheros calientes con rango (`ruta:L120-180 — qué`) y el resultado de cada comando de verificación (`→ rc=N`, que el CLI pliega desde `verificaciones.log`). El mod no fusiona nada: no queda en TypeScript ninguna función de fusión, rotación de copias ni exclusión de git; lo hace `handoff` (`test_mod_cockpit.sh` lo comprueba).
+**Reparto de trabajo.** El fork del modelo solo redacta un borrador con las secciones de la plantilla (`kit/claude/templates/nucleo.md`): Plan, Paso actual, Siguiente acción, Pendientes, Comandos de verificación y Ficheros tocados, y Objetivo e Invariantes cuando faltan o están vacíos. Pide además tres campos baratos: las correcciones literales de la persona (hasta 3 líneas, con fecha, en Invariantes), los ficheros calientes con rango (`ruta:L120-180 — qué`) y el resultado de cada comando de verificación (`→ rc=N`, que el CLI pliega desde `verificaciones.log`). El mod no fusiona nada: no queda en TypeScript ninguna función de fusión, rotación de copias ni exclusión de git; lo hace `handoff` (`test_mod_cockpit.sh` lo comprueba).
 
 **Cómo se entrega.** Antes de escribir se redactan claves conocidas (`sk-`, `ghp_`, `AKIA`, `xox*`, JWT), asignaciones tipo `password=`/`token:`, `Bearer …`, bloques `PRIVATE KEY`, credenciales en URLs, `github_pat_`/`glpat-` y valores entrecomillados: una red de seguridad parcial, porque la redacción principal la hace el prompt. El borrador va a un fichero temporal propio (`mktemp`, permisos 600, borrado siempre al terminar, también si el CLI falla) y el mod ejecuta, con la ruta absoluta (no depende del PATH):
 
@@ -102,7 +102,7 @@ Rellena el prompt (`$.prompt.fill`) y no lo envía (`prompt.submit`) porque un p
 - En un subagente: solo cuenta el bucle principal.
 - Con subagentes o teammates sin terminar.
 - Con un handoff en curso o en error.
-- Sin proyecto (la raíz es `$HOME`, cuelga de `$HOME/.claude` o no hay git): no hay estado propio de la tarea (decisión 6 del plan v3).
+- Sin proyecto (la raíz es `$HOME`, cuelga de `$HOME/.claude` o no hay git): no hay estado propio de la tarea.
 - Si empieza otro turno entre el guardado y el `/clear`: no limpia, deja el documento guardado y avisa.
 
 **Veto de compactación.** Si la autocompactación salta a mitad de turno (`session.compact` con `trigger` auto), el mod la pospone para que el handoff llegue al cerrar el turno, que entonces lo dispara aunque no se haya llegado al umbral. El techo es `min(1,5 × límite, 0,5 × ventana real del modelo)`. Pasado el techo, compacta como siempre. En ventanas de 200k el techo queda por debajo del límite y el veto no actúa. Cede también en subagentes, con `off`, sin proyecto, con el handoff en error y si la lectura del contexto falla.
