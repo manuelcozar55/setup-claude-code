@@ -54,7 +54,7 @@ block() {
 # Un segmento cuyo ejecutable no es git puede llevar un push dentro: `bash -c "git push ..."`, `eval`,
 # `ssh host git push ...`, `xargs git push ...`, `find -exec git push ...`. El guard de texto de 3576d87
 # los veia y la normalizacion los dejo pasar; ahora la cadena interior (un argumento con git, o los
-# argumentos desde el token `git`) se vuelve a normalizar y se analiza igual, hasta 3 niveles. Los
+# argumentos desde el token `git`) se vuelve a normalizar y se analiza igual, hasta 3 niveles (un cuarto con push se deniega). Los
 # comandos que solo muestran texto (echo, grep...) no cuentan: `echo "git push origin main"` es prosa.
 # La expansion de variables sigue fuera de alcance (docs/05-security.md).
 # Cada cadena anidada cuesta un awk (~3 ms): sin tope, 12 KB de `x git;` eran 7 s de CPU y 128 KB pasaban
@@ -62,6 +62,19 @@ block() {
 # ejecutar el comando: fallaba en abierto. Solo se miran los segmentos con push (y los `cd`, que fijan el
 # repo), solo se vuelve a normalizar la cadena que lleva push, y pasadas 16 se bloquea: fallar cerrado.
 NEST=0
+# La rama actual se calcula una vez por (cwd, opciones globales de git): `git push;` repetido miles de
+# veces lanzaba un symbolic-ref (3,3 ms) por segmento y pasaba del timeout igual que las cadenas
+# anidadas. Pasados 16 repos distintos se deniega: fallar cerrado.
+declare -A CURS=()
+NCUR=0
+cur_branch() {
+  local key="$CMDN_CWD|${T[0]:-}"
+  if [[ -z ${CURS[$key]+x} ]]; then
+    (( ++NCUR > 16 )) && return 2
+    CURS[$key]=$(git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" symbolic-ref --short -q HEAD 2>/dev/null)
+  fi
+  cur=${CURS[$key]}
+}
 scan() {
   local depth=$1 seg a i inner cwd0 first ref dst t cur rc
   local skip dd tags repo
@@ -72,15 +85,19 @@ scan() {
   cmdn_fields "$seg"
   cmdn_track_cd
   if [[ ${T[1]:-} != git ]]; then
-    [[ $seg == *git* && $depth -lt 3 ]] || continue
-    case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') continue ;; esac
+    [[ $seg == *git* ]] || continue
+    case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') (( PIPED )) || continue ;; esac
     for (( i = 2; i < ${#T[@]}; i++ )); do
       a=${T[i]}
       [[ $a == *git* ]] || continue
       inner=$a
       [[ $a == git || $a == */git ]] && printf -v inner '%s ' "${T[@]:i}"
+      case ${T[1]:-} in
+        python*|perl|ruby|node|php) cmdn_code_inner "$a" git && inner=$REPLY ;;
+        echo|printf) inner=${inner//\\n/$'\n'} ;;
+      esac
       [[ $inner == *push* ]] || continue
-      (( ++NEST > 16 )) && return 2
+      (( depth < 3 && ++NEST <= 16 )) || return 2
       cwd0=$CMDN_CWD; rc=0
       cmdn_parse "$inner" && { CMDN_CWD=$cwd0; scan $(( depth + 1 )); rc=$?; }
       CMDN_CWD=$cwd0
@@ -105,11 +122,13 @@ scan() {
       continue
     fi
     [[ $a =~ ^[0-9]*[\<\>] || $a == '&>'* ]] && continue
+    # Redireccion pegada al operando (`main>/dev/null`, `main&>log`): el operando acaba donde empieza.
+    if [[ $a == *[\<\>]* ]]; then a=${a%%[<>]*}; a=${a%&}; [[ -n $a ]] || continue; fi
     ops+=("$a")
   done
 
   IFS=$CMDN_GS read -r -a gopts <<<"${T[0]}"
-  cur=$(git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" symbolic-ref --short -q HEAD 2>/dev/null)
+  cur_branch || return 2
 
   # Con --repo el remoto ya viene dado y todos los posicionales son refspecs.
   first=1; (( repo )) && first=0
@@ -118,7 +137,7 @@ scan() {
     (( tags )) || targets+=("$cur")
   else
     for ref in "${ops[@]:first}"; do
-      ref=${ref#+}
+      ref=${ref#\$}; ref=${ref#+}
       dst=$ref
       [[ $ref == *:* ]] && dst=${ref##*:}
       [[ $dst == HEAD ]] && dst=$cur
@@ -132,9 +151,10 @@ scan() {
   return 0
 }
 
+PIPED=0; cmdn_pipes_to_shell && PIPED=1
 scan 0; rc=$?
 if (( rc == 2 )); then
-  echo "BLOCKED: mas de 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos." >&2
+  echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) o repos distintos con git push: no caben en el timeout del guard; dividelo en comandos cortos." >&2
   exit 2
 fi
 exit 0

@@ -91,13 +91,13 @@ fi
 # `find . -name '*.pyc' -delete` y hasta un `echo` o un mensaje de commit que lo citara. La ruta son
 # los operandos entre las opciones iniciales de find (-H -L -P -O<n> -D x --) y el primer token de
 # expresion (-..., `(`, `!`); sin ruta, `.`. Tres familias, con la ruta normalizada (`./.` es `.`):
-#   - cwd (`.`, y `*` o `./*`, que es su contenido): bloquea salvo que la expresion filtre por nombre
+#   - cwd (`.`, y `*`, `.*`, `{a,b}`... o `./*`, que son su contenido): bloquea salvo que la expresion filtre por nombre
 #     o ruta (-name, -path, -regex...).
 #   - amplia (`..` y lo que sube de el, `~`, `$HOME`, `/`, `/*`, un solo componente absoluto como
 #     /etc, y todo /home/... y /mnt/...): bloquea siempre, con filtro o sin el.
 #   - resto (`build`, `./build`, `/tmp/x`): pasa, decision ya declarada.
 # Como en branch-guard.sh, la cadena de un `bash -c`, `ssh`, `xargs`... se vuelve a normalizar, hasta
-# 3 niveles; git y lo que solo muestra texto (echo, grep...) no cuentan: ahi `find` es prosa.
+# 3 niveles (un cuarto con -delete se bloquea); git y lo que solo muestra texto (echo, grep...) no cuentan: ahi `find` es prosa.
 # shellcheck disable=SC2088,SC2016  # `~` y `$HOME` son el TEXTO del operando, no se expanden.
 find_path_class() {
   local c abs=0
@@ -114,7 +114,7 @@ find_path_class() {
   done
   if (( abs )); then
     if (( ${#out[@]} <= 1 )) || [[ ${out[0]} == home || ${out[0]} == mnt ]]; then FCLASS=amplia; else FCLASS=resto; fi
-  elif (( ${#out[@]} == 0 )) || [[ ${#out[@]} == 1 && ${out[0]} == '*' ]]; then FCLASS=cwd
+  elif (( ${#out[@]} == 0 )) || [[ ${#out[@]} == 1 && ${out[0]} == *['*?[{']* ]]; then FCLASS=cwd
   elif [[ ${out[0]} == .. ]]; then FCLASS=amplia
   else FCLASS=resto
   fi
@@ -123,23 +123,45 @@ find_path_class() {
 # que pasa de su timeout deja ejecutar el comando ENTERO. Solo se vuelve a normalizar la cadena que
 # lleva -delete, y pasadas 16 se bloquea: fallar cerrado.
 NEST=0
+# `find ... | xargs rm` borra lo que find lista sin llevar -delete: la salida de find es el operando.
+xargs_rm() {
+  local seg a
+  local -a T
+  for seg in "${CMDN_SEGS[@]}"; do
+    [[ $seg == *xargs* ]] || continue
+    cmdn_fields "$seg"
+    [[ ${T[1]:-} == xargs ]] || continue
+    for a in "${T[@]:2}"; do
+      case $a in rm|unlink|shred|*/rm|*/unlink|*/shred) return 0 ;; esac
+    done
+  done
+  return 1
+}
+PIPED=0; XRM=0
 find_delete() {
-  local depth=$1 seg a i k inner del filt rc
+  local depth=$1 seg a i k inner del filt unf rc
   local -a T segs paths
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
-    [[ $seg == *find* && $seg == *-delete* ]] || continue
+    [[ $seg == *find* && ( $seg == *-delete* || $XRM == 1 ) ]] || continue
     cmdn_fields "$seg"
     if [[ ${T[1]:-} != find ]]; then
-      (( depth < 3 )) || continue
-      case ${T[1]:-} in git|echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') continue ;; esac
+      # Un echo/printf que va a `| bash` no es prosa: su texto es la orden.
+      case ${T[1]:-} in
+        git) continue ;;
+        echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') (( PIPED )) || continue ;;
+      esac
       for (( i = 2; i < ${#T[@]}; i++ )); do
         a=${T[i]}
         [[ $a == *find* ]] || continue
         inner=$a
         [[ $a == find || $a == */find ]] && printf -v inner '%s ' "${T[@]:i}"
+        case ${T[1]:-} in
+          python*|perl|ruby|node|php) cmdn_code_inner "$a" find && inner=$REPLY ;;
+          echo|printf) inner=${inner//\\n/$'\n'} ;;
+        esac
         [[ $inner == *-delete* ]] || continue
-        (( ++NEST > 16 )) && return 2
+        (( depth < 3 && ++NEST <= 16 )) || return 2
         cmdn_parse "$inner" || continue
         find_delete $(( depth + 1 )); rc=$?
         (( rc == 1 )) || return $rc
@@ -160,14 +182,21 @@ find_delete() {
       case ${T[k]} in -*|'('|'!') break ;; esac
       paths+=("${T[k]}"); k=$(( k + 1 ))
     done
-    del=0; filt=0
-    for a in "${T[@]:k}"; do
-      case $a in
-        -delete) del=1 ;;
-        -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex) filt=1 ;;
+    # El filtro solo acota el borrado si va ANTES de -delete (find evalua de izquierda a derecha) y la
+    # expresion no lo invierte ni lo puentea: `-o`, `,`, `!`, `-not` y `-prune` hacen que -delete alcance
+    # justo lo que el filtro excluia o a todo; `-name '*'` filtra nada.
+    del=0; filt=0; unf=0
+    for (( i = k; i < ${#T[@]}; i++ )); do
+      case ${T[i]} in
+        -delete) del=1; (( filt )) || unf=1 ;;
+        -o|-or|,|'!'|-not|-prune) unf=1 ;;
+        -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex)
+          [[ ${T[i+1]:-} == '*' ]] || filt=1
+          i=$(( i + 1 )) ;;
       esac
     done
-    (( del )) || continue
+    (( del || XRM )) || continue
+    (( filt && ! unf )) || filt=0
     (( ${#paths[@]} )) || paths=(.)
     for a in "${paths[@]}"; do
       find_path_class "$a"
@@ -178,8 +207,10 @@ find_delete() {
   return 1
 }
 # La vuelta a normalizar pisa CMDN_SEGS, y el Check 5 lo necesita intacto.
-if [[ $COMMAND_SCAN == *find* && $COMMAND_SCAN == *-delete* ]]; then
+xargs_rm && XRM=1
+if [[ $COMMAND_SCAN == *find* && ( $COMMAND_SCAN == *-delete* || $XRM == 1 ) ]]; then
   segs0=("${CMDN_SEGS[@]}")
+  cmdn_pipes_to_shell && PIPED=1
   find_delete 0; rc_find=$?
   if (( rc_find == 0 )); then
     log_block "find -delete on broad path"
@@ -188,7 +219,7 @@ if [[ $COMMAND_SCAN == *find* && $COMMAND_SCAN == *-delete* ]]; then
   fi
   if (( rc_find == 2 )); then
     log_block "find -delete nested too deep"
-    echo "BLOCKED: mas de 16 comandos anidados (bash -c, ssh, xargs...) con find -delete: no caben en el timeout del guard; dividelo en comandos cortos." >&2
+    echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con find -delete: no caben en el timeout del guard; dividelo en comandos cortos." >&2
     exit 2
   fi
   CMDN_SEGS=("${segs0[@]}")

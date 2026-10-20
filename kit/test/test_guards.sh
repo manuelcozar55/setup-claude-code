@@ -553,6 +553,15 @@ for c in 'git push origin feature 2>&1' 'git push -u origin >/dev/null' 'git pus
   expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
 done
 expect "branch-guard (E7.3, feature activa): main con 2>&1 denegado" "$(run_bg "$BR_FEAT" 'git push origin main 2>&1')" BLOCK
+# S-N7: la redireccion pegada al operando (`main>/dev/null`) hacia que el destino fuese `main>/dev/null`.
+for c in 'git push origin main>/dev/null' 'git push origin main>log' 'git push origin "main">/dev/null' \
+         'git push origin main&>/dev/null'; do
+  expect "branch-guard (S-N7, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+expect "branch-guard (S-N7, main activa): HEAD>/dev/null denegado" "$(run_bg "$BR_MAIN" 'git push origin HEAD>/dev/null')" BLOCK
+for c in 'git push origin feature>/dev/null' 'git push origin main2>&1'; do
+  expect "branch-guard (S-N7, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
 # Revision E7.3 (CR-3): con --repo, git trata TODOS los posicionales como refspecs; el guard
 # tomaba el primero por remoto y `git push --repo=origin main` desde una feature pasaba.
 for c in 'git push --repo=origin main' 'git push --repo origin main'; do
@@ -577,6 +586,22 @@ for c in 'bash -c "git push origin main"' "sh -c 'git push origin main'" 'eval "
   expect "branch-guard (E7.3, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
 done
 expect "branch-guard (E7.3, main activa): bash -c con push implicito denegado" "$(run_bg "$BR_MAIN" 'bash -c "git push"')" BLOCK
+# S-N3: por encima del tope de 3 niveles el guard dejaba pasar en silencio; ahora falla cerrado.
+SN3_NEST=$(cat <<'EOF'
+bash -c "bash -c 'bash -c \"bash -c \\\"git push origin main\\\"\"'"
+EOF
+)
+expect "branch-guard (S-N3, feature activa): 4 niveles de bash -c con push denegado" "$(run_bg "$BR_FEAT" "$SN3_NEST")" BLOCK
+# S-N4: un echo/printf cuyo texto va a un interprete por pipe, o el codigo de `python -c`, SON la orden.
+for c in "echo 'git push origin main' | bash" "echo 'git push origin main' | sh" \
+         "python3 -c \"import os; os.system('git push origin main')\"" \
+         "python3 -c \"import subprocess; subprocess.run(['git', 'push', 'origin', 'main'])\""; do
+  expect "branch-guard (S-N4, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+expect "branch-guard (S-N5, feature activa): refspec ANSI-C \$'main' denegado" "$(run_bg "$BR_FEAT" "git push origin \$'main'")" BLOCK
+for c in "echo 'git push origin main' | cat" "echo hi | bash" "python3 -c \"print('git push origin main')\""; do
+  expect "branch-guard (S-N4, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
 for c in 'bash -c "git push origin feature"' 'ssh host git status' 'bash -c "echo main"' 'echo "git push origin main"' \
          'printf "%s" "git push origin main"' 'xargs git status main' 'find . -name main'; do
   expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
