@@ -50,9 +50,9 @@ como candidato para v0.2.0. Riesgos ya identificados que deberá absorber quien 
 
 | Proyecto | git | Casos declarados | Entorno ejecutable | Bloqueante |
 |---|---|---|---|---|
-| `circe-brain/circe-prospector` | ✅ | 1.443 | ❌ | Sin venv; 270 MB en `/mnt/c` |
-| `ofertadora/lab` | ❌ | 58 | ❌ | **Sin control de versiones**: cualquier cambio es irreversible |
-| `ofertadora/2025_v1` + `2025_webscraper_v1` | ✅ | 0 | ❌ | 20+ ficheros `TEST_*.py` que **no son tests** sino scripts que tocan la BD de producción |
+| `proyecto-a` | ✅ | 1.443 | ❌ | Sin venv; 270 MB en `/mnt/c` |
+| `proyecto-b/lab` | ❌ | 58 | ❌ | **Sin control de versiones**: cualquier cambio es irreversible |
+| `proyecto-b/2025_v1` + `2025_webscraper_v1` | ✅ | 0 | ❌ | 20+ ficheros `TEST_*.py` que **no son tests** sino scripts que tocan la BD de producción |
 | `legal-assistant` | ✅ | 104 | ❌ | Sin venv |
 | `tfm-agent-system` | ✅ | 48 | ❌ | Sin fichero de dependencias |
 
