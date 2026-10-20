@@ -181,4 +181,18 @@ jq '.disableAllHooks = false' "$CLAUDE_HOME/settings.json" > "$tmp/s.json" && cp
 set +e; out="$(dr)"; set -e
 ck "$(echo "$out" | grep -c '^FAIL .*disableAllHooks')" "0" "disableAllHooks: false no es FAIL"
 
+# Estado del proyecto actual (ADR 016): WARN si .claude/estado/ no esta ignorado y tiene ficheros sin
+# rastrear; sin WARN si esta ignorado; WARN si informes/ pasa del tope (DOCTOR_INFORMES_MB).
+mkdir -p "$tmp/p-estado/.claude/estado/informes"; git -C "$tmp/p-estado" init -q
+echo x > "$tmp/p-estado/.claude/estado/nucleo.md"
+set +e; out="$(cd "$tmp/p-estado" && dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*estado/ no esta ignorado')" "1" "doctor WARN si .claude/estado/ no esta ignorado y tiene ficheros sin rastrear"
+printf '*\n' > "$tmp/p-estado/.claude/estado/.gitignore"
+set +e; out="$(cd "$tmp/p-estado" && dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*estado/ no esta ignorado')" "0" "doctor sin WARN de estado con .claude/estado/ ignorado"
+ck "$(echo "$out" | grep -c '^WARN .*informes/ pesa')" "0" "doctor sin WARN de informes bajo el tope"
+dd if=/dev/zero of="$tmp/p-estado/.claude/estado/informes/grande.bin" bs=1024 count=2048 2>/dev/null
+set +e; out="$(cd "$tmp/p-estado" && DOCTOR_INFORMES_MB=1 dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*informes/ pesa')" "1" "doctor WARN si informes/ pasa del tope"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
