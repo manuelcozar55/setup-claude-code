@@ -123,20 +123,43 @@ find_path_class() {
 # que pasa de su timeout deja ejecutar el comando ENTERO. Solo se vuelve a normalizar la cadena que
 # lleva -delete, y pasadas 16 se bloquea: fallar cerrado.
 NEST=0
+# `find ... | xargs rm` borra lo que find lista sin llevar -delete: la salida de find es el operando.
+xargs_rm() {
+  local seg a
+  local -a T
+  for seg in "${CMDN_SEGS[@]}"; do
+    [[ $seg == *xargs* ]] || continue
+    cmdn_fields "$seg"
+    [[ ${T[1]:-} == xargs ]] || continue
+    for a in "${T[@]:2}"; do
+      case $a in rm|unlink|shred|*/rm|*/unlink|*/shred) return 0 ;; esac
+    done
+  done
+  return 1
+}
+PIPED=0; XRM=0
 find_delete() {
   local depth=$1 seg a i k inner del filt unf rc
   local -a T segs paths
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
-    [[ $seg == *find* && $seg == *-delete* ]] || continue
+    [[ $seg == *find* && ( $seg == *-delete* || $XRM == 1 ) ]] || continue
     cmdn_fields "$seg"
     if [[ ${T[1]:-} != find ]]; then
-      case ${T[1]:-} in git|echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') continue ;; esac
+      # Un echo/printf que va a `| bash` no es prosa: su texto es la orden.
+      case ${T[1]:-} in
+        git) continue ;;
+        echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') (( PIPED )) || continue ;;
+      esac
       for (( i = 2; i < ${#T[@]}; i++ )); do
         a=${T[i]}
         [[ $a == *find* ]] || continue
         inner=$a
         [[ $a == find || $a == */find ]] && printf -v inner '%s ' "${T[@]:i}"
+        case ${T[1]:-} in
+          python*|perl|ruby|node|php) cmdn_code_inner "$a" find && inner=$REPLY ;;
+          echo|printf) inner=${inner//\\n/$'\n'} ;;
+        esac
         [[ $inner == *-delete* ]] || continue
         (( depth < 3 && ++NEST <= 16 )) || return 2
         cmdn_parse "$inner" || continue
@@ -172,7 +195,7 @@ find_delete() {
           i=$(( i + 1 )) ;;
       esac
     done
-    (( del )) || continue
+    (( del || XRM )) || continue
     (( filt && ! unf )) || filt=0
     (( ${#paths[@]} )) || paths=(.)
     for a in "${paths[@]}"; do
@@ -184,8 +207,10 @@ find_delete() {
   return 1
 }
 # La vuelta a normalizar pisa CMDN_SEGS, y el Check 5 lo necesita intacto.
-if [[ $COMMAND_SCAN == *find* && $COMMAND_SCAN == *-delete* ]]; then
+xargs_rm && XRM=1
+if [[ $COMMAND_SCAN == *find* && ( $COMMAND_SCAN == *-delete* || $XRM == 1 ) ]]; then
   segs0=("${CMDN_SEGS[@]}")
+  cmdn_pipes_to_shell && PIPED=1
   find_delete 0; rc_find=$?
   if (( rc_find == 0 )); then
     log_block "find -delete on broad path"

@@ -583,6 +583,15 @@ bash -c "bash -c 'bash -c \"bash -c \\\"git push origin main\\\"\"'"
 EOF
 )
 expect "branch-guard (S-N3, feature activa): 4 niveles de bash -c con push denegado" "$(run_bg "$BR_FEAT" "$SN3_NEST")" BLOCK
+# S-N4: un echo/printf cuyo texto va a un interprete por pipe, o el codigo de `python -c`, SON la orden.
+for c in "echo 'git push origin main' | bash" "echo 'git push origin main' | sh" \
+         "python3 -c \"import os; os.system('git push origin main')\"" \
+         "python3 -c \"import subprocess; subprocess.run(['git', 'push', 'origin', 'main'])\""; do
+  expect "branch-guard (S-N4, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+for c in "echo 'git push origin main' | cat" "echo hi | bash" "python3 -c \"print('git push origin main')\""; do
+  expect "branch-guard (S-N4, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
 for c in 'bash -c "git push origin feature"' 'ssh host git status' 'bash -c "echo main"' 'echo "git push origin main"' \
          'printf "%s" "git push origin main"' 'xargs git status main' 'find . -name main'; do
   expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW

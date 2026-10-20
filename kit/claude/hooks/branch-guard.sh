@@ -86,12 +86,16 @@ scan() {
   cmdn_track_cd
   if [[ ${T[1]:-} != git ]]; then
     [[ $seg == *git* ]] || continue
-    case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') continue ;; esac
+    case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') (( PIPED )) || continue ;; esac
     for (( i = 2; i < ${#T[@]}; i++ )); do
       a=${T[i]}
       [[ $a == *git* ]] || continue
       inner=$a
       [[ $a == git || $a == */git ]] && printf -v inner '%s ' "${T[@]:i}"
+      case ${T[1]:-} in
+        python*|perl|ruby|node|php) cmdn_code_inner "$a" git && inner=$REPLY ;;
+        echo|printf) inner=${inner//\\n/$'\n'} ;;
+      esac
       [[ $inner == *push* ]] || continue
       (( depth < 3 && ++NEST <= 16 )) || return 2
       cwd0=$CMDN_CWD; rc=0
@@ -145,6 +149,7 @@ scan() {
   return 0
 }
 
+PIPED=0; cmdn_pipes_to_shell && PIPED=1
 scan 0; rc=$?
 if (( rc == 2 )); then
   echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) o repos distintos con git push: no caben en el timeout del guard; dividelo en comandos cortos." >&2

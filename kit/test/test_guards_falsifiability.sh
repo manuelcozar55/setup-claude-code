@@ -147,6 +147,16 @@ find . -name x , -delete
 find . -type f -delete -name x
 bash -c "bash -c 'bash -c \"bash -c \\\"find . -delete\\\"\"'"
 bash -c "bash -c 'bash -c \"bash -c \\\"git push origin +f\\\"\"'"
+echo 'find . -delete' | bash
+echo 'find . -delete' | sh
+printf 'find . -delete\n' | sudo bash -
+echo 'git push origin +f' | bash
+python3 -c "import os; os.system('find . -delete')"
+python3 -c "import subprocess; subprocess.run(['find', '.', '-delete'])"
+python3 -c "import os; os.system('git push origin +f')"
+find . -print0 | xargs -0 rm
+find . -type f -print0 | xargs -0 rm -f
+find .. -name x | xargs rm
 rm -r "$HOME/x"
 EOF
 while IFS= read -r c; do
@@ -171,6 +181,13 @@ find . -type f -name '*.tmp' -delete
 find . -path './build/*' -delete
 find . -type f -name '*.tmp' -mtime +7 -delete
 find . -name x -type f -delete
+find . -name '*.pyc' | xargs rm
+find build -print0 | xargs -0 rm
+echo "find . -delete" | cat
+echo hi | bash
+python3 -c "print('find . -name x')"
+python3 -c "import os; os.system('find . -name x -delete')"
+python3 script.py
 find build -delete
 find ./build -delete
 find /tmp/x -delete

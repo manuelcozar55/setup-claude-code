@@ -229,12 +229,16 @@ forced_refspec() {
     [[ $seg == *push* && $seg == *+* ]] || continue
     cmdn_fields "$seg"
     if [[ ${T[1]:-} != git ]]; then
-      case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') continue ;; esac
+      case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') (( PIPED )) || continue ;; esac
       for (( i = 2; i < ${#T[@]}; i++ )); do
         a=${T[i]}
         [[ $a == *git* ]] || continue
         inner=$a
         [[ $a == git || $a == */git ]] && printf -v inner '%s ' "${T[@]:i}"
+        case ${T[1]:-} in
+          python*|perl|ruby|node|php) cmdn_code_inner "$a" git && inner=$REPLY ;;
+          echo|printf) inner=${inner//\\n/$'\n'} ;;
+        esac
         [[ $inner == *push* && $inner == *+* ]] || continue
         (( depth < 3 && ++NEST <= 16 )) || return 2
         cmdn_parse "$inner" || continue
@@ -257,6 +261,7 @@ forced_refspec() {
   done
   return 1
 }
+PIPED=0; cmdn_pipes_to_shell && PIPED=1
 if [[ $COMMAND == *git* && $COMMAND == *push* && $COMMAND == *+* ]]; then
   forced_refspec 0; rc_refspec=$?
   (( rc_refspec == 0 )) && deny "BLOCKED: git push +refspec (forced refspec)"
