@@ -43,6 +43,11 @@ No supongas ni escondas la duda. Ante una tarea ambigua o de varios pasos, di en
 ## Never-Stop
 Se aclara *antes* de empezar. Una vez en marcha, nada de «¿sigo?»: ejecuta hasta el final y reporta. Si surge ambigüedad a mitad, toma la opción más conservadora y reversible y anótala en el informe. Solo se para ante un bloqueo que haga imposible terminar sin la persona. Una aprobación explícita vale para todo su alcance: no la repitas porque otra skill vuelva a pedirla.
 
+## Dónde se escribe cada cosa
+- Temporal de proceso (scratchpad, `mktemp`): se puede perder. Estado de la tarea, informes y checkpoints: `<raíz>/.claude/estado/`, siempre ignorado por git y creado si falta. Lo privado de la máquina: `~/.claude`.
+- Los informes, briefs y salidas de un agente van a `handoff --informe <tema>`: imprime `.claude/estado/informes/AAAA-MM-DD-<tema>/` y el brief lleva esa ruta, no un `/tmp`.
+- Lo compartido y curado (decisiones, oráculos, errores) sigue en `knowledge/`, versionado.
+
 ## Memoria compartida
 Los tres runtimes comparten un almacén: un hecho por fichero con frontmatter (`name`, `description`, `metadata.type`) e índice de una línea por memoria en `MEMORY.md`.
 - Si tienes `recuerda` (kit/docs/13; no lo instala `install.sh`), consulta con él, nunca leas las memorias enteras: `recuerda <términos>` (párrafos que coinciden, sin acentos ni mayúsculas), `recuerda -l` (índice), `recuerda -f <slug>` (una completa).

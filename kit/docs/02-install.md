@@ -166,6 +166,8 @@ handoff --iniciar   # crea .claude/estado/nucleo.md desde la plantilla
 
 `handoff --iniciar` no sobrescribe nada: si `nucleo.md` ya existe, lo dice y sale sin tocarlo. Añade `.claude/estado/` a `.git/info/exclude`, así que no ensucia tus commits. Fuera de un proyecto git termina con error (exit 3). El bucle diario, paso a paso, está en [`10-onboarding.md`](10-onboarding.md).
 
+Dónde va cada cosa: lo temporal, en un `mktemp`; el estado, los informes y los checkpoints, en `.claude/estado/` del proyecto (se crea solo y queda ignorado por git); lo privado de la máquina, en `~/.claude`. `handoff --informe <tema>` crea y te da la ruta de un informe.
+
 ## Paso 8 · Capa 2 de secretos (opt-in, por repositorio)
 
 `install.sh` nunca la activa por su cuenta en un repo que no hayas nombrado. Desde dentro del repo que quieras proteger (requiere `gitleaks`):

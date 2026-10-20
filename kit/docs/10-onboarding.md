@@ -89,6 +89,8 @@ Abre `nucleo.md` y rellena **Objetivo** (las palabras de quien pidió la tarea) 
 
 `handoff --iniciar` nunca sobrescribe: si el fichero existe, lo dice y sale sin tocarlo.
 
+**Dónde va cada cosa.** Lo temporal, en el scratchpad o un `mktemp`. El estado, los informes y los checkpoints, en `.claude/estado/` del proyecto: el kit lo crea si falta y lo deja ignorado por git (un `.gitignore` interno con `*`), así que nunca llega a un commit. Lo privado de tu máquina, en `~/.claude`. Para el informe de una tarea, `handoff --informe <tema>` crea `informes/AAAA-MM-DD-<tema>/` y te da su ruta.
+
 ## 6 · El bucle diario
 
 1. **Trabaja y verifica con `oraculo`.** Ejecuta tus pruebas así:
