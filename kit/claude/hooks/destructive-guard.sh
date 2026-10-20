@@ -97,7 +97,7 @@ fi
 #     /etc, y todo /home/... y /mnt/...): bloquea siempre, con filtro o sin el.
 #   - resto (`build`, `./build`, `/tmp/x`): pasa, decision ya declarada.
 # Como en branch-guard.sh, la cadena de un `bash -c`, `ssh`, `xargs`... se vuelve a normalizar, hasta
-# 3 niveles; git y lo que solo muestra texto (echo, grep...) no cuentan: ahi `find` es prosa.
+# 3 niveles (un cuarto con -delete se bloquea); git y lo que solo muestra texto (echo, grep...) no cuentan: ahi `find` es prosa.
 # shellcheck disable=SC2088,SC2016  # `~` y `$HOME` son el TEXTO del operando, no se expanden.
 find_path_class() {
   local c abs=0
@@ -131,7 +131,6 @@ find_delete() {
     [[ $seg == *find* && $seg == *-delete* ]] || continue
     cmdn_fields "$seg"
     if [[ ${T[1]:-} != find ]]; then
-      (( depth < 3 )) || continue
       case ${T[1]:-} in git|echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') continue ;; esac
       for (( i = 2; i < ${#T[@]}; i++ )); do
         a=${T[i]}
@@ -139,7 +138,7 @@ find_delete() {
         inner=$a
         [[ $a == find || $a == */find ]] && printf -v inner '%s ' "${T[@]:i}"
         [[ $inner == *-delete* ]] || continue
-        (( ++NEST > 16 )) && return 2
+        (( depth < 3 && ++NEST <= 16 )) || return 2
         cmdn_parse "$inner" || continue
         find_delete $(( depth + 1 )); rc=$?
         (( rc == 1 )) || return $rc
@@ -195,7 +194,7 @@ if [[ $COMMAND_SCAN == *find* && $COMMAND_SCAN == *-delete* ]]; then
   fi
   if (( rc_find == 2 )); then
     log_block "find -delete nested too deep"
-    echo "BLOCKED: mas de 16 comandos anidados (bash -c, ssh, xargs...) con find -delete: no caben en el timeout del guard; dividelo en comandos cortos." >&2
+    echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con find -delete: no caben en el timeout del guard; dividelo en comandos cortos." >&2
     exit 2
   fi
   CMDN_SEGS=("${segs0[@]}")

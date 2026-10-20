@@ -216,7 +216,7 @@ fi
 # +x"` o un mensaje de commit. Ahora cuenta solo un operando de `git push` (el subcomando, tras las
 # opciones globales que ya aparta cmdnorm) que, descomillado, empieza por `+`; el argumento de `-o`
 # y compania no es operando. Como en branch-guard.sh, la cadena de un `bash -c`, `eval`, `ssh`,
-# `xargs`... se vuelve a normalizar, hasta 3 niveles; lo que solo muestra texto no cuenta.
+# `xargs`... se vuelve a normalizar, hasta 3 niveles (un cuarto con push+ se deniega); lo que solo muestra texto no cuenta.
 # Cada cadena anidada cuesta un awk (~3 ms): sin tope, 12 KB de `x git;` eran 7 s de CPU, y un guard
 # que pasa de su timeout deja ejecutar el comando ENTERO. Solo se vuelve a normalizar la cadena que
 # puede llevar el refspec (push y +), y pasadas 16 se deniega: fallar cerrado.
@@ -229,7 +229,6 @@ forced_refspec() {
     [[ $seg == *push* && $seg == *+* ]] || continue
     cmdn_fields "$seg"
     if [[ ${T[1]:-} != git ]]; then
-      (( depth < 3 )) || continue
       case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') continue ;; esac
       for (( i = 2; i < ${#T[@]}; i++ )); do
         a=${T[i]}
@@ -237,7 +236,7 @@ forced_refspec() {
         inner=$a
         [[ $a == git || $a == */git ]] && printf -v inner '%s ' "${T[@]:i}"
         [[ $inner == *push* && $inner == *+* ]] || continue
-        (( ++NEST > 16 )) && return 2
+        (( depth < 3 && ++NEST <= 16 )) || return 2
         cmdn_parse "$inner" || continue
         forced_refspec $(( depth + 1 )); rc=$?
         (( rc == 1 )) || return $rc
@@ -261,7 +260,7 @@ forced_refspec() {
 if [[ $COMMAND == *git* && $COMMAND == *push* && $COMMAND == *+* ]]; then
   forced_refspec 0; rc_refspec=$?
   (( rc_refspec == 0 )) && deny "BLOCKED: git push +refspec (forced refspec)"
-  (( rc_refspec == 2 )) && deny "BLOCKED: mas de 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"
+  (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"
 fi
 
 # LC_ALL=C en los grep: con UTF-8 la union de patrones deja de ir por el automata y recorre el

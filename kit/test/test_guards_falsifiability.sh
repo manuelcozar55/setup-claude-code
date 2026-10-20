@@ -145,6 +145,8 @@ find . -name x -prune -o -delete
 find . -name '*' -delete
 find . -name x , -delete
 find . -type f -delete -name x
+bash -c "bash -c 'bash -c \"bash -c \\\"find . -delete\\\"\"'"
+bash -c "bash -c 'bash -c \"bash -c \\\"git push origin +f\\\"\"'"
 rm -r "$HOME/x"
 EOF
 while IFS= read -r c; do

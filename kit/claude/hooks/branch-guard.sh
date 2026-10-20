@@ -54,7 +54,7 @@ block() {
 # Un segmento cuyo ejecutable no es git puede llevar un push dentro: `bash -c "git push ..."`, `eval`,
 # `ssh host git push ...`, `xargs git push ...`, `find -exec git push ...`. El guard de texto de 3576d87
 # los veia y la normalizacion los dejo pasar; ahora la cadena interior (un argumento con git, o los
-# argumentos desde el token `git`) se vuelve a normalizar y se analiza igual, hasta 3 niveles. Los
+# argumentos desde el token `git`) se vuelve a normalizar y se analiza igual, hasta 3 niveles (un cuarto con push se deniega). Los
 # comandos que solo muestran texto (echo, grep...) no cuentan: `echo "git push origin main"` es prosa.
 # La expansion de variables sigue fuera de alcance (docs/05-security.md).
 # Cada cadena anidada cuesta un awk (~3 ms): sin tope, 12 KB de `x git;` eran 7 s de CPU y 128 KB pasaban
@@ -85,7 +85,7 @@ scan() {
   cmdn_fields "$seg"
   cmdn_track_cd
   if [[ ${T[1]:-} != git ]]; then
-    [[ $seg == *git* && $depth -lt 3 ]] || continue
+    [[ $seg == *git* ]] || continue
     case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') continue ;; esac
     for (( i = 2; i < ${#T[@]}; i++ )); do
       a=${T[i]}
@@ -93,7 +93,7 @@ scan() {
       inner=$a
       [[ $a == git || $a == */git ]] && printf -v inner '%s ' "${T[@]:i}"
       [[ $inner == *push* ]] || continue
-      (( ++NEST > 16 )) && return 2
+      (( depth < 3 && ++NEST <= 16 )) || return 2
       cwd0=$CMDN_CWD; rc=0
       cmdn_parse "$inner" && { CMDN_CWD=$cwd0; scan $(( depth + 1 )); rc=$?; }
       CMDN_CWD=$cwd0
@@ -147,7 +147,7 @@ scan() {
 
 scan 0; rc=$?
 if (( rc == 2 )); then
-  echo "BLOCKED: mas de 16 comandos anidados (bash -c, ssh, xargs...) o repos distintos con git push: no caben en el timeout del guard; dividelo en comandos cortos." >&2
+  echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) o repos distintos con git push: no caben en el timeout del guard; dividelo en comandos cortos." >&2
   exit 2
 fi
 exit 0

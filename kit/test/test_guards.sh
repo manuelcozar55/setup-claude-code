@@ -577,6 +577,12 @@ for c in 'bash -c "git push origin main"' "sh -c 'git push origin main'" 'eval "
   expect "branch-guard (E7.3, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
 done
 expect "branch-guard (E7.3, main activa): bash -c con push implicito denegado" "$(run_bg "$BR_MAIN" 'bash -c "git push"')" BLOCK
+# S-N3: por encima del tope de 3 niveles el guard dejaba pasar en silencio; ahora falla cerrado.
+SN3_NEST=$(cat <<'EOF'
+bash -c "bash -c 'bash -c \"bash -c \\\"git push origin main\\\"\"'"
+EOF
+)
+expect "branch-guard (S-N3, feature activa): 4 niveles de bash -c con push denegado" "$(run_bg "$BR_FEAT" "$SN3_NEST")" BLOCK
 for c in 'bash -c "git push origin feature"' 'ssh host git status' 'bash -c "echo main"' 'echo "git push origin main"' \
          'printf "%s" "git push origin main"' 'xargs git status main' 'find . -name main'; do
   expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
