@@ -34,8 +34,9 @@ configuración esté verificada en vez de supuesta.
 macOS (no hay CI que lo demuestre), y no es un framework del que dependas: se instala en tu
 `~/.claude` y se desinstala.
 
-**Instalar.** Clona y `make bootstrap` (instala en `~/.claude` con backup, corre `make test` y
-`kit/doctor.sh`); se deshace con `bash uninstall.sh`. Ver [Quick start](#quick-start).
+**Instalar.** Clona y ejecuta `bash kit/install.sh` (instala en `~/.claude` con backup) y
+`bash kit/doctor.sh` (comprueba la instalación); se deshace con `bash uninstall.sh`. `make bootstrap`
+es para quien desarrolla este repo. Ver [Quick start](#quick-start).
 
 **Aspecto.** Una instalación limpia trae el tema oscuro (`"theme": "dark"`) y una barra de estado
 en dos líneas (`~/.claude/statusline-command.sh`, bash + `jq`): modelo, ruta completa, repo, rama

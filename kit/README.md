@@ -23,7 +23,7 @@ Cubre el recorrido completo de mi setup diario: desde los **guards** que bloquea
 
 Linux o WSL2. Desde la raíz del clon, `bash kit/install.sh` instala la config saneada (idempotente, con
 backup) y `bash kit/doctor.sh` la verifica: sale 0 solo sin ningún `FAIL`. Primer día guiado en
-[`docs/10-onboarding.md`](docs/10-onboarding.md). (`make bootstrap` añade la suite y es para contribuir.) El procedimiento completo
+[`docs/10-onboarding.md`](docs/10-onboarding.md). (`make bootstrap` añade la suite y es para quien desarrolla este repo, no para usar el kit.) El procedimiento completo
 —a mano, `.env`, venv de tools, plugins, Capa 2 y desinstalar— está solo en [`docs/02-install.md`](docs/02-install.md).
 
 ## Qué incluye

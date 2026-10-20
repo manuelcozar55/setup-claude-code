@@ -1,6 +1,15 @@
 # 10 · Primer día: de cero a tu primera sesión
 
-Guía para quien llega nuevo y solo quiere usar el kit. Está pensada para **WSL2 con Ubuntu**. Dura unos diez minutos. El procedimiento completo y lo opcional está en [`02-install.md`](02-install.md).
+Guía para quien llega nuevo y solo quiere usar el kit. Está pensada para **WSL2 con Ubuntu o Debian**. Dura unos diez minutos. El procedimiento completo y lo opcional está en [`02-install.md`](02-install.md).
+
+Seis palabras que verás enseguida:
+
+- **Guard**: un script que corre antes de cada comando y lo bloquea si es peligroso. No depende del modelo.
+- **Oráculo**: la orden que decide si el trabajo está hecho (por ejemplo, tus tests). Se ejecuta con `oraculo -- <orden>`.
+- **`nucleo.md`**: el fichero `.claude/estado/nucleo.md` donde vive el estado de la tarea: objetivo, plan y siguiente paso.
+- **Handoff**: guardar ese estado al cerrar una fase, para que la sesión siguiente lo reciba sola.
+- **Dueño**: la sesión que ha reclamado `nucleo.md` y es la única que lo escribe.
+- **Diff-first**: si tu `~/.claude` es un repo con remoto, el instalador no escribe nada: te enseña el diff y copias tú lo que quieras.
 
 Si eres Claude Code leyendo esto en una máquina nueva: los pasos 2 a 4 son el arranque y el paso 7 es el diagnóstico cuando algo no cuadra.
 
@@ -16,18 +25,18 @@ Si eres Claude Code leyendo esto en una máquina nueva: los pasos 2 a 4 son el a
 
 Nada del kit da por supuesto lo opcional, y hay un test que lo demuestra en una máquina pelada: `kit/test/test_clean_install_resilience.sh`.
 
-## 1 · Antes de empezar (WSL2 Ubuntu)
+## 1 · Antes de empezar (WSL2 Ubuntu o Debian)
 
-Necesitas WSL2 con una distribución Ubuntu y una cuenta de GitHub. Abre la terminal de Ubuntu y trabaja siempre dentro de ella. Clona en tu carpeta personal (`~/`), nunca en `/mnt/c/`.
+Necesitas WSL2 con una distribución Ubuntu o Debian y una cuenta de GitHub. Abre la terminal de Ubuntu y trabaja siempre dentro de ella. Clona en tu carpeta personal (`~/`), nunca en `/mnt/c/`.
 
 Instala los paquetes base. Esto lo lanzas tú, el kit no instala paquetes de sistema:
 
 ```bash
 sudo apt update
-sudo apt install git jq make python3 python3-venv
+sudo apt install git jq make curl ca-certificates python3 python3-venv
 ```
 
-Comprueba que están:
+`curl` lo usa el instalador para descargar `gitleaks` (opcional). Comprueba que están:
 
 ```bash
 git --version && jq --version && make --version && python3 --version
@@ -73,7 +82,7 @@ Da `/handoff` y `/nueva` dentro de Claude Code:
 claude plugin install cockpit --marketplace manuelcozar55/setup-claude-code
 ```
 
-Sigue la rama `main` del repo, no una versión fija. Detalle en [`11-cockpit.md`](11-cockpit.md). Sin el mod todo funciona igual con la terminal.
+Sigue la rama `main` del repo, no una versión fija: actualiza el kit y el cockpit a la vez (ver «Actualizar» en [`02-install.md`](02-install.md)). Detalle en [`11-cockpit.md`](11-cockpit.md). Sin el mod todo funciona igual con la terminal.
 
 ## 5 · Tu primer proyecto
 
@@ -98,6 +107,8 @@ Abre `nucleo.md` y rellena **Objetivo** (las palabras de quien pidió la tarea) 
    ```bash
    oraculo -- <tu comando de test>
    ```
+
+   Claude Code te pedirá permiso en cada `oraculo --`. Apruébalo cada vez (solo esta vez) y no elijas «permitir siempre»: una regla permanente sobre `oraculo` dejaría pasar sin preguntar cualquier orden que se ejecute a través de él.
 
    Imprime las últimas 40 líneas y `rc=N`, sale con ese código y lo anota en `.claude/estado/verificaciones.log`. Así el estado guarda qué se verificó y con qué resultado.
 2. **Cierra la fase.** Con el mod: `/handoff`. Sin el mod (el defecto): checkpoint + reinyección + aviso; `/handoff` es manual, así que pide al modelo un borrador de las secciones que cambian y ejecuta `handoff --desde borrador.md`; el cockpit es la opción automática. `handoff --estado` te dice cuánto del tope ocupa el estado.

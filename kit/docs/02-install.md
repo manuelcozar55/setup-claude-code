@@ -15,7 +15,7 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 | `gh` (GitHub CLI) | flujo de PRs desde Claude Code | `gh --version` |
 | `jq` | **obligatorio**: `install.sh` aborta si falta (fusiona `settings.json` con `jq`), los cinco guards de Bash leen el payload con `jq` y sin él fallan en cerrado —deniegan en vez de permitir en silencio—, y `doctor.sh` lo marca `FAIL` | `jq --version` |
 | `uv` (opcional) | gestor de paquetes Python; solo lo necesitas si instalas herramientas con `uv tool` | `uv --version` |
-| `gitleaks` (opcional, versión fijada `8.30.1`) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Si no lo tienes, `install.sh` te ofrece instalarlo (release oficial, verificado contra un checksum SHA-256 fijado en este repo — no descargado de la red —, nunca `curl \| bash`): confirma con `y`, o exporta `GITLEAKS_AUTO_INSTALL=1` para saltarte el prompt en un entorno no interactivo. Si el checksum no coincide, la instalación de `gitleaks` no rompe el resto (degrada a la Capa 1), pero deja una marca en `$CLAUDE_HOME/.gitleaks-checksum-mismatch` que `doctor.sh` reporta como `FAIL`. Ver `docs/05-security.md` | `gitleaks version` |
+| `gitleaks` (opcional, versión fijada `8.30.1`) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Si no lo tienes, `install.sh` te ofrece instalarlo (necesita `curl` y `ca-certificates`; release oficial, verificado contra un checksum SHA-256 fijado en este repo — no descargado de la red —, nunca `curl \| bash`): confirma con `y`, o exporta `GITLEAKS_AUTO_INSTALL=1` para saltarte el prompt en un entorno no interactivo. Si el checksum no coincide, la instalación de `gitleaks` no rompe el resto (degrada a la Capa 1), pero deja una marca en `$CLAUDE_HOME/.gitleaks-checksum-mismatch` que `doctor.sh` reporta como `FAIL`. Ver `docs/05-security.md` | `gitleaks version` |
 
 Comprueba todo de una vez:
 
@@ -178,10 +178,33 @@ cd tu-repo && bash /ruta/al/kit/install.sh --enable-secrets-layer2
 
 Para falsos positivos de los guards, usa `sentinel-allowlist.json` en vez de desactivarlos. Detalle en `05-security.md`.
 
-## Desinstalar
+## Actualizar
+
+Desde el clon, pasa a la versión que quieras (`vX.Y.Z` es el tag) y reinstala:
+
+```bash
+git fetch --tags
+git checkout vX.Y.Z
+bash kit/install.sh
+bash kit/doctor.sh
+claude plugin update cockpit@setup-claude-code   # solo si instalaste el cockpit
+```
+
+`install.sh` es idempotente: lo que cambia se guarda antes en `$CLAUDE_HOME/backups/<fecha>-…/` y tu `settings.json` se fusiona, no se pisa (los hooks del kit siguen sustituyendo a los tuyos, ver el Paso 2). Actualiza el kit y el cockpit a la vez: el cockpit no está fijado al tag. Para volver a una versión anterior, haz `git checkout` de su tag y repite las dos órdenes de arriba; los ficheros que esa versión ya no trae no se borran de `$CLAUDE_HOME`.
+
+## Desinstalar y volver atrás
 
 ```bash
 bash uninstall.sh          # desde la raíz del repo; dry-run: dice qué haría y no toca nada
 bash uninstall.sh --apply  # restaura el backup más reciente (antes hace backup del estado actual)
 bash uninstall.sh --list   # enumera los backups disponibles
 ```
+
+Qué hace y qué no. `uninstall.sh` **restaura** el backup más reciente: los ficheros que una instalación o reinstalación sobrescribió (en `$CLAUDE_HOME/backups/`) o un snapshot completo de `scripts/backup.sh` (en `$HOME/backups/`). **No borra** lo que el instalador creó en limpio. Si no hay ningún backup (una máquina nueva con una sola instalación), termina con error: no hay nada que restaurar.
+
+Para quitar el kit del todo, a mano:
+
+- Los enlaces `~/.local/bin/handoff` y `~/.local/bin/oraculo`.
+- Los ficheros del kit en `~/.claude` que no quieras conservar (`bin/`, `hooks/`, `agents/`, las skills del método, `templates/nucleo.md`, `AGENTS.md`) y las entradas de `hooks` del `settings.json`. Si ya tenías una config tuya, `bash uninstall.sh --apply` te devuelve su versión anterior.
+- El cockpit, si lo instalaste: `claude plugin uninstall cockpit@setup-claude-code`.
+- La política gestionada de `/etc/claude-code/`, si tu organización la instaló: la quita quien tenga permisos de administrador, no el kit.

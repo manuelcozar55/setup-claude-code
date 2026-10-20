@@ -54,23 +54,23 @@ proyecto excluyendo `.venv/`, `node_modules/` y `.claude/worktrees/`; «casos» 
 
 | Proyecto | git | .py | ficheros test | casos | Oráculo |
 |---|---|---|---|---|---|
-| `circe-brain/circe-prospector` | sí | 325 | 207 | 975 | `pytest tests/ -q` — **funciona: 982 recogidos en 20 s** |
+| `proyecto-a` | sí | 325 | 207 | 975 | `pytest tests/ -q` — **funciona: 982 recogidos en 20 s** |
 | `sistema-riego` | sí | 118 | 39 | 432 | `pytest -q` (`pytest.ini` + `pyproject.toml`) — sin comprobar |
-| `ofertadora` | **NO** | 252 | 9 | 58 | `cd lab && pytest -q` (`lab/pytest.ini`) — sin comprobar |
+| `proyecto-b` | **NO** | 252 | 9 | 58 | `cd lab && pytest -q` (`lab/pytest.ini`) — sin comprobar |
 | `tfm-agent-system` | sí | 24 | 6 | 48 | `pytest -q` — sin comprobar |
 
 **Con qué intérprete:** `~/.venvs/tools/bin/pytest` (9.1.1), que es el que impone el
-`CLAUDE.md` del usuario y trae ya las dependencias de circe-prospector. El `python3` del
+`CLAUDE.md` del usuario y trae ya las dependencias de proyecto-a. El `python3` del
 sistema no tiene pytest, y confundir ambos lleva a un diagnóstico falso.
 
-`circe-brain` (raíz) es un contenedor, no un proyecto: el código versionado es
-`circe-prospector`.
+`proyecto-a` (raíz) es un contenedor, no un proyecto: el código versionado es
+`proyecto-a`.
 
 ## Lo que falta no es un oráculo, es reproducibilidad
 
 **Ningún proyecto tiene entorno propio** (cero venvs en los cuatro), pero eso **no** deja
 la máquina sin oráculos: el venv compartido de herramientas ejecuta la suite de
-circe-prospector hoy mismo. Lo que se pierde es la reproducibilidad — el oráculo funciona
+proyecto-a hoy mismo. Lo que se pierde es la reproducibilidad — el oráculo funciona
 por coincidencia de dependencias, no por declaración, y cualquier cambio en ese venv puede
 romperlo en silencio. Se puede empezar a automatizar ya; conviene fijar el entorno pronto.
 
@@ -82,7 +82,7 @@ uv venv .venv --seed && .venv/bin/pip install -r requirements.txt
 uv venv .venv && uv pip install --python .venv/bin/python -r requirements.txt
 ```
 
-Para `circe-prospector`, el propio `requirements.txt` documenta el resultado esperado:
+Para `proyecto-a`, el propio `requirements.txt` documenta el resultado esperado:
 
 > *"Dependencias con import a NIVEL DE MÓDULO: sin ellas no arranca ni la recolección de la
 > suite (medido 2026-08-04: `pytest tests/ -q` con solo pytest+numpy → 104 errores de
@@ -97,7 +97,7 @@ Nota de rendimiento: los cuatro proyectos viven en `/mnt/c` (sistema de ficheros
 Windows vía WSL2), donde las suites grandes van varias veces más lentas. Mide antes de
 elegir el oráculo de una tarea.
 
-## `ofertadora`: el riesgo es la ausencia de git, no la de tests
+## `proyecto-b`: el riesgo es la ausencia de git, no la de tests
 
 Tiene suite —9 ficheros, 58 casos, con `lab/pytest.ini` (`--strict-markers` y marcadores
 `regresion`, `propiedad`, `llm`, `db`) y tests de caracterización y de regresión sobre
@@ -108,6 +108,6 @@ que se equivoca ahí no se revierte, se pierde. Por eso el harness no ejecuta ta
 destructivas en este proyecto mientras no exista un repositorio.
 
 ```bash
-cd /mnt/c/Users/…/Downloads/ofertadora
+cd ~/proyecto-b
 git init && git add -A && git commit -m "línea base antes de automatizar"
 ```
