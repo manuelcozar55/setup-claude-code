@@ -128,6 +128,9 @@ install_file() {  # src dst
 #     Salvo `permissions.disableBypassPermissionsMode`, que queda en "disable" siempre: con la
 #     union ganaba tu valor, y un "" previo dejaba el modo sin permisos al alcance.
 #   - `env`        -> tus claves ganan, y las nuevas del kit se anaden.
+#   - `extraKnownMarketplaces` -> en las entradas del kit gana el KIT: su ref sigue a VERSION. Con la
+#     tuya vieja, `marketplace add <repo>@v<VERSION>` falla y el cockpit sigue a main, por delante de
+#     ~/.claude/bin. Tus otros marketplaces, intactos.
 #   - todo lo demas (model, statusLine, theme, enabledPlugins...) -> lo tuyo, intacto. La
 #     statusLine y el tema oscuro del kit solo llegan a quien no tenia los suyos.
 # Por que existe esto: reemplazar el fichero entero borraba en silencio el ajuste personal.
@@ -163,6 +166,8 @@ install_settings() {  # src dst
           | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
           | .deny  = (($kit.permissions.deny  // []) + (($old.permissions.deny  // []) - ($kit.permissions.deny  // []))))
       | .permissions.disableBypassPermissionsMode = "disable"
+      | if $kit.extraKnownMarketplaces then
+          .extraKnownMarketplaces = (($old.extraKnownMarketplaces // {}) + $kit.extraKnownMarketplaces) else . end
     ' "$src" "$real" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
     if ! cmp -s "$tmp" "$real"; then
       mkdir -p "$(dirname "$BK/$name")"

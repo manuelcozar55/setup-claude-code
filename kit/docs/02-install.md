@@ -133,7 +133,7 @@ ln -sf $HOME/.venvs/tools/bin/ruff $HOME/.local/bin/ruff
 El kit no instala esto por ti; solo lo documenta:
 
 - **esenciales, los 8 agentes, y agent-browser**: ver `docs/04-superpowers.md`. Los plugins se instalan por referencia desde su marketplace con `bash install-plugins.sh` (diff-first). La plantilla de `settings.json` ya registra el marketplace `setup-claude-code` para `esenciales` y no activa plugins de terceros.
-- **El mod `cockpit`** (opcional): da `/handoff` y `/nueva` dentro de Claude Code. Instálalo con `claude plugin install cockpit --marketplace manuelcozar55/setup-claude-code` (detalle en [`11-cockpit.md`](11-cockpit.md)). Sin él, `handoff --desde` hace lo mismo desde la terminal.
+- **El mod `cockpit`** (opcional): da `/handoff` y `/nueva` dentro de Claude Code. Instálalo con `claude plugin install cockpit@setup-claude-code` después de registrar el marketplace en el tag del kit (las dos órdenes, en [`11-cockpit.md`](11-cockpit.md)). Sin él, `handoff --desde` hace lo mismo desde la terminal.
 
 Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, servidores MCP, skills adicionales como `graphify` o `deep-change`), ver `docs/08-plugins-mcp-y-skills.md`.
 
@@ -190,7 +190,7 @@ bash kit/doctor.sh
 claude plugin update cockpit@setup-claude-code   # solo si instalaste el cockpit
 ```
 
-`install.sh` es idempotente: lo que cambia se guarda antes en `$CLAUDE_HOME/backups/<fecha>-…/` y tu `settings.json` se fusiona, no se pisa (los hooks del kit siguen sustituyendo a los tuyos, ver el Paso 2). Actualiza el kit y el cockpit a la vez: el cockpit no está fijado al tag. Para volver a una versión anterior, haz `git checkout` de su tag y repite las dos órdenes de arriba; los ficheros que esa versión ya no trae no se borran de `$CLAUDE_HOME`.
+`install.sh` es idempotente: lo que cambia se guarda antes en `$CLAUDE_HOME/backups/<fecha>-…/` y tu `settings.json` se fusiona, no se pisa (los hooks del kit siguen sustituyendo a los tuyos, ver el Paso 2). Actualiza el kit y el cockpit a la vez: `install.sh` mueve el marketplace del kit al tag nuevo; después, `claude plugin marketplace add "manuelcozar55/setup-claude-code@v$(cat VERSION)"` y `claude plugin update cockpit@setup-claude-code`. Para volver a una versión anterior, haz `git checkout` de su tag y repite las dos órdenes de arriba; los ficheros que esa versión ya no trae no se borran de `$CLAUDE_HOME`.
 
 ## Desinstalar y volver atrás
 

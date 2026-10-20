@@ -79,10 +79,11 @@ Debe acabar en `OK (0 FAIL)`. Los `WARN` del venv de herramientas o de la Capa 2
 Da `/handoff` y `/nueva` dentro de Claude Code:
 
 ```bash
-claude plugin install cockpit --marketplace manuelcozar55/setup-claude-code
+claude plugin marketplace add "manuelcozar55/setup-claude-code@v$(cat VERSION)"
+claude plugin install cockpit@setup-claude-code
 ```
 
-Sigue la rama `main` del repo, no una versión fija: actualiza el kit y el cockpit a la vez (ver «Actualizar» en [`02-install.md`](02-install.md)). Detalle en [`11-cockpit.md`](11-cockpit.md). Sin el mod todo funciona igual con la terminal.
+Queda fijado al tag de tu versión del kit: al actualizar, repite estas dos órdenes y `claude plugin update cockpit@setup-claude-code` (ver «Actualizar» en [`02-install.md`](02-install.md)). Detalle en [`11-cockpit.md`](11-cockpit.md). Sin el mod todo funciona igual con la terminal.
 
 ## 5 · Tu primer proyecto
 

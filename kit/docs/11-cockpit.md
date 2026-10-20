@@ -14,15 +14,16 @@
 
 **Versión de Claude Code.** El mod se probó con Claude Code 2.1.292 (`claude --version`). No se ha comprobado una versión mínima: los mods son de acceso temprano y pueden cambiar entre versiones. Comprueba la tuya antes de instalar y, si algo no carga, `claude plugin validate kit/mods/cockpit` dice qué falla.
 
-**Va con la versión del kit.** El marketplace no fija una versión: instala lo último de la rama `main`, no el tag con el que instalaste el kit. Por eso el kit y el cockpit se actualizan juntos: tras pasar el kit a otra versión (ver «Actualizar» en [`02-install.md`](02-install.md)), ejecuta también `claude plugin update cockpit@setup-claude-code`. Para fijar una versión, instala desde una copia del tag.
+**Va con la versión del kit.** El marketplace del kit queda fijado al tag de tu versión (`extraKnownMarketplaces` en `settings.json`), y `install.sh` mueve ese ref en cada actualización. Sin el ref, el cockpit seguía a `main` y podía adelantarse a `~/.claude/bin/handoff`: `/handoff` fallaba con «falta …/bin/handoff». Tras pasar el kit a otra versión (ver «Actualizar» en [`02-install.md`](02-install.md)), repite las dos órdenes de abajo y ejecuta `claude plugin update cockpit@setup-claude-code`.
 
-Este repo es un marketplace (`.claude-plugin/marketplace.json`). Para todas tus sesiones, en scope user, desde el prompt de una sesión de terminal:
+Este repo es un marketplace (`.claude-plugin/marketplace.json`). Para todas tus sesiones, en scope user, desde la raíz de tu copia del repo:
 
+```bash
+claude plugin marketplace add "manuelcozar55/setup-claude-code@v$(cat VERSION)"
+claude plugin install cockpit@setup-claude-code
 ```
-/plugin install cockpit --marketplace manuelcozar55/setup-claude-code
-```
 
-o desde la shell: `claude plugin install cockpit --marketplace manuelcozar55/setup-claude-code` (también lo hace `kit/install-plugins.sh --apply`). Se actualiza con `claude plugin update cockpit@setup-claude-code` y se quita con `claude plugin uninstall cockpit@setup-claude-code`.
+(también lo hace `kit/install-plugins.sh --apply`). Sin el `@v…`, `marketplace add` falla en cuanto `install.sh` ha fijado el marketplace: «its source doesn't match its extraKnownMarketplaces entry». Se actualiza con `claude plugin update cockpit@setup-claude-code` y se quita con `claude plugin uninstall cockpit@setup-claude-code`.
 
 Para desarrollarlo desde una copia de trabajo, sin instalar:
 
