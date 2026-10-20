@@ -33,19 +33,20 @@ if jq -e '(.env.CC_ALLOW_DESTRUCTIVE // "" | tostring) == "1"' "$CLAUDE_HOME/set
   warn "settings.json tiene env.CC_ALLOW_DESTRUCTIVE=1: destructive-guard.sh esta apagado. Quita la clave para recuperar esa proteccion"
 fi
 
-# 1d. Version de claude. La minima es la que exige la politica gestionada (requiredMinimumVersion); el repo no
-# declaraba otra. WARN y no FAIL: el kit funciona con otra, pero no esta probado. Comparacion por version (sort -V).
-CLAUDE_MIN_VERSION="2.1.289"
+# 1d. Version de claude. CLAUDE_PROBADA es la version con la que se probo el kit, la misma que cita
+# docs/10-onboarding.md (test_doctor.sh lo comprueba); no hay minima comprobada. WARN y no FAIL: con otra
+# puede funcionar, pero no esta probado. Comparacion por version (sort -V).
+CLAUDE_PROBADA="2.1.292"
 if ! command -v claude >/dev/null 2>&1; then
-  warn "claude no se encuentra en el PATH: instala Claude Code (version minima $CLAUDE_MIN_VERSION) y comprueba con claude --version"
+  warn "claude no se encuentra en el PATH: instala Claude Code (el kit se probo con $CLAUDE_PROBADA) y comprueba con claude --version"
 else
   claude_v="$(timeout 10 claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
   if [ -z "$claude_v" ]; then
-    warn "no se pudo leer la version de claude (claude --version); la minima es $CLAUDE_MIN_VERSION"
-  elif [ "$(printf '%s\n%s\n' "$CLAUDE_MIN_VERSION" "$claude_v" | sort -V | head -1)" = "$CLAUDE_MIN_VERSION" ]; then
-    pass "claude $claude_v (minima $CLAUDE_MIN_VERSION)  (fuente: claude --version)"
+    warn "no se pudo leer la version de claude (claude --version); el kit se probo con $CLAUDE_PROBADA"
+  elif [ "$(printf '%s\n%s\n' "$CLAUDE_PROBADA" "$claude_v" | sort -V | head -1)" = "$CLAUDE_PROBADA" ]; then
+    pass "claude $claude_v (kit probado con $CLAUDE_PROBADA)  (fuente: claude --version)"
   else
-    warn "claude $claude_v es anterior a la minima $CLAUDE_MIN_VERSION: actualizalo (claude update)"
+    warn "claude $claude_v es anterior a $CLAUDE_PROBADA, la version con la que se probo el kit: actualizalo (claude update)"
   fi
 fi
 
