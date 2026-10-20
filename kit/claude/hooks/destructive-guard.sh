@@ -124,7 +124,7 @@ find_path_class() {
 # lleva -delete, y pasadas 16 se bloquea: fallar cerrado.
 NEST=0
 find_delete() {
-  local depth=$1 seg a i k inner del filt rc
+  local depth=$1 seg a i k inner del filt unf rc
   local -a T segs paths
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
@@ -160,14 +160,21 @@ find_delete() {
       case ${T[k]} in -*|'('|'!') break ;; esac
       paths+=("${T[k]}"); k=$(( k + 1 ))
     done
-    del=0; filt=0
-    for a in "${T[@]:k}"; do
-      case $a in
-        -delete) del=1 ;;
-        -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex) filt=1 ;;
+    # El filtro solo acota el borrado si va ANTES de -delete (find evalua de izquierda a derecha) y la
+    # expresion no lo invierte ni lo puentea: `-o`, `,`, `!`, `-not` y `-prune` hacen que -delete alcance
+    # justo lo que el filtro excluia o a todo; `-name '*'` filtra nada.
+    del=0; filt=0; unf=0
+    for (( i = k; i < ${#T[@]}; i++ )); do
+      case ${T[i]} in
+        -delete) del=1; (( filt )) || unf=1 ;;
+        -o|-or|,|'!'|-not|-prune) unf=1 ;;
+        -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex)
+          [[ ${T[i+1]:-} == '*' ]] || filt=1
+          i=$(( i + 1 )) ;;
       esac
     done
     (( del )) || continue
+    (( filt && ! unf )) || filt=0
     (( ${#paths[@]} )) || paths=(.)
     for a in "${paths[@]}"; do
       find_path_class "$a"

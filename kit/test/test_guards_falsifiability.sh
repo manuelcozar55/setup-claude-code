@@ -136,6 +136,15 @@ bash -c "find . -delete"
 sh -c 'find / -delete'
 find * -delete
 find ./* -delete
+find . -delete -name x
+find . -name x -o -delete
+find . -name x -or -delete
+find . ! -name x -delete
+find . -not -name x -delete
+find . -name x -prune -o -delete
+find . -name '*' -delete
+find . -name x , -delete
+find . -type f -delete -name x
 rm -r "$HOME/x"
 EOF
 while IFS= read -r c; do
@@ -158,6 +167,8 @@ find * -name '*.pyc' -delete
 find . -name '*.pyc' -delete
 find . -type f -name '*.tmp' -delete
 find . -path './build/*' -delete
+find . -type f -name '*.tmp' -mtime +7 -delete
+find . -name x -type f -delete
 find build -delete
 find ./build -delete
 find /tmp/x -delete
