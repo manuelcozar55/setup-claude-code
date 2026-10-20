@@ -125,4 +125,31 @@ ck "$(grep -c 'no se encontraran' "$tmp/otro.log" || true)" "0" "CLAUDE_HOME no 
 ck "$(grep -c "ln -s \"$tmp/otro/bin/handoff\"" "$tmp/otro.log" || true)" "1" "CLAUDE_HOME no estandar: imprime la orden ln -s"
 ck "$([ -e "$HOME/.local/bin/handoff" ] && echo y || echo n)" "n" "CLAUDE_HOME no estandar: no crea enlaces"
 
+
+# --- L1 y M6 residuo: «nuestro» se decide por ruta canonica, no por prefijo de texto ---
+# El prefijo "$CLAUDE_HOME/bin/"* aceptaba bin/../../x como nuestro y lo pisaba con ln -sfn.
+H3="$tmp/home-l1"; mkdir -p "$H3/.local/bin"
+export HOME="$H3" CLAUDE_HOME="$H3/.claude"
+ln -s "$CLAUDE_HOME/bin/../../ajeno" "$HOME/.local/bin/handoff"
+set +e; bash "$KIT/install.sh" >"$tmp/l1.log" 2>&1; set -e
+ck "$(readlink "$HOME/.local/bin/handoff")" "$CLAUDE_HOME/bin/../../ajeno" "L1: un enlace con bin/../../x NO es nuestro y no se pisa"
+ck "$(grep -c 'bin/handoff ya existe' "$tmp/l1.log")" "1" "L1: avisa del enlace ajeno"
+ck "$(readlink "$HOME/.local/bin/oraculo")" "$CLAUDE_HOME/bin/oraculo" "L1: el hueco libre se enlaza"
+# Un enlace nuestro con otra grafia (bin/../bin/x) se normaliza.
+rm "$HOME/.local/bin/handoff"; ln -s "$CLAUDE_HOME/bin/../bin/handoff" "$HOME/.local/bin/handoff"
+set +e; bash "$KIT/install.sh" >"$tmp/l1b.log" 2>&1; set -e
+ck "$(readlink "$HOME/.local/bin/handoff")" "$CLAUDE_HOME/bin/handoff" "enlace nuestro con otra grafia: se deja con la ruta exacta"
+# M6 residuo: ~/.claude es un enlace a otro sitio y el enlace colgante apunta por la ruta real.
+H4="$tmp/home-m6"; mkdir -p "$H4/.local/bin" "$H4/real"; ln -s "$H4/real" "$H4/.claude"
+export HOME="$H4" CLAUDE_HOME="$H4/.claude"
+ln -s "$H4/real/bin/viejo" "$HOME/.local/bin/handoff"
+ck "$([ -e "$HOME/.local/bin/handoff" ] && echo y || echo n)" "n" "M6: el enlace de partida esta colgante (falsabilidad del caso)"
+set +e; bash "$KIT/install.sh" >"$tmp/m6.log" 2>&1; set -e
+ck "$(readlink "$HOME/.local/bin/handoff")" "$CLAUDE_HOME/bin/handoff" "M6: un enlace colgante hacia nuestro bin/ (ruta canonica) se repara"
+rm "$HOME/.local/bin/oraculo"; ln -s "$H4/otro/bin/oraculo" "$HOME/.local/bin/oraculo"
+set +e; bash "$KIT/install.sh" >"$tmp/m6b.log" 2>&1; set -e
+ck "$(readlink "$HOME/.local/bin/oraculo")" "$H4/otro/bin/oraculo" "M6: un enlace colgante ajeno se deja"
+ck "$(grep -c 'bin/oraculo ya existe' "$tmp/m6b.log")" "1" "M6: y se avisa"
+# TOCTOU: crear el enlace no puede ser un `ln -f`, que pisaria lo que aparezca entre la comprobacion y el ln.
+ck "$(sed -n '/^enlazar_clis()/,/^}/p' "$KIT/install.sh" | grep -cE 'ln -[a-z]*f')" "0" "TOCTOU: enlazar_clis no usa ln -f"
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
