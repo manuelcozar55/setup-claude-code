@@ -22,6 +22,23 @@ HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
 set +e; run_doctor; rc=$?; set -e
 ck "$rc" "0" "doctor PASS sobre instalación limpia"
 
+# El inventario obligatorio incluye instrucciones y skills aunque settings.json
+# no las referencie. Un symlink personalizado que resuelve a fichero sigue
+# estando presente y solo puede producir WARN de deriva, nunca FAIL.
+rm "$CLAUDE_HOME/AGENTS.md"
+set +e; run_doctor; rc=$?; set -e
+ck "$rc" "1" "doctor FAIL si falta AGENTS.md"
+HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
+printf '# skill personalizada\n' > "$tmp/skill-personalizada.md"
+rm "$CLAUDE_HOME/skills/deep-change/SKILL.md"
+set +e; run_doctor; rc=$?; set -e
+ck "$rc" "1" "doctor FAIL si falta una skill instalada"
+ln -s "$tmp/skill-personalizada.md" "$CLAUDE_HOME/skills/deep-change/SKILL.md"
+set +e; run_doctor; rc=$?; set -e
+ck "$rc" "0" "doctor acepta una skill personalizada mediante symlink"
+rm "$CLAUDE_HOME/skills/deep-change/SKILL.md"
+HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
+
 # Rompe un hook referenciado -> FAIL
 rm -f "$CLAUDE_HOME/hooks/branch-guard.sh"
 set +e; run_doctor; rc=$?; set -e
@@ -89,16 +106,19 @@ fi
 # gasta la credibilidad de los verdaderos.
 HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
 # El kit SI distribuye iocs.json (la capa activa de fabrica), asi que para probar el aviso
-# hay que quitarlo. Antes solo venia iocs.example.json y cada instalacion arrancaba con la
-# capa apagada y un WARN que nadie lee.
+# hay que quitarlo. La capa sigue siendo opcional en una instalacion personalizada.
 mv "$CLAUDE_HOME/sentinel/iocs.json" "$tmp/iocs.json.guardado"
+set +e
 out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
        bash "$KIT/doctor.sh" 2>&1)"
+rc=$?
+set -e
 if echo "$out" | grep -qE '^WARN .*IOC layer inactiva'; then
-  ck y y "si quitas iocs.json, doctor avisa (la capa es opcional, pero el kit la trae activa)"
+  ck y y "si quitas iocs.json, doctor avisa que la capa esta inactiva"
 else
-  ck n y "si quitas iocs.json, doctor avisa (la capa es opcional, pero el kit la trae activa)"
+  ck n y "si quitas iocs.json, doctor avisa que la capa esta inactiva"
 fi
+ck "$rc" "0" "si quitas iocs.json, doctor conserva el contrato opcional sin FAIL"
 mv "$tmp/iocs.json.guardado" "$CLAUDE_HOME/sentinel/iocs.json"
 out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
        bash "$KIT/doctor.sh" 2>&1)"

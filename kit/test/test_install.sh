@@ -45,6 +45,25 @@ ck "$([ -f "$CLAUDE_HOME/sentinel/sentinel_preflight.py" ] && echo y)" "y" "inst
 ck "$([ -f "$CLAUDE_HOME/hooks/lib/nucleo.sh" ] && echo y)" "y" "instala hooks/lib"
 ck "$([ -f "$CLAUDE_HOME/templates/nucleo.md" ] && echo y)" "y" "instala templates"
 ck "$([ -x "$CLAUDE_HOME/bin/handoff" ] && [ -x "$CLAUDE_HOME/bin/oraculo" ] && echo y)" "y" "instala bin/handoff y bin/oraculo ejecutables"
+
+# Las post-condiciones deben cubrir el inventario completo y sus ejecutables,
+# no solo los ficheros que settings.json referencia.
+rm "$CLAUDE_HOME/skills/deep-change/SKILL.md"
+set +e; bash "$HERE/../../.github/scripts/assert-install.sh" "$CLAUDE_HOME" >/dev/null 2>&1; arc=$?; set -e
+ck "$arc" "1" "post-condiciones FAIL si falta una skill obligatoria"
+bash "$KIT/install.sh" >/dev/null 2>&1
+chmod -x "$CLAUDE_HOME/statusline-command.sh"
+set +e; bash "$HERE/../../.github/scripts/assert-install.sh" "$CLAUDE_HOME" >/dev/null 2>&1; arc=$?; set -e
+ck "$arc" "1" "post-condiciones FAIL si un ejecutable obligatorio pierde el permiso"
+bash "$KIT/install.sh" >/dev/null 2>&1
+printf '# skill personalizada\n' > "$tmp/skill-personalizada.md"
+rm "$CLAUDE_HOME/skills/deep-change/SKILL.md"
+ln -s "$tmp/skill-personalizada.md" "$CLAUDE_HOME/skills/deep-change/SKILL.md"
+set +e; bash "$HERE/../../.github/scripts/assert-install.sh" "$CLAUDE_HOME" >/dev/null 2>&1; arc=$?; set -e
+ck "$arc" "0" "post-condiciones aceptan una skill personalizada mediante symlink"
+rm "$CLAUDE_HOME/skills/deep-change/SKILL.md"
+bash "$KIT/install.sh" >/dev/null 2>&1
+
 ck "$(readlink "$HOME/.local/bin/handoff")" "$CLAUDE_HOME/bin/handoff" "crea el enlace ~/.local/bin/handoff -> bin/handoff"
 ck "$(readlink "$HOME/.local/bin/oraculo")" "$CLAUDE_HOME/bin/oraculo" "crea el enlace ~/.local/bin/oraculo -> bin/oraculo"
 ck "$(grep -c 'no esta en tu PATH' "$tmp/install.log")" "1" "avisa si ~/.local/bin no esta en el PATH"
@@ -140,6 +159,27 @@ ck "$prc" "0" "un __pycache__ en el kit no rompe la instalacion"
 ck "$(grep -c 'omitting directory' "$tmp/pyc.log" || true)" "0" "install.sh no intenta copiar directorios"
 ck "$([ -f "$tmp/dot2/sentinel/sentinel_preflight.py" ] && echo y)" "y" "sentinel se instala con __pycache__ presente"
 ck "$([ -d "$tmp/dot2/sentinel/__pycache__" ] && echo y || echo n)" "n" "el __pycache__ no viaja a CLAUDE_HOME"
+
+# Los validadores tampoco deben exigir caches generadas en el fuente.
+# Se compilan los hooks reales en la copia, no en el checkout que ejecuta la suite.
+env -u PYTHONPYCACHEPREFIX python3 -m compileall -q "$tmp/kitcopy/claude/hooks" "$tmp/kitcopy/sentinel"
+ck "$(find "$tmp/kitcopy/claude/hooks" -name '*.pyc' -print -quit | wc -l)" "1" "la regresion genera bytecode real en el fuente"
+mkdir -p "$tmp/cache-check/.github/scripts"
+cp "$HERE/../../.github/scripts/assert-install.sh" "$tmp/cache-check/.github/scripts/"
+ln -s "$tmp/kitcopy" "$tmp/cache-check/kit"
+cache_home="$tmp/cache-home"
+HOME="$cache_home" CLAUDE_HOME="$cache_home/.claude" bash "$tmp/kitcopy/install.sh" >"$tmp/cache-install.log" 2>&1
+set +e
+HOME="$cache_home" CLAUDE_HOME="$cache_home/.claude" \
+  bash "$tmp/cache-check/.github/scripts/assert-install.sh" "$cache_home/.claude" >"$tmp/cache-smoke.log" 2>&1
+cache_smoke_rc=$?
+env -u ANTHROPIC_BASE_URL HOME="$cache_home" CLAUDE_HOME="$cache_home/.claude" \
+  XDG_CONFIG_HOME="$cache_home/.config" COLUMNS=140 \
+  bash "$tmp/kitcopy/doctor.sh" >"$tmp/cache-doctor.log" 2>&1
+cache_doctor_rc=$?
+set -e
+ck "$cache_smoke_rc" "0" "smoke acepta la instalacion sin exigir caches del fuente"
+ck "$cache_doctor_rc" "0" "doctor acepta la instalacion sin exigir caches del fuente"
 
 # N2: con CLAUDE_HOME no estandar no se enlaza nada; el aviso de PATH no puede decir que
 # handoff y oraculo "no se encontraran" (no estan enlazados) y debe orientar a lo que si hay que hacer.

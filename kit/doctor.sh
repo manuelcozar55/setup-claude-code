@@ -73,8 +73,6 @@ fi
 for cli in handoff oraculo; do
   if [ -x "$CLAUDE_HOME/bin/$cli" ]; then
     pass "bin/$cli presente y ejecutable  (fuente: test -x)"
-  else
-    fail "falta $CLAUDE_HOME/bin/$cli o no es ejecutable (reinstala: bash $KIT/install.sh)"
   fi
   # Resolverse no basta: un $cli ajeno primero en el PATH daba PASS y la persona corria otro programa.
   # La sugerencia es ln -s y no -sf: -sf pisaria justo el hueco ajeno que install.sh no toca.
@@ -87,11 +85,6 @@ for cli in handoff oraculo; do
     warn "$cli del PATH es $cli_ruta, que no es $CLAUDE_HOME/bin/$cli: usa esa ruta o resuelve el conflicto (si retiras el otro: ln -s \"$CLAUDE_HOME/bin/$cli\" \"\$HOME/.local/bin/$cli\")"
   fi
 done
-if [ -f "$CLAUDE_HOME/templates/nucleo.md" ]; then
-  pass "templates/nucleo.md presente  (fuente: test -f)"
-else
-  fail "falta $CLAUDE_HOME/templates/nucleo.md (reinstala: bash $KIT/install.sh)"
-fi
 # El CLAUDE.md debe importar AGENTS.md: sin el, AGENTS.md esta instalado pero nadie lo lee.
 if [ -f "$CLAUDE_HOME/CLAUDE.md" ] && command grep -qE '@[^[:space:]]*AGENTS\.md' "$CLAUDE_HOME/CLAUDE.md"; then
   pass "CLAUDE.md importa AGENTS.md  (fuente: grep @AGENTS.md)"
@@ -103,32 +96,40 @@ fi
 # hook es legitimo. Pero si divergen y no lo sabes, el kit deja de reproducir tu maquina, y
 # eso ya paso: dos guards llevaban meses distintos entre el kit y su copia de origen, con la
 # version endurecida en un lado y la antigua en el otro, y nadie lo noto.
-derivados=0; derivados_lista=""; ausentes=0
-# hooks/lib/ y sentinel/ tambien: nucleo.sh y sentinel_preflight.py gobiernan hooks enteros y antes quedaban fuera.
-# De sentinel/ solo el codigo (*.py): iocs.json es dato que la persona personaliza por diseno y
-# reinstalar para "alinearlo" pisaria sus datos; su acoplamiento con el preflight lo cubre 2d.
-for src in "$KIT"/claude/hooks/* "$KIT"/claude/hooks/lib/* "$KIT"/claude/bin/* "$KIT"/claude/templates/* "$KIT"/sentinel/*.py; do
-  [ -f "$src" ] || continue
-  case "$src" in
-    "$KIT"/sentinel/*.py) nombre="sentinel/$(basename "$src")"; dst="$CLAUDE_HOME/$nombre" ;;
-    "$KIT"/claude/hooks/lib/*) nombre="lib/$(basename "$src")"; dst="$CLAUDE_HOME/hooks/$nombre" ;;
-    "$KIT"/claude/bin/*) nombre="bin/$(basename "$src")"; dst="$CLAUDE_HOME/$nombre" ;;
-    "$KIT"/claude/templates/*) nombre="templates/$(basename "$src")"; dst="$CLAUDE_HOME/$nombre" ;;
-    *) nombre="$(basename "$src")"; dst="$CLAUDE_HOME/hooks/$nombre" ;;
-  esac
-  if [ ! -f "$dst" ]; then
-    ausentes=$((ausentes + 1))
-    case "$src" in "$KIT"/claude/hooks/lib/*) fail "biblioteca del kit ausente: $nombre" ;; esac
-    continue
-  fi
-  if ! cmp -s "$src" "$dst"; then
-    derivados=$((derivados + 1)); derivados_lista="$derivados_lista $nombre"
-  fi
+derivados=0; derivados_lista=""; ausentes=0; no_ejecutables=0
+# Presencia completa de los dos arboles que despliega install.sh. -f acepta
+# symlinks que resuelven a fichero: las skills proyectadas son personalizacion
+# legitima. Los bytes distintos son WARN, nunca FAIL. Los datos de IOC son
+# opcionales: su ausencia conserva el aviso especifico de la seccion siguiente.
+# assert-install.sh comprueba ademas que una instalacion nueva los haya copiado.
+# Los caches Python generados en el fuente no forman parte del inventario.
+for tree in claude sentinel; do
+  while IFS= read -r -d '' src; do
+    rel="${src#"$KIT/$tree/"}"
+    case "$tree" in
+      claude) nombre="$rel"; dst="$CLAUDE_HOME/$rel"; comparar=1 ;;
+      sentinel) nombre="sentinel/$rel"; dst="$CLAUDE_HOME/sentinel/$rel"; comparar=0
+        case "$rel" in *.py) comparar=1 ;; esac ;;
+    esac
+    if [ ! -f "$dst" ]; then
+      ausentes=$((ausentes + 1))
+      if [ "$tree" = sentinel ] && [ "$comparar" -eq 0 ]; then continue; fi
+      fail "componente obligatorio del kit ausente: $nombre"
+      continue
+    fi
+    if [ -x "$src" ] && [ ! -x "$dst" ]; then
+      no_ejecutables=$((no_ejecutables + 1))
+      fail "componente obligatorio del kit no ejecutable: $nombre"
+    fi
+    if [ "$comparar" -eq 1 ] && ! cmp -s "$src" "$dst"; then
+      derivados=$((derivados + 1)); derivados_lista="$derivados_lista $nombre"
+    fi
+  done < <(find "$KIT/$tree" -type d -name __pycache__ -prune -o -type f -print0)
 done
 if [ "$derivados" -gt 0 ]; then
   warn "$derivados componente(s) desplegados difieren de los del kit ($derivados_lista): compara antes de reinstalar; conserva tus personalizaciones"
-elif [ "$ausentes" -eq 0 ]; then
-  pass "los componentes desplegados coinciden byte a byte con los del kit  (fuente: cmp -s por fichero)"
+elif [ "$ausentes" -eq 0 ] && [ "$no_ejecutables" -eq 0 ]; then
+  pass "los componentes desplegados coinciden byte a byte con los del kit; inventario completo  (fuente: find + test -f/-x + cmp -s por fichero)"
 fi
 
 # 2b. capa de IOCs de Sentinel (opcional -> WARN)
