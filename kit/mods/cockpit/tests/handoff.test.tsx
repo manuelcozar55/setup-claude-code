@@ -589,10 +589,28 @@ test('nextLine: sin sección, vacía o solo con comentario no hay línea y el re
   expect(fillFor(siguiente('<!-- una -->'))).toBe(BARE)
 })
 
-test('nextLine: más de 200 caracteres se cortan con «…»', () => {
-  const line = nextLine(siguiente('x'.repeat(250)))
-  expect(line).toBe('x'.repeat(200) + '…')
-  expect(fillFor(siguiente('x'.repeat(250)))).toBe(PREFIX + line)
+// The real line of 21-oct (225 characters): the cut at 200 left a code span open on half a path.
+const REAL = 'Pedir a la persona el sí para montar el paquete `scc-final-experta-20261021-1e50094` con la receta del Paso actual. Si dice que sí, el primer comando es `test ! -e ~/entregas/scc-final-experta-20261021-1e50094 && echo libre`.'
+const MORE = ' (sigue en .claude/estado/nucleo.md)'
+
+test('nextLine: pasado el límite corta en el último final de frase y dice dónde sigue', () => {
+  const line = nextLine(siguiente(REAL))
+  expect(line).toBe('Pedir a la persona el sí para montar el paquete `scc-final-experta-20261021-1e50094` con la receta del Paso actual. …' + MORE)
+  expect(fillFor(siguiente(REAL), '/r/.claude/estado/nucleo.md').endsWith('actual. … (sigue en /r/.claude/estado/nucleo.md)')).toBe(true)
+})
+
+test('nextLine: sin final de frase corta en el último espacio, nunca a mitad de palabra o ruta', () => {
+  expect(nextLine(siguiente('uno '.repeat(49) + 'ruta/larga/que/no/se/parte y más'))).toBe('uno '.repeat(48) + 'uno …' + MORE)
+})
+
+test('nextLine: el corte no deja un code span abierto', () => {
+  expect(nextLine(siguiente('Corre `' + 'x '.repeat(120) + '` después'))).toBe('Corre …' + MORE)
+})
+
+test('nextLine: una palabra más larga que el límite no se parte: relleno genérico', () => {
+  expect(nextLine(siguiente('x'.repeat(250)))).toBe('')
+  expect(nextLine(siguiente('x'.repeat(199) + '\u{1F600}y'))).toBe('')
+  expect(fillFor(siguiente('x'.repeat(250)))).toBe(BARE)
 })
 
 test('nextLine: quita los controles bidi y los separadores Unicode', () => {
@@ -606,12 +624,11 @@ test('nextLine: salta la valla de código y toma el comando', () => {
   expect(nextLine(siguiente('```\nmake test\n```'))).toBe('make test')
 })
 
-test('nextLine: el corte a 200 no parte un par sustituto', () => {
-  const line = nextLine(siguiente('x'.repeat(199) + '\u{1F600}'))
-  expect(line).toBe('x'.repeat(199) + '\u{1F600}')
-  const cut = nextLine(siguiente('x'.repeat(199) + '\u{1F600}y'))
-  expect(cut).toBe('x'.repeat(199) + '\u{1F600}…')
-  expect(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(cut)).toBe(false)
+test('nextLine: el límite cuenta grafemas: no parte un emoji compuesto ni un acento', () => {
+  const zwj = '\u{1F469}‍\u{1F4BB}'
+  expect(nextLine(siguiente('x'.repeat(199) + '\u{1F600}'))).toBe('x'.repeat(199) + '\u{1F600}')
+  expect(nextLine(siguiente('x '.repeat(99) + zwj + ' fin y más'))).toBe('x '.repeat(99) + zwj + ' …' + MORE)
+  expect(nextLine(siguiente('x '.repeat(99) + 'é fin'))).toBe('x '.repeat(99) + 'é …' + MORE)
 })
 
 test('fillFor: una línea que empieza por / o ! nunca encabeza el relleno', () => {

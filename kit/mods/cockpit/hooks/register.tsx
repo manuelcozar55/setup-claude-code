@@ -258,20 +258,34 @@ async function syncAgents($: $) {
   }
 }
 
+const NEXT_MAX = 200
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
 // First line of «Siguiente acción» in the saved state: what the person approves when the prompt comes back filled.
-export function nextLine(doc: string) {
+// Past NEXT_MAX graphemes it is cut at the last sentence end, else at the last space, and before a code span the cut
+// would leave open: a half path or half command reads as a whole one. A single word past the limit gives ''.
+export function nextLine(doc: string, path = '.claude/estado/nucleo.md') {
   const sec = sections(doc).find(s => s.key.startsWith('siguiente accion'))
   const line = bodyOf(sec?.text ?? '')
     .split('\n')
     .map(l => l.replace(/^\s*(?:[-*]|\d+\.)\s+/, '').replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim())
     .find(l => l !== '' && !l.startsWith('```'))
   if (line === undefined) return ''
-  const chars = Array.from(line)
-  return chars.length > 200 ? `${chars.slice(0, 200).join('')}…` : line
+  const chars = Array.from(graphemes.segment(line), g => g.segment)
+  if (chars.length <= NEXT_MAX) return line
+  // One grapheme past the limit: a sentence end or a space right at the limit still counts. A «! » inside a code
+  // span (`test ! -e`) is no sentence end.
+  const head = chars.slice(0, NEXT_MAX + 1).join('')
+  const ticks = (s: string) => (s.match(/`/g) ?? []).length
+  const ends = Array.from(head.matchAll(/[.!?](?= )/g), m => (m.index ?? 0) + 1).filter(i => ticks(head.slice(0, i)) % 2 === 0)
+  const dot = ends[ends.length - 1]
+  let cut = (dot ? head.slice(0, dot) : head.slice(0, Math.max(0, head.lastIndexOf(' ')))).trimEnd()
+  if (ticks(cut) % 2) cut = cut.slice(0, cut.lastIndexOf('`')).trimEnd()
+  return cut ? `${cut} … (sigue en ${path})` : ''
 }
 // The fixed prefix keeps the draft from starting with «/» or «!»: it cannot run a command or switch to bash mode.
 export const fillFor = (doc: string, path = '.claude/estado/nucleo.md') => {
-  const line = nextLine(doc)
+  const line = nextLine(doc, path)
   return line ? `adelante con la Siguiente acción de ${path}: ${line}` : `sigue con la Siguiente acción de ${path}`
 }
 
