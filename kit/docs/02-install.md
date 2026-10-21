@@ -1,6 +1,10 @@
 # 02 · Instalación
 
-Este documento cubre la instalación de la parte que el kit sí redistribuye: la config saneada de `~/.claude` (`CLAUDE.md`, `settings.json`, agentes, hooks, Sentinel) y el venv de herramientas. Es la **única fuente** del procedimiento de instalación: el resto de documentos resume y enlaza aquí. Los terceros (agent-browser) se documentan aparte en `04-superpowers.md`: el kit no lleva sus binarios. El plugin `esenciales` es del kit y lo instala `install-plugins.sh` (ver `04-superpowers.md`).
+Este documento cubre la configuración que el kit redistribuye en `~/.claude` y los
+extras opcionales. La matriz de lo instalado, lo cargado por el lanzador y lo externo
+está en [`10-onboarding.md`](10-onboarding.md#0--qué-vas-a-levantar).
+Si recibiste una consolidación con `BUILD_ID`, sigue también [`ENTREGA.md`](../../ENTREGA.md):
+`scripts/scc.sh` carga los plugins incluidos; `install-plugins.sh` es la alternativa global.
 
 ## Prerrequisitos
 
@@ -10,9 +14,11 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 |---|---|---|
 | `bash`, `make` | `install.sh`, `doctor.sh`, los guards y la suite son bash; `make bootstrap` y `make test` | `bash --version` · `make --version` |
 | `git` | clonar el repo, y los guards de `secret-guard.sh`/`branch-guard.sh` operan sobre `git` | `git --version` |
-| `node` ≥ 20 + `pnpm` | runtime de Claude Code y de agent-browser | `node --version` · `pnpm --version` |
-| `python3` (≥ 3.10) + `venv` | Sentinel y los hooks Python corren sobre un venv propio, nunca sobre el Python del sistema | `python3 --version` |
-| `gh` (GitHub CLI) | flujo de PRs desde Claude Code | `gh --version` |
+| Claude Code autenticado | ejecutar las sesiones; la distribución nativa no necesita Node para arrancar | `claude --version` |
+| `python3` (≥ 3.10) | Sentinel y los hooks Python; usan el venv si existe y, si no, el Python del sistema | `python3 --version` |
+| `zip`, `unzip` | copias de seguridad y restauración con `scripts/backup.sh` y `uninstall.sh --apply`; en Debian: `sudo apt install zip unzip` | `zip -v` · `unzip -v` |
+| `node` + `pnpm` (opcionales) | herramientas JavaScript externas, como agent-browser; según los requisitos de cada herramienta | `node --version` · `pnpm --version` |
+| `gh` (opcional) | flujo de PRs en GitHub | `gh --version` |
 | `jq` | **obligatorio**: `install.sh` aborta si falta (fusiona `settings.json` con `jq`), los cinco guards de Bash leen el payload con `jq` y sin él fallan en cerrado —deniegan en vez de permitir en silencio—, y `doctor.sh` lo marca `FAIL` | `jq --version` |
 | `uv` (opcional) | gestor de paquetes Python; solo lo necesitas si instalas herramientas con `uv tool` | `uv --version` |
 | `gitleaks` (opcional, versión fijada `8.30.1`) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Si no lo tienes, `install.sh` te ofrece instalarlo (necesita `curl` y `ca-certificates`; release oficial, verificado contra un checksum SHA-256 fijado en este repo — no descargado de la red —, nunca `curl \| bash`): confirma con `y`, o exporta `GITLEAKS_AUTO_INSTALL=1` para saltarte el prompt en un entorno no interactivo. Si el checksum no coincide, la instalación de `gitleaks` no rompe el resto (degrada a la Capa 1), pero deja una marca en `$CLAUDE_HOME/.gitleaks-checksum-mismatch` que `doctor.sh` reporta como `FAIL`. Ver `docs/05-security.md` | `gitleaks version` |
@@ -20,10 +26,11 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 Comprueba todo de una vez:
 
 ```bash
-git --version && node --version && pnpm --version && python3 --version && gh --version && jq --version
+git --version && python3 --version && jq --version && claude --version
 ```
 
-Si falta `pnpm`, actívalo con corepack (viene con Node ≥ 16.9, no hace falta instalar nada por pipe a shell):
+Si necesitas herramientas JavaScript y tu instalación de Node incluye corepack,
+puedes activar `pnpm` con:
 
 ```bash
 corepack enable
@@ -75,6 +82,10 @@ CLAUDE_HOME=/ruta/alternativa bash install.sh
 ```
 
 Con un `CLAUDE_HOME` que no es `$HOME/.claude` el instalador no toca `~/.local/bin`: imprime las órdenes `ln -s` de `handoff` y `oraculo` por si quieres enlazarlos tú (Paso 3b).
+Esta variable selecciona el destino de los archivos, no el perfil que Claude Code carga
+automáticamente. Los comandos de la plantilla usan `$HOME/.claude`. Para una inspección
+sin activar nada, usa `bash install.sh --plan`; para probar la instalación completa,
+usa un HOME de prueba o el ensayo `scripts/aceptacion-local.sh` de la entrega.
 
 `install.sh` es idempotente: si vuelves a ejecutarlo, cualquier fichero que fuera a pisar se guarda antes con backup en `$CLAUDE_HOME/backups/<fecha>-<pid>-<aleatorio>/`, y nunca sobreescribe sin copia; reinstalar sin cambios no crea un segundo backup. Copia (no enlaza) `settings.json`, `CLAUDE.md`, los hooks, los agentes, las skills del método y Sentinel. `settings.json` se **fusiona** con `jq`, no se pisa: tus claves propias (permisos, `env`, plugins) sobreviven, y un symlink no se toca. Una excepción importante: **los hooks del kit sustituyen a los tuyos**. Si ya tenías hooks en `settings.json`, tras instalar solo quedan los del kit. Los tuyos siguen en la copia de seguridad (`$CLAUDE_HOME/backups/<fecha>-…/settings.json`): recupéralos de ahí y añádelos a mano. La otra excepción es `permissions.disableBypassPermissionsMode`: queda en `"disable"` siempre, también en el árbol del plan diff-first, y si tu valor era otro el instalador lo dice. Dos claves tuyas que dejan al kit sin efecto se respetan, pero se avisan al final: `disableAllHooks: true` (no corre ningún hook, tampoco los guards; `doctor.sh` lo marca `FAIL`) y `permissions.defaultMode: "bypassPermissions"` (con `"disable"` queda inerte).
 
@@ -91,14 +102,13 @@ Con un `CLAUDE_HOME` que no es `$HOME/.claude` el instalador no toca `~/.local/b
 - **El airbag se mueve con `CLAUDE_CODE_AUTO_COMPACT_WINDOW`** (la plantilla: `250000`; compacta solo a la ventana − 33 000 tokens, y sobre esa línea miden sus % los hooks de `nucleo.md`). Sin sufijos `k`/`m`: se lee como entero. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` es un hook de test, no una opción: solo baja el umbral, y en la ruta de 1M no hace nada.
 - `cleanupPeriodDays: 14` acota cuánto tiempo se guardan los transcripts en disco.
 
-## Paso 3 · Variables de entorno
+## Paso 3 · Autenticación y servicios externos
 
-```bash
-cp .env.example $HOME/.claude/.env
-$EDITOR $HOME/.claude/.env
-```
-
-Rellena `ANTHROPIC_API_KEY` y, si la usas, `PERPLEXITY_API_KEY`. El fichero `.env` **nunca** se sube al repo (el hook `secret-guard.sh` y el gate `scan-secrets.sh` están precisamente para que no ocurra por descuido).
+Cada compañero inicia sesión en Claude Code con su propia cuenta. El kit no incluye
+credenciales. Si utiliza un proveedor por API o un MCP externo, debe configurar ese
+servicio según su documentación y la política de su organización.
+Copiar una plantilla de variables a disco no las carga automáticamente en Claude Code.
+Las claves y los archivos privados quedan fuera del paquete y de Git.
 
 ## Paso 3b · CLIs `handoff` y `oraculo`
 
@@ -132,7 +142,11 @@ ln -sf $HOME/.venvs/tools/bin/ruff $HOME/.local/bin/ruff
 
 El kit no instala esto por ti; solo lo documenta:
 
-- **esenciales, los 8 agentes, y agent-browser**: ver `docs/04-superpowers.md`. Los plugins se instalan por referencia desde su marketplace con `bash install-plugins.sh` (diff-first). La plantilla de `settings.json` ya registra el marketplace `setup-claude-code` para `esenciales` y no activa plugins de terceros.
+- **Los 8 agentes y las skills del método** ya están instalados con la base.
+- **esenciales** está incluido en el repo y `scripts/scc.sh` lo carga localmente; la
+  instalación global se hace con `bash install-plugins.sh` (diff-first).
+  Que un plugin figure en `enabledPlugins` no demuestra que esté cargado: comprueba `/plugin`.
+- **agent-browser** es una herramienta externa: ver `docs/04-superpowers.md`.
 - **El mod `cockpit`** (opcional): da `/handoff` y `/nueva` dentro de Claude Code. Instálalo con `claude plugin install cockpit@setup-claude-code` después de registrar el marketplace en el tag del kit (las dos órdenes, en [`11-cockpit.md`](11-cockpit.md)). Sin él, `handoff --desde` hace lo mismo desde la terminal.
 
 Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, servidores MCP, skills adicionales como `graphify` o `deep-change`), ver `docs/08-plugins-mcp-y-skills.md`.

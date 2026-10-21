@@ -13,7 +13,12 @@
 
 ## Cómo se carga
 
-La consolidación local `scc-consolidada-20261021` incluye cockpit 0.6.0. `scripts/scc.sh` carga esta copia exacta mediante `--plugin-dir`; no depende de que exista una release remota nueva. `VERSION` identifica la última publicación, mientras `BUILD_ID` y el commit identifican este candidato transferible.
+La consolidación local identificada por `BUILD_ID` incluye cockpit 0.6.0.
+`scripts/scc.sh` carga esta copia exacta mediante `--plugin-dir`; no depende de una
+release remota nueva. Para esta entrega usa el lanzador; las órdenes de marketplace
+de abajo son la alternativa para la versión publicada, no otro paso obligatorio.
+`VERSION` identifica la última publicación; `BUILD_ID` y el manifiesto SHA-256
+identifican el contenido transferido.
 
 **Versión de Claude Code.** El mod se probó con Claude Code 2.1.292 (`claude --version`). No se ha comprobado una versión mínima: los mods son de acceso temprano y pueden cambiar entre versiones. Comprueba la tuya antes de instalar y, si algo no carga, `claude plugin validate kit/mods/cockpit` dice qué falla.
 
@@ -156,9 +161,13 @@ bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin r
 
 ## Limitaciones conocidas
 
-- **`/clear` lanzado desde el mod no está verificado en una sesión interactiva.** Se comprobó de punta a punta con el arnés de tests, no a mano. Si falla, el mod deja el documento guardado; escribe `/clear` y luego el texto que te indica el mod.
+- **Relevo interactivo comprobado en Debian con Claude Code 2.1.306:** `/handoff solo`
+  guardó sin limpiar; `/handoff` guardó, ejecutó `/clear` y rellenó la continuación.
+  Una compactación manual completó `PreCompact`, y el modelo conservó Objetivo e
+  Invariantes sin leer archivos después. Esto no prueba todas las versiones o políticas
+  de empresa: un plugin gestionado puede decidir el orden de los interceptores.
 - **Sin verificar en una sesión interactiva** (solo con el arnés de tests): el `/clear` lanzado desde el temporizador tras un turno, el relleno del prompt después de él, el comportamiento del motor tras varios vetos de compactación seguidos y el coste del fork del handoff al 70 % de contexto.
-- **El clic sobre el dock solo llega en pantalla completa**: es donde el terminal reporta clics (y donde existe el dock lateral). Con el pane encajado sobre el prompt, enfócalo (`ctrl+x tab`) y usa la tecla `m` o Tab + Enter.
+- **El clic sobre el dock solo llega en pantalla completa**: es donde el terminal reporta clics (y donde existe el dock lateral). Con el pane encajado sobre el prompt, enfócalo (`ctrl+x tab`) y usa la tecla `m` o Tab + Enter. En terminales estrechos el Dock pasa a ese panel; dale suficiente altura o ciérralo para dejar espacio a la conversación y a las líneas de la barra.
 - El redactor de secretos es un último recurso parcial; revisa el documento antes de compartirlo.
 - **Permisos del borrador temporal**: la API `$.fs.write(path, text)` no admite modo; el borrador se crea con `mktemp` (600) y se vuelve a fijar con `chmod 600` antes de escribirlo. El permiso del `nucleo.md` final es cosa del CLI.
 - El hook de arranque entrega `nucleo.md` envuelto como datos y exige confirmar lo irreversible, pero eso mitiga la inyección de instrucciones escritas en el fichero, no la elimina.

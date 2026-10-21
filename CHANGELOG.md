@@ -67,6 +67,7 @@ ser techo también sin política gestionada.
 - `02-install.md` documenta los enlaces de `handoff` y `oraculo` en `~/.local/bin`, el aviso de `@AGENTS.md` con un `CLAUDE.md` previo, las comprobaciones nuevas de `doctor.sh`, que la fusión de `settings.json` sustituye los hooks propios por los del kit (con backup) y que el modelo se fija con `"model": "opus"` (sin `[1m]` en Opus 4.7+).
 - `11-cockpit.md`: instalación, versión probada de Claude Code (2.1.292, sin mínimo comprobado), que sigue `main`, y `/handoff solo` frente a `handoff --solo`. La ruta de 7 días pasa a la plantilla de `nucleo.md` de v3 y a `handoff --desde`.
 - ADR 004 (sustituida en parte), 007 (no implementada) y 011 (issues sin re-verificar) con su estado real.
+- `ENTREGA.md`, `README.md` y `kit/docs/{02-install,06-routine,08-plugins-mcp-y-skills,10-onboarding,11-cockpit}.md` se alinean con la instalación real: requisitos (Python 3, `zip`, `unzip`), verificación SHA-256 del paquete, qué trae la base frente a lo opcional, vuelta atrás con `uninstall.sh` en dry-run, rechazo de escritura con código 5 si otra sesión reclama el estado y vuelta al renderer clásico con `/tui default`.
 
 ## [1.3.0] - 2026-10-19
 

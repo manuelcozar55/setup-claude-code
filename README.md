@@ -38,10 +38,16 @@ macOS (no hay CI que lo demuestre), y no es un framework del que dependas: se in
 `bash kit/doctor.sh` (comprueba la instalación); se deshace con `bash uninstall.sh`. `make bootstrap`
 es para quien desarrolla este repo. Ver [Quick start](#quick-start).
 
-**Aspecto.** Una instalación limpia trae el tema oscuro (`"theme": "dark"`) y una barra de estado
+**Consolidación local.** Si recibiste el paquete identificado por `BUILD_ID`, sigue
+[`ENTREGA.md`](ENTREGA.md) y arranca con `scripts/scc.sh`: carga el cockpit y las skills
+esenciales incluidos, sin depender de una publicación nueva en el marketplace.
+
+**Aspecto.** Una instalación limpia trae pantalla completa (`"tui": "fullscreen"`), tema oscuro (`"theme": "dark"`) y una barra de estado
 en dos líneas (`~/.claude/statusline-command.sh`, bash + `jq`): modelo, ruta completa, repo, rama
-y cambios arriba; contexto y límites de 5 h y 7 d abajo. Si ya tenías `theme` o `statusLine`, se
-respetan los tuyos; para adoptar los del kit, borra esas dos claves de tu `settings.json` y reinstala.
+y cambios arriba; contexto y límites de 5 h y 7 d abajo cuando Claude Code proporciona esos datos.
+Si ya tenías `tui`, `theme` o `statusLine`, se respetan los tuyos; para adoptar los del kit,
+retira de tu `settings.json` solo las claves que quieras sustituir y reinstala.
+Para volver al modo clásico: `/tui default`.
 
 **Cómo está organizado.** `kit/` es la instalación y la raíz es el harness. La documentación de
 referencia vive en [`kit/docs/`](kit/docs); `docs/` es **archivo de proceso** (specs, planes e
