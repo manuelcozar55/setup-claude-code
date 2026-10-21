@@ -61,6 +61,10 @@ ok "compact: línea de datos antes de cada envoltorio" "$(command grep -B1 '^<nu
 ok "compact: Paso actual vivo" "$(command grep -c 'PASO-VIVO' <<<"$C")" 1
 ok "compact: checkpoint recortado a 1 500" "$(command grep -c 'COLA-CHECKPOINT' <<<"$C")" 0
 ok "compact: sin *-cambios.md" "$(command grep -c 'CAMBIOS-MARCA' <<<"$C")" 0
+# El recorte del checkpoint no parte un carácter: «a» y 2 000 «ñ» dejan el byte 1 500 a mitad de una (salía U+FFFD).
+{ printf a; for _ in $(seq 1 2000); do printf 'ñ'; done; echo; } >"$R/.claude/estado/checkpoints/checkpoint-compact-$(printf s-utf | sha256sum | cut -d' ' -f1).md"
+C=$(ev "$R/sub" s-utf | bash "$H/session-start-compact.sh" | ctx)
+ok "compact: el checkpoint se corta en un límite de carácter UTF-8" "$(command grep -c $'\xef\xbf\xbd' <<<"$C"),$(command grep -o 'ñ' <<<"$C" | wc -l)" "0,749"
 ok "compact: sin nucleo pide crearlo con la plantilla" "$(ev "$T/sin-nucleo" s9 | bash "$H/session-start-compact.sh" | ctx | command grep -c 'templates/nucleo.md')" 1
 
 # nucleo.md es del repo (clonado o no): sus «Comandos de verificación» y su «Siguiente acción» no se
