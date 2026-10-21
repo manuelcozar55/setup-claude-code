@@ -424,6 +424,18 @@ nucleo_ctx() {
   printf '%s %s\n' "$t" "$((t * 100 / (w - 33000)))"
 }
 
+# nucleo_sin_contenido <fichero>: rc 0 si, quitados los comentarios <!-- --> (también los de varias líneas), solo
+# quedan cabeceras y líneas en blanco. Un nucleo vacío o de solo plantilla no es trabajo en curso. Mira la forma, no
+# el texto de la plantilla, que cambia.
+nucleo_sin_contenido() {
+  awk '{ l = $0; o = ""
+      while (l != "") {
+        if (c) { i = index(l, "-->"); if (!i) break; l = substr(l, i + 3); c = 0 }
+        else { i = index(l, "<!--"); if (!i) { o = o l; break } o = o substr(l, 1, i - 1); l = substr(l, i + 4); c = 1 }
+      }
+      if (o ~ /[^ \t\r]/ && o !~ /^[ \t]*#/) exit 1 }' "$1"
+}
+
 # nucleo_emitir <fichero>: solo las secciones de la plantilla (templates/nucleo.md), la primera vez
 # que aparece cada una, con tope por sección y total. Lo demás se omite y se avisa en una línea.
 # «Encargo original», «Pendientes y riesgos» y «No repetir» son los nombres que escribe /handoff.

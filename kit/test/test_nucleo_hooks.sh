@@ -121,6 +121,24 @@ ok "resume con context_tokens no numérico: sin aviso" "$(rs "$R/sub" true '"x"'
 ok "fork caducado: sin aviso" "$(ev "$R/sub" s7 "" fork | jq -c '.prompt_cache_likely_expired=true | .context_tokens=150000' \
   | NUCLEO_DUENO_TTL=0 bash "$H/session-start-clear.sh" | jq -r '.systemMessage // "nada"')" nada
 ok "clear sin nucleo: no emite nada" "$(ev "$T/sin-nucleo" s7 "" clear | bash "$H/session-start-clear.sh")" ""
+# Un nucleo vacío o de solo plantilla no es trabajo en curso (21-oct: el clear lo anunciaba con 1,3 KB de cabeceras).
+# Se mira la forma, no el texto de la plantilla: un comentario nuevo, de una o de varias líneas, sigue siendo plantilla.
+RV=$T/nucleo-plantilla; mkdir -p "$RV/.claude/estado"; git -C "$RV" init -q; VN=$RV/.claude/estado/nucleo.md
+sed '/^## Siguiente acción$/a\
+<!-- la primera línea es lo que la persona aprueba al pulsar Enter tras /clear: la acción misma, en 160 caracteres. -->\
+<!-- un comentario\
+   de varias líneas -->' "$KIT/claude/templates/nucleo.md" >"$T/plantilla-mas.md"
+for f in /dev/null "$KIT/claude/templates/nucleo.md" "$T/plantilla-mas.md"; do
+  cp "$f" "$VN"
+  ok "clear con nucleo de solo plantilla ($(basename "$f")): no anuncia trabajo en curso" \
+    "$(ev "$RV" s-v "" clear | bash "$H/session-start-clear.sh" | ctx | command grep -c 'Hay trabajo en curso')" 0
+  C=$(ev "$RV" s-v | bash "$H/session-start-compact.sh" | ctx)
+  ok "compact con nucleo de solo plantilla ($(basename "$f")): no lo re-inyecta y pide rellenarlo" \
+    "$(command grep -c 're-inyectado' <<<"$C"),$(command grep -c 'rellénalo' <<<"$C")" "0,1"
+done
+sed 's/^## Paso actual$/&\n<!-- c --> PASO-REAL/' "$T/plantilla-mas.md" >"$VN"
+ok "clear: una línea con texto tras un comentario sí es trabajo en curso" \
+  "$(ev "$RV" s-v "" clear | bash "$H/session-start-clear.sh" | ctx | command grep -c 'Hay trabajo en curso\|PASO-REAL')" 2
 ok "symlink: compact no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-FUERA)" 0
 ok "symlink: nudge calla" "$(jq -cn --arg c "$R3" --arg t "$TP" '{session_id:"s6",transcript_path:$t,cwd:$c}' | bash "$H/nucleo-nudge.sh")" ""
 ok "symlink: el gate no mira el nucleo enlazado" "$(ev "$R3" s6 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh" | jq -r '.decision // "nada"')" nada

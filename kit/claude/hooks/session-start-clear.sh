@@ -68,7 +68,8 @@ DAVISO=""
 }$DAVISO"; }
 AGENTES=$(nucleo_agentes_ctx "$RAIZ")
 NUC="$ESTADO/nucleo.md"
-[ -f "$NUC" ] || sale "$(nucleo_tope "$AGENTES")"
+# Sin nucleo, o con solo la plantilla, no hay trabajo en curso que anunciar.
+if [ ! -f "$NUC" ] || nucleo_sin_contenido "$NUC"; then sale "$(nucleo_tope "$AGENTES")"; fi
 T=$(NUCLEO_TOPE=$((NUCLEO_TOPE - ${#AGENTES})) nucleo_emitir "$NUC")
 
 GH=$(nucleo_git_hechos "$RAIZ")
