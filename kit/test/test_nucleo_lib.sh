@@ -430,6 +430,10 @@ if [ "$(id -u)" -ne 0 ]; then
   chmod u+w "$T/a/proy" "$T/b/proy"
 fi
 
+# Una ruta relativa nunca llega a «/»: el recorrido hacia arriba no terminaba (handoff colgado al 99 % de CPU).
+# shellcheck disable=SC2016  # $1 se expande en el bash hijo, no aquí
+ok "estado_seguro: ruta relativa → rc 1 sin colgarse" "$(timeout 2 bash -c '. "$1"; nucleo_estado_seguro rel/estado' _ "$L" >/dev/null 2>&1; echo $?)" 1
+
 unset NUCLEO_REGISTRO
 
 exit $FAIL

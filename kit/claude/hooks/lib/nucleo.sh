@@ -49,6 +49,7 @@ nucleo_estado_fallback() {
 
 nucleo_estado_seguro() {
   local d=$1 f
+  case $d in /*) ;; *) return 1 ;; esac  # relativa: el recorrido hacia «/» no terminaría
   while [ "$d" != / ]; do
     [ ! -L "$d" ] || return 1
     d=${d%/*}; [ -n "$d" ] || d=/
