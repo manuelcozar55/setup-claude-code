@@ -48,6 +48,7 @@ ser techo también sin política gestionada.
 - `install.sh` solo enlaza `handoff` y `oraculo` en `~/.local/bin` si `CLAUDE_HOME` resuelve a `$HOME/.claude`; con otro (prueba, CI) imprime las órdenes `ln -s` y no escribe, para no dejar enlaces colgantes en el bin real. El plan diff-first deja de prometer los enlaces en ese caso, y el aviso final de PATH ya no da los CLIs por enlazados: dice que el PATH solo hace falta si se crean esos enlaces, o que se use `$CLAUDE_HOME/bin/<nombre>`.
 - `doctor.sh`: un `handoff` u `oraculo` del PATH cuyo `readlink -f` no es el de `$CLAUDE_HOME/bin/<cli>` da WARN con su ruta (antes PASS); las sugerencias usan `ln -s`, nunca `ln -sf`.
 - `doctor.sh` y `.github/scripts/assert-install.sh` comprueban el inventario completo y recursivo de `kit/claude` y `kit/sentinel`: FAIL si falta un fichero (skills, `AGENTS.md`) o un ejecutable pierde el permiso, WARN si su contenido difiere; un symlink propio cuenta como presente y `sentinel/iocs.json` sigue siendo opcional.
+- `scripts/backup.sh` nombra el ZIP con sello UTC, PID y aleatorio: dos backups en el mismo segundo (el previo de `uninstall.sh --apply` y el que acabas de crear) ya no colisionan ni abortan.
 
 ### Security
 

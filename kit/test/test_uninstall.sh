@@ -82,6 +82,19 @@ rm -f "/tmp/uninstall_apply_out.$$.log"
 H2="$(setup_home home2)"
 export HOME="$H2" CLAUDE_HOME="$H2/.claude" BACKUP_DIR="$H2/backups"
 bash "$REPO/kit/install.sh" >/dev/null 2>&1
+# Fija el reloj de ambos backups al mismo segundo. El PID y $RANDOM, como en
+# install.sh, deben bastar para que el backup previo de --apply no colisione.
+date() {
+  if [ "$#" -eq 2 ] && [ "$1" = "-u" ] && [ "$2" = "+%Y%m%dT%H%M%SZ" ]; then
+    printf '%s\n' "20000101T000000Z"
+  elif [ "$#" -eq 1 ] && [ "$1" = "+%Y%m%d-%H%M%S" ]; then
+    printf '%s\n' "20000101-000000"
+  else
+    command date "$@"
+  fi
+}
+export -f date
+ck "$(date -u +%Y%m%dT%H%M%SZ)" "20000101T000000Z" "el caso ZIP fija ambos backups al mismo segundo"
 bash "$REPO/scripts/backup.sh" >/dev/null 2>&1
 echo "SERA_SOBREESCRITO" >> "$CLAUDE_HOME/CLAUDE.md"
 
@@ -90,12 +103,14 @@ ck "$(echo "$out_dry_zip" | grep -qc '^zip$\|zip de scripts/backup.sh\|snapshot 
   "--dry-run identifica el origen ZIP cuando es el backup mas reciente"
 ck "$(grep -qc SERA_SOBREESCRITO "$CLAUDE_HOME/CLAUDE.md" && echo y || echo n)" "y" "--dry-run (con ZIP) no toco el fichero real"
 
-# scripts/backup.sh nombra el ZIP con granularidad de 1 segundo (sin PID ni
-# aleatorio, a diferencia del STAMP de install.sh) y aborta si ya existe uno
-# igual: el backup de seguridad que hace --apply antes de restaurar chocaria
-# con el ZIP que se acaba de crear arriba si cayeran en el mismo segundo.
-sleep 1
+set +e
 bash "$UNINSTALL" --apply >/dev/null 2>&1
+apply_zip_rc=$?
+set -e
+unset -f date
+ck "$apply_zip_rc" "0" "--apply (ZIP) sale con exit 0 aunque ambos backups comparten reloj"
+ck "$(find "$BACKUP_DIR" -maxdepth 1 -name 'claude-state-20000101T000000Z-*.zip' | wc -l | tr -d ' ')" "2" \
+  "--apply conserva dos backups distintos creados en el mismo segundo"
 ck "$(grep -qc SERA_SOBREESCRITO "$CLAUDE_HOME/CLAUDE.md" 2>/dev/null; echo $?)" "1" \
   "--apply (ZIP) restauro sobre el cambio no respaldado"
 
