@@ -52,6 +52,13 @@ ser techo también sin política gestionada.
 - `scripts/backup.sh` nombra el ZIP con sello UTC, PID y aleatorio: dos backups en el mismo segundo (el previo de `uninstall.sh --apply` y el que acabas de crear) ya no colisionan ni abortan.
 - `doctor.sh`: `settings.json`, `CLAUDE.md` y `AGENTS.md` ya no cuentan como deriva (`install.sh` fusiona el primero y no pisa los otros dos), así que una instalación con los tuyos no arrastra un WARN permanente; si falta alguno sigue siendo FAIL.
 - Tests: los dos casos H3 de tiempo (`test_nucleo_lib.sh`, `test_session_start_clear.sh`) pasan de 2,5 s a 4 s; en WSL2 midieron 1,6-2,8 s y el tope anterior tumbaba `make test` sin defecto.
+- Primer prompt tras `/handoff` + `/clear`. El relleno ya no corta la Siguiente acción a 200 caracteres a mitad de palabra, de ruta o de code span. Ahora corta en una frase o en un espacio, cierra la comilla y termina en «… (sigue en <ruta>)»; también avisa cuando hay más líneas debajo. `HANDOFF_PROMPT` y la plantilla piden que la primera línea, de 160 caracteres como máximo, sea la acción con su condición, nunca «pedir el sí», porque es lo que la persona aprueba al pulsar Enter. Si la relectura falla después de guardar, ya no se informa «Handoff fallido».
+- `handoff` e inyección:
+  - Lo que `handoff` guarda cabe entero junto al bloque de agentes: escribe como mucho `NUCLEO_TOPE − NUCLEO_RESERVA_AGENTES` (5 700 B), y el cockpit y el aviso de tamaño usan ese mismo tope.
+  - Siguiente acción no se omite nunca. Paso actual se recorta por línea en vez de quitarse, y el original va a `diario.md`.
+  - Al cortar una sección se respeta el límite de línea y se cierra su valla.
+  - El checkpoint de compact ya no parte caracteres UTF-8.
+- Hooks: un `nucleo.md` vacío o con solo la plantilla ya no anuncia «Hay trabajo en curso». `nucleo_estado_seguro` rechaza una ruta relativa en lugar de entrar en un bucle infinito.
 
 ### Security
 
