@@ -103,11 +103,15 @@ derivados=0; derivados_lista=""; ausentes=0; no_ejecutables=0
 # opcionales: su ausencia conserva el aviso especifico de la seccion siguiente.
 # assert-install.sh comprueba ademas que una instalacion nueva los haya copiado.
 # Los caches Python generados en el fuente no forman parte del inventario.
+# settings.json, CLAUDE.md y AGENTS.md se exigen pero no se comparan: install.sh
+# fusiona el primero y no pisa los otros dos si ya son tuyos, asi que difieren en
+# toda instalacion real y el WARN seria permanente.
 for tree in claude sentinel; do
   while IFS= read -r -d '' src; do
     rel="${src#"$KIT/$tree/"}"
     case "$tree" in
-      claude) nombre="$rel"; dst="$CLAUDE_HOME/$rel"; comparar=1 ;;
+      claude) nombre="$rel"; dst="$CLAUDE_HOME/$rel"; comparar=1
+        case "$rel" in settings.json|CLAUDE.md|AGENTS.md) comparar=0 ;; esac ;;
       sentinel) nombre="sentinel/$rel"; dst="$CLAUDE_HOME/sentinel/$rel"; comparar=0
         case "$rel" in *.py) comparar=1 ;; esac ;;
     esac
@@ -129,7 +133,7 @@ done
 if [ "$derivados" -gt 0 ]; then
   warn "$derivados componente(s) desplegados difieren de los del kit ($derivados_lista): compara antes de reinstalar; conserva tus personalizaciones"
 elif [ "$ausentes" -eq 0 ] && [ "$no_ejecutables" -eq 0 ]; then
-  pass "los componentes desplegados coinciden byte a byte con los del kit; inventario completo  (fuente: find + test -f/-x + cmp -s por fichero)"
+  pass "los componentes desplegados coinciden byte a byte con los del kit (salvo settings.json, CLAUDE.md y AGENTS.md, que son tuyos); inventario completo  (fuente: find + test -f/-x + cmp -s por fichero)"
 fi
 
 # 2b. capa de IOCs de Sentinel (opcional -> WARN)

@@ -100,6 +100,20 @@ else
   ck y y "un iocs.json personalizado no produce WARN de deriva"
 fi
 
+# settings.json, CLAUDE.md y AGENTS.md son de la persona: install.sh fusiona el primero y no pisa
+# los otros dos, asi que difieren del kit en toda instalacion real. Compararlos daba un WARN de
+# deriva permanente, y un aviso que siempre esta ahi enseña a ignorar los verdaderos.
+HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
+for f in settings.json CLAUDE.md AGENTS.md; do cp "$CLAUDE_HOME/$f" "$tmp/$f.guardado"; done
+jq '.env.DERIVA_TEST = "1"' "$CLAUDE_HOME/settings.json" > "$tmp/settings.mio" && cp "$tmp/settings.mio" "$CLAUDE_HOME/settings.json"
+echo "# mio" >> "$CLAUDE_HOME/CLAUDE.md"
+echo "# mio" >> "$CLAUDE_HOME/AGENTS.md"
+out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \
+       bash "$KIT/doctor.sh" 2>&1)"
+n="$(echo "$out" | grep -cE '^WARN .*difieren de los del kit.*(settings\.json|CLAUDE\.md|AGENTS\.md)' || true)"
+ck "$n" "0" "settings.json, CLAUDE.md y AGENTS.md personalizados no producen WARN de deriva"
+for f in settings.json CLAUDE.md AGENTS.md; do cp "$tmp/$f.guardado" "$CLAUDE_HOME/$f"; done
+
 # La capa de IOCs se busca donde la busca el hook, no en una sola ruta fija.
 # El defecto: en una instalacion donde sentinel vive FUERA de CLAUDE_HOME, doctor avisaba de
 # que la capa estaba inactiva cuando en realidad cargaba 31 patrones de ruta. Un aviso falso
