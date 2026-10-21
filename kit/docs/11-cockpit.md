@@ -13,12 +13,11 @@
 
 ## Cómo se carga
 
-La consolidación local identificada por `BUILD_ID` incluye cockpit 0.6.0.
-`scripts/scc.sh` carga esta copia exacta mediante `--plugin-dir`; no depende de una
-release remota nueva. Para esta entrega usa el lanzador; las órdenes de marketplace
-de abajo son la alternativa para la versión publicada, no otro paso obligatorio.
-`VERSION` identifica la última publicación; `BUILD_ID` y el manifiesto SHA-256
-identifican el contenido transferido.
+La versión 1.4.0 del kit incluye cockpit 0.6.1.
+`scripts/scc.sh` carga la copia de tu checkout mediante `--plugin-dir`, sin instalar
+nada; las órdenes de marketplace de abajo instalan esa misma versión desde el tag
+publicado, para todas tus sesiones. En un paquete transferido, `VERSION` identifica
+la publicación, y `BUILD_ID` con el manifiesto SHA-256 identifican el contenido.
 
 **Versión de Claude Code.** El mod se probó con Claude Code 2.1.292 (`claude --version`). No se ha comprobado una versión mínima: los mods son de acceso temprano y pueden cambiar entre versiones. Comprueba la tuya antes de instalar y, si algo no carga, `claude plugin validate kit/mods/cockpit` dice qué falla.
 

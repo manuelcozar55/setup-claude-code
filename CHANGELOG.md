@@ -7,6 +7,8 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-22
+
 Que un compañero instale el kit en limpio (WSL2 Ubuntu) y tenga el estado v3 operativo desde la
 primera sesión: `install.sh` deja `handoff` y `oraculo` en el PATH, `doctor.sh` comprueba que
 están, `handoff --iniciar` crea el primer `nucleo.md` y `10-onboarding.md` es la guía del primer
@@ -17,7 +19,7 @@ ser techo también sin política gestionada.
 ### Added
 
 - Estado por sesión en `~`: el handoff del cockpit (`/handoff`, `/nueva` y la banda del dock) usa la ranura `~/.claude/estado/sesiones/<fecha>-<pid>/` de la sesión cuando no hay proyecto, vía `handoff --estado` y `--desde` sin `--raiz` (ADR 019).
-- Consolidación local identificada por `BUILD_ID`: cockpit 0.6.0, lanzador `scripts/scc.sh` y guía `ENTREGA.md`. `/autonomo on|off` continúa el encargo autorizado tras confirmar un handoff, también desde HOME; conserva misión y pasos, y se desactiva al cambiar de tarea.
+- Consolidación local identificada por `BUILD_ID`: cockpit 0.6.1, lanzador `scripts/scc.sh` y guía `ENTREGA.md`. `/autonomo on|off` continúa el encargo autorizado tras confirmar un handoff, también desde HOME; conserva misión y pasos, y se desactiva al cambiar de tarea.
 - `install.sh` enlaza `handoff` y `oraculo` en `~/.local/bin` (solo sobre hueco libre o enlace propio; nunca pisa uno ajeno), avisa si `~/.local/bin` no está en el PATH y, con un `CLAUDE.md` previo sin `@AGENTS.md`, termina con un aviso visible (plantilla en `CLAUDE.kit.md`). En diff-first lo pone en el plan sin escribir. El aviso de credenciales solo sale si la plantilla existe.
 - `doctor.sh`: FAIL si falta `bin/handoff`, `bin/oraculo` o `templates/nucleo.md`; WARN si no se resuelven en el PATH o si `CLAUDE.md` no importa `AGENTS.md`.
 - `handoff --iniciar [--raiz D]` crea el primer `nucleo.md` desde la plantilla (nunca sobrescribe; exit 3 sin proyecto).
@@ -1957,7 +1959,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.0.0...v1.1.0

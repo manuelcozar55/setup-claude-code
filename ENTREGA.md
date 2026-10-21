@@ -1,14 +1,14 @@
 # SCC consolidada — instalación y transferencia
 
-La entrega local se identifica con `BUILD_ID` y el commit de Git o el manifiesto SHA-256 que la acompaña. `VERSION` sigue indicando la última publicación remota (1.3.0); no identifica esta consolidación. Esta entrega incorpora cockpit 0.6.0 y debe iniciarse con su lanzador local para cargar exactamente el código incluido.
+La entrega corresponde a la versión 1.4.0 (`VERSION` y tag `v1.4.0`); `BUILD_ID` y el manifiesto SHA-256 que la acompaña identifican el paquete transferido. Incorpora cockpit 0.6.1: el lanzador local (`scripts/scc.sh`) carga exactamente el código incluido, y el marketplace fijado a `v1.4.0` instala esa misma versión.
 
 ## Instalar y empezar
 
 Requisitos: Linux o WSL2, Bash, Git, jq, Python 3 y Claude Code autenticado.
 Para crear respaldos y restaurarlos necesitas también `zip` y `unzip`
 (`sudo apt install zip unzip` en Debian).
-La prueba real de esta entrega usa Debian y Claude Code 2.1.306; los resultados
-exactos y sus límites se adjuntan en `VALIDACION.md` en el paquete final.
+Lo medido sobre esta versión, lo heredado de la prueba en Debian con Claude Code
+2.1.306 y sus límites se adjuntan en `VALIDACION.md` en el paquete final.
 No se distribuyen credenciales ni configuración personal.
 
 1. Comprueba el SHA-256 del archivo recibido con el fichero de sumas que lo acompaña.
