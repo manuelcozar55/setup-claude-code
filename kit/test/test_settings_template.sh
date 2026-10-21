@@ -19,6 +19,8 @@ ok "Stop → stop-context-gauge.sh" "$(cmd Stop '' | command grep -c 'hooks/stop
 ok "un solo PreCompact" "$(q '.hooks.PreCompact | length')" 1
 ok "PreCompact → pre-compact.sh" "$(q '.hooks.PreCompact[0].hooks[0].command' | command grep -c 'hooks/pre-compact.sh')" 1
 ok "cleanupPeriodDays = 14" "$(q '.cleanupPeriodDays')" 14
+ok "tui = fullscreen" "$(q '.tui')" fullscreen
+ok "theme = dark" "$(q '.theme')" dark
 ok "env fija CLAUDE_CODE_AUTO_COMPACT_WINDOW (entero)" "$(q '.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW // "" | test("^[0-9]+$")')" true
 ok "sin CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (es un hook de test)" "$(q '.env | has("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")')" false
 ok "sin ANTHROPIC_BASE_URL" "$(q '.env | has("ANTHROPIC_BASE_URL")')" false

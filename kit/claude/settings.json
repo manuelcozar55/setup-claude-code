@@ -254,6 +254,7 @@
   "effortLevel": "xhigh",
   "autoUpdatesChannel": "latest",
   "cleanupPeriodDays": 14,
+  "tui": "fullscreen",
   "theme": "dark",
   "statusLine": {
     "type": "command",

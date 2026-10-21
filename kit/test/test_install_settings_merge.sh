@@ -45,21 +45,23 @@ backups(){ find "$CLAUDE_HOME/backups" -name settings.json 2>/dev/null | wc -l |
 # --- Caso a: statusLine sobrevive intacta (EL incidente) -------------------
 seed a <<'EOF'
 { "statusLine": { "type": "command", "command": "/home/usuario/.claude/statusline.sh", "padding": 0 },
-  "model": "opus[1m]" }
+  "model": "opus[1m]", "theme": "light", "tui": "classic" }
 EOF
 antes="$(jq -Sc .statusLine "$S")"
 run
 ck "$([ "$(jq -Sc '.statusLine // "AUSENTE"' "$KIT/claude/settings.json")" != "$antes" ] && echo y || echo n)" "y" "la statusLine de la plantilla es otra (un cp pisaria la tuya: falsabilidad del caso)"
 ck "$(jq -Sc '.statusLine // "AUSENTE"' "$S")" "$antes" "statusLine sigue ahi y byte-identica tras reinstalar"
 ck "$(jq -r '.model' "$S")" "opus[1m]" "tu model sigue ahi"
+ck "$(jq -r '.theme' "$S")" "light" "tu tema sigue ahi"
+ck "$(jq -r '.tui' "$S")" "classic" "tu renderer sigue ahi"
 ck "$(stat -c %a "$S")" "644" "la escritura atomica preserva el modo del original (el mktemp nace en 600)"
 
 # --- Caso b: una clave que el kit NO conoce -------------------------------
 seed b <<'EOF'
-{ "tui": "fullscreen" }
+{ "editorMode": "vim" }
 EOF
 run
-ck "$(jq -r '.tui // "AUSENTE"' "$S")" "fullscreen" "una clave que el kit no conoce (tui) sobrevive"
+ck "$(jq -r '.editorMode // "AUSENTE"' "$S")" "vim" "una clave que el kit no conoce (editorMode) sobrevive"
 
 # --- Caso c: env -> tu valor gana, y las claves nuevas del kit se anaden --
 seed c <<'EOF'

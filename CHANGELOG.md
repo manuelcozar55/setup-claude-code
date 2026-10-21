@@ -27,6 +27,7 @@ ser techo también sin política gestionada.
 - Plantilla `settings.json` genérica: `model` pasa a `"opus"` (Opus 4.7+ trae 1M sin sufijo), `allow` queda en `Bash(uv tool list)`, se retiran `codex`, `understand-anything` y `frontend-design` con sus marketplaces, y se registra `setup-claude-code` para que `esenciales` no quede colgado.
 - `AGENTS.md` instalado: la mención a `recuerda` pasa a condicional (el instalador no lo instala).
 - `templates/nucleo.md`: el comentario de cabecera pasa dentro de «Objetivo» y el orden de secciones coincide con el que `handoff` escribe.
+- Plantilla `settings.json`: `"tui": "fullscreen"` por defecto, junto al tema oscuro; al reinstalar se conservan el tema y el renderer que ya tuvieras.
 
 ### Fixed
 
