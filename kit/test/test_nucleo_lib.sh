@@ -294,6 +294,17 @@ S=$(nucleo_emitir "$T/pasa-poco.md")
 ok "pasa poco: las reservadas y Ficheros tocados salen enteras" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|FICH-FIN' <<<"$S")" 4
 ok "pasa poco: Pendientes se omite entera y se dice" "$(command grep -c 'PEND-FIN' <<<"$S"),$(command grep -c '^\[recortado por tope: se omiten «Pendientes»' <<<"$S")" "0,1"
 ok "pasa poco: ninguna sección partida; sí pide leer el fichero" "$(command grep -c 'sección incompleta' <<<"$S"),$(command grep -c '^\[LEE ' <<<"$S")" "0,1"
+# Si ni quitando secciones cabe, el corte de una sección cae en un límite de línea (si ya salió alguna) y cierra la
+# cerca que deje abierta; si parte la primera línea, cierra el `código`. Antes la marca quedaba dentro del bloque.
+{ echo '# Estado'; echo '## Objetivo'; big 2000; echo '## Invariantes'; big 2000; echo '## Paso actual'
+  for i in 1 2 3 4 5; do echo "paso $i con \`span-$i\` y texto de relleno hasta ocupar unos sesenta bytes"; done
+  echo '```bash'; for i in $(seq 1 30); do echo "comando-$i --opcion \`valor-$i\` # nota"; done; echo '```'; echo PASO-FIN
+  echo '## Comandos de verificación'; printf -- '- `'; big 1500 | tr -d '\n'; echo '` → rc=0'; } >"$T/valla.md"
+S=$(nucleo_emitir "$T/valla.md"); P=$(awk '/^## Paso actual/ { p = 1; next } /^## / { p = 0 } p' <<<"$S")
+ok "corte: por línea y con la cerca cerrada antes de la marca" \
+  "$(tail -n 2 <<<"$P" | head -n 1),$(command grep -c '^```' <<<"$P"),$(command grep -cxF -- "$(tail -n 3 <<<"$P" | head -n 1)" "$T/valla.md")" '```,2,1'
+ok "corte: la primera línea partida no deja un \`código\` abierto" \
+  "$(awk '/^## Comandos/ { p = 1; next } p' <<<"$S" | head -n 1 | tr -cd '`' | wc -c | awk '{ print $1 % 2 }')" 0
 
 # --- #22: el corte por bytes no parte un carácter UTF-8 (línea larga con ñ de 2 bytes; título y sección) ---
 U=$T/utf8.md

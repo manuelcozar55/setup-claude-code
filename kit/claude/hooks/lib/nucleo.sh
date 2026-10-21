@@ -533,8 +533,12 @@ _nucleo_emitir_awk() {
       else if ($0 ~ /^[ \t]*<!--/) { if (!index($0, "-->")) coment = 1; else { t2 = $0; sub(/.*-->/, "", t2); if (t2 ~ /[^ \t]/) con[actual]++ } }
       else if ($0 ~ /[^ \t]/) con[actual]++
       if (length($0) < resto) { sale($0); dentro += length($0) + 1; next }
-      sale(corta($0, resto > 0 ? resto : 0)); viva = 0
-      sale("[recortado: sección incompleta.]"); recortes++
+      # Si ya salió alguna línea, el corte cae antes de esta; si no, se parte y se cierra el `código` que deje
+      # abierto. La cerca que quede abierta se cierra antes de la marca, para que no quede dentro del bloque.
+      ab = (dentro && $0 ~ /^[ \t]*```+[^`]*$/ && cercas % 2 == 0) ? !cerca : cerca
+      if (!dentro) { p = corta($0, resto > 0 ? resto : 0); if (gsub(/`/, "`", p) % 2) p = p "`"; sale(p) }
+      if (ab) sale("```")
+      viva = 0; sale("[recortado: sección incompleta.]"); recortes++
     }
     END {
       if (medir == "medir") { print ocupado + 0; exit }
