@@ -5,6 +5,26 @@
 #      bash install.sh --enable-secrets-layer2   (activa la Capa 2 de secretos
 #      en el repo git DESDE el que se invoca; opt-in, por repositorio)
 set -euo pipefail
+usage() {
+  printf '%s\n' 'Uso: bash install.sh [--apply | --plan | --enable-secrets-layer2 | --help | -h]' \
+    '  sin argumentos: instala el kit; muestra un plan si CLAUDE_HOME es un repo con remoto.' \
+    '  --apply: aplica la instalacion.' \
+    '  --plan: prepara el plan sin modificar CLAUDE_HOME.' \
+    '  --enable-secrets-layer2: activa la capa 2 en el repo actual.' \
+    '  --help, -h: muestra esta ayuda sin instalar.'
+}
+if (( $# > 1 )); then
+  printf '%s\n' 'Error: se admite como maximo una opcion.' >&2
+  usage >&2
+  exit 64
+fi
+if (( $# == 1 )); then
+  case $1 in
+    --help|-h) usage; exit 0 ;;
+    --apply|--plan|--enable-secrets-layer2) ;;
+    *) printf 'Error: argumento no reconocido: %s\n' "$1" >&2; usage >&2; exit 64 ;;
+  esac
+fi
 KIT="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 GITLEAKS_VERSION="8.30.1"

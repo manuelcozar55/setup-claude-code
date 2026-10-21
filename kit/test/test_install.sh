@@ -5,6 +5,30 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 
+args_case() {
+  local name=$1 expected=$2 path=$3 rc probe
+  shift 3
+  probe="$tmp/args-$name"
+  mkdir -p "$probe"
+  set +e
+  HOME="$probe" CLAUDE_HOME="$probe/.claude" PATH="$path" /bin/bash "$KIT/install.sh" "$@" > "$tmp/args-$name.log" 2>&1
+  rc=$?
+  set -e
+  ck "$rc" "$expected" "argumentos $name: codigo esperado"
+  ck "$(find "$probe" -mindepth 1 -print -quit)" "" "argumentos $name: HOME intacto, sin instalacion ni enlaces"
+  ck "$(grep -c '^Uso:' "$tmp/args-$name.log" || true)" "1" "argumentos $name: muestra uso"
+}
+args_case help 0 "$PATH" --help
+args_case short-help 0 "$PATH" -h
+args_case help-no-tools 0 "$tmp/empty-path" --help
+args_case short-help-no-tools 0 "$tmp/empty-path" -h
+args_case unknown 64 "$PATH" --unknown
+args_case extra 64 "$PATH" --apply extra
+args_case combined 64 "$PATH" --plan --apply
+args_case help-extra 64 "$tmp/empty-path" --help extra
+args_case unknown-no-tools 64 "$tmp/empty-path" --unknown
+args_case layer-extra 64 "$PATH" --enable-secrets-layer2 extra
+
 # HOME falso: install.sh enlaza handoff y oraculo en $HOME/.local/bin y no debe tocar el de quien corre el test.
 # CLAUDE_HOME es $HOME/.claude porque solo ahi se enlaza (con otro, install.sh imprime las ordenes; ver abajo).
 export HOME="$tmp/home"; mkdir -p "$HOME"
