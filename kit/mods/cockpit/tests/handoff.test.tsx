@@ -24,7 +24,7 @@ const no = () => ({ value: { exitCode: 1, stdout: '', stderr: '' } }) as never
 function repo(
   on: Parameters<TestBody>[1],
   files: Record<string, string>,
-  opts: { links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number } = {},
+  opts: { links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number } = {},
 ) {
   let stateReads = 0
   const runs: Run[] = []
@@ -52,7 +52,7 @@ function repo(
     if (e.argv[0] === bin && e.argv[1] === '--estado') {
       await opts.beforeState?.(++stateReads)
       if (!e.argv.includes('--raiz') && !opts.statePath) return { value: { exitCode: 3, stdout: '', stderr: '' } } as never
-      return ok(JSON.stringify({ nucleo: opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`, pct: 1, bytes: 10, tope: 24000, dueno: null, agentes_vivos: opts.live ?? 0 }))
+      return ok(JSON.stringify({ nucleo: opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`, pct: 1, bytes: 10, tope: opts.tope ?? 5700, dueno: null, agentes_vivos: opts.live ?? 0 }))
     }
     if (e.argv[0] === bin && e.argv[1] === '--migrar') {
       const path = opts.statePath ?? `${EST}/nucleo.md`
@@ -115,6 +115,13 @@ for (const compact of [true, false]) {
     }
   })
 }
+
+test('presupuesto: sale del tope que da handoff --estado, no de un 6500 fijo', async ($, on) => {
+  const seen = fork(on, NEW)
+  repo(on, {}, { tope: 4700 })
+  await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(seen.prompt).toContain(`como máximo ${4700 - 768} bytes UTF-8`)
+})
 
 test('sin nucleo: el fork redacta el borrador, se redacta y se delega en el CLI con ruta absoluta, raíz y sesión', async ($, on) => {
   const seen = fork(on, 'Aquí tienes:\n' + NEW)

@@ -459,7 +459,9 @@ async function resolveState($: $) {
   if (!('agentes_vivos' in state) || typeof state.agentes_vivos !== 'number' || !Number.isSafeInteger(state.agentes_vivos) || state.agentes_vivos < 0)
     throw new Error('handoff --estado no confirma los agentes vivos; no limpio')
   const active = state.agentes_vivos
-  return { ...location, path: state.nucleo, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active }
+  // The CLI's tope already leaves room for the agents block the next SessionStart injects; 6500 is the pre-reserve contract.
+  const tope = 'tope' in state && typeof state.tope === 'number' && Number.isSafeInteger(state.tope) && state.tope > 0 ? state.tope : 6500
+  return { ...location, path: state.nucleo, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active, tope }
 }
 
 const readState = async ($: $, path: string) => ((await $.fs.exists(path)) ? await $.fs.read(path) : '')
@@ -485,15 +487,15 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
   await update($, handoff, (): Handoff => ({ phase: 'working' }))
   let tmp = ''
   try {
-    const { root, dir, path, bin, active } = await resolveState($)
+    const { root, dir, path, bin, active, tope } = await resolveState($)
     if (andClear && (active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) throw new Error('hay agentes o shells vivos: no limpio; espera o usa /handoff solo')
     if (!(await $.fs.exists(bin))) throw new Error(`falta ${bin}: ejecuta kit/install.sh, que copia handoff y oraculo a ~/.claude/bin (si ~/.claude es tu repo git, genera un plan diff-first: cópialos desde él)`)
     await refuseLinks($, dir)
     const prev = await readState($, path)
     const encoder = new TextEncoder()
     const preserved = sections(prev).filter(s => /^(objetivo|encargo original|invariantes)/.test(s.key)).map(s => s.text).join('')
-    const budget = 6500 - encoder.encode(preserved).length - 768
-    if (budget <= 0) throw new Error('Objetivo e Invariantes no dejan espacio seguro bajo el tope de 6500 B; no guardo ni limpio')
+    const budget = tope - encoder.encode(preserved).length - 768
+    if (budget <= 0) throw new Error(`Objetivo e Invariantes no dejan espacio seguro bajo el tope de ${tope} B; no guardo ni limpio`)
     const prompt = HANDOFF_PROMPT + (prev ? prevNote(prev) : firstNote) + (focus ? focusNote(focus) : '')
       + `\nPresupuesto: respuesta completa como máximo ${budget} bytes UTF-8, objetivo ${Math.min(3000, budget)} bytes. El CLI conserva Objetivo e Invariantes existentes: no los repitas salvo corrección nueva. Referencia SPEC/artefactos por ruta; no copies sus contratos ni repitas rutas largas en cada sección. Plan compacto, siguiente fase y resultados verificables. Nunca acortes ni reformules las palabras literales de la persona para hacerlas caber.`
     let draft = ''
