@@ -2,8 +2,9 @@
 # handoff — el estado de un proyecto (.claude/estado/nucleo.md) entre sesiones. Válido en Claude Code, Codex y
 # opencode. El modelo redacta un borrador; este CLI decide: valida las cabeceras contra la plantilla, fusiona sin
 # tocar Objetivo ni Invariantes, mueve los pasos [x] a diario.md, pliega el rc de `oraculo`, rota copias, recorta
-# al tope (NUCLEO_TOPE, de la lib) y libera al dueño. Por qué fuera del modelo: reescribir el estado entero cada
-# vez es lo que pierde detalle, y el tope y la forma no pueden depender de que el modelo se acuerde.
+# al tope (NUCLEO_TOPE menos NUCLEO_RESERVA_AGENTES, de la lib) y libera al dueño. Por qué fuera del modelo:
+# reescribir el estado entero cada vez es lo que pierde detalle, y el tope y la forma no pueden depender de que el
+# modelo se acuerde.
 set -euo pipefail
 
 uso() {
@@ -20,7 +21,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
           nuevas del borrador, sin borrar nunca una); los [x] del Plan pasan a diario.md con su
           comando y el hash de HEAD; el último rc de verificaciones.log se pliega en «Comandos de verificación»;
           una sección vacía del borrador (sin cuerpo o solo comentarios) conserva la del nucleo; para vaciarla
-          se escribe «- (nada)»; se guarda nucleo.prev-* (3 copias) y se recorta al tope omitiendo secciones enteras (primero las ajenas a la plantilla, desde el final; luego Pendientes, Plan, Ficheros tocados, Comandos, Siguiente acción y Paso actual).
+          se escribe «- (nada)»; se guarda nucleo.prev-* (3 copias) y se recorta al tope (menos la reserva del bloque de agentes, para que se inyecte entero) omitiendo secciones enteras (primero las ajenas a la plantilla, desde el final; luego Pendientes, Plan, Ficheros tocados, Comandos, Siguiente acción y Paso actual).
   --solo    no fusiona: el borrador sustituye al nucleo (se sigue validando).
   --commit  además hace commit solo de .claude/estado/ (para repos propios); sin él, .claude/estado/ se añade
             a .git/info/exclude.
@@ -53,6 +54,8 @@ SELF=$(readlink -f -- "$0" 2>/dev/null || realpath -- "$0" 2>/dev/null || printf
 . "$(dirname "$SELF")/../hooks/lib/nucleo.sh"
 # shellcheck source=SCRIPTDIR/../hooks/lib/agentes.sh
 . "$(dirname "$SELF")/../hooks/lib/agentes.sh"
+# Lo escrito deja sitio al bloque <agentes> que los SessionStart inyectan con el nucleo: así entra entero.
+TOPE=$((NUCLEO_TOPE - NUCLEO_RESERVA_AGENTES))
 
 die() { local rc=$1; shift; echo "handoff: $*" >&2; exit "$rc"; }
 iso_de() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
@@ -125,7 +128,7 @@ if [ "$MODO" = estado ]; then
     if sesion; then
       NUC=$SES/nucleo.md; B=0; SHA=""; [ ! -f "$NUC" ] || SHA=$(sha256sum <"$NUC" | cut -d' ' -f1); [ ! -f "$NUC" ] || B=$(wc -c <"$NUC" | tr -d ' ')
       VIVOS=$(nucleo_agentes_vivos "$SES" "$SESION" | jq length) || die 1 "registro ilegible"
-      jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg s "$SES" --arg n "$NUC" --argjson b "$B" --argjson t "$NUCLEO_TOPE" --argjson p "$((B * 100 / NUCLEO_TOPE))" \
+      jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg s "$SES" --arg n "$NUC" --argjson b "$B" --argjson t "$TOPE" --argjson p "$((B * 100 / TOPE))" \
         '{raiz:null,sesion:$s,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:null,sha256:(if $sha == "" then null else $sha end),agentes_vivos:$av}'
       exit 0
     fi
@@ -142,7 +145,7 @@ if [ "$MODO" = estado ]; then
     DJ=$(jq -cn --arg s "${D% *}" --arg d "$(iso_de "${D#* }")" --argjson v "$V" '{sesion:$s,desde:$d,vigente:$v}')
   fi
   VIVOS=$(nucleo_agentes_vivos "$E" "$SESION" | jq length) || die 1 "no puedo leer la foto de agentes de $SESION"
-  jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg r "$RAIZ" --arg n "$NUC" --argjson b "$B" --argjson t "$NUCLEO_TOPE" --argjson p "$((B * 100 / NUCLEO_TOPE))" --argjson d "$DJ" \
+  jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg r "$RAIZ" --arg n "$NUC" --argjson b "$B" --argjson t "$TOPE" --argjson p "$((B * 100 / TOPE))" --argjson d "$DJ" \
     '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d,agentes_vivos:$av,sha256:(if $sha == "" then null else $sha end)}'
   exit 0
 fi
@@ -452,18 +455,18 @@ omitir() {
   RT[$1]=""; armar
 }
 for ((i = ${#RK[@]} - 1; i >= 0; i--)); do
-  [ "$(bytes "$TEXTO")" -gt "$NUCLEO_TOPE" ] || break
+  [ "$(bytes "$TEXTO")" -gt "$TOPE" ] || break
   admitida "${RK[i]}" || [ -z "${RT[i]}" ] || omitir "$i"
 done
 for k in pendientes plan "ficheros tocados" "comandos de verificacion" "siguiente accion" "paso actual"; do
-  [ "$(bytes "$TEXTO")" -gt "$NUCLEO_TOPE" ] || break
+  [ "$(bytes "$TEXTO")" -gt "$TOPE" ] || break
   for ((i = 0; i < ${#RK[@]}; i++)); do
     [ "${RK[i]}" = "$k" ] && [ -n "${RT[i]}" ] || continue
     omitir "$i"
   done
 done
-[ -z "$OMITIDAS" ] || AVISOS="omitidas por tope (${NUCLEO_TOPE} B), copia en diario.md:$OMITIDAS"
-if [ "$(bytes "$TEXTO")" -gt "$NUCLEO_TOPE" ]; then
+[ -z "$OMITIDAS" ] || AVISOS="omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
+if [ "$(bytes "$TEXTO")" -gt "$TOPE" ]; then
   AVISOS+="${AVISOS:+; }Objetivo e Invariantes solos pasan del tope: no se tocan, muévelos a diario.md a mano"
 fi
 
@@ -527,6 +530,6 @@ fi
 if [ "$JSON" = 1 ]; then
   SHA=$(printf '%s' "$TEXTO" | sha256sum | cut -d' ' -f1)
   jq -cn --arg n "$NUC" --arg s "$SHA" '{nucleo:$n,sha256:$s}'
-else echo "handoff: $NUC escrito ($(bytes "$TEXTO") B de $NUCLEO_TOPE)"
+else echo "handoff: $NUC escrito ($(bytes "$TEXTO") B de $TOPE)"
 fi
 [ -z "$ERRC" ] || die 1 "$ERRC"

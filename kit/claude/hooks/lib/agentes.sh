@@ -115,8 +115,9 @@ nucleo_agentes_estado() {
     | @tsv' "$f" 2>/dev/null)
 }
 
-# nucleo_agentes_ctx <raíz>: el bloque <agentes> de los SessionStart, ≤ 800 caracteres, marcado como datos; nada si no
-# hay agentes sin archivar. Los más recientes primero; si no caben todos, lo dice. Las rutas relativas a la raíz.
+# nucleo_agentes_ctx <raíz>: el bloque <agentes> de los SessionStart, ≤ NUCLEO_RESERVA_AGENTES (800), marcado como
+# datos; nada si no hay agentes sin archivar. Los más recientes primero; si no caben todos, lo dice. Las rutas
+# relativas a la raíz.
 nucleo_agentes_ctx() {
   local d rows id tipo est res _a _t out="" n=0 tot=0 l
   d=$(nucleo_agentes_dir "$1") || return 0

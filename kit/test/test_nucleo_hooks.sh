@@ -366,11 +366,11 @@ ok "handoff: sin modo es un uso erróneo (64)" "$(ho >/dev/null 2>&1; echo $?)" 
 ok "estado: sin proyecto → {\"raiz\":null} y exit 3" "$(cd "$T/ro-sin-git" && bash "$BIN/handoff" --estado; echo "rc=$?")" '{"raiz":null}
 rc=3'
 E=$(ho --estado)
-ok "estado: proyecto sin nucleo → bytes 0, tope 6500, dueño null" "$(jq -c '[.raiz == "'"$HR"'", .nucleo == "'"$HNUC"'", .bytes, .tope, .pct, .dueno] | @json' <<<"$E")" '"[true,true,0,6500,0,null]"'
+ok "estado: proyecto sin nucleo → bytes 0, tope 5700, dueño null" "$(jq -c '[.raiz == "'"$HR"'", .nucleo == "'"$HNUC"'", .bytes, .tope, .pct, .dueno] | @json' <<<"$E")" '"[true,true,0,5700,0,null]"'
 mkdir -p "$HR/.claude/estado"; head -c 650 /dev/zero | tr '\0' x >"$HNUC"
 printf 'sesion=ses1\ndesde=%s\n' "$(date +%s)" >"$HR/.claude/estado/.dueno"
 E=$(ho --estado)
-ok "estado: bytes y pct del tope" "$(jq -c '[.bytes, .pct] | @json' <<<"$E")" '"[650,10]"'
+ok "estado: bytes y pct del tope" "$(jq -c '[.bytes, .pct] | @json' <<<"$E")" '"[650,11]"'
 ok "estado: dueño vigente con su sesión y desde ISO" "$(jq -r '[.dueno.sesion, .dueno.vigente, (.dueno.desde | test("^20[0-9-]+T[0-9:]+Z$"))] | @json' <<<"$E")" '["ses1",true,true]'
 printf 'sesion=ses1\ndesde=%s\n' "$(( $(date +%s) - 20000 ))" >"$HR/.claude/estado/.dueno"
 ok "estado: dueño caducado → vigente false" "$(ho --estado | jq -r '.dueno.vigente')" false
@@ -463,11 +463,11 @@ HT=$T/hot; mkrepo "$HT"
 { printf '## Objetivo\nO\n## Paso actual\nPA\n## Pendientes\n'; head -c 4000 /dev/zero | tr '\0' p; printf '\n## Ficheros tocados\n'; head -c 4000 /dev/zero | tr '\0' f; printf '\n'; } >"$T/b-grande.md"
 OUT=$(cd "$HT" && bash "$BIN/handoff" --desde "$T/b-grande.md" 2>&1); RC=$?
 TN=$HT/.claude/estado/nucleo.md
-ok "tope: el nucleo escrito no pasa de NUCLEO_TOPE y sale 0" "$RC,$([ "$(wc -c <"$TN")" -le 6500 ] && echo si)" "0,si"
+ok "tope: el nucleo escrito no pasa de NUCLEO_TOPE menos la reserva de agentes y sale 0" "$RC,$([ "$(wc -c <"$TN")" -le 5700 ] && echo si)" "0,si"
 ok "tope: se omite Pendientes antes que Ficheros tocados (W2: lo exige deep-change) y se dice" "$(command grep -c '^## Ficheros tocados' "$TN"),$(command grep -c '^## Pendientes' "$TN"),$(command grep -ci 'omit.*Pendientes' <<<"$OUT")" "1,0,1"
 ok "tope: lo omitido se conserva en diario.md" "$(command grep -c 'omitido por tope.*Pendientes' "$HT/.claude/estado/diario.md")" 1
 ok "tope: la nota queda en el nucleo (fuera de las secciones)" "$(command grep -c '^> handoff .*omitidas por tope' "$TN")" 1
-ok "tope: NUCLEO_TOPE manda sobre el defecto" "$(cd "$HT" && NUCLEO_TOPE=300 bash "$BIN/handoff" --desde "$T/b-grande.md" >/dev/null 2>&1; if [ "$(wc -c <"$TN")" -le 300 ]; then echo si; else wc -c <"$TN"; fi)" si
+ok "tope: NUCLEO_TOPE manda sobre el defecto" "$(cd "$HT" && NUCLEO_TOPE=1100 bash "$BIN/handoff" --desde "$T/b-grande.md" >/dev/null 2>&1; if [ "$(wc -c <"$TN")" -le 300 ]; then echo si; else wc -c <"$TN"; fi)" si
 # Contrato escritor/lector: lo que handoff deja dentro del tope se inyecta entero tras el clear, aunque una
 # reservada pase de 700 B (el clear del 21-oct cortaba Paso actual y Comandos de un nucleo de 6,7 KB).
 { printf '## Objetivo\nO\n## Paso actual\n'; head -c 1300 /dev/zero | tr '\0' a; printf '\nPASO-FIN\n## Siguiente acción\nS\n## Comandos de verificación\n'
@@ -477,6 +477,22 @@ HC=$T/hot-contrato; mkrepo "$HC"
 # shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
 E=$(. "$H/lib/nucleo.sh"; nucleo_emitir "$HC/.claude/estado/nucleo.md")
 ok "contrato: lo que escribe handoff se inyecta entero" "$(command grep -c 'PASO-FIN\|CMD-FIN' <<<"$E"),$(command grep -c '^\[recortado\|^\[LEE' <<<"$E")" "2,0"
+# El mismo contrato por el hook real, con el bloque de agentes en su peor caso (200 en vuelo): el clear le
+# descuenta su largo al tope, y un nucleo de 6,4 KB escrito entero se cortaba en Paso actual (21-oct).
+bg() { head -c "$1" /dev/zero | tr '\0' "$2" | fold -w 99; echo; }
+{ printf '## Objetivo\n'; bg 600 o; printf '## Invariantes\n'; bg 1600 i; printf '## Paso actual\n'; bg 2900 a
+  printf 'PASO-FIN\n## Siguiente acción\n'; bg 250 s; printf 'SIG-FIN\n## Comandos de verificación\n'; bg 900 c; printf 'CMD-FIN\n'; } >"$T/b-cliff.md"
+HA=$T/hot-agentes; mkrepo "$HA"; mkdir -p "$HA/.claude/estado"
+jq -cn '[range(0;200) | {ev:"start",id:("agent-" + tostring),tipo:"general-purpose",sid:"s0",t:"2099-01-01T00:00:00Z"}] | .[]' >"$HA/.claude/estado/agentes.jsonl"
+(cd "$HA" && bash "$BIN/handoff" --desde "$T/b-cliff.md" >/dev/null 2>&1)
+E=$(ev "$HA" s-ag "" clear | bash "$H/session-start-clear.sh" | ctx)
+fines() { for m in PASO-FIN SIG-FIN CMD-FIN; do command grep -c "^$m\$" <<<"$1"; done | paste -sd, -; }
+ok "contrato por el hook: con el peor bloque de agentes, lo escrito se inyecta entero" \
+  "$(fines "$E"),$(command grep -c '^\[recortado\|^\[LEE' <<<"$E")" "$(fines "$(cat "$HA/.claude/estado/nucleo.md")"),0"
+ok "contrato por el hook: Paso actual y Siguiente acción llegan" "$(command grep -c '^PASO-FIN$\|^SIG-FIN$' <<<"$E")" 2
+# shellcheck source=SCRIPTDIR/../claude/hooks/lib/agentes.sh disable=SC2031  # la reserva la define la lib en este subshell
+ok "reserva: el peor bloque de agentes cabe en NUCLEO_RESERVA_AGENTES" "$(. "$H/lib/nucleo.sh"; . "$H/lib/agentes.sh"
+  A=$(nucleo_agentes_ctx "$HA"); B=$(printf '%s' "$A" | LC_ALL=C wc -c); [ "$B" -gt 400 ] && [ "$B" -le "${NUCLEO_RESERVA_AGENTES:-0}" ] && echo si)" si
 
 # -- --desde: borradores inválidos (exit 2) --
 cp "$HNUC" "$T/nucleo-antes.md"

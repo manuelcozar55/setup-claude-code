@@ -6,6 +6,10 @@
 
 # Tope único (bytes) de lo que se inyecta del nucleo, y de lo que `handoff` deja escrito. El único sitio con la cifra.
 NUCLEO_TOPE=${NUCLEO_TOPE:-6500}
+# Reserva para el bloque <agentes> (nucleo_agentes_ctx no pasa de ella), que los SessionStart descuentan del tope:
+# `handoff` escribe como mucho NUCLEO_TOPE - NUCLEO_RESERVA_AGENTES, y así lo que deja se inyecta entero.
+# shellcheck disable=SC2034  # la consumen handoff y los tests que cargan esta lib.
+NUCLEO_RESERVA_AGENTES=800
 
 # nucleo_raiz <cwd>: raíz del proyecto dueño de <raíz>/.claude/estado/nucleo.md = toplevel git de
 # CLAUDE_PROJECT_DIR (o del cwd), rc 0. Sin proyecto —un directorio sin git, $HOME o lo que cuelga de
