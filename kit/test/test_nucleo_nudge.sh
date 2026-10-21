@@ -42,9 +42,10 @@ ok "bajo el 50 % se rearma: 60 % avisa otra vez" "$(run s5 p60 | ctx | command g
 touch "$NUC"
 ok "60 % + nucleo fresco → vacío" "$(run s3 p60)" ""
 # Editado a mano por encima del tope: al retomar se omitirían secciones enteras; el aviso lo dice con su tamaño.
-head -c 7000 /dev/zero | tr '\0' x >"$NUC"; touch -d '-30 minutes' "$NUC"
+# 6 000 B caben en 6 500, pero no junto al bloque de agentes: el tope es el que usa handoff (6 500 − 800).
+head -c 6000 /dev/zero | tr '\0' x >"$NUC"; touch -d '-30 minutes' "$NUC"
 C=$(run s40 p60 | ctx)
-ok "nucleo por encima del tope: el aviso da tamaño y tope" "$(command grep -c 'Ocupa 7000 B (tope 6500): pasa lo cerrado a diario.md\.' <<<"$C")" 1
+ok "nucleo por encima del tope: el aviso da tamaño y tope" "$(command grep -c 'Ocupa 6000 B (tope 5700): pasa lo cerrado a diario.md\.' <<<"$C")" 1
 ok "con el aviso de tope sigue ≤ 400 chars" "$([ "${#C}" -le 400 ] && echo si)" si
 rm -f "$NUC"
 ok "sin nucleo → pide crearlo con la plantilla" "$(run s4 p60 | ctx | command grep -c "créalo en $NUC con la forma de .*templates/nucleo.md")" 1

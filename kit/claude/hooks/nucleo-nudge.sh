@@ -45,8 +45,9 @@ mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
 if [ -n "$MT" ]; then
   M="CONTEXTO $PCT % del airbag. nucleo.md lleva $((EDAD / 60)) min sin actualizar: antes de la siguiente herramienta actualiza Paso actual / Siguiente acción / Pendientes en $NUC."
   # Editado a mano no pasa por el tope de handoff: pasado el tope, al retomar se omiten secciones enteras.
-  SZ=$(wc -c <"$NUC" 2>/dev/null | tr -d ' ')
-  [ "${SZ:-0}" -le "$NUCLEO_TOPE" ] || M="$M Ocupa $SZ B (tope $NUCLEO_TOPE): pasa lo cerrado a diario.md."
+  # Es el mismo tope con el que escribe handoff, con la reserva del bloque de agentes ya descontada.
+  SZ=$(wc -c <"$NUC" 2>/dev/null | tr -d ' ') T=$((NUCLEO_TOPE - NUCLEO_RESERVA_AGENTES))
+  [ "${SZ:-0}" -le "$T" ] || M="$M Ocupa $SZ B (tope $T): pasa lo cerrado a diario.md."
 else
   M="CONTEXTO $PCT % del airbag y no hay nucleo.md: antes de la siguiente herramienta créalo en $NUC con la forma de \$HOME/.claude/templates/nucleo.md."
 fi
