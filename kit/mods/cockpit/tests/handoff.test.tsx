@@ -627,7 +627,17 @@ test('nextLine: sin final de frase corta en el último espacio, nunca a mitad de
 })
 
 test('nextLine: el corte no deja un code span abierto', () => {
-  expect(nextLine(siguiente('Corre `' + 'x '.repeat(120) + '` después'))).toBe('Corre …' + MORE)
+  const p = 'p '.repeat(60)
+  expect(nextLine(siguiente(p + 'Corre `' + 'x '.repeat(120) + '` después'))).toBe(p + 'Corre …' + MORE)
+  // CommonMark: ``a ` b`` es un solo span; el que queda abierto es `x, aunque el total de comillas sea par.
+  expect(nextLine(siguiente(p + '``a ` b`` y `x ' + 'z '.repeat(60)))).toBe(p + '``a ` b`` y …' + MORE)
+  expect(nextLine(siguiente(p + 'usa ```bash ' + 'z '.repeat(60)))).toBe(p + 'usa …' + MORE)
+})
+
+test('nextLine: si el corte deja menos de la mitad, no se usa: «Ok. …» perdería la acción', () => {
+  expect(nextLine(siguiente('Ok. ' + 'palabra '.repeat(30)))).toBe(('Ok. ' + 'palabra '.repeat(24)).trimEnd() + ' …' + MORE)
+  expect(nextLine(siguiente('ab ' + 'x'.repeat(300)))).toBe('')
+  expect(nextLine(siguiente('Corre `' + 'x '.repeat(120) + '` después'))).toBe('')
 })
 
 test('nextLine: una palabra más larga que el límite no se parte: relleno genérico', () => {

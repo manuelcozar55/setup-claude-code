@@ -263,8 +263,20 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 
 // First line of «Siguiente acción» in the saved state: what the person approves when the prompt comes back filled.
 // Past NEXT_MAX graphemes it is cut at the last sentence end, else at the last space, and before a code span the cut
-// would leave open: a half path or half command reads as a whole one. A single word past the limit gives ''.
+// would leave open: a half path or half command reads as a whole one. A cut that keeps less than half the limit (one
+// long word, «Ok. …») gives '': the generic fill says more.
 // A cut, or more lines under the first one, ends in «(sigue en <path>)»: what is left out is said, not dropped.
+// Where the code span still open at the end of s starts, or -1. As in CommonMark, a run of n backticks opens a span
+// and only a run of exactly n closes it: ``a ` b`` is one span.
+const openSpan = (s: string) => {
+  let open = -1
+  let n = 0
+  for (const m of s.matchAll(/`+/g)) {
+    if (open < 0) [open, n] = [m.index ?? 0, m[0].length]
+    else if (m[0].length === n) open = -1
+  }
+  return open
+}
 export function nextLine(doc: string, path = '.claude/estado/nucleo.md') {
   const sec = sections(doc).find(s => s.key.startsWith('siguiente accion'))
   const [line, ...rest] = bodyOf(sec?.text ?? '')
@@ -278,12 +290,12 @@ export function nextLine(doc: string, path = '.claude/estado/nucleo.md') {
   // One grapheme past the limit: a sentence end or a space right at the limit still counts. A «! » inside a code
   // span (`test ! -e`) is no sentence end.
   const head = chars.slice(0, NEXT_MAX + 1).join('')
-  const ticks = (s: string) => (s.match(/`/g) ?? []).length
-  const ends = Array.from(head.matchAll(/[.!?](?= )/g), m => (m.index ?? 0) + 1).filter(i => ticks(head.slice(0, i)) % 2 === 0)
+  const ends = Array.from(head.matchAll(/[.!?](?= )/g), m => (m.index ?? 0) + 1).filter(i => openSpan(head.slice(0, i)) < 0)
   const dot = ends[ends.length - 1]
-  let cut = (dot ? head.slice(0, dot) : head.slice(0, Math.max(0, head.lastIndexOf(' ')))).trimEnd()
-  if (ticks(cut) % 2) cut = cut.slice(0, cut.lastIndexOf('`')).trimEnd()
-  return cut ? `${cut} …${more}` : ''
+  let cut = (dot && dot > head.length / 2 ? head.slice(0, dot) : head.slice(0, Math.max(0, head.lastIndexOf(' ')))).trimEnd()
+  const open = openSpan(cut)
+  if (open >= 0) cut = cut.slice(0, open).trimEnd()
+  return Array.from(graphemes.segment(cut)).length >= NEXT_MAX / 2 ? `${cut} …${more}` : ''
 }
 // The fixed prefix keeps the draft from starting with «/» or «!»: it cannot run a command or switch to bash mode.
 export const fillFor = (doc: string, path = '.claude/estado/nucleo.md') => {
