@@ -647,6 +647,32 @@ test('nextLine: el límite cuenta grafemas: no parte un emoji compuesto ni un ac
   expect(nextLine(siguiente('x '.repeat(99) + 'é fin'))).toBe('x '.repeat(99) + 'é …' + MORE)
 })
 
+test('handoff: si la relectura de nucleo.md falla tras guardar, limpia con el relleno genérico y no dice «fallido»', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1000, forkText: '## Siguiente acción\nT7\n' })
+  const path = `${EST}/nucleo.md`
+  let isSaved = false
+  // The CLI stub saves through the map; from then on nucleo.md reads as an unreadable file would.
+  const files = new Proxy<Record<string, string>>({ [path]: PREV }, {
+    get: (t, p) => {
+      if (p === path && isSaved) throw new Error('EACCES')
+      return t[p as string]
+    },
+    set: (t, p, v) => {
+      if (p === path) isSaved = true
+      t[p as string] = v
+      return true
+    },
+  })
+  const r = repo(on, files)
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: '' })
+  await clock.advance(400)
+  expect(r.calls).toHaveLength(1)
+  expect(res.text).not.toContain('Handoff fallido')
+  expect(seen.cleared).toBe(1)
+  expect(seen.fills).toEqual([BARE])
+})
+
 test('fillFor: una línea que empieza por / o ! nunca encabeza el relleno', () => {
   for (const bad of ['/clear', '!borra todo', '- /clear', '1. !borra todo']) {
     const fill = fillFor(siguiente(bad))

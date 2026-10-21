@@ -538,7 +538,8 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
       await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${saved.path}` }))
       return saved
     }
-    await clearAfter($, saved.path, fillFor(await readState($, saved.path), saved.path.endsWith('/.claude/estado/nucleo.md') ? '.claude/estado/nucleo.md' : saved.path), revision)
+    // Saved and confirmed by the receipt: a failed re-read only loses the line, and the generic fill goes on.
+    await clearAfter($, saved.path, fillFor(await readState($, saved.path).catch(() => ''), saved.path.endsWith('/.claude/estado/nucleo.md') ? '.claude/estado/nucleo.md' : saved.path), revision)
     return saved
   } catch (err) {
     await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}` }))
