@@ -299,6 +299,7 @@ safe_operand() {
 }
 IFS=':' read -ra DIRS <<< "$SAFE_DIRS"
 for seg in "${CMDN_SEGS[@]}"; do
+  [[ $seg == *rm* || $seg == *git* ]] || continue
   cmdn_fields "$seg"
   case ${T[1]:-} in
     rm)

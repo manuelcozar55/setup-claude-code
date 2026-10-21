@@ -668,6 +668,14 @@ expect "destructive: find -delete en /tmp NO denegado" "$(run_destructive 'find 
 # y las opciones globales de git, los prefijos (sudo, env, timeout...) y las grafias de rm/clean
 # sacaban el comando del patron. Los comandos se pasan por jq porque llevan comillas.
 run_dg() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" bash "$KIT/claude/hooks/destructive-guard.sh" 2>&1; }
+expect "destructive: segmento inocuo antes de rm normalizado no lo oculta" \
+  "$(run_dg 'x find; command /bin/"r"m -- /etc/probe')" BLOCK
+expect "destructive: segmento inocuo antes de git normalizado no lo oculta" \
+  "$(run_dg 'x find; env A=1 /usr/bin/"g"it reset --hard')" BLOCK
+expect "destructive: opciones globales de git preservan clean tras segmento inocuo" \
+  "$(run_dg 'x find; git -c core.x=1 clean -fd')" BLOCK
+expect "destructive: segmentos inocuos sin rm ni git permitidos" \
+  "$(run_dg 'x find; true')" ALLOW
 expect "destructive: find -exec rm en /etc denegado" \
   "$(run_dg "find /etc -name '*.conf' -exec rm -f {} +")" BLOCK
 expect "destructive: find -exec rm con comillas dobles denegado" \
