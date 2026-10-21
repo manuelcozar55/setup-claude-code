@@ -30,6 +30,7 @@ ser techo también sin política gestionada.
 
 ### Fixed
 
+- Inyección tras `/handoff` y `/clear`: un `nucleo.md` dentro del tope (`NUCLEO_TOPE`) se inyecta entero. Antes, «Paso actual», «Siguiente acción» y «Comandos de verificación» se cortaban a 700 B aunque el total cupiera, y lo que `handoff` daba por bueno llegaba recortado. Por encima del tope se omiten secciones enteras en el orden de `handoff` (Pendientes, Plan, Ficheros tocados), con aviso y `[LEE …]`; el reparto por sección queda solo para cuando ni así cabe. El aviso de contexto (`nucleo-nudge.sh`) da el tamaño cuando un `nucleo.md` editado a mano pasa del tope.
 - Propiedad del estado: un `clear` ajeno no roba una sesión vigente; bloqueo de escrituras, recibo SHA-256 y archivo condicionado al hash. `SessionEnd` libera solo el dueño propio. Un proceso vivo no pierde propiedad por antigüedad.
 - Agentes: eventos por sesión y contexto acotado; una tarea hermana no se trata como descendiente pendiente de un agente ya terminado.
 - Cockpit: ruta canónica del CLI en el prompt HOME, progreso desconocido si faltan datos y advertencias visibles sin limpiar ante errores. La continuación no se reenvía si su resultado es ambiguo.

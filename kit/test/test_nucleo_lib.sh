@@ -279,6 +279,20 @@ ok "tope único: reservadas cortas → Objetivo + Invariantes + Plan (~5 500 B) 
 { echo '# Estado'; for sx in Objetivo Invariantes Plan 'Paso actual' 'Siguiente acción' Pendientes 'Comandos de verificación' 'Ficheros tocados' 'No repetir'; do echo "## $sx"; big 4000; done; } >"$T/res-todo.md"
 S=$(nucleo_emitir "$T/res-todo.md")
 ok "presupuesto: emisión de peor caso ≤ 7 000 chars (cabe con protocolo y git-hechos bajo 9 500)" "$([ "${#S}" -le 7000 ] && echo si)" si
+# Caso real (21-oct): 6,2 KB, dentro del tope, con Paso actual y Comandos de ~1 300 B. La reserva de 700 las
+# cortaba en cada clear aunque el total cupiera: si cabe entero, se emite entero.
+{ echo '# Estado'; echo '## Objetivo'; big 600; echo '## Invariantes'; big 1500; echo '## Paso actual'; big 1300; echo PASO-FIN
+  echo '## Siguiente acción'; big 200; echo SIG-FIN; echo '## Comandos de verificación'; big 1250; echo CMD-FIN
+  echo '## Plan'; big 300; echo '## Ficheros tocados'; big 1000; echo FICH-FIN; } >"$T/cabe.md"
+S=$(nucleo_emitir "$T/cabe.md")
+ok "cabe en el tope: sale entero" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|FICH-FIN' <<<"$S")" 4
+ok "cabe en el tope: sin marcas de recorte ni [LEE]" "$(command grep -c '^\[recortado\|^\[LEE' <<<"$S")" 0
+# Algo por encima: fuera secciones enteras en el orden de handoff (Pendientes, Plan…), sin partir las reservadas.
+{ cat "$T/cabe.md"; echo '## Pendientes'; big 1200; echo PEND-FIN; } >"$T/pasa-poco.md"
+S=$(nucleo_emitir "$T/pasa-poco.md")
+ok "pasa poco: las reservadas y Ficheros tocados salen enteras" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|FICH-FIN' <<<"$S")" 4
+ok "pasa poco: Pendientes se omite entera y se dice" "$(command grep -c 'PEND-FIN' <<<"$S"),$(command grep -c '^\[recortado por tope: se omiten «Pendientes»' <<<"$S")" "0,1"
+ok "pasa poco: ninguna sección partida; sí pide leer el fichero" "$(command grep -c 'sección incompleta' <<<"$S"),$(command grep -c '^\[LEE ' <<<"$S")" "0,1"
 
 # --- #22: el corte por bytes no parte un carácter UTF-8 (línea larga con ñ de 2 bytes; título y sección) ---
 U=$T/utf8.md

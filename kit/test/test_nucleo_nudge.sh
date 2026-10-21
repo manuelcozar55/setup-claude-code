@@ -22,6 +22,7 @@ OUT=$(run s1 p60); C=$(ctx <<<"$OUT")
 ok "60 % + nucleo viejo → nudge" "$(jq -r '.hookSpecificOutput.hookEventName' <<<"$OUT")" PostToolUse
 ok "nudge: cita la banda, la edad y la ruta exacta" "$(command grep -c "CONTEXTO 60 % del airbag. nucleo.md lleva 30 min .* en $NUC\." <<<"$C")" 1
 ok "nudge ≤ 400 chars" "$([ "${#C}" -le 400 ] && echo si)" si
+ok "nucleo dentro del tope: sin aviso de tamaño" "$(command grep -c 'Ocupa .* B (tope' <<<"$C")" 0
 ok "misma banda dos veces → una sola" "$(run s1 p60)" ""
 ok "banda siguiente (70 %) sí avisa" "$(run s1 p72 | ctx | command grep -c '72 % del airbag')" 1
 ok "70 %: fin de fase es parada válida" "$(run s6 p72 | ctx | command grep -c 'Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno\.')" 1
@@ -40,6 +41,11 @@ run s5 p60 >/dev/null; run s5 p20 >/dev/null
 ok "bajo el 50 % se rearma: 60 % avisa otra vez" "$(run s5 p60 | ctx | command grep -c '60 % del airbag')" 1
 touch "$NUC"
 ok "60 % + nucleo fresco → vacío" "$(run s3 p60)" ""
+# Editado a mano por encima del tope: al retomar se omitirían secciones enteras; el aviso lo dice con su tamaño.
+head -c 7000 /dev/zero | tr '\0' x >"$NUC"; touch -d '-30 minutes' "$NUC"
+C=$(run s40 p60 | ctx)
+ok "nucleo por encima del tope: el aviso da tamaño y tope" "$(command grep -c 'Ocupa 7000 B (tope 6500): pasa lo cerrado a diario.md\.' <<<"$C")" 1
+ok "con el aviso de tope sigue ≤ 400 chars" "$([ "${#C}" -le 400 ] && echo si)" si
 rm -f "$NUC"
 ok "sin nucleo → pide crearlo con la plantilla" "$(run s4 p60 | ctx | command grep -c "créalo en $NUC con la forma de .*templates/nucleo.md")" 1
 ok "session_id con barras → nada (va a un nombre de fichero)" "$(run '../x' p60)" ""

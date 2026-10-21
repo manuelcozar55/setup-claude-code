@@ -427,9 +427,14 @@ nucleo_ctx() {
 nucleo_emitir() {
   [ -f "$1" ] || return 0
   local kb=$(( ($(wc -c <"$1") + 1023) / 1024 )) rs out
-  # Dos pasadas: la primera mide lo que ocupan las reservadas (no depende del tope); la segunda reparte el resto.
-  rs=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" medir)
-  out=$(_nucleo_emitir_awk "$1" "$kb" "$(( NUCLEO_TOPE - ${rs:-0} ))" | sed 's|</|<\\/|g')
+  # Si cabe entero (o quitando secciones enteras en el orden de handoff) sale así: lo que handoff deja dentro
+  # del tope se inyecta sin cortes. Solo si ni así, dos pasadas: la primera mide lo que ocupan las reservadas
+  # (no depende del tope); la segunda reparte el resto.
+  if ! out=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" entero); then
+    rs=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" medir)
+    out=$(_nucleo_emitir_awk "$1" "$kb" "$(( NUCLEO_TOPE - ${rs:-0} ))")
+  fi
+  out=$(printf '%s\n' "$out" | sed 's|</|<\\/|g')
   [ -z "$out" ] || printf '%s\n' "$out"
   case $out in *'[recortado'* | *'[LEE '*) _nucleo_log_recorte "$1" "$out" ;; esac
   return 0
@@ -446,10 +451,12 @@ _nucleo_log_recorte() {
   return 0
 }
 
-# _nucleo_emitir_awk <fichero> <kb> <tope> [medir]: la emisión; con «medir», solo los bytes de las reservadas.
+# _nucleo_emitir_awk <fichero> <kb> <tope> [medir|entero]: la emisión; con «medir», solo los bytes de las
+# reservadas; con «entero», sin topes por sección y rc 3 si ni quitando Pendientes, Plan y Ficheros tocados cabe.
 _nucleo_emitir_awk() {
   LC_ALL=C awk -v f="$1" -v kb="$2" -v sec=3000 -v tope="$3" -v res=700 -v medir="${4:-}" '
-    BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|") }
+    BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|")
+      if (medir == "entero") { lim = tope; tope = sec = res = 1e9 } }
     # «Paso actual», «Siguiente acción» y «Comandos de verificación» tienen reserva propia (res bytes cada
     # una): con un nucleo de 20 KB el presupuesto se gastaba por orden y eran justo las que se perdían (la
     # tercera es lo que pide el paso 1 del protocolo de arranque). Cuentan DENTRO del tope único de 6 500:
@@ -514,10 +521,16 @@ _nucleo_emitir_awk() {
       sale("[recortado: sección incompleta.]"); recortes++
     }
     END {
-      if (medir != "") { print ocupado + 0; exit }
+      if (medir == "medir") { print ocupado + 0; exit }
       # Orden de emisión (D5), no el del fichero: lo que más urge retomar va primero y lo que se recorta es la cola.
-      printf "%s", buf["#"]
       m = split("Objetivo|Invariantes|Paso actual|Siguiente acción|Comandos de verificación|Plan|Pendientes|Ficheros tocados|No repetir", ord, "|")
+      if (medir == "entero") {
+        total = length(buf["#"]); for (i = 1; i <= m; i++) total += length(buf[ord[i]])
+        q = split("Pendientes|Plan|Ficheros tocados", cola, "|")
+        for (i = 1; total > lim && i <= q; i++) if (buf[cola[i]] != "") { total -= length(buf[cola[i]]); buf[cola[i]] = ""; omitidas = omitidas " «" cola[i] "»" }
+        if (total > lim) exit 3
+      }
+      printf "%s", buf["#"]
       for (i = 1; i <= m; i++) printf "%s", buf[ord[i]]
       if (cercas % 2) print "[cercas sin equilibrar: se ignoran; un # comentario dentro de un bloque puede cortar su sección]"
       if (omitidas != "") print "[recortado por tope: se omiten" omitidas ".]"
