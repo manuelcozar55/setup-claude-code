@@ -21,7 +21,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
           nuevas del borrador, sin borrar nunca una); los [x] del Plan pasan a diario.md con su
           comando y el hash de HEAD; el último rc de verificaciones.log se pliega en «Comandos de verificación»;
           una sección vacía del borrador (sin cuerpo o solo comentarios) conserva la del nucleo; para vaciarla
-          se escribe «- (nada)»; se guarda nucleo.prev-* (3 copias) y se recorta al tope (menos la reserva del bloque de agentes, para que se inyecte entero) omitiendo secciones enteras (primero las ajenas a la plantilla, desde el final; luego Pendientes, Plan, Ficheros tocados, Comandos, Siguiente acción y Paso actual).
+          se escribe «- (nada)»; se guarda nucleo.prev-* (3 copias) y se recorta al tope (menos la reserva del bloque de agentes, para que se inyecte entero) omitiendo secciones enteras (primero las ajenas a la plantilla, desde el final; luego Pendientes, Plan, Ficheros tocados y Comandos); Paso actual se corta por línea, con aviso, y Siguiente acción no se toca. Lo omitido o cortado va entero a diario.md.
   --solo    no fusiona: el borrador sustituye al nucleo (se sigue validando).
   --commit  además hace commit solo de .claude/estado/ (para repos propios); sin él, .claude/estado/ se añade
             a .git/info/exclude.
@@ -447,27 +447,41 @@ bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
 armar
 AVISOS=""
 # Se omiten secciones enteras: primero las ajenas a la plantilla (desde el final), luego las de plantilla desde el
-# final del orden D5 (Objetivo e Invariantes no se tocan); lo omitido va al diario.
+# final del orden D5 hasta Comandos (Objetivo, Invariantes y Siguiente acción no se tocan); lo omitido va al diario.
 omitir() {
   local t=${RT[$1]%%$'\n'*}; t=${t#\#\# }
   printf '## %s omitido por tope: %s\n%s\n' "$HOY" "$t" "${RT[$1]#*$'\n'}" >>"$W/omitido"
   OMITIDAS+=" $t"
   RT[$1]=""; armar
 }
+# recortar: Paso actual se corta en un límite de línea, con aviso, hasta caber (y cierra la valla que deje abierta); el
+# original va entero al diario. Si no cabe ni una línea, se omite.
+RECORTADA=""
+recortar() {
+  local t=${RT[$1]%%$'\n'*} b=${RT[$1]#*$'\n'} out
+  local aviso="[handoff: recortado al tope; el texto entero está en diario.md]"
+  out=$(printf '%s' "$b" | LC_ALL=C awk -v m="$(( $(bytes "$b") - $(bytes "$TEXTO") + TOPE - $(bytes "$aviso") - 5 ))" \
+    '{ n += length($0) + 1; if (n > m) exit; print } /^[ \t]*```+[^`]*$/ { v = !v } END { if (v) print "```" }')
+  [ -n "$out" ] || { omitir "$1"; return; }
+  printf '## %s recortado por tope: %s\n%s\n' "$HOY" "${t#\#\# }" "$b" >>"$W/omitido"
+  RECORTADA=${t#\#\# }
+  RT[$1]=$t$'\n'$out$'\n'$aviso$'\n'; armar
+}
 for ((i = ${#RK[@]} - 1; i >= 0; i--)); do
   [ "$(bytes "$TEXTO")" -gt "$TOPE" ] || break
   admitida "${RK[i]}" || [ -z "${RT[i]}" ] || omitir "$i"
 done
-for k in pendientes plan "ficheros tocados" "comandos de verificacion" "siguiente accion" "paso actual"; do
+for k in pendientes plan "ficheros tocados" "comandos de verificacion" "paso actual"; do
   [ "$(bytes "$TEXTO")" -gt "$TOPE" ] || break
   for ((i = 0; i < ${#RK[@]}; i++)); do
     [ "${RK[i]}" = "$k" ] && [ -n "${RT[i]}" ] || continue
-    omitir "$i"
+    if [ "$k" = "paso actual" ]; then recortar "$i"; else omitir "$i"; fi
   done
 done
 [ -z "$OMITIDAS" ] || AVISOS="omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
+[ -z "$RECORTADA" ] || AVISOS+="${AVISOS:+; }$RECORTADA recortado al tope (${TOPE} B), entero en diario.md"
 if [ "$(bytes "$TEXTO")" -gt "$TOPE" ]; then
-  AVISOS+="${AVISOS:+; }Objetivo e Invariantes solos pasan del tope: no se tocan, muévelos a diario.md a mano"
+  AVISOS+="${AVISOS:+; }Objetivo, Invariantes y Siguiente acción solos pasan del tope: no se tocan; acórtalos o mueve lo cerrado a diario.md a mano"
 fi
 
 # --- escritura ---

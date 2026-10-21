@@ -493,6 +493,27 @@ ok "contrato por el hook: Paso actual y Siguiente acción llegan" "$(command gre
 # shellcheck source=SCRIPTDIR/../claude/hooks/lib/agentes.sh disable=SC2031  # la reserva la define la lib en este subshell
 ok "reserva: el peor bloque de agentes cabe en NUCLEO_RESERVA_AGENTES" "$(. "$H/lib/nucleo.sh"; . "$H/lib/agentes.sh"
   A=$(nucleo_agentes_ctx "$HA"); B=$(printf '%s' "$A" | LC_ALL=C wc -c); [ "$B" -gt 400 ] && [ "$B" -le "${NUCLEO_RESERVA_AGENTES:-0}" ] && echo si)" si
+# Siguiente acción no se omite nunca; Paso actual se recorta por línea antes que omitirse (21-oct: un Paso actual de
+# 3,6 KB dejaba el nucleo en Objetivo e Invariantes solos).
+HP=$T/hot-paso; mkrepo "$HP"; PN=$HP/.claude/estado/nucleo.md
+{ printf '## Objetivo\n'; bg 1000 o; printf '## Invariantes\n'; bg 1800 i; printf '## Paso actual\n'; bg 3600 a
+  printf 'PASO-FIN\n## Siguiente acción\nSIG-VIVA\n## Comandos de verificación\n'; bg 300 c; printf 'CMD-FIN\n'; } >"$T/b-paso.md"
+OUT=$(cd "$HP" && bash "$BIN/handoff" --desde "$T/b-paso.md" 2>&1); RC=$?
+ok "tope: Siguiente acción se queda y Paso actual se recorta en vez de omitirse" \
+  "$RC,$(command grep -c '^SIG-VIVA$' "$PN"),$(command grep -c '^## Paso actual$' "$PN"),$([ "$(wc -c <"$PN")" -le 5700 ] && echo cabe)" "0,1,1,cabe"
+ok "tope: Paso actual se corta en un límite de línea, con aviso en la sección y en la salida" \
+  "$(awk '/^## Paso actual$/{p=1;next} /^## /{p=0} p' "$PN" | command grep -vc '^a\{99\}$'),$(command grep -c '^\[handoff: .*diario\.md' "$PN"),$(command grep -c 'Paso actual recortado' <<<"$OUT")" "1,1,1"
+ok "tope: el Paso actual entero va a diario.md" "$(cmp -s <(awk '/^## Paso actual$/{p=1;next} /^## /{p=0} p' "$T/b-paso.md") \
+  <(awk '/recortado por tope: Paso actual$/{p=1;next} /^## /{p=0} p' "$HP/.claude/estado/diario.md" | sed '${/^$/d}') && echo fiel)" fiel
+{ printf '## Objetivo\n'; bg 1000 o; printf '## Invariantes\n'; bg 1800 i; printf '## Paso actual\nantes\n```bash\n'; bg 3600 a
+  printf '```\n## Siguiente acción\nSIG-VIVA\n'; } >"$T/b-valla.md"
+(cd "$HP" && bash "$BIN/handoff" --solo --desde "$T/b-valla.md" >/dev/null 2>&1)
+ok "tope: el corte de Paso actual no deja una valla abierta" "$(command grep -c '^```' "$PN"),$(command grep -c '^SIG-VIVA$' "$PN"),$([ "$(wc -c <"$PN")" -le 5700 ] && echo cabe)" "2,1,cabe"
+# Si ni una línea de Paso actual cabe, se omite entera; y si Siguiente acción sola pasa del tope, se dice.
+{ printf '## Objetivo\nO\n## Paso actual\n'; bg 600 a; printf '## Siguiente acción\n'; bg 6000 s; } >"$T/b-sig.md"
+OUT=$(cd "$HP" && bash "$BIN/handoff" --solo --desde "$T/b-sig.md" 2>&1)
+ok "tope: sin sitio para Paso actual se omite; Siguiente acción se queda y el aviso la nombra" \
+  "$(command grep -c '^## Siguiente acción$' "$PN"),$(command grep -c '^## Paso actual$' "$PN"),$(command grep -c 'Siguiente acción solos pasan del tope' <<<"$OUT")" "1,0,1"
 
 # -- --desde: borradores inválidos (exit 2) --
 cp "$HNUC" "$T/nucleo-antes.md"

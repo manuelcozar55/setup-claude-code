@@ -123,8 +123,10 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
 - **`handoff --desde <borrador>`** cierra la fase: el modelo redacta el borrador y el CLI decide. Valida las
   cabeceras, conserva Objetivo, une las Invariantes por líneas (nunca borra una), mueve los `[x]` del Plan a
   `diario.md` con su comando y hash, pliega el último rc de `oraculo`, rota tres copias `nucleo.prev-*`, recorta
-  al tope omitiendo secciones enteras desde el final y libera al dueño. `--solo`, `--commit`, `--migrar <dir>`
-  y `--estado` (JSON de una línea) completan el contrato.
+  al tope menos la reserva del bloque de agentes (así se inyecta entero) y libera al dueño. Para recortar omite
+  secciones enteras desde el final hasta Comandos, corta Paso actual por línea con un aviso y no toca Siguiente
+  acción; lo quitado va entero a `diario.md`. `--solo`, `--commit`, `--migrar <dir>` y `--estado` (JSON de una
+  línea) completan el contrato.
 - Dueño: `.claude/estado/.dueno` (`sesion=`, `desde=`) lo reclama SessionStart; la sesión ajena recibe un aviso
   y su nudge de contexto calla; caduca a las 4 h (`NUCLEO_DUENO_TTL`).
 
