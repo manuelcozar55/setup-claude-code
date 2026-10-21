@@ -51,6 +51,7 @@ ser techo también sin política gestionada.
 - `doctor.sh` y `.github/scripts/assert-install.sh` comprueban el inventario completo y recursivo de `kit/claude` y `kit/sentinel`: FAIL si falta un fichero (skills, `AGENTS.md`) o un ejecutable pierde el permiso, WARN si su contenido difiere; un symlink propio cuenta como presente y `sentinel/iocs.json` sigue siendo opcional.
 - `scripts/backup.sh` nombra el ZIP con sello UTC, PID y aleatorio: dos backups en el mismo segundo (el previo de `uninstall.sh --apply` y el que acabas de crear) ya no colisionan ni abortan.
 - `doctor.sh`: `settings.json`, `CLAUDE.md` y `AGENTS.md` ya no cuentan como deriva (`install.sh` fusiona el primero y no pisa los otros dos), así que una instalación con los tuyos no arrastra un WARN permanente; si falta alguno sigue siendo FAIL.
+- Tests: los dos casos H3 de tiempo (`test_nucleo_lib.sh`, `test_session_start_clear.sh`) pasan de 2,5 s a 4 s; en WSL2 midieron 1,6-2,8 s y el tope anterior tumbaba `make test` sin defecto.
 
 ### Security
 

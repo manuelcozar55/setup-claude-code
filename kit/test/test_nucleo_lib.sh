@@ -365,9 +365,11 @@ for i in $(seq 1 300); do echo "$T/h3/rr/r$(( i % 120 + 1 ))"; done >"$NUCLEO_RE
 ok "H3: al leer procesa como máximo 50 raíces únicas" "$(nucleo_indice | command grep -c '^- .* · o[0-9]* · paso')" 15
 printf '%s\n' "$T/h3/rr/r1" "$T/h3/sin" >"$NUCLEO_REGISTRO"
 ok "H3: nucleo_indice comprueba -f antes de nucleo_enlazado (raíz sin nucleo no sale)" "$(nucleo_indice | command grep -c 'h3/sin')" 0
+# Tope de reloj con holgura: en WSL2 esto tarda 1,6-2,8 s según la carga y con 2,5 s caía 1 de cada 3 sin defecto.
+# El trabajo ya lo acota «como máximo 50 raíces»; esto solo vigila que no se dispare (timeout del hook: 10 s).
 t0=$(date +%s%N); for i in $(seq 1 120); do echo "$T/h3/rr/r$i"; done >"$NUCLEO_REGISTRO"; for i in $(seq 1 180); do echo "$T/h3/rr/r$(( i % 120 + 1 ))"; done >>"$NUCLEO_REGISTRO"
 nucleo_indice >/dev/null; ms=$(( ($(date +%s%N) - t0) / 1000000 ))
-ok "H3: índice con 300 líneas de registro < 2,5 s (${ms} ms)" "$([ "$ms" -lt 2500 ] && echo si)" si
+ok "H3: índice con 300 líneas de registro < 4 s (${ms} ms)" "$([ "$ms" -lt 4000 ] && echo si)" si
 
 # --- H4: el registro nace con modo 600 y su directorio con 700 ---
 ( umask 022; NUCLEO_REGISTRO=$T/h4/nuevo/raices nucleo_registrar "$T/p1" )
