@@ -42,7 +42,7 @@ export const HANDOFF_PROMPT = `Actualiza el estado del proyecto (.claude/estado/
 (pasos con [x] hechos, cada uno con el comando que lo verificó, y [ ] pendientes)
 ## Paso actual
 ## Siguiente acción
-(una sola, concreta y ejecutable)
+(una sola, concreta y ejecutable. Su primera línea es lo que la persona aprueba al pulsar Enter tras /clear: la acción misma, con su condición, en 160 caracteres como máximo; nunca «pedir el sí» ni «preguntar a la persona si…». El detalle y los comandos, en las líneas siguientes)
 ## Pendientes
 (incluye riesgos y los heredados que sigan abiertos; empieza con \`(persona)\` cada línea que solo pueda hacer la persona: el índice de \`~\` las reúne)
 ## Comandos de verificación

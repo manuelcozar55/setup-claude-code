@@ -568,6 +568,12 @@ test('HANDOFF_PROMPT pide las cabeceras de la plantilla y no «Pendientes y ries
   expect(HANDOFF_PROMPT).toContain('(persona)')
 })
 
+test('HANDOFF_PROMPT: la primera línea de «Siguiente acción» es la acción con su condición, ≤ 160 y sin «pedir el sí»', () => {
+  const lines = HANDOFF_PROMPT.split('\n')
+  const note = lines[lines.indexOf('## Siguiente acción') + 1] ?? ''
+  for (const s of ['pulsar Enter', 'con su condición', '160 caracteres', 'pedir el sí']) expect(note).toContain(s)
+})
+
 // ── K2: the first message after /clear carries the next action
 const siguiente = (body: string) => `## Plan\n- [ ] a\n## Siguiente acción\n${body}\n## Pendientes\n- p\n`
 const BARE = 'sigue con la Siguiente acción de .claude/estado/nucleo.md'

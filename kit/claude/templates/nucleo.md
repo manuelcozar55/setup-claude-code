@@ -6,6 +6,7 @@
 <!-- lo que no se toca, con su porqué; incluye las correcciones literales de la persona, con fecha: `- Corrección AAAA-MM-DD: «sus palabras»`. `handoff` solo añade líneas, nunca borra. -->
 ## Paso actual
 ## Siguiente acción
+<!-- la primera línea es lo que la persona aprueba al pulsar Enter tras /clear: la acción misma, con su condición, en 160 caracteres como máximo; nunca «pedir el sí» ni «preguntar a la persona si…». El detalle, debajo. -->
 ## Comandos de verificación
 <!-- `comando` → rc=N (lo rellena `handoff` desde lo que anotó `oraculo`) -->
 ## Plan

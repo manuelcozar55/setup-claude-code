@@ -100,6 +100,7 @@ ok "plantilla: sin cifra de tope (KB ni 6500)" "$(command grep -ciE '[0-9] ?KB|6
 ok "plantilla: correcciones literales con fecha, en Invariantes" "$(awk '/^## /{s=$0} s=="## Invariantes" && /Corrección/' "$TPL" | command grep -c 'AAAA-MM-DD')" 1
 ok "plantilla: ficheros calientes con rango ruta:L120-180" "$(command grep -c 'ruta:L120-180' "$TPL")" 1
 ok "plantilla: → rc=N junto a cada comando" "$(command grep -c '→ rc=N' "$TPL")" 1
+ok "plantilla: la primera línea de Siguiente acción se aprueba con Enter, ≤ 160 y sin «pedir el sí»" "$(awk '/^## /{s=$0} s=="## Siguiente acción" && /Enter/ && /160/ && /pedir el sí/' "$TPL" | wc -l | tr -d ' ')" 1
 
 # `claude --worktree` crea el worktree en <repo>/.claude/worktrees/<rama>: es su propia raíz (rama y
 # nucleo suyos), no el repo padre. Solo $HOME/.claude sube a su padre.
