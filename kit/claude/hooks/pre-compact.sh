@@ -17,20 +17,21 @@ CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
 RAIZ=$(nucleo_raiz "$CWD")
 nucleo_enlazado "$RAIZ" && exit 0
-NUC="$RAIZ/.claude/estado/nucleo.md"
+ESTADO=$(nucleo_estado_leer "$RAIZ") || exit 0
+NUC="$ESTADO/nucleo.md"
 
 # KPI: ts sesión ctx% edad_nucleo_s (-1 si no existe). Se mide con nucleo_audit o con awk.
 MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
 PCT=$( { [ -n "$TP" ] && nucleo_ctx "$TP"; } | cut -d' ' -f2)
-mkdir -p "$HOME/.claude/session-logs" 2>/dev/null \
+mkdir -p "${CLAUDE_HOME:-$HOME/.claude}/session-logs" 2>/dev/null \
   && printf '%s %s %s %s\n' "$(date +%FT%T%z)" "${SID:--}" "${PCT:--}" "$([ -n "$MT" ] && echo $(( $(date +%s) - MT )) || echo -1)" \
-     >>"$HOME/.claude/session-logs/nucleo-freshness.log"
+     >>"${CLAUDE_HOME:-$HOME/.claude}/session-logs/nucleo-freshness.log"
 # Una línea por compactación y nadie la leía entera: se acota a las últimas 1000 al pasar de 2000.
 # Temporal único en el mismo directorio (mv atómico) con el modo del log, y borrado si algo falla
 # o si una señal mata el hook a medias. Aceptado: con dos compactaciones a la vez se puede perder
 # la línea que la otra añada entre el tail y el mv. chmod --reference es de GNU: sin él, el log
 # rota igual con el 0600 de mktemp.
-FLOG="$HOME/.claude/session-logs/nucleo-freshness.log"
+FLOG="${CLAUDE_HOME:-$HOME/.claude}/session-logs/nucleo-freshness.log"
 FTMP=
 trap '[ -z "$FTMP" ] || rm -f -- "$FTMP"' EXIT
 trap 'exit 0' HUP INT TERM

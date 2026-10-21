@@ -11,6 +11,7 @@ const EST = '/work/proyecto/.claude/estado'
 const HOME = '/usr/u'
 const BIN = `${HOME}/.claude/bin/handoff`
 const TMP = '/tmp/cockpit-handoff.Ab12Cd'
+const HASH = 'a'.repeat(64)
 const NEW = `## Objetivo\nhaz X\n## Invariantes\n- no tocar Y\n## Plan\n- [ ] T1\n## Siguiente acción\nT1\nclave: ${FAKE_SK}\n`
 const PREV = '# Estado\n\n## Objetivo\nhaz X  \ntal cual\n\n## Invariantes\n- no tocar Y\n## Plan\n- [ ] T1\n## Skills sugeridas\n- grilling\n'
 
@@ -23,19 +24,22 @@ const no = () => ({ value: { exitCode: 1, stdout: '', stderr: '' } }) as never
 function repo(
   on: Parameters<TestBody>[1],
   files: Record<string, string>,
-  opts: { links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; cli?: number[]; stderr?: string; noBin?: boolean } = {},
+  opts: { links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number } = {},
 ) {
+  let stateReads = 0
   const runs: Run[] = []
   const writes: { path: string; text: string }[] = []
   const calls: { argv: readonly string[]; draft: string }[] = []
   const home = opts.home ?? HOME
-  if (!opts.noBin) files[`${home}/.claude/bin/handoff`] = '#!/usr/bin/env bash\n'
+  const bin = `${opts.claudeHome ?? `${home}/.claude`}/bin/handoff`
+  if (!opts.noBin) files[bin] = '#!/usr/bin/env bash\n'
   on('session.cwd', () => ({ value: opts.cwd ?? '/work/proyecto/sub' }))
-  on('session.id', () => ({ value: 'sesion-1' }) as never)
-  on('process.run', (_, e) => {
+  on('session.id', () => ({ value: opts.session?.() ?? 'sesion-1' }) as never)
+  on('process.run', async (_, e) => {
     runs.push(e)
     const a = e.argv.join(' ')
     if (a === 'printenv HOME') return ok(home)
+    if (a === 'printenv CLAUDE_HOME') return ok(opts.claudeHome ?? '')
     if (a === 'printenv COCKPIT_AUTO_HANDOFF') return opts.env ? ok(opts.env) : no()
     if (a.includes('--show-toplevel')) return opts.isRepo === false ? no() : ok(`${opts.top ?? '/work/proyecto'}\n`)
     if (e.argv[0] === 'find') return ok((opts.links ?? []).join('\n'))
@@ -44,14 +48,27 @@ function repo(
       for (const p of e.argv.slice(2)) delete files[p]
       return ok()
     }
-    if (e.argv[0] === `${home}/.claude/bin/handoff` && e.argv[1] === '--estado') return no()
-    if (e.argv[0] === `${home}/.claude/bin/handoff`) {
+    if (e.argv[0] === bin && e.argv[1] === '--estado' && opts.stateFails) return no()
+    if (e.argv[0] === bin && e.argv[1] === '--estado') {
+      await opts.beforeState?.(++stateReads)
+      if (!e.argv.includes('--raiz') && !opts.statePath) return { value: { exitCode: 3, stdout: '', stderr: '' } } as never
+      return ok(JSON.stringify({ nucleo: opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`, pct: 1, bytes: 10, tope: 24000, dueno: null, agentes_vivos: opts.live ?? 0 }))
+    }
+    if (e.argv[0] === bin && e.argv[1] === '--migrar') {
+      const path = opts.statePath ?? `${EST}/nucleo.md`
+      const archivo = path.replace('/nucleo.md', '/archivo/nucleo-20261020T000000Z.md')
+      if (opts.migrateCode) return { value: { exitCode: opts.migrateCode, stdout: '', stderr: 'estado cambió o dueño ajeno' } } as never
+      files[archivo] = files[path] ?? ''
+      delete files[path]
+      return ok(JSON.stringify({ nucleo: path, sha256: HASH, archivo }))
+    }
+    if (e.argv[0] === bin) {
       const draft = files[TMP] ?? ''
       calls.push({ argv: e.argv, draft })
       const seq = opts.cli ?? [0]
       const code = seq[Math.min(calls.length - 1, seq.length - 1)] ?? 0
-      if (code === 0) files[`${e.argv[e.argv.indexOf('--raiz') + 1]}/.claude/estado/nucleo.md`] = draft
-      return { value: { exitCode: code, stdout: '', stderr: code ? (opts.stderr ?? '') : '' } } as never
+      if (code === 0) files[opts.statePath ?? `${e.argv[e.argv.indexOf('--raiz') + 1]}/.claude/estado/nucleo.md`] = draft
+      return { value: { exitCode: code, stdout: JSON.stringify({ nucleo: opts.statePath ?? `${EST}/nucleo.md`, sha256: HASH }), stderr: opts.stderr ?? '' } } as never
     }
     return ok()
   })
@@ -74,6 +91,31 @@ const fork = (on: Parameters<TestBody>[1], text: string, seen: { prompt: string;
   return seen
 }
 
+for (const compact of [true, false]) {
+  test(`presupuesto UTF-8: segundo borrador ${compact ? 'compacto guarda' : 'grande conserva contexto sin guardar'}`, async ($, on) => {
+    const timer = mock.clock(on)
+    const prompts: string[] = []
+    const seen = auto(on, { tokens: 1, forkText: prompt => {
+      prompts.push(prompt)
+      return compact && prompts.length === 2 ? PLAN : '## Plan\n' + 'á'.repeat(2500)
+    } })
+    const previous = '# Estado\n## Encargo original (literal)\n' + 'a'.repeat(900) + '\n## Invariantes vigentes\n' + 'b'.repeat(1000) + '\n'
+    const r = repo(on, { [`${EST}/nucleo.md`]: previous })
+    const result = await $.command.run({ ...RUN, command: 'handoff' })
+    await timer.advance(400)
+    expect(prompts).toHaveLength(2)
+    expect(prompts[0]).toContain('bytes UTF-8')
+    expect(prompts[1]).toContain('último intento')
+    expect(r.calls).toHaveLength(compact ? 1 : 0)
+    expect(seen.cleared).toBe(compact ? 1 : 0)
+    if (!compact) {
+      expect(result.text).toContain('no guardo ni limpio')
+      expect(r.files[`${EST}/nucleo.md`]).toBe(previous)
+      expect(r.writes).toEqual([])
+    }
+  })
+}
+
 test('sin nucleo: el fork redacta el borrador, se redacta y se delega en el CLI con ruta absoluta, raíz y sesión', async ($, on) => {
   const seen = fork(on, 'Aquí tienes:\n' + NEW)
   const r = repo(on, {})
@@ -85,7 +127,7 @@ test('sin nucleo: el fork redacta el borrador, se redacta y se delega en el CLI 
   expect(seen.prompt).toContain('## Invariantes')
   expect(seen.prompt).toContain('La próxima sesión se centrará en: revisar el dock')
   expect(r.calls).toHaveLength(1)
-  expect(r.calls[0]?.argv).toEqual([BIN, '--desde', TMP, '--raiz', '/work/proyecto', '--sesion', 'sesion-1'])
+  expect(r.calls[0]?.argv).toEqual([BIN, '--desde', TMP, '--raiz', '/work/proyecto', '--sesion', 'sesion-1', '--json'])
   const draft = r.calls[0]?.draft ?? ''
   expect(draft.startsWith('## Objetivo\nhaz X\n')).toBe(true)
   expect(draft).not.toContain('Aquí tienes')
@@ -123,9 +165,9 @@ test('borrador temporal: se crea con mktemp, se fija a 600 antes de usarlo y se 
   const order = r.runs.map(x => x.argv[0])
   expect(r.runs.find(x => x.argv[0] === 'mktemp')).toBeTruthy()
   expect(r.runs.find(x => x.argv[0] === 'chmod')?.argv).toEqual(['chmod', '600', '--', TMP])
-  expect(order.indexOf('chmod')).toBeLessThan(order.indexOf(BIN))
+  expect(order.indexOf('chmod')).toBeLessThan(r.runs.findIndex(x => x.argv[0] === BIN && x.argv.includes('--desde')))
   expect(r.runs.find(x => x.argv[0] === 'rm')?.argv).toEqual(['rm', '-f', '--', TMP])
-  expect(order.indexOf('rm')).toBeGreaterThan(order.indexOf(BIN))
+  expect(order.indexOf('rm')).toBeGreaterThan(r.runs.findIndex(x => x.argv[0] === BIN && x.argv.includes('--desde')))
   expect(TMP in r.files).toBe(false)
 })
 
@@ -242,7 +284,7 @@ const PLAN = '## Plan\n- [ ] T2\n## Siguiente acción\nT2\n'
 // The engine beneath the mod: usage (limit 180k = 200k - 20k buffer), agents, fork, clear and fill.
 function auto(
   on: Parameters<TestBody>[1],
-  o: { tokens: number; window?: number; agents?: { id: string; status: string }[]; usageFailsAfter?: number; forkText?: string; fill?: { isFilled: boolean; refusal?: 'dialog' } | 'throws'; clearFails?: boolean },
+  o: { tokens: number; window?: number; agents?: { id: string; status: string }[]; usageFailsAfter?: number; forkText?: string | ((prompt: string) => string); fill?: { isFilled: boolean; refusal?: 'dialog' } | 'throws'; clearFails?: boolean; draft?: string | (() => string); beforeFork?: () => Promise<void>; afterClear?: () => Promise<void> },
 ) {
   const seen = { forks: 0, cleared: 0, fills: [] as string[], toasts: [] as string[], usageCalls: 0 }
   on('session.usage', () => {
@@ -260,15 +302,20 @@ function auto(
     } as never
   })
   on('agent.list', () => ({ value: (o.agents ?? []).map(a => ({ ...a, description: '', type: 'x' })) }) as never)
-  on('model.fork', () => {
+  on('model.fork', async (_, e) => {
+    await o.beforeFork?.()
     seen.forks++
-    return { value: { isAnswered: true, text: o.forkText ?? PLAN, usage: {} } } as never
+    return { value: { isAnswered: true, text: typeof o.forkText === 'function' ? o.forkText(e.prompt) : o.forkText ?? PLAN, usage: {} } } as never
   })
-  on('command.run', (_, e) => {
+  on('command.run', async (_, e) => {
     if (e.command === 'clear' && o.clearFails) throw new Error('rechazado')
-    if (e.command === 'clear') seen.cleared++
+    if (e.command === 'clear') {
+      seen.cleared++
+      await o.afterClear?.()
+    }
     return { text: '' }
   })
+  on('prompt.read', () => ({ value: { text: typeof o.draft === 'function' ? o.draft() : o.draft ?? '', cursor: 0 } }))
   on('prompt.fill', (_, e) => {
     seen.fills.push(e.text)
     if (o.fill === 'throws') throw new Error('sin caja')
@@ -373,7 +420,7 @@ test('handoff automático: si empieza otro turno entre el handoff y el clear, no
   expect(seen.forks).toBe(1)
   expect(seen.cleared).toBe(0)
   const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 110, scroll: { offset: 0, bodyRows: 20 }, view: {} } })
-  expect(await ui.find({ text: /empezó otro turno/ })).toBeTruthy()
+  expect(await ui.find({ text: /actividad o texto nuevo/ })).toBeTruthy()
 })
 
 const SUMMARY = { role: 'user' as const, text: 'resumen', toolUses: [] }
@@ -464,9 +511,8 @@ test('/nueva: archiva el nucleo, limpia y rellena el prompt con la tarea', async
   const res = await $.command.run({ ...RUN, command: 'nueva', args: 'arreglar el login' })
   await clock.advance(400)
   expect(seen.forks).toBe(1)
-  const mv = r.runs.find(x => x.argv[0] === 'mv')
-  expect(mv?.argv[mv.argv.length - 2]).toBe(`${EST}/nucleo.md`)
-  expect(mv?.argv[mv.argv.length - 1]).toMatch(/\/estado\/archivo\/nucleo-\d{8}T\d{6}Z?\.md$/)
+  expect(r.runs.some(x => x.argv[0] === 'mv')).toBe(false)
+  expect(r.runs.find(x => x.argv.includes('--migrar'))?.argv).toEqual([BIN, '--migrar', '/work/proyecto', '--sesion', 'sesion-1', '--esperado', HASH, '--json'])
   expect(seen.cleared).toBe(1)
   expect(seen.fills).toEqual(['arreglar el login'])
   expect(res.text).toContain('archivo/')
@@ -483,7 +529,7 @@ test('/nueva: sin texto devuelve la ayuda y no toca nada', async ($, on) => {
   expect(r.runs.some(x => x.argv[0] === 'mv')).toBe(false)
 })
 
-test('/nueva: en $HOME no hay handoff ni archivo, solo /clear y la tarea, con el aviso', async ($, on) => {
+test('/nueva: sin slot HOME confirmado conserva el contexto', async ($, on) => {
   const clock = mock.clock(on)
   const seen = auto(on, { tokens: 1000 })
   const r = repo(on, {}, { isRepo: false, cwd: '/h', home: '/h' })
@@ -491,9 +537,9 @@ test('/nueva: en $HOME no hay handoff ni archivo, solo /clear y la tarea, con el
   await clock.advance(400)
   expect(seen.forks).toBe(0)
   expect(r.runs.some(x => x.argv[0] === 'mv')).toBe(false)
-  expect(seen.cleared).toBe(1)
-  expect(seen.fills).toEqual(['otra cosa'])
-  expect(res.text).toContain('~')
+  expect(seen.cleared).toBe(0)
+  expect(seen.fills).toEqual([])
+  expect(res.text).toContain('no archivo ni limpio')
 })
 
 for (const link of ['/work/proyecto/.claude', EST, `${EST}/nucleo.md`, `${EST}/nucleo.prev-20261001T000000.md`]) {
@@ -587,6 +633,66 @@ test('handoff: el relleno lleva la primera línea de «Siguiente acción» del d
 
 // What the dock says once the clear is done, read from the drawn text.
 const BAND = { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 200, scroll: { offset: 0, bodyRows: 20 }, view: {} }
+
+for (const mode of ['manual', 'autonomo'] as const) {
+  test(`HOME ${mode}: dos handoffs usan la ranura canónica y conservan la misión tras reiniciar atoms`, async ($, on) => {
+    const timer = mock.clock(on)
+    const reset = new Set<string>()
+    on('state.get', { plugin: 'cockpit' }, async (_, e, next) => {
+      const result = await next(e)
+      return reset.has(e.key) && result.value ? { value: { ...result.value, value: undefined } } : result
+    })
+    on('state.set', { plugin: 'cockpit' }, (_, e, next) => { reset.delete(e.key); return next(e) })
+    const seen = auto(on, { tokens: 1, afterClear: async () => { reset.add('turn'); reset.add('autonomous') } })
+    const path = `${HOME}/.claude/estado/sesiones/20261021-1200-42/nucleo.md`
+    const r = repo(on, {}, { isRepo: false, cwd: HOME, statePath: path, session: () => `home-${seen.cleared}` })
+    const sent: string[] = []
+    on('prompt.submit', (_, e) => { if (e.origin.kind === 'plugin') sent.push(e.text); return { text: e.text } })
+    await $.prompt.submit({ text: 'Validar entrega en tres fases', wait: false, origin: { kind: 'composer' } })
+    if (mode === 'autonomo') await $.command.run({ ...RUN, command: 'autonomo', args: 'on' })
+    for (let cycle = 0; cycle < 2; cycle++) {
+      await $.command.run({ ...RUN, command: 'handoff' })
+      await timer.advance(400)
+      await timer.advance(400)
+      const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Agent Dock', isFocused: true, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} } })
+      expect(await pane.find({ text: 'Validar entrega en tres fases' })).toBeTruthy()
+      await pane.unmount()
+    }
+    expect(seen.cleared).toBe(2)
+    expect(r.calls.every(call => !call.argv.includes('--raiz'))).toBe(true)
+    expect(sent).toHaveLength(mode === 'autonomo' ? 2 : 0)
+    expect(seen.fills).toHaveLength(mode === 'manual' ? 2 : 0)
+    for (const text of [...sent, ...seen.fills]) expect(text).toContain(path)
+  })
+}
+
+test('/nueva HOME archiva mediante el CLI y desactiva la autonomía', async ($, on) => {
+  const timer = mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  const path = `${HOME}/.claude/estado/sesiones/20261021-1200-42/nucleo.md`
+  const r = repo(on, { [path]: PREV }, { isRepo: false, cwd: HOME, statePath: path, session: () => `home-${seen.cleared}` })
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  await $.prompt.submit({ text: 'Misión anterior', wait: false, origin: { kind: 'composer' } })
+  await $.command.run({ ...RUN, command: 'autonomo', args: 'on' })
+  await $.command.run({ ...RUN, command: 'nueva', args: 'Otra misión' })
+  await timer.advance(400)
+  expect(r.runs.find(call => call.argv.includes('--migrar'))?.argv).toEqual([BIN, '--migrar', '--sesion', 'home-0', '--esperado', HASH, '--json'])
+  expect(seen.fills).toEqual(['Otra misión'])
+  expect((await $.command.run({ ...RUN, command: 'autonomo' })).text).toContain('desactivada')
+  await $.prompt.submit({ text: 'Otra misión', wait: false, origin: { kind: 'composer' } })
+  const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Agent Dock', isFocused: true, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} } })
+  expect(await pane.find({ text: 'Otra misión' })).toBeTruthy()
+  expect(await pane.find({ text: 'Misión anterior' })).toBeFalsy()
+})
+
+test('sin identificador de sesión no limpia aunque el guardado responda correctamente', async ($, on) => {
+  const timer = mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  repo(on, {}, { session: () => '' })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await timer.advance(800)
+  expect(seen.cleared).toBe(0)
+})
 async function dockText($: any, on: any, fill: { isFilled: boolean; refusal?: 'dialog' } | 'throws', clearFails = false) {
   const clock = mock.clock(on)
   const seen = auto(on, { tokens: 1000, forkText: '## Siguiente acción\nT2\n', fill, clearFails })
@@ -616,3 +722,263 @@ test('UI: si /clear falla dice que lo escribas y luego el texto', async ($, on) 
   expect(msg).toContain(`Guardado en ${EST}/nucleo.md, pero /clear falló: escribe /clear y luego ${PREFIX}T2`)
   expect(seen.fills).toEqual([])
 })
+
+
+test('rc0 con aviso conserva el contexto y muestra el recorte', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  repo(on, {}, { stderr: 'Aviso: contenido recortado' })
+  const res = await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(800)
+  expect(res.text).toContain('contenido recortado')
+  expect(seen.cleared).toBe(0)
+})
+
+test('dueño ajeno rc5 no reintenta ni limpia', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  const r = repo(on, {}, { cli: [5] })
+  const res = await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(800)
+  expect(r.calls).toHaveLength(1)
+  expect(res.text).toContain('otra sesión')
+  expect(seen.cleared).toBe(0)
+})
+
+test('usa la ruta nucleo canónica del CLI para leer y continuar', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  const path = '/work/proyecto/.git/claude-estado/nucleo.md'
+  repo(on, { [path]: PREV }, { statePath: path })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(800)
+  expect(seen.fills[0]).toContain(path)
+})
+
+test('CLAUDE_HOME dirige el CLI al destino instalado', async ($, on) => {
+  fork(on, NEW)
+  const r = repo(on, {}, { claudeHome: '/opt/kit/claude' })
+  await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(r.calls[0]?.argv[0]).toBe('/opt/kit/claude/bin/handoff')
+})
+
+test('dos handoffs concurrentes solo lanzan un fork', async ($, on) => {
+  const seen = fork(on, NEW)
+  repo(on, {})
+  await Promise.all([
+    $.command.run({ ...RUN, command: 'handoff', args: 'solo' }),
+    $.command.run({ ...RUN, command: 'handoff', args: 'solo' }),
+  ])
+  expect(seen.n).toBe(1)
+})
+
+
+test('un mensaje nuevo antes del clear conserva el contexto aunque el turno ya haya acabado', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  repo(on, {})
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await $.prompt.submit({ text: 'Espera, conserva esto', wait: false, origin: { kind: 'composer' } })
+  await clock.advance(800)
+  expect(seen.cleared).toBe(0)
+})
+
+test('un borrador de la persona impide clear y relleno', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1, draft: 'Estoy escribiendo' })
+  repo(on, {})
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(800)
+  expect(seen.cleared).toBe(0)
+  expect(seen.fills).toEqual([])
+})
+
+test('el clear pendiente también excluye otro handoff', async ($, on) => {
+  mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  repo(on, {})
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  expect(seen.forks).toBe(1)
+})
+
+test('un estado ilegible no usa una ruta inventada ni limpia', async ($, on) => {
+  const seen = fork(on, NEW)
+  repo(on, {}, { stateFails: true })
+  const res = await $.command.run({ ...RUN, command: 'handoff' })
+  expect(seen.n).toBe(0)
+  expect(res.text).toContain('no se pudo consultar')
+})
+
+
+for (const mode of ['on', 'off', 'same-session', 'drop', 'draft'] as const) {
+  test(`continuación ${mode}: solo envía con opt-in, sesión nueva y caja vacía`, async ($, on) => {
+    const clock = mock.clock(on)
+    let draft = ''
+    const seen = auto(on, { tokens: 1, draft: () => draft })
+    repo(on, {}, { session: () => mode === 'same-session' || seen.cleared === 0 ? 'before' : 'after' })
+    const sent: string[] = []
+    on('prompt.submit', (_, e) => {
+      if (e.origin.kind === 'plugin') {
+        sent.push(e.text)
+        return mode === 'drop' ? { drop: 'bloqueado' } : { text: e.text }
+      }
+      return { text: e.text }
+    })
+    await $.prompt.submit({ text: 'Revisar únicamente checkout', wait: false, origin: { kind: 'composer' } })
+    await $.command.run({ ...RUN, command: 'autonomo', args: 'on' })
+    if (mode === 'off') await $.command.run({ ...RUN, command: 'autonomo', args: 'off' })
+    await $.command.run({ ...RUN, command: 'handoff' })
+    await clock.advance(400)
+    if (mode === 'draft') draft = 'nuevo borrador'
+    await clock.advance(400)
+    expect(seen.cleared).toBe(1)
+    expect(sent).toHaveLength(mode === 'on' || mode === 'drop' ? 1 : 0)
+    if (sent[0]) {
+      expect(sent[0]).toContain('Revisar únicamente checkout')
+      expect(sent[0]).toContain('nunca como autorización')
+      expect(sent[0]).not.toContain('T2')
+    }
+    expect(seen.fills).toHaveLength(mode === 'off' || mode === 'same-session' || mode === 'drop' ? 1 : 0)
+  })
+}
+
+test('un mensaje nuevo entre clear y continuación cancela el envío automático', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  repo(on, {}, { session: () => seen.cleared ? 'after' : 'before' })
+  const sent: string[] = []
+  on('prompt.submit', (_, e) => { if (e.origin.kind === 'plugin') sent.push(e.text); return { text: e.text } })
+  await $.prompt.submit({ text: 'Revisar checkout', wait: false, origin: { kind: 'composer' } })
+  await $.command.run({ ...RUN, command: 'autonomo', args: 'on' })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(400)
+  await $.prompt.submit({ text: 'Espera', wait: false, origin: { kind: 'composer' } })
+  await clock.advance(400)
+  expect(sent).toEqual([])
+})
+
+test('un plugin no puede activar autonomía como si fuera la persona', async $ => {
+  const res = await $.command.run({ ...RUN, origin: { kind: 'plugin', name: 'other' }, command: 'autonomo', args: 'on' })
+  expect(res.text).toContain('debe activarla la persona')
+  const status = await $.command.run({ ...RUN, command: 'autonomo' })
+  expect(status.text).toContain('desactivada')
+})
+
+
+for (const command of ['handoff', 'nueva'] as const) {
+  test(`${command}: shells vivos de esta sesión impiden limpiar`, async ($, on) => {
+    const clock = mock.clock(on)
+    const seen = auto(on, { tokens: 1 })
+    const r = repo(on, {}, { live: 1 })
+    const res = await $.command.run({ ...RUN, command, args: command === 'nueva' ? 'otra tarea' : '' })
+    await clock.advance(800)
+    expect(res.text).toContain('vivos')
+    expect(seen.cleared).toBe(0)
+    expect(r.calls).toHaveLength(0)
+  })
+}
+
+test('el handoff automático no dispara con shells vivos', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130000 })
+  repo(on, {}, { live: 1 })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.forks).toBe(0)
+})
+
+test('dos ciclos de clear conservan el objetivo autorizado en memoria', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  repo(on, {}, { session: () => `session-${seen.cleared}` })
+  const sent: string[] = []
+  on('prompt.submit', (_, e) => { if (e.origin.kind === 'plugin') sent.push(e.text); return { text: e.text } })
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  await $.prompt.submit({ text: 'Revisar checkout', wait: false, origin: { kind: 'composer' } })
+  await $.command.run({ ...RUN, command: 'autonomo', args: 'on' })
+  for (let cycle = 0; cycle < 2; cycle++) {
+    await $.command.run({ ...RUN, command: 'handoff' })
+    await clock.advance(400)
+    await $.session.end({ reason: 'clear', sessionId: `session-${cycle}`, resume: { id: `session-${cycle}` } })
+    await clock.advance(400)
+  }
+  expect(sent).toHaveLength(2)
+  expect(sent[1]).toContain('Objetivo de esta sesión: Revisar checkout')
+})
+
+test('/nueva conserva estado e historial si llega un mensaje durante el guardado', async ($, on) => {
+  const clock = mock.clock(on)
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  const seen = auto(on, { tokens: 1, beforeFork: async () => {
+    await $.prompt.submit({ text: 'Espera antes de cambiar', wait: false, origin: { kind: 'composer' } })
+  } })
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  const res = await $.command.run({ ...RUN, command: 'nueva', args: 'otra tarea' })
+  await clock.advance(800)
+  expect(res.text).toContain('mensaje nuevo')
+  expect(r.runs.some(r => r.argv[0] === 'mv')).toBe(false)
+  expect(seen.cleared).toBe(0)
+})
+
+
+test('el reinicio de atoms tras clear conserva la autorización en memoria durante dos ciclos', async ($, on) => {
+  const timer = mock.clock(on)
+  const reset = new Set<string>()
+  on('state.get', { plugin: 'cockpit' }, async (_, e, next) => {
+    const result = await next(e)
+    return reset.has(e.key) && result.value ? { value: { ...result.value, value: undefined } } : result
+  })
+  on('state.set', { plugin: 'cockpit' }, (_, e, next) => {
+    reset.delete(e.key)
+    return next(e)
+  })
+  const seen = auto(on, { tokens: 1, afterClear: async () => {
+    reset.add('autonomous')
+    reset.add('turn')
+  } })
+  repo(on, {}, { session: () => `session-${seen.cleared}` })
+  const sent: string[] = []
+  on('prompt.submit', (_, e) => { if (e.origin.kind === 'plugin') sent.push(e.text); return { text: e.text } })
+  await $.prompt.submit({ text: 'Revisar checkout', wait: false, origin: { kind: 'composer' } })
+  await $.command.run({ ...RUN, command: 'autonomo', args: 'on' })
+  for (let cycle = 0; cycle < 2; cycle++) {
+    await $.command.run({ ...RUN, command: 'handoff' })
+    await timer.advance(400)
+    await timer.advance(400)
+  }
+  expect(sent).toHaveLength(2)
+  expect(sent[1]).toContain('Objetivo de esta sesión: Revisar checkout')
+  expect(seen.fills).toEqual([])
+  const status = await $.command.run({ ...RUN, command: 'autonomo' })
+  expect(status.text).toContain('activada.')
+})
+
+
+test('un mensaje durante la consulta lenta previa al clear impide limpiar', async ($, on) => {
+  const timer = mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  repo(on, {}, { beforeState: async count => {
+    if (count === 3) await $.prompt.submit({ text: 'Mensaje durante consulta', wait: false, origin: { kind: 'composer' } })
+  } })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await timer.advance(800)
+  expect(seen.cleared).toBe(0)
+})
+
+
+for (const code of [4, 5]) {
+  test(`/nueva: rechazo transaccional ${code} conserva contexto y no mueve por su cuenta`, async ($, on) => {
+    const timer = mock.clock(on)
+    const seen = auto(on, { tokens: 1 })
+    const r = repo(on, { [`${EST}/nucleo.md`]: PREV }, { migrateCode: code })
+    const res = await $.command.run({ ...RUN, command: 'nueva', args: 'otra tarea' })
+    await timer.advance(800)
+    expect(res.text).toContain('no limpio')
+    expect(r.runs.filter(x => x.argv.includes('--migrar'))).toHaveLength(1)
+    expect(r.runs.some(x => x.argv[0] === 'mv')).toBe(false)
+    expect(seen.cleared).toBe(0)
+  })
+}

@@ -4,7 +4,7 @@
 # Uso: test_nucleo_lib.sh [ruta a la lib; por defecto la del kit]. Sin red; HOME falso en un mktemp.
 set -u
 L=$(realpath "${1:-$(dirname "$0")/../claude/hooks/lib/nucleo.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PROJECT_DIR
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PID CLAUDE_PROJECT_DIR
 # shellcheck source=/dev/null
 . "$L"
 FAIL=0

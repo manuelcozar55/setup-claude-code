@@ -16,6 +16,8 @@ ser techo también sin política gestionada.
 
 ### Added
 
+- Estado por sesión en `~`: el handoff del cockpit (`/handoff`, `/nueva` y la banda del dock) usa la ranura `~/.claude/estado/sesiones/<fecha>-<pid>/` de la sesión cuando no hay proyecto, vía `handoff --estado` y `--desde` sin `--raiz` (ADR 019).
+- Consolidación local identificada por `BUILD_ID`: cockpit 0.6.0, lanzador `scripts/scc.sh` y guía `ENTREGA.md`. `/autonomo on|off` continúa el encargo autorizado tras confirmar un handoff, también desde HOME; conserva misión y pasos, y se desactiva al cambiar de tarea.
 - `install.sh` enlaza `handoff` y `oraculo` en `~/.local/bin` (solo sobre hueco libre o enlace propio; nunca pisa uno ajeno), avisa si `~/.local/bin` no está en el PATH y, con un `CLAUDE.md` previo sin `@AGENTS.md`, termina con un aviso visible (plantilla en `CLAUDE.kit.md`). En diff-first lo pone en el plan sin escribir. El aviso de credenciales solo sale si la plantilla existe.
 - `doctor.sh`: FAIL si falta `bin/handoff`, `bin/oraculo` o `templates/nucleo.md`; WARN si no se resuelven en el PATH o si `CLAUDE.md` no importa `AGENTS.md`.
 - `handoff --iniciar [--raiz D]` crea el primer `nucleo.md` desde la plantilla (nunca sobrescribe; exit 3 sin proyecto).
@@ -27,6 +29,14 @@ ser techo también sin política gestionada.
 - `templates/nucleo.md`: el comentario de cabecera pasa dentro de «Objetivo» y el orden de secciones coincide con el que `handoff` escribe.
 
 ### Fixed
+
+- Propiedad del estado: un `clear` ajeno no roba una sesión vigente; bloqueo de escrituras, recibo SHA-256 y archivo condicionado al hash. `SessionEnd` libera solo el dueño propio. Un proceso vivo no pierde propiedad por antigüedad.
+- Agentes: eventos por sesión y contexto acotado; una tarea hermana no se trata como descendiente pendiente de un agente ya terminado.
+- Cockpit: ruta canónica del CLI en el prompt HOME, progreso desconocido si faltan datos y advertencias visibles sin limpiar ante errores. La continuación no se reenvía si su resultado es ambiguo.
+- Handoff: presupuesto UTF-8 antes de guardar, con reserva para objetivo e invariantes y una sola regeneración compacta si el borrador excede el espacio disponible. Evita que resúmenes redundantes frenen la continuidad; si no cabe, conserva el contexto sin escribir.
+- Prueba de propiedad: comprueba el aviso completo, sin contar apariciones accidentales del identificador de sesión en las rutas temporales.
+- Guards: parser con carga por bloque y reutilización del último segmento validado en el mismo cwd. La prueba mide tiempo monotónico y CPU por separado, conservando los límites de rendimiento.
+- Instalación: protege wrappers ajenos enlazados; doctor detecta bibliotecas ausentes y deriva de CLI y plantillas, además de hooks.
 
 - `pre-compact.sh`: si el transcript declarado falta, no se puede leer o no tiene ninguna línea JSON (o jq falla), no se publica checkpoint y se conserva el anterior (`pipefail`); una línea final a medias se descarta y se conservan los mensajes válidos. Acepta también los mensajes de Codex (`event_msg/user_message`).
 - La plantilla `nucleo.md` pegada tal cual como borrador de `handoff --desde` ya no da rc 2.

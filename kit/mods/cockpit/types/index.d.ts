@@ -10,7 +10,7 @@ export type Ctx = {
   eating: Eat[]
 }
 
-export type Cache = { lastAt: number; ttlMs: number; isTtlKnown: boolean; cold: number; turns: number }
+export type Cache = { lastAt: number; ttlMs: number; cold: number; turns: number }
 
 export type AgentRow = {
   id: string
@@ -28,7 +28,7 @@ export type TaskRow = { id: string; subject: string; status: 'pending' | 'in_pro
 export type Handoff = { phase: 'idle' | 'confirm' | 'working' | 'done' | 'error'; msg?: string }
 
 // `handoff --estado`: the share of the cap and who owns the state (null: nobody, or no project).
-export type Estado = { pct: number; bytes: number; tope: number; dueno: { sesion: string; vigente: boolean; isMine: boolean } | null }
+export type Estado = { pct: number; bytes: number; tope: number; dueno: { sesion: string; vigente: boolean; isMine: boolean } | null; isSlot?: boolean }
 
 export type Turn = { isRunning: boolean; startedAt: number; activity: string; mission: string }
 
@@ -47,6 +47,8 @@ declare module 'claude-code' {
       turn: Turn
       now: number
       estado: Estado | null
+      autonomous: boolean
+      continuity: string
       isMissionOpen: boolean
       isAutoQueued: boolean
       isVetoed: boolean

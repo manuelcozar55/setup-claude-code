@@ -206,6 +206,10 @@ jobs:
         run: bash kit/test/test_session_start_clear.sh
       - name: "test_nucleo_lib.sh (lib de nucleo: una raíz sin anidados, emisión por secciones bajo el tope)"
         run: bash kit/test/test_nucleo_lib.sh
+      - name: test_nucleo_integridad
+        run: bash kit/test/test_nucleo_integridad.sh
+      - name: test_agentes
+        run: bash kit/test/test_agentes.sh
       - name: "test_nucleo_hooks.sh (inyectores ≤ 9 500 y como datos, checkpoint con .gitignore, KPI, gauge y gate, sin fsmonitor)"
         run: bash kit/test/test_nucleo_hooks.sh
       - name: "test_nucleo_nudge.sh (PostToolUse: aviso al modelo por banda del airbag, una vez, solo con nucleo rancio, < 50 ms)"
@@ -229,6 +233,9 @@ jobs:
 
       - name: "test_plugin_esenciales.sh (plugin esenciales: 6 skills, sin hooks, sin restos de las excluidas, en el marketplace)"
         run: bash kit/test/test_plugin_esenciales.sh
+
+      - name: "test_sesiones_home.sh (estado de sesión en ~: una ranura por proceso claude, handoff y hooks de arranque)"
+        run: bash kit/test/test_sesiones_home.sh
 
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root

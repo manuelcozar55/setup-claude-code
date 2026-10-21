@@ -259,11 +259,17 @@ LOCAL_BIN="$HOME/.local/bin"
 CLIS="handoff oraculo"
 clis_enlazables() { [ "$(realpath -m -- "$CLAUDE_HOME")" = "$(realpath -m -- "$HOME/.claude")" ]; }
 cli_estado() {  # nombre -> libre | nuestro | ajeno
-  local dst="$LOCAL_BIN/$1"
+  local dst="$LOCAL_BIN/$1" t
   if [ -L "$dst" ]; then
     # Ruta canonica y no prefijo de texto: bin/../../x empezaba por "$CLAUDE_HOME/bin/" y contaba como nuestro.
-    # realpath -m resuelve el enlace aunque este colgante; nuestro = su destino vive en nuestro bin/.
-    if [ "$(dirname -- "$(realpath -m -- "$dst")")" = "$(realpath -m -- "$CLAUDE_HOME/bin")" ]; then echo nuestro; else echo ajeno; fi
+    # realpath -m resuelve el enlace aunque este colgante. Nuestro = apunta exactamente a nuestro CLI, o es un
+    # colgante hacia nuestro bin/ (un CLI retirado: se repara). Un fichero EXISTENTE distinto de nuestro bin/
+    # (un wrapper de la persona) es ajeno y no se pisa.
+    t="$(realpath -m -- "$dst")"
+    if [ "$t" = "$(realpath -m -- "$CLAUDE_HOME/bin/$1")" ]; then echo nuestro
+    elif [ ! -e "$t" ] && [ "$(dirname -- "$t")" = "$(realpath -m -- "$CLAUDE_HOME/bin")" ]; then echo nuestro
+    else echo ajeno
+    fi
   elif [ -e "$dst" ]; then echo ajeno
   else echo libre
   fi
@@ -289,7 +295,7 @@ enlazar_clis() {
     fi
     if [ "$st" = ajeno ]; then
       LINK_AJENOS="$LINK_AJENOS $c"
-      echo "   AVISO: $LOCAL_BIN/$c ya existe y no es un enlace a $CLAUDE_HOME/bin: no se toca." >&2
+      echo "   AVISO: $LOCAL_BIN/$c ya existe y no es un enlace a $CLAUDE_HOME/bin/$c: no se toca." >&2
     else
       echo "   enlace: $LOCAL_BIN/$c -> $CLAUDE_HOME/bin/$c"
     fi

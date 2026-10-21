@@ -11,8 +11,10 @@ uso() {
 uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
      handoff --iniciar [--raiz DIR]
      handoff --informe TEMA [--raiz DIR]
-     handoff --migrar DIR
-     handoff --estado [--raiz DIR]
+     handoff --migrar [DIR] [--sesion ID] [--esperado SHA256] [--json]
+     handoff --estado [--raiz DIR] [--sesion ID]
+     handoff --agentes [--raiz DIR]
+     handoff --liberar ID [--raiz DIR]
 --desde   fusiona el borrador (secciones «## » de la plantilla; «Pendientes y riesgos» vale por «Pendientes») en
           <raíz>/.claude/estado/nucleo.md: Objetivo e Invariantes del nucleo no se tocan (de Invariantes se añaden las líneas
           nuevas del borrador, sin borrar nunca una); los [x] del Plan pasan a diario.md con su
@@ -22,42 +24,60 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
   --solo    no fusiona: el borrador sustituye al nucleo (se sigue validando).
   --commit  además hace commit solo de .claude/estado/ (para repos propios); sin él, .claude/estado/ se añade
             a .git/info/exclude.
-  --sesion  id de la sesión que cierra: el dueño solo se libera si es ella (o no hay dueño vigente).
+  --sesion  ID real de la sesión que escribe. Con dueño vigente es obligatorio y debe coincidir;
+            sin ID o con otro devuelve 5 sin escribir. No copies el ID de otra sesión desde --estado.
+            Al guardar libera ese dueño (o el dueño caducado).
 --iniciar crea <raíz>/.claude/estado/nucleo.md desde $CLAUDE_HOME/templates/nucleo.md (el primero del proyecto) y añade
           .claude/estado/ a .git/info/exclude; si ya existe no lo toca (sale 0 y lo dice). En cualquier caso deja
           listos informes/ y checkpoints/ y un .gitignore interno con «*» (nada de ahí va a git).
 --informe crea <raíz>/.claude/estado/informes/AAAA-MM-DD-TEMA/ e imprime su ruta absoluta: es donde van los informes,
           briefs y salidas de un agente, en vez del scratchpad. TEMA se sanea (sin «/» ni «..»); si queda vacío, sale 64.
---migrar  archiva el nucleo heredado de DIR en DIR/.claude/estado/archivo/ y lo anota en el diario; nunca borra.
---estado  una línea JSON: raíz, nucleo, bytes, tope, pct y dueño (sin proyecto: {"raiz":null}).
+--migrar  archiva el núcleo de DIR en archivo/ del estado real y lo anota en diario; nunca borra.
+          Sin DIR archiva únicamente la ranura HOME del proceso actual.
+--esperado exige ese SHA256 al archivar, bajo lock; si cambió o no existe devuelve 4.
+--json    --desde devuelve {nucleo,sha256} del documento guardado; --migrar añade archivo.
+--liberar ID libera solamente al dueño cuyo ID coincida; conserva el núcleo.
+--agentes tabla del registro persistente; no crea estado ni archiva agentes.
+--estado  una línea JSON: raíz, nucleo, bytes, tope, pct, dueño, sha256 y agentes_vivos de --sesion (sin proyecto: {"raiz":null}).
 Raíz: la del directorio actual (raíz git; no $HOME ni un directorio sin git) o --raiz DIR.
 Salida: 0 ok · 2 borrador inválido (stderr nombra la cabecera) · 3 sin proyecto o con enlaces simbólicos en estado/ · 4 nucleo.md cambió durante la
-fusión (reintenta) · 1 otro error · 64 uso erróneo.
+fusión o estado ocupado (reintenta) · 5 dueño ajeno · 1 otro error · 64 uso erróneo.
+Sesión en ~: sin proyecto y sin --raiz, el estado de esta sesión vive en su ranura ~/.claude/estado/sesiones/<fecha>-<pid de claude>/
+          (pid de CLAUDE_PID o del padre si es claude). las escrituras (--desde, --iniciar, informes) van ahí; --estado da
+          {"raiz":null,"sesion":RUTA,"nucleo","bytes","tope","pct","dueno":null}; --commit no aplica (sale 3).
 EOF
 }
 
 SELF=$(readlink -f -- "$0" 2>/dev/null || realpath -- "$0" 2>/dev/null || printf '%s' "$0")
 # shellcheck source=SCRIPTDIR/../hooks/lib/nucleo.sh
 . "$(dirname "$SELF")/../hooks/lib/nucleo.sh"
+# shellcheck source=SCRIPTDIR/../hooks/lib/agentes.sh
+. "$(dirname "$SELF")/../hooks/lib/agentes.sh"
 
 die() { local rc=$1; shift; echo "handoff: $*" >&2; exit "$rc"; }
 iso_de() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 
-MODO="" DESDE="" MIGRAR="" TEMA="" RAIZ_ARG="" SESION="" SOLO=0 COMMIT=0
+MODO="" DESDE="" MIGRAR="" TEMA="" RAIZ_ARG="" SESION="" ESPERADO="" JSON=0 SOLO=0 COMMIT=0
 while [ $# -gt 0 ]; do
   case $1 in
     -h | --help) uso; exit 0 ;;
-    --desde | --migrar | --informe | --raiz | --sesion)
+    --migrar)
+      MODO=migrar; shift
+      if [ $# -gt 0 ] && [[ $1 != --* ]]; then MIGRAR=$1; shift; fi ;;
+    --desde | --informe | --raiz | --sesion | --liberar | --esperado)
       [ $# -ge 2 ] || { echo "uso: handoff: a $1 le falta su argumento (handoff --help)" >&2; exit 64; }
       case $1 in
         --desde) MODO=desde; DESDE=$2 ;;
-        --migrar) MODO=migrar; MIGRAR=$2 ;;
         --informe) MODO=informe; TEMA=$2 ;;
         --raiz) RAIZ_ARG=$2 ;;
         --sesion) SESION=$2 ;;
+        --liberar) MODO=liberar; SESION=$2 ;;
+        --esperado) [ -n "$2" ] || die 64 "--esperado requiere un SHA256"; ESPERADO=$2 ;;
       esac
       shift 2 ;;
+    --json) JSON=1; shift ;;
     --estado) MODO=estado; shift ;;
+    --agentes) MODO=agentes; shift ;;
     --iniciar) MODO=iniciar; shift ;;
     --solo) SOLO=1; shift ;;
     --commit) COMMIT=1; shift ;;
@@ -65,6 +85,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$MODO" ] || { echo "uso: handoff --desde BORRADOR.md | --iniciar | --informe TEMA | --migrar DIR | --estado (handoff --help)" >&2; exit 64; }
+
+if [ -n "$ESPERADO" ]; then
+  [ "$MODO" = migrar ] && [[ $ESPERADO =~ ^[[:xdigit:]]{64}$ ]] || die 64 "--esperado requiere --migrar y un SHA256 de 64 dígitos hexadecimales"
+  ESPERADO=${ESPERADO,,}
+fi
 
 # La raíz de proyecto, o rc 1 sin tocar nada (decisión 6: ni $HOME, ni ~/.claude, ni un directorio sin git).
 resolver_raiz() {
@@ -74,31 +99,79 @@ resolver_raiz() {
   [ -n "$RAIZ" ]
 }
 
+# Modo sesión: sin proyecto y sin --raiz, el estado de este claude vive en su ranura (nucleo_sesion_dir). SES = la
+# ranura, o vacío. Con --commit no aplica: la ranura no es de ningún repo (die 3 antes de escribir nada).
+SES=""
+sesion() {
+  [ -z "$RAIZ_ARG" ] || return 1
+  [ "$COMMIT" -eq 0 ] || die 3 "--commit no aplica al estado de una sesión en ~ (no hay repo): no escribo nada"
+  SES=$(nucleo_sesion_dir "$@") || { SES=""; return 1; }
+}
+
+if [ "$MODO" = agentes ]; then
+  resolver_raiz || sesion || die 3 "sin proyecto ni sesión"
+  if [ -n "$SES" ]; then E=$SES; else E=$(nucleo_estado_leer "$RAIZ") || die 3 "estado enlazado o inseguro"; fi
+  FILAS=$(nucleo_agentes_estado "$E")
+  if [ -n "$FILAS" ]; then
+    printf 'ID\tTIPO\tESTADO\tRESULTADO\n'
+    printf '%s\n' "$FILAS" | cut -f1-4
+  else echo "Sin agentes registrados."
+  fi
+  exit 0
+fi
+
 if [ "$MODO" = estado ]; then
-  if ! resolver_raiz || nucleo_enlazado "$RAIZ"; then echo '{"raiz":null}'; exit 3; fi
-  NUC=$RAIZ/.claude/estado/nucleo.md
-  B=0; [ ! -f "$NUC" ] || B=$(wc -c <"$NUC" | tr -d ' ')
+  if ! resolver_raiz; then
+    if sesion; then
+      NUC=$SES/nucleo.md; B=0; SHA=""; [ ! -f "$NUC" ] || SHA=$(sha256sum <"$NUC" | cut -d' ' -f1); [ ! -f "$NUC" ] || B=$(wc -c <"$NUC" | tr -d ' ')
+      VIVOS=$(nucleo_agentes_vivos "$SES" "$SESION" | jq length) || die 1 "registro ilegible"
+      jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg s "$SES" --arg n "$NUC" --argjson b "$B" --argjson t "$NUCLEO_TOPE" --argjson p "$((B * 100 / NUCLEO_TOPE))" \
+        '{raiz:null,sesion:$s,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:null,sha256:(if $sha == "" then null else $sha end),agentes_vivos:$av}'
+      exit 0
+    fi
+    echo '{"raiz":null}'; exit 3
+  fi
+  if nucleo_enlazado "$RAIZ"; then echo '{"raiz":null}'; exit 3; fi
+  E=$(nucleo_estado_leer "$RAIZ") || die 3 "estado enlazado o inseguro"
+  NUC=$E/nucleo.md
+  B=0; SHA=""
+  if [ -f "$NUC" ]; then B=$(wc -c <"$NUC" | tr -d ' '); SHA=$(sha256sum <"$NUC" | cut -d' ' -f1); fi
   DJ=null
   if D=$(nucleo_dueno "$RAIZ"); then
     V=false; ! nucleo_dueno_vigente "$RAIZ" >/dev/null || V=true
     DJ=$(jq -cn --arg s "${D% *}" --arg d "$(iso_de "${D#* }")" --argjson v "$V" '{sesion:$s,desde:$d,vigente:$v}')
   fi
-  jq -cn --arg r "$RAIZ" --arg n "$NUC" --argjson b "$B" --argjson t "$NUCLEO_TOPE" --argjson p "$((B * 100 / NUCLEO_TOPE))" --argjson d "$DJ" \
-    '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d}'
+  VIVOS=$(nucleo_agentes_vivos "$E" "$SESION" | jq length) || die 1 "no puedo leer la foto de agentes de $SESION"
+  jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg r "$RAIZ" --arg n "$NUC" --argjson b "$B" --argjson t "$NUCLEO_TOPE" --argjson p "$((B * 100 / NUCLEO_TOPE))" --argjson d "$DJ" \
+    '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d,agentes_vivos:$av,sha256:(if $sha == "" then null else $sha end)}'
+  exit 0
+fi
+
+if [ "$MODO" = liberar ]; then
+  resolver_raiz || die 3 "sin proyecto"
+  E=$(nucleo_estado_leer "$RAIZ") || die 3 "estado enlazado o inseguro"
+  [ -d "$E" ] || die 5 "no hay dueño que coincida con $SESION"
+  nucleo_bloquear "$E" || die "$?" "estado ocupado o inseguro: reintenta"
+  D=$(nucleo_dueno "$RAIZ") && [ "${D% *}" = "$SESION" ] || die 5 "el dueño no coincide con $SESION"
+  rm -f -- "$E/.dueno"
+  echo "handoff: dueño $SESION liberado; nucleo.md conservado"
   exit 0
 fi
 
 # ---------------------------------------------------------------- --iniciar
 if [ "$MODO" = iniciar ]; then
-  resolver_raiz || die 3 "sin proyecto (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
-  nucleo_enlazado "$RAIZ" && die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
+  resolver_raiz || sesion crear || die 3 "sin proyecto ni ranura de sesión (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
+  [ -n "$SES" ] || ! nucleo_enlazado "$RAIZ" || die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
   PLANTILLA=${CLAUDE_HOME:-$HOME/.claude}/templates/nucleo.md
   [ -f "$PLANTILLA" ] || PLANTILLA=$(dirname "$SELF")/../templates/nucleo.md
   [ -f "$PLANTILLA" ] || die 1 "no encuentro la plantilla templates/nucleo.md (¿instalaste el kit?)"
-  E=$(nucleo_estado_dir "$RAIZ") || die 1 "no puedo escribir ni en $RAIZ/.claude/estado ni en el directorio de usuario"
+  if [ -n "$SES" ]; then E=$SES; else E=$(nucleo_estado_dir "$RAIZ") || die 1 "no puedo escribir ni en $RAIZ/.claude/estado ni en el directorio de usuario"; fi
+  nucleo_bloquear "$E" || die "$?" "estado ocupado o inseguro: reintenta"
   if [ -e "$E/nucleo.md" ]; then echo "handoff: $E/nucleo.md ya existe: no se toca"; exit 0; fi
+  [ -n "$SES" ] || { D=$(nucleo_dueno_ajeno "$RAIZ" "$SESION") && die 5 "la sesión dueña es otra ($D): no inicio"; }
   cp -- "$PLANTILLA" "$E/nucleo.md"
-  if EX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
+  [ -n "$SES" ] || [ "$E" = "$RAIZ/.claude/estado" ] || : >"$E/.nucleo-fallback"
+  if [ -z "$SES" ] && EX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
     case $EX in /*) ;; *) EX=$RAIZ/$EX ;; esac
     mkdir -p "$(dirname "$EX")" 2>/dev/null || true
     command grep -qFx '.claude/estado/' "$EX" 2>/dev/null || printf '.claude/estado/\n' >>"$EX" 2>/dev/null || true
@@ -109,12 +182,12 @@ fi
 
 # ---------------------------------------------------------------- --informe
 if [ "$MODO" = informe ]; then
-  resolver_raiz || die 3 "sin proyecto (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
+  resolver_raiz || sesion crear || die 3 "sin proyecto ni ranura de sesión (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
   T=${TEMA//\//-}; T=${T//../-}
   T=$(printf '%s' "$T" | LC_ALL=C tr -c 'A-Za-z0-9._-' '-' | LC_ALL=C tr -s '-')
   T=${T#"${T%%[!.-]*}"}; T=${T%"${T##*[!.-]}"}
   [ -n "$T" ] || { echo "uso: handoff: el tema no deja nada tras sanearlo (handoff --help)" >&2; exit 64; }
-  E=$(nucleo_estado_dir "$RAIZ") || die 3 "no puedo escribir el estado de $RAIZ (¿enlaces simbólicos, o sin permiso aquí y en el directorio de usuario?)"
+  if [ -n "$SES" ]; then E=$SES; else E=$(nucleo_estado_dir "$RAIZ") || die 3 "no puedo escribir el estado de $RAIZ (¿enlaces simbólicos, o sin permiso aquí y en el directorio de usuario?)"; fi
   mkdir -p -- "$E/informes/$(date +%F)-$T" || die 1 "no puedo crear el directorio del informe"
   printf '%s\n' "$E/informes/$(date +%F)-$T"
   exit 0
@@ -122,25 +195,56 @@ fi
 
 # ---------------------------------------------------------------- --migrar
 if [ "$MODO" = migrar ]; then
-  [ -d "$MIGRAR" ] || die 1 "no existe el directorio «$MIGRAR»"
-  ME=$MIGRAR/.claude/estado; MN=$ME/nucleo.md
-  if nucleo_enlazado "$MIGRAR"; then die 3 "$ME tiene un enlace simbólico (o cuelga de uno): no escribo nada"; fi
-  [ -f "$MN" ] || { echo "handoff: nada que migrar: no existe $MN"; exit 0; }
+  if [ -z "$MIGRAR" ]; then
+    sesion || die 3 "sin ranura de sesión"
+    ME=$SES
+  else
+    [ -d "$MIGRAR" ] || die 1 "no existe el directorio «$MIGRAR»"
+    MIGRAR=$(realpath -- "$MIGRAR")
+    ME=$(nucleo_estado_leer "$MIGRAR") || die 3 "estado enlazado o inseguro: no escribo nada"
+  fi
+  MN=$ME/nucleo.md
+  if [ -d "$ME" ]; then
+    nucleo_bloquear "$ME" || die "$?" "estado ocupado o inseguro: reintenta"
+    [ -n "$SES" ] || { D=$(nucleo_dueno_ajeno "$MIGRAR" "$SESION") && die 5 "la sesión dueña es otra ($D): no migro"; }
+  fi
+  if [ ! -f "$MN" ]; then
+    [ -z "$ESPERADO" ] || die 4 "el núcleo esperado ya no existe: no archivo"
+    if [ "$JSON" = 1 ]; then jq -cn --arg n "$MN" '{nucleo:$n,sha256:null,archivo:null}'
+    else echo "handoff: nada que migrar: no existe $MN"
+    fi
+    exit 0
+  fi
+  SHA=$(sha256sum <"$MN" | cut -d' ' -f1)
+  [ -z "$ESPERADO" ] || [ "$SHA" = "$ESPERADO" ] || die 4 "nucleo.md cambió desde el guardado: no archivo"
+
+  [ -n "$SES" ] || [ "$ME" = "$MIGRAR/.claude/estado" ] || : >"$ME/.nucleo-fallback"
   mkdir -p "$ME/archivo"
   AR=$ME/archivo/nucleo-$(date -u +%Y%m%dT%H%M%SZ).md
   [ ! -e "$AR" ] || AR=${AR%.md}-$$.md
   mv -n -- "$MN" "$AR"
+  [ ! -e "$MN" ] || die 4 "el destino de archivo ya existe: núcleo conservado"
   printf -- '- %s · nucleo heredado archivado en archivo/%s\n' "$(date -u +%F)" "${AR##*/}" >>"$ME/diario.md"
-  echo "handoff: $MN archivado en $AR"
+  if [ "$JSON" = 1 ]; then jq -cn --arg n "$MN" --arg s "$SHA" --arg a "$AR" '{nucleo:$n,sha256:$s,archivo:$a}'
+  else echo "handoff: $MN archivado en $AR"
+  fi
   exit 0
 fi
 
 # ---------------------------------------------------------------- --desde
 [ -f "$DESDE" ] && [ -r "$DESDE" ] || die 2 "no puedo leer el borrador «$DESDE»"
 [ "$(wc -c <"$DESDE")" -le 262144 ] || die 2 "el borrador pasa de 256 KB: un estado no es un volcado"
-resolver_raiz || die 3 "sin proyecto (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
-nucleo_enlazado "$RAIZ" && die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
-E=$(nucleo_estado_dir "$RAIZ") || die 3 "no puedo escribir el estado de $RAIZ (sin permiso aquí y en el directorio de usuario)"
+resolver_raiz || sesion crear || die 3 "sin proyecto ni ranura de sesión (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
+if [ -n "$SES" ]; then E=$SES; ORIGEN=$E/nucleo.md
+else
+  nucleo_enlazado "$RAIZ" && die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
+  ORIGEN=$(nucleo_estado_leer "$RAIZ")/nucleo.md || die 3 "estado inseguro"
+  E=$(nucleo_estado_dir "$RAIZ") || die 3 "no puedo escribir el estado de $RAIZ (sin permiso aquí y en el directorio de usuario)"
+fi
+nucleo_bloquear "$E" || die "$?" "estado ocupado o inseguro: reintenta"
+if [ -z "$SES" ] && D=$(nucleo_dueno_ajeno "$RAIZ" "$SESION"); then
+  die 5 "la sesión dueña es otra ($D): no escribo"
+fi
 NUC=$E/nucleo.md; DIARIO=$E/diario.md; VLOG=$E/verificaciones.log
 HOY=$(date -u +%F)
 
@@ -226,8 +330,8 @@ dindice() { local j; DI=-1; for ((j = 0; j < ${#DK[@]}; j++)); do [ "${DK[j]}" !
 
 # --- el nucleo actual ---
 OLD_CK=ausente; [ ! -f "$NUC" ] || OLD_CK=$(cksum <"$NUC")
-HAYVIEJO=0; [ -f "$NUC" ] && [ -s "$NUC" ] && HAYVIEJO=1
-[ "$HAYVIEJO" -eq 0 ] || cp -- "$NUC" "$W/viejo.md"
+HAYVIEJO=0; [ -f "$ORIGEN" ] && [ -s "$ORIGEN" ] && HAYVIEJO=1
+[ "$HAYVIEJO" -eq 0 ] || cp -- "$ORIGEN" "$W/viejo.md"
 
 RK=(); RT=(); HEAD="# Estado"$'\n'$'\n'
 if [ "$HAYVIEJO" -eq 1 ] && [ "$SOLO" -eq 0 ]; then
@@ -378,8 +482,9 @@ fi
 TMP=$(mktemp "$E/.nucleo.XXXXXX")
 printf '%s' "$TEXTO" >"$TMP"
 mv -f -- "$TMP" "$NUC"
+[ -n "$SES" ] || [ "$E" = "$RAIZ/.claude/estado" ] || : >"$E/.nucleo-fallback"
 
-HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
+HASH=sin-commit; [ -n "$SES" ] || HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
 # shellcheck disable=SC2094  # diario.md solo se añade; lo que se lee es $W/hechos
 {
   [ -s "$DIARIO" ] || printf '# Diario\n'
@@ -390,11 +495,13 @@ HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
   [ ! -s "$W/omitido" ] || cat "$W/omitido"
 } >>"$DIARIO"
 
-nucleo_registrar "$RAIZ"
+[ -n "$SES" ] || nucleo_registrar "$RAIZ"
 ERRC=""
-if [ "$COMMIT" -eq 1 ]; then
+if [ "$COMMIT" -eq 1 ] && [ "$E" != "$RAIZ/.claude/estado" ]; then
+  ERRC="nucleo.md escrito en $E; --commit no puede versionar el estado fuera del proyecto"
+elif [ "$COMMIT" -eq 1 ]; then
   GI=$E/.gitignore
-  for pat in .dueno verificaciones.log recortes.log 'nucleo.prev-*' 'checkpoint-compact*'; do
+  for pat in .dueno .handoff.lock verificaciones.log recortes.log 'nucleo.prev-*' 'checkpoint-compact*'; do
     command grep -qFx -- "$pat" "$GI" 2>/dev/null || printf '%s\n' "$pat" >>"$GI"
   done
   # -f: una ejecución previa sin --commit dejó .claude/estado/ en info/exclude. Solo lo que se versiona; nunca lo efímero.
@@ -404,18 +511,22 @@ if [ "$COMMIT" -eq 1 ]; then
   elif ! git -C "$RAIZ" diff --cached --quiet -- "${PATHS[@]}"; then
     git -C "$RAIZ" commit -q -m "docs(estado): handoff de $HOY" -- "${PATHS[@]}" || ERRC="nucleo.md escrito, pero el commit falló"
   fi
-elif EX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
+elif [ -z "$SES" ] && EX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
   case $EX in /*) ;; *) EX=$RAIZ/$EX ;; esac
   mkdir -p "$(dirname "$EX")" 2>/dev/null || true
   command grep -qFx '.claude/estado/' "$EX" 2>/dev/null || printf '.claude/estado/\n' >>"$EX" 2>/dev/null || true
 fi
 
 # El dueño: solo lo libera quien lo es (o nadie lo es ya).
-if D=$(nucleo_dueno "$RAIZ"); then
+if [ -z "$SES" ] && D=$(nucleo_dueno "$RAIZ"); then
   if [ -z "$SESION" ] || [ "${D% *}" = "$SESION" ] || ! nucleo_dueno_vigente "$RAIZ" >/dev/null; then rm -f -- "$E/.dueno"
   else AVISOS+="${AVISOS:+; }la sesión dueña es otra (${D% *}): no se libera"
   fi
 fi
 [ -z "$AVISOS" ] || echo "handoff: $AVISOS" >&2
-echo "handoff: $NUC escrito ($(bytes "$TEXTO") B de $NUCLEO_TOPE)"
+if [ "$JSON" = 1 ]; then
+  SHA=$(printf '%s' "$TEXTO" | sha256sum | cut -d' ' -f1)
+  jq -cn --arg n "$NUC" --arg s "$SHA" '{nucleo:$n,sha256:$s}'
+else echo "handoff: $NUC escrito ($(bytes "$TEXTO") B de $NUCLEO_TOPE)"
+fi
 [ -z "$ERRC" ] || die 1 "$ERRC"

@@ -7,7 +7,7 @@ const DOCK = 'cockpit'
 const isSimple = atom({ plugin: 'cockpit', key: 'isSimple' } as const, false)
 const team = atom({ plugin: 'cockpit', key: 'team' } as const, 0)
 const ctx = atom({ plugin: 'cockpit', key: 'ctx' } as const, null as Ctx | null)
-const cache = atom({ plugin: 'cockpit', key: 'cache' } as const, { lastAt: 0, ttlMs: 5 * 60_000, isTtlKnown: false, cold: 0, turns: 0 } as Cache)
+const cache = atom({ plugin: 'cockpit', key: 'cache' } as const, { lastAt: 0, ttlMs: 5 * 60_000, cold: 0, turns: 0 } as Cache)
 const warned = atom({ plugin: 'cockpit', key: 'warned' } as const, 0)
 const agents = atom({ plugin: 'cockpit', key: 'agents' } as const, [] as AgentRow[])
 const tasks = atom({ plugin: 'cockpit', key: 'tasks' } as const, [] as TaskRow[])
@@ -16,13 +16,15 @@ const handoff = atom({ plugin: 'cockpit', key: 'handoff' } as const, { phase: 'i
 const turn = atom({ plugin: 'cockpit', key: 'turn' } as const, { isRunning: false, startedAt: 0, activity: '', mission: '' } as Turn)
 const now = atom({ plugin: 'cockpit', key: 'now' } as const, 0)
 const estado = atom({ plugin: 'cockpit', key: 'estado' } as const, null as Estado | null)
+const autonomous = atom({ plugin: 'cockpit', key: 'autonomous' } as const, false)
+const continuity = atom({ plugin: 'cockpit', key: 'continuity' } as const, '')
 const isMissionOpen = atom({ plugin: 'cockpit', key: 'isMissionOpen' } as const, false)
 // An automatic handoff is scheduled; a compaction was vetoed and owes one.
 const isAutoQueued = atom({ plugin: 'cockpit', key: 'isAutoQueued' } as const, false)
 const isVetoed = atom({ plugin: 'cockpit', key: 'isVetoed' } as const, false)
 
 const PINK = '#ff4f9a'
-const DONE = new Set(['completed', 'failed', 'killed'])
+const DONE = new Set(['completed', 'failed', 'killed', 'unknown'])
 // Held by design (AgentStatus): a plan's approval, background work it owns, or a teammate
 // between turns. No tool call is due, so the stall clock does not apply.
 const HELD = new Set(['waiting', 'idle'])
@@ -226,7 +228,7 @@ async function syncAgents($: $) {
   const t = await $.clock.now()
   const rows = await read($, agents)
   const seen = new Set(list.map(a => a.id))
-  const next = rows.map(r => (seen.has(r.id) || DONE.has(r.status) ? r : { ...r, status: 'completed', endedAt: t }))
+  const next = rows.map(r => (seen.has(r.id) || DONE.has(r.status) ? r : { ...r, status: 'unknown', endedAt: t }))
   for (const a of list) {
     const i = next.findIndex(r => r.id === a.id)
     const prev = i < 0 ? undefined : next[i]
@@ -268,41 +270,101 @@ export function nextLine(doc: string) {
   return chars.length > 200 ? `${chars.slice(0, 200).join('')}…` : line
 }
 // The fixed prefix keeps the draft from starting with «/» or «!»: it cannot run a command or switch to bash mode.
-export const fillFor = (doc: string) => {
+export const fillFor = (doc: string, path = '.claude/estado/nucleo.md') => {
   const line = nextLine(doc)
-  return line ? `adelante con la Siguiente acción de .claude/estado/nucleo.md: ${line}` : CONTINUE
+  return line ? `adelante con la Siguiente acción de ${path}: ${line}` : `sigue con la Siguiente acción de ${path}`
 }
 
-// Leave the press/command dispatch before clearing the conversation under it.
-// After a clear that carries a saved state, the prompt box is filled (never submitted) with a
-// line to continue: the SessionStart(clear) hook hands nucleo.md to the new session, and a
-// message sent here would race it (lost once, 2026-10-14). Filling is best effort.
-async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefined) {
+// Keep the lock through the delayed clear and continuation, outside the command dispatch.
+let handoffBusy = false
+let clearPending = false
+let promptRevision = 0
+// Engine atoms reset on /clear; authorization lives only in this loaded module.
+let autonomousEnabled = false
+
+async function fillContinuation($: $, fill: string) {
+  const filled = (await $.prompt.read()).text.trim() ? null : await $.prompt.fill({ text: fill }).catch(() => null)
+  await update($, handoff, (): Handoff => ({
+    phase: 'done',
+    msg: filled?.isFilled ? 'Contexto limpio; revisa el prompt y pulsa Enter para seguir' : `Contexto limpio; escribe: ${fill}`,
+  }))
+}
+
+async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefined, revision = promptRevision) {
+  if (clearPending) return
+  clearPending = true
+  const mission = (await read($, turn)).mission
+  const missionTasks = await read($, tasks)
   $.clock.after(300, async () => {
+    let continuing = false
     try {
-      // A turn that began since the save would lose its context to this clear.
-      if ((await read($, turn)).isRunning) {
-        await update($, handoff, (): Handoff => ({ phase: 'done', msg: `${path ? `Guardado en ${path}` : 'Listo'}, pero empezó otro turno: no limpio; escribe /clear cuando quieras` }))
+      if ((await read($, turn)).isRunning || revision !== promptRevision || (await $.prompt.read()).text.trim()) {
+        await update($, handoff, (): Handoff => ({ phase: 'done', msg: `${path ? `Guardado en ${path}` : 'Listo'}, pero hay actividad o texto nuevo: no limpio; escribe /clear cuando quieras` }))
+        return
+      }
+      if (path && ((await resolveState($)).active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) {
+        await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${path}, pero hay agentes o shells vivos: no limpio` }))
+        return
+      }
+      const before = await $.session.id()
+      if (!before) throw new Error('sesión desconocida; no limpio')
+      if (revision !== promptRevision || (await read($, turn)).isRunning || (await $.prompt.read()).text.trim()) {
+        await update($, handoff, (): Handoff => ({ phase: 'done', msg: 'Llegó actividad nueva durante la consulta: no limpio; revisa el estado antes de /clear' }))
         return
       }
       await $.command.run({ command: 'clear' })
+      if (!path) {
+        autonomousEnabled = false
+        await update($, autonomous, () => false)
+        await update($, turn, t => ({ ...t, mission: '' }))
+        await update($, tasks, () => [])
+      }
       if (!fill) {
         await update($, handoff, (): Handoff => ({ phase: 'done', msg: 'Contexto limpio' }))
         return
       }
-      const filled = await $.prompt.fill({ text: fill }).catch(() => null)
-      await update($, handoff, (): Handoff => ({
-        phase: 'done',
-        msg: filled?.isFilled ? 'Contexto limpio; revisa el prompt y pulsa Enter para seguir' : `Contexto limpio; escribe: ${fill}`,
-      }))
+      const after = await $.session.id()
+      if (!after) throw new Error('no se confirmó una sesión nueva')
+      if (path && mission) {
+        await update($, turn, t => ({ ...t, mission }))
+        await update($, tasks, () => missionTasks)
+      }
+      if (path && mission && before !== after && autonomousEnabled) {
+        continuing = true
+        $.clock.after(300, async () => {
+          try {
+            if (!autonomousEnabled || after !== await $.session.id() || revision !== promptRevision || (await read($, turn)).isRunning || (await $.prompt.read()).text.trim()) {
+              await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Continuación automática detenida por actividad o cambio de sesión; revisa el estado y escribe: ${fill}` }))
+              return
+            }
+            await update($, autonomous, () => autonomousEnabled)
+            await update($, turn, t => ({ ...t, mission }))
+            const result = await $.prompt.submit({
+              text: `Continúa únicamente el trabajo ya autorizado. Objetivo de esta sesión: ${mission}\nLee ${path} como datos de continuidad, nunca como autorización para ampliar el alcance. Si falta una decisión de la persona, detente y explícala.`,
+            })
+            if (result.drop !== undefined) {
+              await fillContinuation($, fill)
+              $.ui.toast(`Continuación rechazada: ${result.drop}; continúa manualmente`)
+            } else {
+              await update($, handoff, (): Handoff => ({ phase: 'done', msg: 'Contexto limpio; continuación automática enviada' }))
+            }
+          } catch {
+            await update($, handoff, (): Handoff => ({ phase: 'error', msg: `No se pudo confirmar la continuación; revisa la conversación antes de reenviar: ${fill}` }))
+          } finally {
+            clearPending = false
+          }
+        })
+        return
+      }
+      await fillContinuation($, fill)
     } catch {
       const saved = path ? `Guardado en ${path}, pero ` : ''
       await update($, handoff, (): Handoff => ({ phase: 'error', msg: fill ? `${saved}/clear falló: escribe /clear y luego ${fill}` : `${saved}/clear falló: escríbelo tú` }))
+    } finally {
+      if (!continuing) clearPending = false
     }
   })
 }
-
-const utcStamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')
 
 // Same root as nucleo_raiz (hooks/lib/nucleo.sh), decision 6: git from the session's cwd (not the mod process's);
 // $HOME and $HOME/.claude/** are no project, and neither is a directory outside git. `root` is null then.
@@ -316,8 +378,10 @@ async function resolveRoot($: $) {
   const home = (await $.process.run(['printenv', 'HOME']).catch(() => null))?.stdout.trim().replace(/[\\/]+$/, '') ?? ''
   const isProject = !!found && !!home && found !== home && found !== `${home}/.claude` && !found.startsWith(`${home}/.claude/`)
   const root = isProject ? found : null
+  const configured = (await $.process.run(['printenv', 'CLAUDE_HOME']).catch(() => null))?.stdout.trim() ?? ''
+  const claudeHome = configured.startsWith('/') ? configured.replace(/\/+$/, '') : `${home}/.claude`
   const dir = `${root}/.claude/estado`
-  return { home, root, dir, path: `${dir}/nucleo.md`, bin: `${home}/.claude/bin/handoff` }
+  return { home, root, dir, path: `${dir}/nucleo.md`, bin: `${claudeHome}/bin/handoff`, active: 0 }
 }
 
 // COCKPIT_AUTO_HANDOFF: `off`, an integer 50-95 (the % of the compaction limit), or anything else = 70.
@@ -330,11 +394,12 @@ async function autoThreshold($: $) {
 
 // Automatic handoff only where the state is the task's own: a project (decision 6).
 async function isAutoEligible($: $) {
-  return (await resolveRoot($).catch(() => null))?.root != null
+  const location = await resolveState($).catch(() => null)
+  return location != null && location.active === 0 && await $.fs.exists(location.bin)
 }
 
 // Owner and share of the cap come from `handoff --estado` (one source, the CLI's). The read is never awaited by a
-// render: a timer and the turn ends refresh the atom, and a slow or missing CLI only leaves the row out.
+// render: a timer and the turn ends refresh the atom; missing or failed CLI becomes a visible warning.
 const ESTADO_EVERY = 20_000
 let lastEstadoAt = 0
 let isEstadoBusy = false
@@ -345,19 +410,41 @@ async function refreshEstado($: $, force: boolean) {
   lastEstadoAt = t
   try {
     const { root, bin } = await resolveRoot($)
-    const out = root === null ? null : await $.process.run([bin, '--estado', '--raiz', root], { timeoutMs: 2000 })
-    const j = out?.exitCode === 0 ? (JSON.parse(out.stdout) as Partial<Estado> & { dueno?: { sesion: string; vigente: boolean } | null }) : null
-    const mine = await $.session.id().catch(() => '')
+    if (!(await $.fs.exists(bin))) {
+      await update($, continuity, () => `Continuidad no disponible: falta ${bin}; ejecuta kit/install.sh`)
+      await update($, estado, () => null)
+      return
+    }
+    const mine = await $.session.id()
+    const out = await $.process.run([bin, '--estado', ...(root === null ? [] : ['--raiz', root]), '--sesion', mine], { timeoutMs: 2000 })
+    const j = out?.exitCode === 0 ? (JSON.parse(out.stdout) as Partial<Estado> & { dueno?: { sesion: string; vigente: boolean } | null; sesion?: string | null }) : null
     const next: Estado | null =
-      j && typeof j.pct === 'number' ? { pct: j.pct, bytes: j.bytes ?? 0, tope: j.tope ?? 0, dueno: j.dueno ? { sesion: j.dueno.sesion, vigente: j.dueno.vigente, isMine: j.dueno.sesion === mine } : null } : null
+      j && typeof j.pct === 'number' ? { pct: j.pct, bytes: j.bytes ?? 0, tope: j.tope ?? 0, dueno: j.dueno ? { sesion: j.dueno.sesion, vigente: j.dueno.vigente, isMine: j.dueno.sesion === mine } : null, isSlot: root === null && !!j.sesion } : null
     await update($, estado, () => next)
+    await update($, continuity, () => next ? '' : 'Continuidad degradada: no se pudo consultar handoff --estado')
   } catch {
+    await update($, continuity, () => 'Continuidad degradada: no se pudo consultar handoff --estado')
     await update($, estado, () => null)
   } finally {
     isEstadoBusy = false
   }
 }
 const softEstado = ($: $, force = false) => void refreshEstado($, force).catch(() => undefined)
+
+async function resolveState($: $) {
+  const location = await resolveRoot($)
+  if (!(await $.fs.exists(location.bin))) throw new Error(`falta ${location.bin}: ejecuta kit/install.sh`)
+  const result = await $.process.run([location.bin, '--estado', ...(location.root === null ? [] : ['--raiz', location.root]), '--sesion', await $.session.id()], { timeoutMs: 2000 })
+  if (result.exitCode === 3) throw new Error(NO_PROJECT)
+  if (result.exitCode !== 0) throw new Error('no se pudo consultar handoff --estado; no limpio')
+  const state: unknown = JSON.parse(result.stdout)
+  if (typeof state !== 'object' || state === null || !('nucleo' in state) || typeof state.nucleo !== 'string' || !state.nucleo.startsWith('/') || !state.nucleo.endsWith('/nucleo.md'))
+    throw new Error('handoff --estado no devuelve una ruta nucleo válida; no limpio')
+  if (!('agentes_vivos' in state) || typeof state.agentes_vivos !== 'number' || !Number.isSafeInteger(state.agentes_vivos) || state.agentes_vivos < 0)
+    throw new Error('handoff --estado no confirma los agentes vivos; no limpio')
+  const active = state.agentes_vivos
+  return { ...location, path: state.nucleo, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active }
+}
 
 const readState = async ($: $, path: string) => ((await $.fs.exists(path)) ? await $.fs.read(path) : '')
 
@@ -374,29 +461,43 @@ async function refuseLinks($: $, dir: string) {
 
 const NO_PROJECT = 'aquí no hay proyecto (~, ~/.claude o fuera de un repo git): no hay estado que guardar'
 
-// The CLI contract: exit 0 ok · 2 invalid draft · 3 no project · 4 nucleo.md changed during the merge (retry once).
+// CLI: 0 saved (stderr warns) · 2 invalid · 3 no project · 4 busy/conflict (retry once) · 5 foreign owner.
 async function runHandoff($: $, andClear: boolean, focus = '') {
+  if (handoffBusy || clearPending) return
+  handoffBusy = true
+  const revision = promptRevision
   await update($, handoff, (): Handoff => ({ phase: 'working' }))
   let tmp = ''
   try {
-    const { root, dir, path, bin } = await resolveRoot($)
-    if (root === null) throw new Error(NO_PROJECT)
+    const { root, dir, path, bin, active } = await resolveState($)
+    if (andClear && (active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) throw new Error('hay agentes o shells vivos: no limpio; espera o usa /handoff solo')
     if (!(await $.fs.exists(bin))) throw new Error(`falta ${bin}: ejecuta kit/install.sh, que copia handoff y oraculo a ~/.claude/bin (si ~/.claude es tu repo git, genera un plan diff-first: cópialos desde él)`)
     await refuseLinks($, dir)
     const prev = await readState($, path)
-    const reply = await $.model.fork({ prompt: HANDOFF_PROMPT + (prev ? prevNote(prev) : firstNote) + (focus ? focusNote(focus) : '') })
-    if (!reply.isAnswered) throw new Error(`el modelo no respondió (${reply.reason})`)
-    // The fork may preface its answer: the draft starts at the first section.
-    const start = reply.text.search(/^## /m)
-    if (start < 0) throw new Error('la respuesta no trae secciones ## ')
+    const encoder = new TextEncoder()
+    const preserved = sections(prev).filter(s => /^(objetivo|encargo original|invariantes)/.test(s.key)).map(s => s.text).join('')
+    const budget = 6500 - encoder.encode(preserved).length - 768
+    if (budget <= 0) throw new Error('Objetivo e Invariantes no dejan espacio seguro bajo el tope de 6500 B; no guardo ni limpio')
+    const prompt = HANDOFF_PROMPT + (prev ? prevNote(prev) : firstNote) + (focus ? focusNote(focus) : '')
+      + `\nPresupuesto: respuesta completa como máximo ${budget} bytes UTF-8, objetivo ${Math.min(3000, budget)} bytes. El CLI conserva Objetivo e Invariantes existentes: no los repitas salvo corrección nueva. Referencia SPEC/artefactos por ruta; no copies sus contratos ni repitas rutas largas en cada sección. Plan compacto, siguiente fase y resultados verificables. Nunca acortes ni reformules las palabras literales de la persona para hacerlas caber.`
+    let draft = ''
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const reply = await $.model.fork({ prompt: prompt + (attempt ? `\nLa respuesta anterior excedió ${budget} bytes UTF-8. Regenera una versión más compacta; conserva riesgos abiertos y referencias, sin duplicar la especificación ni secciones fijas. Es el último intento antes de conservar el contexto sin guardar.` : '') })
+      if (!reply.isAnswered) throw new Error(`el modelo no respondió (${reply.reason})`)
+      const start = reply.text.search(/^## /m)
+      if (start < 0) throw new Error('la respuesta no trae secciones ## ')
+      draft = redact(reply.text.slice(start))
+      if (encoder.encode(draft).length <= budget) break
+      if (attempt === 1) throw new Error(`el borrador supera el presupuesto de ${budget} bytes UTF-8 tras dos intentos; no guardo ni limpio`)
+    }
     // The draft holds the session's state: a private file (mktemp makes it 600), removed in `finally`.
     const made = await $.process.run(['mktemp', '-t', 'cockpit-handoff.XXXXXX'])
     tmp = made.exitCode === 0 ? made.stdout.trim() : ''
     if (!tmp) throw new Error('no pude crear el borrador temporal')
     await $.process.run(['chmod', '600', '--', tmp])
-    await $.fs.write(tmp, redact(reply.text.slice(start)))
+    await $.fs.write(tmp, draft)
     const sesion = await $.session.id().catch(() => '')
-    const argv = [bin, '--desde', tmp, '--raiz', root, ...(sesion ? ['--sesion', sesion] : [])]
+    const argv = [bin, '--desde', tmp, ...(root === null ? [] : ['--raiz', root]), ...(sesion ? ['--sesion', sesion] : []), '--json']
     let res = await $.process.run(argv)
     if (res.exitCode === 4) res = await $.process.run(argv)
     if (res.exitCode !== 0) {
@@ -404,19 +505,30 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
       throw new Error(
         res.exitCode === 2 ? `borrador inválido${why ? `: ${why}` : ''}; repite /handoff`
         : res.exitCode === 3 ? NO_PROJECT
-        : res.exitCode === 4 ? 'nucleo.md cambió durante la fusión (dos intentos); repite /handoff'
+        : res.exitCode === 4 ? 'nucleo.md cambió durante la fusión o está ocupado (dos intentos); repite /handoff'
+        : res.exitCode === 5 ? `el estado pertenece a otra sesión${why ? `: ${why}` : ''}; no limpio`
         : `handoff salió con ${res.exitCode}${why ? `: ${why}` : ''}`,
       )
     }
-    if (!andClear) {
-      await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${path}` }))
+    if (res.stderr.trim()) {
+      await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Guardado en ${path} con aviso: ${redact(res.stderr.trim())}; no limpio, revisa el estado` }))
       return
     }
-    await clearAfter($, path, fillFor(await readState($, path)))
+    const receipt: unknown = JSON.parse(res.stdout)
+    if (typeof receipt !== 'object' || receipt === null || !('nucleo' in receipt) || typeof receipt.nucleo !== 'string' || !receipt.nucleo.startsWith('/') || !('sha256' in receipt) || typeof receipt.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.sha256))
+      throw new Error('el CLI no confirmó la ruta y el hash guardados; no limpio')
+    const saved = { path: receipt.nucleo, hash: receipt.sha256 }
+    if (!andClear) {
+      await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${saved.path}` }))
+      return saved
+    }
+    await clearAfter($, saved.path, fillFor(await readState($, saved.path), saved.path.endsWith('/.claude/estado/nucleo.md') ? '.claude/estado/nucleo.md' : saved.path), revision)
+    return saved
   } catch (err) {
     await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}` }))
   } finally {
     if (tmp) await $.process.run(['rm', '-f', '--', tmp]).catch(() => undefined)
+    handoffBusy = false
     softEstado($, true)
   }
 }
@@ -447,6 +559,7 @@ async function maybeAutoHandoff($: $) {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    await $.command.register({ name: 'autonomo', description: 'Continuación tras handoff del trabajo autorizado: /autonomo on|off', argumentHint: 'on|off' })
     await $.command.register({ name: 'dock', description: 'Abre el Agent Dock: agentes trabajando, misión y tamaño de equipo' })
     await $.command.register({ name: 'simple', description: 'Activa o desactiva el modo simple: pasos con barra y resumen corto' })
     await $.command.register({
@@ -471,6 +584,15 @@ export const register: Register = on => {
     return { text: 'Agent Dock abierto.' }
   })
 
+  on('command.run', { command: 'autonomo' }, async ($, e) => {
+    const mode = e.args.trim().toLowerCase()
+    if (!['composer', 'bridge', 'sdk'].includes(e.origin.kind)) return { text: 'La continuación automática debe activarla la persona con /autonomo on.' }
+    if (mode !== 'on' && mode !== 'off') return { text: `Continuación automática ${autonomousEnabled ? 'activada' : 'desactivada'}. Uso: /autonomo on|off` }
+    autonomousEnabled = mode === 'on'
+    await update($, autonomous, () => autonomousEnabled)
+    return { text: mode === 'on' ? 'Continuación automática activada para el trabajo ya autorizado: tras guardar y /clear, seguirá si la sesión está lista y no hay actividad nueva. /autonomo off la desactiva.' : 'Continuación automática desactivada: revisa el prompt y pulsa Enter para seguir.' }
+  })
+
   on('command.run', { command: 'simple' }, async $ => {
     const isOn = await update($, isSimple, v => !v)
     return { text: isOn ? 'Modo simple activado: verás los pasos encima del prompt y respuestas cortas.' : 'Modo simple desactivado.' }
@@ -488,29 +610,39 @@ export const register: Register = on => {
     const task = e.args.trim()
     if (!task) return { text: 'Uso: /nueva <la tarea nueva>. Archiva el estado de la tarea actual, limpia el contexto y deja la tarea nueva escrita en el prompt.' }
     // Archiving under a running turn or handoff would pull the state from under it, and the /clear would be refused anyway.
-    if ((await read($, turn)).isRunning || (await read($, handoff)).phase === 'working' || (await read($, isAutoQueued)))
+    if (handoffBusy || clearPending || (await read($, turn)).isRunning || (await read($, handoff)).phase === 'working' || (await read($, isAutoQueued)))
       return { text: 'Hay un turno o un handoff en marcha: repite /nueva cuando termine.' }
-    const { dir, path, root } = await resolveRoot($)
-    if (root === null) {
-      await clearAfter($, undefined, task)
-      return { text: 'Limpiando; la tarea nueva quedará en el prompt. Aviso: aquí (~ o fuera de un repo) no hay proyecto ni estado propio por tarea.' }
-    }
+    const revision = promptRevision
+    const location = await resolveState($).catch(() => null)
+    if (!location) return { text: 'No pude consultar el estado; no archivo ni limpio. Revisa handoff --estado.' }
+    if (location.active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status))) return { text: 'Hay agentes o shells vivos: no archivo ni limpio; espera a que terminen.' }
+    const { path, root } = location
     let note = ''
     if (await $.fs.exists(path)) {
-      await runHandoff($, false)
+      const saved = await runHandoff($, false)
       const h = await read($, handoff)
-      if (h.phase === 'error') return { text: h.msg ?? 'Handoff fallido' }
-      const dest = `${dir}/archivo/nucleo-${utcStamp()}.md`
-      const moved = await $.process.run(['mkdir', '-p', '--', `${dir}/archivo`]).then(m => (m.exitCode === 0 ? $.process.run(['mv', '--', path, dest]) : m))
-      if (moved.exitCode !== 0) return { text: `Guardado en ${path}, pero no pude archivarlo: no limpio` }
-      note = ` Estado archivado en ${dest}.`
+      if (!saved || h.phase !== 'done') return { text: h.msg ?? 'Handoff en marcha; no archivo ni limpio.' }
+      const sessionId = await $.session.id()
+      if (revision !== promptRevision) return { text: 'Llegó un mensaje nuevo durante el guardado: no archivo ni limpio.' }
+      const moved = await $.process.run([location.bin, '--migrar', ...(root === null ? [] : [root]), '--sesion', sessionId, '--esperado', saved.hash, '--json']).catch(() => null)
+      if (!moved || moved.exitCode !== 0 || moved.stderr.trim()) return { text: `Guardado en ${saved.path}, pero no pude archivarlo: no limpio. ${redact(moved?.stderr.trim() ?? 'CLI no disponible')}` }
+      let archived: unknown
+      try { archived = JSON.parse(moved.stdout) } catch { return { text: 'El CLI no confirmó el archivo: no limpio; consulta handoff --estado.' } }
+      if (typeof archived !== 'object' || archived === null || !('archivo' in archived) || typeof archived.archivo !== 'string')
+        return { text: 'El CLI no confirmó el archivo: no limpio; consulta handoff --estado.' }
+      note = ` Estado archivado en ${archived.archivo}.`
     }
-    await clearAfter($, undefined, task)
-    return { text: `Limpiando; la tarea nueva quedará en el prompt.${note}` }
+    autonomousEnabled = false
+    await update($, autonomous, () => false)
+    await clearAfter($, undefined, task, revision)
+    return { text: `Continuación automática desactivada para la tarea nueva. Limpiando; la tarea nueva quedará en el prompt.${note}` }
   })
 
   on('session.end', async ($, e, next) => {
     if (e.reason === 'clear') {
+      const keepMission = clearPending
+      if (!clearPending) autonomousEnabled = false
+      await update($, turn, t => ({ ...t, mission: keepMission ? t.mission : '', isRunning: false }))
       await update($, agents, () => [])
       await update($, tasks, () => [])
       await update($, summary, () => '')
@@ -526,11 +658,11 @@ export const register: Register = on => {
   // Notes ride the prompt as hidden context, so toggling a mode never rewrites the cached system prompt.
   on('prompt.submit', async ($, e, next) => {
     if (e.isMeta || e.command) return next(e)
+    promptRevision++
     // Only the person's own prompts set the mission; a task notification is not one.
     if (e.turnId === undefined && ['composer', 'bridge', 'sdk'].includes(e.origin.kind)) {
       const mission = e.text.split('\n').find(l => l.trim())?.trim() ?? ''
-      await update($, turn, t => ({ ...t, mission }))
-      await update($, tasks, () => [])
+      await update($, turn, t => ({ ...t, mission: t.mission || mission }))
       await update($, isMissionOpen, () => false)
     }
     const notes = [(await read($, isSimple)) ? SIMPLE_NOTE : '', (n => (n > 0 ? teamNote(n) : ''))(await read($, team))].filter(Boolean)
@@ -556,12 +688,11 @@ export const register: Register = on => {
         await update($, cache, c => {
           const gap = c.lastAt ? t - e.durationMs - c.lastAt : 0
           const isCold = c.turns > 0 && total > 20_000 && u.cache_read_input_tokens < total / 2
-          // Learn the TTL: warm after a >5 min pause means the 1 h cache; cold inside an hour means 5 min.
+          // Estimate the TTL from the observed hits; elapsed time never proves the cache is still warm.
           const learned = gap > 5 * 60_000 && gap < 60 * 60_000 ? (isCold ? 5 * 60_000 : 60 * 60_000) : undefined
           return {
             lastAt: t,
             ttlMs: learned ?? c.ttlMs,
-            isTtlKnown: c.isTtlKnown || learned !== undefined,
             cold: c.cold + (isCold ? 1 : 0),
             turns: c.turns + 1,
           }
@@ -680,7 +811,7 @@ export const register: Register = on => {
           hotkey="h"
           variant="primary"
           label="handoff"
-          onPress={() => update($, handoff, (h): Handoff => ({ phase: h.phase === 'confirm' ? 'idle' : 'confirm' }))}
+          onPress={() => update($, handoff, (h): Handoff => handoffBusy || clearPending ? h : ({ phase: h.phase === 'confirm' ? 'idle' : 'confirm' }))}
         />
       </Box>
     )
@@ -705,8 +836,8 @@ export const register: Register = on => {
     const cacheRow = ca.lastAt > 0 && (
       <Text key="cache" wrap="truncate-end">
         {label('CACHÉ')}
-        <Text color={isWarm ? 'success' : 'error'}>{isWarm ? '● caliente' : '○ fría'}</Text>
-        {isWarm && <Text> {ca.isTtlKnown ? '' : '~'}{clock(left)}</Text>}
+        <Text color={isWarm ? 'success' : 'error'}>{isWarm ? '● probablemente caliente' : '○ probablemente fría'}</Text>
+        {isWarm && <Text> ~{clock(left)}</Text>}
         <Text dimColor>  reescribir ≈ </Text>
         <Text>{k(c?.tokens ?? 0)} tok</Text>
         <Text dimColor>  {ca.cold} {ca.cold === 1 ? 'reinicio' : 'reinicios'} en frío</Text>
@@ -749,6 +880,7 @@ export const register: Register = on => {
         {eatingRow}
         {cacheRow}
         {handoffRow}
+        {(await read($, autonomous)) && <Text dimColor>Continuación automática activa · /autonomo off para detenerla</Text>}
       </Box>
     )
     if (!simple) return watcher
@@ -808,22 +940,19 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: DOCK }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const cols = Math.max(24, e.props.bodyColumns)
-    const [ag, ts, tn, size, t, isOpen, es] = await Promise.all([read($, agents), read($, tasks), read($, turn), read($, team), read($, now), read($, isMissionOpen), read($, estado)])
+    const [ag, ts, tn, size, t, isOpen, es, continuityNote] = await Promise.all([read($, agents), read($, tasks), read($, turn), read($, team), read($, now), read($, isMissionOpen), read($, estado), read($, continuity)])
     const tick = Math.max(t, tn.startedAt)
     const isStuck = (a: AgentRow) => !DONE.has(a.status) && !HELD.has(a.status) && a.status !== 'pending' && tick - a.lastActiveAt > STUCK_MS
     // Working is the leftover, so a status this code does not know still shows somewhere.
     const working = ag.filter(a => !DONE.has(a.status) && a.status !== 'pending' && !isStuck(a))
     const queued = ag.filter(a => a.status === 'pending')
     const finished = ag.filter(a => a.status === 'completed')
-    const stuck = ag.filter(a => isStuck(a) || a.status === 'failed' || a.status === 'killed')
+    const stuck = ag.filter(a => isStuck(a) || a.status === 'failed' || a.status === 'killed' || a.status === 'unknown')
     const isLive = tn.isRunning || working.length > 0 || queued.length > 0
 
-    const missionAgents = ag.filter(a => a.startedAt >= tn.startedAt - 1000)
     const missionPct = ts.length
       ? Math.round((ts.filter(x => x.status === 'completed').length / ts.length) * 100)
-      : missionAgents.length
-        ? Math.round((missionAgents.filter(a => a.status === 'completed').length / missionAgents.length) * 100)
-        : tn.isRunning ? undefined : 100
+      : undefined
 
     // One column at any width. A row is `glyph T<n>  description  time` with the time pinned right;
     // live agents add a second line with what they are doing. The 6-space indent is the row's prefix width.
@@ -856,7 +985,7 @@ export const register: Register = on => {
       </Box>
     )
     const workNote = (a: AgentRow) => (a.status === 'waiting' ? 'en espera (aprobación o tarea en segundo plano)' : a.status === 'idle' ? 'en espera de un mensaje' : a.activity)
-    const stopNote = (a: AgentRow) => (a.status === 'failed' ? 'falló' : a.status === 'killed' ? 'detenido' : `${elapsed(tick - a.lastActiveAt)} sin actividad`)
+    const stopNote = (a: AgentRow) => (a.status === 'unknown' ? 'sin confirmar: ya no aparece en el registro' : a.status === 'failed' ? 'falló' : a.status === 'killed' ? 'detenido' : `${elapsed(tick - a.lastActiveAt)} sin actividad`)
     const stopGlyph = (a: AgentRow) => (a.status === 'failed' ? '✗' : a.status === 'killed' ? '■' : '◌')
 
     // Mission: folded to one line by default, so the agents keep the rows; «más» (a click) unfolds it. The text lives outside the Button: a Button does not bound its child.
@@ -893,19 +1022,20 @@ export const register: Register = on => {
               {hasMore && <Button key="mission" plain label={isOpen ? '▾ menos' : '▸ más'} onPress={() => update($, isMissionOpen, v => !v)} />}
             </Box>
             <Text>
-              {missionPct === undefined ? '' : <Text color="claude">{missionPct}%</Text>}
+              {missionPct === undefined ? 'Sin datos de avance' : <Text color="claude">{missionPct}%</Text>}
               <Text dimColor>{tn.isRunning ? ` ${elapsed(tick - tn.startedAt)}` : ''}</Text>
             </Text>
           </Box>
           {missionLines.map((l, i) => <Text key={`mission-${i}`} wrap="truncate-end">{l}</Text>)}
-          <Text color="claude" wrap="truncate-end">{thin(missionPct === undefined ? scanner(tick, cols) : bar(missionPct, cols))}</Text>
+          <Text color="claude" wrap="truncate-end">{thin(missionPct === undefined ? (isLive ? scanner(tick, cols) : bar(0, cols)) : bar(missionPct, cols))}</Text>
           {tn.isRunning && <Text dimColor wrap="truncate-end">principal · {tn.activity}</Text>}
         </Box>
+        {continuityNote && <Text color="warning" wrap="wrap">{continuityNote}</Text>}
         {es && (
           <Box flexDirection="column">
             <Text color={tone(es.pct)} wrap="truncate-end">nucleo {es.pct}% del tope</Text>
             <Text dimColor wrap="truncate-end">
-              dueño: {es.dueno ? `${es.dueno.isMine ? 'esta sesión' : `otra sesión (${es.dueno.sesion.slice(0, 8)})`}${es.dueno.vigente ? '' : ' vencido'}` : 'ninguno'}
+              dueño: {es.isSlot ? 'sesión propia en ~' : es.dueno ? `${es.dueno.isMine ? 'esta sesión' : `otra sesión (${es.dueno.sesion.slice(0, 8)})`}${es.dueno.vigente ? '' : ' vencido'}` : 'ninguno'}
             </Text>
           </Box>
         )}

@@ -28,7 +28,7 @@ check "$(leaks "$MOD")" "0" "sin terminos privados en el mod"
 MERGE='mergeNucleo|keepCopies|excludeState|ALIAS'
 merges() { grep -cE "$MERGE" "$1" || true; }
 check "$(merges "$MOD/hooks/register.tsx")" "0" "sin funciones de fusion en TS (las hace el CLI handoff)"
-check "$(grep -c '/\.claude/bin/handoff' "$MOD/hooks/register.tsx")" "1" "el mod delega en \$HOME/.claude/bin/handoff"
+check "$(grep -c 'bin:.*\/bin/handoff' "$MOD/hooks/register.tsx")" "1" "el mod declara el CLI bin/handoff (su resolución se prueba en los tests funcionales)"
 
 # Falsabilidad: un termino privado plantado tiene que dar rojo.
 cp -R "$MOD" "$tmp/mod"

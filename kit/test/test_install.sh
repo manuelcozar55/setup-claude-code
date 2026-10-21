@@ -139,6 +139,13 @@ ck "$(readlink "$HOME/.local/bin/oraculo")" "$CLAUDE_HOME/bin/oraculo" "L1: el h
 rm "$HOME/.local/bin/handoff"; ln -s "$CLAUDE_HOME/bin/../bin/handoff" "$HOME/.local/bin/handoff"
 set +e; bash "$KIT/install.sh" >"$tmp/l1b.log" 2>&1; set -e
 ck "$(readlink "$HOME/.local/bin/handoff")" "$CLAUDE_HOME/bin/handoff" "enlace nuestro con otra grafia: se deja con la ruta exacta"
+# SCC-04: un enlace a OTRO fichero existente de nuestro bin/ (un wrapper de la persona) no es el CLI: ajeno, no se pisa.
+rm "$HOME/.local/bin/handoff"; printf 'wrapper\n' > "$CLAUDE_HOME/bin/custom-wrapper"
+ln -s "$CLAUDE_HOME/bin/custom-wrapper" "$HOME/.local/bin/handoff"
+set +e; bash "$KIT/install.sh" >"$tmp/l1c.log" 2>&1; set -e
+ck "$(readlink "$HOME/.local/bin/handoff")" "$CLAUDE_HOME/bin/custom-wrapper" "SCC-04: un enlace a otro fichero existente de nuestro bin/ no se pisa"
+ck "$(grep -c 'bin/handoff ya existe' "$tmp/l1c.log")" "1" "SCC-04: y se avisa como ajeno"
+rm "$HOME/.local/bin/handoff" "$CLAUDE_HOME/bin/custom-wrapper"
 # M6 residuo: ~/.claude es un enlace a otro sitio y el enlace colgante apunta por la ruta real.
 H4="$tmp/home-m6"; mkdir -p "$H4/.local/bin" "$H4/real"; ln -s "$H4/real" "$H4/.claude"
 export HOME="$H4" CLAUDE_HOME="$H4/.claude"

@@ -10,8 +10,8 @@
 # Sin red; HOME falso en un mktemp que se borra.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; H="$HERE/../claude/hooks"; KIT="$HERE/.."
-T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PROJECT_DIR NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW
+T=$(mktemp -d -t scc-sA.XXXXXX); trap 'rm -rf -- "$T"' EXIT
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PID CLAUDE_PROJECT_DIR NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW
 mkdir -p "$HOME"
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
@@ -310,7 +310,7 @@ OUT=$(ev "$RD" sA "" startup | bash "$H/session-start-clear.sh")
 ok "dueño: la primera sesión lo reclama (sesion= y desde= numérico)" "$(dsid),$(sed -n 's/^desde=//p' "$DU" | command grep -c '^[0-9][0-9]*$')" sA,1
 ok "dueño: la primera sesión no recibe aviso de otra" "$(jq -r '.systemMessage // "nada"' <<<"$OUT")" nada
 OUT=$(ev "$RD" sB "" startup | bash "$H/session-start-clear.sh")
-ok "dueño: la segunda sesión recibe aviso (persona y modelo) nombrando a la dueña" "$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -c sA),$(ctx <<<"$OUT" | command grep -c 'sA')" 1,1
+ok "dueño: la segunda sesión recibe aviso (persona y modelo) nombrando a la dueña" "$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -Fc 'otra sesión dueña (sA)'),$(ctx <<<"$OUT" | command grep -Fc 'otra sesión dueña (sA)')" 1,1
 ok "dueño: el aviso no bloquea: el nucleo se inyecta igual" "$(ctx <<<"$OUT" | command grep -c PASO-DUENO)" 1
 ok "dueño: la segunda sesión no pisa al dueño" "$(dsid)" sA
 ok "dueño: la dueña que reanuda no recibe aviso (misma sesión)" "$(ev "$RD" sA "" resume | bash "$H/session-start-clear.sh" | jq -r '.systemMessage // "nada"')" nada
@@ -524,7 +524,7 @@ SN=$HS/.claude/estado/nucleo.md
 ok "solo: el borrador sustituye (no conserva ni Objetivo ni Plan)" "$RC,$(command grep -c 'OBJ-SOLO' "$SN"),$(command grep -c 'OBJ-1 literal\|paso-dos' "$SN")" "0,1,0"
 ok "solo: el nucleo anterior queda en nucleo.prev-*" "$(command grep -lF 'OBJ-1 literal' "$HS"/.claude/estado/nucleo.prev-*.md | wc -l)" 1
 
-# Dueño: solo lo libera quien lo es (--sesion), o cualquiera si no hay dueño vigente / no se dice sesión.
+# Dueño: solo lo libera quien lo es (--sesion), o cualquiera si no hay dueño vigente.
 HW=$T/how; mkrepo "$HW"; mkdir -p "$HW/.claude/estado"
 hw() { (cd "$HW" && bash "$BIN/handoff" --desde "$T/b-solo.md" "$@"); }
 DW=$HW/.claude/estado/.dueno
@@ -534,7 +534,7 @@ ok "dueño: otra sesión vigente → no se libera y se avisa" "$([ -e "$DW" ] &&
 hw --sesion sA >/dev/null 2>&1
 ok "dueño: la dueña lo libera" "$([ -e "$DW" ] && echo sigue || echo libre)" libre
 printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$DW"; hw >/dev/null 2>&1
-ok "dueño: sin --sesion, handoff lo libera" "$([ -e "$DW" ] && echo sigue || echo libre)" libre
+ok "dueño: sin --sesion, conserva dueño vigente" "$([ -e "$DW" ] && echo sigue || echo libre)" sigue
 printf 'sesion=sA\ndesde=1\n' >"$DW"; hw --sesion sB >/dev/null 2>&1
 ok "dueño: caducado, cualquiera lo libera" "$([ -e "$DW" ] && echo sigue || echo libre)" libre
 
@@ -590,12 +590,12 @@ ok "CR-2: el aviso nombra la sección omitida (no culpa a Objetivo e Invariantes
 H3=$T/cr3; mkrepo "$H3"
 (cd "$H3" && bash "$BIN/handoff" --desde "$T/b1.md" >/dev/null 2>&1)
 printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$H3/.claude/estado/.dueno"; printf 'x\n' >"$H3/.claude/estado/verificaciones.log"
-(cd "$H3" && bash "$BIN/handoff" --desde "$T/b1.md" --commit >/dev/null 2>&1); RC=$?
+(cd "$H3" && bash "$BIN/handoff" --desde "$T/b1.md" --sesion sA --commit >/dev/null 2>&1); RC=$?
 ok "CR-3: --commit tras una ejecución sin él sale 0 y crea el commit docs(estado)" "$RC,$(git -C "$H3" log -1 --format=%s | command grep -c '^docs(estado)')" "0,1"
 ok "CR-3: el commit solo lleva nucleo y diario (ni .dueno, ni verificaciones.log, ni prev)" "$(git -C "$H3" show --name-only --format= HEAD | command grep -c 'nucleo.md\|diario.md'),$(git -C "$H3" show --name-only --format= HEAD | command grep -c 'dueno\|verificaciones\|prev')" "2,0"
 ok "CR-3: el dueño se libera" "$([ -e "$H3/.claude/estado/.dueno" ] && echo sigue || echo libre)" libre
 printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$H3/.claude/estado/.dueno"
-(cd "$H3" && printf 'z\n' >>"$H3/.git/info/exclude" && chmod a-w "$H3/.git/index" 2>/dev/null; bash "$BIN/handoff" --desde "$T/b2.md" --commit >/dev/null 2>&1; chmod u+w "$H3/.git/index")
+(cd "$H3" && printf 'z\n' >>"$H3/.git/info/exclude" && chmod a-w "$H3/.git/index" 2>/dev/null; bash "$BIN/handoff" --desde "$T/b2.md" --sesion sA --commit >/dev/null 2>&1; chmod u+w "$H3/.git/index")
 ok "CR-3: el dueño se libera aunque el commit falle (o no hubiera nada que fallar)" "$([ -e "$H3/.claude/estado/.dueno" ] && echo sigue || echo libre)" libre
 
 # CR-5: oraculo no crea .claude/estado en un repo que no lo usa.
@@ -603,14 +603,14 @@ H5=$T/cr5; mkrepo "$H5"
 OUT=$(cd "$H5" && bash "$BIN/oraculo" -- true); RC=$?
 ok "CR-5: oraculo en un repo sin estado: rc 0 y el árbol sigue limpio" "$RC,$(git -C "$H5" status --porcelain | wc -l)" "0,0"
 
-# CR-4: tras /clear la sesión nueva reclama al dueño vigente de otra sesión y lo nombra en UNA línea informativa.
+# CR-4: /clear conserva al dueño ajeno vigente y avisa.
 RC4=$T/cr4; mkdir -p "$RC4/.claude/estado"; git -C "$RC4" init -q; printf '## Objetivo\nOBJ\n## Paso actual\nPASO-CR4\n' >"$RC4/.claude/estado/nucleo.md"
 D4=$RC4/.claude/estado/.dueno
 printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$D4"
 OUT=$(ev "$RC4" sB "" clear | bash "$H/session-start-clear.sh")
-ok "CR-4: source=clear reclama aunque haya otro dueño vigente" "$(sed -n 's/^sesion=//p' "$D4")" sB
+ok "CR-4: source=clear conserva al dueño ajeno vigente" "$(sed -n 's/^sesion=//p' "$D4")" sA
 ok "CR-4: source=clear informa una vez y nombra al dueño anterior" "$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -c 'sA'),$(jq -r '.systemMessage // ""' <<<"$OUT" | wc -l)" "1,1"
-ok "CR-4: source=clear no manda al modelo a no escribir el nucleo" "$(ctx <<<"$OUT" | command grep -c 'otra sesión dueña')" 0
+ok "CR-4: source=clear avisa al modelo de dueño ajeno" "$(ctx <<<"$OUT" | command grep -c 'otra sesión dueña')" 1
 printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$D4"
 OUT=$(ev "$RC4" sB "" startup | bash "$H/session-start-clear.sh")
 ok "CR-4: source=startup con dueño ajeno vigente sigue avisando y sin reclamar" "$(sed -n 's/^sesion=//p' "$D4"),$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -c 'sA')" "sA,1"
@@ -720,7 +720,18 @@ WP=$(sed -n 's/.*`\([^ ]*\) --desde.*/\1/p' <<<"$WG")
 ok "W2 gauge: sin handoff en el PATH enseña una ruta absoluta que existe" "$WP,$([ -x "$WP" ] && echo si)" "$HOME/.claude/bin/handoff,si"
 # --desde: «Ficheros tocados» sobrevive junto a Paso actual, Siguiente acción y Comandos
 WT=$T/w2t; mkdir -p "$WT"; git -C "$WT" init -q
-{ printf '## Objetivo\nO\n## Paso actual\nPA\n## Siguiente acción\nSA\n## Comandos de verificación\n- `make test`\n## Plan\n'; head -c 6800 /dev/zero | tr '\0' l; printf '\n## Pendientes\n'; head -c 4000 /dev/zero | tr '\0' p; printf '\n## Ficheros tocados\n- a.sh\n- b.sh\n'; } >"$T/w2-b.md"
+{ cat <<'BORRADOR'
+## Objetivo
+O
+## Paso actual
+PA
+## Siguiente acción
+SA
+## Comandos de verificación
+- `make test`
+## Plan
+BORRADOR
+  head -c 6800 /dev/zero | tr '\0' l; printf '\n## Pendientes\n'; head -c 4000 /dev/zero | tr '\0' p; printf '\n## Ficheros tocados\n- a.sh\n- b.sh\n'; } >"$T/w2-b.md"
 (cd "$WT" && bash "$BIN/handoff" --desde "$T/w2-b.md" >/dev/null 2>&1); RC=$?
 ok "W2 --desde: sobre el tope sobreviven Paso actual, Siguiente acción, Comandos y Ficheros tocados" "$RC,$(sed -n 's/^## //p' "$WT/.claude/estado/nucleo.md" | paste -sd,)" "0,Objetivo,Paso actual,Siguiente acción,Comandos de verificación,Ficheros tocados"
 

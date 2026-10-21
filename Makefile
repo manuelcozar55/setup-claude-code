@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install bootstrap test bateria doctor mutantes phoenix phoenix-push evals-dryrun evals-paid evals-ablacion-paid
+.PHONY: help install bootstrap test test-cockpit bateria doctor mutantes phoenix phoenix-push evals-dryrun evals-paid evals-ablacion-paid
 
 help: ## Lista los targets disponibles
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*##"}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -53,6 +53,8 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_statusline.sh
 	bash kit/test/test_session_start_clear.sh
 	bash kit/test/test_nucleo_lib.sh
+	bash kit/test/test_nucleo_integridad.sh
+	bash kit/test/test_agentes.sh
 	bash kit/test/test_nucleo_hooks.sh
 	bash kit/test/test_nucleo_nudge.sh
 	bash kit/test/test_settings_template.sh
@@ -63,6 +65,10 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_presupuesto_contexto.sh
 	bash kit/test/test_guia.sh
 	bash kit/test/test_plugin_esenciales.sh
+	bash kit/test/test_sesiones_home.sh
+
+test-cockpit: ## Tests funcionales del cockpit; requiere Claude Code con soporte de mods
+	claude plugin test kit/mods/cockpit
 
 # bateria: los cuatro oraculos de cierre, cada uno con su .rc y su .log. Corren todos aunque uno falle; rc != 0 si
 # alguno falla. Una herramienta ausente da rc 127 (el shell lo da solo), nunca un SKIP. Los BATERIA_* se pueden

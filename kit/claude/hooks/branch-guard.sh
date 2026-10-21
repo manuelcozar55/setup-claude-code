@@ -76,12 +76,13 @@ cur_branch() {
   cur=${CURS[$key]}
 }
 scan() {
-  local depth=$1 seg a i inner cwd0 first ref dst t cur rc
+  local depth=$1 seg a i inner cwd0 first ref dst t cur rc lastseg='' lastcwd=''
   local skip dd tags repo
   local -a T segs ops targets gopts
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
   [[ $seg == *push* || $seg == "$CMDN_US"cd"$CMDN_US"* ]] || continue
+  [[ $seg == "$lastseg" && $CMDN_CWD == "$lastcwd" ]] && continue
   cmdn_fields "$seg"
   cmdn_track_cd
   if [[ ${T[1]:-} != git ]]; then
@@ -147,6 +148,7 @@ scan() {
   for t in "${targets[@]}"; do
     [[ -n $t ]] && is_protected "$t" && block "$t"
   done
+  lastseg=$seg; lastcwd=$CMDN_CWD
   done
   return 0
 }

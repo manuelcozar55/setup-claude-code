@@ -103,26 +103,32 @@ fi
 # hook es legitimo. Pero si divergen y no lo sabes, el kit deja de reproducir tu maquina, y
 # eso ya paso: dos guards llevaban meses distintos entre el kit y su copia de origen, con la
 # version endurecida en un lado y la antigua en el otro, y nadie lo noto.
-derivados=0; derivados_lista=""
+derivados=0; derivados_lista=""; ausentes=0
 # hooks/lib/ y sentinel/ tambien: nucleo.sh y sentinel_preflight.py gobiernan hooks enteros y antes quedaban fuera.
 # De sentinel/ solo el codigo (*.py): iocs.json es dato que la persona personaliza por diseno y
 # reinstalar para "alinearlo" pisaria sus datos; su acoplamiento con el preflight lo cubre 2d.
-for src in "$KIT"/claude/hooks/* "$KIT"/claude/hooks/lib/* "$KIT"/sentinel/*.py; do
+for src in "$KIT"/claude/hooks/* "$KIT"/claude/hooks/lib/* "$KIT"/claude/bin/* "$KIT"/claude/templates/* "$KIT"/sentinel/*.py; do
   [ -f "$src" ] || continue
   case "$src" in
     "$KIT"/sentinel/*.py) nombre="sentinel/$(basename "$src")"; dst="$CLAUDE_HOME/$nombre" ;;
     "$KIT"/claude/hooks/lib/*) nombre="lib/$(basename "$src")"; dst="$CLAUDE_HOME/hooks/$nombre" ;;
+    "$KIT"/claude/bin/*) nombre="bin/$(basename "$src")"; dst="$CLAUDE_HOME/$nombre" ;;
+    "$KIT"/claude/templates/*) nombre="templates/$(basename "$src")"; dst="$CLAUDE_HOME/$nombre" ;;
     *) nombre="$(basename "$src")"; dst="$CLAUDE_HOME/hooks/$nombre" ;;
   esac
-  [ -f "$dst" ] || continue
+  if [ ! -f "$dst" ]; then
+    ausentes=$((ausentes + 1))
+    case "$src" in "$KIT"/claude/hooks/lib/*) fail "biblioteca del kit ausente: $nombre" ;; esac
+    continue
+  fi
   if ! cmp -s "$src" "$dst"; then
     derivados=$((derivados + 1)); derivados_lista="$derivados_lista $nombre"
   fi
 done
 if [ "$derivados" -gt 0 ]; then
-  warn "$derivados hook(s) desplegados difieren de los del kit ($derivados_lista): reinstala para alinearlos, o portalos al kit si el cambio es bueno"
-else
-  pass "los hooks desplegados coinciden byte a byte con los del kit  (fuente: cmp -s por fichero)"
+  warn "$derivados componente(s) desplegados difieren de los del kit ($derivados_lista): compara antes de reinstalar; conserva tus personalizaciones"
+elif [ "$ausentes" -eq 0 ]; then
+  pass "los componentes desplegados coinciden byte a byte con los del kit  (fuente: cmp -s por fichero)"
 fi
 
 # 2b. capa de IOCs de Sentinel (opcional -> WARN)

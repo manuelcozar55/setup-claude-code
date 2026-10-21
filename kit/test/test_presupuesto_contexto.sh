@@ -5,6 +5,7 @@
 # del 20-oct (knowledge/COST-LOG.md, «Presupuesto por canal») + 10 %, subida a la centena.
 # Subir un tope exige repetir la medida y apuntarla en COST-LOG.md: no se sube «por si acaso».
 set -uo pipefail
+unset CLAUDE_PID   # bajo Claude Code se hereda y daría ranura de sesión a los hooks de ~
 HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(cd "$HERE/../.." && pwd)"
 pass=0; fail=0
 
@@ -23,9 +24,9 @@ stale-read-guard|800
 narthex|1400
 UserPromptSubmit|0
 agentes: suma|2600
+bloque de agentes|800
 skills: suma|900'
 TOPE_AGENTE=500   # la mayor description de un agente
-SKIP_W3='bloque de agentes|800'   # lo añade W3 a SessionStart: SKIP hasta que se fusione; lo cierra el hilo principal
 
 TAB=$(bash "$REPO/scripts/contexto-base.sh" --peor 2>&1) || { echo "NOT ok - contexto-base.sh --peor falla"; echo "$TAB" | tail -n 5; exit 1; }
 cifra() { awk -v p="$1" 'index($0, p) == 1 { print $(NF-1); exit }' <<<"$TAB"; }
@@ -40,7 +41,34 @@ while IFS='|' read -r canal tope; do ck "$canal" "$(cifra "$canal")" "$tope"; do
 
 mayor=$(awk '/^agente /{ if ($(NF-1) > m) m = $(NF-1) } END { print m }' <<<"$TAB")
 ck "agente con la mayor description" "$mayor" "$TOPE_AGENTE"
-echo "SKIP - ${SKIP_W3%|*}: tope ${SKIP_W3#*|} (W3)"
+if [ "$(cifra 'bloque de agentes')" -gt 0 ]; then
+  echo 'ok - registro lleno genera bloque de agentes'; pass=$((pass+1))
+else echo 'NOT ok - registro lleno no genera bloque de agentes'; fail=$((fail+1)); fi
+
+# W6: SessionStart en ~ con la ranura de sesión llena (nucleo al tope) y el índice lleno (15 raíces, 2 500 chars):
+# la frase + la ranura + el índice caben en el tope del canal: nucleo_tope no corta y el índice llega hasta su cierre.
+# El «[recortado]» que el índice pone en su propio tope de 2 500 es por diseño y no cuenta aquí.
+TS=$(mktemp -d); sleep 300 & SP=$!
+(
+  export HOME=$TS/h GIT_CEILING_DIRECTORIES=$TS LC_ALL=C.UTF-8; unset NUCLEO_REGISTRO CLAUDE_PROJECT_DIR
+  mkdir -p "$HOME/.claude/estado"
+  L=$(printf 'x%.0s' $(seq 1 78))
+  for i in $(seq 1 15); do
+    r=$TS/proyecto-con-nombre-largo-$i; mkdir -p "$r/.claude/estado"; printf '%s\n' "$r" >>"$HOME/.claude/estado/raices"
+    printf '# N\n## Objetivo\n%s\n## Paso actual\n%s\n' "$L" "$L" >"$r/.claude/estado/nucleo.md"
+  done
+  { for s in Objetivo Invariantes Plan "Paso actual" "Siguiente acción" Pendientes "Comandos de verificación" "Ficheros tocados"; do
+      printf '## %s\n' "$s"; for _ in 1 2 3 4 5 6 7 8; do printf '%s\n' "- $L$L"; done; done; } >"$TS/b.md"
+  cd "$HOME" && CLAUDE_PID=$SP bash "$REPO/kit/claude/bin/handoff" --desde "$TS/b.md" >/dev/null 2>&1
+  jq -cn --arg c "$HOME" '{cwd:$c,session_id:"s",source:"clear"}' | CLAUDE_PID=$SP bash "$REPO/kit/claude/hooks/session-start-clear.sh" \
+    | jq -r '.hookSpecificOutput.additionalContext // empty' >"$TS/ctx"
+)
+kill "$SP" 2>/dev/null; wait "$SP" 2>/dev/null
+ck "SessionStart ~ con ranura e índice llenos" "$(wc -m <"$TS/ctx" | tr -d ' ')" 9500
+if grep -q '<nucleo-datos fuente=".*sesiones/' "$TS/ctx" && [ "$(tail -n 1 "$TS/ctx")" = '</indice-tareas>' ]
+then echo "ok - ~ con ranura: nucleo de la sesión e índice enteros"; pass=$((pass+1))
+else echo "NOT ok - ~ con ranura: falta el nucleo o el índice, o se recortó"; fail=$((fail+1)); fi
+rm -r -f -- "$TS"
 
 # falsable: un caracter por encima del tope tiene que dar FAIL, y en el tope exacto, ok
 while IFS='|' read -r canal tope; do

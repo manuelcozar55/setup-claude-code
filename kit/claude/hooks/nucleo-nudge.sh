@@ -26,7 +26,8 @@ else [ -s "$MARCA" ] && : >"$MARCA"; exit 0; fi
 command grep -qx "$B" "$MARCA" 2>/dev/null && exit 0
 RAIZ=$(nucleo_raiz "${CWD:-$PWD}")
 nucleo_enlazado "$RAIZ" && exit 0
-NUC="$RAIZ/.claude/estado/nucleo.md"
+ESTADO=$(nucleo_estado_leer "$RAIZ") || exit 0
+NUC="$ESTADO/nucleo.md"
 # D1: desde ~ el nucleo compartido puede ser de otra tarea: el aviso no lo nombra, no se calla por su edad
 # y no promete handoff (el automático está desactivado en ~).
 if [ "$RAIZ" = "$HOME" ]; then
@@ -46,8 +47,8 @@ if [ -n "$MT" ]; then
 else
   M="CONTEXTO $PCT % del airbag y no hay nucleo.md: antes de la siguiente herramienta créalo en $NUC con la forma de \$HOME/.claude/templates/nucleo.md."
 fi
-HO=handoff; command -v handoff >/dev/null 2>&1 || HO=$HOME/.claude/bin/handoff
-[ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno. Cierra la fase con \`$HO --desde <borrador>\`."
+HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
+[ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno. Cierra la fase con \`$HO --desde <borrador> --sesion $SID\`."
 A="con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff."
 [ "${COCKPIT_AUTO_HANDOFF:-}" = off ] && A="el handoff automático está desactivado; la persona hará /handoff."
 [ "$B" = 85 ] && M="$M Cierra el turno ya: $A"

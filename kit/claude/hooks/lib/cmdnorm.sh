@@ -152,7 +152,7 @@ cmdn_oversize() {
 }
 
 cmdn_parse() {
-  local out rest line
+  local out rest
   CMDN_SEGS=(); CMDN_CWD=""
   if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]]; then
     CMDN_TEXT=$1; return 1
@@ -160,9 +160,10 @@ cmdn_parse() {
   # `${out%%…*}` y `${out#*…}` prueban cada longitud de prefijo: cuadráticos (64 KB ≈ 1,5 s de CPU,
   # el timeout del hook corre en abierto). `read` parte en el primer separador en una pasada.
   IFS=$CMDN_RS read -r -d '' CMDN_TEXT rest <<<"$out"
-  while IFS= read -r line; do
-    [[ -n $line ]] && CMDN_SEGS+=("$line")
-  done <<<"$rest"
+  mapfile -t CMDN_SEGS <<<"$rest"
+  while (( ${#CMDN_SEGS[@]} )) && [[ -z ${CMDN_SEGS[-1]} ]]; do
+    unset 'CMDN_SEGS[-1]'
+  done
   return 0
 }
 

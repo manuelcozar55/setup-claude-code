@@ -70,6 +70,7 @@ if [ "$PEOR" = 1 ]; then
   mkdir -p "$R/.claude/estado/checkpoints"
   CP=checkpoint-compact-$(printf '%s' s0 | sha256sum | cut -d' ' -f1).md
   head -c 3000 "$NUC" >"$R/.claude/estado/checkpoints/$CP"
+  jq -cn '[range(0;200) | {ev:"start",id:("agent-" + tostring),tipo:"general-purpose",sid:"s0",t:"2099-01-01T00:00:00Z"}] | .[]' >"$R/.claude/estado/agentes.jsonl"
 else
   head -c 8192 "$NUC" >"$NUC.t" && mv "$NUC.t" "$NUC"
 fi
@@ -84,6 +85,8 @@ medir() { fila "$1" "$(printf '%s' "$2" | wc -m)" "$(printf '%s' "$2" | wc -c)";
 # 1. instrucciones globales: CLAUDE.md con el @import expandido
 GLOB=$(sed -e '/^@AGENTS.md$/{r '"$KIT/claude/AGENTS.md" -e 'd}' "$KIT/claude/CLAUDE.md")
 medir "instrucciones globales (CLAUDE.md + @AGENTS.md)" "$GLOB"
+BLOQUE=$(HOME=$H bash -c '. "$1/hooks/lib/nucleo.sh"; . "$1/hooks/lib/agentes.sh"; nucleo_agentes_ctx "$2"' contexto "$H/.claude" "$R")
+medir "bloque de agentes" "$BLOQUE"
 
 # 2. hooks que inyectan texto (peor caso): additionalContext, systemMessage o reason del JSON de salida. SessionStart
 #    pasa un 4.º argumento y no cuenta systemMessage: es para la persona, no entra en el contexto del modelo.

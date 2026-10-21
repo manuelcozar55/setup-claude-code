@@ -124,15 +124,54 @@ find_path_class() {
 # lleva -delete, y pasadas 16 se bloquea: fallar cerrado.
 NEST=0
 # `find ... | xargs rm` borra lo que find lista sin llevar -delete: la salida de find es el operando.
+destructive_name() {
+  case ${1##*/} in rm|unlink|shred) return 0 ;; esac
+  return 1
+}
+shell_rm() {
+  local depth=$1 seg i inner rc
+  local -a T segs saved
+  segs=("${CMDN_SEGS[@]}")
+  for seg in "${segs[@]}"; do
+    cmdn_fields "$seg"
+    destructive_name "${T[1]:-}" && return 0
+    case ${T[1]:-} in sh|bash) ;; *) continue ;; esac
+    inner=
+    for (( i = 2; i < ${#T[@]}; i++ )); do
+      if [[ ${T[i]} == -*c* ]]; then inner=${T[i+1]:-}; break; fi
+    done
+    [[ -n $inner ]] || continue
+    (( depth < 3 && ++NEST <= 16 )) || return 2
+    saved=("${CMDN_SEGS[@]}")
+    cmdn_parse "$inner" || { CMDN_SEGS=("${saved[@]}"); continue; }
+    shell_rm $(( depth + 1 )); rc=$?
+    CMDN_SEGS=("${saved[@]}")
+    (( rc == 1 )) || return $rc
+  done
+  return 1
+}
 xargs_rm() {
-  local seg a
-  local -a T
+  local seg a i k inner rc
+  local -a T saved
   for seg in "${CMDN_SEGS[@]}"; do
     [[ $seg == *xargs* ]] || continue
     cmdn_fields "$seg"
     [[ ${T[1]:-} == xargs ]] || continue
-    for a in "${T[@]:2}"; do
-      case $a in rm|unlink|shred|*/rm|*/unlink|*/shred) return 0 ;; esac
+    for (( i = 2; i < ${#T[@]}; i++ )); do
+      a=${T[i]}
+      destructive_name "$a" && return 0
+      case ${a##*/} in sh|bash) ;; *) continue ;; esac
+      inner=
+      for (( k = i + 1; k < ${#T[@]}; k++ )); do
+        if [[ ${T[k]} == -*c* ]]; then inner=${T[k+1]:-}; break; fi
+      done
+      [[ -n $inner ]] || continue
+      (( ++NEST <= 16 )) || return 2
+      saved=("${CMDN_SEGS[@]}")
+      cmdn_parse "$inner" || { CMDN_SEGS=("${saved[@]}"); continue; }
+      shell_rm 1; rc=$?
+      CMDN_SEGS=("${saved[@]}")
+      (( rc == 1 )) || return $rc
     done
   done
   return 1
@@ -143,7 +182,7 @@ find_delete() {
   local -a T segs paths
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
-    [[ $seg == *find* && ( $seg == *-delete* || $XRM == 1 ) ]] || continue
+    [[ $seg == *find* && ( $seg == *-delete* || $seg == *-exec* || $XRM == 1 ) ]] || continue
     cmdn_fields "$seg"
     if [[ ${T[1]:-} != find ]]; then
       # Un echo/printf que va a `| bash` no es prosa: su texto es la orden.
@@ -160,7 +199,7 @@ find_delete() {
           python*|perl|ruby|node|php) cmdn_code_inner "$a" find && inner=$REPLY ;;
           echo|printf) inner=${inner//\\n/$'\n'} ;;
         esac
-        [[ $inner == *-delete* ]] || continue
+        [[ $inner == *-delete* || $inner == *-exec* ]] || continue
         (( depth < 3 && ++NEST <= 16 )) || return 2
         cmdn_parse "$inner" || continue
         find_delete $(( depth + 1 )); rc=$?
@@ -189,6 +228,9 @@ find_delete() {
     for (( i = k; i < ${#T[@]}; i++ )); do
       case ${T[i]} in
         -delete) del=1; (( filt )) || unf=1 ;;
+        -exec|-execdir)
+          destructive_name "${T[i+1]:-}" && { del=1; (( filt )) || unf=1; }
+          ;;
         -o|-or|,|'!'|-not|-prune) unf=1 ;;
         -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex)
           [[ ${T[i+1]:-} == '*' ]] || filt=1
@@ -207,8 +249,15 @@ find_delete() {
   return 1
 }
 # La vuelta a normalizar pisa CMDN_SEGS, y el Check 5 lo necesita intacto.
-xargs_rm && XRM=1
-if [[ $COMMAND_SCAN == *find* && ( $COMMAND_SCAN == *-delete* || $XRM == 1 ) ]]; then
+xargs_rm; rc_xrm=$?
+if (( rc_xrm == 0 )); then
+  XRM=1
+elif (( rc_xrm == 2 )); then
+  log_block "find deletion nested too deep"
+  echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con find -delete: no caben en el timeout del guard; dividelo en comandos cortos." >&2
+  exit 2
+fi
+if [[ $COMMAND_SCAN == *find* && ( $COMMAND_SCAN == *-delete* || $COMMAND_SCAN == *-exec* || $XRM == 1 ) ]]; then
   segs0=("${CMDN_SEGS[@]}")
   cmdn_pipes_to_shell && PIPED=1
   find_delete 0; rc_find=$?

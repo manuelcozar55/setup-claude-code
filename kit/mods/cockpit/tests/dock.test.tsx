@@ -34,6 +34,13 @@ async function mountDock($: never, on: never, bodyColumns: number, mission?: str
 // Text has no key: a mission line is found by its own text.
 const missionLine = (ui: any, text: string) => ui.find({ type: 'Text', text })
 
+test('agentes completados no equivalen a misión completada sin fases verificadas', async ($, on) => {
+  const { ui } = await mountDock($ as never, on as never, 56, 'Entregar proyecto', [{ id: 'a1', description: 'Primera revisión', type: 'general', status: 'completed' }])
+  expect(await ui.find({ text: 'Sin datos de avance' })).toBeTruthy()
+  expect(await ui.find({ text: '100%' })).toBeFalsy()
+  expect(await ui.find({ text: 'Hechos · 1' })).toBeTruthy()
+})
+
 // The first dock shipped green on prop checks while the real terminal wrapped: measure the drawn text.
 for (const bodyColumns of [24, 30, 44, 56, 66]) {
   test(`dock a ${bodyColumns}: las cuatro secciones con su cuenta, cada agente en su sitio, misión plegada en una línea que cabe`, async ($, on) => {
@@ -212,9 +219,10 @@ test('dock: waiting e idle están parados por diseño: siguen en Trabajando con 
 // The dock reads the owner and the share of the cap from `handoff --estado`: one source, the CLI's.
 const HOME = '/usr/u'
 const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '' } }) as never
-function estadoCli(on: never, estado: unknown, opts: { hangs?: boolean; exitCode?: number } = {}) {
+function estadoCli(on: never, estado: unknown, opts: { hangs?: boolean; exitCode?: number; noBin?: boolean } = {}) {
   const o = on as any
   const runs: { argv: readonly string[]; init?: { timeoutMs?: number } }[] = []
+  o('fs.exists', () => ({ value: !opts.noBin }))
   o('session.cwd', () => ({ value: '/w/p' }))
   o('session.id', () => ({ value: 'sesion-1' }))
   o('process.run', (_: unknown, e: { argv: readonly string[]; init?: { timeoutMs?: number } }) => {
@@ -235,7 +243,7 @@ test('dock: muestra el % del tope y el dueño de esta sesión, leídos de handof
   expect(await ui.find({ type: 'Text', text: /nucleo 62% del tope/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /dueño: esta sesión/ })).toBeTruthy()
   const cli = runs.find(r => r.argv[0] === `${HOME}/.claude/bin/handoff`)
-  expect(cli?.argv).toEqual([`${HOME}/.claude/bin/handoff`, '--estado', '--raiz', '/w/p'])
+  expect(cli?.argv).toEqual([`${HOME}/.claude/bin/handoff`, '--estado', '--raiz', '/w/p', '--sesion', 'sesion-1'])
   expect(cli?.init?.timeoutMs).toBeLessThanOrEqual(3000)
 })
 
@@ -263,4 +271,30 @@ test('dock: un CLI que no responde no bloquea el dibujo', async ($, on) => {
   const { ui } = await mountDock($ as never, on as never, 56)
   expect(await ui.find({ type: 'Text', text: 'Hechos · 1' })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /del tope/ })).toBeFalsy()
+})
+
+
+test('un agente desaparecido queda sin confirmar, nunca hecho', async ($, on) => {
+  const list = AGENTS.slice(0, 1)
+  const first = await mountDock($ as never, on as never, 56, undefined, list)
+  list.splice(0)
+  await first.clock.advance(1500)
+  await first.ui.unmount()
+  const ui = await first.mount()
+  expect(await ui.find({ text: 'Hechos · 0' })).toBeTruthy()
+  expect(await ui.find({ text: /sin confirmar/ })).toBeTruthy()
+})
+
+
+test('el inicio muestra el CLI ausente sin esperar a un handoff', async ($, on) => {
+  estadoCli(on as never, ESTADO, { noBin: true })
+  const { ui } = await mountDock($ as never, on as never, 56)
+  expect(await ui.find({ text: /Continuidad no disponible/ })).toBeTruthy()
+  expect(await ui.find({ text: /install.sh/ })).toBeTruthy()
+})
+
+test('el inicio muestra degradación cuando el CLI no da estado', async ($, on) => {
+  estadoCli(on as never, ESTADO, { exitCode: 1 })
+  const { ui } = await mountDock($ as never, on as never, 56)
+  expect(await ui.find({ text: /Continuidad degradada/ })).toBeTruthy()
 })

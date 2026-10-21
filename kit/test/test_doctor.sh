@@ -230,4 +230,13 @@ done
 ck "$(PATH="$farm" bash -c 'command -v claude >/dev/null 2>&1 && echo y || echo n')" "n" "el PATH de la granja no tiene claude (falsabilidad del caso)"
 set +e; out="$(PATH="$farm" dr)"; set -e
 ck "$(echo "$out" | grep -c '^WARN .*claude.*no se encuentra')" "1" "doctor WARN si claude no esta en el PATH"
+cp "$CLAUDE_HOME/hooks/lib/nucleo.sh" "$tmp/nucleo-original"
+rm "$CLAUDE_HOME/hooks/lib/nucleo.sh"
+set +e; out="$(dr)"; rc=$?; set -e
+ck "$rc" "1" "doctor FAIL si falta la biblioteca de continuidad"
+ck "$(echo "$out" | grep -c '^FAIL .*lib/nucleo.sh')" "1" "doctor identifica la biblioteca ausente"
+cp "$tmp/nucleo-original" "$CLAUDE_HOME/hooks/lib/nucleo.sh"
+printf '\n# version distinta\n' >> "$CLAUDE_HOME/bin/handoff"
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*difieren de los del kit.*bin/handoff')" "1" "doctor detecta CLI de otra version aunque siga siendo ejecutable"
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

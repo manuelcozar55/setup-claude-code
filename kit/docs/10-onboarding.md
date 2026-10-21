@@ -87,7 +87,7 @@ Queda fijado al tag de tu versión del kit: al actualizar, repite estas dos órd
 
 ## 5 · Tu primer proyecto
 
-El estado de una tarea vive en `.claude/estado/nucleo.md` dentro de la **raíz git** del proyecto. Una carpeta sin git no es proyecto, ni tampoco tu `~`. Para una carpeta de documentos, empieza con `git init`.
+El estado de una tarea vive en `.claude/estado/nucleo.md` dentro de la **raíz git** del proyecto. Una carpeta sin git no es proyecto, ni tampoco tu `~`. Para una carpeta de documentos, empieza con `git init`. En `~` el estado de la sesión va a su propia ranura en `~/.claude/estado/sesiones/` y `handoff` la usa solo; sigue sin haber `--commit` ni registro de proyecto.
 
 ```bash
 cd tu-proyecto
@@ -133,7 +133,7 @@ Una sesión por tarea. Esperar a la compactación automática pierde contexto; e
 Esto es solo para quien cambia el propio kit. Antes de tu primer commit:
 
 ```bash
-make test                  # 42 suites en bash puro, sin red. exit 0 o no está hecho.
+make test                  # 45 suites en bash puro, sin red. exit 0 o no está hecho.
 bash kit/scan-secrets.sh   # secretos y PII en el árbol
 shellcheck -x <tus .sh>
 ```

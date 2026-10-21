@@ -95,6 +95,12 @@ git push origin +refs/heads/master
 git push origin +feature
 git push origin '+feature'
 git push origin "+HEAD"
+git push origin ':feature-x'
+git push origin ":feature-x"
+git push origin '-d' feature-x
+git push origin "-d" feature-x
+git push origin '--delete' feature-x
+git push origin "--delete" feature-x
 git push origin "+$B"
 git push origin +$B
 git push origin +${B}
@@ -157,6 +163,10 @@ python3 -c "import os; os.system('git push origin +f')"
 find . -print0 | xargs -0 rm
 find . -type f -print0 | xargs -0 rm -f
 find .. -name x | xargs rm
+find /etc -name '*.conf' -exec rm -f {} +
+find /etc -name "*.conf" -exec rm -f {} +
+find /etc -name '*.conf' | xargs -0 sh -c 'rm -f "$@"' sh
+find /etc -name "*.conf" | xargs -0 bash -c 'rm -f "$@"' bash
 find .* -delete
 find ?* -delete
 find [!.]* -delete
@@ -173,11 +183,15 @@ while IFS= read -r c; do
 done <<'EOF'
 git push origin feat
 git push origin feature
+git push origin main
 git push origin feature -o +x
 git stash push -m "wip +login"
+git stash push -m "wip :x"
 git commit -m "fix push +1 retry"
+git commit -m "delete :feature"
 git log --format="push +2"
 git log --grep "push +1"
+git log --grep "push :a"
 python3 -m pytest
 grep a f | sort
 ls | head
@@ -199,6 +213,7 @@ python3 -c "print('find . -name x')"
 python3 -c "import os; os.system('find . -name x -delete')"
 python3 script.py
 find build -delete
+find build -exec rm -f {} +
 find ./build -delete
 find /tmp/x -delete
 git commit -m "find . -delete"
@@ -211,15 +226,19 @@ EOF
 # un awk, y un guard que pasa de su timeout deja ejecutar el comando ENTERO. Cadenas candidatas que no
 # deciden nada: el guard tiene que denegar (fallar cerrado); cadenas que no pueden llevar la orden
 # (`x git` sin push): tiene que permitir. En los dos casos, menos de 1 s de CPU, hasta 128 KB (el tope).
+monotonic_ms() { python3 -c 'import time; print(time.monotonic_ns() // 1000000)'; }
 nest_case() { # $1 guard, $2 deny|allow, $3 veces, $4 comando simple que se repite
-  local cmd payload t u s ms rc got
+  local cmd payload t u s ms rc got t0 wall
   cmd=$(for ((i = 0; i < $3; i++)); do printf '%s;' "$4"; done)
   payload=$(jq -n --arg c "${cmd}true" '{tool_name:"Bash",tool_input:{command:$c}}')
   TIMEFORMAT='%3U %3S'
+  t0=$(monotonic_ms)
   t=$({ time { printf '%s' "$payload" | HOME="$BYPASS_HOME" CC_BLOCK_LOG="$BYPASS_HOME/b.log" timeout 20 bash "$HOOKS/$1" > "$BYPASS_HOME/nest.out" 2>&1; echo $? > "$BYPASS_HOME/nest.rc"; }; } 2>&1)
+  wall=$(( $(monotonic_ms) - t0 ))
   read -r u s <<<"$t"
   ms=$(awk -v u="$u" -v s="$s" 'BEGIN { printf "%d", (u + s) * 1000 + 0.5 }')
   rc=$(cat "$BYPASS_HOME/nest.rc")
+  echo "PERF: $1: $3 x «$4»: cpu=${ms}ms wall=${wall}ms"
   got=allow
   if [ "$rc" -eq 2 ] || grep -qE '"permissionDecision": *"deny"' "$BYPASS_HOME/nest.out"; then got=deny; fi
   if [ "$2" = deny ]; then n_block=$((n_block+1)); else n_allow=$((n_allow+1)); fi
@@ -245,13 +264,18 @@ nest_case branch-guard.sh allow 21000 "x git"
 SN1_REPO=$(mktemp -d)
 git -C "$SN1_REPO" init -q && git -C "$SN1_REPO" symbolic-ref HEAD refs/heads/feat
 sn1_case() { # $1 veces, $2 segmento que se repite, $3 comando final
-  local cmd payload t0 ms rc
+  local cmd payload t0 ms rc t u s cpu
   cmd=$(for ((i = 0; i < $1; i++)); do printf '%s;' "$2"; done)
   payload=$(jq -n --arg c "${cmd}$3" '{tool_name:"Bash",tool_input:{command:$c}}')
   n_block=$((n_block+1))
-  t0=$(date +%s%N)
-  (cd "$SN1_REPO" && printf '%s' "$payload" | timeout 20 bash "$HOOKS/branch-guard.sh" >/dev/null 2>&1); rc=$?
-  ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+  TIMEFORMAT='%3U %3S'
+  t0=$(monotonic_ms)
+  t=$({ time { (cd "$SN1_REPO" && printf '%s' "$payload" | timeout 20 bash "$HOOKS/branch-guard.sh" >/dev/null 2>&1); echo $? > "$BYPASS_HOME/sn1.rc"; }; } 2>&1)
+  ms=$(( $(monotonic_ms) - t0 ))
+  read -r u s <<<"$t"
+  cpu=$(awk -v u="$u" -v s="$s" 'BEGIN { printf "%d", (u + s) * 1000 + 0.5 }')
+  rc=$(cat "$BYPASS_HOME/sn1.rc")
+  echo "PERF: branch-guard: $1 x «$2»: cpu=${cpu}ms wall=${ms}ms"
   if [ "$rc" -ne 2 ]; then
     bypass_fail=$((bypass_fail+1)); echo "FAIL: branch-guard: $1 x «$2» + «$3» dio rc=$rc y se esperaba 2 (${ms} ms)"
   elif [ "$ms" -ge 2000 ]; then
