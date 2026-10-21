@@ -56,6 +56,7 @@ SELF=$(readlink -f -- "$0" 2>/dev/null || realpath -- "$0" 2>/dev/null || printf
 . "$(dirname "$SELF")/../hooks/lib/agentes.sh"
 # Lo escrito deja sitio al bloque <agentes> que los SessionStart inyectan con el nucleo: así entra entero.
 TOPE=$((NUCLEO_TOPE - NUCLEO_RESERVA_AGENTES))
+[ "$TOPE" -gt 0 ] || { echo "uso: handoff: NUCLEO_TOPE=$NUCLEO_TOPE no deja sitio tras la reserva de agentes ($NUCLEO_RESERVA_AGENTES B)" >&2; exit 64; }
 
 die() { local rc=$1; shift; echo "handoff: $*" >&2; exit "$rc"; }
 iso_de() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }

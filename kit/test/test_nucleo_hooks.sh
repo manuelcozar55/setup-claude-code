@@ -490,6 +490,8 @@ ok "tope: se omite Pendientes antes que Ficheros tocados (W2: lo exige deep-chan
 ok "tope: lo omitido se conserva en diario.md" "$(command grep -c 'omitido por tope.*Pendientes' "$HT/.claude/estado/diario.md")" 1
 ok "tope: la nota queda en el nucleo (fuera de las secciones)" "$(command grep -c '^> handoff .*omitidas por tope' "$TN")" 1
 ok "tope: NUCLEO_TOPE manda sobre el defecto" "$(cd "$HT" && NUCLEO_TOPE=1100 bash "$BIN/handoff" --desde "$T/b-grande.md" >/dev/null 2>&1; if [ "$(wc -c <"$TN")" -le 300 ]; then echo si; else wc -c <"$TN"; fi)" si
+# 1 100 − 800 de reserva = 300. Un tope que no supera la reserva no deja sitio: rc 64 (uso), sin dividir por cero.
+ok "tope: NUCLEO_TOPE ≤ la reserva de agentes → rc 64 y lo dice" "$(cd "$HT" && NUCLEO_TOPE=800 bash "$BIN/handoff" --estado 2>&1 >/dev/null | command grep -c 'reserva'; echo "rc=${PIPESTATUS[0]}")" "$(printf '1\nrc=64')"
 # Contrato escritor/lector: lo que handoff deja dentro del tope se inyecta entero tras el clear, aunque una
 # reservada pase de 700 B (el clear del 21-oct cortaba Paso actual y Comandos de un nucleo de 6,7 KB).
 { printf '## Objetivo\nO\n## Paso actual\n'; head -c 1300 /dev/zero | tr '\0' a; printf '\nPASO-FIN\n## Siguiente acción\nS\n## Comandos de verificación\n'
