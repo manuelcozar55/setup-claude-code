@@ -577,9 +577,19 @@ test('nextLine: primera línea con contenido, sin marcador de lista, comentarios
   expect(nextLine(siguiente('T2'))).toBe('T2')
   expect(nextLine(siguiente('- T2 con `make test`'))).toBe('T2 con `make test`')
   expect(nextLine(siguiente('* T2'))).toBe('T2')
-  expect(nextLine(siguiente('1. T2\n2. T3'))).toBe('T2')
-  expect(nextLine(siguiente('<!-- pon una -->\n\n  corre   la\tsuite \u0007 ya\n- otra'))).toBe('corre la suite ya')
+  expect(nextLine(siguiente('1. T2'))).toBe('T2')
+  expect(nextLine(siguiente('<!-- pon una -->\n\n  corre   la\tsuite \u0007 ya\n<!-- otra -->'))).toBe('corre la suite ya')
   expect(nextLine('## Siguiente acción (una sola)\nT9\n')).toBe('T9')
+})
+
+test('nextLine: si «Siguiente acción» sigue tras la primera línea, el relleno dice dónde', () => {
+  const more = ' (sigue en .claude/estado/nucleo.md)'
+  expect(nextLine(siguiente('1. T2\n2. T3'))).toBe('T2' + more)
+  expect(nextLine(siguiente('<!-- pon una -->\n\n  corre la suite\n- otra'))).toBe('corre la suite' + more)
+  expect(nextLine(siguiente('Correr:\n```bash\nmake test\n```'))).toBe('Correr:' + more)
+  expect(fillFor(siguiente('T2\ndetalle'), '/r/.claude/estado/nucleo.md')).toBe('adelante con la Siguiente acción de /r/.claude/estado/nucleo.md: T2 (sigue en /r/.claude/estado/nucleo.md)')
+  // A fence alone is the line itself, not more: its closing ``` carries nothing.
+  expect(nextLine(siguiente('```bash\nmake test\n```\n'))).toBe('make test')
 })
 
 test('nextLine: sin sección, vacía o solo con comentario no hay línea y el relleno es el genérico', () => {

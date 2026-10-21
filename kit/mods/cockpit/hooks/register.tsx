@@ -264,15 +264,17 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 // First line of «Siguiente acción» in the saved state: what the person approves when the prompt comes back filled.
 // Past NEXT_MAX graphemes it is cut at the last sentence end, else at the last space, and before a code span the cut
 // would leave open: a half path or half command reads as a whole one. A single word past the limit gives ''.
+// A cut, or more lines under the first one, ends in «(sigue en <path>)»: what is left out is said, not dropped.
 export function nextLine(doc: string, path = '.claude/estado/nucleo.md') {
   const sec = sections(doc).find(s => s.key.startsWith('siguiente accion'))
-  const line = bodyOf(sec?.text ?? '')
+  const [line, ...rest] = bodyOf(sec?.text ?? '')
     .split('\n')
     .map(l => l.replace(/^\s*(?:[-*]|\d+\.)\s+/, '').replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim())
-    .find(l => l !== '' && !l.startsWith('```'))
+    .filter(l => l !== '' && !l.startsWith('```'))
   if (line === undefined) return ''
+  const more = ` (sigue en ${path})`
   const chars = Array.from(graphemes.segment(line), g => g.segment)
-  if (chars.length <= NEXT_MAX) return line
+  if (chars.length <= NEXT_MAX) return rest.length ? line + more : line
   // One grapheme past the limit: a sentence end or a space right at the limit still counts. A «! » inside a code
   // span (`test ! -e`) is no sentence end.
   const head = chars.slice(0, NEXT_MAX + 1).join('')
@@ -281,7 +283,7 @@ export function nextLine(doc: string, path = '.claude/estado/nucleo.md') {
   const dot = ends[ends.length - 1]
   let cut = (dot ? head.slice(0, dot) : head.slice(0, Math.max(0, head.lastIndexOf(' ')))).trimEnd()
   if (ticks(cut) % 2) cut = cut.slice(0, cut.lastIndexOf('`')).trimEnd()
-  return cut ? `${cut} … (sigue en ${path})` : ''
+  return cut ? `${cut} …${more}` : ''
 }
 // The fixed prefix keeps the draft from starting with «/» or «!»: it cannot run a command or switch to bash mode.
 export const fillFor = (doc: string, path = '.claude/estado/nucleo.md') => {
