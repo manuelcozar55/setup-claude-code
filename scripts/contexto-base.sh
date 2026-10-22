@@ -37,7 +37,12 @@ for c in jq git; do command -v "$c" >/dev/null || { echo "falta $c" >&2; exit 1;
 
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 H=$W/h; R=$W/repo
-[ "$PEOR" = 0 ] || R=$W/$(printf 'd%.0s' $(seq 1 100))/$(printf 'r%.0s' $(seq 1 90))
+# La ruta del peor caso mide ~208 chars con independencia de TMPDIR: el relleno se acorta lo que alargue $W
+# (con un mktemp típico de 16 chars sale 100 + 90, como cuando se midieron los topes).
+if [ "$PEOR" != 0 ]; then
+  fill=$((206 - ${#W})); [ "$fill" -ge 2 ] || fill=2; nd=$((fill * 100 / 190))
+  R=$W/$(printf 'd%.0s' $(seq 1 "$nd"))/$(printf 'r%.0s' $(seq 1 $((fill - nd))))
+fi
 mkdir -p "$H" "$R"
 
 # --- fixtures deterministas --------------------------------------------------

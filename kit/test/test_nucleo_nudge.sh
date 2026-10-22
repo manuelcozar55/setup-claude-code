@@ -13,6 +13,8 @@ NUC=$R/.claude/estado/nucleo.md
 # Ventana por defecto 200 000 → airbag de 167 000 tokens.
 mk() { jq -cn --argjson n "$2" '{type:"assistant",message:{usage:{input_tokens:1000,cache_read_input_tokens:($n-1000)},content:[]}}' >"$T/$1.jsonl"; }
 run() { jq -cn --arg c "$R" --arg s "$1" --arg t "$T/$2.jsonl" '{session_id:$s,transcript_path:$t,cwd:$c,hook_event_name:"PostToolUse",tool_name:"Bash"}' | bash "$H"; }
+# Los topes miden el texto del kit, no la ruta del mktemp: $T cuenta como un mktemp típico (16 chars).
+largo() { local s=${1//"$T"/0123456789abcdef}; echo "${#s}"; }
 ctx() { jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null; }
 mk p20 33400; mk p60 100200; mk p72 120240; mk p90 150300
 
@@ -21,14 +23,14 @@ ok "20 % → vacío" "$(run s1 p20)" ""
 OUT=$(run s1 p60); C=$(ctx <<<"$OUT")
 ok "60 % + nucleo viejo → nudge" "$(jq -r '.hookSpecificOutput.hookEventName' <<<"$OUT")" PostToolUse
 ok "nudge: cita la banda, la edad y la ruta exacta" "$(command grep -c "CONTEXTO 60 % del airbag. nucleo.md lleva 30 min .* en $NUC\." <<<"$C")" 1
-ok "nudge ≤ 400 chars" "$([ "${#C}" -le 400 ] && echo si)" si
+ok "nudge ≤ 400 chars" "$([ "$(largo "$C")" -le 400 ] && echo si)" si
 ok "nucleo dentro del tope: sin aviso de tamaño" "$(command grep -c 'Ocupa .* B (tope' <<<"$C")" 0
 ok "misma banda dos veces → una sola" "$(run s1 p60)" ""
 ok "banda siguiente (70 %) sí avisa" "$(run s1 p72 | ctx | command grep -c '72 % del airbag')" 1
 ok "70 %: fin de fase es parada válida" "$(run s6 p72 | ctx | command grep -c 'Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno\.')" 1
 C90=$(run s1 p90 | ctx)
 ok "85 %: cierra ya; handoff y /clear automáticos con cockpit" "$(command grep -c 'Cierra el turno ya: con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff\.' <<<"$C90")" 1
-ok "85 % ≤ 400 chars" "$([ "${#C90}" -le 400 ] && echo si)" si
+ok "85 % ≤ 400 chars" "$([ "$(largo "$C90")" -le 400 ] && echo si)" si
 ok "85 % con COCKPIT_AUTO_HANDOFF=off: no promete handoff automático" "$(COCKPIT_AUTO_HANDOFF=off run s7 p90 | ctx | command grep -c 'Cierra el turno ya: el handoff automático está desactivado; la persona hará /handoff\.')" 1
 # K7: un subagente (agent_id no vacío) no recibe el aviso: no es quien escribe nucleo.md ni quien decide cerrar.
 runa() { jq -cn --arg c "$R" --arg s "$1" --arg t "$T/$2.jsonl" --arg a "$3" '{session_id:$s,transcript_path:$t,cwd:$c,tool_name:"Bash",agent_id:$a}' | bash "$H"; }
@@ -46,7 +48,7 @@ ok "60 % + nucleo fresco → vacío" "$(run s3 p60)" ""
 head -c 6000 /dev/zero | tr '\0' x >"$NUC"; touch -d '-30 minutes' "$NUC"
 C=$(run s40 p60 | ctx)
 ok "nucleo por encima del tope: el aviso da tamaño y tope" "$(command grep -c 'Ocupa 6000 B (tope 5700): pasa lo cerrado a diario.md\.' <<<"$C")" 1
-ok "con el aviso de tope sigue ≤ 400 chars" "$([ "${#C}" -le 400 ] && echo si)" si
+ok "con el aviso de tope sigue ≤ 400 chars" "$([ "$(largo "$C")" -le 400 ] && echo si)" si
 rm -f "$NUC"
 ok "sin nucleo → pide crearlo con la plantilla" "$(run s4 p60 | ctx | command grep -c "créalo en $NUC con la forma de .*templates/nucleo.md")" 1
 ok "session_id con barras → nada (va a un nombre de fichero)" "$(run '../x' p60)" ""
@@ -105,6 +107,6 @@ mkdir -p "$HOME/.claude/bin"; : >"$HOME/.claude/bin/handoff"; chmod +x "$HOME/.c
 touch -d '-30 minutes' "$NUC"
 WC=$(PATH=/usr/bin:/bin run s40 p72 | ctx); WP=$(sed -n 's/.*`\([^ ]*\) --desde.*/\1/p' <<<"$WC")
 ok "W2 nudge: sin handoff en el PATH enseña la ruta absoluta y existe" "$WP,$([ -x "$WP" ] && echo si)" "$HOME/.claude/bin/handoff,si"
-ok "W2 nudge 70 % con la ruta ≤ 600 chars" "$([ "${#WC}" -le 600 ] && echo si)" si
+ok "W2 nudge 70 % con la ruta ≤ 600 chars" "$([ "$(largo "$WC")" -le 600 ] && echo si)" si
 
 exit $FAIL
