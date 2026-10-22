@@ -23,6 +23,11 @@ ser techo también sin política gestionada.
 - `install.sh` enlaza `handoff` y `oraculo` en `~/.local/bin` (solo sobre hueco libre o enlace propio; nunca pisa uno ajeno), avisa si `~/.local/bin` no está en el PATH y, con un `CLAUDE.md` previo sin `@AGENTS.md`, termina con un aviso visible (plantilla en `CLAUDE.kit.md`). En diff-first lo pone en el plan sin escribir. El aviso de credenciales solo sale si la plantilla existe.
 - `doctor.sh`: FAIL si falta `bin/handoff`, `bin/oraculo` o `templates/nucleo.md`; WARN si no se resuelven en el PATH o si `CLAUDE.md` no importa `AGENTS.md`.
 - `handoff --iniciar [--raiz D]` crea el primer `nucleo.md` desde la plantilla (nunca sobrescribe; exit 3 sin proyecto).
+- Registro de agentes (ADR 017): `SubagentStart`, `SubagentStop` y `SessionEnd` llaman a `agentes.sh`, que anota en `estado/agentes.jsonl` y lo rota a 200 líneas o 14 días. El `nucleo.md` inyectado lista los agentes con su `RESULTADO.md`, y con agentes en vuelo el aviso de contexto (`stop-context-gauge.sh`) pide `/handoff solo`, no `/clear`.
+- Estado con una sola puerta de escritura (ADR 016): `nucleo_estado_dir` decide dónde se escribe, con fallback a `~/.claude/estado/<nombre>-<hash>`, y `handoff --informe TEMA` crea `<raíz>/.claude/estado/informes/AAAA-MM-DD-TEMA/` para los informes.
+- Aviso de edad tras compactar: `session-start-compact.sh` avisa una vez por versión del `nucleo.md` (solo a la sesión dueña) de que el estado reinyectado puede estar rancio.
+- `doctor.sh`: WARN con `env.CC_ALLOW_DESTRUCTIVE=1` (apaga `destructive-guard.sh`), con `claude` ausente o anterior a 2.1.292, con `.claude/estado/` sin ignorar y con ficheros sueltos, y con `informes/` por encima de `DOCTOR_INFORMES_MB` (50 por omisión).
+- `make bateria` (test, shellcheck, scan-secrets y gitleaks con un `.rc` y un `.log` cada uno), `scripts/contexto-base.sh` y `test_presupuesto_contexto.sh`, que fija el tope de contexto por canal (ADR 018).
 
 ### Changed
 
@@ -30,6 +35,7 @@ ser techo también sin política gestionada.
 - `AGENTS.md` instalado: la mención a `recuerda` pasa a condicional (el instalador no lo instala).
 - `templates/nucleo.md`: el comentario de cabecera pasa dentro de «Objetivo» y el orden de secciones coincide con el que `handoff` escribe.
 - Plantilla `settings.json`: `"tui": "fullscreen"` por defecto, junto al tema oscuro; al reinstalar se conservan el tema y el renderer que ya tuvieras.
+- El marketplace del kit queda fijado al tag `v<VERSION>` en vez de seguir `main`, y al fusionar con una instalación previa gana la entrada del kit.
 
 ### Fixed
 
@@ -61,6 +67,7 @@ ser techo también sin política gestionada.
   - Al cortar una sección se respeta el límite de línea y se cierra su valla.
   - El checkpoint de compact ya no parte caracteres UTF-8.
 - Hooks: un `nucleo.md` vacío o con solo la plantilla ya no anuncia «Hay trabajo en curso». `nucleo_estado_seguro` rechaza una ruta relativa en lugar de entrar en un bucle infinito.
+- `install.sh` valida sus argumentos antes de tocar nada, y crea los enlaces por ruta canónica sin pisar los existentes.
 
 ### Security
 
@@ -69,15 +76,16 @@ ser techo también sin política gestionada.
 - Guards: las cadenas anidadas que `block-dangerous-commands.sh`, `destructive-guard.sh` y `branch-guard.sh` vuelven a analizar llevan un tope (más de 3 niveles de `bash -c`/`sh -c` o 16 comandos); pasado el tope se deniega, en vez de dejar pasar el nivel que ya no se analiza. `branch-guard.sh` solo mira los segmentos con `push` (y los `cd`), y calcula la rama actual una vez por repo (deniega pasados 16 repos distintos): antes, 12 KB de `x git;` costaban 7 s de CPU, 128 KB pasaban de 20 s y 12000 segmentos `git push` (108 KB) 36 s, con un timeout de 10 s y sin envoltorio, así que el guard fallaba en abierto. Ahora son 0,06 s, 0,4 s y menos de 2 s.
 - Guards: el texto de `echo`/`printf` que va a `| bash`/`| sh`, el código de `python -c` que llama a `os.system`/`subprocess` y `find … | xargs rm` se analizan como la orden en los tres guards. Escribir la orden a un fichero y ejecutarlo después queda fuera de alcance (`kit/docs/05-security.md`).
 - `branch-guard.sh`: una redirección pegada al operando (`git push origin main>/dev/null`) o la rama en ANSI-C (`$'main'`) ya no ocultan la rama protegida.
-- `settings.json` del kit: `disableBypassPermissionsMode: "disable"` y cuatro `Read(...)` deny (claves SSH, credenciales de nube, `.env*`, `secrets.*`), para que el kit sea techo también sin política gestionada.
+- `settings.json` del kit: `disableBypassPermissionsMode: "disable"` y seis deny de `Read` y seis de `Edit` (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.netrc`, `.env*`, `secrets.*`), para que el kit sea techo también sin política gestionada.
 - Fusión de `settings.json`: `permissions.disableBypassPermissionsMode` queda en `"disable"` siempre (gana el kit, y se dice si tu valor era otro). Un `disableAllHooks: true` o un `permissions.defaultMode: "bypassPermissions"` previos se respetan, pero `install.sh` avisa al final, también en el plan diff-first; `doctor.sh` da FAIL con `disableAllHooks: true`.
 
 ### Documentation
 
 - **Guía del primer día para un compañero.** `kit/docs/10-onboarding.md` pasa a ser la guía genérica (WSL2 Ubuntu): prerrequisitos con `apt`, `bash kit/install.sh`, `doctor.sh`, primer proyecto con `git init` + `handoff --iniciar`, bucle diario `oraculo --` → `/handoff` o `handoff --desde` → `/clear` y tabla de fallos. `make bootstrap` deja de ser la vía de quien solo usa el kit.
 - `02-install.md` documenta los enlaces de `handoff` y `oraculo` en `~/.local/bin`, el aviso de `@AGENTS.md` con un `CLAUDE.md` previo, las comprobaciones nuevas de `doctor.sh`, que la fusión de `settings.json` sustituye los hooks propios por los del kit (con backup) y que el modelo se fija con `"model": "opus"` (sin `[1m]` en Opus 4.7+).
-- `11-cockpit.md`: instalación, versión probada de Claude Code (2.1.292, sin mínimo comprobado), que sigue `main`, y `/handoff solo` frente a `handoff --solo`. La ruta de 7 días pasa a la plantilla de `nucleo.md` de v3 y a `handoff --desde`.
+- `11-cockpit.md`: instalación, versión probada de Claude Code (2.1.292, sin mínimo comprobado), fijado al tag de la versión, y `/handoff solo` frente a `handoff --solo`. La ruta de 7 días pasa a la plantilla de `nucleo.md` de v3 y a `handoff --desde`.
 - ADR 004 (sustituida en parte), 007 (no implementada) y 011 (issues sin re-verificar) con su estado real.
+- ADR nuevos: 016 (dónde se escribe cada cosa), 017 (registro de agentes), 018 (presupuesto de contexto) y 019 (sesiones en HOME).
 - `ENTREGA.md`, `README.md` y `kit/docs/{02-install,06-routine,08-plugins-mcp-y-skills,10-onboarding,11-cockpit}.md` se alinean con la instalación real: requisitos (Python 3, `zip`, `unzip`), verificación SHA-256 del paquete, qué trae la base frente a lo opcional, vuelta atrás con `uninstall.sh` en dry-run, rechazo de escritura con código 5 si otra sesión reclama el estado y vuelta al renderer clásico con `/tui default`.
 
 ## [1.3.0] - 2026-10-19
