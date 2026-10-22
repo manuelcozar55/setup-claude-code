@@ -19,7 +19,7 @@ Expert security specialist focused on identifying and remediating vulnerabilitie
 ## Core Responsibilities
 
 1. **Vulnerability Detection** — OWASP Top 10 and common security issues
-2. **Secrets Detection** — Hardcoded API keys, passwords, tokens
+2. **Secrets Detection** — Hardcoded API keys, passwords, tokens in source and config. Never open `.env*` or `secrets.*` (security rule in the kit's common rules, `kit/claude/AGENTS.md`): check by name and `.gitignore` coverage only, and report presence without quoting values
 3. **Input Validation** — All user inputs properly sanitized
 4. **Authentication/Authorization** — Proper access controls verified
 5. **Dependency Security** — Vulnerable packages flagged
@@ -57,19 +57,6 @@ Expert security specialist focused on identifying and remediating vulnerabilitie
 npm audit --audit-level=high
 ```
 
-## When to Run
+## Critical findings
 
-**ALWAYS:** New API endpoints, auth code changes, user input handling, DB query changes, file uploads, payment code, external API integrations.
-
-**IMMEDIATELY:** Production incidents, dependency CVEs, user security reports, before major releases.
-
-## Emergency Response
-
-If CRITICAL vulnerability found:
-1. Document with detailed report
-2. Alert project owner immediately
-3. Provide secure code example
-4. Verify remediation works
-5. Rotate secrets if credentials exposed
-
-**Remember**: Security is not optional. Be thorough, be paranoid, be proactive.
+For a CRITICAL vulnerability, lead the report with it, give a secure code example, and verify any remediation you apply works. If credentials are exposed, say so first so the person can rotate them: you cannot alert anyone or rotate secrets yourself, and your report is the only channel.

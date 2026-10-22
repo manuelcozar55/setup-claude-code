@@ -7,6 +7,18 @@ etiquetado.
 
 ## [Unreleased]
 
+### Changed
+
+- Agentes: `strategist` devuelve sus preguntas de aclaración como salida (un subagente no puede hablar con la persona) y absorbe el paso de verificación de `planner`; `security-reviewer` remite a la regla de secretos de las reglas comunes y sustituye «alertar al dueño» por informar primero; `orchestrator` deja el tono «relentless» y descompone solo por independencia; `code-explorer` acota cuándo usarlo frente a `Explore`; `deep-worker` pierde una lista de prohibiciones repetida.
+
+### Removed
+
+- Agente `planner`: duplicaba a `strategist`. Los agentes del kit pasan de 8 a 7.
+
+### Upgrade
+
+- En instalaciones previas, `~/.claude/agents/planner.md` queda huérfano (el instalador no borra) y puede eliminarse; `doctor.sh` no lo echa en falta.
+
 ## [1.4.0] - 2026-10-22
 
 Que un compañero instale el kit en limpio (WSL2 Ubuntu) y tenga el estado v3 operativo desde la
