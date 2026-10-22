@@ -350,13 +350,14 @@ ok "índice: ruta con ~ para lo que cuelga de \$HOME" "$(nucleo_indice | command
 mkdir -p "$T/nostat"; printf '#!/bin/sh\nexit 1\n' >"$T/nostat/stat"; chmod +x "$T/nostat/stat"
 ok "índice: sin GNU stat el orden y la fecha salen igual" "$(PATH="$T/nostat:$PATH" nucleo_indice | command grep -c "^- $T/p1 · Objetivo UNO · paso: paso uno · 2026-03-01\$")" 1
 # Corte: máx. 15 líneas de raíz, máx. 8 de (persona), ~2 500 chars.
+# Raíces bajo $HOME: el índice las muestra como ~/..., así el tope de 2 500 chars no depende de lo largo que sea el TMPDIR.
 rm -f "$NUCLEO_REGISTRO" "$HOME/proy/.claude/estado/nucleo.md"
-for i in $(seq 1 20); do mkpn "$T/m$i" "OBJ-M$i" "p" "2026-08-$(printf %02d "$i") 12:00 UTC" "- [ ] t$i (persona)"; echo "$T/m$i" >>"$NUCLEO_REGISTRO"; done
+for i in $(seq 1 20); do mkpn "$HOME/m$i" "OBJ-M$i" "p" "2026-08-$(printf %02d "$i") 12:00 UTC" "- [ ] t$i (persona)"; echo "$HOME/m$i" >>"$NUCLEO_REGISTRO"; done
 IX=$(nucleo_indice)
 ok "índice: corta a 15 raíces (más recientes)" "$(command grep -c '^- .* · OBJ-M' <<<"$IX"),$(command grep -c 'OBJ-M20 ' <<<"$IX"),$(command grep -c 'OBJ-M5 ' <<<"$IX")" 15,1,0
 ok "índice: corta a 8 líneas (persona)" "$(command grep -c '(persona)' <<<"$IX")" 8
 ok "índice: ≤ 2 500 chars" "$([ "${#IX}" -le 2500 ] && echo si)" si
-for i in $(seq 1 20); do mkpn "$T/m$i" "$(head -c 300 /dev/zero | tr '\0' o)" "$(head -c 300 /dev/zero | tr '\0' q)" "2026-08-$(printf %02d "$i") 12:00 UTC"; done
+for i in $(seq 1 20); do mkpn "$HOME/m$i" "$(head -c 300 /dev/zero | tr '\0' o)" "$(head -c 300 /dev/zero | tr '\0' q)" "2026-08-$(printf %02d "$i") 12:00 UTC"; done
 IX=$(nucleo_indice)
 ok "índice: líneas largas → objetivo y paso ≤ 80 y total ≤ 2 500" "$(command grep -c 'o\{81\}\|q\{81\}' <<<"$IX"),$([ "${#IX}" -le 2500 ] && echo si)" 0,si
 rm -f "$HOME/.claude/estado/nucleo.md"
@@ -368,18 +369,18 @@ ok "H3: raíz sin nucleo.md → no se registra" "$(cat "$NUCLEO_REGISTRO" 2>/dev
 mkdir -p "$T/h3/enl/.claude"; ln -s "$T/h3/enl-e" "$T/h3/enl/.claude/estado"
 nucleo_registrar "$T/h3/enl"
 ok "H3: raíz con .claude/estado enlazado → no se registra" "$(cat "$NUCLEO_REGISTRO" 2>/dev/null | wc -l)" 0
-mkdir -p "$T/h3/rr"; for i in $(seq 1 120); do mkpn "$T/h3/rr/r$i" "o$i" "p" "2026-01-01 12:00 UTC"; done
-for i in $(seq 1 100); do echo "$T/h3/rr/r$i"; echo "$T/h3/rr/borrada$i"; done >"$NUCLEO_REGISTRO"
-nucleo_registrar "$T/h3/rr/r110"
+mkdir -p "$HOME/h3rr"; for i in $(seq 1 120); do mkpn "$HOME/h3rr/r$i" "o$i" "p" "2026-01-01 12:00 UTC"; done
+for i in $(seq 1 100); do echo "$HOME/h3rr/r$i"; echo "$HOME/h3rr/borrada$i"; done >"$NUCLEO_REGISTRO"
+nucleo_registrar "$HOME/h3rr/r110"
 ok "H3: pasadas 100 líneas se reescribe sin duplicados ni raíces sin nucleo (101 únicas)" "$(wc -l <"$NUCLEO_REGISTRO"),$(sort "$NUCLEO_REGISTRO" | uniq -d | wc -l),$(command grep -c borrada "$NUCLEO_REGISTRO")" 101,0,0
-ok "H3: la reescritura no deja temporales y conserva la nueva al final" "$(find "$T/h3" -maxdepth 1 -name 'raices.*' | wc -l),$(tail -n 1 "$NUCLEO_REGISTRO")" "0,$T/h3/rr/r110"
-for i in $(seq 1 300); do echo "$T/h3/rr/r$(( i % 120 + 1 ))"; done >"$NUCLEO_REGISTRO"
+ok "H3: la reescritura no deja temporales y conserva la nueva al final" "$(find "$T/h3" -maxdepth 1 -name 'raices.*' | wc -l),$(tail -n 1 "$NUCLEO_REGISTRO")" "0,$HOME/h3rr/r110"
+for i in $(seq 1 300); do echo "$HOME/h3rr/r$(( i % 120 + 1 ))"; done >"$NUCLEO_REGISTRO"
 ok "H3: al leer procesa como máximo 50 raíces únicas" "$(nucleo_indice | command grep -c '^- .* · o[0-9]* · paso')" 15
-printf '%s\n' "$T/h3/rr/r1" "$T/h3/sin" >"$NUCLEO_REGISTRO"
+printf '%s\n' "$HOME/h3rr/r1" "$T/h3/sin" >"$NUCLEO_REGISTRO"
 ok "H3: nucleo_indice comprueba -f antes de nucleo_enlazado (raíz sin nucleo no sale)" "$(nucleo_indice | command grep -c 'h3/sin')" 0
 # Tope de reloj con holgura: en WSL2 esto tarda 1,6-2,8 s según la carga y con 2,5 s caía 1 de cada 3 sin defecto.
 # El trabajo ya lo acota «como máximo 50 raíces»; esto solo vigila que no se dispare (timeout del hook: 10 s).
-t0=$(date +%s%N); for i in $(seq 1 120); do echo "$T/h3/rr/r$i"; done >"$NUCLEO_REGISTRO"; for i in $(seq 1 180); do echo "$T/h3/rr/r$(( i % 120 + 1 ))"; done >>"$NUCLEO_REGISTRO"
+t0=$(date +%s%N); for i in $(seq 1 120); do echo "$HOME/h3rr/r$i"; done >"$NUCLEO_REGISTRO"; for i in $(seq 1 180); do echo "$HOME/h3rr/r$(( i % 120 + 1 ))"; done >>"$NUCLEO_REGISTRO"
 nucleo_indice >/dev/null; ms=$(( ($(date +%s%N) - t0) / 1000000 ))
 ok "H3: índice con 300 líneas de registro < 4 s (${ms} ms)" "$([ "$ms" -lt 4000 ] && echo si)" si
 
