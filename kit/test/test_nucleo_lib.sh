@@ -4,7 +4,7 @@
 # Uso: test_nucleo_lib.sh [ruta a la lib; por defecto la del kit]. Sin red; HOME falso en un mktemp.
 set -u
 L=$(realpath "${1:-$(dirname "$0")/../claude/hooks/lib/nucleo.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PROJECT_DIR
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PID CLAUDE_PROJECT_DIR
 # shellcheck source=/dev/null
 . "$L"
 FAIL=0
@@ -100,6 +100,7 @@ ok "plantilla: sin cifra de tope (KB ni 6500)" "$(command grep -ciE '[0-9] ?KB|6
 ok "plantilla: correcciones literales con fecha, en Invariantes" "$(awk '/^## /{s=$0} s=="## Invariantes" && /Corrección/' "$TPL" | command grep -c 'AAAA-MM-DD')" 1
 ok "plantilla: ficheros calientes con rango ruta:L120-180" "$(command grep -c 'ruta:L120-180' "$TPL")" 1
 ok "plantilla: → rc=N junto a cada comando" "$(command grep -c '→ rc=N' "$TPL")" 1
+ok "plantilla: la primera línea de Siguiente acción se aprueba con Enter, ≤ 160 y sin «pedir el sí»" "$(awk '/^## /{s=$0} s=="## Siguiente acción" && /Enter/ && /160/ && /pedir el sí/' "$TPL" | wc -l | tr -d ' ')" 1
 
 # `claude --worktree` crea el worktree en <repo>/.claude/worktrees/<rama>: es su propia raíz (rama y
 # nucleo suyos), no el repo padre. Solo $HOME/.claude sube a su padre.
@@ -279,6 +280,31 @@ ok "tope único: reservadas cortas → Objetivo + Invariantes + Plan (~5 500 B) 
 { echo '# Estado'; for sx in Objetivo Invariantes Plan 'Paso actual' 'Siguiente acción' Pendientes 'Comandos de verificación' 'Ficheros tocados' 'No repetir'; do echo "## $sx"; big 4000; done; } >"$T/res-todo.md"
 S=$(nucleo_emitir "$T/res-todo.md")
 ok "presupuesto: emisión de peor caso ≤ 7 000 chars (cabe con protocolo y git-hechos bajo 9 500)" "$([ "${#S}" -le 7000 ] && echo si)" si
+# Caso real (21-oct): 6,2 KB, dentro del tope, con Paso actual y Comandos de ~1 300 B. La reserva de 700 las
+# cortaba en cada clear aunque el total cupiera: si cabe entero, se emite entero.
+{ echo '# Estado'; echo '## Objetivo'; big 600; echo '## Invariantes'; big 1500; echo '## Paso actual'; big 1300; echo PASO-FIN
+  echo '## Siguiente acción'; big 200; echo SIG-FIN; echo '## Comandos de verificación'; big 1250; echo CMD-FIN
+  echo '## Plan'; big 300; echo '## Ficheros tocados'; big 1000; echo FICH-FIN; } >"$T/cabe.md"
+S=$(nucleo_emitir "$T/cabe.md")
+ok "cabe en el tope: sale entero" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|FICH-FIN' <<<"$S")" 4
+ok "cabe en el tope: sin marcas de recorte ni [LEE]" "$(command grep -c '^\[recortado\|^\[LEE' <<<"$S")" 0
+# Algo por encima: fuera secciones enteras en el orden de handoff (Pendientes, Plan…), sin partir las reservadas.
+{ cat "$T/cabe.md"; echo '## Pendientes'; big 1200; echo PEND-FIN; } >"$T/pasa-poco.md"
+S=$(nucleo_emitir "$T/pasa-poco.md")
+ok "pasa poco: las reservadas y Ficheros tocados salen enteras" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|FICH-FIN' <<<"$S")" 4
+ok "pasa poco: Pendientes se omite entera y se dice" "$(command grep -c 'PEND-FIN' <<<"$S"),$(command grep -c '^\[recortado por tope: se omiten «Pendientes»' <<<"$S")" "0,1"
+ok "pasa poco: ninguna sección partida; sí pide leer el fichero" "$(command grep -c 'sección incompleta' <<<"$S"),$(command grep -c '^\[LEE ' <<<"$S")" "0,1"
+# Si ni quitando secciones cabe, el corte de una sección cae en un límite de línea (si ya salió alguna) y cierra la
+# cerca que deje abierta; si parte la primera línea, cierra el `código`. Antes la marca quedaba dentro del bloque.
+{ echo '# Estado'; echo '## Objetivo'; big 2000; echo '## Invariantes'; big 2000; echo '## Paso actual'
+  for i in 1 2 3 4 5; do echo "paso $i con \`span-$i\` y texto de relleno hasta ocupar unos sesenta bytes"; done
+  echo '```bash'; for i in $(seq 1 30); do echo "comando-$i --opcion \`valor-$i\` # nota"; done; echo '```'; echo PASO-FIN
+  echo '## Comandos de verificación'; printf -- '- `'; big 1500 | tr -d '\n'; echo '` → rc=0'; } >"$T/valla.md"
+S=$(nucleo_emitir "$T/valla.md"); P=$(awk '/^## Paso actual/ { p = 1; next } /^## / { p = 0 } p' <<<"$S")
+ok "corte: por línea y con la cerca cerrada antes de la marca" \
+  "$(tail -n 2 <<<"$P" | head -n 1),$(command grep -c '^```' <<<"$P"),$(command grep -cxF -- "$(tail -n 3 <<<"$P" | head -n 1)" "$T/valla.md")" '```,2,1'
+ok "corte: la primera línea partida no deja un \`código\` abierto" \
+  "$(awk '/^## Comandos/ { p = 1; next } p' <<<"$S" | head -n 1 | tr -cd '`' | wc -c | awk '{ print $1 % 2 }')" 0
 
 # --- #22: el corte por bytes no parte un carácter UTF-8 (línea larga con ñ de 2 bytes; título y sección) ---
 U=$T/utf8.md
@@ -351,9 +377,11 @@ for i in $(seq 1 300); do echo "$T/h3/rr/r$(( i % 120 + 1 ))"; done >"$NUCLEO_RE
 ok "H3: al leer procesa como máximo 50 raíces únicas" "$(nucleo_indice | command grep -c '^- .* · o[0-9]* · paso')" 15
 printf '%s\n' "$T/h3/rr/r1" "$T/h3/sin" >"$NUCLEO_REGISTRO"
 ok "H3: nucleo_indice comprueba -f antes de nucleo_enlazado (raíz sin nucleo no sale)" "$(nucleo_indice | command grep -c 'h3/sin')" 0
+# Tope de reloj con holgura: en WSL2 esto tarda 1,6-2,8 s según la carga y con 2,5 s caía 1 de cada 3 sin defecto.
+# El trabajo ya lo acota «como máximo 50 raíces»; esto solo vigila que no se dispare (timeout del hook: 10 s).
 t0=$(date +%s%N); for i in $(seq 1 120); do echo "$T/h3/rr/r$i"; done >"$NUCLEO_REGISTRO"; for i in $(seq 1 180); do echo "$T/h3/rr/r$(( i % 120 + 1 ))"; done >>"$NUCLEO_REGISTRO"
 nucleo_indice >/dev/null; ms=$(( ($(date +%s%N) - t0) / 1000000 ))
-ok "H3: índice con 300 líneas de registro < 2,5 s (${ms} ms)" "$([ "$ms" -lt 2500 ] && echo si)" si
+ok "H3: índice con 300 líneas de registro < 4 s (${ms} ms)" "$([ "$ms" -lt 4000 ] && echo si)" si
 
 # --- H4: el registro nace con modo 600 y su directorio con 700 ---
 ( umask 022; NUCLEO_REGISTRO=$T/h4/nuevo/raices nucleo_registrar "$T/p1" )
@@ -373,6 +401,39 @@ printf '## Objetivo\nob%sj%sx%sy\n## Paso actual\np\n' "$RLO" "$LS" "$LRI" >"$T/
 ok "H6: índice sin U+202E, U+2028 ni U+2066 (el resto del texto queda)" "$(nucleo_indice | LC_ALL=C command grep -c "$RLO\|$LS\|$LRI"),$(nucleo_indice | command grep -c 'objxy')" "0,1"
 git init -q "$T/h6"; git -C "$T/h6" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "asu${RLO}nto${LS}fin"
 ok "H6: git-hechos sin bidi y con el asunto" "$(nucleo_git_hechos "$T/h6" | LC_ALL=C command grep -c "$RLO\|$LS"),$(nucleo_git_hechos "$T/h6" | command grep -c 'asuntofin')" "0,1"
+# --- ADR 016: nucleo_estado_dir, la única puerta de escritura del estado ---
+EG=$T/eg; git init -q "$EG"; git -C "$EG" -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+ED=$(nucleo_estado_dir "$EG" 2>/dev/null)
+ok "estado_dir: repo sin estado → imprime <raíz>/.claude/estado" "$ED" "$EG/.claude/estado"
+ok "estado_dir: crea informes/, checkpoints/ y .gitignore con «*»" "$([ -d "$ED/informes" ] && [ -d "$ED/checkpoints" ] && echo si),$(cat "$ED/.gitignore" 2>/dev/null)" 'si,*'
+echo x >"$ED/nucleo.md"; echo x >"$ED/informes/i.md"; echo x >"$ED/checkpoints/c.md"
+ok "estado_dir: git status --porcelain vacío tras escribir" "$(git -C "$EG" status --porcelain -uall)" ""
+git -C "$EG" add -A
+ok "estado_dir: git add -A no añade nada" "$(git -C "$EG" diff --cached --name-only)" ""
+git clone -q "$EG" "$T/eg-clon" 2>/dev/null; ECD=$(nucleo_estado_dir "$T/eg-clon" 2>/dev/null); echo x >"$ECD/informes/i.md"
+ok "estado_dir: un clon nuevo (otro info/exclude) sigue limpio" "$(git -C "$T/eg-clon" status --porcelain -uall)" ""
+ok "estado_dir: idempotente (misma ruta, el contenido no se toca)" "$(nucleo_estado_dir "$EG" 2>/dev/null),$(cat "$ED/nucleo.md")" "$ED,x"
+mkdir -p "$T/eg-prev/.claude/estado"; git init -q "$T/eg-prev"; printf 'diario.md\n' >"$T/eg-prev/.claude/estado/.gitignore"
+nucleo_estado_dir "$T/eg-prev" >/dev/null 2>&1; echo x >"$T/eg-prev/.claude/estado/informes/i.md"
+ok "estado_dir: un .gitignore previo sin «*» se respeta y informes/ queda ignorado" "$(cat "$T/eg-prev/.claude/estado/.gitignore"),$(git -C "$T/eg-prev" status --porcelain -uall | command grep -c informes)" "diario.md,0"
+ok "estado_dir: sin proyecto (\$HOME) → rc 1 y no crea nada" "$(nucleo_estado_dir "$HOME" 2>&1; echo "rc=$?"),$([ -e "$HOME/.claude/estado/informes" ] && echo creado || echo no)" "rc=1,no"
+mkdir -p "$T/eg-enl/.claude"; git init -q "$T/eg-enl"; ln -s "$T" "$T/eg-enl/.claude/estado"
+ok "estado_dir: con estado/ enlazado → rc 1" "$(nucleo_estado_dir "$T/eg-enl" >/dev/null 2>&1; echo $?)" 1
+t0=$(date +%s%N)
+for _ in $(seq 1 20); do nucleo_estado_dir "$EG" >/dev/null 2>&1; done
+ok "estado_dir: ya preparado cuesta ≤ 50 ms por llamada" "$([ $(( ($(date +%s%N) - t0) / 20000000 )) -le 50 ] && echo si)" si
+if [ "$(id -u)" -ne 0 ]; then
+  mkdir -p "$T/a/proy" "$T/b/proy"; git init -q "$T/a/proy"; git init -q "$T/b/proy"; chmod a-w "$T/a/proy" "$T/b/proy"
+  FA=$(nucleo_estado_dir "$T/a/proy" 2>"$T/eg-err"); FB=$(nucleo_estado_dir "$T/b/proy" 2>/dev/null)
+  ok "estado_dir: raíz de solo lectura → cae a ~/.claude/estado/<proyecto>-<hash>/, avisa y existe" "$([ "${FA#"$HOME"/.claude/estado/proy-}" != "$FA" ] && [ -d "$FA/informes" ] && echo si),$(command grep -c 'no admite escritura' "$T/eg-err")" "si,1"
+  ok "estado_dir: dos repos con el mismo basename no comparten el directorio de caída" "$([ "$FA" != "$FB" ] && echo si)" si
+  chmod u+w "$T/a/proy" "$T/b/proy"
+fi
+
+# Una ruta relativa nunca llega a «/»: el recorrido hacia arriba no terminaba (handoff colgado al 99 % de CPU).
+# shellcheck disable=SC2016  # $1 se expande en el bash hijo, no aquí
+ok "estado_seguro: ruta relativa → rc 1 sin colgarse" "$(timeout 2 bash -c '. "$1"; nucleo_estado_seguro rel/estado' _ "$L" >/dev/null 2>&1; echo $?)" 1
+
 unset NUCLEO_REGISTRO
 
 exit $FAIL

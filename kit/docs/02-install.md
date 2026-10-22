@@ -1,6 +1,10 @@
 # 02 · Instalación
 
-Este documento cubre la instalación de la parte que el kit sí redistribuye: la config saneada de `~/.claude` (`CLAUDE.md`, `settings.json`, agentes, hooks, Sentinel) y el venv de herramientas. Es la **única fuente** del procedimiento de instalación: el resto de documentos resume y enlaza aquí. Los terceros (agent-browser) se documentan aparte en `04-superpowers.md`: el kit no lleva sus binarios. El plugin `esenciales` es del kit y lo instala `install-plugins.sh` (ver `04-superpowers.md`).
+Este documento cubre la configuración que el kit redistribuye en `~/.claude` y los
+extras opcionales. La matriz de lo instalado, lo cargado por el lanzador y lo externo
+está en [`10-onboarding.md`](10-onboarding.md#0--qué-vas-a-levantar).
+Si recibiste una consolidación con `BUILD_ID`, sigue también [`ENTREGA.md`](../../ENTREGA.md):
+`scripts/scc.sh` carga los plugins incluidos; `install-plugins.sh` es la alternativa global.
 
 ## Prerrequisitos
 
@@ -10,20 +14,23 @@ Este documento cubre la instalación de la parte que el kit sí redistribuye: la
 |---|---|---|
 | `bash`, `make` | `install.sh`, `doctor.sh`, los guards y la suite son bash; `make bootstrap` y `make test` | `bash --version` · `make --version` |
 | `git` | clonar el repo, y los guards de `secret-guard.sh`/`branch-guard.sh` operan sobre `git` | `git --version` |
-| `node` ≥ 20 + `pnpm` | runtime de Claude Code y de agent-browser | `node --version` · `pnpm --version` |
-| `python3` (≥ 3.10) + `venv` | Sentinel y los hooks Python corren sobre un venv propio, nunca sobre el Python del sistema | `python3 --version` |
-| `gh` (GitHub CLI) | flujo de PRs desde Claude Code | `gh --version` |
+| Claude Code autenticado | ejecutar las sesiones; la distribución nativa no necesita Node para arrancar | `claude --version` |
+| `python3` (≥ 3.10) | Sentinel y los hooks Python; usan el venv si existe y, si no, el Python del sistema | `python3 --version` |
+| `zip`, `unzip` | copias de seguridad y restauración con `scripts/backup.sh` y `uninstall.sh --apply`; en Debian: `sudo apt install zip unzip` | `zip -v` · `unzip -v` |
+| `node` + `pnpm` (opcionales) | herramientas JavaScript externas, como agent-browser; según los requisitos de cada herramienta | `node --version` · `pnpm --version` |
+| `gh` (opcional) | flujo de PRs en GitHub | `gh --version` |
 | `jq` | **obligatorio**: `install.sh` aborta si falta (fusiona `settings.json` con `jq`), los cinco guards de Bash leen el payload con `jq` y sin él fallan en cerrado —deniegan en vez de permitir en silencio—, y `doctor.sh` lo marca `FAIL` | `jq --version` |
-| `uv` | gestor de paquetes Python que usa el kit vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
-| `gitleaks` (opcional, versión fijada `8.30.1`) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Si no lo tienes, `install.sh` te ofrece instalarlo (release oficial, verificado contra un checksum SHA-256 fijado en este repo — no descargado de la red —, nunca `curl \| bash`): confirma con `y`, o exporta `GITLEAKS_AUTO_INSTALL=1` para saltarte el prompt en un entorno no interactivo. Si el checksum no coincide, la instalación de `gitleaks` no rompe el resto (degrada a la Capa 1), pero deja una marca en `$CLAUDE_HOME/.gitleaks-checksum-mismatch` que `doctor.sh` reporta como `FAIL`. Ver `docs/05-security.md` | `gitleaks version` |
+| `uv` (opcional) | gestor de paquetes Python; solo lo necesitas si instalas herramientas con `uv tool` | `uv --version` |
+| `gitleaks` (opcional, versión fijada `8.30.1`) | escaneo de contenido en el `pre-commit` de la Capa 2 de secretos; sin él, esa capa no puede activarse (la Capa 1, `secret-guard.sh`, funciona igual). Si no lo tienes, `install.sh` te ofrece instalarlo (necesita `curl` y `ca-certificates`; release oficial, verificado contra un checksum SHA-256 fijado en este repo — no descargado de la red —, nunca `curl \| bash`): confirma con `y`, o exporta `GITLEAKS_AUTO_INSTALL=1` para saltarte el prompt en un entorno no interactivo. Si el checksum no coincide, la instalación de `gitleaks` no rompe el resto (degrada a la Capa 1), pero deja una marca en `$CLAUDE_HOME/.gitleaks-checksum-mismatch` que `doctor.sh` reporta como `FAIL`. Ver `docs/05-security.md` | `gitleaks version` |
 
 Comprueba todo de una vez:
 
 ```bash
-git --version && node --version && pnpm --version && python3 --version && gh --version && jq --version
+git --version && python3 --version && jq --version && claude --version
 ```
 
-Si falta `pnpm`, actívalo con corepack (viene con Node ≥ 16.9, no hace falta instalar nada por pipe a shell):
+Si necesitas herramientas JavaScript y tu instalación de Node incluye corepack,
+puedes activar `pnpm` con:
 
 ```bash
 corepack enable
@@ -40,15 +47,20 @@ Si no aparece nada, añade esa ruta a mano a tu `.bashrc`/`.zshrc`.
 
 **Si vienes de Windows**: clona **dentro** de WSL (`~/`), no en `/mnt/c/` (más lento y complica el bit de ejecución). Si tienes `git config core.autocrlf true`, no lo combatas: el `.gitattributes` del repo fuerza LF en scripts y hooks, porque un hook con CRLF no se ejecuta (`bad interpreter: /bin/bash^M`) y el fallo se lee como "el hook no hace nada".
 
-## El camino corto: `make bootstrap`
+## El camino corto: `bash kit/install.sh`
 
 ```bash
 git clone https://github.com/manuelcozar55/setup-claude-code.git
 cd setup-claude-code
-make bootstrap
+bash kit/install.sh
+bash kit/doctor.sh
 ```
 
-`make bootstrap` hace cuatro cosas y para si alguna falla: crea tu `config/profile.yaml` desde el ejemplo (es tuyo, está en `.gitignore` y no viaja: tu nombre, tu nivel de coach y tu oráculo), instala el kit en `~/.claude`, ejecuta el oráculo del repo (`make test`) y corre `kit/doctor.sh`. Los pasos siguientes son el mismo camino a mano, más lo opcional.
+Esta es la vía para quien solo quiere usar el kit. Instala la config en `~/.claude`, enlaza `handoff` y `oraculo` en tu `PATH` y no ejecuta la suite de tests. Para el primer día completo (prerrequisitos, primer proyecto, bucle diario) sigue [`10-onboarding.md`](10-onboarding.md).
+
+`make bootstrap` **no** es la vía de quien solo usa el kit. Está pensado para quien trabaja en este repo: crea `config/profile.yaml` (tu perfil del harness de la raíz), instala, ejecuta `make test` (más de un minuto) y corre `doctor.sh`. Si lo usas, los avisos de `install.sh` quedan tapados bajo la salida de los tests: repásalos con `bash kit/install.sh`.
+
+Los pasos siguientes son el mismo camino con más detalle, más lo opcional.
 
 ## Paso 1 · Clonar
 
@@ -69,37 +81,47 @@ Por defecto instala en `$HOME/.claude`. Si quieres probarlo primero en una ruta 
 CLAUDE_HOME=/ruta/alternativa bash install.sh
 ```
 
-`install.sh` es idempotente: si vuelves a ejecutarlo, cualquier fichero que fuera a pisar se guarda antes con backup en `$CLAUDE_HOME/backups/<fecha>-<pid>-<aleatorio>/`, y nunca sobreescribe sin copia; reinstalar sin cambios no crea un segundo backup. Copia (no enlaza) `settings.json`, `CLAUDE.md`, los hooks, los agentes, las skills del método y Sentinel. `settings.json` se **fusiona** con `jq`, no se pisa: tus claves propias sobreviven, y un symlink no se toca.
+Con un `CLAUDE_HOME` que no es `$HOME/.claude` el instalador no toca `~/.local/bin`: imprime las órdenes `ln -s` de `handoff` y `oraculo` por si quieres enlazarlos tú (Paso 3b).
+Esta variable selecciona el destino de los archivos, no el perfil que Claude Code carga
+automáticamente. Los comandos de la plantilla usan `$HOME/.claude`. Para una inspección
+sin activar nada, usa `bash install.sh --plan`; para probar la instalación completa,
+usa un HOME de prueba o el ensayo `scripts/aceptacion-local.sh` de la entrega.
+
+`install.sh` es idempotente: si vuelves a ejecutarlo, cualquier fichero que fuera a pisar se guarda antes con backup en `$CLAUDE_HOME/backups/<fecha>-<pid>-<aleatorio>/`, y nunca sobreescribe sin copia; reinstalar sin cambios no crea un segundo backup. Copia (no enlaza) `settings.json`, `CLAUDE.md`, los hooks, los agentes, las skills del método y Sentinel. `settings.json` se **fusiona** con `jq`, no se pisa: tus claves propias (permisos, `env`, plugins) sobreviven, y un symlink no se toca. Una excepción importante: **los hooks del kit sustituyen a los tuyos**. Si ya tenías hooks en `settings.json`, tras instalar solo quedan los del kit. Los tuyos siguen en la copia de seguridad (`$CLAUDE_HOME/backups/<fecha>-…/settings.json`): recupéralos de ahí y añádelos a mano. La otra excepción es `permissions.disableBypassPermissionsMode`: queda en `"disable"` siempre, también en el árbol del plan diff-first, y si tu valor era otro el instalador lo dice. Dos claves tuyas que dejan al kit sin efecto se respetan, pero se avisan al final: `disableAllHooks: true` (no corre ningún hook, tampoco los guards; `doctor.sh` lo marca `FAIL`) y `permissions.defaultMode: "bypassPermissions"` (con `"disable"` queda inerte).
+
+**Si ya tenías un `CLAUDE.md`.** El instalador no lo toca y deja la plantilla del kit en `CLAUDE.kit.md`. Al terminar te avisa de lo que falta: añade la línea `@AGENTS.md` a tu `CLAUDE.md` para que Claude Code cargue las reglas del kit (`AGENTS.md` sí se instala). Sin esa línea los hooks funcionan, pero el modelo no conoce la convención de `nucleo.md` ni los comandos `handoff` y `oraculo`. `doctor.sh` lo marca con un `WARN`. Para el resto de la plantilla (sección «Contexto»), copia lo que quieras de `CLAUDE.kit.md`.
 
 **Diff-first.** Si tu `$CLAUDE_HOME` es un repo git con remoto (un repo de configuración propio), el instalador **no escribe nada**: genera aparte el árbol que instalaría y te muestra el diff (nuevos, idénticos, modificados) para que copies lo que quieras ([ADR 008](../../knowledge/DECISIONS/008-install-diff-first.md)). `--apply` fuerza la escritura real, siempre con backup; `--plan` fuerza el modo diff aunque no sea un repo git.
 
 ### Modelo, ventana y esfuerzo: una sola fuente (medido)
 
-- **La ventana de 1M va por el sufijo `[1m]` del id de modelo**, no por la cabecera beta `context-1m` (falso indicador) ni por `--1m` (estampa el sufijo sobre cualquier modelo y rompe Haiku). Ponlo en `env.ANTHROPIC_MODEL`, p. ej. `"opus[1m]"`.
-- **Una sola fuente del modelo.** `/model` no persiste: el `env` se reaplica en cada arranque y gana. Si fijas `ANTHROPIC_MODEL`, quita la clave `model` de `settings.json`: queda muerta y confunde.
+- **El modelo se fija con la clave `model` de `settings.json`.** La plantilla trae `"model": "opus"`. Opus 4.7 y posteriores ya traen la ventana de 1M sin ningún sufijo. El sufijo `[1m]` (`"opus[1m]"`) solo hace falta en Opus 4.6 y Sonnet 4.6. Si tu plan no incluye 1M, deja `"opus"` sin sufijo.
+- **Una sola fuente del modelo.** No pongas además `env.ANTHROPIC_MODEL`: dos fuentes confunden. Para comprobar qué modelo y qué ventana usa de verdad tu sesión, escribe `/status` en Claude Code.
+- **No uses `--1m` al arrancar**: estampa el sufijo sobre cualquier modelo y rompe Haiku. Tampoco te fíes de la cabecera beta `context-1m`: no indica nada.
 - **`effortLevel: "max"` cae a `high` en silencio.** El máximo que se puede fijar en settings es `xhigh` (el de la plantilla).
 - **El airbag se mueve con `CLAUDE_CODE_AUTO_COMPACT_WINDOW`** (la plantilla: `250000`; compacta solo a la ventana − 33 000 tokens, y sobre esa línea miden sus % los hooks de `nucleo.md`). Sin sufijos `k`/`m`: se lee como entero. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` es un hook de test, no una opción: solo baja el umbral, y en la ruta de 1M no hace nada.
 - `cleanupPeriodDays: 14` acota cuánto tiempo se guardan los transcripts en disco.
 
-## Paso 3 · Variables de entorno
+## Paso 3 · Autenticación y servicios externos
 
-```bash
-cp .env.example $HOME/.claude/.env
-$EDITOR $HOME/.claude/.env
-```
-
-Rellena `ANTHROPIC_API_KEY` y, si la usas, `PERPLEXITY_API_KEY`. El fichero `.env` **nunca** se sube al repo (el hook `secret-guard.sh` y el gate `scan-secrets.sh` están precisamente para que no ocurra por descuido).
+Cada compañero inicia sesión en Claude Code con su propia cuenta. El kit no incluye
+credenciales. Si utiliza un proveedor por API o un MCP externo, debe configurar ese
+servicio según su documentación y la política de su organización.
+Copiar una plantilla de variables a disco no las carga automáticamente en Claude Code.
+Las claves y los archivos privados quedan fuera del paquete y de Git.
 
 ## Paso 3b · CLIs `handoff` y `oraculo`
 
-`install.sh` copia `bin/handoff` y `bin/oraculo` a `$CLAUDE_HOME/bin/` (diff-first, ejecutables) e imprime la orden
-para enlazarlos a tu `PATH`:
+`install.sh` copia `bin/handoff` y `bin/oraculo` a `$CLAUDE_HOME/bin/` (ejecutables) y crea dos enlaces en `~/.local/bin/`:
 
-```bash
-mkdir -p "$HOME/.local/bin" && ln -sf "$CLAUDE_HOME/bin/handoff" "$HOME/.local/bin/handoff" && ln -sf "$CLAUDE_HOME/bin/oraculo" "$HOME/.local/bin/oraculo"
-```
+- `~/.local/bin/handoff` → `$CLAUDE_HOME/bin/handoff`
+- `~/.local/bin/oraculo` → `$CLAUDE_HOME/bin/oraculo`
 
-Son bash + `jq`, sin red, y valen igual en Claude Code, Codex y opencode (`handoff --help`, `oraculo --help`).
+Reglas del enlace: solo se crea si `CLAUDE_HOME` es `$HOME/.claude` y además no existe nada con ese nombre, o ya era un enlace a `$CLAUDE_HOME/bin`. Con otro `CLAUDE_HOME` (una ruta de prueba, la CI) no escribe en `~/.local/bin`, porque al borrar esa ruta los enlaces quedarían colgando: imprime las órdenes `ln -s` y las ejecutas tú si quieres. Nunca pisa un fichero tuyo ni un enlace a otro sitio: en ese caso te avisa y lo dejas tú como prefieras. En modo diff-first no escribe nada y lo anota en el plan.
+
+Si `~/.local/bin` no está en tu `PATH`, el instalador lo dice al final. En Debian y Ubuntu esa carpeta entra en el `PATH` al iniciar sesión **solo si ya existía**: si la acaba de crear el instalador, **abre una terminal nueva** antes de usar los comandos. Compruébalo con `command -v handoff oraculo`.
+
+Los dos son bash + `jq`, sin red, y valen igual en Claude Code, Codex y opencode (`handoff --help`, `oraculo --help`). El camino absoluto (`$CLAUDE_HOME/bin/handoff`) funciona siempre, aunque el `PATH` no esté listo.
 
 ## Paso 4 · Venv de herramientas
 
@@ -120,7 +142,12 @@ ln -sf $HOME/.venvs/tools/bin/ruff $HOME/.local/bin/ruff
 
 El kit no instala esto por ti; solo lo documenta:
 
-- **esenciales, los 8 agentes, y agent-browser**: ver `docs/04-superpowers.md`. Los plugins se instalan por referencia desde su marketplace con `bash install-plugins.sh` (diff-first).
+- **Los 8 agentes y las skills del método** ya están instalados con la base.
+- **esenciales** está incluido en el repo y `scripts/scc.sh` lo carga localmente; la
+  instalación global se hace con `bash install-plugins.sh` (diff-first).
+  Que un plugin figure en `enabledPlugins` no demuestra que esté cargado: comprueba `/plugin`.
+- **agent-browser** es una herramienta externa: ver `docs/04-superpowers.md`.
+- **El mod `cockpit`** (opcional): da `/handoff` y `/nueva` dentro de Claude Code. Instálalo con `claude plugin install cockpit@setup-claude-code` después de registrar el marketplace en el tag del kit (las dos órdenes, en [`11-cockpit.md`](11-cockpit.md)). Sin él, `handoff --desde` hace lo mismo desde la terminal.
 
 Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, servidores MCP, skills adicionales como `graphify` o `deep-change`), ver `docs/08-plugins-mcp-y-skills.md`.
 
@@ -130,13 +157,32 @@ Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, serv
 bash doctor.sh
 ```
 
-`doctor.sh` imprime un informe por componente: `PASS`, `WARN` o `FAIL`, y el "cómo se obtuvo" de cada línea. Sale con código 0 solo si no hay ningún `FAIL`. Los `WARN` son aceptables cuando corresponden a un componente opcional que aún no has instalado (el venv de tools, `rtk`, `gitleaks`): el setup base funciona sin ellos, degradando con elegancia en vez de romperse.
+`doctor.sh` imprime un informe por componente: `PASS`, `WARN` o `FAIL`, y el "cómo se obtuvo" de cada línea. Sale con código 0 solo si no hay ningún `FAIL`. Para lo de este documento comprueba que:
+
+- `$CLAUDE_HOME/bin/handoff`, `$CLAUDE_HOME/bin/oraculo` y `$CLAUDE_HOME/templates/nucleo.md` existen. Si falta alguno es `FAIL`: repite `bash install.sh`.
+- `settings.json` no tiene `disableAllHooks: true`. Con esa clave no corre ningún hook, tampoco los guards, y es `FAIL`: quítala.
+- `handoff` y `oraculo` se resuelven en tu `PATH` y son los del kit (`readlink -f` igual al de `$CLAUDE_HOME/bin/<cli>`). Si no se resuelven, `WARN`: abre una terminal nueva o revisa el Paso 3b. Si el primero del `PATH` es otro programa con ese nombre, también `WARN`, con su ruta: la sugerencia es `ln -s`, nunca `ln -sf`, porque pisaría ese otro.
+- Tu `$CLAUDE_HOME/CLAUDE.md` contiene `@AGENTS.md` (o `@…AGENTS.md`). Si no, `WARN`: ver el aviso del Paso 2. Los `WARN` son aceptables cuando corresponden a un componente opcional que aún no has instalado (el venv de tools, `rtk`, `gitleaks`): el setup base funciona sin ellos, degradando con elegancia en vez de romperse.
 
 Un caso **no** degrada con elegancia y por eso es `FAIL`: que `ANTHROPIC_BASE_URL` enrute la API a un proxy que no contesta. Ahí Claude Code se queda sin poder hablar con la API, y el síntoma no se parece a un problema de configuración. El `settings.json` que distribuye el kit no fija esa variable: si `doctor.sh` la encuentra, viene de tu config (por ejemplo, restos de un proxy que ya no usas) y basta con quitarla.
 
 Detalle completo del significado de cada línea y de cómo reproducirla en `07-verify.md`.
 
-## Paso 7 · Capa 2 de secretos (opt-in, por repositorio)
+## Paso 7 · Tu primer proyecto
+
+El estado de trabajo (`.claude/estado/nucleo.md`) vive en la raíz git del proyecto. Una carpeta sin git no es proyecto: haz `git init` primero. Después:
+
+```bash
+cd tu-proyecto
+git init            # solo si aún no es un repo
+handoff --iniciar   # crea .claude/estado/nucleo.md desde la plantilla
+```
+
+`handoff --iniciar` no sobrescribe nada: si `nucleo.md` ya existe, lo dice y sale sin tocarlo. Añade `.claude/estado/` a `.git/info/exclude`, así que no ensucia tus commits. Fuera de un proyecto git termina con error (exit 3). El bucle diario, paso a paso, está en [`10-onboarding.md`](10-onboarding.md).
+
+Dónde va cada cosa: lo temporal, en un `mktemp`; el estado, los informes y los checkpoints, en `.claude/estado/` del proyecto (se crea solo y queda ignorado por git); lo privado de la máquina, en `~/.claude`. `handoff --informe <tema>` crea y te da la ruta de un informe.
+
+## Paso 8 · Capa 2 de secretos (opt-in, por repositorio)
 
 `install.sh` nunca la activa por su cuenta en un repo que no hayas nombrado. Desde dentro del repo que quieras proteger (requiere `gitleaks`):
 
@@ -146,10 +192,33 @@ cd tu-repo && bash /ruta/al/kit/install.sh --enable-secrets-layer2
 
 Para falsos positivos de los guards, usa `sentinel-allowlist.json` en vez de desactivarlos. Detalle en `05-security.md`.
 
-## Desinstalar
+## Actualizar
+
+Desde el clon, pasa a la versión que quieras (`vX.Y.Z` es el tag) y reinstala:
+
+```bash
+git fetch --tags
+git checkout vX.Y.Z
+bash kit/install.sh
+bash kit/doctor.sh
+claude plugin update cockpit@setup-claude-code   # solo si instalaste el cockpit
+```
+
+`install.sh` es idempotente: lo que cambia se guarda antes en `$CLAUDE_HOME/backups/<fecha>-…/` y tu `settings.json` se fusiona, no se pisa (los hooks del kit siguen sustituyendo a los tuyos, ver el Paso 2). Actualiza el kit y el cockpit a la vez: `install.sh` mueve el marketplace del kit al tag nuevo; después, `claude plugin marketplace add "manuelcozar55/setup-claude-code@v$(cat VERSION)"` y `claude plugin update cockpit@setup-claude-code`. Para volver a una versión anterior, haz `git checkout` de su tag y repite las dos órdenes de arriba; los ficheros que esa versión ya no trae no se borran de `$CLAUDE_HOME`.
+
+## Desinstalar y volver atrás
 
 ```bash
 bash uninstall.sh          # desde la raíz del repo; dry-run: dice qué haría y no toca nada
 bash uninstall.sh --apply  # restaura el backup más reciente (antes hace backup del estado actual)
 bash uninstall.sh --list   # enumera los backups disponibles
 ```
+
+Qué hace y qué no. `uninstall.sh` **restaura** el backup más reciente: los ficheros que una instalación o reinstalación sobrescribió (en `$CLAUDE_HOME/backups/`) o un snapshot completo de `scripts/backup.sh` (en `$HOME/backups/`). **No borra** lo que el instalador creó en limpio. Si no hay ningún backup (una máquina nueva con una sola instalación), termina con error: no hay nada que restaurar.
+
+Para quitar el kit del todo, a mano:
+
+- Los enlaces `~/.local/bin/handoff` y `~/.local/bin/oraculo`.
+- Los ficheros del kit en `~/.claude` que no quieras conservar (`bin/`, `hooks/`, `agents/`, las skills del método, `templates/nucleo.md`, `AGENTS.md`) y las entradas de `hooks` del `settings.json`. Si ya tenías una config tuya, `bash uninstall.sh --apply` te devuelve su versión anterior.
+- El cockpit, si lo instalaste: `claude plugin uninstall cockpit@setup-claude-code`.
+- La política gestionada de `/etc/claude-code/`, si tu organización la instaló: la quita quien tenga permisos de administrador, no el kit.

@@ -152,7 +152,7 @@ cmdn_oversize() {
 }
 
 cmdn_parse() {
-  local out rest line
+  local out rest
   CMDN_SEGS=(); CMDN_CWD=""
   if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]]; then
     CMDN_TEXT=$1; return 1
@@ -160,14 +160,46 @@ cmdn_parse() {
   # `${out%%…*}` y `${out#*…}` prueban cada longitud de prefijo: cuadráticos (64 KB ≈ 1,5 s de CPU,
   # el timeout del hook corre en abierto). `read` parte en el primer separador en una pasada.
   IFS=$CMDN_RS read -r -d '' CMDN_TEXT rest <<<"$out"
-  while IFS= read -r line; do
-    [[ -n $line ]] && CMDN_SEGS+=("$line")
-  done <<<"$rest"
+  mapfile -t CMDN_SEGS <<<"$rest"
+  while (( ${#CMDN_SEGS[@]} )) && [[ -z ${CMDN_SEGS[-1]} ]]; do
+    unset 'CMDN_SEGS[-1]'
+  done
   return 0
 }
 
 cmdn_fields() {
   IFS=$CMDN_US read -r -a T <<<"$1"
+}
+
+# cmdn_pipes_to_shell: 0 si algun comando simple es un interprete de shell que lee su programa de la
+# entrada (`| bash`, `| sudo sh -`, sin `-c` ni fichero). Entonces el texto de un echo/printf anterior
+# ES la orden, y los guards ya no lo tratan como prosa.
+cmdn_pipes_to_shell() {
+  local seg a ok cmd
+  local -a T
+  for seg in "${CMDN_SEGS[@]}"; do
+    cmd=${seg#*"$CMDN_US"}; cmd=${cmd%%"$CMDN_US"*}
+    case $cmd in bash|sh|zsh|dash|ksh) ;; *) continue ;; esac
+    cmdn_fields "$seg"
+    ok=1
+    for a in "${T[@]:2}"; do
+      [[ $a == - || ( $a == -* && $a != -*c* ) ]] || ok=0
+    done
+    (( ok )) && return 0
+  done
+  return 1
+}
+
+# cmdn_code_inner "$arg" palabra: el argumento de `python -c`/`perl -e`... lleva el comando dentro de
+# una llamada (`os.system('find . -delete')`, `subprocess.run(['git','push'])`). Comillas, corchetes,
+# parentesis y comas pasan a espacios y se devuelve (en REPLY) desde la palabra: queda un comando
+# normal que se puede volver a normalizar. Solo si el codigo llama a algo que ejecuta (system, popen,
+# subprocess, exec): un `print('find . -delete')` sigue siendo prosa.
+cmdn_code_inner() {
+  [[ $1 == *system* || $1 == *popen* || $1 == *subprocess* || $1 == *exec* ]] || return 1
+  local a=${1//[\'\"\[\]\(\),]/ }
+  [[ $a == *"$2"* ]] || return 1
+  REPLY="$2${a#*"$2"}"
 }
 
 # Sigue los `cd` de la orden para resolver con git el repo donde de verdad corre el siguiente

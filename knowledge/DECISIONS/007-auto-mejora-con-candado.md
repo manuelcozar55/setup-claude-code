@@ -1,6 +1,6 @@
 # ADR 007 — Auto-mejora referenciada, y su superficie de ataque
 
-**Fecha:** 2026-08-21 · **Estado:** aceptada
+**Fecha:** 2026-08-21 · **Estado:** no implementada (sin código ni incidente que la respalde; se conserva como diseño)
 
 ## Contexto
 

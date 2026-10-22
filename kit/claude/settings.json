@@ -5,16 +5,7 @@
   },
   "permissions": {
     "allow": [
-      "WebFetch(domain:doi.org)",
-      "WebFetch(domain:books.google.com)",
-      "WebFetch(domain:api.crossref.org)",
-      "WebFetch(domain:www.boe.es)",
-      "WebFetch(domain:ec.europa.eu)",
-      "Bash(uv tool list)",
-      "Bash(graphify query *)",
-      "Bash(graphify path *)",
-      "Bash(graphify explain *)",
-      "Bash(rtk gain)"
+      "Bash(uv tool list)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
@@ -31,10 +22,23 @@
       "Edit(/settings.json)",
       "Edit(/settings.local.json)",
       "Edit(/sentinel-allowlist.json)",
-      "Edit(/sentinel/**)"
-    ]
+      "Edit(/sentinel/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(//**/.env*)",
+      "Read(//**/secrets.*)",
+      "Read(~/.gnupg/**)",
+      "Read(~/.netrc)",
+      "Edit(~/.ssh/**)",
+      "Edit(~/.aws/**)",
+      "Edit(~/.gnupg/**)",
+      "Edit(~/.netrc)",
+      "Edit(//**/.env*)",
+      "Edit(//**/secrets.*)"
+    ],
+    "disableBypassPermissionsMode": "disable"
   },
-  "model": "opus[1m]",
+  "model": "opus",
   "hooks": {
     "PreToolUse": [
       {
@@ -194,6 +198,28 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/agentes.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/agentes.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "hooks": [
@@ -201,36 +227,34 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/stop-session-summary.sh",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/agentes.sh",
+            "timeout": 3
           }
         ]
       }
     ]
   },
   "enabledPlugins": {
-    "codex@openai-codex": true,
     "code-review@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
-    "frontend-design@claude-plugins-official": true,
-    "esenciales@setup-claude-code": true,
-    "understand-anything@understand-anything": true
+    "esenciales@setup-claude-code": true
   },
   "extraKnownMarketplaces": {
-    "openai-codex": {
+    "setup-claude-code": {
       "source": {
         "source": "github",
-        "repo": "openai/codex-plugin-cc"
-      }
-    },
-    "understand-anything": {
-      "source": {
-        "source": "github",
-        "repo": "Lum1104/Understand-Anything"
+        "repo": "manuelcozar55/setup-claude-code",
+        "ref": "v1.4.0"
       }
     }
   },
   "effortLevel": "xhigh",
   "autoUpdatesChannel": "latest",
   "cleanupPeriodDays": 14,
+  "tui": "fullscreen",
   "theme": "dark",
   "statusLine": {
     "type": "command",

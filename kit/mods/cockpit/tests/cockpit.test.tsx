@@ -28,6 +28,8 @@ for (const surface of ['terminal', 'desktop'] as const) {
     const clock = mock.clock(on)
     const writes: string[] = []
     const cleared: string[] = []
+    on('session.id', () => ({ value: 'test' }))
+    on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
     on('fs.write', (_, e) => {
       writes.push(e.path)
       return { value: undefined }
@@ -88,4 +90,37 @@ test('condense quita markdown y corta en una frase', () => {
   const long = condense(`${'Primera frase bastante larga con contenido útil. '.repeat(4)}${'x'.repeat(300)}`)
   expect(long.length).toBeLessThanOrEqual(282)
   expect(long.endsWith('. …')).toBe(true)
+})
+
+
+test('un seguimiento conserva misión y tareas', async ($, on) => {
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  on('tool.call', { tool: 'TodoWrite' }, () => ({ result: { oldTodos: [], newTodos: TODOS } }) as never)
+  await $.prompt.submit({ text: 'Revisar proyecto', wait: false, origin: { kind: 'composer' } })
+  await $.tool.call({ tool: 'TodoWrite', todos: TODOS })
+  await $.command.run({ ...RUN, command: 'simple' })
+  await $.prompt.submit({ text: '¿Cómo vas?', wait: false, origin: { kind: 'composer' } })
+  const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  expect(await ui.find({ text: /Revisar proyecto/ })).toBeTruthy()
+  expect(await ui.find({ text: /Paso 2 de 3/ })).toBeTruthy()
+})
+
+test('sin tareas ni agentes no inventa 100 por ciento', async $ => {
+  const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: DOCK })
+  expect(await ui.find({ text: '100%' })).toBeFalsy()
+  expect(await ui.find({ text: /Sin datos de avance/ })).toBeTruthy()
+})
+
+
+test('la caché inferida sigue siendo estimada después de una pausa larga', async ($, on) => {
+  const timer = mock.clock(on)
+  on('turn.complete', (_, e) => ({ text: e.answer }) as never)
+  const turn = { answer: 'ok', durationMs: 1, isAborted: false, turnId: 'cache', reason: 'answer' as const, usage: { model: 'test', input_tokens: 1000, output_tokens: 1, cache_read_input_tokens: 100000, cache_creation_input_tokens: 0 } }
+  await timer.advance(10000)
+  await $.turn.complete(turn)
+  await timer.advance(360000)
+  await $.turn.complete(turn)
+  const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  expect((await ui.find({ text: /CACHÉ/ }))?.text).toContain('probablemente')
+  expect((await ui.find({ text: /CACHÉ/ }))?.text).toContain('~')
 })

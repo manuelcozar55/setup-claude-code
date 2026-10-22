@@ -21,6 +21,34 @@ if [ -f "$CLAUDE_HOME/settings.json" ] && jq empty "$CLAUDE_HOME/settings.json" 
 else
   fail "settings.json ausente o inválido"
 fi
+# 1b. disableAllHooks: true apaga todos los hooks, guards incluidos, aunque cada fichero este en su
+# sitio: el resto de checks saldria en verde sobre un kit que no protege nada. install.sh lo respeta y avisa.
+if jq -e '.disableAllHooks == true' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1; then
+  fail "settings.json tiene disableAllHooks: true: no corre ningun hook, tampoco los guards. Quita la clave"
+fi
+
+# 1c. env.CC_ALLOW_DESTRUCTIVE=1 apaga destructive-guard.sh (su linea 10). La fusion de install.sh respeta tu env,
+# asi que un 1 previo sobrevive a reinstalar. Es WARN: puede ser deliberado, pero no debe pasar inadvertido.
+if jq -e '(.env.CC_ALLOW_DESTRUCTIVE // "" | tostring) == "1"' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1; then
+  warn "settings.json tiene env.CC_ALLOW_DESTRUCTIVE=1: destructive-guard.sh esta apagado. Quita la clave para recuperar esa proteccion"
+fi
+
+# 1d. Version de claude. CLAUDE_PROBADA es la version con la que se probo el kit, la misma que cita
+# docs/10-onboarding.md (test_doctor.sh lo comprueba); no hay minima comprobada. WARN y no FAIL: con otra
+# puede funcionar, pero no esta probado. Comparacion por version (sort -V).
+CLAUDE_PROBADA="2.1.292"
+if ! command -v claude >/dev/null 2>&1; then
+  warn "claude no se encuentra en el PATH: instala Claude Code (el kit se probo con $CLAUDE_PROBADA) y comprueba con claude --version"
+else
+  claude_v="$(timeout 10 claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  if [ -z "$claude_v" ]; then
+    warn "no se pudo leer la version de claude (claude --version); el kit se probo con $CLAUDE_PROBADA"
+  elif [ "$(printf '%s\n%s\n' "$CLAUDE_PROBADA" "$claude_v" | sort -V | head -1)" = "$CLAUDE_PROBADA" ]; then
+    pass "claude $claude_v (kit probado con $CLAUDE_PROBADA)  (fuente: claude --version)"
+  else
+    warn "claude $claude_v es anterior a $CLAUDE_PROBADA, la version con la que se probo el kit: actualizalo (claude update)"
+  fi
+fi
 
 # 2. hooks referenciados existen y son ejecutables
 if [ -f "$CLAUDE_HOME/settings.json" ]; then
@@ -40,30 +68,72 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   [ "$miss" -eq 0 ] && pass "hooks referenciados presentes y ejecutables  (fuente: jq .hooks + test -e/-x)"
 fi
 
+# 2b0. CLIs del flujo de estado y plantilla. Sin bin/handoff, bin/oraculo o templates/nucleo.md el flujo v3
+# no arranca: es FAIL. Que no esten en el PATH es WARN (se resuelve con una terminal nueva o el enlace).
+for cli in handoff oraculo; do
+  if [ -x "$CLAUDE_HOME/bin/$cli" ]; then
+    pass "bin/$cli presente y ejecutable  (fuente: test -x)"
+  fi
+  # Resolverse no basta: un $cli ajeno primero en el PATH daba PASS y la persona corria otro programa.
+  # La sugerencia es ln -s y no -sf: -sf pisaria justo el hueco ajeno que install.sh no toca.
+  cli_ruta="$(command -v "$cli" 2>/dev/null)"
+  if [ -z "$cli_ruta" ]; then
+    warn "$cli no se resuelve en tu PATH: ln -s \"$CLAUDE_HOME/bin/$cli\" \"\$HOME/.local/bin/$cli\" y abre una terminal nueva (comprueba que ~/.local/bin esta en el PATH)"
+  elif [ "$(readlink -f -- "$cli_ruta")" = "$(readlink -f -- "$CLAUDE_HOME/bin/$cli")" ]; then
+    pass "$cli se resuelve en el PATH  (fuente: command -v + readlink -f)"
+  else
+    warn "$cli del PATH es $cli_ruta, que no es $CLAUDE_HOME/bin/$cli: usa esa ruta o resuelve el conflicto (si retiras el otro: ln -s \"$CLAUDE_HOME/bin/$cli\" \"\$HOME/.local/bin/$cli\")"
+  fi
+done
+# El CLAUDE.md debe importar AGENTS.md: sin el, AGENTS.md esta instalado pero nadie lo lee.
+if [ -f "$CLAUDE_HOME/CLAUDE.md" ] && command grep -qE '@[^[:space:]]*AGENTS\.md' "$CLAUDE_HOME/CLAUDE.md"; then
+  pass "CLAUDE.md importa AGENTS.md  (fuente: grep @AGENTS.md)"
+else
+  warn "tu CLAUDE.md no contiene @AGENTS.md: añadelo (la plantilla del kit esta en CLAUDE.kit.md)"
+fi
+
 # 2c. Deriva entre lo que el kit trae y lo desplegado. Es WARN y no FAIL: personalizar un
 # hook es legitimo. Pero si divergen y no lo sabes, el kit deja de reproducir tu maquina, y
 # eso ya paso: dos guards llevaban meses distintos entre el kit y su copia de origen, con la
 # version endurecida en un lado y la antigua en el otro, y nadie lo noto.
-derivados=0; derivados_lista=""
-# hooks/lib/ y sentinel/ tambien: nucleo.sh y sentinel_preflight.py gobiernan hooks enteros y antes quedaban fuera.
-# De sentinel/ solo el codigo (*.py): iocs.json es dato que la persona personaliza por diseno y
-# reinstalar para "alinearlo" pisaria sus datos; su acoplamiento con el preflight lo cubre 2d.
-for src in "$KIT"/claude/hooks/* "$KIT"/claude/hooks/lib/* "$KIT"/sentinel/*.py; do
-  [ -f "$src" ] || continue
-  case "$src" in
-    "$KIT"/sentinel/*.py) nombre="sentinel/$(basename "$src")"; dst="$CLAUDE_HOME/$nombre" ;;
-    "$KIT"/claude/hooks/lib/*) nombre="lib/$(basename "$src")"; dst="$CLAUDE_HOME/hooks/$nombre" ;;
-    *) nombre="$(basename "$src")"; dst="$CLAUDE_HOME/hooks/$nombre" ;;
-  esac
-  [ -f "$dst" ] || continue
-  if ! cmp -s "$src" "$dst"; then
-    derivados=$((derivados + 1)); derivados_lista="$derivados_lista $nombre"
-  fi
+derivados=0; derivados_lista=""; ausentes=0; no_ejecutables=0
+# Presencia completa de los dos arboles que despliega install.sh. -f acepta
+# symlinks que resuelven a fichero: las skills proyectadas son personalizacion
+# legitima. Los bytes distintos son WARN, nunca FAIL. Los datos de IOC son
+# opcionales: su ausencia conserva el aviso especifico de la seccion siguiente.
+# assert-install.sh comprueba ademas que una instalacion nueva los haya copiado.
+# Los caches Python generados en el fuente no forman parte del inventario.
+# settings.json, CLAUDE.md y AGENTS.md se exigen pero no se comparan: install.sh
+# fusiona el primero y no pisa los otros dos si ya son tuyos, asi que difieren en
+# toda instalacion real y el WARN seria permanente.
+for tree in claude sentinel; do
+  while IFS= read -r -d '' src; do
+    rel="${src#"$KIT/$tree/"}"
+    case "$tree" in
+      claude) nombre="$rel"; dst="$CLAUDE_HOME/$rel"; comparar=1
+        case "$rel" in settings.json|CLAUDE.md|AGENTS.md) comparar=0 ;; esac ;;
+      sentinel) nombre="sentinel/$rel"; dst="$CLAUDE_HOME/sentinel/$rel"; comparar=0
+        case "$rel" in *.py) comparar=1 ;; esac ;;
+    esac
+    if [ ! -f "$dst" ]; then
+      ausentes=$((ausentes + 1))
+      if [ "$tree" = sentinel ] && [ "$comparar" -eq 0 ]; then continue; fi
+      fail "componente obligatorio del kit ausente: $nombre"
+      continue
+    fi
+    if [ -x "$src" ] && [ ! -x "$dst" ]; then
+      no_ejecutables=$((no_ejecutables + 1))
+      fail "componente obligatorio del kit no ejecutable: $nombre"
+    fi
+    if [ "$comparar" -eq 1 ] && ! cmp -s "$src" "$dst"; then
+      derivados=$((derivados + 1)); derivados_lista="$derivados_lista $nombre"
+    fi
+  done < <(find "$KIT/$tree" -type d -name __pycache__ -prune -o -type f -print0)
 done
 if [ "$derivados" -gt 0 ]; then
-  warn "$derivados hook(s) desplegados difieren de los del kit ($derivados_lista): reinstala para alinearlos, o portalos al kit si el cambio es bueno"
-else
-  pass "los hooks desplegados coinciden byte a byte con los del kit  (fuente: cmp -s por fichero)"
+  warn "$derivados componente(s) desplegados difieren de los del kit ($derivados_lista): compara antes de reinstalar; conserva tus personalizaciones"
+elif [ "$ausentes" -eq 0 ] && [ "$no_ejecutables" -eq 0 ]; then
+  pass "los componentes desplegados coinciden byte a byte con los del kit (salvo settings.json, CLAUDE.md y AGENTS.md, que son tuyos); inventario completo  (fuente: find + test -f/-x + cmp -s por fichero)"
 fi
 
 # 2b. capa de IOCs de Sentinel (opcional -> WARN)
@@ -327,6 +397,26 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fi
 else
   warn "no estas dentro de un repo git: no se puede comprobar la Capa 2 (core.hooksPath)"
+fi
+
+# 5d2. Estado del proyecto actual (ADR 016): .claude/estado/ lleva los prompts de la persona y los informes, y
+# nunca va a git. Si no esta ignorado y tiene ficheros sin rastrear, el siguiente `git add -A` los comitea (el
+# .gitignore interno con «*» lo crea nucleo_estado_dir; un estado anterior a esa version no lo tiene).
+# informes/ crece sin tope propio: avisa al pasar de DOCTOR_INFORMES_MB (50 por omision).
+estado_raiz="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$estado_raiz" ] && [ -d "$estado_raiz/.claude/estado" ]; then
+  estado_suelto="$(git -C "$estado_raiz" ls-files -o --exclude-standard -- .claude/estado 2>/dev/null | head -n 1)"
+  if [ -n "$estado_suelto" ]; then
+    warn "$estado_raiz/.claude/estado/ no esta ignorado y tiene ficheros sin rastrear (p. ej. $estado_suelto): printf '*\\n' > .claude/estado/.gitignore, o bash $CLAUDE_HOME/bin/handoff --iniciar"
+  else
+    pass "estado del proyecto ignorado o sin ficheros sueltos  (fuente: git ls-files -o --exclude-standard)"
+  fi
+  informes_kb="$(du -sk "$estado_raiz/.claude/estado/informes" 2>/dev/null | cut -f1)"
+  informes_mb="${DOCTOR_INFORMES_MB:-50}"
+  case "$informes_mb" in ''|*[!0-9]*) informes_mb=50 ;; esac
+  if [ "${informes_kb:-0}" -gt $((informes_mb * 1024)) ]; then
+    warn "$estado_raiz/.claude/estado/informes/ pesa $((informes_kb / 1024)) MB (> $informes_mb MB): archiva o borra los informes que ya no hagan falta"
+  fi
 fi
 
 # 6. gate de secretos sobre el kit

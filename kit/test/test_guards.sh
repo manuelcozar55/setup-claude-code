@@ -544,6 +544,10 @@ expect "branch-guard (fuera de repo): main explicito denegado"                  
 expect "branch-guard: git -C a un repo en main denegado desde fuera"    "$(run_bg "$BR_NONE" "git -C $BR_MAIN push")" BLOCK
 expect "branch-guard: git -C a un repo en feature NO denegado"          "$(run_bg "$BR_NONE" "git -C $BR_FEAT push")" ALLOW
 expect "branch-guard: cd a un repo en main + push denegado"             "$(run_bg "$BR_NONE" "cd $BR_MAIN && git push")" BLOCK
+expect "branch-guard: push repetido tras cd a main denegado" "$(run_bg "$BR_FEAT" "git push; git push; cd $BR_MAIN; git push")" BLOCK
+expect "branch-guard: push repetido con git -C a main denegado" "$(run_bg "$BR_FEAT" "git push; git push; git -C $BR_MAIN push")" BLOCK
+expect "branch-guard: push repetido tras cd de ida y vuelta permitido" "$(run_bg "$BR_FEAT" "git push; cd $BR_NONE; cd $BR_FEAT; git push")" ALLOW
+expect "branch-guard: push repetido seguido de destino protegido denegado" "$(run_bg "$BR_FEAT" 'git push origin feature/x; git push origin feature/x; git push origin main')" BLOCK
 # Revision E7.3 (CR-2): las redirecciones no son operandos del push. Con `2>&1` como segundo
 # posicional el destino pasaba a ser `2>&1` y el push implicito a main se escapaba.
 for c in 'git push origin 2>&1' 'git push origin 2>&1 | tail -3' 'git push -u origin >/dev/null' 'git push origin &>/dev/null'; do
@@ -553,6 +557,15 @@ for c in 'git push origin feature 2>&1' 'git push -u origin >/dev/null' 'git pus
   expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
 done
 expect "branch-guard (E7.3, feature activa): main con 2>&1 denegado" "$(run_bg "$BR_FEAT" 'git push origin main 2>&1')" BLOCK
+# S-N7: la redireccion pegada al operando (`main>/dev/null`) hacia que el destino fuese `main>/dev/null`.
+for c in 'git push origin main>/dev/null' 'git push origin main>log' 'git push origin "main">/dev/null' \
+         'git push origin main&>/dev/null'; do
+  expect "branch-guard (S-N7, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+expect "branch-guard (S-N7, main activa): HEAD>/dev/null denegado" "$(run_bg "$BR_MAIN" 'git push origin HEAD>/dev/null')" BLOCK
+for c in 'git push origin feature>/dev/null' 'git push origin main2>&1'; do
+  expect "branch-guard (S-N7, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
 # Revision E7.3 (CR-3): con --repo, git trata TODOS los posicionales como refspecs; el guard
 # tomaba el primero por remoto y `git push --repo=origin main` desde una feature pasaba.
 for c in 'git push --repo=origin main' 'git push --repo origin main'; do
@@ -577,6 +590,22 @@ for c in 'bash -c "git push origin main"' "sh -c 'git push origin main'" 'eval "
   expect "branch-guard (E7.3, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
 done
 expect "branch-guard (E7.3, main activa): bash -c con push implicito denegado" "$(run_bg "$BR_MAIN" 'bash -c "git push"')" BLOCK
+# S-N3: por encima del tope de 3 niveles el guard dejaba pasar en silencio; ahora falla cerrado.
+SN3_NEST=$(cat <<'EOF'
+bash -c "bash -c 'bash -c \"bash -c \\\"git push origin main\\\"\"'"
+EOF
+)
+expect "branch-guard (S-N3, feature activa): 4 niveles de bash -c con push denegado" "$(run_bg "$BR_FEAT" "$SN3_NEST")" BLOCK
+# S-N4: un echo/printf cuyo texto va a un interprete por pipe, o el codigo de `python -c`, SON la orden.
+for c in "echo 'git push origin main' | bash" "echo 'git push origin main' | sh" \
+         "python3 -c \"import os; os.system('git push origin main')\"" \
+         "python3 -c \"import subprocess; subprocess.run(['git', 'push', 'origin', 'main'])\""; do
+  expect "branch-guard (S-N4, feature activa): $c denegado" "$(run_bg "$BR_FEAT" "$c")" BLOCK
+done
+expect "branch-guard (S-N5, feature activa): refspec ANSI-C \$'main' denegado" "$(run_bg "$BR_FEAT" "git push origin \$'main'")" BLOCK
+for c in "echo 'git push origin main' | cat" "echo hi | bash" "python3 -c \"print('git push origin main')\""; do
+  expect "branch-guard (S-N4, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
+done
 for c in 'bash -c "git push origin feature"' 'ssh host git status' 'bash -c "echo main"' 'echo "git push origin main"' \
          'printf "%s" "git push origin main"' 'xargs git status main' 'find . -name main'; do
   expect "branch-guard (E7.3, feature activa): $c NO denegado" "$(run_bg "$BR_FEAT" "$c")" ALLOW
@@ -592,10 +621,20 @@ rm -rf "$BR_MAIN" "$BR_FEAT" "$BR_NONE"
 expect "guard: -d de rama remota denegado"        "$(run_blockdc 'git push -d origin feature-x')"                BLOCK
 expect "guard: -qd agrupado denegado"             "$(run_blockdc 'git push -qd origin feature-x')"               BLOCK
 expect "guard: :rama (refspec vacio) denegado"    "$(run_blockdc 'git push origin :feature-x')"                  BLOCK
+expect "guard: -d entre comillas simples denegado" "$(run_blockdc "git push origin '-d' feature-x")"              BLOCK
+expect "guard: -d entre comillas dobles denegado"  "$(run_blockdc 'git push origin \"-d\" feature-x')"            BLOCK
+expect "guard: --delete entre comillas simples"    "$(run_blockdc "git push origin '--delete' feature-x")"        BLOCK
+expect "guard: --delete entre comillas dobles"     "$(run_blockdc 'git push origin \"--delete\" feature-x')"      BLOCK
+expect "guard: :rama entre comillas simples"       "$(run_blockdc "git push origin ':feature-x'")"                BLOCK
+expect "guard: :rama entre comillas dobles"        "$(run_blockdc 'git push origin \":feature-x\"')"              BLOCK
 expect "guard: --dry-run NO denegado"             "$(run_blockdc 'git push --dry-run origin feature-x')"         ALLOW
 expect "guard: --set-upstream NO denegado"        "$(run_blockdc 'git push --set-upstream origin mi-dev-branch')" ALLOW
 expect "guard: refspec HEAD:refs/ NO denegado"    "$(run_blockdc 'git push origin HEAD:refs/heads/feature-x')"   ALLOW
 expect "guard: rama llamada desarrollo NO denegada" "$(run_blockdc 'git push origin desarrollo')"                ALLOW
+expect "guard: stash con :x en mensaje permitido" "$(run_blockdc 'git stash push -m \"wip :x\"')"                 ALLOW
+expect "guard: log con push :a permitido"          "$(run_blockdc 'git log --grep \"push :a\"')"                   ALLOW
+expect "guard: commit con :feature permitido"      "$(run_blockdc 'git commit -m \"delete :feature\"')"            ALLOW
+expect "guard: push normal a main permitido"       "$(run_blockdc 'git push origin main')"                         ALLOW
 # Falsos positivos medidos de la primera version de esos dos patrones, cuando la valla era la
 # misma de las reglas de force (`[^;&|]*`). Los seis se denegaban. Se conservan como sensor
 # porque `d` es una letra de flag frecuente y `:` aparece en cualquier refspec: si alguien
@@ -629,6 +668,26 @@ expect "destructive: find -delete en /tmp NO denegado" "$(run_destructive 'find 
 # y las opciones globales de git, los prefijos (sudo, env, timeout...) y las grafias de rm/clean
 # sacaban el comando del patron. Los comandos se pasan por jq porque llevan comillas.
 run_dg() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" bash "$KIT/claude/hooks/destructive-guard.sh" 2>&1; }
+expect "destructive: segmento inocuo antes de rm normalizado no lo oculta" \
+  "$(run_dg 'x find; command /bin/"r"m -- /etc/probe')" BLOCK
+expect "destructive: segmento inocuo antes de git normalizado no lo oculta" \
+  "$(run_dg 'x find; env A=1 /usr/bin/"g"it reset --hard')" BLOCK
+expect "destructive: opciones globales de git preservan clean tras segmento inocuo" \
+  "$(run_dg 'x find; git -c core.x=1 clean -fd')" BLOCK
+expect "destructive: segmentos inocuos sin rm ni git permitidos" \
+  "$(run_dg 'x find; true')" ALLOW
+expect "destructive: find -exec rm en /etc denegado" \
+  "$(run_dg "find /etc -name '*.conf' -exec rm -f {} +")" BLOCK
+expect "destructive: find -exec rm con comillas dobles denegado" \
+  "$(run_dg 'find /etc -name "*.conf" -exec rm -f {} +')" BLOCK
+expect "destructive: xargs sh -c con rm denegado" \
+  "$(run_dg "find /etc -name '*.conf' | xargs -0 sh -c 'rm -f \"\$@\"' sh")" BLOCK
+expect "destructive: xargs bash -c con rm denegado" \
+  "$(run_dg 'find /etc -name "*.conf" | xargs -0 bash -c '\''rm -f "$@"'\'' bash')" BLOCK
+expect "destructive: find build -exec rm permitido" \
+  "$(run_dg 'find build -exec rm -f {} +')" ALLOW
+expect "destructive: find filtrado con -delete permitido" \
+  "$(run_dg "find . -name '*.pyc' -delete")" ALLOW
 for c in 'git commit -m "fix #12" && git reset --hard' "git commit -m 'a #b' ; git clean -fd" \
          'git -C dir reset --hard' 'git -c core.x=1 reset --hard' 'git --git-dir=.git reset --hard' \
          'sudo git reset --hard' 'sudo -u root git reset --hard' 'env A=1 git reset --hard' 'A=1 git reset --hard' \

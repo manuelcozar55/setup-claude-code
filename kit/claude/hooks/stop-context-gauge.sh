@@ -11,14 +11,30 @@
 set -u
 IN=$(cat)
 TP=$(jq -r '.transcript_path // empty' <<<"$IN" 2>/dev/null)
-[ -n "$TP" ] && [ -f "$TP" ] || exit 0
 # shellcheck source=SCRIPTDIR/lib/nucleo.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
+# shellcheck source=SCRIPTDIR/lib/agentes.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/agentes.sh"
 MSG=""
+SID=$(jq -r '.session_id // empty' <<<"$IN" 2>/dev/null)
+CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
+RAIZ=$(nucleo_raiz "$CWD")
+VIVOS=$(jq -c '[ (.background_tasks // [])[] | select(.status == null or .status == "running") ]' <<<"$IN" 2>/dev/null) || VIVOS='[]'
+NAG=$(jq '[.[] | select(.type == "subagent")] | length' <<<"$VIVOS")
+nucleo_agentes_foto "$RAIZ" "$SID" "$VIVOS" 2>/dev/null || true
+[ -n "$TP" ] && [ -f "$TP" ] || exit 0
 
 read -r CTX PCT <<<"$(nucleo_ctx "$TP")"
 if [ -n "${PCT:-}" ] && [ "$PCT" -ge 60 ]; then
-  MSG="Contexto $CTX tok ($PCT % del airbag). Fase cerrada: /handoff (cockpit: deja el estado en .claude/estado/nucleo.md y retoma limpio); sin cockpit, actualiza nucleo.md y /clear (el hook de arranque lo re-inyecta). Si no, delega el resto a subagentes."
+  HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
+  case "$SID" in
+    '' | *[!A-Za-z0-9_-]*) GUARDAR="handoff indicando el ID real de esta sesión (no está disponible en el evento)" ;;
+    *) GUARDAR="\`$HO --desde <borrador> --sesion $SID\`" ;;
+  esac
+  MSG="Contexto $CTX tok ($PCT % del airbag). Fase cerrada: /handoff (cockpit: deja el estado en .claude/estado/nucleo.md y retoma limpio); sin cockpit, actualiza nucleo.md con $GUARDAR y /clear (el hook de arranque lo re-inyecta). Si no, delega el resto a subagentes."
+  if [ "$NAG" -gt 0 ]; then
+    MSG="Contexto $CTX tok ($PCT % del airbag). $NAG agente(s) en vuelo: /handoff solo para guardar el estado, no /clear. Recoge sus resultados antes de limpiar la sesión."
+  fi
 fi
 
 # 2) Gate: un `git commit` lanzado EN ESTE transcript es posterior a nucleo.md. No vale «HEAD es
@@ -26,10 +42,8 @@ fi
 # que no hay bucle aunque la persona decida no tocar nucleo. NUCLEO_GATE=observe (defecto) solo
 # registra en el log; block devuelve decision. Ante cualquier dato que falte: no hace nada.
 REASON=""
-SID=$(jq -r '.session_id // empty' <<<"$IN" 2>/dev/null)
-CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
-RAIZ=$(nucleo_raiz "$CWD")
-NUC="$RAIZ/.claude/estado/nucleo.md"
+ESTADO=$(nucleo_estado_leer "$RAIZ") || ESTADO=""
+NUC=${ESTADO:+$ESTADO/nucleo.md}
 # D1: desde ~ el nucleo compartido no es el de esta sesión: sin puerta (en block mandaría actualizar el de otra tarea).
 if [ "$RAIZ" != "$HOME" ] && [ "$(jq -r '.stop_hook_active // false' <<<"$IN" 2>/dev/null)" != true ] && [ -f "$NUC" ] && ! nucleo_enlazado "$RAIZ"; then
   MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)

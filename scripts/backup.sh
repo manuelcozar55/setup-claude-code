@@ -94,7 +94,7 @@ command -v zip   >/dev/null 2>&1 || die "falta 'zip'"
 command -v unzip >/dev/null 2>&1 || die "falta 'unzip'"
 [ -d "$CLAUDE_HOME" ] || die "no existe CLAUDE_HOME: $CLAUDE_HOME"
 
-STAMP="$(date +%Y%m%d-%H%M%S)"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo backup)-$$-${RANDOM:-0}"
 NAME="claude-state-${STAMP}"
 mkdir -p "$BACKUP_DIR"
 ZIP="$BACKUP_DIR/${NAME}.zip"

@@ -16,6 +16,7 @@
 #   statusLine y cualquier otra clave que el kit no conozca -> TUYAS, intactas
 #   env, permissions.allow, permissions.deny                -> union, y gana tu valor
 #   hooks                                                   -> del KIT, reemplazan los tuyos
+#   permissions.disableBypassPermissionsMode                -> del KIT, siempre "disable"
 # Lo de `hooks` es la unica clave que el kit posee en bloque (la cadena de guards es lo que
 # aporta) y esta declarado en el aviso que imprime la funcion: se fija aqui para que un
 # cambio accidental de ese contrato salte, en un sentido o en el otro.
@@ -37,27 +38,30 @@ seed(){  # $1 = caso; stdin = el settings.json que ya tenias. Deja $CLAUDE_HOME 
   export CLAUDE_HOME="$tmp/$1"; mkdir -p "$CLAUDE_HOME"
   S="$CLAUDE_HOME/settings.json"; cat > "$S"; chmod 644 "$S"
 }
-run(){ set +e; bash "$KIT/install.sh" >/dev/null 2>&1; set -e; }
+run(){ set +e; bash "$KIT/install.sh" "$@" >"$tmp/run.log" 2>&1; set -e; }
+dice(){ grep -qE "$1" "$tmp/run.log" && echo y || echo n; }
 backups(){ find "$CLAUDE_HOME/backups" -name settings.json 2>/dev/null | wc -l | tr -d ' '; }
 
 # --- Caso a: statusLine sobrevive intacta (EL incidente) -------------------
 seed a <<'EOF'
 { "statusLine": { "type": "command", "command": "/home/usuario/.claude/statusline.sh", "padding": 0 },
-  "model": "opus[1m]" }
+  "model": "opus[1m]", "theme": "light", "tui": "classic" }
 EOF
 antes="$(jq -Sc .statusLine "$S")"
 run
 ck "$([ "$(jq -Sc '.statusLine // "AUSENTE"' "$KIT/claude/settings.json")" != "$antes" ] && echo y || echo n)" "y" "la statusLine de la plantilla es otra (un cp pisaria la tuya: falsabilidad del caso)"
 ck "$(jq -Sc '.statusLine // "AUSENTE"' "$S")" "$antes" "statusLine sigue ahi y byte-identica tras reinstalar"
 ck "$(jq -r '.model' "$S")" "opus[1m]" "tu model sigue ahi"
+ck "$(jq -r '.theme' "$S")" "light" "tu tema sigue ahi"
+ck "$(jq -r '.tui' "$S")" "classic" "tu renderer sigue ahi"
 ck "$(stat -c %a "$S")" "644" "la escritura atomica preserva el modo del original (el mktemp nace en 600)"
 
 # --- Caso b: una clave que el kit NO conoce -------------------------------
 seed b <<'EOF'
-{ "tui": "fullscreen" }
+{ "editorMode": "vim" }
 EOF
 run
-ck "$(jq -r '.tui // "AUSENTE"' "$S")" "fullscreen" "una clave que el kit no conoce (tui) sobrevive"
+ck "$(jq -r '.editorMode // "AUSENTE"' "$S")" "vim" "una clave que el kit no conoce (editorMode) sobrevive"
 
 # --- Caso c: env -> tu valor gana, y las claves nuevas del kit se anaden --
 seed c <<'EOF'
@@ -127,11 +131,77 @@ ck "$(echo "$out_g" | grep -qi 'falta jq' && echo y || echo n)" "y" "sin jq: el 
 ck "$(sha256sum "$S" | cut -d' ' -f1)" "$sha_g" "sin jq: tu settings.json queda intacto"
 ck "$(backups)" "0" "sin jq: no hay backup que descubrir, porque no se toco nada"
 
+# --- Caso i: claves de seguridad sueltas -> gana el KIT, y lo que no se fuerza se avisa ---
+# La union de permissions dejaba ganar lo tuyo en las claves escalares: un previo con
+# disableBypassPermissionsMode vacio, defaultMode bypassPermissions y disableAllHooks salia de
+# la fusion igual, sin guards ni freno al bypass, y sin una linea de aviso.
+seed i <<'EOF'
+{ "disableAllHooks": true,
+  "permissions": { "disableBypassPermissionsMode": "", "defaultMode": "bypassPermissions", "allow": ["Bash"] } }
+EOF
+run
+ck "$(jq -r '.permissions.disableBypassPermissionsMode' "$S")" "disable" "disableBypassPermissionsMode: gana el kit sobre tu valor vacio"
+ck "$(jq -r '.permissions.allow | index("Bash") != null' "$S")" "true" "allow: tu entrada sigue (la union no cambia)"
+ck "$(dice 'AVISO.*disableAllHooks')" "y" "disableAllHooks: true previo -> aviso visible"
+ck "$(dice 'AVISO.*bypassPermissions')" "y" "defaultMode bypassPermissions previo -> aviso"
+seed i2 <<'EOF'
+{ "permissions": { "defaultMode": "acceptEdits" } }
+EOF
+run
+ck "$(dice 'AVISO.*(disableAllHooks|bypassPermissions)')" "n" "sin esas claves no hay aviso (falsabilidad del caso)"
+# En el plan diff-first no se escribe en CLAUDE_HOME, pero el arbol del plan lleva "disable" y el
+# aviso sale igual: es justo cuando la persona decide que copiar.
+seed j <<'EOF'
+{ "disableAllHooks": true,
+  "permissions": { "disableBypassPermissionsMode": "", "defaultMode": "bypassPermissions" } }
+EOF
+sha_j="$(sha256sum "$S" | cut -d' ' -f1)"
+MCHARNESS_OUT="$tmp/plan-j" run --plan
+ck "$(jq -r '.permissions.disableBypassPermissionsMode' "$tmp/plan-j/settings.json")" "disable" "plan: el settings.json del plan lleva disable"
+ck "$(sha256sum "$S" | cut -d' ' -f1)" "$sha_j" "plan: tu settings.json queda intacto"
+ck "$(dice 'AVISO.*disableAllHooks')" "y" "plan: aviso de disableAllHooks"
+ck "$(dice 'AVISO.*bypassPermissions')" "y" "plan: aviso de defaultMode bypassPermissions"
+
 # --- Caso h: idempotencia (se reusa el HOME del caso a, ya fusionado) -----
 export CLAUDE_HOME="$tmp/a"; S="$CLAUDE_HOME/settings.json"
 sha="$(sha256sum "$S" | cut -d' ' -f1)"; n="$(backups)"
 run
 ck "$(sha256sum "$S" | cut -d' ' -f1)" "$sha" "idempotencia: fusionar dos veces no cambia el fichero"
 ck "$(backups)" "$n" "idempotencia: la segunda fusion no genera un backup nuevo (no hubo cambio)"
+
+# --- Caso j: env.CC_ALLOW_DESTRUCTIVE=1 previo (M5 residuo) -> la fusion lo respeta (es tuyo) y avisa ---
+# CC_ALLOW_DESTRUCTIVE=1 apaga destructive-guard.sh (kit/claude/hooks/destructive-guard.sh:10): sobrevivia
+# a la fusion sin una linea de aviso.
+seed j <<'EOF'
+{ "env": { "CC_ALLOW_DESTRUCTIVE": "1" } }
+EOF
+run
+ck "$(jq -r '.env.CC_ALLOW_DESTRUCTIVE' "$S")" "1" "CC_ALLOW_DESTRUCTIVE previo: sigue (es tuyo, no se borra)"
+ck "$(dice 'AVISO.*CC_ALLOW_DESTRUCTIVE')" "y" "CC_ALLOW_DESTRUCTIVE=1 previo -> aviso visible"
+seed j2 <<'EOF'
+{ "env": { "CC_ALLOW_DESTRUCTIVE": "0" } }
+EOF
+run
+ck "$(dice 'AVISO.*CC_ALLOW_DESTRUCTIVE')" "n" "CC_ALLOW_DESTRUCTIVE=0 no avisa (falsabilidad del caso)"
+
+# --- Caso k: marketplace del kit ya registrado sin ref (o con el de otra version) -> el ref sigue a VERSION ---
+# Con la entrada vieja intacta, `marketplace add <repo>@v<VERSION>` de install-plugins.sh falla («its source
+# doesn't match its extraKnownMarketplaces entry», medido con claude 2.1.304) y el cockpit sigue a main:
+# se adelanta a ~/.claude/bin/handoff. Tus otros marketplaces no se tocan.
+ref="v$(cat "$KIT/../VERSION")"
+ck "$(jq -r '.extraKnownMarketplaces["setup-claude-code"].source.ref' "$KIT/claude/settings.json")" "$ref" "la plantilla fija el marketplace del kit a v<VERSION> (premisa del caso)"
+for previo in '' '"ref": "v0.0.1",'; do
+seed k <<EOF
+{ "extraKnownMarketplaces": {
+    "setup-claude-code": { "source": { $previo "source": "github", "repo": "manuelcozar55/setup-claude-code" } },
+    "otro": { "source": { "source": "github", "repo": "alguien/otro", "ref": "main" } } } }
+EOF
+run
+caso="${previo:+con ref viejo}"; caso="${caso:-sin ref}"
+ck "$(jq -r '.extraKnownMarketplaces["setup-claude-code"].source.ref' "$S")" "$ref" "marketplace del kit $caso: queda en $ref"
+ck "$(jq -c '.extraKnownMarketplaces.otro' "$S")" '{"source":{"source":"github","repo":"alguien/otro","ref":"main"}}' "otro marketplace tuyo: intacto"
+done
+# Por la misma razon, `plugin install cockpit --marketplace <repo>` sin ref falla con el marketplace ya fijado.
+ck "$(grep -rl -- '--marketplace manuelcozar55' "$KIT/docs" "$KIT/../README.md" | wc -l)" "0" "ninguna doc instala el cockpit con --marketplace <repo> sin ref"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

@@ -34,13 +34,20 @@ configuración esté verificada en vez de supuesta.
 macOS (no hay CI que lo demuestre), y no es un framework del que dependas: se instala en tu
 `~/.claude` y se desinstala.
 
-**Instalar.** Clona y `make bootstrap` (instala en `~/.claude` con backup, corre `make test` y
-`kit/doctor.sh`); se deshace con `bash uninstall.sh`. Ver [Quick start](#quick-start).
+**Instalar.** Clona y ejecuta `bash kit/install.sh` (instala en `~/.claude` con backup) y
+`bash kit/doctor.sh` (comprueba la instalación); se deshace con `bash uninstall.sh`. `make bootstrap`
+es para quien desarrolla este repo. Ver [Quick start](#quick-start).
 
-**Aspecto.** Una instalación limpia trae el tema oscuro (`"theme": "dark"`) y una barra de estado
+**Consolidación local.** Si recibiste el paquete identificado por `BUILD_ID`, sigue
+[`ENTREGA.md`](ENTREGA.md) y arranca con `scripts/scc.sh`: carga el cockpit y las skills
+esenciales incluidos, sin depender de una publicación nueva en el marketplace.
+
+**Aspecto.** Una instalación limpia trae pantalla completa (`"tui": "fullscreen"`), tema oscuro (`"theme": "dark"`) y una barra de estado
 en dos líneas (`~/.claude/statusline-command.sh`, bash + `jq`): modelo, ruta completa, repo, rama
-y cambios arriba; contexto y límites de 5 h y 7 d abajo. Si ya tenías `theme` o `statusLine`, se
-respetan los tuyos; para adoptar los del kit, borra esas dos claves de tu `settings.json` y reinstala.
+y cambios arriba; contexto y límites de 5 h y 7 d abajo cuando Claude Code proporciona esos datos.
+Si ya tenías `tui`, `theme` o `statusLine`, se respetan los tuyos; para adoptar los del kit,
+retira de tu `settings.json` solo las claves que quieras sustituir y reinstala.
+Para volver al modo clásico: `/tui default`.
 
 **Cómo está organizado.** `kit/` es la instalación y la raíz es el harness. La documentación de
 referencia vive en [`kit/docs/`](kit/docs); `docs/` es **archivo de proceso** (specs, planes e
@@ -72,7 +79,7 @@ flowchart LR
             SK["6 skills<br/>del método"]
             MO["Mod cockpit<br/>/handoff · Agent Dock"]
             EV["evals/<br/>20 tareas"]
-            TS["test/<br/>41 suites falsables"]
+            TS["test/<br/>45 suites falsables"]
         end
     end
     INS{{"install.sh<br/>diff-first"}}
@@ -197,7 +204,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 41 suites falsables | v1.3.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 8 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 45 suites falsables | v1.4.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -403,9 +410,10 @@ No son garantías absolutas: son defensa en profundidad, con sus límites docume
 
 ## Quick start
 
-Linux o WSL2, con `bash`, `git`, `make`, `python3` ≥ 3.10 y `jq`. `make bootstrap` desde un clon
-instala el kit (diff-first si tu `~/.claude` es un repo con remoto), corre la suite y `doctor.sh`;
-`bash uninstall.sh` lo revierte. El procedimiento completo, paso a paso y con lo opcional
+Linux o WSL2, con `bash`, `git`, `make`, `python3` ≥ 3.10 y `jq`. Para usar el kit: `bash kit/install.sh`
+y `bash kit/doctor.sh` desde un clon (diff-first si tu `~/.claude` es un repo con remoto); primer día
+guiado en [`kit/docs/10-onboarding.md`](kit/docs/10-onboarding.md). `make bootstrap` es para quien
+trabaja en este repo: además crea el perfil del harness y corre la suite. `bash uninstall.sh` lo revierte. El procedimiento completo, paso a paso y con lo opcional
 (`.env`, venv de tools, plugins, Capa 2 de secretos), vive solo en [`kit/docs/02-install.md`](kit/docs/02-install.md).
 
 ## Qué incluye
@@ -417,7 +425,7 @@ instala el kit (diff-first si tu `~/.claude` es un repo con remoto), corre la su
 | 8 agentes con tiering | `orchestrator`, `strategist`, `planner`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker` | [`kit/claude/agents/`](kit/claude/agents/) |
 | 6 skills del método | `deep-change`, `grilling`, `domain-modeling`, `writing-for-agents` y las manuales `retro` y `to-questionnaire`; `install.sh` las copia a `~/.claude/skills/` por el camino diff-first | [`kit/claude/skills/`](kit/claude/skills/) · [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) |
 | Plugins de terceros | `ponytail`, `ui-ux-pro-max` y, opcionales, `impeccable` y `find-skills`, instalados por referencia desde su marketplace con `kit/install-plugins.sh` (diff-first) | [`kit/docs/08-plugins-mcp-y-skills.md`](kit/docs/08-plugins-mcp-y-skills.md) |
-| Mod `cockpit` | `/handoff` (traspaso de sesión) y el panel Agent Dock; opt-in: `/plugin install cockpit --marketplace manuelcozar55/setup-claude-code` (no lo instala `install.sh`) | [`kit/mods/cockpit/`](kit/mods/cockpit/) · [`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md) |
+| Mod `cockpit` | `/handoff` (traspaso de sesión) y el panel Agent Dock; opt-in: `claude plugin install cockpit@setup-claude-code` con el marketplace registrado en el tag del kit (no lo instala `install.sh`) | [`kit/mods/cockpit/`](kit/mods/cockpit/) · [`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md) |
 | Dos capas de secretos | Capa 1 (`secret-guard.sh`, por nombre de fichero, activa desde el primer `install.sh`) + Capa 2 (`gitleaks` en `pre-commit`, por contenido real, opt-in por repo) | [`kit/docs/05-security.md`](kit/docs/05-security.md) |
 | Eval set | 20 tareas reales (mitad negativas: miden lo que cuesta un falso positivo), dos brazos (con harness y sin el) y agregado con intervalo de confianza; opt-in, cuesta llamadas reales a `claude -p`, nunca corre en CI | [`kit/evals/`](kit/evals/) |
 | Suite de test falsable | `test_guards_falsifiability.sh`: neutraliza un guard real y comprueba que caen casos `BLOCK` conocidos | [`kit/test/`](kit/test/) |

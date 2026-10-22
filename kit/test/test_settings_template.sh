@@ -19,6 +19,8 @@ ok "Stop → stop-context-gauge.sh" "$(cmd Stop '' | command grep -c 'hooks/stop
 ok "un solo PreCompact" "$(q '.hooks.PreCompact | length')" 1
 ok "PreCompact → pre-compact.sh" "$(q '.hooks.PreCompact[0].hooks[0].command' | command grep -c 'hooks/pre-compact.sh')" 1
 ok "cleanupPeriodDays = 14" "$(q '.cleanupPeriodDays')" 14
+ok "tui = fullscreen" "$(q '.tui')" fullscreen
+ok "theme = dark" "$(q '.theme')" dark
 ok "env fija CLAUDE_CODE_AUTO_COMPACT_WINDOW (entero)" "$(q '.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW // "" | test("^[0-9]+$")')" true
 ok "sin CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (es un hook de test)" "$(q '.env | has("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")')" false
 ok "sin ANTHROPIC_BASE_URL" "$(q '.env | has("ANTHROPIC_BASE_URL")')" false
@@ -29,4 +31,17 @@ ok "todo hook registrado existe en el kit" "$(q '.hooks[][].hooks[].command' | c
 ok "sin smart_approve en el settings (eliminado, decisión 3 del plan v3)" "$(command grep -c 'smart_approve' "$S")" 0
 ok "cadena PreToolUse/Bash = los cinco guards bash, en orden" "$(q '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[].command | capture("hooks/(?<n>[a-z-]+)\\.sh").n] | join(" ")')" "block-dangerous-commands branch-guard destructive-guard secret-guard bash-write-guard"
 ok "deny del kit intactos aunque la política gestionada los repita (decisión 2)" "$(q '[.permissions.deny[] | select(. == "Bash(rm -rf /*)" or . == "Bash(rm -rf ~/*)" or . == "Bash(git push --force *)")] | length')" 3
+ok "model sin sufijo [1m] (Opus 4.7+ trae 1M por defecto)" "$(q '.model')" opus
+ok "allow reducido a lo genérico (sin dominios, graphify ni rtk personales)" "$(q '[.permissions.allow[]? | select(. != "Bash(uv tool list)")] | join(" ")')" ""
+ok "ni oraculo ni handoff en allow (envuelven comandos arbitrarios)" "$(q '[.permissions.allow[]? | select(test("oraculo|handoff"))] | length')" 0
+# shellcheck disable=SC2016 # $k y $m son variables de jq, no del shell
+ok "todo plugin de terceros tiene su marketplace en extraKnownMarketplaces" "$(q '(.extraKnownMarketplaces // {} | keys) as $k | [.enabledPlugins | keys[] | split("@")[1] | select(. != "claude-plugins-official") | select(. as $m | $k | index($m) | not)] | join(" ")')" ""
+ok "marketplace setup-claude-code apunta a manuelcozar55/setup-claude-code" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.repo')" manuelcozar55/setup-claude-code
+ok "sin plugins personales ni de contexto caro (codex, understand-anything, frontend-design)" "$(q '[.enabledPlugins | keys[] | select(test("^(codex|understand-anything|frontend-design)@"))] | length')" 0
+# L4: el marketplace del kit va fijado al tag de esta version (source.ref de la fuente github, doc oficial
+# code.claude.com/docs/en/plugins/marketplace-reference#marketplace-sources). Sin ref seguia la rama por defecto:
+# un push a main del repo del marketplace llegaba a todos los companeros. Al subir VERSION hay que subir el ref.
+V="$(cat "$(dirname "$S")/../../VERSION" 2>/dev/null)"
+ok "marketplace setup-claude-code: source github" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.source')" github
+ok "marketplace setup-claude-code: ref = v<VERSION> (hoy v$V)" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.ref')" "v$V"
 exit $FAIL

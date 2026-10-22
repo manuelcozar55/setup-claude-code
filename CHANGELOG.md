@@ -7,6 +7,87 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-22
+
+Que un compañero instale el kit en limpio (WSL2 Ubuntu) y tenga el estado v3 operativo desde la
+primera sesión: `install.sh` deja `handoff` y `oraculo` en el PATH, `doctor.sh` comprueba que
+están, `handoff --iniciar` crea el primer `nucleo.md` y `10-onboarding.md` es la guía del primer
+día. Además, los guards de refspec forzado y de `find -delete` se deciden sobre tokens,
+`branch-guard.sh` deja de fallar en abierto con comandos largos y el `settings.json` del kit pasa a
+ser techo también sin política gestionada.
+
+### Added
+
+- Estado por sesión en `~`: el handoff del cockpit (`/handoff`, `/nueva` y la banda del dock) usa la ranura `~/.claude/estado/sesiones/<fecha>-<pid>/` de la sesión cuando no hay proyecto, vía `handoff --estado` y `--desde` sin `--raiz` (ADR 019).
+- Consolidación local identificada por `BUILD_ID`: cockpit 0.6.1, lanzador `scripts/scc.sh` y guía `ENTREGA.md`. `/autonomo on|off` continúa el encargo autorizado tras confirmar un handoff, también desde HOME; conserva misión y pasos, y se desactiva al cambiar de tarea.
+- `install.sh` enlaza `handoff` y `oraculo` en `~/.local/bin` (solo sobre hueco libre o enlace propio; nunca pisa uno ajeno), avisa si `~/.local/bin` no está en el PATH y, con un `CLAUDE.md` previo sin `@AGENTS.md`, termina con un aviso visible (plantilla en `CLAUDE.kit.md`). En diff-first lo pone en el plan sin escribir. El aviso de credenciales solo sale si la plantilla existe.
+- `doctor.sh`: FAIL si falta `bin/handoff`, `bin/oraculo` o `templates/nucleo.md`; WARN si no se resuelven en el PATH o si `CLAUDE.md` no importa `AGENTS.md`.
+- `handoff --iniciar [--raiz D]` crea el primer `nucleo.md` desde la plantilla (nunca sobrescribe; exit 3 sin proyecto).
+- Registro de agentes (ADR 017): `SubagentStart`, `SubagentStop` y `SessionEnd` llaman a `agentes.sh`, que anota en `estado/agentes.jsonl` y lo rota a 200 líneas o 14 días. El `nucleo.md` inyectado lista los agentes con su `RESULTADO.md`, y con agentes en vuelo el aviso de contexto (`stop-context-gauge.sh`) pide `/handoff solo`, no `/clear`.
+- Estado con una sola puerta de escritura (ADR 016): `nucleo_estado_dir` decide dónde se escribe, con fallback a `~/.claude/estado/<nombre>-<hash>`, y `handoff --informe TEMA` crea `<raíz>/.claude/estado/informes/AAAA-MM-DD-TEMA/` para los informes.
+- Aviso de edad tras compactar: `session-start-compact.sh` avisa una vez por versión del `nucleo.md` (solo a la sesión dueña) de que el estado reinyectado puede estar rancio.
+- `doctor.sh`: WARN con `env.CC_ALLOW_DESTRUCTIVE=1` (apaga `destructive-guard.sh`), con `claude` ausente o anterior a 2.1.292, con `.claude/estado/` sin ignorar y con ficheros sueltos, y con `informes/` por encima de `DOCTOR_INFORMES_MB` (50 por omisión).
+- `make bateria` (test, shellcheck, scan-secrets y gitleaks con un `.rc` y un `.log` cada uno), `scripts/contexto-base.sh` y `test_presupuesto_contexto.sh`, que fija el tope de contexto por canal (ADR 018).
+
+### Changed
+
+- Plantilla `settings.json` genérica: `model` pasa a `"opus"` (Opus 4.7+ trae 1M sin sufijo), `allow` queda en `Bash(uv tool list)`, se retiran `codex`, `understand-anything` y `frontend-design` con sus marketplaces, y se registra `setup-claude-code` para que `esenciales` no quede colgado.
+- `AGENTS.md` instalado: la mención a `recuerda` pasa a condicional (el instalador no lo instala).
+- `templates/nucleo.md`: el comentario de cabecera pasa dentro de «Objetivo» y el orden de secciones coincide con el que `handoff` escribe.
+- Plantilla `settings.json`: `"tui": "fullscreen"` por defecto, junto al tema oscuro; al reinstalar se conservan el tema y el renderer que ya tuvieras.
+- El marketplace del kit queda fijado al tag `v<VERSION>` en vez de seguir `main`, y al fusionar con una instalación previa gana la entrada del kit.
+
+### Fixed
+
+- Inyección tras `/handoff` y `/clear`: un `nucleo.md` dentro del tope (`NUCLEO_TOPE`) se inyecta entero. Antes, «Paso actual», «Siguiente acción» y «Comandos de verificación» se cortaban a 700 B aunque el total cupiera, y lo que `handoff` daba por bueno llegaba recortado. Por encima del tope se omiten secciones enteras en el orden de `handoff` (Pendientes, Plan, Ficheros tocados), con aviso y `[LEE …]`; el reparto por sección queda solo para cuando ni así cabe. El aviso de contexto (`nucleo-nudge.sh`) da el tamaño cuando un `nucleo.md` editado a mano pasa del tope.
+- Propiedad del estado: un `clear` ajeno no roba una sesión vigente; bloqueo de escrituras, recibo SHA-256 y archivo condicionado al hash. `SessionEnd` libera solo el dueño propio. Un proceso vivo no pierde propiedad por antigüedad.
+- Agentes: eventos por sesión y contexto acotado; una tarea hermana no se trata como descendiente pendiente de un agente ya terminado.
+- Cockpit: ruta canónica del CLI en el prompt HOME, progreso desconocido si faltan datos y advertencias visibles sin limpiar ante errores. La continuación no se reenvía si su resultado es ambiguo.
+- Handoff: presupuesto UTF-8 antes de guardar, con reserva para objetivo e invariantes y una sola regeneración compacta si el borrador excede el espacio disponible. Evita que resúmenes redundantes frenen la continuidad; si no cabe, conserva el contexto sin escribir.
+- Prueba de propiedad: comprueba el aviso completo, sin contar apariciones accidentales del identificador de sesión en las rutas temporales.
+- Guards: parser con carga por bloque y reutilización del último segmento validado en el mismo cwd. La prueba mide tiempo monotónico y CPU por separado, conservando los límites de rendimiento.
+- Instalación: protege wrappers ajenos enlazados; doctor detecta bibliotecas ausentes y deriva de CLI y plantillas, además de hooks.
+
+- `pre-compact.sh`: si el transcript declarado falta, no se puede leer o no tiene ninguna línea JSON (o jq falla), no se publica checkpoint y se conserva el anterior (`pipefail`); una línea final a medias se descarta y se conservan los mensajes válidos. Acepta también los mensajes de Codex (`event_msg/user_message`).
+- La plantilla `nucleo.md` pegada tal cual como borrador de `handoff --desde` ya no da rc 2.
+- Tests: las suites que instalan usan `HOME` falso para no enlazar en el `~/.local/bin` real; la etiqueta de `test_session_start_clear.sh` indica el tope real (9 500).
+- `handoff --desde` ya no duplica «Objetivo» ni «Invariantes» cuando la sección del nucleo y la del borrador son solo comentario (el nucleo recién iniciado pegado como borrador crecía una cabecera en cada fusión).
+- `pre-compact.sh`: un registro JSON válido con `message`, `payload` o un elemento de `content` que no es objeto se salta en vez de abortar jq y perder el checkpoint entero.
+- `pre-compact.sh`: sin checkpoint previo, el aviso de fallo (transcript ausente o publicación fallida) dice que no había ninguno en vez de «anterior conservado».
+- `install.sh` solo enlaza `handoff` y `oraculo` en `~/.local/bin` si `CLAUDE_HOME` resuelve a `$HOME/.claude`; con otro (prueba, CI) imprime las órdenes `ln -s` y no escribe, para no dejar enlaces colgantes en el bin real. El plan diff-first deja de prometer los enlaces en ese caso, y el aviso final de PATH ya no da los CLIs por enlazados: dice que el PATH solo hace falta si se crean esos enlaces, o que se use `$CLAUDE_HOME/bin/<nombre>`.
+- `doctor.sh`: un `handoff` u `oraculo` del PATH cuyo `readlink -f` no es el de `$CLAUDE_HOME/bin/<cli>` da WARN con su ruta (antes PASS); las sugerencias usan `ln -s`, nunca `ln -sf`.
+- `doctor.sh` y `.github/scripts/assert-install.sh` comprueban el inventario completo y recursivo de `kit/claude` y `kit/sentinel`: FAIL si falta un fichero (skills, `AGENTS.md`) o un ejecutable pierde el permiso, WARN si su contenido difiere; un symlink propio cuenta como presente y `sentinel/iocs.json` sigue siendo opcional.
+- `scripts/backup.sh` nombra el ZIP con sello UTC, PID y aleatorio: dos backups en el mismo segundo (el previo de `uninstall.sh --apply` y el que acabas de crear) ya no colisionan ni abortan.
+- `doctor.sh`: `settings.json`, `CLAUDE.md` y `AGENTS.md` ya no cuentan como deriva (`install.sh` fusiona el primero y no pisa los otros dos), así que una instalación con los tuyos no arrastra un WARN permanente; si falta alguno sigue siendo FAIL.
+- Tests: los dos casos H3 de tiempo (`test_nucleo_lib.sh`, `test_session_start_clear.sh`) pasan de 2,5 s a 4 s; en WSL2 midieron 1,6-2,8 s y el tope anterior tumbaba `make test` sin defecto.
+- Primer prompt tras `/handoff` + `/clear`. El relleno ya no corta la Siguiente acción a 200 caracteres a mitad de palabra, de ruta o de code span. Ahora corta en una frase o en un espacio, cierra la comilla y termina en «… (sigue en <ruta>)»; también avisa cuando hay más líneas debajo. `HANDOFF_PROMPT` y la plantilla piden que la primera línea, de 160 caracteres como máximo, sea la acción con su condición, nunca «pedir el sí», porque es lo que la persona aprueba al pulsar Enter. Si la relectura falla después de guardar, ya no se informa «Handoff fallido».
+- `handoff` e inyección:
+  - Lo que `handoff` guarda cabe entero junto al bloque de agentes: escribe como mucho `NUCLEO_TOPE − NUCLEO_RESERVA_AGENTES` (5 700 B), y el cockpit y el aviso de tamaño usan ese mismo tope.
+  - Siguiente acción no se omite nunca. Paso actual se recorta por línea en vez de quitarse, y el original va a `diario.md`.
+  - Al cortar una sección se respeta el límite de línea y se cierra su valla.
+  - El checkpoint de compact ya no parte caracteres UTF-8.
+- Hooks: un `nucleo.md` vacío o con solo la plantilla ya no anuncia «Hay trabajo en curso». `nucleo_estado_seguro` rechaza una ruta relativa en lugar de entrar en un bucle infinito.
+- `install.sh` valida sus argumentos antes de tocar nada, y crea los enlaces por ruta canónica sin pisar los existentes.
+
+### Security
+
+- Guards: el refspec forzado de `git push` (`+main`, `+HEAD:main`, `+refs/heads/master`, `+feature`) se bloquea como el resto de force-push. Se decide sobre tokens de `git push`: cae también entre comillas, con ANSI-C o con variable (`'+feature'`, `"+HEAD"`, `$'+feature'`, `+$B`, `+${B}`, `+$(…)`) y dentro de `bash -c`, y no da falso positivo en `git stash push -m "wip +login"`, mensajes de commit, `git log --grep "push +1"` ni el argumento de `-o`. Casos rojos primero en `test_guards_falsifiability.sh`, con negativos legítimos.
+- Guards: `find … -delete` se decide sobre tokens y por familia de ruta. El directorio actual (`.`, `./`, `./.`, `*`, `./*`, sin ruta; también tras `-L`/`-H`/`--` o entre comillas) se bloquea salvo que un filtro por nombre o ruta acote el borrado: va antes de cada `-delete` y la expresión no lleva `-o`, `-or`, `,`, `!`, `-not` ni `-prune` (`find . -name '*.pyc' -delete` pasa; `-name '*'` no cuenta como filtro). Una ruta con glob o llaves (`.*`, `?*`, `[!.]*`, `{a,b}`) cuenta como el directorio actual. Una ruta amplia (`..` y lo que sube de él, `~`, `$HOME`, `/`, `/*`, `/etc`, todo `/home/…` y `/mnt/…`) se bloquea siempre. `build` o `/tmp/x` pasan. Citarlo en `echo`, `grep` o un mensaje de commit ya no bloquea.
+- Guards: las cadenas anidadas que `block-dangerous-commands.sh`, `destructive-guard.sh` y `branch-guard.sh` vuelven a analizar llevan un tope (más de 3 niveles de `bash -c`/`sh -c` o 16 comandos); pasado el tope se deniega, en vez de dejar pasar el nivel que ya no se analiza. `branch-guard.sh` solo mira los segmentos con `push` (y los `cd`), y calcula la rama actual una vez por repo (deniega pasados 16 repos distintos): antes, 12 KB de `x git;` costaban 7 s de CPU, 128 KB pasaban de 20 s y 12000 segmentos `git push` (108 KB) 36 s, con un timeout de 10 s y sin envoltorio, así que el guard fallaba en abierto. Ahora son 0,06 s, 0,4 s y menos de 2 s.
+- Guards: el texto de `echo`/`printf` que va a `| bash`/`| sh`, el código de `python -c` que llama a `os.system`/`subprocess` y `find … | xargs rm` se analizan como la orden en los tres guards. Escribir la orden a un fichero y ejecutarlo después queda fuera de alcance (`kit/docs/05-security.md`).
+- `branch-guard.sh`: una redirección pegada al operando (`git push origin main>/dev/null`) o la rama en ANSI-C (`$'main'`) ya no ocultan la rama protegida.
+- `settings.json` del kit: `disableBypassPermissionsMode: "disable"` y seis deny de `Read` y seis de `Edit` (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.netrc`, `.env*`, `secrets.*`), para que el kit sea techo también sin política gestionada.
+- Fusión de `settings.json`: `permissions.disableBypassPermissionsMode` queda en `"disable"` siempre (gana el kit, y se dice si tu valor era otro). Un `disableAllHooks: true` o un `permissions.defaultMode: "bypassPermissions"` previos se respetan, pero `install.sh` avisa al final, también en el plan diff-first; `doctor.sh` da FAIL con `disableAllHooks: true`.
+
+### Documentation
+
+- **Guía del primer día para un compañero.** `kit/docs/10-onboarding.md` pasa a ser la guía genérica (WSL2 Ubuntu): prerrequisitos con `apt`, `bash kit/install.sh`, `doctor.sh`, primer proyecto con `git init` + `handoff --iniciar`, bucle diario `oraculo --` → `/handoff` o `handoff --desde` → `/clear` y tabla de fallos. `make bootstrap` deja de ser la vía de quien solo usa el kit.
+- `02-install.md` documenta los enlaces de `handoff` y `oraculo` en `~/.local/bin`, el aviso de `@AGENTS.md` con un `CLAUDE.md` previo, las comprobaciones nuevas de `doctor.sh`, que la fusión de `settings.json` sustituye los hooks propios por los del kit (con backup) y que el modelo se fija con `"model": "opus"` (sin `[1m]` en Opus 4.7+).
+- `11-cockpit.md`: instalación, versión probada de Claude Code (2.1.292, sin mínimo comprobado), fijado al tag de la versión, y `/handoff solo` frente a `handoff --solo`. La ruta de 7 días pasa a la plantilla de `nucleo.md` de v3 y a `handoff --desde`.
+- ADR 004 (sustituida en parte), 007 (no implementada) y 011 (issues sin re-verificar) con su estado real.
+- ADR nuevos: 016 (dónde se escribe cada cosa), 017 (registro de agentes), 018 (presupuesto de contexto) y 019 (sesiones en HOME).
+- `ENTREGA.md`, `README.md` y `kit/docs/{02-install,06-routine,08-plugins-mcp-y-skills,10-onboarding,11-cockpit}.md` se alinean con la instalación real: requisitos (Python 3, `zip`, `unzip`), verificación SHA-256 del paquete, qué trae la base frente a lo opcional, vuelta atrás con `uninstall.sh` en dry-run, rechazo de escritura con código 5 si otra sesión reclama el estado y vuelta al renderer clásico con `/tui default`.
+
 ## [1.3.0] - 2026-10-19
 
 Dos frentes. El primero, **que el estado de una tarea sobreviva a la compactación sin depender de
@@ -1886,7 +1967,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.0.0...v1.1.0

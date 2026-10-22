@@ -19,7 +19,7 @@ EOF
 chmod +x "$FAKEBIN/gitleaks"
 
 CLAUDE_HOME="$tmp/dot1"
-out="$(PATH="$FAKEBIN:$PATH" CLAUDE_HOME="$CLAUDE_HOME" bash "$KIT/install.sh" < /dev/null 2>&1)"
+out="$(HOME="$tmp/fakehome1" PATH="$FAKEBIN:$PATH" CLAUDE_HOME="$CLAUDE_HOME" bash "$KIT/install.sh" < /dev/null 2>&1)"
 rc=$?
 ck "$rc" "0" "install.sh (gitleaks ya presente) sale con exit 0"
 ck "$(echo "$out" | grep -qc 'gitleaks ya presente' && echo y || echo n)" "y" "reporta gitleaks ya presente, sin intentar instalar"
@@ -32,7 +32,7 @@ ck "$(echo "$out" | grep -qc 'gitleaks ya presente' && echo y || echo n)" "y" "r
 # este caso mide es gitleaks ausente, no jq ausente; dejarlo fuera hacia fallar la suite por
 # una razon que no es la suya.
 RESTRICTED="$tmp/restrictedbin"; mkdir -p "$RESTRICTED"
-for b in bash uname date cp mkdir chmod cmp dirname basename sed sha256sum tar install curl mktemp cat jq; do
+for b in bash uname date cp mkdir ln readlink chmod cmp dirname basename sed sha256sum tar install curl mktemp cat jq; do
   p="$(command -v "$b" 2>/dev/null || true)"
   [ -n "$p" ] && ln -sf "$p" "$RESTRICTED/$b"
 done

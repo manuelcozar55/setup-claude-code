@@ -26,7 +26,8 @@ else [ -s "$MARCA" ] && : >"$MARCA"; exit 0; fi
 command grep -qx "$B" "$MARCA" 2>/dev/null && exit 0
 RAIZ=$(nucleo_raiz "${CWD:-$PWD}")
 nucleo_enlazado "$RAIZ" && exit 0
-NUC="$RAIZ/.claude/estado/nucleo.md"
+ESTADO=$(nucleo_estado_leer "$RAIZ") || exit 0
+NUC="$ESTADO/nucleo.md"
 # D1: desde ~ el nucleo compartido puede ser de otra tarea: el aviso no lo nombra, no se calla por su edad
 # y no promete handoff (el automático está desactivado en ~).
 if [ "$RAIZ" = "$HOME" ]; then
@@ -43,10 +44,15 @@ EDAD=$(( $(date +%s) - ${MT:-0} ))
 mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
 if [ -n "$MT" ]; then
   M="CONTEXTO $PCT % del airbag. nucleo.md lleva $((EDAD / 60)) min sin actualizar: antes de la siguiente herramienta actualiza Paso actual / Siguiente acción / Pendientes en $NUC."
+  # Editado a mano no pasa por el tope de handoff: pasado el tope, al retomar se omiten secciones enteras.
+  # Es el mismo tope con el que escribe handoff, con la reserva del bloque de agentes ya descontada.
+  SZ=$(wc -c <"$NUC" 2>/dev/null | tr -d ' ') T=$((NUCLEO_TOPE - NUCLEO_RESERVA_AGENTES))
+  [ "${SZ:-0}" -le "$T" ] || M="$M Ocupa $SZ B (tope $T): pasa lo cerrado a diario.md."
 else
   M="CONTEXTO $PCT % del airbag y no hay nucleo.md: antes de la siguiente herramienta créalo en $NUC con la forma de \$HOME/.claude/templates/nucleo.md."
 fi
-[ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno. Cierra la fase con \`handoff\` (handoff --desde <borrador>)."
+HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
+[ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno. Cierra la fase con \`$HO --desde <borrador> --sesion $SID\`."
 A="con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff."
 [ "${COCKPIT_AUTO_HANDOFF:-}" = off ] && A="el handoff automático está desactivado; la persona hará /handoff."
 [ "$B" = 85 ] && M="$M Cierra el turno ya: $A"

@@ -10,8 +10,8 @@
 # Sin red; HOME falso en un mktemp que se borra.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; H="$HERE/../claude/hooks"; KIT="$HERE/.."
-T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PROJECT_DIR NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW
+T=$(mktemp -d -t scc-sA.XXXXXX); trap 'rm -rf -- "$T"' EXIT
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PID CLAUDE_PROJECT_DIR NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW
 mkdir -p "$HOME"
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
@@ -45,10 +45,10 @@ ok "clear: línea de datos antes del envoltorio (y de <git-hechos>, que va delan
 ok "clear: Paso actual vivo y aviso de forma" "$(command grep -c 'PASO-VIVO\|fuera de forma' <<<"$C")" 2
 
 ev "$R/sub" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
-CP=$(ls "$R"/.claude/estado/checkpoint-compact-*.md 2>/dev/null)
+CP=$(ls "$R"/.claude/estado/checkpoints/checkpoint-compact-*.md 2>/dev/null)
 ok "pre-compact: checkpoint por sesión en .claude/estado de la raíz" "$([ -n "$CP" ] && echo si)" si
 ok "pre-compact: el checkpoint trae mensaje humano y pendientes" "$(command grep -c 'MENSAJE-HUMANO\|PENDIENTE-1' "$CP")" 2
-ok "pre-compact: .gitignore propio con checkpoint-compact*" "$(cat "$R/.claude/estado/.gitignore" 2>/dev/null)" 'checkpoint-compact*'
+ok "pre-compact: .gitignore interno con «*»" "$(cat "$R/.claude/estado/.gitignore" 2>/dev/null)" '*'
 ok "pre-compact: git ignora el checkpoint" "$(git -C "$R" check-ignore -q "$CP" && echo si)" si
 L=$(tail -1 "$HOME/.claude/session-logs/nucleo-freshness.log" 2>/dev/null)
 ok "pre-compact: KPI «ts sesión ctx% edad_s»" "$(awk '{print NF, $2, $3, ($4 ~ /^[0-9]+$/)}' <<<"$L")" "4 s1 71 1"
@@ -61,6 +61,10 @@ ok "compact: línea de datos antes de cada envoltorio" "$(command grep -B1 '^<nu
 ok "compact: Paso actual vivo" "$(command grep -c 'PASO-VIVO' <<<"$C")" 1
 ok "compact: checkpoint recortado a 1 500" "$(command grep -c 'COLA-CHECKPOINT' <<<"$C")" 0
 ok "compact: sin *-cambios.md" "$(command grep -c 'CAMBIOS-MARCA' <<<"$C")" 0
+# El recorte del checkpoint no parte un carácter: «a» y 2 000 «ñ» dejan el byte 1 500 a mitad de una (salía U+FFFD).
+{ printf a; for _ in $(seq 1 2000); do printf 'ñ'; done; echo; } >"$R/.claude/estado/checkpoints/checkpoint-compact-$(printf s-utf | sha256sum | cut -d' ' -f1).md"
+C=$(ev "$R/sub" s-utf | bash "$H/session-start-compact.sh" | ctx)
+ok "compact: el checkpoint se corta en un límite de carácter UTF-8" "$(command grep -c $'\xef\xbf\xbd' <<<"$C"),$(command grep -o 'ñ' <<<"$C" | wc -l)" "0,749"
 ok "compact: sin nucleo pide crearlo con la plantilla" "$(ev "$T/sin-nucleo" s9 | bash "$H/session-start-compact.sh" | ctx | command grep -c 'templates/nucleo.md')" 1
 
 # nucleo.md es del repo (clonado o no): sus «Comandos de verificación» y su «Siguiente acción» no se
@@ -121,6 +125,24 @@ ok "resume con context_tokens no numérico: sin aviso" "$(rs "$R/sub" true '"x"'
 ok "fork caducado: sin aviso" "$(ev "$R/sub" s7 "" fork | jq -c '.prompt_cache_likely_expired=true | .context_tokens=150000' \
   | NUCLEO_DUENO_TTL=0 bash "$H/session-start-clear.sh" | jq -r '.systemMessage // "nada"')" nada
 ok "clear sin nucleo: no emite nada" "$(ev "$T/sin-nucleo" s7 "" clear | bash "$H/session-start-clear.sh")" ""
+# Un nucleo vacío o de solo plantilla no es trabajo en curso (21-oct: el clear lo anunciaba con 1,3 KB de cabeceras).
+# Se mira la forma, no el texto de la plantilla: un comentario nuevo, de una o de varias líneas, sigue siendo plantilla.
+RV=$T/nucleo-plantilla; mkdir -p "$RV/.claude/estado"; git -C "$RV" init -q; VN=$RV/.claude/estado/nucleo.md
+sed '/^## Siguiente acción$/a\
+<!-- la primera línea es lo que la persona aprueba al pulsar Enter tras /clear: la acción misma, en 160 caracteres. -->\
+<!-- un comentario\
+   de varias líneas -->' "$KIT/claude/templates/nucleo.md" >"$T/plantilla-mas.md"
+for f in /dev/null "$KIT/claude/templates/nucleo.md" "$T/plantilla-mas.md"; do
+  cp "$f" "$VN"
+  ok "clear con nucleo de solo plantilla ($(basename "$f")): no anuncia trabajo en curso" \
+    "$(ev "$RV" s-v "" clear | bash "$H/session-start-clear.sh" | ctx | command grep -c 'Hay trabajo en curso')" 0
+  C=$(ev "$RV" s-v | bash "$H/session-start-compact.sh" | ctx)
+  ok "compact con nucleo de solo plantilla ($(basename "$f")): no lo re-inyecta y pide rellenarlo" \
+    "$(command grep -c 're-inyectado' <<<"$C"),$(command grep -c 'rellénalo' <<<"$C")" "0,1"
+done
+sed 's/^## Paso actual$/&\n<!-- c --> PASO-REAL/' "$T/plantilla-mas.md" >"$VN"
+ok "clear: una línea con texto tras un comentario sí es trabajo en curso" \
+  "$(ev "$RV" s-v "" clear | bash "$H/session-start-clear.sh" | ctx | command grep -c 'Hay trabajo en curso\|PASO-REAL')" 2
 ok "symlink: compact no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-FUERA)" 0
 ok "symlink: nudge calla" "$(jq -cn --arg c "$R3" --arg t "$TP" '{session_id:"s6",transcript_path:$t,cwd:$c}' | bash "$H/nucleo-nudge.sh")" ""
 ok "symlink: el gate no mira el nucleo enlazado" "$(ev "$R3" s6 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh" | jq -r '.decision // "nada"')" nada
@@ -152,22 +174,21 @@ printf 'SECRETO-CHECKPOINT\n' >"$T/fuera-cp.md"
 ln -s "$T/fuera-cp.md" "$R9/.claude/estado/checkpoint-compact-$(printf s9 | sha256sum | cut -d' ' -f1).md"
 ok "symlink checkpoint: compact no lo inyecta" "$(ev "$R9" s9 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-CHECKPOINT)" 0
 
-# --- pre-compact: no ensucia repos sin nucleo y su checkpoint queda ignorado aunque ya hubiera .gitignore ---
+# --- pre-compact: un repo sin estado lo recibe ignorado (git status limpio); con .gitignore previo sin «*» el checkpoint también queda ignorado ---
 R5=$T/r5; mkdir -p "$R5"; git -C "$R5" init -q
 ev "$R5" s7 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
-ok "pre-compact: repo sin .claude/estado → git status limpio" "$(git -C "$R5" status --short -uall)" ""
+ok "pre-compact: repo sin .claude/estado → lo crea ignorado y git status limpio" "$(git -C "$R5" status --short -uall),$([ -d "$R5/.claude/estado/checkpoints" ] && echo si)" ",si"
 mkdir -p "$R5/.claude/estado"; printf 'diario.md' >"$R5/.claude/estado/.gitignore"
 ev "$R5" s7 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: con .gitignore previo el checkpoint queda ignorado" "$(git -C "$R5" status --short -uall)" "?? .claude/estado/.gitignore"
-ok "pre-compact: el .gitignore previo conserva lo suyo" "$(cat "$R5/.claude/estado/.gitignore")" "diario.md
-checkpoint-compact*"
+ok "pre-compact: el .gitignore previo no se toca (informes/ y checkpoints/ llevan el suyo)" "$(cat "$R5/.claude/estado/.gitignore"),$(cat "$R5/.claude/estado/checkpoints/.gitignore")" "diario.md,*"
 
 # --- pre-compact: sin git y sin estado no crea nada; rota checkpoints de más de 14 días ---
 # Medido en una instalación vieja: 47 .claude/estado basura bajo el home, uno por cada cwd.
 mkdir -p "$T/sin-git"
 ev "$T/sin-git" s8 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: dir sin git ni estado → no crea .claude" "$(ls -A "$T/sin-git")" ""
-VIEJO=$R/.claude/estado/checkpoint-compact-viejo.md; NUEVO=$R/.claude/estado/checkpoint-compact-nuevo.md
+VIEJO=$R/.claude/estado/checkpoints/checkpoint-compact-viejo.md; NUEVO=$R/.claude/estado/checkpoints/checkpoint-compact-nuevo.md
 touch -d '20 days ago' "$VIEJO"; touch -d '2 days ago' "$NUEVO"; touch -d '20 days ago' "$NUC"
 ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: rota el checkpoint de 20 días" "$([ -e "$VIEJO" ] && echo sigue || echo rotado)" rotado
@@ -179,7 +200,7 @@ touch -d '20 days ago' "$VIEJO"
 mkdir -p "$T/mvfalso"; printf '#!/bin/sh\nexit 1\n' >"$T/mvfalso/mv"; chmod +x "$T/mvfalso/mv"
 ev "$R" s1 "$TP" | PATH="$T/mvfalso:$PATH" bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: si falla la publicación, el checkpoint viejo se conserva" "$([ -e "$VIEJO" ] && echo si)" si
-OUT1=$R/.claude/estado/checkpoint-compact-$(printf s1 | sha256sum | cut -d' ' -f1).md
+OUT1=$R/.claude/estado/checkpoints/checkpoint-compact-$(printf s1 | sha256sum | cut -d' ' -f1).md
 touch -d '20 days ago' "$OUT1"
 ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: el checkpoint recién publicado no se rota" "$([ -e "$OUT1" ] && [ -z "$(find "$OUT1" -mtime +14)" ] && echo si)" si
@@ -209,6 +230,53 @@ ev "$R" s1 "$TP" | PATH="$T/tailterm:$PATH" bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: un TERM durante la rotación no deja temporal del log" "$(find "$(dirname "$FLOG")" -type f -name 'nucleo-freshness.log?*' | wc -l)" 0
 
 ok "plantilla de settings: un solo PreCompact" "$(jq '.hooks.PreCompact|length' "$KIT/claude/settings.json")" 1
+
+# --- estado (pre-compact y plantilla): un transcript ilegible no pisa el checkpoint bueno ---
+CK=$R/.claude/estado/checkpoints/checkpoint-compact.md
+TPC=$T/transcript-c.jsonl
+for modo in basura ausente; do
+  echo previo-CK >"$CK"
+  printf '%s\n' '{"type":"user","message":{"content":"mensaje-nuevo"}}' >"$TPC"
+  [ "$modo" != basura ] || printf 'no es json\n{"type":\n' >"$TPC"
+  TPX=$TPC; [ "$modo" != ausente ] || TPX=$T/no-existe.jsonl
+  jq -cn --arg c "$R" --arg t "$TPX" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>"$T/c-err"; RC=$?
+  ok "pre-compact transcript $modo: exit 0, conserva el checkpoint anterior y avisa" "$RC,$(cat "$CK"),$([ -s "$T/c-err" ] && echo aviso)" "0,previo-CK,aviso"
+  ok "pre-compact transcript $modo: sin temporales" "$(find "$R/.claude/estado" -name '.checkpoint-compact.*' | wc -l | tr -d ' ')" 0
+done
+# Sin checkpoint previo, «anterior conservado» mentía: se sigue sin publicar, pero el aviso dice que no había ninguno.
+NPS='s-sin-previo'; NPO=$R/.claude/estado/checkpoints/checkpoint-compact-$(printf '%s' "$NPS" | sha256sum | cut -d' ' -f1).md
+ev "$R" "$NPS" "$T/no-existe.jsonl" | bash "$H/pre-compact.sh" 2>"$T/c-err"; RC=$?
+ok "pre-compact transcript ausente sin checkpoint previo: exit 0, no publica y avisa de que no había ninguno" "$RC,$([ -e "$NPO" ] && echo publicado || echo no),$(command grep -c 'no había ninguno' "$T/c-err"),$(command grep -c 'anterior conservado' "$T/c-err")" "0,no,1,0"
+ev "$R" "$NPS" "$TP" | PATH="$T/mvfalso:$PATH" bash "$H/pre-compact.sh" 2>"$T/c-err"
+ok "pre-compact: publicación fallida sin checkpoint previo tampoco dice «anterior conservado»" "$([ -e "$NPO" ] && echo publicado || echo no),$(command grep -c 'no había ninguno' "$T/c-err"),$(command grep -c 'anterior conservado' "$T/c-err")" "no,1,0"
+# Claude Code sigue añadiendo líneas mientras corre el hook: la última puede estar a medias.
+echo previo-CK >"$CK"
+{ printf '%s\n' '{"type":"user","message":{"content":"MSG-UNO"}}' '{"type":"user","message":{"content":"MSG-DOS"}}'; printf '{"type":"user","message":{"cont'; } >"$TPC"
+jq -cn --arg c "$R" --arg t "$TPC" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: línea final truncada → escribe el checkpoint con los 2 mensajes válidos" "$(command grep -c 'MSG-UNO\|MSG-DOS' "$CK"),$(command grep -c previo-CK "$CK")" 2,0
+# Un registro JSON válido con message, payload o un elemento de content que no es objeto hacía abortar a jq
+# («Cannot index string») y se perdía el checkpoint entero, también lo válido que venía detrás.
+for raro in '{"type":"user","message":"x"}' '{"type":"event_msg","payload":"x"}' '{"type":"user","message":{"content":["x"]}}'; do
+  echo previo-CK >"$CK"
+  printf '%s\n' "$raro" '{"type":"user","message":{"content":"MSG-TRAS-RARO"}}' >"$TPC"
+  jq -cn --arg c "$R" --arg t "$TPC" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
+  ok "pre-compact: registro $raro → publica el checkpoint con el mensaje válido de después" "$(command grep -c MSG-TRAS-RARO "$CK"),$(command grep -c previo-CK "$CK")" 1,0
+done
+echo previo-CK >"$CK"; : >"$T/sin-leer.jsonl"; printf '%s\n' '{"type":"user","message":{"content":"X"}}' >"$T/sin-leer.jsonl"; chmod 000 "$T/sin-leer.jsonl"
+if [ ! -r "$T/sin-leer.jsonl" ]; then
+  jq -cn --arg c "$R" --arg t "$T/sin-leer.jsonl" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
+  ok "pre-compact: transcript no legible conserva el anterior" "$(cat "$CK")" previo-CK
+fi
+echo previo-CK >"$CK"
+jq -cn --arg c "$R" '{cwd:$c,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact sin transcript_path: escribe checkpoint (sin sección de mensajes)" "$(command grep -c '^# Checkpoint pre-compact' "$CK"),$(command grep -c 'últimos mensajes' "$CK")" 1,0
+printf '%s\n' '{"type":"event_msg","payload":{"type":"user_message","message":"MSG-CODEX"}}' '{"type":"response_item","payload":{"role":"user","content":"MSG-CODEX"}}' >"$TPC"
+jq -cn --arg c "$R" --arg t "$TPC" '{cwd:$c,transcript_path:$t,trigger:"auto"}' | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: mensaje de Codex (event_msg/user_message) una sola vez" "$(command grep -c MSG-CODEX "$CK")" 1
+# La plantilla pegada tal cual como borrador debe valer: sin texto antes de la primera «## ».
+PT=$T/plantilla-proyecto; mkdir -p "$PT"; git -C "$PT" init -q
+(cd "$PT" && bash "$KIT/claude/bin/handoff" --desde "$KIT/claude/templates/nucleo.md" >"$T/c-ho" 2>&1); RC=$?
+ok "plantilla como borrador: handoff --desde sale 0 y escribe el nucleo en el orden de la plantilla" "$RC,$(sed -n 's/^## //p' "$PT/.claude/estado/nucleo.md" 2>/dev/null | paste -sd,)" "0,$(sed -n 's/^## //p' "$KIT/claude/templates/nucleo.md" | paste -sd,)"
 # --- nucleo_emitir: un «# comentario» dentro de un bloque ``` no es cabecera (cortaba la sección) ---
 NF=$T/fence.md
 { echo '# Estado'; echo '## Comandos de verificación'; echo '```bash'; echo '# correr los tests'; echo 'make test'; echo '```'
@@ -228,14 +296,14 @@ ok "session-start: sin memoria conserva el aviso" "$(cd "$T/sin-git" && bash "$H
 
 # --- #25: rotación por número además de por edad (conserva 5; NUCLEO_CHECKPOINT_KEEP); #sin-sid: el respaldo sin hash también se ignora ---
 RR=$T/rr; mkdir -p "$RR/.claude/estado"; git -C "$RR" init -q; printf '## Objetivo\nx\n' >"$RR/.claude/estado/nucleo.md"
-for i in 1 2 3 4 5 6 7 8; do : >"$RR/.claude/estado/checkpoint-compact-n$i.md"; touch -d "-$((10 - i)) hours" "$RR/.claude/estado/checkpoint-compact-n$i.md"; done
+for i in 1 2 3 4 5 6 7 8; do mkdir -p "$RR/.claude/estado/checkpoints"; : >"$RR/.claude/estado/checkpoints/checkpoint-compact-n$i.md"; touch -d "-$((10 - i)) hours" "$RR/.claude/estado/checkpoints/checkpoint-compact-n$i.md"; done
 ev "$RR" s11 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "rotación por número: quedan 5 (incluido el nuevo)" "$(find "$RR/.claude/estado" -name "checkpoint-compact-*.md" | wc -l)" 5
-ok "rotación por número: se van los más viejos, no los recientes" "$([ ! -e "$RR/.claude/estado/checkpoint-compact-n1.md" ] && [ -e "$RR/.claude/estado/checkpoint-compact-n8.md" ] && echo si)" si
+ok "rotación por número: se van los más viejos, no los recientes" "$([ ! -e "$RR/.claude/estado/checkpoints/checkpoint-compact-n1.md" ] && [ -e "$RR/.claude/estado/checkpoints/checkpoint-compact-n8.md" ] && echo si)" si
 ev "$RR" s11 "$TP" | NUCLEO_CHECKPOINT_KEEP=2 bash "$H/pre-compact.sh" 2>/dev/null
-ok "NUCLEO_CHECKPOINT_KEEP=2: quedan 2 y el nuevo es uno" "$(find "$RR/.claude/estado" -name "checkpoint-compact-*.md" | wc -l),$([ -e "$RR/.claude/estado/checkpoint-compact-$(printf s11 | sha256sum | cut -d' ' -f1).md" ] && echo si)" 2,si
+ok "NUCLEO_CHECKPOINT_KEEP=2: quedan 2 y el nuevo es uno" "$(find "$RR/.claude/estado" -name "checkpoint-compact-*.md" | wc -l),$([ -e "$RR/.claude/estado/checkpoints/checkpoint-compact-$(printf s11 | sha256sum | cut -d' ' -f1).md" ] && echo si)" 2,si
 ev "$RR" "" "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
-ok "sin session_id: checkpoint-compact.md existe y git lo ignora" "$(git -C "$RR" check-ignore -q "$RR/.claude/estado/checkpoint-compact.md" && echo si)" si
+ok "sin session_id: checkpoint-compact.md existe y git lo ignora" "$(git -C "$RR" check-ignore -q "$RR/.claude/estado/checkpoints/checkpoint-compact.md" && echo si)" si
 
 # --- K8 (D1): desde ~ el nucleo compartido no es el de esta sesión: ni compact ni gauge lo tratan como propio ---
 HN=$HOME/.claude/estado/nucleo.md; mkdir -p "$HOME/.claude/estado"; printf '## Objetivo\nOBJ-AJENO\n## Paso actual\nPASO-AJENO\n' >"$HN"
@@ -264,7 +332,7 @@ OUT=$(ev "$RD" sA "" startup | bash "$H/session-start-clear.sh")
 ok "dueño: la primera sesión lo reclama (sesion= y desde= numérico)" "$(dsid),$(sed -n 's/^desde=//p' "$DU" | command grep -c '^[0-9][0-9]*$')" sA,1
 ok "dueño: la primera sesión no recibe aviso de otra" "$(jq -r '.systemMessage // "nada"' <<<"$OUT")" nada
 OUT=$(ev "$RD" sB "" startup | bash "$H/session-start-clear.sh")
-ok "dueño: la segunda sesión recibe aviso (persona y modelo) nombrando a la dueña" "$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -c sA),$(ctx <<<"$OUT" | command grep -c 'sA')" 1,1
+ok "dueño: la segunda sesión recibe aviso (persona y modelo) nombrando a la dueña" "$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -Fc 'otra sesión dueña (sA)'),$(ctx <<<"$OUT" | command grep -Fc 'otra sesión dueña (sA)')" 1,1
 ok "dueño: el aviso no bloquea: el nucleo se inyecta igual" "$(ctx <<<"$OUT" | command grep -c PASO-DUENO)" 1
 ok "dueño: la segunda sesión no pisa al dueño" "$(dsid)" sA
 ok "dueño: la dueña que reanuda no recibe aviso (misma sesión)" "$(ev "$RD" sA "" resume | bash "$H/session-start-clear.sh" | jq -r '.systemMessage // "nada"')" nada
@@ -320,11 +388,11 @@ ok "handoff: sin modo es un uso erróneo (64)" "$(ho >/dev/null 2>&1; echo $?)" 
 ok "estado: sin proyecto → {\"raiz\":null} y exit 3" "$(cd "$T/ro-sin-git" && bash "$BIN/handoff" --estado; echo "rc=$?")" '{"raiz":null}
 rc=3'
 E=$(ho --estado)
-ok "estado: proyecto sin nucleo → bytes 0, tope 6500, dueño null" "$(jq -c '[.raiz == "'"$HR"'", .nucleo == "'"$HNUC"'", .bytes, .tope, .pct, .dueno] | @json' <<<"$E")" '"[true,true,0,6500,0,null]"'
+ok "estado: proyecto sin nucleo → bytes 0, tope 5700, dueño null" "$(jq -c '[.raiz == "'"$HR"'", .nucleo == "'"$HNUC"'", .bytes, .tope, .pct, .dueno] | @json' <<<"$E")" '"[true,true,0,5700,0,null]"'
 mkdir -p "$HR/.claude/estado"; head -c 650 /dev/zero | tr '\0' x >"$HNUC"
 printf 'sesion=ses1\ndesde=%s\n' "$(date +%s)" >"$HR/.claude/estado/.dueno"
 E=$(ho --estado)
-ok "estado: bytes y pct del tope" "$(jq -c '[.bytes, .pct] | @json' <<<"$E")" '"[650,10]"'
+ok "estado: bytes y pct del tope" "$(jq -c '[.bytes, .pct] | @json' <<<"$E")" '"[650,11]"'
 ok "estado: dueño vigente con su sesión y desde ISO" "$(jq -r '[.dueno.sesion, .dueno.vigente, (.dueno.desde | test("^20[0-9-]+T[0-9:]+Z$"))] | @json' <<<"$E")" '["ses1",true,true]'
 printf 'sesion=ses1\ndesde=%s\n' "$(( $(date +%s) - 20000 ))" >"$HR/.claude/estado/.dueno"
 ok "estado: dueño caducado → vigente false" "$(ho --estado | jq -r '.dueno.vigente')" false
@@ -417,11 +485,59 @@ HT=$T/hot; mkrepo "$HT"
 { printf '## Objetivo\nO\n## Paso actual\nPA\n## Pendientes\n'; head -c 4000 /dev/zero | tr '\0' p; printf '\n## Ficheros tocados\n'; head -c 4000 /dev/zero | tr '\0' f; printf '\n'; } >"$T/b-grande.md"
 OUT=$(cd "$HT" && bash "$BIN/handoff" --desde "$T/b-grande.md" 2>&1); RC=$?
 TN=$HT/.claude/estado/nucleo.md
-ok "tope: el nucleo escrito no pasa de NUCLEO_TOPE y sale 0" "$RC,$([ "$(wc -c <"$TN")" -le 6500 ] && echo si)" "0,si"
-ok "tope: se omite la sección del final del orden D5 (Ficheros tocados) y se dice" "$(command grep -c '^## Ficheros tocados' "$TN"),$(command grep -c '^## Pendientes' "$TN"),$(command grep -ci 'omit.*Ficheros tocados' <<<"$OUT")" "0,1,1"
-ok "tope: lo omitido se conserva en diario.md" "$(command grep -c 'omitido por tope.*Ficheros tocados' "$HT/.claude/estado/diario.md")" 1
+ok "tope: el nucleo escrito no pasa de NUCLEO_TOPE menos la reserva de agentes y sale 0" "$RC,$([ "$(wc -c <"$TN")" -le 5700 ] && echo si)" "0,si"
+ok "tope: se omite Pendientes antes que Ficheros tocados (W2: lo exige deep-change) y se dice" "$(command grep -c '^## Ficheros tocados' "$TN"),$(command grep -c '^## Pendientes' "$TN"),$(command grep -ci 'omit.*Pendientes' <<<"$OUT")" "1,0,1"
+ok "tope: lo omitido se conserva en diario.md" "$(command grep -c 'omitido por tope.*Pendientes' "$HT/.claude/estado/diario.md")" 1
 ok "tope: la nota queda en el nucleo (fuera de las secciones)" "$(command grep -c '^> handoff .*omitidas por tope' "$TN")" 1
-ok "tope: NUCLEO_TOPE manda sobre el defecto" "$(cd "$HT" && NUCLEO_TOPE=300 bash "$BIN/handoff" --desde "$T/b-grande.md" >/dev/null 2>&1; if [ "$(wc -c <"$TN")" -le 300 ]; then echo si; else wc -c <"$TN"; fi)" si
+ok "tope: NUCLEO_TOPE manda sobre el defecto" "$(cd "$HT" && NUCLEO_TOPE=1100 bash "$BIN/handoff" --desde "$T/b-grande.md" >/dev/null 2>&1; if [ "$(wc -c <"$TN")" -le 300 ]; then echo si; else wc -c <"$TN"; fi)" si
+# 1 100 − 800 de reserva = 300. Un tope que no supera la reserva no deja sitio: rc 64 (uso), sin dividir por cero.
+ok "tope: NUCLEO_TOPE ≤ la reserva de agentes → rc 64 y lo dice" "$(cd "$HT" && NUCLEO_TOPE=800 bash "$BIN/handoff" --estado 2>&1 >/dev/null | command grep -c 'reserva'; echo "rc=${PIPESTATUS[0]}")" "$(printf '1\nrc=64')"
+# Contrato escritor/lector: lo que handoff deja dentro del tope se inyecta entero tras el clear, aunque una
+# reservada pase de 700 B (el clear del 21-oct cortaba Paso actual y Comandos de un nucleo de 6,7 KB).
+{ printf '## Objetivo\nO\n## Paso actual\n'; head -c 1300 /dev/zero | tr '\0' a; printf '\nPASO-FIN\n## Siguiente acción\nS\n## Comandos de verificación\n'
+  head -c 1250 /dev/zero | tr '\0' c; printf '\nCMD-FIN\n'; } >"$T/b-reservadas.md"
+HC=$T/hot-contrato; mkrepo "$HC"
+(cd "$HC" && bash "$BIN/handoff" --desde "$T/b-reservadas.md" >/dev/null 2>&1)
+# shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
+E=$(. "$H/lib/nucleo.sh"; nucleo_emitir "$HC/.claude/estado/nucleo.md")
+ok "contrato: lo que escribe handoff se inyecta entero" "$(command grep -c 'PASO-FIN\|CMD-FIN' <<<"$E"),$(command grep -c '^\[recortado\|^\[LEE' <<<"$E")" "2,0"
+# El mismo contrato por el hook real, con el bloque de agentes en su peor caso (200 en vuelo): el clear le
+# descuenta su largo al tope, y un nucleo de 6,4 KB escrito entero se cortaba en Paso actual (21-oct).
+bg() { head -c "$1" /dev/zero | tr '\0' "$2" | fold -w 99; echo; }
+{ printf '## Objetivo\n'; bg 600 o; printf '## Invariantes\n'; bg 1600 i; printf '## Paso actual\n'; bg 2900 a
+  printf 'PASO-FIN\n## Siguiente acción\n'; bg 250 s; printf 'SIG-FIN\n## Comandos de verificación\n'; bg 900 c; printf 'CMD-FIN\n'; } >"$T/b-cliff.md"
+HA=$T/hot-agentes; mkrepo "$HA"; mkdir -p "$HA/.claude/estado"
+jq -cn '[range(0;200) | {ev:"start",id:("agent-" + tostring),tipo:"general-purpose",sid:"s0",t:"2099-01-01T00:00:00Z"}] | .[]' >"$HA/.claude/estado/agentes.jsonl"
+(cd "$HA" && bash "$BIN/handoff" --desde "$T/b-cliff.md" >/dev/null 2>&1)
+E=$(ev "$HA" s-ag "" clear | bash "$H/session-start-clear.sh" | ctx)
+fines() { for m in PASO-FIN SIG-FIN CMD-FIN; do command grep -c "^$m\$" <<<"$1"; done | paste -sd, -; }
+ok "contrato por el hook: con el peor bloque de agentes, lo escrito se inyecta entero" \
+  "$(fines "$E"),$(command grep -c '^\[recortado\|^\[LEE' <<<"$E")" "$(fines "$(cat "$HA/.claude/estado/nucleo.md")"),0"
+ok "contrato por el hook: Paso actual y Siguiente acción llegan" "$(command grep -c '^PASO-FIN$\|^SIG-FIN$' <<<"$E")" 2
+# shellcheck source=SCRIPTDIR/../claude/hooks/lib/agentes.sh disable=SC2031  # la reserva la define la lib en este subshell
+ok "reserva: el peor bloque de agentes cabe en NUCLEO_RESERVA_AGENTES" "$(. "$H/lib/nucleo.sh"; . "$H/lib/agentes.sh"
+  A=$(nucleo_agentes_ctx "$HA"); B=$(printf '%s' "$A" | LC_ALL=C wc -c); [ "$B" -gt 400 ] && [ "$B" -le "${NUCLEO_RESERVA_AGENTES:-0}" ] && echo si)" si
+# Siguiente acción no se omite nunca; Paso actual se recorta por línea antes que omitirse (21-oct: un Paso actual de
+# 3,6 KB dejaba el nucleo en Objetivo e Invariantes solos).
+HP=$T/hot-paso; mkrepo "$HP"; PN=$HP/.claude/estado/nucleo.md
+{ printf '## Objetivo\n'; bg 1000 o; printf '## Invariantes\n'; bg 1800 i; printf '## Paso actual\n'; bg 3600 a
+  printf 'PASO-FIN\n## Siguiente acción\nSIG-VIVA\n## Comandos de verificación\n'; bg 300 c; printf 'CMD-FIN\n'; } >"$T/b-paso.md"
+OUT=$(cd "$HP" && bash "$BIN/handoff" --desde "$T/b-paso.md" 2>&1); RC=$?
+ok "tope: Siguiente acción se queda y Paso actual se recorta en vez de omitirse" \
+  "$RC,$(command grep -c '^SIG-VIVA$' "$PN"),$(command grep -c '^## Paso actual$' "$PN"),$([ "$(wc -c <"$PN")" -le 5700 ] && echo cabe)" "0,1,1,cabe"
+ok "tope: Paso actual se corta en un límite de línea, con aviso en la sección y en la salida" \
+  "$(awk '/^## Paso actual$/{p=1;next} /^## /{p=0} p' "$PN" | command grep -vc '^a\{99\}$'),$(command grep -c '^\[handoff: .*diario\.md' "$PN"),$(command grep -c 'Paso actual recortado' <<<"$OUT")" "1,1,1"
+ok "tope: el Paso actual entero va a diario.md" "$(cmp -s <(awk '/^## Paso actual$/{p=1;next} /^## /{p=0} p' "$T/b-paso.md") \
+  <(awk '/recortado por tope: Paso actual$/{p=1;next} /^## /{p=0} p' "$HP/.claude/estado/diario.md" | sed '${/^$/d}') && echo fiel)" fiel
+{ printf '## Objetivo\n'; bg 1000 o; printf '## Invariantes\n'; bg 1800 i; printf '## Paso actual\nantes\n```bash\n'; bg 3600 a
+  printf '```\n## Siguiente acción\nSIG-VIVA\n'; } >"$T/b-valla.md"
+(cd "$HP" && bash "$BIN/handoff" --solo --desde "$T/b-valla.md" >/dev/null 2>&1)
+ok "tope: el corte de Paso actual no deja una valla abierta" "$(command grep -c '^```' "$PN"),$(command grep -c '^SIG-VIVA$' "$PN"),$([ "$(wc -c <"$PN")" -le 5700 ] && echo cabe)" "2,1,cabe"
+# Si ni una línea de Paso actual cabe, se omite entera; y si Siguiente acción sola pasa del tope, se dice.
+{ printf '## Objetivo\nO\n## Paso actual\n'; bg 600 a; printf '## Siguiente acción\n'; bg 6000 s; } >"$T/b-sig.md"
+OUT=$(cd "$HP" && bash "$BIN/handoff" --solo --desde "$T/b-sig.md" 2>&1)
+ok "tope: sin sitio para Paso actual se omite; Siguiente acción se queda y el aviso la nombra" \
+  "$(command grep -c '^## Siguiente acción$' "$PN"),$(command grep -c '^## Paso actual$' "$PN"),$(command grep -c 'Siguiente acción solos pasan del tope' <<<"$OUT")" "1,0,1"
 
 # -- --desde: borradores inválidos (exit 2) --
 cp "$HNUC" "$T/nucleo-antes.md"
@@ -478,7 +594,7 @@ SN=$HS/.claude/estado/nucleo.md
 ok "solo: el borrador sustituye (no conserva ni Objetivo ni Plan)" "$RC,$(command grep -c 'OBJ-SOLO' "$SN"),$(command grep -c 'OBJ-1 literal\|paso-dos' "$SN")" "0,1,0"
 ok "solo: el nucleo anterior queda en nucleo.prev-*" "$(command grep -lF 'OBJ-1 literal' "$HS"/.claude/estado/nucleo.prev-*.md | wc -l)" 1
 
-# Dueño: solo lo libera quien lo es (--sesion), o cualquiera si no hay dueño vigente / no se dice sesión.
+# Dueño: solo lo libera quien lo es (--sesion), o cualquiera si no hay dueño vigente.
 HW=$T/how; mkrepo "$HW"; mkdir -p "$HW/.claude/estado"
 hw() { (cd "$HW" && bash "$BIN/handoff" --desde "$T/b-solo.md" "$@"); }
 DW=$HW/.claude/estado/.dueno
@@ -488,7 +604,7 @@ ok "dueño: otra sesión vigente → no se libera y se avisa" "$([ -e "$DW" ] &&
 hw --sesion sA >/dev/null 2>&1
 ok "dueño: la dueña lo libera" "$([ -e "$DW" ] && echo sigue || echo libre)" libre
 printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$DW"; hw >/dev/null 2>&1
-ok "dueño: sin --sesion, handoff lo libera" "$([ -e "$DW" ] && echo sigue || echo libre)" libre
+ok "dueño: sin --sesion, conserva dueño vigente" "$([ -e "$DW" ] && echo sigue || echo libre)" sigue
 printf 'sesion=sA\ndesde=1\n' >"$DW"; hw --sesion sB >/dev/null 2>&1
 ok "dueño: caducado, cualquiera lo libera" "$([ -e "$DW" ] && echo sigue || echo libre)" libre
 
@@ -544,12 +660,12 @@ ok "CR-2: el aviso nombra la sección omitida (no culpa a Objetivo e Invariantes
 H3=$T/cr3; mkrepo "$H3"
 (cd "$H3" && bash "$BIN/handoff" --desde "$T/b1.md" >/dev/null 2>&1)
 printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$H3/.claude/estado/.dueno"; printf 'x\n' >"$H3/.claude/estado/verificaciones.log"
-(cd "$H3" && bash "$BIN/handoff" --desde "$T/b1.md" --commit >/dev/null 2>&1); RC=$?
+(cd "$H3" && bash "$BIN/handoff" --desde "$T/b1.md" --sesion sA --commit >/dev/null 2>&1); RC=$?
 ok "CR-3: --commit tras una ejecución sin él sale 0 y crea el commit docs(estado)" "$RC,$(git -C "$H3" log -1 --format=%s | command grep -c '^docs(estado)')" "0,1"
 ok "CR-3: el commit solo lleva nucleo y diario (ni .dueno, ni verificaciones.log, ni prev)" "$(git -C "$H3" show --name-only --format= HEAD | command grep -c 'nucleo.md\|diario.md'),$(git -C "$H3" show --name-only --format= HEAD | command grep -c 'dueno\|verificaciones\|prev')" "2,0"
 ok "CR-3: el dueño se libera" "$([ -e "$H3/.claude/estado/.dueno" ] && echo sigue || echo libre)" libre
 printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$H3/.claude/estado/.dueno"
-(cd "$H3" && printf 'z\n' >>"$H3/.git/info/exclude" && chmod a-w "$H3/.git/index" 2>/dev/null; bash "$BIN/handoff" --desde "$T/b2.md" --commit >/dev/null 2>&1; chmod u+w "$H3/.git/index")
+(cd "$H3" && printf 'z\n' >>"$H3/.git/info/exclude" && chmod a-w "$H3/.git/index" 2>/dev/null; bash "$BIN/handoff" --desde "$T/b2.md" --sesion sA --commit >/dev/null 2>&1; chmod u+w "$H3/.git/index")
 ok "CR-3: el dueño se libera aunque el commit falle (o no hubiera nada que fallar)" "$([ -e "$H3/.claude/estado/.dueno" ] && echo sigue || echo libre)" libre
 
 # CR-5: oraculo no crea .claude/estado en un repo que no lo usa.
@@ -557,14 +673,14 @@ H5=$T/cr5; mkrepo "$H5"
 OUT=$(cd "$H5" && bash "$BIN/oraculo" -- true); RC=$?
 ok "CR-5: oraculo en un repo sin estado: rc 0 y el árbol sigue limpio" "$RC,$(git -C "$H5" status --porcelain | wc -l)" "0,0"
 
-# CR-4: tras /clear la sesión nueva reclama al dueño vigente de otra sesión y lo nombra en UNA línea informativa.
+# CR-4: /clear conserva al dueño ajeno vigente y avisa.
 RC4=$T/cr4; mkdir -p "$RC4/.claude/estado"; git -C "$RC4" init -q; printf '## Objetivo\nOBJ\n## Paso actual\nPASO-CR4\n' >"$RC4/.claude/estado/nucleo.md"
 D4=$RC4/.claude/estado/.dueno
 printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$D4"
 OUT=$(ev "$RC4" sB "" clear | bash "$H/session-start-clear.sh")
-ok "CR-4: source=clear reclama aunque haya otro dueño vigente" "$(sed -n 's/^sesion=//p' "$D4")" sB
+ok "CR-4: source=clear conserva al dueño ajeno vigente" "$(sed -n 's/^sesion=//p' "$D4")" sA
 ok "CR-4: source=clear informa una vez y nombra al dueño anterior" "$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -c 'sA'),$(jq -r '.systemMessage // ""' <<<"$OUT" | wc -l)" "1,1"
-ok "CR-4: source=clear no manda al modelo a no escribir el nucleo" "$(ctx <<<"$OUT" | command grep -c 'otra sesión dueña')" 0
+ok "CR-4: source=clear avisa al modelo de dueño ajeno" "$(ctx <<<"$OUT" | command grep -c 'otra sesión dueña')" 1
 printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$D4"
 OUT=$(ev "$RC4" sB "" startup | bash "$H/session-start-clear.sh")
 ok "CR-4: source=startup con dueño ajeno vigente sigue avisando y sin reclamar" "$(sed -n 's/^sesion=//p' "$D4"),$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -c 'sA')" "sA,1"
@@ -587,5 +703,106 @@ S2=$T/sec2; mkdir -p "$S2/.claude/estado" "$T/sec2-fuera"; git -C "$S2" init -q;
 ln -s "$T/sec2-fuera" "$S2/.claude/estado/archivo"
 OUT=$(bash "$BIN/handoff" --migrar "$S2" 2>&1); RC=$?
 ok "SEC-1: --migrar con archivo/ enlazado → exit 3, el destino externo queda vacío y el nucleo en su sitio" "$RC,$(nent "$T/sec2-fuera"),$([ -f "$S2/.claude/estado/nucleo.md" ] && echo sigue)" "3,0,sigue"
+
+# --- handoff --iniciar (crea el primer nucleo.md desde la plantilla; nunca sobrescribe) ---
+IN=$T/ini; mkdir -p "$IN"; git -C "$IN" init -q
+OUT=$(cd "$IN" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar 2>&1); RC=$?
+ok "iniciar: crea nucleo.md desde la plantilla, rc 0" "$RC,$(cmp -s "$KIT/claude/templates/nucleo.md" "$IN/.claude/estado/nucleo.md" && echo igual)" "0,igual"
+ok "iniciar: .claude/estado/ entra en info/exclude" "$(command grep -cFx '.claude/estado/' "$IN/.git/info/exclude")" 1
+ok "iniciar: el nucleo recien creado pasa por --estado" "$(cd "$IN" && bash "$BIN/handoff" --estado | jq -r '.raiz')" "$IN"
+printf '# Estado\n## Objetivo\nMIO\n' >"$IN/.claude/estado/nucleo.md"
+OUT=$(cd "$IN" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar 2>&1); RC=$?
+ok "iniciar: con nucleo existente no sobrescribe, rc 0 y dice «ya existe»" "$RC,$(command grep -c MIO "$IN/.claude/estado/nucleo.md"),$(command grep -c 'ya existe' <<<"$OUT")" "0,1,1"
+mkdir -p "$T/ini-fuera"
+OUT=$(cd "$T/ini-fuera" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar 2>&1); RC=$?
+ok "iniciar: sin proyecto (sin git) → exit 3 y no escribe" "$RC,$([ -e "$T/ini-fuera/.claude" ] && echo escribio || echo no)" "3,no"
+IR=$T/ini-raiz; mkdir -p "$IR"; git -C "$IR" init -q
+OUT=$(cd "$T/ini-fuera" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar --raiz "$IR" 2>&1); RC=$?
+ok "iniciar: --raiz DIR crea el nucleo en esa raíz" "$RC,$([ -f "$IR/.claude/estado/nucleo.md" ] && echo si)" "0,si"
+ok "iniciar: aparece en handoff --help" "$(bash "$BIN/handoff" --help | command grep -c '^     handoff --iniciar')" "1"
+# Primer día: el nucleo recién iniciado, copiado como borrador con solo Objetivo relleno. Invariantes, vacía en
+# los dos, se copiaba del nucleo sin darse por usada y el borrador la volvía a añadir: una más en cada fusión.
+IP=$T/ini-pegada; mkdir -p "$IP"; git -C "$IP" init -q
+(cd "$IP" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" --iniciar >/dev/null 2>&1)
+awk '{ print } /^## Objetivo$/ { print "OBJ-DIA1" }' "$IP/.claude/estado/nucleo.md" >"$T/b-pegada.md"
+for n in 1 2; do
+  (cd "$IP" && bash "$BIN/handoff" --desde "$T/b-pegada.md" >/dev/null 2>&1); RC=$?
+  ok "iniciar + --desde (fusión $n): una cabecera de cada sección, 8 en total, y el Objetivo una vez" "$RC,$(command grep -c '^## ' "$IP/.claude/estado/nucleo.md"),$(sed -n 's/^## //p' "$IP/.claude/estado/nucleo.md" | paste -sd,),$(command grep -c 'OBJ-DIA1' "$IP/.claude/estado/nucleo.md")" "0,8,$(sed -n 's/^## //p' "$KIT/claude/templates/nucleo.md" | paste -sd,),1"
+done
+
+# --- ADR 016 (W1): el estado siempre existe y nunca va a git ---
+W1=$T/w1; mkrepo "$W1"
+(cd "$W1" && bash "$BIN/oraculo" -- true >/dev/null 2>&1)
+ok "oraculo: en un repo sin estado crea verificaciones.log y git status sigue limpio" "$([ -s "$W1/.claude/estado/verificaciones.log" ] && echo si),$(git -C "$W1" status --porcelain -uall)" "si,"
+W2=$T/w2; mkrepo "$W2"
+ev "$W2" s-w1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: en un repo sin estado escribe en checkpoints/ y git status queda limpio" "$(find "$W2/.claude/estado/checkpoints" -name 'checkpoint-compact-*.md' | wc -l | tr -d ' '),$(git -C "$W2" status --porcelain -uall)" "1,"
+ok "compact: lee el checkpoint de checkpoints/" "$(ev "$W2" s-w1 | bash "$H/session-start-compact.sh" | ctx | command grep -c 'Checkpoint previo a compactar')" 1
+W3=$T/w3; mkrepo "$W3"; mkdir -p "$W3/.claude/estado/checkpoints"
+for i in 1 2 3 4 5 6 7; do f=$W3/.claude/estado/checkpoints/checkpoint-compact-v$i.md; : >"$f"; touch -d "-$((i * 4)) days" "$f"; done
+ev "$W3" s-w3 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact con 7 checkpoints viejos: quedan ≤ 5 y ninguno de más de 14 días" "$([ "$(find "$W3/.claude/estado/checkpoints" -name 'checkpoint-compact-*.md' | wc -l)" -le 5 ] && echo si),$(find "$W3/.claude/estado/checkpoints" -name 'checkpoint-compact-*.md' -mtime +14 | wc -l | tr -d ' ')" "si,0"
+if [ "$(id -u)" -ne 0 ]; then
+  W4=$T/w4; mkrepo "$W4"; chmod a-w "$W4"
+  ev "$W4" s-w4 "$TP" | bash "$H/pre-compact.sh" 2>"$T/w4-err"
+  ok "pre-compact: raíz de solo lectura → el checkpoint cae al directorio de usuario y avisa" "$(find "$HOME/.claude/estado" -path '*/w4-*/checkpoints/checkpoint-compact-*.md' | wc -l | tr -d ' '),$(command grep -c 'no admite escritura' "$T/w4-err")" "1,1"
+  chmod u+w "$W4"
+fi
+W5=$T/w5; mkrepo "$W5"
+ho5() { (cd "$W5" && CLAUDE_HOME=$KIT/claude bash "$BIN/handoff" "$@"); }
+ho5 --iniciar >/dev/null 2>&1
+ok "handoff --iniciar: deja informes/, checkpoints/ y el .gitignore con «*»" "$([ -d "$W5/.claude/estado/informes" ] && [ -d "$W5/.claude/estado/checkpoints" ] && echo si),$(cat "$W5/.claude/estado/.gitignore")" 'si,*'
+ok "handoff --help nombra --informe" "$(ho5 --help | command grep -c -- '--informe')" 2
+IR=$(ho5 --informe tema 2>&1); RC=$?
+ok "handoff --informe tema: imprime la ruta absoluta de informes/AAAA-MM-DD-tema y existe" "$RC,$([ "$IR" = "$W5/.claude/estado/informes/$(date +%F)-tema" ] && [ -d "$IR" ] && echo si)" "0,si"
+IR=$(ho5 --informe 'a/../b' 2>&1); RC=$?
+ok "handoff --informe «a/../b»: sanea (sin «/» ni «..») y queda dentro de informes/" "$RC,$IR" "0,$W5/.claude/estado/informes/$(date +%F)-a-b"
+ok "handoff --informe «../..»: no queda nada que usar → 64" "$(ho5 --informe '../..' >/dev/null 2>&1; echo $?)" 64
+ok "handoff --informe sin tema: 64" "$(ho5 --informe >/dev/null 2>&1; echo $?)" 64
+echo x >"$IR/informe.md"
+printf '## Plan\n- [x] hecho-w1\n' >"$T/b-w1.md"
+ho5 --desde "$T/b-w1.md" --commit >/dev/null 2>&1
+ok "handoff --commit: versiona nucleo, diario y .gitignore, nunca informes/ ni checkpoints/" "$(git -C "$W5" ls-files .claude/estado | paste -sd,),$(git -C "$W5" status --porcelain -uall)" ".claude/estado/.gitignore,.claude/estado/diario.md,.claude/estado/nucleo.md,"
+# --- W2: handoff híbrido por defecto (aviso de edad tras compactar, ruta del kit, Ficheros tocados reservado) ---
+W=$T/w2h; mkdir -p "$W/.claude/estado"; git -C "$W" init -q; WN=$W/.claude/estado/nucleo.md
+{ echo '## Objetivo'; echo 'W2-OBJ'; } >"$WN"
+wavisa() { ev "$W" "$1" | bash "$H/session-start-compact.sh" | ctx | command grep -c 'Aviso del hook'; }
+touch -d '-30 minutes' "$WN"
+ok "W2 compact: nucleo viejo y sesión sin dueño rival → aviso de edad" "$(wavisa w1)" 1
+ok "W2 compact: segunda compactación sin cambios en nucleo → sin aviso repetido" "$(wavisa w1)" 0
+ok "W2 compact: el aviso va fuera del bloque de datos" "$(ev "$W" w1b | bash "$H/session-start-compact.sh" | ctx | awk '/^<nucleo-datos/{d=1} /Aviso del hook/{if(d)x=1} END{print x+0}')" 0
+touch -d '-20 minutes' "$WN"
+ok "W2 compact: el nucleo cambió y sigue viejo → avisa otra vez" "$(wavisa w1)" 1
+touch "$WN"
+ok "W2 compact: nucleo fresco → sin aviso" "$(wavisa w2)" 0
+touch -d '-30 minutes' "$WN"
+printf 'sesion=otra\ndesde=%s\n' "$(date +%s)" >"$W/.claude/estado/.dueno"
+ok "W2 compact: sesión ajena → silencio" "$(wavisa w3)" 0
+rm -f "$W/.claude/estado/.dueno"
+ok "W2 compact: el aviso con handoff fuera del PATH lleva la ruta del kit" "$(ev "$W" w4 | PATH=/usr/bin:/bin bash "$H/session-start-compact.sh" | ctx | command grep -c "$HOME/.claude/bin/handoff --desde")" 1
+{ echo '## Objetivo'; head -c 12000 /dev/zero | tr '\0' o; echo; } >"$WN"; touch -d '-30 minutes' "$WN"
+WO=$(ev "$W" w5 | bash "$H/session-start-compact.sh"); WC=$(ctx <<<"$WO")
+ok "W2 compact: con aviso y nucleo enorme sigue ≤ 9 500 y el aviso sobrevive" "$([ "${#WC}" -le 9500 ] && echo si),$(command grep -c 'Aviso del hook' <<<"$WC")" "si,1"
+# gauge y nudge sin handoff en el PATH: ruta del kit (y existe en la instalación de prueba)
+mkdir -p "$HOME/.claude/bin"; : >"$HOME/.claude/bin/handoff"; chmod +x "$HOME/.claude/bin/handoff"
+WG=$(ev "$R" w6 "$TP" | PATH=/usr/bin:/bin bash "$H/stop-context-gauge.sh" | jq -r '.systemMessage // empty')
+WP=$(sed -n 's/.*`\([^ ]*\) --desde.*/\1/p' <<<"$WG")
+ok "W2 gauge: sin handoff en el PATH enseña una ruta absoluta que existe" "$WP,$([ -x "$WP" ] && echo si)" "$HOME/.claude/bin/handoff,si"
+# --desde: «Ficheros tocados» sobrevive junto a Paso actual, Siguiente acción y Comandos
+WT=$T/w2t; mkdir -p "$WT"; git -C "$WT" init -q
+{ cat <<'BORRADOR'
+## Objetivo
+O
+## Paso actual
+PA
+## Siguiente acción
+SA
+## Comandos de verificación
+- `make test`
+## Plan
+BORRADOR
+  head -c 6800 /dev/zero | tr '\0' l; printf '\n## Pendientes\n'; head -c 4000 /dev/zero | tr '\0' p; printf '\n## Ficheros tocados\n- a.sh\n- b.sh\n'; } >"$T/w2-b.md"
+(cd "$WT" && bash "$BIN/handoff" --desde "$T/w2-b.md" >/dev/null 2>&1); RC=$?
+ok "W2 --desde: sobre el tope sobreviven Paso actual, Siguiente acción, Comandos y Ficheros tocados" "$RC,$(sed -n 's/^## //p' "$WT/.claude/estado/nucleo.md" | paste -sd,)" "0,Objetivo,Paso actual,Siguiente acción,Comandos de verificación,Ficheros tocados"
 
 exit $FAIL

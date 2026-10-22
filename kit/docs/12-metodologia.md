@@ -123,18 +123,23 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
 - **`handoff --desde <borrador>`** cierra la fase: el modelo redacta el borrador y el CLI decide. Valida las
   cabeceras, conserva Objetivo, une las Invariantes por líneas (nunca borra una), mueve los `[x]` del Plan a
   `diario.md` con su comando y hash, pliega el último rc de `oraculo`, rota tres copias `nucleo.prev-*`, recorta
-  al tope omitiendo secciones enteras desde el final y libera al dueño. `--solo`, `--commit`, `--migrar <dir>`
-  y `--estado` (JSON de una línea) completan el contrato.
+  al tope menos la reserva del bloque de agentes (así se inyecta entero) y libera al dueño. Para recortar omite
+  secciones enteras desde el final hasta Comandos, corta Paso actual por línea con un aviso y no toca Siguiente
+  acción; lo quitado va entero a `diario.md`. `--solo`, `--commit`, `--migrar <dir>` y `--estado` (JSON de una
+  línea) completan el contrato.
 - Dueño: `.claude/estado/.dueno` (`sesion=`, `desde=`) lo reclama SessionStart; la sesión ajena recibe un aviso
   y su nudge de contexto calla; caduca a las 4 h (`NUCLEO_DUENO_TTL`).
 
 ## 6 · Cambiar de sesión y cerrar el ciclo
 
-- **`/handoff`** (mod [`cockpit`](11-cockpit.md), o `handoff --desde` a mano en cualquier runtime) escribe un documento de traspaso —objetivo,
+- **`/handoff`** (mod [`cockpit`](11-cockpit.md), o `handoff --desde` a mano en cualquier runtime; `install.sh` no instala el cockpit) escribe un documento de traspaso —objetivo,
   invariantes, plan, paso actual, pendientes, comandos de verificación—, limpia el contexto y
   retoma desde él. Con `solo` guarda el documento y no limpia nada.
   El cockpit lo lanza solo al cerrar un turno con el contexto al 70 % del límite de autocompactación
   (`COCKPIT_AUTO_HANDOFF=off` lo desactiva); `/nueva <tarea>` archiva el estado y cambia de tarea.
+  Sin cockpit el defecto es checkpoint + reinyección + aviso: `pre-compact.sh` deja un checkpoint, tras compactar
+  `session-start-compact.sh` reinyecta `nucleo.md` y, si lleva más de 10 min sin tocarse, pide al modelo
+  actualizarlo con `handoff --desde`; `/handoff` es manual y el cockpit es la opción automática.
 - **`/retro`** cierra el ciclo: revisa una sesión y propone mejoras al **entorno** del agente
   (punteros de navegación, comprobaciones automáticas, estándares de revisión, tamaño de los
   ficheros de guía, acceso a información), ordenadas por gravedad. Aplicarlas es un cambio

@@ -24,7 +24,7 @@ No es una opinión, no es "revisar que funcione", no es el juicio del agente al 
 
 | Proyecto | Comando | Resultado | Fecha | Duración | Fiabilidad |
 |---|---|---|---|---|---|
-| **mcharness** (este repo) | `make test` | ✅ **exit 0** · 41 suites, 0 failed | 2026-10-15 | 134 s | **Alta.** Determinista, sin red, sin LLM. Es el oráculo de referencia del harness. |
+| **mcharness** (este repo) | `make test` | Suites declaradas en Makefile; exige **exit 0** y 0 failed | 2026-10-21 | según máquina y carga | **Alta.** Sin red ni LLM. La evidencia fechada de cada ejecución registra su resultado, no se infiere de este catálogo. |
 | **mcharness** (lint) | `/usr/bin/shellcheck -x scripts/*.sh kit/**/*.sh` | ✅ limpio | 2026-08-21 | <2 s | Alta. Computacional. |
 | **mcharness** (secretos) | `/home/…/.local/bin/gitleaks dir --no-banner .` | ✅ `no leaks found` | 2026-08-21 | 124 ms | Alta. |
 | `sistema-riego` | `/home/…/.venvs/riego/bin/pytest tests/unit -q` | ⏸️ **NO EJECUTADO** | 2026-08-21 | — | **Desconocida.** Ejecución no autorizada por el propietario. Ver nota. |
@@ -50,9 +50,9 @@ como candidato para v0.2.0. Riesgos ya identificados que deberá absorber quien 
 
 | Proyecto | git | Casos declarados | Entorno ejecutable | Bloqueante |
 |---|---|---|---|---|
-| `circe-brain/circe-prospector` | ✅ | 1.443 | ❌ | Sin venv; 270 MB en `/mnt/c` |
-| `ofertadora/lab` | ❌ | 58 | ❌ | **Sin control de versiones**: cualquier cambio es irreversible |
-| `ofertadora/2025_v1` + `2025_webscraper_v1` | ✅ | 0 | ❌ | 20+ ficheros `TEST_*.py` que **no son tests** sino scripts que tocan la BD de producción |
+| `proyecto-a` | ✅ | 1.443 | ❌ | Sin venv; 270 MB en `/mnt/c` |
+| `proyecto-b/lab` | ❌ | 58 | ❌ | **Sin control de versiones**: cualquier cambio es irreversible |
+| `proyecto-b/2025_v1` + `2025_webscraper_v1` | ✅ | 0 | ❌ | 20+ ficheros `TEST_*.py` que **no son tests** sino scripts que tocan la BD de producción |
 | `legal-assistant` | ✅ | 104 | ❌ | Sin venv |
 | `tfm-agent-system` | ✅ | 48 | ❌ | Sin fichero de dependencias |
 

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install bootstrap test doctor mutantes phoenix phoenix-push evals-dryrun evals-paid evals-ablacion-paid
+.PHONY: help install bootstrap test test-cockpit bateria doctor mutantes phoenix phoenix-push evals-dryrun evals-paid evals-ablacion-paid
 
 help: ## Lista los targets disponibles
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*##"}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -8,7 +8,7 @@ help: ## Lista los targets disponibles
 install: ## Instala el kit en CLAUDE_HOME (default $HOME/.claude)
 	bash kit/install.sh
 
-bootstrap: ## De cero a sesion verde: perfil, kit, doctor y oraculo. El comando de un companero nuevo.
+bootstrap: ## Para quien trabaja EN este repo (perfil de harness, kit, tests y doctor). Un companero nuevo usa: bash kit/install.sh && bash kit/doctor.sh
 	@[ -f config/profile.yaml ] || { cp config/profile.example.yaml config/profile.yaml; \
 	  echo "==> config/profile.yaml creado desde el ejemplo. Editalo: es tuyo y no viaja en el repo."; }
 	bash kit/install.sh
@@ -53,6 +53,8 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_statusline.sh
 	bash kit/test/test_session_start_clear.sh
 	bash kit/test/test_nucleo_lib.sh
+	bash kit/test/test_nucleo_integridad.sh
+	bash kit/test/test_agentes.sh
 	bash kit/test/test_nucleo_hooks.sh
 	bash kit/test/test_nucleo_nudge.sh
 	bash kit/test/test_settings_template.sh
@@ -60,8 +62,33 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_claude_md_template.sh
 	bash kit/test/test_recall.sh
 	bash kit/test/test_scripts_audit.sh
+	bash kit/test/test_presupuesto_contexto.sh
 	bash kit/test/test_guia.sh
 	bash kit/test/test_plugin_esenciales.sh
+	bash kit/test/test_sesiones_home.sh
+
+test-cockpit: ## Tests funcionales del cockpit; requiere Claude Code con soporte de mods
+	claude plugin test kit/mods/cockpit
+
+# bateria: los cuatro oraculos de cierre, cada uno con su .rc y su .log. Corren todos aunque uno falle; rc != 0 si
+# alguno falla. Una herramienta ausente da rc 127 (el shell lo da solo), nunca un SKIP. Los BATERIA_* se pueden
+# sustituir (los tests lo hacen con dobles). Alcance de shellcheck: todos los .sh versionados y kit/claude/bin/*.
+BATERIA_DIR ?= .claude/estado/informes/$(shell date +%F)-bateria
+BATERIA_BASE ?= $(shell git describe --tags --abbrev=0 2>/dev/null)
+BATERIA_TEST_CMD ?= $(MAKE) --no-print-directory test
+BATERIA_SCAN_CMD ?= bash kit/scan-secrets.sh .
+BATERIA_SHELLCHECK ?= shellcheck
+BATERIA_GITLEAKS ?= gitleaks
+
+bateria: ## make test + shellcheck + scan-secrets + gitleaks (BATERIA_DIR, BATERIA_BASE), un .rc y un .log cada uno
+	@d="$(BATERIA_DIR)"; mkdir -p "$$d"; base="$(BATERIA_BASE)"; \
+	$(BATERIA_TEST_CMD) > "$$d/make.log" 2>&1; echo $$? > "$$d/make.rc"; \
+	$(BATERIA_SHELLCHECK) -x $$(git ls-files '*.sh' 'kit/claude/bin/*') > "$$d/sc.log" 2>&1; echo $$? > "$$d/sc.rc"; \
+	$(BATERIA_SCAN_CMD) > "$$d/scan.log" 2>&1; echo $$? > "$$d/scan.rc"; \
+	$(BATERIA_GITLEAKS) git --log-opts="$${base:+$$base..}HEAD" -c kit/claude/.gitleaks.toml . > "$$d/gl.log" 2>&1; echo $$? > "$$d/gl.rc"; \
+	r="make=$$(cat "$$d/make.rc") sc=$$(cat "$$d/sc.rc") scan=$$(cat "$$d/scan.rc") gl=$$(cat "$$d/gl.rc")"; \
+	echo "$$r" | tee "$$d/resumen.txt"; echo "logs en $$d"; \
+	[ "$$r" = "make=0 sc=0 scan=0 gl=0" ]
 
 doctor: ## Verifica una instalacion existente del kit
 	bash kit/doctor.sh

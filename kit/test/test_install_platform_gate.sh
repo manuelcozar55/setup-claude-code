@@ -19,7 +19,7 @@ chmod +x "$FAKEBIN/uname"
 
 export CLAUDE_HOME="$tmp/dot"
 set +e
-out="$(PATH="$FAKEBIN:$PATH" bash "$KIT/install.sh" < /dev/null 2>&1)"
+out="$(HOME="$tmp/fakehome" PATH="$FAKEBIN:$PATH" bash "$KIT/install.sh" < /dev/null 2>&1)"
 rc=$?
 set -e
 
@@ -28,7 +28,7 @@ ck "$(echo "$out" | grep -qc 'Plataforma no soportada' && echo y || echo n)" "y"
 ck "$([ -e "$CLAUDE_HOME" ] && echo existe || echo no)" "no" "no crea CLAUDE_HOME (nada a medias)"
 
 # Camino feliz: uname real (Linux en CI) sigue instalando sin problema.
-set +e; bash "$KIT/install.sh" < /dev/null >/dev/null 2>&1; rc2=$?; set -e
+set +e; HOME="$tmp/fakehome" bash "$KIT/install.sh" < /dev/null >/dev/null 2>&1; rc2=$?; set -e
 ck "$rc2" "0" "install.sh sigue funcionando en Linux real"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

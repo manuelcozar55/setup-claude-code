@@ -25,7 +25,7 @@ Tres datos verificados el 2026-08-27 mandan sobre el resto:
 
 1. **Está parado.** Último commit el 2026-06-04, ~12 semanas atrás; 51 PRs y 33 issues
    abiertos. Las estrellas suben, el código no.
-2. **Cuatro issues de seguridad abiertas sin un solo comentario**: file tools no
+2. **Cuatro issues de seguridad abiertas sin un solo comentario** (referencias a issues del repo ajeno, sin identificador CVE ni cifra de vulnerabilidades; no re-verificadas desde el 2026-08-27): file tools no
    contenidas al workspace (#310), `allowed_tools` saltándose las deny-rules (#313),
    bypass por *parameter shadowing* (#348) y un hook que ejecuta PowerShell arbitrario en
    `full_auto` (#349). Son exactamente los agujeros que aquí tapan los guards y Sentinel.

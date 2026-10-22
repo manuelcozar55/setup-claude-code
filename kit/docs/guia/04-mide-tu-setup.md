@@ -43,6 +43,8 @@ python3 scripts/nucleo_audit.py
 
 Leen `$CLAUDE_PROJECTS_DIR` (por defecto, las transcripciones de `~/.claude/projects/`). Para la memoria, [`scripts/recuerda`](../../../scripts/recuerda) y [`13-memoria.md`](../13-memoria.md).
 
+Lo que el kit mete en el contexto al arrancar se mide por canal con `bash scripts/contexto-base.sh` (sin red; `--pagar` añade el primer turno real). `kit/test/test_presupuesto_contexto.sh` falla si un canal pasa de su tope; la tabla de topes y su medida están en `knowledge/COST-LOG.md`.
+
 | Métrica | Medido en 2026 | Objetivo |
 |---|---|---|
 | Compactaciones manuales (`/compact`, `/handoff`) | 0 % | ≥ 50 % |
@@ -58,8 +60,9 @@ Leen `$CLAUDE_PROJECTS_DIR` (por defecto, las transcripciones de `~/.claude/proj
 Cada llamada a `Bash` pasa por la cadena de guards de `PreToolUse` en serie, y cada guard arranca procesos. Mide un guard con una entrada sintética, en tu máquina:
 
 ```bash
-echo '{"tool_name":"Bash","tool_input":{"command":"git status"}}' > /tmp/entrada.json
-time bash ~/.claude/hooks/block-dangerous-commands.sh < /tmp/entrada.json
+entrada="$(mktemp)"
+echo '{"tool_name":"Bash","tool_input":{"command":"git status"}}' > "$entrada"
+time bash ~/.claude/hooks/block-dangerous-commands.sh < "$entrada"
 ```
 
 Si añades un hook propio, mídelo igual antes de dejarlo: un hook en el camino caliente (todas las herramientas, todos los prompts) se paga cientos de veces por sesión. El kit lo dice de su propia cadena en [`05-security.md`](../05-security.md#los-guards-de-bash-y-git).

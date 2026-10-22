@@ -38,20 +38,20 @@ ck "$([ "$(scan "$tmp/skills-copy")" -ge 1 ] && echo rojo || echo verde)" "rojo"
 
 # install.sh en un HOME temporal instala las skills (recursivo)
 export CLAUDE_HOME="$tmp/dot"
-bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/fakehome" bash "$KIT/install.sh" >/dev/null 2>&1
 ck "$(cd "$S" && find . -type f | sort | md5sum)" "$(cd "$CLAUDE_HOME/skills" && find . -type f | sort | md5sum)" "install.sh instala todos los ficheros de las skills"
 ck "$([ -f "$CLAUDE_HOME/skills/grilling/agents/openai.yaml" ] && echo y || echo n)" "y" "install.sh copia subdirectorios (grilling/agents)"
 ck "$(cmp -s "$S/deep-change/SKILL.md" "$CLAUDE_HOME/skills/deep-change/SKILL.md" && echo y || echo n)" "y" "contenido instalado identico"
 
 # no destructivo: una skill modificada se respalda al reinstalar
 echo "mia" >> "$CLAUDE_HOME/skills/retro/SKILL.md"
-bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/fakehome" bash "$KIT/install.sh" >/dev/null 2>&1
 ck "$(find "$CLAUDE_HOME/backups" -path '*skills/retro/SKILL.md' 2>/dev/null | wc -l | tr -d ' ')" "1" "reinstalar respalda la skill modificada"
 
 # Una skill enlazada desde otro repo no se pisa: cp -p escribiria a traves del symlink
 echo "ajena" > "$tmp/ajena.md"
 ln -sf "$tmp/ajena.md" "$CLAUDE_HOME/skills/grilling/SKILL.md"
-bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/fakehome" bash "$KIT/install.sh" >/dev/null 2>&1
 ck "$(cat "$tmp/ajena.md")" "ajena" "install.sh no escribe a traves de un symlink de skill"
 ck "$([ -L "$CLAUDE_HOME/skills/grilling/SKILL.md" ] && echo y || echo n)" "y" "el symlink de la skill sigue en su sitio"
 

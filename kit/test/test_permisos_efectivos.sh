@@ -160,4 +160,20 @@ fi
 
 ck "$([ "$falsified" -eq 3 ] && echo y || echo n)" "y" "los 3 checks demuestran deteccion real sobre casos fabricados (detectados: $falsified de 3) -- si fuera 0, la suite seria decorativa"
 
+# --- Kit fail-closed sin politica gestionada ---
+# Sin /etc/claude-code el kit era el unico techo: no apagaba el modo que se salta los
+# permisos ni denegaba la lectura de claves y credenciales. Sintaxis de
+# code.claude.com/docs/en/permissions: `~/` desde el home, `//ruta` absoluto; una deny de
+# usuario vale en cualquier proyecto solo con `//**/...`.
+ck "$(jq -r '.permissions.disableBypassPermissionsMode // "-"' "$KIT_SETTINGS")" "disable" "kit/claude/settings.json desactiva el modo bypassPermissions"
+# L3: tambien .gnupg y .netrc (lectura), y la ESCRITURA de todo lo anterior (la politica gestionada prohibe
+# editarlos, y sin politica el kit era el unico techo). Un deny no admite excepciones: Read(//**/.env*) cubre
+# tambien .env.example y secrets.* cubre secrets.py -- falso positivo conocido y declarado, no se rodea con allow.
+for regla in 'Read(~/.ssh/**)' 'Read(~/.aws/**)' 'Read(//**/.env*)' 'Read(//**/secrets.*)' \
+             'Read(~/.gnupg/**)' 'Read(~/.netrc)' \
+             'Edit(~/.ssh/**)' 'Edit(~/.aws/**)' 'Edit(~/.gnupg/**)' 'Edit(~/.netrc)' \
+             'Edit(//**/.env*)' 'Edit(//**/secrets.*)'; do
+  ck "$(jq -r --arg r "$regla" '(.permissions.deny // []) | index($r) != null' "$KIT_SETTINGS")" "true" "el kit deniega $regla"
+done
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

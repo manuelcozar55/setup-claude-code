@@ -5,7 +5,7 @@
 # Uso: test_nucleo_nudge.sh [ruta al hook]. Sin red; HOME falso en un mktemp que se borra.
 set -u
 H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-nudge.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PROJECT_DIR CLAUDE_CODE_AUTO_COMPACT_WINDOW
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CODE_AUTO_COMPACT_WINDOW
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
 R=$T/repo; mkdir -p "$R/.claude/estado" "$HOME"; git -C "$R" init -q
@@ -22,6 +22,7 @@ OUT=$(run s1 p60); C=$(ctx <<<"$OUT")
 ok "60 % + nucleo viejo → nudge" "$(jq -r '.hookSpecificOutput.hookEventName' <<<"$OUT")" PostToolUse
 ok "nudge: cita la banda, la edad y la ruta exacta" "$(command grep -c "CONTEXTO 60 % del airbag. nucleo.md lleva 30 min .* en $NUC\." <<<"$C")" 1
 ok "nudge ≤ 400 chars" "$([ "${#C}" -le 400 ] && echo si)" si
+ok "nucleo dentro del tope: sin aviso de tamaño" "$(command grep -c 'Ocupa .* B (tope' <<<"$C")" 0
 ok "misma banda dos veces → una sola" "$(run s1 p60)" ""
 ok "banda siguiente (70 %) sí avisa" "$(run s1 p72 | ctx | command grep -c '72 % del airbag')" 1
 ok "70 %: fin de fase es parada válida" "$(run s6 p72 | ctx | command grep -c 'Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno\.')" 1
@@ -40,6 +41,12 @@ run s5 p60 >/dev/null; run s5 p20 >/dev/null
 ok "bajo el 50 % se rearma: 60 % avisa otra vez" "$(run s5 p60 | ctx | command grep -c '60 % del airbag')" 1
 touch "$NUC"
 ok "60 % + nucleo fresco → vacío" "$(run s3 p60)" ""
+# Editado a mano por encima del tope: al retomar se omitirían secciones enteras; el aviso lo dice con su tamaño.
+# 6 000 B caben en 6 500, pero no junto al bloque de agentes: el tope es el que usa handoff (6 500 − 800).
+head -c 6000 /dev/zero | tr '\0' x >"$NUC"; touch -d '-30 minutes' "$NUC"
+C=$(run s40 p60 | ctx)
+ok "nucleo por encima del tope: el aviso da tamaño y tope" "$(command grep -c 'Ocupa 6000 B (tope 5700): pasa lo cerrado a diario.md\.' <<<"$C")" 1
+ok "con el aviso de tope sigue ≤ 400 chars" "$([ "${#C}" -le 400 ] && echo si)" si
 rm -f "$NUC"
 ok "sin nucleo → pide crearlo con la plantilla" "$(run s4 p60 | ctx | command grep -c "créalo en $NUC con la forma de .*templates/nucleo.md")" 1
 ok "session_id con barras → nada (va a un nombre de fichero)" "$(run '../x' p60)" ""
@@ -92,5 +99,12 @@ runf s21 p60 >/dev/null
 ok "60 % y nucleo viejo: sí lo lanza (control de la sonda)" "$([ -e "$T/git-lanzado" ] && echo lanzado || echo no)" lanzado
 rm -f "$T/git-lanzado"; runf s21 p60 >/dev/null
 ok "banda ya avisada: no lanza git" "$([ -e "$T/git-lanzado" ] && echo lanzado || echo no)" no
+
+# --- W2: sin handoff en el PATH el texto del 70 % lleva la ruta del kit, y esa ruta existe ---
+mkdir -p "$HOME/.claude/bin"; : >"$HOME/.claude/bin/handoff"; chmod +x "$HOME/.claude/bin/handoff"
+touch -d '-30 minutes' "$NUC"
+WC=$(PATH=/usr/bin:/bin run s40 p72 | ctx); WP=$(sed -n 's/.*`\([^ ]*\) --desde.*/\1/p' <<<"$WC")
+ok "W2 nudge: sin handoff en el PATH enseña la ruta absoluta y existe" "$WP,$([ -x "$WP" ] && echo si)" "$HOME/.claude/bin/handoff,si"
+ok "W2 nudge 70 % con la ruta ≤ 600 chars" "$([ "${#WC}" -le 600 ] && echo si)" si
 
 exit $FAIL

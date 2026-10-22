@@ -1,21 +1,21 @@
 # 08 · Plugins, MCP y skills: la pila completa
 
-La base que instala este kit (`CLAUDE.md`, `settings.json`, hooks, agentes, Sentinel) es el esqueleto: lo que garantiza guardarraíles deterministas y tiering de modelo desde el primer arranque. Para usar Claude Code "como el autor" hace falta además la pila que rodea ese esqueleto: los plugins declarados en `settings.json`, los servidores MCP que le dan capacidades externas, las skills adicionales que invoca el `CLAUDE.md`, y unos cuantos prerrequisitos de sistema. Mismo principio que en el resto del kit: **terceros se documentan, no se redistribuyen.**
+La base incluye aspecto, continuidad de contexto, guards, agentes y skills del método.
+La [matriz de instalación](10-onboarding.md#0--qué-vas-a-levantar) distingue lo instalado,
+lo cargado por `scripts/scc.sh` y los extras. Esta página documenta las opciones externas;
+no hace falta activarlas todas para usar el kit. **Los terceros se documentan, no se redistribuyen.**
 
 ## Plugins de Claude Code
 
-`claude/settings.json` declara seis plugins en `enabledPlugins`, tres del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual); `esenciales` viene del marketplace de este repo, que da de alta `kit/install-plugins.sh` (abajo); los otros dos vienen de marketplaces externos que el propio `settings.json` del kit ya declara en `extraKnownMarketplaces`, así que Claude Code los reconoce sin que tengas que darlos de alta a mano.
+`claude/settings.json` declara tres plugins en `enabledPlugins`: dos del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual) y `esenciales`, que viene del marketplace de este repo. El `settings.json` declara ese marketplace (`setup-claude-code`, GitHub `manuelcozar55/setup-claude-code`) en `extraKnownMarketplaces`; `kit/install-plugins.sh` (abajo) lo da de alta también por línea de comandos.
 
 | Plugin | Para qué | Cómo |
 |---|---|---|
 | `esenciales@setup-claude-code` | el método y sus skills (ver `04-superpowers.md`) | marketplace de este repo, que registra `kit/install-plugins.sh --apply`; luego `/plugin` |
 | `code-review@claude-plugins-official` | revisión de PRs | `/plugin` |
 | `skill-creator@claude-plugins-official` | crear y editar skills | `/plugin` |
-| `frontend-design@claude-plugins-official` | diseño de interfaces | `/plugin` |
-| `codex@openai-codex` | integración con Codex | marketplace externo (GitHub `openai/codex-plugin-cc`), ya declarado en `extraKnownMarketplaces`; activa con `/plugin` |
-| `understand-anything@understand-anything` | grafos de conocimiento del código; aporta las skills `understand-*` | marketplace externo (GitHub `Lum1104/Understand-Anything`), ya declarado en `extraKnownMarketplaces`; activa con `/plugin` |
 
-Los tres oficiales se activan (o reinstalan si hiciera falta) con el comando interactivo `/plugin` dentro de una sesión de Claude Code. Los dos últimos, al venir de marketplaces externos ya declarados en el `settings.json` que instala este kit, se activan exactamente igual: `/plugin` los lista porque el marketplace ya es conocido, no hace falta registrar nada a mano. Verifica el estado (instalados, activos, disponibles) con:
+Los dos oficiales se activan (o reinstalan si hiciera falta) con el comando interactivo `/plugin` dentro de una sesión de Claude Code. Verifica el estado (instalados, activos, disponibles) con:
 
 ```bash
 /plugin
@@ -33,7 +33,7 @@ bash kit/install-plugins.sh --apply --with-optional  # + impeccable y find-skill
 
 | Plugin / skill | Origen · licencia | Para qué | Riesgo que asumes |
 |---|---|---|---|
-| `frontend-design` | `claude-plugins-official` · Apache-2.0 | diseño de interfaces | ninguno nuevo: ya está en `enabledPlugins` |
+| `frontend-design` | `claude-plugins-official` · Apache-2.0 | diseño de interfaces | ninguno nuevo; añade contexto a cada sesión, por eso no viene activado en `settings.json` |
 | `esenciales` | este repo (`setup-claude-code`) · MIT, derivado de superpowers | las seis skills del método (ver `04-superpowers.md`) | ninguno nuevo: solo skills, sin hooks; el código está en `kit/plugins/esenciales/` |
 | `ponytail` | `DietrichGebert/ponytail` · MIT | modo «senior perezoso»: el cambio mínimo completo, respuestas cortas | instala hooks globales (`SessionStart`, `UserPromptSubmit`, `SubagentStart`) que cambian el estilo de todas las sesiones; se apaga con «stop ponytail» |
 | `cockpit` | este repo (`setup-claude-code`) · MIT | `/handoff`, Agent Dock y modo simple (ver `11-cockpit.md`) | hooks de sesión propios; el código está en `kit/mods/cockpit/` |
@@ -44,6 +44,31 @@ bash kit/install-plugins.sh --apply --with-optional  # + impeccable y find-skill
 Con `--apply` das tu consentimiento: `--yes` aprueba sin preguntar los comandos que declare cada marketplace. Límite honesto: `claude plugin install` no fija versión (instala la cabeza del marketplace y `plugin update` la mueve). El commit queda registrado en `~/.claude/plugins/installed_plugins.json`. Si necesitas reproducibilidad estricta, clona el repo al commit que quieras y regístralo con `claude plugin marketplace add <ruta-local>`.
 
 Descartados: las skills `docx`/`pdf`/`xlsx`/`pptx` de Anthropic (licencia propietaria, no redistribuibles) y `webapp-testing` (duplica `agent-browser`).
+
+## Extras del perfil de referencia
+
+Además de cockpit y esenciales, la configuración de referencia revisada el 21 de octubre
+de 2026 tenía activos los siguientes plugins. No se activan por defecto para todos los
+compañeros: sus cuentas y necesidades pueden ser distintas.
+
+| Plugin | Marketplace | Origen declarado | Requisito individual |
+|---|---|---|---|
+| `notion-workspace-plugin` | `notion-plugin-marketplace` | `makenotion/claude-code-notion-plugin` | Autorizar su propia cuenta y el espacio de trabajo que corresponda |
+| `ponytail` | `ponytail` | `DietrichGebert/ponytail` | Revisar sus hooks de estilo; ya está contemplado en `install-plugins.sh` |
+| `codex` | `openai-codex` | `openai/codex-plugin-cc` | Configurar su propio acceso a Codex y comprobar disponibilidad |
+
+Para añadir uno, registra su marketplace con `claude plugin marketplace add <origen>`
+y después usa `claude plugin install <plugin>@<marketplace>`, sustituyendo ambos campos.
+Comprueba `/plugin` y las
+instrucciones del proveedor. No copies el directorio de plugins ni las credenciales de
+otra persona. Estos extras no se probaron autenticados en cuentas de compañeros.
+
+La referencia también personaliza búsqueda de herramientas, límites de salida y modelo
+de subagente. Se conservan al actualizar, pero no se imponen a una instalación limpia:
+subir límites consume contexto y un identificador de modelo puede no existir en otra cuenta.
+Comprueba `/status`, `/context` y el resultado de tareas representativas antes de copiarlos.
+El canal de actualización también es individual: el kit propone `latest` y conserva
+`stable` si ya lo tenías; para fijar la reproducibilidad conserva esta entrega y su manifiesto.
 
 ## Servidores MCP
 
@@ -97,7 +122,10 @@ Cómo se añaden: `claude mcp add ...`. La sintaxis exacta (transporte, comando 
 
 **Marketplaces privados (GitLab autoalojado, VPN).** Un marketplace de plugins de tu organización se da de alta con su URL SSH — `claude plugin marketplace add git@tu-gitlab:grupo/marketplace.git` — así que necesita una clave SSH dada de alta y la VPN levantada. El proceso completo, con los comandos y el diagnóstico de los fallos que dan todos el mismo mensaje, está en [`09-ssh-y-gitlab-privado.md`](09-ssh-y-gitlab-privado.md). Si la VPN está caída, ese marketplace falla al refrescarse y el resto de Claude Code sigue funcionando igual.
 
-[`rtk`](https://github.com/rtk-ai/rtk) filtra la salida de los comandos de shell. El kit no lo cablea: el hook `rtk hook claude` que este `settings.json` traía se retiró, y de `rtk` solo queda `Bash(rtk gain)` en `permissions.allow`. (Headroom, el proxy de compresión con el que se confundía, se retiró en 2026-10: [`archive/03-headroom.md`](archive/03-headroom.md).)
+[`rtk`](https://github.com/rtk-ai/rtk) filtra la salida de los comandos de shell.
+El kit no lo cablea ni añade permisos específicos para él: se invoca solo cuando lo
+necesites. Headroom, el proxy de compresión con el que se confundía, se retiró en
+2026-10: [`archive/03-headroom.md`](archive/03-headroom.md).
 
 Verifica los servidores dados de alta con:
 
@@ -107,16 +135,19 @@ claude mcp list
 
 ## Skills adicionales
 
-El `CLAUDE.md` que instala este kit invoca varias skills que viven en `$HOME/.claude/skills/` y que el kit no redistribuye, mismo principio que con superpowers: se documentan aquí, no se empaquetan en `kit/`.
+`deep-change` y las otras skills del método ya se copian con `install.sh`.
+Las siguientes herramientas amplían esa base; su presencia se comprueba por separado.
 
 | Skill | Trigger | Para qué |
 |---|---|---|
 | `graphify` | `/graphify` | cualquier input a grafo de conocimiento |
-| `deep-change` | `/deep-change` | el bucle operativo brainstorm → plan → execute → verify para cambios sustanciales |
+| `deep-change` (incluida) | `/deep-change` | el bucle operativo brainstorm → plan → execute → verify para cambios sustanciales |
 | `ultrawork` | `/ultrawork` | modo de máxima potencia: todos los agentes, en paralelo, sin paradas |
 | `agent-browser` | se carga antes de cualquier tarea de navegador | estándar de automatización de navegador (ya cubierta en `04-superpowers.md`) |
 
-Instálalas desde su origen o adáptalas a tu propio setup. Nota honesta: el `CLAUDE.md` las invoca como si estuvieran siempre disponibles, pero son herramientas, no leyes de hierro (esas son las tres de `04-superpowers.md`): si una de estas skills no está instalada en tu máquina, el setup degrada con elegancia, no se rompe.
+Instala las externas desde su origen o adáptalas a tu entorno. La disponibilidad de
+`ultrawork` depende del agente que utilices: no equivale a instalar el kit de Claude Code.
+Una skill externa ausente no desactiva los guards ni el estado del kit.
 
 Verifica qué tienes instalado con:
 
@@ -131,7 +162,7 @@ Todos estos van en `02-install.md`; recordatorio de la pila que usa el setup com
 | Herramienta | Para qué | Verifica con |
 |---|---|---|
 | `uv` | gestor de paquetes Python; el kit lo usa vía `uv tool` (declarado en `permissions.allow` de `settings.json`) | `uv --version` |
-| venv de tools (`$HOME/.venvs/tools`) | ejecuta Sentinel y `write-guard.py` con un Python propio, no el del sistema (ver `02-install.md`, paso 4) | `test -x $HOME/.venvs/tools/bin/python3` |
+| venv de tools (`$HOME/.venvs/tools`) | añade herramientas Python; los hooks prefieren su intérprete y usan el del sistema cuando no está (ver `02-install.md`, paso 4) | `test -x $HOME/.venvs/tools/bin/python3` |
 | `rtk` | filtra la salida de los comandos de shell antes de que entre en contexto; el kit no lo cablea, se invoca a mano (`rtk proxy <comando>`) | `rtk --version` |
 | `pnpm` | instala `agent-browser` y otros paquetes globales de Node | `pnpm --version` |
 

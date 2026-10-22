@@ -37,38 +37,22 @@ check "settings.json es JSON valido" \
 check "settings.json declara hooks" \
   'python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get(\"hooks\") else 1)" "$CLAUDE_HOME/settings.json"'
 
-# Ficheros de config de nivel raiz
-for f in CLAUDE.md settings.json sentinel-allowlist.json .gitleaks.toml; do
-  check "$f instalado" '[ -f "$CLAUDE_HOME/$f" ]'
-done
-
-# Agentes: todo lo que kit/claude/agents/ trae debe estar instalado
-for f in "$KIT"/claude/agents/*; do
-  [ -e "$f" ] || continue
-  b="$(basename "$f")"
-  check "agente $b instalado" '[ -f "$CLAUDE_HOME/agents/$b" ]'
-done
-
-# Hooks: todo lo que kit/claude/hooks/ trae debe estar instalado y, si es
-# .sh, ser ejecutable
-for f in "$KIT"/claude/hooks/*; do
-  [ -f "$f" ] || continue
-  b="$(basename "$f")"
-  check "hook $b instalado" '[ -f "$CLAUDE_HOME/hooks/$b" ]'
-  case "$b" in
-    *.sh) check "hook $b ejecutable" '[ -x "$CLAUDE_HOME/hooks/$b" ]' ;;
-  esac
-done
-
-# Hook de git (pre-commit, Capa 2 de secretos)
-check "hooks/git/pre-commit instalado" '[ -f "$CLAUDE_HOME/hooks/git/pre-commit" ]'
-check "hooks/git/pre-commit ejecutable" '[ -x "$CLAUDE_HOME/hooks/git/pre-commit" ]'
-
-# Sentinel
-for f in "$KIT"/sentinel/*; do
-  [ -e "$f" ] || continue
-  b="$(basename "$f")"
-  check "sentinel/$b instalado" '[ -e "$CLAUDE_HOME/sentinel/$b" ]'
+# Inventario completo: cada fichero que install.sh despliega desde kit/claude,
+# incluidas skills recursivas, y Sentinel. -f acepta symlinks que resuelven a un
+# fichero: el instalador los preserva para permitir componentes proyectados.
+# __pycache__ contiene resultados de compilacion, no componentes del kit.
+for tree in claude sentinel; do
+  while IFS= read -r -d '' src; do
+    rel="${src#"$KIT/$tree/"}"
+    case "$tree" in
+      claude) dst="$CLAUDE_HOME/$rel"; nombre="$rel" ;;
+      sentinel) dst="$CLAUDE_HOME/sentinel/$rel"; nombre="sentinel/$rel" ;;
+    esac
+    check "$nombre instalado" '[ -f "$dst" ]'
+    if [ -x "$src" ]; then
+      check "$nombre ejecutable" '[ -x "$dst" ]'
+    fi
+  done < <(find "$KIT/$tree" -type d -name __pycache__ -prune -o -type f -print0)
 done
 
 echo "=================================="

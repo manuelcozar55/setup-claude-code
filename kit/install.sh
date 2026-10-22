@@ -5,6 +5,26 @@
 #      bash install.sh --enable-secrets-layer2   (activa la Capa 2 de secretos
 #      en el repo git DESDE el que se invoca; opt-in, por repositorio)
 set -euo pipefail
+usage() {
+  printf '%s\n' 'Uso: bash install.sh [--apply | --plan | --enable-secrets-layer2 | --help | -h]' \
+    '  sin argumentos: instala el kit; muestra un plan si CLAUDE_HOME es un repo con remoto.' \
+    '  --apply: aplica la instalacion.' \
+    '  --plan: prepara el plan sin modificar CLAUDE_HOME.' \
+    '  --enable-secrets-layer2: activa la capa 2 en el repo actual.' \
+    '  --help, -h: muestra esta ayuda sin instalar.'
+}
+if (( $# > 1 )); then
+  printf '%s\n' 'Error: se admite como maximo una opcion.' >&2
+  usage >&2
+  exit 64
+fi
+if (( $# == 1 )); then
+  case $1 in
+    --help|-h) usage; exit 0 ;;
+    --apply|--plan|--enable-secrets-layer2) ;;
+    *) printf 'Error: argumento no reconocido: %s\n' "$1" >&2; usage >&2; exit 64 ;;
+  esac
+fi
 KIT="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 GITLEAKS_VERSION="8.30.1"
@@ -125,7 +145,12 @@ install_file() {  # src dst
 # settings.json NO se reemplaza si ya existe: se fusiona. Regla, y es deliberada:
 #   - `hooks`      -> gana el KIT. La cadena de guards es lo que el kit aporta.
 #   - `permissions`-> UNION. Nunca se pierde un deny (seguridad) ni un allow (tu trabajo).
+#     Salvo `permissions.disableBypassPermissionsMode`, que queda en "disable" siempre: con la
+#     union ganaba tu valor, y un "" previo dejaba el modo sin permisos al alcance.
 #   - `env`        -> tus claves ganan, y las nuevas del kit se anaden.
+#   - `extraKnownMarketplaces` -> en las entradas del kit gana el KIT: su ref sigue a VERSION. Con la
+#     tuya vieja, `marketplace add <repo>@v<VERSION>` falla y el cockpit sigue a main, por delante de
+#     ~/.claude/bin. Tus otros marketplaces, intactos.
 #   - todo lo demas (model, statusLine, theme, enabledPlugins...) -> lo tuyo, intacto. La
 #     statusLine y el tema oscuro del kit solo llegan a quien no tenia los suyos.
 # Por que existe esto: reemplazar el fichero entero borraba en silencio el ajuste personal.
@@ -160,11 +185,17 @@ install_settings() {  # src dst
       | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
           | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
           | .deny  = (($kit.permissions.deny  // []) + (($old.permissions.deny  // []) - ($kit.permissions.deny  // []))))
+      | .permissions.disableBypassPermissionsMode = "disable"
+      | if $kit.extraKnownMarketplaces then
+          .extraKnownMarketplaces = (($old.extraKnownMarketplaces // {}) + $kit.extraKnownMarketplaces) else . end
     ' "$src" "$real" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
     if ! cmp -s "$tmp" "$real"; then
       mkdir -p "$(dirname "$BK/$name")"
       cp -p "$real" "$BK/$name"
       echo "   backup: $name (fusionado: hooks del kit, permisos unidos, tu env y tu model intactos)"
+      if jq -e '.permissions.disableBypassPermissionsMode | . != null and . != "disable"' "$real" >/dev/null 2>&1; then
+        echo "   permissions.disableBypassPermissionsMode: tu valor se sustituye por \"disable\" (gana el kit)"
+      fi
       chmod --reference="$real" "$tmp"
       mv "$tmp" "$real"
     fi
@@ -175,14 +206,39 @@ install_settings() {  # src dst
   fi
 }
 
+# Tres claves tuyas dejan al kit sin efecto, y la fusion las respeta porque son tuyas: se avisa.
+# disableAllHooks apaga todos los hooks, guards incluidos; defaultMode bypassPermissions pide el
+# modo sin permisos, que el "disable" del kit deja inerte; env.CC_ALLOW_DESTRUCTIVE=1 apaga destructive-guard.sh. Se mira el fichero que queda: al
+# aplicar, el ya fusionado; en el plan, el instalado.
+avisos_settings() {  # settings.json
+  local f="$1"
+  if [ ! -f "$f" ] || ! jq empty "$f" 2>/dev/null; then return 0; fi
+  if jq -e '.disableAllHooks == true' "$f" >/dev/null; then
+    echo "==> AVISO: $f tiene disableAllHooks: true: no corre ningun hook, tampoco los guards del kit."
+    echo "    Quita la clave para tener la proteccion del kit. doctor.sh lo marca como FAIL."
+  fi
+  # CC_ALLOW_DESTRUCTIVE=1 apaga destructive-guard.sh. La fusion respeta tu env, asi que un 1 previo sobrevive.
+  if jq -e '(.env.CC_ALLOW_DESTRUCTIVE // "" | tostring) == "1"' "$f" >/dev/null; then
+    echo "==> AVISO: $f tiene env.CC_ALLOW_DESTRUCTIVE=1: destructive-guard.sh queda apagado."
+    echo "    Quita la clave para tener esa proteccion del kit. doctor.sh lo marca como WARN."
+  fi
+  if jq -e '.permissions.defaultMode == "bypassPermissions"' "$f" >/dev/null; then
+    echo "==> AVISO: $f tiene permissions.defaultMode: bypassPermissions. Con disableBypassPermissionsMode"
+    echo "    en \"disable\" (lo fija el kit al instalar) queda inerte: quitalo o elige otro modo."
+  fi
+}
+
 # CLAUDE.md y AGENTS.md son instrucciones que escribes tu: no se pisan si ya las has tocado. Se
 # deja la del kit al lado, como CLAUDE.kit.md o AGENTS.kit.md, y se avisa. Reemplazarla borraba
 # trabajo irrecuperable por fusion automatica -- una prosa no se puede fusionar como un JSON.
+CLAUDE_MD_PREVIO=0
 install_claude_md() {  # src dst
   local src="$1" dst="$2"
   if [ ! -f "$dst" ]; then cp -p "$src" "$dst"; return; fi
   if cmp -s "$src" "$dst"; then return; fi
   local n; n="$(basename "$dst" .md)"
+  # Un CLAUDE.md propio sin el import deja AGENTS.md instalado pero sin que nadie lo lea.
+  if [ "$n" = "CLAUDE" ] && ! command grep -qE '^[[:space:]]*@[^[:space:]]*AGENTS\.md' "$dst"; then CLAUDE_MD_PREVIO=1; fi
   cp -p "$src" "$(dirname "$dst")/$n.kit.md"
   echo "   $n.md ya existe y la has modificado: NO se toca."
   echo "   La version del kit queda en $n.kit.md para que compares y copies lo que quieras."
@@ -211,6 +267,71 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   mkdir -p "$base/hooks/git"
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
   chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit "$base"/statusline-command.sh "$base"/bin/* 2>/dev/null || true
+}
+
+# handoff y oraculo se llaman a pelo en las instrucciones y los hooks: sin estar en el PATH, «command not
+# found». Se enlazan en ~/.local/bin SOLO si el hueco esta libre o ya es un enlace nuestro (a $CLAUDE_HOME/bin):
+# un fichero o un enlace ajeno es de la persona y no se pisa.
+# Y solo si CLAUDE_HOME es ~/.claude: una instalacion de prueba (tests, CI, CLAUDE_HOME=/ruta/alternativa)
+# enlazaba en el ~/.local/bin real y, al borrar su ruta, dejaba enlaces colgantes que ya no se reparaban
+# (contaban como ajenos). Con otro CLAUDE_HOME se imprimen las ordenes y no se escribe.
+LOCAL_BIN="$HOME/.local/bin"
+CLIS="handoff oraculo"
+clis_enlazables() { [ "$(realpath -m -- "$CLAUDE_HOME")" = "$(realpath -m -- "$HOME/.claude")" ]; }
+cli_estado() {  # nombre -> libre | nuestro | ajeno
+  local dst="$LOCAL_BIN/$1" t
+  if [ -L "$dst" ]; then
+    # Ruta canonica y no prefijo de texto: bin/../../x empezaba por "$CLAUDE_HOME/bin/" y contaba como nuestro.
+    # realpath -m resuelve el enlace aunque este colgante. Nuestro = apunta exactamente a nuestro CLI, o es un
+    # colgante hacia nuestro bin/ (un CLI retirado: se repara). Un fichero EXISTENTE distinto de nuestro bin/
+    # (un wrapper de la persona) es ajeno y no se pisa.
+    t="$(realpath -m -- "$dst")"
+    if [ "$t" = "$(realpath -m -- "$CLAUDE_HOME/bin/$1")" ]; then echo nuestro
+    elif [ ! -e "$t" ] && [ "$(dirname -- "$t")" = "$(realpath -m -- "$CLAUDE_HOME/bin")" ]; then echo nuestro
+    else echo ajeno
+    fi
+  elif [ -e "$dst" ]; then echo ajeno
+  else echo libre
+  fi
+}
+enlazar_clis() {
+  local c st
+  LINK_AJENOS=""
+  if ! clis_enlazables; then
+    echo "   CLAUDE_HOME ($CLAUDE_HOME) no es $HOME/.claude: no se toca $LOCAL_BIN. Si quieres los enlaces:"
+    for c in $CLIS; do echo "     ln -s \"$CLAUDE_HOME/bin/$c\" \"$LOCAL_BIN/$c\""; done
+    return 0
+  fi
+  for c in $CLIS; do
+    st="$(cli_estado "$c")"
+    # Sin forzar el enlace (ni -f): si entre la comprobacion y el ln aparece algo, ln falla y se trata como ajeno en vez de pisarlo.
+    # Un enlace nuestro con otra grafia o colgante se retira (solo es un enlace) y se recrea con la ruta exacta.
+    if [ "$st" = nuestro ] && [ "$(readlink "$LOCAL_BIN/$c")" != "$CLAUDE_HOME/bin/$c" ]; then
+      rm -f -- "${LOCAL_BIN:?}/$c"; st=libre
+    fi
+    if [ "$st" = libre ]; then
+      mkdir -p "$LOCAL_BIN"
+      ln -s "$CLAUDE_HOME/bin/$c" "$LOCAL_BIN/$c" 2>/dev/null || st=ajeno
+    fi
+    if [ "$st" = ajeno ]; then
+      LINK_AJENOS="$LINK_AJENOS $c"
+      echo "   AVISO: $LOCAL_BIN/$c ya existe y no es un enlace a $CLAUDE_HOME/bin/$c: no se toca." >&2
+    else
+      echo "   enlace: $LOCAL_BIN/$c -> $CLAUDE_HOME/bin/$c"
+    fi
+  done
+}
+aviso_path() {
+  case ":$PATH:" in *":$LOCAL_BIN:"*) return 0 ;; esac
+  # Con CLAUDE_HOME no estandar no se enlazo nada: decir que "no se encontraran" suena a que si estan enlazados.
+  if ! clis_enlazables; then
+    echo "==> AVISO: $LOCAL_BIN no esta en tu PATH. No se enlazo nada: si creas los enlaces de arriba, tendras que"
+    echo "    añadir esa carpeta al PATH para usarlos por su nombre; sin enlaces, usa la ruta $CLAUDE_HOME/bin/<nombre>."
+    return 0
+  fi
+  echo "==> AVISO: $LOCAL_BIN no esta en tu PATH, asi que handoff y oraculo no se encontraran."
+  echo "    Abre una terminal nueva (Debian/Ubuntu lo añade al iniciar sesion si la carpeta ya existe)"
+  echo "    o añade a tu ~/.bashrc:  export PATH=\"\$HOME/.local/bin:\$PATH\""
 }
 
 run_diff_first() {
@@ -276,6 +397,7 @@ run_diff_first() {
     echo "----- diff: $rel -----"
     diff -u "$CLAUDE_HOME/$rel" "$out/$rel" || true
   done
+  avisos_settings "$CLAUDE_HOME/settings.json"
 
   if is_git_repo_with_remote; then
     echo
@@ -284,6 +406,15 @@ run_diff_first() {
   else
     echo
     echo "==> --plan solo muestra lo que se instalaria; $CLAUDE_HOME no se ha tocado. Que hacer:"
+  fi
+  echo
+  if clis_enlazables; then
+    echo "==> En modo aplicar (--apply) tambien se enlazarian handoff y oraculo en $LOCAL_BIN (solo si el hueco"
+    echo "    esta libre o ya es un enlace a $CLAUDE_HOME/bin). Estado ahora:"
+    for c in $CLIS; do echo "      $c: $(cli_estado "$c")"; done
+  else
+    echo "==> En modo aplicar (--apply) no se tocaria $LOCAL_BIN: CLAUDE_HOME no es $HOME/.claude."
+    echo "    Se imprimirian las ordenes ln -s para que enlaces tu, si quieres."
   fi
   cat <<EOF
       1. Revisa arriba los ficheros nuevos/modificados (arbol completo en $out).
@@ -408,10 +539,24 @@ if [ "$gl_rc" -eq 2 ]; then
 fi
 
 echo "==> Config instalada. Terceros (ver docs/): agent-browser, venv de tools. Plugins: install-plugins.sh."
-echo "==> CLIs handoff y oraculo (valen en Claude Code, Codex y opencode). Enlázalos a tu PATH:"
-echo "       mkdir -p \"\$HOME/.local/bin\" && ln -sf \"$CLAUDE_HOME/bin/handoff\" \"\$HOME/.local/bin/handoff\" && ln -sf \"$CLAUDE_HOME/bin/oraculo\" \"\$HOME/.local/bin/oraculo\""
-echo "==> Rellena tus claves:  cp $KIT/.env.example \$HOME/.claude/.env  &&  editar"
+echo "==> CLIs handoff y oraculo (valen en Claude Code, Codex y opencode):"
+enlazar_clis
+if [ -f "$KIT/.env.example" ]; then
+  echo "==> Rellena tus claves:  cp $KIT/.env.example \$HOME/.claude/.env  &&  editar"
+else
+  echo "==> Plantilla de credenciales no incluida: los servicios externos son opcionales."
+fi
 echo "==> Capa 2 de secretos (gitleaks pre-commit) es opt-in, por repositorio. Actívala DONDE QUIERAS con:"
 echo "       bash $KIT/install.sh --enable-secrets-layer2   # ejecútalo dentro del repo a proteger"
 echo "    o el one-liner manual:  git config core.hooksPath \"$CLAUDE_HOME/hooks/git\""
 echo "==> Verifica:            bash $KIT/doctor.sh"
+if [ "$CLAUDE_MD_PREVIO" -eq 1 ]; then
+  echo
+  echo "==> AVISO: ya tenias un CLAUDE.md y no se ha tocado. Añade @AGENTS.md a tu CLAUDE.md;"
+  echo "    la plantilla del kit quedo en CLAUDE.kit.md. Sin eso, Claude no lee las instrucciones del kit."
+fi
+avisos_settings "$CLAUDE_HOME/settings.json"
+aviso_path
+if [ -n "${LINK_AJENOS:-}" ]; then
+  echo "==> AVISO: no se enlazo$LINK_AJENOS (ya existia en $LOCAL_BIN). Usa la ruta $CLAUDE_HOME/bin/<nombre> o resuelve el conflicto."
+fi

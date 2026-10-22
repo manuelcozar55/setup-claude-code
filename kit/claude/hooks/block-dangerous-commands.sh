@@ -131,27 +131,9 @@ DENY_RULES=(
   # --force-with-lease y --force-if-includes siguen cayendo por la regla de --force.
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--force'        "BLOCKED: git push --force"
   '\bgit\b[^;&|]*\bpush\b[^;&|]*\s-[A-Za-z]*f'  "BLOCKED: git push -f / -uf (force push)"
-  '\bgit\b[^;&|]*\bpush\b[^;&|]*\s\+[^ ]*:'     "BLOCKED: git push +refspec (forced refspec)"
+  # El refspec forzado (`+rama`) no va en esta tabla: se decide sobre tokens, mas abajo.
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--mirror'       "BLOCKED: git push --mirror (can delete remote refs)"
-  '\bgit\b[^;&|]*\bpush\b[^;&|]*--delete'       "BLOCKED: git push --delete (deletes a remote branch)"
-  # Las otras dos grafias del mismo borrado. Medido: contra rama protegida las tres caian, pero
-  # por branch-guard.sh --que bloquea por el NOMBRE de la rama--, no por esta regla; contra una
-  # rama de feature `--delete` se denegaba y `-d` / `:rama` pasaban. Cubrir una sola grafia de un
-  # borrado remoto es la misma trampa que dejaba pasar `git push -uf`: la proteccion se anuncia
-  # entera y solo existe para la forma larga.
-  #
-  # La valla NO es la de las reglas de force (`[^;&|]*`). Con ella, estos dos patrones daban
-  # falsos positivos medidos, porque `d` es una letra de flag mucho mas frecuente que `f`:
-  # `git log --grep push --since=$(date -d ...)`, `git branch push-notifications -d`,
-  # `git push origin main # nota :importante` y `git commit -m "fix push :bug" && git push`
-  # se denegaban todos. Un guard que grita en falso se acaba desactivando, asi que aqui la
-  # valla es una LISTA BLANCA de tokens de refspec: nada de `$`, parentesis, comillas ni `#`,
-  # que es donde vivian los cuatro. Y `push` tiene que ser token suelto (`push[[:space:]]`),
-  # porque `\bpush\b` emparejaba dentro de `push-notifications`. El precio, declarado: si el
-  # flag llega por sustitucion (`git push $FLAGS`) no se ve -- limite general de leer el
-  # literal en vez del argv, ya documentado en el kit.
-  '\bgit\b[-A-Za-z0-9_./ =+@]*\bpush[[:space:]]+([-A-Za-z0-9_./=+@]+[[:space:]]+)*-[A-Za-z]*d[A-Za-z]*\b' "BLOCKED: git push -d (deletes a remote branch)"
-  '\bgit\b[-A-Za-z0-9_./ =+@]*\bpush[[:space:]]+([-A-Za-z0-9_./=+@]+[[:space:]]+)*:[^[:space:]]' "BLOCKED: git push :rama (deletes a remote branch)"
+  # Los borrados remotos requieren tokens descomillados, no regex sobre el texto literal.
 
   # ── CREDENTIAL EXFILTRATION ────────────────────────────────────────────────
   '\b(printenv|env)\b.*\|\s*(curl|nc|wget)\b'   "BLOCKED: env vars leaked to network"
@@ -208,6 +190,84 @@ if [[ $COMMAND == *git* ]]; then
   sed -E "s/\"[^\"]*\"|'[^']*'//g" <<<"$COMMAND" \
     | LC_ALL=C grep -qiE '\bgit\b[^;&|]*\b(commit|push)\b[^;&|]*--no-verify|\bgit\b[^;&|]*\bcommit\b[^;&|]*\s-[a-z]*n' \
     && deny "BLOCKED: --no-verify salta los hooks de git; arregla el hook que falla"
+fi
+
+# Los refspecs forzados (`+rama`) y los tres borrados remotos (`--delete`, `-d`, `:rama`) se
+# deciden sobre operandos de `git push` descomillados. El argumento de `-o` y compania no cuenta.
+# Como en branch-guard.sh, la cadena de un `bash -c`, `eval`, `ssh`, `xargs`... se vuelve a
+# normalizar, hasta 3 niveles; lo que solo muestra texto no cuenta.
+# Cada cadena anidada cuesta un awk (~3 ms): sin tope, 12 KB de `x git;` eran 7 s de CPU, y un guard
+# que pasa de su timeout deja ejecutar el comando ENTERO. Solo se vuelve a normalizar la cadena que
+# puede llevar el refspec (push y +), y pasadas 16 se deniega: fallar cerrado.
+NEST=0
+push_refspec() {
+  local depth=$1 kind=$2 seg a i inner skip dd rc
+  local -a T segs
+  segs=("${CMDN_SEGS[@]}")
+  for seg in "${segs[@]}"; do
+    case $kind in
+      force) [[ $seg == *push* && $seg == *+* ]] || continue ;;
+      delete) [[ $seg == *push* && ( $seg == *-d* || $seg == *-[A-Za-z]*d* || $seg == *--delete* || $seg == *:* ) ]] || continue ;;
+    esac
+    cmdn_fields "$seg"
+    if [[ ${T[1]:-} != git ]]; then
+      case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') (( PIPED )) || continue ;; esac
+      for (( i = 2; i < ${#T[@]}; i++ )); do
+        a=${T[i]}
+        [[ $a == *git* ]] || continue
+        inner=$a
+        [[ $a == git || $a == */git ]] && printf -v inner '%s ' "${T[@]:i}"
+        case ${T[1]:-} in
+          python*|perl|ruby|node|php) cmdn_code_inner "$a" git && inner=$REPLY ;;
+          echo|printf) inner=${inner//\\n/$'\n'} ;;
+        esac
+        case $kind in
+          force) [[ $inner == *push* && $inner == *+* ]] || continue ;;
+          delete) [[ $inner == *push* && ( $inner == *-d* || $inner == *-[A-Za-z]*d* || $inner == *--delete* || $inner == *:* ) ]] || continue ;;
+        esac
+        (( depth < 3 && ++NEST <= 16 )) || return 2
+        cmdn_parse "$inner" || continue
+        push_refspec $(( depth + 1 )) "$kind"; rc=$?
+        (( rc == 1 )) || return $rc
+      done
+      continue
+    fi
+    [[ ${T[2]:-} == push ]] || continue
+    skip=0; dd=0
+    for a in "${T[@]:3}"; do
+      if (( skip )); then skip=0; continue; fi
+      if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
+      if (( ! dd )) && [[ $a == -* ]]; then
+        if [[ $kind == delete ]]; then
+          case $a in
+            --delete) return 0 ;;
+            --*) ;;
+            -*) [[ ${a#-} == *d* ]] && return 0 ;;
+          esac
+        fi
+        case $a in --repo|-o|--push-option|--receive-pack|--exec) skip=1 ;; esac
+        continue
+      fi
+      if [[ $kind == force ]]; then
+        [[ $a == +* || $a == '$'+* ]] && return 0
+      else
+        [[ $a == :?* || $a == '$':?* ]] && return 0
+      fi
+    done
+  done
+  return 1
+}
+PIPED=0; cmdn_pipes_to_shell && PIPED=1
+if [[ $COMMAND == *git* && $COMMAND == *push* && $COMMAND == *+* ]]; then
+  push_refspec 0 force; rc_refspec=$?
+  (( rc_refspec == 0 )) && deny "BLOCKED: git push +refspec (forced refspec)"
+  (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"
+fi
+NEST=0
+if [[ $COMMAND == *git* && $COMMAND == *push* && ( $COMMAND == *-d* || $COMMAND == *-[A-Za-z]*d* || $COMMAND == *--delete* || $COMMAND == *:* ) ]]; then
+  push_refspec 0 delete; rc_refspec=$?
+  (( rc_refspec == 0 )) && deny "BLOCKED: git push --delete/-d/:rama (deletes a remote branch)"
+  (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"
 fi
 
 # LC_ALL=C en los grep: con UTF-8 la union de patrones deja de ir por el automata y recorre el
