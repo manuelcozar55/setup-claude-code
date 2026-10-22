@@ -19,7 +19,7 @@ Expert security specialist focused on identifying and remediating vulnerabilitie
 ## Core Responsibilities
 
 1. **Vulnerability Detection** — OWASP Top 10 and common security issues
-2. **Secrets Detection** — Hardcoded API keys, passwords, tokens in source and config. Never open `.env*` or `secrets.*` (security rule in the kit's common rules, `kit/claude/AGENTS.md`): check by name and `.gitignore` coverage only, and report presence without quoting values
+2. **Secrets Detection** — Hardcoded API keys, passwords, tokens in source and config. Never open `.env*` or `secrets.*` (security rule in the kit's common rules, installed as `~/.claude/AGENTS.md`): check by name and `.gitignore` coverage only, and report presence without quoting values
 3. **Input Validation** — All user inputs properly sanitized
 4. **Authentication/Authorization** — Proper access controls verified
 5. **Dependency Security** — Vulnerable packages flagged
