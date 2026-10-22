@@ -1,6 +1,6 @@
 # SCC consolidada — instalación y transferencia
 
-La entrega corresponde a la versión 1.4.0 (`VERSION` y tag `v1.4.0`); `BUILD_ID` y el manifiesto SHA-256 que la acompaña identifican el paquete transferido. Incorpora cockpit 0.6.1: el lanzador local (`scripts/scc.sh`) carga exactamente el código incluido, y el marketplace fijado a `v1.4.0` instala esa misma versión.
+La entrega corresponde a la versión 1.4.1 (`VERSION` y tag `v1.4.1`); `BUILD_ID` y el manifiesto SHA-256 que la acompaña identifican el paquete transferido. Incorpora cockpit 0.6.1: el lanzador local (`scripts/scc.sh`) carga exactamente el código incluido, y el marketplace fijado a `v1.4.1` instala esa misma versión.
 
 ## Instalar y empezar
 

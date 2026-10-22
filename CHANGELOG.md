@@ -7,6 +7,10 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-22
+
+Auditoría de prompts aplicada a los agentes del kit (`planner` se retira: duplicaba a `strategist`) y suites de contexto que ya no dependen de lo largo que sea `TMPDIR`.
+
 ### Changed
 
 - Agentes: `strategist` devuelve sus preguntas de aclaración como salida (un subagente no puede hablar con la persona) y absorbe el paso de verificación de `planner`; `security-reviewer` remite a la regla de secretos de las reglas comunes y sustituye «alertar al dueño» por informar primero; `orchestrator` deja el tono «relentless» y descompone solo por independencia; `code-explorer` acota cuándo usarlo frente a `Explore`; `deep-worker` pierde una lista de prohibiciones repetida.
@@ -18,6 +22,10 @@ etiquetado.
 ### Upgrade
 
 - En instalaciones previas, `~/.claude/agents/planner.md` queda huérfano (el instalador no borra) y puede eliminarse; `doctor.sh` no lo echa en falta.
+
+### Fixed
+
+- Tests independientes de la longitud de `TMPDIR`: `test_nucleo_lib`, `test_nucleo_nudge` y `test_presupuesto_contexto` fallaban con un `TMPDIR` largo porque sus fixtures asumían un `mktemp` corto (el aviso del nudge cita la ruta y el índice tiene un tope de 2 500 caracteres). Defecto de las pruebas, no del producto.
 
 ## [1.4.0] - 2026-10-22
 
@@ -1979,7 +1987,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.1.0...v1.2.0
