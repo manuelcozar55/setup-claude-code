@@ -78,7 +78,7 @@ Ver `kit/evals/README.md` para el criterio de admisión de tareas y por qué usa
 | Cero secretos/PII en el kit | patrones de valor (`sk-`, `pplx-`, `AKIA`...), rutas absolutas de la cuenta root, emails reales | `bash scan-secrets.sh .` | `PASS`, exit 0 |
 | `settings.json` válido | `jq empty` sobre el fichero instalado | `jq empty "$CLAUDE_HOME/settings.json"` | sin error |
 | Hooks referenciados existen y son ejecutables | `jq` sobre `.hooks` de `settings.json` + `test -e`/`-x` | (lo hace `doctor.sh` internamente) | `PASS · hooks referenciados presentes y ejecutables` |
-| Agentes instalados | conteo de ficheros | `ls "$CLAUDE_HOME"/agents/*.md \| wc -l` | 8 |
+| Agentes instalados | conteo de ficheros | `ls "$CLAUDE_HOME"/agents/*.md \| wc -l` | 7 |
 | Venv de tools (opcional) | presencia del binario | `test -x "$HOME/.venvs/tools/bin/python3"` | `PASS` si está, `WARN` si no |
 | Intérprete para los hooks Python (opcional) | venv o `python3` del sistema | `command -v python3` | `PASS` si hay alguno; `WARN` si no (quedan en no-op, los guards de bash siguen) |
 | **Enrutado de la API** | si algo enruta a un proxy, ese proxy debe contestar | `jq` sobre `settings.json` **y** `settings.local.json` de `$PWD`, de `$CLAUDE_HOME` y de cada proyecto de `~/.claude.json` (deduplicados), más `$ANTHROPIC_BASE_URL` del entorno, + `GET /readyz` sobre la primera URL que aparezca (lo hace `doctor.sh` internamente) | `PASS` sin proxy o con proxy vivo; **`FAIL` si está enrutado y no contesta**, y `FAIL` si la URL se declara en más de un fichero |
