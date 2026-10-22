@@ -50,9 +50,3 @@ VERIFICATION: types ✓ | lint ✓ | tests ✓ (N passed)
 DECISIONS: [conservative choices made autonomously]
 NOTES: [anything the user should know]
 ```
-
-## What you do NOT do
-- Ask "should I also fix X?" — if X is in scope and broken, fix it
-- Stop at "the main logic is done" — finish the whole task
-- Write code that doesn't match existing patterns
-- Skip verification steps
