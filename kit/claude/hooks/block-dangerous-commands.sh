@@ -68,8 +68,8 @@ ask() {
 # tabla y la excepcion ven el mismo patron.
 RCE_CURL='\bcurl\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'
 RCE_WGET='\bwget\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'
-RCE_MSG_CURL="BLOCKED: curl piped to shell (RCE); descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o python -c sin exec"
-RCE_MSG_WGET="BLOCKED: wget piped to shell (RCE); descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o python -c sin exec"
+RCE_MSG_CURL="BLOCKED: curl piped to shell (RCE); descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o python -c que solo lea e imprima (json, sys, print)"
+RCE_MSG_WGET="BLOCKED: wget piped to shell (RCE); descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o python -c que solo lea e imprima (json, sys, print)"
 
 # ── K1: excepcion estrecha sobre el comportamiento de main ──────────────────────
 # La UNICA relajacion: una descarga (`curl`/`wget`) por tuberia hacia un lector que solo
@@ -115,15 +115,42 @@ END {
 }
 '
 
-# strict_pyc_ok "$codigo": 0 si el programa de `-c` no tiene dunders ni, como palabra o
-# subcadena segun el caso, ninguna via a ejecutar codigo o tocar fichero/red. Ante la duda, 1.
+# Nombres que el programa de `-c` puede usar fuera de sus cadenas: leer JSON de stdin, filtrarlo
+# e imprimirlo. Lista BLANCA a proposito: Python llega a ejecutar codigo por demasiadas puertas
+# (exec, pdb, code, timeit, `sys._getframe`, `operator.attrgetter`...) para cerrarlas una a una.
+# Valen tambien cualquier nombre de una letra y los enteros. Ninguno convierte texto en codigo,
+# asi que lo que hay dentro de las cadenas no cuenta. Misma lista que `_PYC_NAMES` en Sentinel.
+PYC_NAMES='import from as for in if else elif and or not is None True False lambda
+json sys stdin load loads dumps read readlines get keys values items
+print sep end len sorted reversed str int float bool list dict set tuple min max sum any all
+enumerate range zip round abs isinstance map filter
+strip lstrip rstrip split splitlines join lower upper replace startswith endswith append
+indent sort_keys ensure_ascii key reverse
+data obj item row line res resp out name value val entry tag'
+
+# strict_pyc_ok "$codigo" "$comilla": 0 si el programa de `-c` solo nombra PYC_NAMES fuera de
+# sus cadenas. Ante la duda, 1: fuera de ASCII (Python normaliza los identificadores con NFKC),
+# entre comillas dobles con `$`, backtick o `\` (el shell los expande antes que Python), una
+# cadena con prefijo (f"{...}" evalua), un `#` o un `\` fuera de cadena, o una comilla suelta.
 strict_pyc_ok() {
-  local c=$1 w
-  case $c in
-    *__*|*exec*|*eval*|*compile*|*getattr*|*globals*|*vars*|*open*|*input*|*breakpoint*|*sys.modules*|*/dev/*) return 1 ;;
-  esac
-  for w in os subprocess pty ctypes importlib runpy marshal pickle builtins socket system popen spawn; do
-    [[ $c =~ (^|[^A-Za-z0-9_])$w($|[^A-Za-z0-9_]) ]] && return 1
+  local LC_ALL=C c=$1 q=$2 rest out='' t m0 m1
+  local lit='^([^"'\'']*)("([^"\\]|\\.)*"|'\''([^'\''\\]|\\.)*'\'')'
+  (( ${#c} > 1024 )) && return 1
+  [[ $c == *[![:print:][:space:]]* ]] && return 1
+  [[ $q == '"' && $c == *[\$\`\\]* ]] && return 1
+  rest=$c
+  while [[ $rest =~ $lit ]]; do
+    m0=${BASH_REMATCH[0]} m1=${BASH_REMATCH[1]}
+    [[ $m1 =~ [A-Za-z0-9_]$ ]] && return 1
+    out+="$m1 "
+    rest=${rest:${#m0}}
+  done
+  out+=$rest
+  [[ $out == *[\"\'\#\\]* ]] && return 1
+  while [[ $out =~ [A-Za-z0-9_]+ ]]; do
+    t=${BASH_REMATCH[0]}
+    out=${out#*"$t"}
+    [[ $t =~ ^([0-9]+|[A-Za-z_])$ || $PYC_NAMES =~ (^|[[:space:]])$t($|[[:space:]]) ]] || return 1
   done
   return 0
 }
@@ -133,13 +160,13 @@ strict_pyc_ok() {
 # despues de la cadena o un `-` posicional la dejan fuera (bloquea).
 fetch_shape_ok() {
   local st=$1 code
-  local pyc='^[[:space:]]*(curl|wget)[^|]*\|[[:space:]]*([^[:space:]|]*/)?python[0-9.]*[[:space:]]+-[ISEBsu]*c[[:space:]]+('\''[^'\'']*'\''|"[^"]*")[[:space:]]*$'
-  local jtool='^[[:space:]]*(curl|wget)[^|]*\|[[:space:]]*([^[:space:]|]*/)?python[0-9.]*[[:space:]]+-m[[:space:]]*json\.tool([[:space:]]+(--sort-keys|--compact|--indent(=[0-9]+|[[:space:]]+[0-9]+)))*[[:space:]]*$'
-  local jqre='^[[:space:]]*(curl|wget)[^|]*\|[[:space:]]*([^[:space:]|]*/)?jq([[:space:]][^|]*)?$'
+  local fetch='^[[:space:]]*(curl|wget)([^A-Za-z0-9_|][^|]*)?\|[[:space:]]*'
+  local pyc=$fetch'([^[:space:]|]*/)?python[0-9.]*[[:space:]]+-[ISEBsu]*c[[:space:]]+('\''[^'\'']*'\''|"[^"]*")[[:space:]]*$'
+  local jtool=$fetch'([^[:space:]|]*/)?python[0-9.]*[[:space:]]+-m[[:space:]]*json\.tool([[:space:]]+(--sort-keys|--compact|--indent(=[0-9]+|[[:space:]]+[0-9]+)))*[[:space:]]*$'
+  local jqre=$fetch'([^[:space:]|]*/)?jq([[:space:]][^|]*)?$'
   if [[ $st =~ $pyc ]]; then
-    code=${BASH_REMATCH[3]}
-    code=${code:1:${#code}-2}
-    strict_pyc_ok "$code"; return
+    code=${BASH_REMATCH[4]}
+    strict_pyc_ok "${code:1:${#code}-2}" "${code:0:1}"; return
   fi
   [[ $st =~ $jtool || $st =~ $jqre ]]
 }
