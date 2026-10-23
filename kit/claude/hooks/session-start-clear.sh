@@ -71,7 +71,10 @@ DAVISO=""
 AGENTES=$(nucleo_agentes_ctx "$RAIZ")
 NUC="$ESTADO/nucleo.md"
 # Sin nucleo, o con solo la plantilla, no hay trabajo en curso que anunciar.
-if [ ! -f "$NUC" ] || nucleo_sin_contenido "$NUC"; then sale "$(nucleo_tope "$AGENTES")"; fi
+if [ ! -f "$NUC" ]; then sale "$(nucleo_tope "$AGENTES")"; fi
+if nucleo_sin_contenido "$NUC"; then
+  sale "$(nucleo_tope "${AGENTES:+$AGENTES$'\n'}$NUC está sin rellenar (solo la plantilla): cuando el encargo esté claro, escribe Objetivo, Invariantes y Siguiente acción con la forma de \$HOME/.claude/templates/nucleo.md.")"
+fi
 T=$(NUCLEO_TOPE=$((NUCLEO_TOPE - ${#AGENTES})) nucleo_emitir "$NUC")
 
 GH=$(nucleo_git_hechos "$RAIZ")

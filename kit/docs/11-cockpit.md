@@ -158,6 +158,38 @@ bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin r
 
 `claude plugin test` funciona desde cualquier carpeta, no solo desde dev-mods.
 
+## Sesiones no interactivas (`claude -p`, SDK)
+
+El cockpit (toasts, `/handoff`, la tecla `h`, el temporizador) es una interfaz de terminal: en `-p` no se carga y nadie
+lo ve. Los hooks del kit sí corren, y distinguen el modo por el entorno que Claude Code les pasa. Medido con un hook de
+prueba y `claude -p` de un turno (2.1.308): en `-p` llegan `CLAUDE_CODE_SESSION_ATTENDED=0` y
+`CLAUDE_CODE_ENTRYPOINT=sdk-cli` (Claude Code los fija él; un valor heredado no los cambia), y el payload no trae
+ningún campo que lo distinga; en una sesión interactiva valen `1` y `cli`. Sin ninguna de las dos variables se asume
+persona delante.
+
+En una sesión desatendida:
+
+- El aviso del airbag (`nucleo-nudge.sh`) pide actualizar `nucleo.md`, o `handoff --desde <borrador> --sesion <id>`, y
+  seguir. No pide «cierra el turno» (cerrarlo termina la sesión) ni `/handoff`, `/clear` ni la tecla `h`. El Stop no
+  emite su `systemMessage`, ni el arranque el de «retomas con la caché caducada».
+- El estado inyectado va sin los comentarios `<!-- -->` de la plantilla, y se presenta como datos que se siguen solo si
+  encajan con el encargo de esta sesión (interactivo: no se ejecutan hasta que la persona los confirme).
+- Con `nucleo.md` sin rellenar se inyecta un aviso corto para rellenarlo.
+
+**Límite: escribir `.claude/estado/` en `-p`.** Con `--permission-mode acceptEdits`, `Write`/`Edit` bajo `.claude/` se
+deniegan («sensitive file») y ninguna regla `allow` lo levanta: probado con `Edit(.claude/estado/**)` relativa y
+absoluta (`Write(...)` ni se evalúa) y con una redirección por Bash (`printf > .claude/estado/nucleo.md`), que
+también se deniega. Funcionan dos caminos: `--permission-mode auto`, o un script invocado por Bash con su `allow`
+(`handoff --desde <borrador>`, con el borrador fuera de `.claude/`). El kit no lleva `Bash(handoff *)` en su `allow` por
+defecto (`test_settings_template.sh`: handoff envuelve comandos); si lo quieres para una ejecución concreta, pásalo con
+`--allowedTools 'Bash(handoff *)'`. Sin ninguno de los dos, el modelo no podrá guardar el estado en `-p`.
+
+**Aviso del airbag en la primera herramienta.** En 2.1.308 el transcript ya trae el `assistant` con `usage` cuando
+corre el primer `PostToolUse` (5 pruebas con `Bash` y `Read`, `haiku` y `sonnet`), así que el aviso mide desde la
+primera. El caso `ctx=[]` de la prueba de Debian no se reproduce; si ocurre en otra versión, el hook calla en esa
+herramienta porque aún no hay uso que medir. Lo que sí se corrigió: la lectura miraba solo las últimas 40 líneas y, con
+muchos adjuntos tras el último `assistant`, no lo veía; ahora amplía a 600 si hace falta.
+
 ## Limitaciones conocidas
 
 - **Relevo interactivo comprobado en Debian con Claude Code 2.1.306:** `/handoff solo`

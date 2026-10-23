@@ -143,6 +143,13 @@ done
 sed 's/^## Paso actual$/&\n<!-- c --> PASO-REAL/' "$T/plantilla-mas.md" >"$VN"
 ok "clear: una línea con texto tras un comentario sí es trabajo en curso" \
   "$(ev "$RV" s-v "" clear | bash "$H/session-start-clear.sh" | ctx | command grep -c 'Hay trabajo en curso\|PASO-REAL')" 2
+# v1.5 K5: con la plantilla sin rellenar se inyecta un aviso corto y accionable (antes: 0 B, y el modelo ni sabía
+# que había que rellenarla). Sin fichero sigue sin decir nada (no se crea estado en repos que no lo usan).
+for f in /dev/null "$KIT/claude/templates/nucleo.md"; do
+  cp "$f" "$VN"; C=$(ev "$RV" s-v5 "" clear | bash "$H/session-start-clear.sh" | ctx)
+  ok "K5 clear con plantilla vacía ($(basename "$f")): aviso corto con la ruta y la plantilla" \
+    "$(command grep -c 'sin rellenar' <<<"$C"),$(command grep -cF "$VN" <<<"$C"),$(command grep -c 'templates/nucleo.md' <<<"$C"),$([ "${#C}" -le 400 ] && echo corto)" "1,1,1,corto"
+done
 # v1.5 K8: los <!-- --> de la plantilla no se inyectan (527 B de 4 695 medidos), con o sin cockpit, en clear y en compact.
 RK=$T/k8; mkdir -p "$RK/.claude/estado"; git -C "$RK" init -q
 { sed -n '1,/^## Paso actual/p' "$KIT/claude/templates/nucleo.md" | sed 's/^## Objetivo$/&\nOBJ-REAL/'; echo 'PASO-K8'; echo '<!-- comentario
