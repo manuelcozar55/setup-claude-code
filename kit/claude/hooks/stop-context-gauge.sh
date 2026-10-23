@@ -25,7 +25,8 @@ nucleo_agentes_foto "$RAIZ" "$SID" "$VIVOS" 2>/dev/null || true
 [ -n "$TP" ] && [ -f "$TP" ] || exit 0
 
 read -r CTX PCT <<<"$(nucleo_ctx "$TP")"
-if [ -n "${PCT:-}" ] && [ "$PCT" -ge 60 ]; then
+# -p/SDK: el aviso es para la persona (/handoff, /clear) y no hay nadie; el del modelo es nucleo-nudge.sh.
+if [ -n "${PCT:-}" ] && [ "$PCT" -ge 60 ] && ! nucleo_desatendido; then
   HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
   case "$SID" in
     '' | *[!A-Za-z0-9_-]*) GUARDAR="handoff indicando el ID real de esta sesión (no está disponible en el evento)" ;;
