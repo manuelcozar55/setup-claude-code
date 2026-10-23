@@ -110,18 +110,19 @@ servicio según su documentación y la política de su organización.
 Copiar una plantilla de variables a disco no las carga automáticamente en Claude Code.
 Las claves y los archivos privados quedan fuera del paquete y de Git.
 
-## Paso 3b · CLIs `handoff` y `oraculo`
+## Paso 3b · CLIs `handoff`, `oraculo` y `cupo`
 
-`install.sh` copia `bin/handoff` y `bin/oraculo` a `$CLAUDE_HOME/bin/` (ejecutables) y crea dos enlaces en `~/.local/bin/`:
+`install.sh` copia `bin/handoff`, `bin/oraculo` y `bin/cupo` a `$CLAUDE_HOME/bin/` (ejecutables) y crea tres enlaces en `~/.local/bin/`:
 
 - `~/.local/bin/handoff` → `$CLAUDE_HOME/bin/handoff`
 - `~/.local/bin/oraculo` → `$CLAUDE_HOME/bin/oraculo`
+- `~/.local/bin/cupo` → `$CLAUDE_HOME/bin/cupo`
 
 Reglas del enlace: solo se crea si `CLAUDE_HOME` es `$HOME/.claude` y además no existe nada con ese nombre, o ya era un enlace a `$CLAUDE_HOME/bin`. Con otro `CLAUDE_HOME` (una ruta de prueba, la CI) no escribe en `~/.local/bin`, porque al borrar esa ruta los enlaces quedarían colgando: imprime las órdenes `ln -s` y las ejecutas tú si quieres. Nunca pisa un fichero tuyo ni un enlace a otro sitio: en ese caso te avisa y lo dejas tú como prefieras. En modo diff-first no escribe nada y lo anota en el plan.
 
-Si `~/.local/bin` no está en tu `PATH`, el instalador lo dice al final. En Debian y Ubuntu esa carpeta entra en el `PATH` al iniciar sesión **solo si ya existía**: si la acaba de crear el instalador, **abre una terminal nueva** antes de usar los comandos. Compruébalo con `command -v handoff oraculo`.
+Si `~/.local/bin` no está en tu `PATH`, el instalador lo dice al final. En Debian y Ubuntu esa carpeta entra en el `PATH` al iniciar sesión **solo si ya existía**: si la acaba de crear el instalador, **abre una terminal nueva** antes de usar los comandos. Compruébalo con `command -v handoff oraculo cupo`.
 
-Los dos son bash + `jq`, sin red, y valen igual en Claude Code, Codex y opencode (`handoff --help`, `oraculo --help`). El camino absoluto (`$CLAUDE_HOME/bin/handoff`) funciona siempre, aunque el `PATH` no esté listo.
+`handoff` y `oraculo` son bash + `jq`, sin red, y valen igual en Claude Code, Codex y opencode (`handoff --help`, `oraculo --help`). `cupo` hace un turno mínimo de `claude -p` (consume un turno, no es offline): ver [`06-routine.md`](06-routine.md#sesiones-autónomas-largas). El camino absoluto (`$CLAUDE_HOME/bin/handoff`) funciona siempre, aunque el `PATH` no esté listo.
 
 ## Paso 4 · Venv de herramientas
 
