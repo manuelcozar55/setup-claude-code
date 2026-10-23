@@ -430,6 +430,15 @@ nucleo_ctx() {
   printf '%s %s\n' "$t" "$((t * 100 / (w - 33000)))"
 }
 
+# nucleo_desatendido: rc 0 si la sesión no tiene a nadie delante (`claude -p`, SDK). Medido en 2.1.308: el hook
+# hereda CLAUDE_CODE_SESSION_ATTENDED=0 y CLAUDE_CODE_ENTRYPOINT=sdk-cli (Claude Code los fija él, un valor
+# heredado no los cambia); interactivo, 1 y cli. Sin ninguna de las dos, se asume persona delante.
+nucleo_desatendido() {
+  [ "${CLAUDE_CODE_SESSION_ATTENDED:-}" = 0 ] && return 0
+  case ${CLAUDE_CODE_ENTRYPOINT:-} in sdk-*) return 0 ;; esac
+  return 1
+}
+
 # nucleo_sin_contenido <fichero>: rc 0 si, quitados los comentarios <!-- --> (también los de varias líneas), solo
 # quedan cabeceras y líneas en blanco. Un nucleo vacío o de solo plantilla no es trabajo en curso. Mira la forma, no
 # el texto de la plantilla, que cambia.

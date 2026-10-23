@@ -24,6 +24,8 @@ CWD=${CWD:-$PWD}
 # ordena por encima de cualquier número y «>= 100000» sería siempre cierto.
 AVISO=$(jq -r 'select(.source=="resume" and .prompt_cache_likely_expired==true and ((.context_tokens | numbers) // 0) >= 100000)
   | "Retomas con \(.context_tokens) tok y la caché caducada: el próximo turno reescribe todo el contexto. Si la fase está cerrada, /handoff ahora cuesta casi lo mismo y retoma limpio."' <<<"$IN" 2>/dev/null)
+# Sin persona delante (-p/SDK) no hay quien lea un systemMessage ni quien pulse /handoff.
+! nucleo_desatendido || AVISO=""
 sale() { jq -cn --arg c "$1" --arg m "$AVISO" \
   '(if $c != "" then {hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}} else {} end)
    + (if $m != "" then {systemMessage:$m} else {} end) | select(. != {})'; exit 0; }

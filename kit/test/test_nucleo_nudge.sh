@@ -5,7 +5,7 @@
 # Uso: test_nucleo_nudge.sh [ruta al hook]. Sin red; HOME falso en un mktemp que se borra.
 set -u
 H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-nudge.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CODE_AUTO_COMPACT_WINDOW
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
 R=$T/repo; mkdir -p "$R/.claude/estado" "$HOME"; git -C "$R" init -q
@@ -67,6 +67,17 @@ ok "K8 ~ al 85 %: cierra el turno, sin prometer handoff" "$(command grep -c 'Cie
 echo x >"$NUC"; touch -d '-30 minutes' "$NUC"
 ok "K8 en proyecto: igual que antes" "$(run s54 p60 | ctx | command grep -c "actualiza Paso actual / Siguiente acción / Pendientes en $NUC")" 1
 
+# v1.5 K3: en -p/SDK nadie cierra el turno ni pulsa /handoff ni h (medido: claude -p da CLAUDE_CODE_SESSION_ATTENDED=0
+# y CLAUDE_CODE_ENTRYPOINT=sdk-cli al hook; el interactivo, 1 y cli). Se pide guardar el estado y seguir.
+echo x >"$NUC"; touch -d '-30 minutes' "$NUC"
+for SEN in "CLAUDE_CODE_SESSION_ATTENDED=0" "CLAUDE_CODE_ENTRYPOINT=sdk-cli"; do
+  for B in p72 p90; do
+    C=$( (export "${SEN?}"; run "k3${SEN//[^A-Za-z]/}$B" "$B") | ctx)
+    ok "K3 -p ($SEN, $B): no pide cerrar el turno ni /handoff ni tecla h" "$(command grep -ci 'cierra el turno\|/handoff\|tecla\|/clear' <<<"$C"),$([ -n "$C" ] && echo avisa)" 0,avisa
+    ok "K3 -p ($SEN, $B): pide guardar el estado y seguir" "$(command grep -c 'handoff --desde\|nucleo.md' <<<"$C"),$(command grep -c 'sigue' <<<"$C")" 1,1
+  done
+done
+ok "K3 interactivo (ATTENDED=1, cli): el 85 % de siempre" "$(CLAUDE_CODE_SESSION_ATTENDED=1 CLAUDE_CODE_ENTRYPOINT=cli run k3-int p90 | ctx | command grep -c 'Cierra el turno ya')" 1
 # v1.5 K12: con muchas líneas no-assistant tras el último assistant (adjuntos, api-request…), la ventana de 40 líneas
 # no lo veía y el aviso callaba.
 { jq -cn '{type:"assistant",message:{usage:{input_tokens:1000,cache_read_input_tokens:149300},content:[]}}'

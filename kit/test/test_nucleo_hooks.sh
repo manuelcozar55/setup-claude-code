@@ -11,7 +11,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; H="$HERE/../claude/hooks"; KIT="$HERE/.."
 T=$(mktemp -d -t scc-sA.XXXXXX); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PID CLAUDE_PROJECT_DIR NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PID CLAUDE_PROJECT_DIR NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
 mkdir -p "$HOME"
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
@@ -143,6 +143,10 @@ done
 sed 's/^## Paso actual$/&\n<!-- c --> PASO-REAL/' "$T/plantilla-mas.md" >"$VN"
 ok "clear: una línea con texto tras un comentario sí es trabajo en curso" \
   "$(ev "$RV" s-v "" clear | bash "$H/session-start-clear.sh" | ctx | command grep -c 'Hay trabajo en curso\|PASO-REAL')" 2
+# v1.5 K3: en -p no hay quien lea el aviso del Stop ni de resume («/handoff»): no se emite.
+G=$(ev "$R" s-k3 "$TP" | CLAUDE_CODE_SESSION_ATTENDED=0 bash "$H/stop-context-gauge.sh")
+ok "K3 gauge -p al 71 %: sin systemMessage de cierre" "$(jq -r '.systemMessage // empty' <<<"$G")" ""
+ok "K3 resume caducado -p: sin aviso de /handoff" "$(ev "$T/sin-nucleo" s-k3r resume | jq -c '.prompt_cache_likely_expired=true | .context_tokens=150000' | CLAUDE_CODE_ENTRYPOINT=sdk-cli bash "$H/session-start-clear.sh" | jq -r '.systemMessage // empty')" ""
 ok "symlink: compact no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-FUERA)" 0
 ok "symlink: nudge calla" "$(jq -cn --arg c "$R3" --arg t "$TP" '{session_id:"s6",transcript_path:$t,cwd:$c}' | bash "$H/nucleo-nudge.sh")" ""
 ok "symlink: el gate no mira el nucleo enlazado" "$(ev "$R3" s6 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh" | jq -r '.decision // "nada"')" nada
