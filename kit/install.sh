@@ -276,7 +276,7 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
 # enlazaba en el ~/.local/bin real y, al borrar su ruta, dejaba enlaces colgantes que ya no se reparaban
 # (contaban como ajenos). Con otro CLAUDE_HOME se imprimen las ordenes y no se escribe.
 LOCAL_BIN="$HOME/.local/bin"
-CLIS="handoff oraculo"
+CLIS="handoff oraculo cupo"
 clis_enlazables() { [ "$(realpath -m -- "$CLAUDE_HOME")" = "$(realpath -m -- "$HOME/.claude")" ]; }
 cli_estado() {  # nombre -> libre | nuestro | ajeno
   local dst="$LOCAL_BIN/$1" t
