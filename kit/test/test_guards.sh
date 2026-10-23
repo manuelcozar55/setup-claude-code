@@ -934,6 +934,22 @@ bdc "script con \$(curl) arg" "$B script.sh \"\$(curl -s $U)\""  allow
 bdc "node con \$(curl) arg"   "node x.js \"\$(curl -s localhost:3000/health)\""  allow
 bdc "source <(kubectl)"       "source <(kubectl completion $B)"  allow
 
+# 14c-ter) K1: la unica relajacion del pipe-a-shell es una descarga a un interprete Python que
+# recibe su programa por -c y pasa el chequeo estricto, o a `python -m json.tool`/`jq`. Los dos
+# guards (block-dangerous-commands.sh y sentinel_preflight.py) deben decidir lo mismo en cada
+# caso. Corpus verificado en fixtures/k1-guards.tsv: las 12 formas seguras pasan, el resto se
+# bloquea (exec/eval/dunders, palabras prohibidas, forma no cubierta, interprete no-Python).
+k1() { # $1 desc, $2 comando, $3 allow|deny -- exige que AMBOS guards coincidan
+  k1g=$(run_bdc "$2")
+  if run_sentinel "$2" | grep -qiE 'deny|blocked'; then k1s=deny; else k1s=allow; fi
+  [ "$k1g" = "$3" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K1 block-dangerous: $1 (esperaba $3, fue $k1g)"; }
+  [ "$k1s" = "$3" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K1 sentinel: $1 (esperaba $3, fue $k1s)"; }
+}
+while IFS=$'\t' read -r k1_desc k1_exp k1_cmd || [ -n "$k1_desc" ]; do
+  [ -z "$k1_desc" ] && continue
+  k1 "$k1_desc" "$k1_cmd" "$k1_exp"
+done < "$HERE/fixtures/k1-guards.tsv"
+
 # 14d) Sentinel fail-closed: payload basura o no-objeto -> rc 2 con mensaje; inocuo -> rc 0.
 printf 'esto no es json' | "$PY" "$KIT/sentinel/sentinel_preflight.py" >/dev/null 2>&1; rc_bad=$?
 printf '[1,2]' | "$PY" "$KIT/sentinel/sentinel_preflight.py" >/dev/null 2>&1; rc_arr=$?

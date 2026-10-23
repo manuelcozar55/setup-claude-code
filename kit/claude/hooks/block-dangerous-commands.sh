@@ -62,6 +62,105 @@ ask() {
   exit 0
 }
 
+# Las dos reglas de `curl`/`wget` tras un pipe a interprete viven en variables porque la
+# excepcion estrecha de K1 (fetch_safe_reader, mas abajo) necesita reconocerlas por identidad
+# para saltarlas cuando la descarga alimenta solo a un lector de datos. Una sola fuente: la
+# tabla y la excepcion ven el mismo patron.
+RCE_CURL='\bcurl\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'
+RCE_WGET='\bwget\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'
+RCE_MSG_CURL="BLOCKED: curl piped to shell (RCE); descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o python -c sin exec"
+RCE_MSG_WGET="BLOCKED: wget piped to shell (RCE); descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o python -c sin exec"
+
+# ── K1: excepcion estrecha sobre el comportamiento de main ──────────────────────
+# La UNICA relajacion: una descarga (`curl`/`wget`) por tuberia hacia un lector que solo
+# CONSUME los bytes como datos -- un Python con su programa en `-c`, `python -m json.tool`, o
+# `jq` -- se permite. Nada ejecuta lo descargado. Cada condicion falla CERRADO (bloquea): si la
+# forma no es exactamente una de esas, el bloqueo de main se mantiene. Misma logica, con las
+# mismas palabras, que `fetch_safe_reader` en kit/sentinel/sentinel_preflight.py.
+
+# Parte el comando en sentencias de primer nivel (en ; \n && || & ( ), respetando comillas),
+# separadas por \036. El pipe `|` NO parte: se queda dentro de la sentencia.
+# shellcheck disable=SC2016  # el programa awk va literal: nada se expande en bash.
+FETCH_SPLIT_AWK='
+function flush() { out = out cur SEP; cur = "" }
+BEGIN { RS = "\001"; SEP = "\036" }
+{ s = s $0 }
+END {
+  n = length(s); i = 1; q = ""
+  while (i <= n) {
+    c = substr(s, i, 1)
+    if (q != "") {
+      cur = cur c
+      if (c == "\\" && q == "\042" && i < n) { cur = cur substr(s, i + 1, 1); i += 2; continue }
+      if (c == q) q = ""
+      i++; continue
+    }
+    if (c == "\047" || c == "\042") { q = c; cur = cur c; i++; continue }
+    if (c == "\\" && i < n) { cur = cur c substr(s, i + 1, 1); i += 2; continue }
+    if (c == ";" || c == "\n" || c == "(" || c == ")") { flush(); i++; continue }
+    if (c == "&") {
+      nx = substr(s, i + 1, 1)
+      if (nx == ">") { cur = cur c; i++; continue }
+      if (nx == "&") i++
+      flush(); i++; continue
+    }
+    if (c == "|") {
+      if (substr(s, i + 1, 1) == "|") { flush(); i += 2; continue }
+      cur = cur c; i++; continue
+    }
+    cur = cur c; i++
+  }
+  out = out cur
+  printf "%s", out
+}
+'
+
+# strict_pyc_ok "$codigo": 0 si el programa de `-c` no tiene dunders ni, como palabra o
+# subcadena segun el caso, ninguna via a ejecutar codigo o tocar fichero/red. Ante la duda, 1.
+strict_pyc_ok() {
+  local c=$1 w
+  case $c in
+    *__*|*exec*|*eval*|*compile*|*getattr*|*globals*|*vars*|*open*|*input*|*breakpoint*|*sys.modules*|*/dev/*) return 1 ;;
+  esac
+  for w in os subprocess pty ctypes importlib runpy marshal pickle builtins socket system popen spawn; do
+    [[ $c =~ (^|[^A-Za-z0-9_])$w($|[^A-Za-z0-9_]) ]] && return 1
+  done
+  return 0
+}
+
+# fetch_shape_ok "$sentencia": 0 si es EXACTAMENTE `curl|wget … | LECTOR` sin nada despues,
+# con LECTOR uno de los tres lectores de datos. Un pipe intermedio, una bandera ajena, codigo
+# despues de la cadena o un `-` posicional la dejan fuera (bloquea).
+fetch_shape_ok() {
+  local st=$1 code
+  local pyc='^[[:space:]]*(curl|wget)[^|]*\|[[:space:]]*([^[:space:]|]*/)?python[0-9.]*[[:space:]]+-[ISEBsu]*c[[:space:]]+('\''[^'\'']*'\''|"[^"]*")[[:space:]]*$'
+  local jtool='^[[:space:]]*(curl|wget)[^|]*\|[[:space:]]*([^[:space:]|]*/)?python[0-9.]*[[:space:]]+-m[[:space:]]*json\.tool([[:space:]]+(--sort-keys|--compact|--indent(=[0-9]+|[[:space:]]+[0-9]+)))*[[:space:]]*$'
+  local jqre='^[[:space:]]*(curl|wget)[^|]*\|[[:space:]]*([^[:space:]|]*/)?jq([[:space:]][^|]*)?$'
+  if [[ $st =~ $pyc ]]; then
+    code=${BASH_REMATCH[3]}
+    code=${code:1:${#code}-2}
+    strict_pyc_ok "$code"; return
+  fi
+  [[ $st =~ $jtool || $st =~ $jqre ]]
+}
+
+# fetch_safe_reader "$cmd": 0 (SAFE) si TODA sentencia que descarga hacia un interprete es un
+# lector de datos y existe al menos una. Clasifica con los mismos patrones RCE que la tabla, de
+# modo que ninguna descarga peligrosa se escapa. Falla cerrado.
+fetch_safe_reader() {
+  local stmt safe=0
+  local -a S
+  mapfile -t -d $'\036' S < <(printf '%s' "$1" | awk "$FETCH_SPLIT_AWK")
+  (( ${#S[@]} > 64 )) && return 1
+  for stmt in "${S[@]}"; do
+    if printf '%s' "$stmt" | LC_ALL=C grep -qiE "$RCE_CURL" || printf '%s' "$stmt" | LC_ALL=C grep -qiE "$RCE_WGET"; then
+      fetch_shape_ok "$stmt" && { safe=$((safe + 1)); continue; }
+      return 1
+    fi
+  done
+  (( safe > 0 ))
+}
+
 # Reglas como tabla (patron, mensaje) en vez de 43 llamadas a un `chk` que lanzaba su
 # propio `echo | grep`: 43 procesos costaban 58 ms por llamada en este equipo (87 ms en el
 # de la auditoria), practicamente todo arranque de proceso. Abajo se evalua primero la
@@ -101,8 +200,8 @@ DENY_RULES=(
   '\bufw\s+disable'                   "BLOCKED: ufw disable"
   # Interprete tras el pipe, con prefijo opcional (`sudo -E`, `env -i`, `xargs -0`...) y `|&`:
   # la forma canonica de NodeSource (`| sudo -E bash -`), `| dash`, `| python3` o `| node` pasaban.
-  '\bcurl\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'  "BLOCKED: curl piped to shell (RCE)"
-  '\bwget\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'  "BLOCKED: wget piped to shell (RCE)"
+  "$RCE_CURL"  "$RCE_MSG_CURL"
+  "$RCE_WGET"  "$RCE_MSG_WGET"
   '\b(curl|wget)\b.*\|\s*(\.|source)\s+/dev/stdin'  "BLOCKED: curl/wget piped to source (RCE)"
   # Sustitucion de comando/proceso: `sh -c "$(curl ..)"`, `eval "$(curl ..)"`, `bash < <(curl ..)`.
   # El curl tiene que estar en posicion de CODIGO (justo tras el interprete o su -c): como
@@ -287,8 +386,29 @@ if [ "$rc_union" -ge 2 ]; then
 fi
 [ "$rc_union" -eq 0 ] || exit 0
 
+# writes_text_to_file: el comando parece ESCRIBIR texto (un heredoc, o un echo/printf con
+# redireccion), no ejecutar. El cuerpo sigue juzgandose como en main (no se vacia), pero si lo
+# que cae es un literal peligroso dentro de ese texto, el mensaje apunta a la salida correcta.
+writes_text_to_file() {
+  [[ $COMMAND == *'<<'* ]] && return 0
+  [[ $COMMAND =~ (^|[;&|[:space:]])(echo|printf)[[:space:]].*\> ]] && return 0
+  return 1
+}
+
+SAFE_FETCH=''
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do
-  echo "$COMMAND" | LC_ALL=C grep -qiE "${DENY_RULES[i]}" && deny "${DENY_RULES[i + 1]}"
+  echo "$COMMAND" | LC_ALL=C grep -qiE "${DENY_RULES[i]}" || continue
+  if [[ ${DENY_RULES[i]} == "$RCE_CURL" || ${DENY_RULES[i]} == "$RCE_WGET" ]]; then
+    [[ -z $SAFE_FETCH ]] && { if fetch_safe_reader "$COMMAND"; then SAFE_FETCH=yes; else SAFE_FETCH=no; fi; }
+    [[ $SAFE_FETCH == yes ]] && continue
+  fi
+  msg=${DENY_RULES[i + 1]}
+  case $msg in
+    *"(RCE)"*) ;;
+    "BLOCKED: rm "*|"BLOCKED: shred"*|"BLOCKED: dd "*|"BLOCKED: mkfs"*|"BLOCKED: fdisk"*|"BLOCKED: wipefs"*|"BLOCKED: redirect to block device"*)
+      writes_text_to_file && msg="$msg; si es texto para un fichero, escribelo con la herramienta Write" ;;
+  esac
+  deny "$msg"
 done
 for ((i = 0; i < ${#ASK_RULES[@]}; i += 2)); do
   echo "$COMMAND" | LC_ALL=C grep -qiE "${ASK_RULES[i]}" && ask "${ASK_RULES[i + 1]}"
