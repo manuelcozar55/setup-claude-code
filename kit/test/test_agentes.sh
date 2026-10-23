@@ -159,4 +159,22 @@ ok 'K4 con informe: terminado' "$(row k4a)" terminado
 ok 'K4 sin campo, informe desde el transcript' "$(row k4b)|$(row k4b 7)" 'terminado|INFORME-DE-TRANSCRIPT'
 ok 'K4 sin informe en ninguna parte: terminado sin informe' "$(row k4c),$(row k4d)" 'terminado sin informe,terminado sin informe'
 ok 'K4 la inyección no marca sin informe al que lo tiene' "$(nucleo_agentes_ctx "$R" | grep -c 'k4a.*terminado$'),$(nucleo_agentes_ctx "$R" | grep -c 'terminado sin informe')" '1,2'
+
+# K9: «Ficheros tocados» sale de git (commits desde el handoff anterior + working tree), no del texto escrito a mano.
+R=$T/k9; mkdir -p "$R"; git -C "$R" init -q
+g() { git -c user.name=t -c user.email=t@t -c commit.gpgsign=false -C "$R" "$@"; }
+printf 1 >"$R/base.txt"; g add base.txt; g commit -qm base
+printf '## Objetivo\nO\n## Ficheros tocados\n- viejo.txt:L1-9 — obsoleto\n' >"$T/k9-a.md"
+(cd "$R" && bash "$BIN" --desde "$T/k9-a.md" >/dev/null 2>&1)
+printf 2 >"$R/commiteado.txt"; g add commiteado.txt; g commit -qm segundo
+printf 3 >"$R/sucio.txt"
+printf '## Paso actual\nP\n## Ficheros tocados\n- viejo.txt:L1-9 — obsoleto\n' >"$T/k9-b.md"
+(cd "$R" && bash "$BIN" --desde "$T/k9-b.md" >/dev/null 2>&1); RC=$?
+NU=$R/.claude/estado/nucleo.md
+ok 'K9 handoff lista el fichero de un commit posterior al handoff anterior' "$RC,$(grep -c 'commiteado.txt' "$NU")" '0,1'
+ok 'K9 handoff lista el fichero sin commitear' "$(grep -c 'sucio.txt' "$NU")" 1
+ok 'K9 handoff no lista lo anterior a su base ni lo propio del estado' "$(grep -c 'base.txt\|\.claude' "$NU")" 0
+(cd "$R" && bash "$BIN" --desde "$T/k9-b.md" >/dev/null 2>&1)
+ok 'K9 repetir no duplica el bloque generado' "$(grep -c 'sucio.txt' "$NU"),$(grep -c '<!-- git:' "$NU")" '1,1'
+ok 'K9 el texto manual del borrador sobrevive' "$(grep -c 'viejo.txt' "$NU")" 1
 [ "$FAIL" -eq 0 ]
