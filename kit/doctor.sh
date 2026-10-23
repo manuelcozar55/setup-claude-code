@@ -21,6 +21,11 @@ if [ -f "$CLAUDE_HOME/settings.json" ] && jq empty "$CLAUDE_HOME/settings.json" 
 else
   fail "settings.json ausente o inválido"
 fi
+# 1a. CLAUDE_CONFIG_DIR definida pero vacia NO equivale a no definirla: claude la toma como directorio "" y
+# `claude auth status` da loggedIn:false (medido). Con `unset CLAUDE_CONFIG_DIR` vuelve el directorio por defecto.
+if [ "${CLAUDE_CONFIG_DIR+set}" = set ] && [ -z "$CLAUDE_CONFIG_DIR" ]; then
+  warn "CLAUDE_CONFIG_DIR esta definida pero vacia: claude no la ignora y la sesion sale como no iniciada. Usa unset CLAUDE_CONFIG_DIR (o dale un directorio)"
+fi
 # 1b. disableAllHooks: true apaga todos los hooks, guards incluidos, aunque cada fichero este en su
 # sitio: el resto de checks saldria en verde sobre un kit que no protege nada. install.sh lo respeta y avisa.
 if jq -e '.disableAllHooks == true' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1; then

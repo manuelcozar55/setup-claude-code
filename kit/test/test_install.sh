@@ -223,4 +223,46 @@ ck "$(readlink "$HOME/.local/bin/oraculo")" "$H4/otro/bin/oraculo" "M6: un enlac
 ck "$(grep -c 'bin/oraculo ya existe' "$tmp/m6b.log")" "1" "M6: y se avisa"
 # TOCTOU: crear el enlace no puede ser un `ln -f`, que pisaria lo que aparezca entre la comprobacion y el ln.
 ck "$(sed -n '/^enlazar_clis()/,/^}/p' "$KIT/install.sh" | grep -cE 'ln -[a-z]*f')" "0" "TOCTOU: enlazar_clis no usa ln -f"
+
+# K2: cupo, la comprobacion previa a una sesion autonoma larga. `claude` falso en el PATH, sin red.
+HC="$tmp/home-cupo"; mkdir -p "$HC/fake"
+cat > "$HC/fake/claude" <<'FAKE'
+#!/usr/bin/env bash
+if [ "$1" = auth ]; then printf '{"loggedIn":true,"email":"ana@example.com","subscriptionType":"max"}\n'; exit 0; fi
+printf '%s\n' '{"type":"system","subtype":"init"}'
+cat "$CUPO_FAKE_EVENTOS"
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false}'
+FAKE
+chmod +x "$HC/fake/claude"
+cupo_caso() { # nombre eventos [args…]: deja salida en $HC/out-nombre y el rc en $cupo_rc
+  local n=$1 ev=$2; shift 2
+  printf '%s\n' "$ev" > "$HC/ev-$n"
+  set +e; CUPO_FAKE_EVENTOS="$HC/ev-$n" PATH="$HC/fake:$PATH" bash "$KIT/claude/bin/cupo" "$@" > "$HC/out-$n" 2>&1; cupo_rc=$?; set -e
+}
+EV_ALTO='{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1792760400,"rateLimitType":"five_hour","utilization":0.98,"overageStatus":"rejected","isUsingOverage":false,"surpassedThreshold":0.9,"unifiedWindows":{"five_hour":{"utilization":0.98,"resetsAt":1792760400},"seven_day":{"utilization":0.11,"resetsAt":1793347200}}}}'
+EV_BAJO='{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","utilization":0.12,"unifiedWindows":{"five_hour":{"utilization":0.12,"resetsAt":1792760400},"seven_day":{"utilization":0.11,"resetsAt":1793347200}}}}'
+EV_NULO='{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","utilization":null}}'
+EV_RECH='{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","rateLimitType":"seven_day","utilization":0.5}}'
+cupo_caso alto "$EV_ALTO"
+ck "$cupo_rc" "1" "K2: cupo sale 1 con five_hour al 98 % (umbral 80)"
+ck "$(grep -c 'ana@example.com' "$HC/out-alto")" "1" "K2: imprime la cuenta"
+ck "$(grep -cE 'five_hour.*98' "$HC/out-alto")" "1" "K2: imprime la utilizacion de five_hour"
+ck "$(grep -cE 'seven_day.*11' "$HC/out-alto")" "1" "K2: imprime la utilizacion de seven_day"
+cupo_caso bajo "$EV_BAJO"
+ck "$cupo_rc" "0" "K2: cupo sale 0 con cupos al 12 % y 11 %"
+cupo_caso umbral "$EV_BAJO" --umbral 10
+ck "$cupo_rc" "1" "K2: --umbral 10 aborta con un 12 %"
+cupo_caso alto-umbral "$EV_ALTO" --umbral 99
+ck "$cupo_rc" "0" "K2: --umbral 99 deja pasar un 98 %"
+cupo_caso nulo "$EV_NULO"
+ck "$cupo_rc" "0" "K2: utilization null no aborta"
+cupo_caso rech "$EV_RECH"
+ck "$cupo_rc" "1" "K2: status rejected aborta aunque la utilizacion sea baja"
+cupo_caso sinevento ""
+ck "$cupo_rc" "2" "K2: sin rate_limit_event no hay veredicto (2), no un falso verde"
+cupo_caso uso "$EV_BAJO" --umbral abc
+ck "$cupo_rc" "64" "K2: umbral no numerico es error de uso (64)"
+ck "$(grep -rlE '\.credentials|\.env|/\.ssh' "$KIT/claude/bin/cupo" || true)" "" "K2: cupo no nombra ficheros de credenciales"
+HOME="$HC/h" CLAUDE_HOME="$HC/h/.claude" bash "$KIT/install.sh" >/dev/null 2>&1
+ck "$([ -x "$HC/h/.claude/bin/cupo" ] && echo y)" "y" "K2: install.sh instala bin/cupo ejecutable"
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
