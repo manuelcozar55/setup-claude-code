@@ -1263,6 +1263,27 @@ wg_ctx() { # $1 = nº de líneas, $2 = ruta
 [ -n "$(wg_ctx 151 "$GUARDS_TEST_HOME/nuevo-largo.txt")" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: Write nuevo de 151 lineas sin aviso"; }
 [ -z "$(wg_ctx 150 "$GUARDS_TEST_HOME/nuevo-corto.txt")" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: Write nuevo de 150 lineas avisa"; }
 [ -z "$(wg_ctx 151 "$GUARDS_TEST_HOME/.claude/settings.json")" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: Write sobre fichero existente avisa"; }
+# K7 (v1.5): el aviso «delegalo a un subagente» no tiene sentido dentro de un subagente (S1 del A/B: 6 avisos,
+# los 6 Write con parent_tool_use_id). Se omite si el payload trae agent_id, parent_tool_use_id o un
+# transcript_path de subagente; el hilo principal sigue avisado (con esos campos ausentes, nulos o vacios,
+# que es lo que no se ha podido comprobar contra un payload real) y el bloqueo de secretos no cambia.
+wg_sub() { # $1 = nº de líneas, $2 = ruta, $3 = campos extra del payload (JSON), $4 = contenido (opcional)
+  python3 -c 'import json,sys
+n,p,x,c=sys.argv[1:5]
+d={"tool_name":"Write","tool_input":{"file_path":p,"content":c or "x\n"*int(n)}}
+d.update(json.loads(x))
+print(json.dumps(d))' "$1" "$2" "$3" "${4:-}" | "$PY" "$KIT/claude/hooks/write-guard.py"
+}
+wg_adv() { wg_sub "$@" | jq -r '.hookSpecificOutput.additionalContext // empty'; }
+WGN="$GUARDS_TEST_HOME/nuevo-largo-k7.txt"
+[ -z "$(wg_adv 151 "$WGN" '{"agent_id":"a1b2c3"}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 agent_id avisa"; }
+[ -z "$(wg_adv 151 "$WGN" '{"parent_tool_use_id":"toolu_01"}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 parent_tool_use_id avisa"; }
+[ -z "$(wg_adv 151 "$WGN" '{"transcript_path":"/x/proyecto/sesion/subagents/agent-a1.jsonl"}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 transcript de subagente avisa"; }
+[ -n "$(wg_adv 151 "$WGN" '{}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 contra-caso: hilo principal sin campos no avisa"; }
+[ -n "$(wg_adv 151 "$WGN" '{"agent_id":null,"parent_tool_use_id":null,"transcript_path":"/x/sesion.jsonl"}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 contra-caso: hilo principal con campos nulos no avisa"; }
+[ -n "$(wg_adv 151 "$WGN" '{"agent_id":"","parent_tool_use_id":""}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 contra-caso: campos vacios no avisan"; }
+WGSEC="KEY = $(printf '%s%s' 'sk-pr''oj-' "$(printf 'A1b2C3d4E5f6G7h8I9j0%.0s' 1 2)")"
+wg_sub 1 "$WGN" '{"agent_id":"a1b2c3"}' "$WGSEC" | grep -q '"permissionDecision": "deny"' && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 contra-caso: un subagente puede escribir un secreto"; }
 
 # 15) modo de los hooks: settings.json los invoca por RUTA DIRECTA, asi que un *.sh
 # versionado como 100644 devuelve rc=126 en cada arranque de sesion de cualquier

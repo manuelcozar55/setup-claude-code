@@ -74,6 +74,14 @@ def scan(content: str, compiled_patterns: list, safe: bool = False) -> list[tupl
     return findings
 
 
+def in_subagent(data: dict) -> bool:
+    """El aviso de delegar no tiene sentido dentro de un subagente, que ya es el que escribe. Sin
+    verificar contra un payload real: si ninguno de estos campos llega, se avisa como antes."""
+    transcript = data.get("transcript_path")
+    return bool(data.get("agent_id") or data.get("parent_tool_use_id")
+                or isinstance(transcript, str) and "/subagents/" in transcript)
+
+
 def main() -> None:
     data = json.load(sys.stdin)
     tool = data.get("tool_name", "")
@@ -90,7 +98,7 @@ def main() -> None:
     if safe and not findings:
         sys.exit(0)
     if not findings:
-        if tool == "Write" and len(content.splitlines()) > 150 and not Path(path).exists():
+        if tool == "Write" and len(content.splitlines()) > 150 and not Path(path).exists() and not in_subagent(data):
             print(json.dumps({
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
