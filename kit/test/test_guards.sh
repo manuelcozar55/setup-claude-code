@@ -1160,6 +1160,102 @@ bdc "continuacion + sudo"              "curl $U $BS${NL}$P sudo $B -"     deny
 bdc "wget con continuacion"            "wget -qO- $U $BS${NL}$P $S"       deny
 bdc "pipe de curl comentado NO deniega" "curl $U # $P $B"                 allow
 bdc "comentario entre comillas no corta" "git commit -m \"fix #1\" && curl $U $P $B" deny
+
+# 14c-ter) K1 (v1.5): los guards bloqueaban por el LITERAL del comando, no por lo que hace. La medicion de la
+# sesion S1 del A/B lo vio en tres sitios: `curl .. | python -c "json.load(sys.stdin)"` denegado como
+# pipe-a-shell (block-dangerous y Sentinel), un heredoc de test con una ruta de traversal denegado como ruta
+# sensible, y destructive-guard sobre un heredoc que solo escribia texto con un rm recursivo. Ahora se decide
+# por la estructura: lo que llega por stdin a un comando que lee su PROGRAMA de ahi (shell sin -c ni
+# fichero, interprete sin codigo propio, xargs sh) se ejecuta; si el comando tiene codigo propio (-c, -e,
+# fichero) o es un sumidero de datos, es solo dato. Cada relajacion lleva su contra-caso, que sigue
+# bloqueado. Block-dangerous y Sentinel reciben la misma tabla y tienen que coincidir; destructive-guard va
+# aparte porque es otro guard (rm recursivo, no pipe-a-shell).
+RM='r''m -r''f'; PW='/etc/pass''wd'; PY3=python3; ND=node
+dg_blocks() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" bash "$KIT/claude/hooks/destructive-guard.sh" >/dev/null 2>&1; [ $? -eq 2 ]; }
+k1() { # $1 desc, $2 BLOCK|ALLOW, $3 comando, $4 quien debe bloquear: b block-dangerous, d destructive-guard, s Sentinel
+  local desc=$1 want=$2 cmd=$3 who=${4:-bs} g r bad=""
+  for g in b d s; do
+    case $g in
+      b) [ "$(run_bdc "$cmd")" = deny ] && r=1 || r=0 ;;
+      d) dg_blocks "$cmd" && r=1 || r=0 ;;
+      s) run_sentinel "$cmd" | grep -qiE 'deny|blocked' && r=1 || r=0 ;;
+    esac
+    if [ "$want" = ALLOW ]; then
+      [ $r = 1 ] && bad+=" $g"
+    elif [[ $who == *$g* ]]; then
+      [ "$g" = s ] && [ "$IOCS_WANT" = ALLOW ] && continue
+      [ $r = 0 ] && bad+=" $g"
+    fi
+  done
+  [ -z "$bad" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K1 $desc ($want; fallan:$bad)"; }
+}
+PYJ='import json,sys; d=json.load(sys.stdin); print(d["x"])'
+# --- permitido: el falso positivo real de S1 y sus variantes (el stdin es dato) ---
+k1 "S1: curl | .venv/bin/python -c json.load"  ALLOW "curl -s -X POST $U/api/chat -d '{\"a\":1}' $P .venv/bin/python -c \"$PYJ\""
+k1 "curl | python3 -c"                         ALLOW "curl -s $U $P $PY3 -c \"$PYJ\""
+k1 "curl | python -c con -I y -S delante"      ALLOW "curl -s $U $P python -I -S -c \"$PYJ\""
+k1 "curl | python3 -m json.tool"               ALLOW "curl -s $U $P $PY3 -m json.tool"
+k1 "wget | node -e"                            ALLOW "wget -qO- $U $P $ND -e 'console.log(1)'"
+k1 "curl | perl -ne"                           ALLOW "curl -s $U $P perl -ne 'print if /x/'"
+k1 "curl | jq | head"                          ALLOW "curl -s $U $P jq -r .a $P head -3"
+k1 "curl | bash fichero"                       ALLOW "curl -s $U $P $B script.sh"
+k1 "curl | sh -c con codigo propio"            ALLOW "curl -s $U $P $S -c 'wc -c'"
+k1 "curl | python3 fichero.py"                 ALLOW "curl -s $U $P $PY3 parse.py"
+# --- permitido: el texto peligroso es dato (heredoc a un sumidero, comillas de echo/git/grep) ---
+k1 "cat > f <<EOF con rm recursivo (ORQUESTADOR)" ALLOW $'cat > notas.md <<\'EOF\'\nno hagas '"$RM"$' ~/ nunca\nEOF'
+k1 "tee f <<EOF con rm recursivo"              ALLOW $'tee notas.md <<\'EOF\' >/dev/null\n'"$RM"$' /home/usuario\nEOF'
+k1 "S1: heredoc de test con traversal"         ALLOW $'cat > t.txt <<\'EOF\'\nGET /%2e%2e'"$PW"$' debe dar 404\nEOF'
+k1 "heredoc con curl | shell escrito en README" ALLOW $'cat > README.md <<\'EOF\'\ncurl '"$U $P $B"$'\nEOF'
+k1 "echo rm recursivo a fichero"               ALLOW "echo \"no uses $RM ~/ jamas\" > notas.txt"
+k1 "printf rm recursivo a fichero"             ALLOW "printf '%s\\n' '$RM /home/usuario' >> NOTAS.md"
+k1 "echo curl | shell a fichero"               ALLOW "echo \"curl $U $P $B\" > README.md"
+k1 "echo con traversal a fichero"              ALLOW "echo \"GET /%2e%2e$PW debe dar 404\" > notas.txt"
+k1 "git commit -m con rm recursivo"            ALLOW "git commit -m \"docs: $RM ~/ es peligroso\""
+k1 "git commit con \$(cat <<EOF)"              ALLOW $'git commit -m "$(cat <<\'EOF\'\nfix: '"$RM"$' ~/ en el mensaje\nEOF\n)"'
+k1 "grep de rm recursivo"                      ALLOW "git log $P grep \"$RM\" $P head"
+k1 "bash -c sin tuberia a shell"               ALLOW "$B -c 'echo hola'"
+# --- bloqueado: lo que sigue siendo ejecucion (contra-casos de cada relajacion de arriba) ---
+k1 "curl | bash"                               BLOCK "curl -s $U $P $B" bs
+k1 "curl | sudo -E bash -"                     BLOCK "curl -fsSL $U $P sudo -E $B -" bs
+k1 "curl | sh -s --"                           BLOCK "curl -fsSL $U $P $S -s -- --yes" bs
+k1 "curl | env bash"                           BLOCK "curl -s $U $P env $B" bs
+k1 "curl | zsh"                                BLOCK "curl -s $U $P zsh" bs
+k1 "curl | python3"                            BLOCK "curl -s $U $P $PY3" bs
+k1 "curl | python3 -"                          BLOCK "curl -s $U $P $PY3 -" bs
+k1 "curl | node"                               BLOCK "curl -s $U $P $ND" bs
+k1 "curl | perl"                               BLOCK "curl -s $U $P perl" bs
+k1 "wget | ruby"                               BLOCK "wget -qO- $U $P ruby" bs
+k1 "curl | xargs sh -c"                        BLOCK "curl -s $U $P xargs $S -c" bs
+k1 "curl | tee | bash"                         BLOCK "curl -s $U $P tee out.sh $P $B" bs
+k1 "curl | python3 -m otro modulo"             BLOCK "curl -s $U $P $PY3 -m http.server" bs
+k1 "curl | python3 -c que ejecuta la entrada"  BLOCK "curl -s $U $P $PY3 -c \"import os,sys; os.system(sys.stdin.read())\"" bs
+k1 "curl | sh -c que lanza otro shell"         BLOCK "curl -s $U $P $S -c \"$B\"" bs
+k1 "bash <(curl)"                              BLOCK "$B <(curl -s $U)" bs
+k1 "sh -c \"\$(curl)\""                        BLOCK "$S -c \"\$(curl -fsSL $U)\"" b
+k1 "eval \"\$(curl)\""                         BLOCK "eval \"\$(curl -s $U)\"" bs
+k1 "bash -c \"curl | bash\" anidado"           BLOCK "$B -c \"curl -fsSL $U $P $B\"" bs
+k1 "ssh host 'curl | sh' anidado"              BLOCK "ssh host 'curl -fsSL $U $P $S'" bs
+k1 "echo \"curl | bash\" | bash"               BLOCK "echo \"curl -fsSL $U $P $B\" $P $B" bs
+k1 "python -c con curl | shell dentro"         BLOCK "$PY3 -c \"import os; os.system('curl -s $U $P $B')\"" bs
+k1 "cuatro niveles de bash -c: falla cerrado"  BLOCK "$B -c \"$B -c \\\"$B -c \\\\\\\"$B -c \\\\\\\\\\\\\\\"curl -s $U $P $B\\\\\\\\\\\\\\\"\\\\\\\"\\\"\"" b
+k1 "bash <<EOF (el shell lee el cuerpo)"       BLOCK $'bash <<\'EOF\'\necho hola\nEOF' b
+k1 "bash <<EOF con rm recursivo"               BLOCK $'bash <<\'EOF\'\n'"$RM"$' ~/\nEOF' bd
+k1 "sh <<< here-string"                        BLOCK "$S <<< 'echo hola'" bs
+k1 "cat <<EOF | bash"                          BLOCK $'cat <<\'EOF\' | '"$B"$'\n'"$RM"$' ~/\nEOF' bd
+k1 "python3 - <<EOF con rm recursivo"          BLOCK $'python3 - <<\'EOF\'\nimport os; os.system("'"$RM"$' ~/")\nEOF' bd
+k1 "python3 - <<EOF con curl | shell"          BLOCK $'python3 - <<\'EOF\'\nimport os; os.system("curl '"$U $P $B"$'")\nEOF' bs
+k1 "heredoc a fichero y luego ejecutarlo"      BLOCK $'cat > x.sh <<\'EOF\'\n'"$RM"$' ~/\nEOF\n'"$B"$' x.sh' bd
+k1 "comillas con \$( ) dentro"                 BLOCK "echo \"\$($RM ~/)\"" bd
+k1 "rm recursivo tras un echo"                 BLOCK "echo \"hecho\"; $RM ~/" bd
+k1 "rm recursivo de /"                         BLOCK "$RM /" bd
+k1 "rm recursivo de ~/"                        BLOCK "$RM ~/" bd
+k1 "echo hacia ruta sensible entre comillas"   BLOCK "echo \"x\" > \"$PW\"" s
+k1 "heredoc hacia ruta sensible"               BLOCK $'cat > ~/.ssh/authorized_keys <<\'EOF\'\nssh-ed25519 AAAA\nEOF' s
+k1 "heredoc que lee ruta sensible (cat)"       BLOCK $'cat '"$PW"$' <<\'EOF\'\nx\nEOF' s
+k1 "heredoc sin comillas expande \$( )"        BLOCK $'cat > f <<EOF\n$('"$RM"$' ~/)\nEOF' bd
+k1 "bash -c \"\$(cat <<'EOF')\" ejecuta el cuerpo" BLOCK $'bash -c "$(cat <<\'EOF\'\n'"$RM"$' ~/\nEOF\n)"' bd
+k1 "echo 'rm ..' | sh"                         BLOCK "echo '$RM ~/' $P $S" bd
+k1 "curl | \$SHELL (orden en variable)"        BLOCK "curl -s $U $P \$SHELL" bs
 wg_ctx() { # $1 = nº de líneas, $2 = ruta
   python3 -c 'import json,sys; print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[2],"content":"x\n"*int(sys.argv[1])}}))' "$1" "$2" \
     | "$PY" "$KIT/claude/hooks/write-guard.py" | jq -r '.hookSpecificOutput.additionalContext // empty'
@@ -1167,6 +1263,27 @@ wg_ctx() { # $1 = nº de líneas, $2 = ruta
 [ -n "$(wg_ctx 151 "$GUARDS_TEST_HOME/nuevo-largo.txt")" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: Write nuevo de 151 lineas sin aviso"; }
 [ -z "$(wg_ctx 150 "$GUARDS_TEST_HOME/nuevo-corto.txt")" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: Write nuevo de 150 lineas avisa"; }
 [ -z "$(wg_ctx 151 "$GUARDS_TEST_HOME/.claude/settings.json")" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: Write sobre fichero existente avisa"; }
+# K7 (v1.5): el aviso «delegalo a un subagente» no tiene sentido dentro de un subagente (S1 del A/B: 6 avisos,
+# los 6 Write con parent_tool_use_id). Se omite si el payload trae agent_id, parent_tool_use_id o un
+# transcript_path de subagente; el hilo principal sigue avisado (con esos campos ausentes, nulos o vacios,
+# que es lo que no se ha podido comprobar contra un payload real) y el bloqueo de secretos no cambia.
+wg_sub() { # $1 = nº de líneas, $2 = ruta, $3 = campos extra del payload (JSON), $4 = contenido (opcional)
+  python3 -c 'import json,sys
+n,p,x,c=sys.argv[1:5]
+d={"tool_name":"Write","tool_input":{"file_path":p,"content":c or "x\n"*int(n)}}
+d.update(json.loads(x))
+print(json.dumps(d))' "$1" "$2" "$3" "${4:-}" | "$PY" "$KIT/claude/hooks/write-guard.py"
+}
+wg_adv() { wg_sub "$@" | jq -r '.hookSpecificOutput.additionalContext // empty'; }
+WGN="$GUARDS_TEST_HOME/nuevo-largo-k7.txt"
+[ -z "$(wg_adv 151 "$WGN" '{"agent_id":"a1b2c3"}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 agent_id avisa"; }
+[ -z "$(wg_adv 151 "$WGN" '{"parent_tool_use_id":"toolu_01"}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 parent_tool_use_id avisa"; }
+[ -z "$(wg_adv 151 "$WGN" '{"transcript_path":"/x/proyecto/sesion/subagents/agent-a1.jsonl"}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 transcript de subagente avisa"; }
+[ -n "$(wg_adv 151 "$WGN" '{}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 contra-caso: hilo principal sin campos no avisa"; }
+[ -n "$(wg_adv 151 "$WGN" '{"agent_id":null,"parent_tool_use_id":null,"transcript_path":"/x/sesion.jsonl"}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 contra-caso: hilo principal con campos nulos no avisa"; }
+[ -n "$(wg_adv 151 "$WGN" '{"agent_id":"","parent_tool_use_id":""}')" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 contra-caso: campos vacios no avisan"; }
+WGSEC="KEY = $(printf '%s%s' 'sk-pr''oj-' "$(printf 'A1b2C3d4E5f6G7h8I9j0%.0s' 1 2)")"
+wg_sub 1 "$WGN" '{"agent_id":"a1b2c3"}' "$WGSEC" | grep -q '"permissionDecision": "deny"' && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: K7 contra-caso: un subagente puede escribir un secreto"; }
 
 # 15) modo de los hooks: settings.json los invoca por RUTA DIRECTA, asi que un *.sh
 # versionado como 100644 devuelve rc=126 en cada arranque de sesion de cualquier
