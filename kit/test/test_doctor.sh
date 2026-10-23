@@ -288,4 +288,14 @@ ck "$(grep -rlE 'pgrep +-f +.?claude' "$KIT/.." --include='*' --exclude-dir=.git
 # K6: la ventana de 250 K se queda (freno de coste), con su porque, y cambiarla en una ejecucion va por --settings.
 ck "$(grep -c -- "--settings '{\"env\":{\"CLAUDE_CODE_AUTO_COMPACT_WINDOW\"" "$KIT/docs/02-install.md")" "1" "K6: la guia documenta --settings con env para cambiar la ventana en una ejecucion"
 ck "$(grep -c 'freno de coste' "$KIT/docs/02-install.md")" "1" "K6: la guia explica por que se queda en 250 K"
+# K13: el numero de suites que da la documentacion cuadra con el real (los ficheros de kit/test y las lineas de `make test`).
+ROOT="$KIT/.."
+real_suites="$(find "$KIT/test" -maxdepth 1 -name 'test_*.sh' | wc -l | tr -d ' ')"
+make_suites="$(sed -n '/^test:/,/^[a-z-]*:/p' "$ROOT/Makefile" | grep -c 'bash kit/test/test_')"
+ck "$make_suites" "$real_suites" "K13: make test corre todas las suites de kit/test ($real_suites)"
+for doc in README.md AGENTS.md CLAUDE.md CONTRIBUTING.md kit/README.md kit/docs/10-onboarding.md; do
+  [ -f "$ROOT/$doc" ] || continue
+  dichos="$(grep -oE '[0-9]+ suites' "$ROOT/$doc" | grep -oE '[0-9]+' | sort -u | tr '\n' ' ')"
+  ck "${dichos% }" "$real_suites" "K13: $doc dice $real_suites suites"
+done
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
