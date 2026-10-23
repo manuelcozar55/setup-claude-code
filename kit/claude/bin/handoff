@@ -20,6 +20,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
           <raíz>/.claude/estado/nucleo.md: Objetivo e Invariantes del nucleo no se tocan (de Invariantes se añaden las líneas
           nuevas del borrador, sin borrar nunca una); los [x] del Plan pasan a diario.md con su
           comando y el hash de HEAD; el último rc de verificaciones.log se pliega en «Comandos de verificación»;
+          «Ficheros tocados» se regenera desde git (cambios desde el handoff anterior y working tree; el texto a mano se conserva);
           una sección vacía del borrador (sin cuerpo o solo comentarios) conserva la del nucleo; para vaciarla
           se escribe «- (nada)»; se guarda nucleo.prev-* (3 copias) y se recorta al tope (menos la reserva del bloque de agentes, para que se inyecte entero) omitiendo secciones enteras (primero las ajenas a la plantilla, desde el final; luego Pendientes, Plan, Ficheros tocados y Comandos); Paso actual se corta por línea, con aviso, y Siguiente acción no se toca. Lo omitido o cortado va entero a diario.md.
   --solo    no fusiona: el borrador sustituye al nucleo (se sigue validando).
@@ -431,6 +432,57 @@ if [ "${#LCMD[@]}" -gt 0 ]; then
     RT[ci]=$out
   else
     RK+=("comandos de verificacion"); RT+=("## Comandos de verificación"$'\n'"- \`${LCMD[ult]}\` → rc=${LRC[ult]}"$'\n')
+  fi
+fi
+
+# «Ficheros tocados» sale de git, no de lo que se escribió a mano: los cambios desde el handoff anterior (el sha del
+# marcador del bloque; sin él, el último commit anterior a la fecha del nucleo viejo) más el working tree. El texto a
+# mano de la sección se conserva debajo; solo se reemplaza el bloque generado.
+tocados_git() {
+  local base="" sha cut st n l prev
+  [ -n "${RAIZ:-}" ] && sha=$(timeout 5 git -c core.fsmonitor=false -C "$RAIZ" rev-parse --verify -q HEAD 2>/dev/null) || return 0
+  if [ "$HAYVIEJO" -eq 1 ]; then
+    base=$(sed -n 's/^<!-- git:\([0-9a-f]\{7,40\}\) -->$/\1/p' "$W/viejo.md" | head -n 1)
+    if [ -n "$base" ] && git -C "$RAIZ" merge-base --is-ancestor "$base" HEAD 2>/dev/null; then :
+    else
+      cut=$(stat -c %Y "$W/viejo.md" 2>/dev/null); base=""
+      [ -z "$cut" ] || base=$(git -C "$RAIZ" rev-list -1 --before="@$cut" HEAD 2>/dev/null)
+    fi
+  fi
+  TOCADOS="<!-- git:$sha -->"$'\n'
+  n=0
+  if [ -n "$base" ]; then
+    while IFS=$'\t' read -r a d f; do
+      [ -n "$f" ] || continue
+      case $f in .claude/estado/*) continue ;; esac
+      n=$((n + 1)); [ "$n" -le 25 ] || continue
+      TOCADOS+="- ${f//[[:cntrl:]]/} (+$a -$d)"$'\n'
+    done < <(timeout 5 git -c core.fsmonitor=false -C "$RAIZ" diff --numstat "$base" HEAD 2>/dev/null)
+  fi
+  while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    st=${l:3}; case $st in .claude/estado/*) continue ;; esac
+    n=$((n + 1)); [ "$n" -le 25 ] || continue
+    TOCADOS+="- ${st//[[:cntrl:]]/} (sin commitear)"$'\n'
+  done < <(timeout 5 git -c core.fsmonitor=false -C "$RAIZ" status --porcelain 2>/dev/null)
+  [ "$n" -le 25 ] || TOCADOS+="- … y $((n - 25)) más: git diff --stat"$'\n'
+  TOCADOS+="<!-- /git -->"$'\n'
+  # Mismo contenido que el bloque anterior: se conserva con su sha, para que un handoff repetido (o un --commit que solo
+  # movió HEAD) no reescriba el nucleo.
+  if [ "$HAYVIEJO" -eq 1 ]; then
+    prev=$(awk '/^<!-- git:[0-9a-f]+ -->$/ { g = 1 } g { print } g && /^<!-- \/git -->$/ { exit }' "$W/viejo.md")
+    [ -z "$prev" ] || [ "$(sed 1d <<<"$prev")" != "$(sed 1d <<<"${TOCADOS%$'\n'}")" ] || TOCADOS=$prev$'\n'
+  fi
+}
+TOCADOS=""
+tocados_git
+if [ -n "$TOCADOS" ]; then
+  fi_=-1; for ((i = 0; i < ${#RK[@]}; i++)); do [ "${RK[i]}" != "ficheros tocados" ] || fi_=$i; done
+  if [ "$fi_" -ge 0 ]; then
+    mano=$(awk 'NR == 1 { next } /^<!-- git:[0-9a-f]+ -->$/ { g = 1; next } g && /^<!-- \/git -->$/ { g = 0; next } !g { print }' <<<"${RT[fi_]}")
+    RT[fi_]="${RT[fi_]%%$'\n'*}"$'\n'"$TOCADOS"
+    [ -z "$mano" ] || RT[fi_]+=$mano$'\n'
+  else RK+=("ficheros tocados"); RT+=("## Ficheros tocados"$'\n'"$TOCADOS")
   fi
 fi
 
