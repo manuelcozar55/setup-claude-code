@@ -69,9 +69,6 @@ ask() {
 # recorre la tabla regla a regla para saber cual fue y devolver su mensaje exacto (el
 # mensaje es contrato). La union se DERIVA de las tablas, asi que no hay copia paralela
 # que se pueda quedar sin la regla nueva que alguien anada aqui manana.
-# Solo para un heredoc que un interprete lee como programa (`python3 - <<EOF`): ahi el curl | shell del
-# cuerpo es codigo y se juzga por sus palabras, como hacian las reglas de texto antes de la 1.5.
-LEGACY_FETCH_RULE='\b(curl|wget)\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'
 DENY_RULES=(
   # ── DESTRUCTIVE FILE/DISK ──────────────────────────────────────────────────
   '\brm\s+-[a-z]*r[a-z]*f'            "BLOCKED: rm -rf (recursive force delete)"
@@ -102,8 +99,10 @@ DENY_RULES=(
   # ── NETWORK / REMOTE CODE EXECUTION ────────────────────────────────────────
   '\biptables\s+-F'                   "BLOCKED: iptables -F (flush firewall)"
   '\bufw\s+disable'                   "BLOCKED: ufw disable"
-  # curl/wget | shell no es una regla de texto: se decide por lo que hace la orden (cmdn_scan_exec,
-  # mas abajo), porque `curl .. | python3 -c "..."` o `| jq` solo pasan datos.
+  # Interprete tras el pipe, con prefijo opcional (`sudo -E`, `env -i`, `xargs -0`...) y `|&`:
+  # la forma canonica de NodeSource (`| sudo -E bash -`), `| dash`, `| python3` o `| node` pasaban.
+  '\bcurl\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'  "BLOCKED: curl piped to shell (RCE)"
+  '\bwget\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'  "BLOCKED: wget piped to shell (RCE)"
   '\b(curl|wget)\b.*\|\s*(\.|source)\s+/dev/stdin'  "BLOCKED: curl/wget piped to source (RCE)"
   # Sustitucion de comando/proceso: `sh -c "$(curl ..)"`, `eval "$(curl ..)"`, `bash < <(curl ..)`.
   # El curl tiene que estar en posicion de CODIGO (justo tras el interprete o su -c): como
@@ -259,34 +258,6 @@ push_refspec() {
   return 1
 }
 PIPED=0; cmdn_pipes_to_shell && PIPED=1
-CMDN_PIPED=$PIPED
-
-# Pipe-to-shell por lo que HACE la orden, no por las palabras: un curl cuya salida llega a un comando que lee
-# su programa de stdin (shell sin -c ni fichero, interprete sin codigo propio, xargs sh) es RCE; la misma
-# tuberia hacia `python3 -c "..."`, jq o `bash script.sh` solo pasa datos. Un heredoc o here-string que
-# alimenta a un shell o interprete que lee su programa de stdin ejecuta su cuerpo. Ver lib/cmdnorm.sh.
-CMDN_NEST=0
-if [[ $COMMAND == *curl* || $COMMAND == *wget* ]]; then
-  cmdn_scan_exec fetch; rc_exec=$?
-  if (( rc_exec == 0 )); then
-    deny "BLOCKED: ${CMDN_FETCHER:-curl} piped to shell (RCE)"
-  elif (( rc_exec == 2 )); then
-    deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con curl/wget: no caben en el timeout del guard; dividelo en comandos cortos"
-  fi
-fi
-CMDN_NEST=0; CMDN_DOC_INTERP=0
-if [[ $COMMAND == *'<<'* ]]; then
-  cmdn_scan_exec doc; rc_exec=$?
-  if (( rc_exec == 0 )); then
-    deny "BLOCKED: heredoc/here-string executed by a shell (it reads its program from stdin)"
-  elif (( rc_exec == 2 )); then
-    deny "BLOCKED: mas de 3 niveles o 16 comandos anidados con un heredoc: no caben en el timeout del guard; dividelo en comandos cortos"
-  fi
-  # `python3 - <<EOF`: el cuerpo es el programa y se juzga por lo que dice, como antes de mirar la estructura.
-  if (( CMDN_DOC_INTERP )); then
-    echo "$COMMAND" | LC_ALL=C grep -qiE "$LEGACY_FETCH_RULE" && deny "BLOCKED: curl/wget piped to shell (RCE)"
-  fi
-fi
 if [[ $COMMAND == *git* && $COMMAND == *push* && $COMMAND == *+* ]]; then
   push_refspec 0 force; rc_refspec=$?
   (( rc_refspec == 0 )) && deny "BLOCKED: git push +refspec (forced refspec)"

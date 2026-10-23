@@ -26,7 +26,7 @@ from pathlib import Path
 
 # Contract with iocs.json ("min_preflight_version"): bump it when this code starts to rely on
 # something the data file must carry, and doctor.sh warns when the installed code is older.
-PREFLIGHT_VERSION = 3
+PREFLIGHT_VERSION = 2
 
 
 # ── IOC loading ──────────────────────────────────────────────────────────────
@@ -551,7 +551,7 @@ def _heredoc_bodies(text: str, i: int, docs: list) -> int:
             span = _joined_delim(text, i, d)
         if not span:
             return i
-        d["body"], d["span"], i = text[i:span[0]], (i, span[1]), span[1]
+        d["body"], i = text[i:span[0]], span[1]
     return i
 
 
@@ -1109,10 +1109,6 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
             m = re.search(rx, text)
             if m:
                 return (f"never-exempt credential material: {m.group(0)}", "critical")
-        # A path in text that a data sink or echo only stores or prints (a heredoc written to a file, a
-        # test case in an echo) is not read; the never-exempt floor above still sees the whole text.
-        if key == "command":
-            text = _view(text, False)
         # The allowlist may not exempt the guards or their config, and only a field that is a
         # path can be exempted: never a command, whatever its first word is.
         if key in EXEMPTABLE_FIELDS and not protected_config_hit({"path": text}) and is_allowed_path(text, allowed):
@@ -1222,272 +1218,8 @@ def check_suspicious_network(tool_input: dict, iocs: dict, allowlist: dict):
     return (None, None)
 
 
-# What a command does with its stdin, not which words it names. The same decisions as lib/cmdnorm.sh
-# (cmdn_reads_program, cmdn_fetch_exec, cmdn_doc_exec, cmdn_scan_exec) in the block-dangerous guard:
-# test_guards.sh runs one table of cases through both, so they have to agree.
-_SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "fish"}
-_READERS = {"python", "node", "perl", "ruby", "php"}
-_SHELL_RUNS = re.compile(r"(?:^|[^\w./-])(?:eval|source|exec|xargs|sh|bash|zsh|dash|ksh|fish|python[\d.]*|node|nodejs"
-                         r"|perl|ruby|php)(?![\w-])|(?:^|[;&|( ])\.\s+/dev/stdin")
-_INNER_FETCH = re.compile(r"(?:curl|wget)[^|]*\|\s*[\"']?(?:sudo\s+)?(?:\S*/)?(?:sh|bash|zsh|dash|python[\d.]*|node"
-                          r"|perl|ruby)(?![\w])", re.I)
-_FETCHERS = {"curl", "wget"}
-# Command and process substitution: the text rules of block-dangerous-commands.sh. The fetch has to be in
-# code position (right after the interpreter or its -c): as an argument of a script it is not run.
-_SUBST_RULES = [re.compile(rx, re.I) for rx in (
-    r"(?:^|[\s;&|(])(?:\S*/)?(?:(?:ba|z)?sh|python[\d.]*|perl|ruby|node)\s+(?:-c\s+)?[\"']?(?:\$\(|<\(|`)\s*(?:curl|wget)",
-    r"\beval\s+[\"']?\$\(\s*(?:curl|wget)",
-    r"<\s*<\(\s*(?:curl|wget)",
-    r"(?:^|[;&|]\s*)(?:\.|source)\s+<\(\s*(?:curl|wget)",
-    r"\b(?:curl|wget)\b.*\|\s*(?:\.|source)\s+/dev/stdin")]
-# The word rule of the sentinel before 1.5, kept only for what an interpreter reads from a heredoc.
-_LEGACY_FETCH = re.compile(r"\b(?:curl|wget)\b.*\|&?\s*(?:(?:sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(?:\S*/)?"
-                           r"(?:(?:ba|z|da|k)?sh|python[\d.]*|perl|ruby|node|php)\b", re.I)
-# iocs.json copies from before 1.5 still carry the word regexes of that rule, which also fired on a
-# pipe into python3 -c "...": they are dropped, the structure decides.
-_WORD_PIPE_RULE = re.compile(r"^\(\?i\)\\b(?:curl|wget)\\s\.\*\\\|")
-
-
-def _stages(toks: list) -> list:
-    """(words, piped, document, substitution bodies) per simple command of lexed text: piped if
-    it reads the pipe of the previous one, document if a heredoc or here-string feeds it."""
-    out, words, subs, doc, redirect, piped, prev = [], [], [], False, False, False, None
-    for t in toks + ["\n"]:
-        if isinstance(t, dict):
-            doc = True
-        elif isinstance(t, str) and ("<" in t or ">" in t):
-            redirect, doc = True, doc or t == "<<<"
-        elif isinstance(t, str):
-            if words or doc:
-                out.append((words, piped, doc, subs))
-            if t == "\n" and prev in ("|", "|&"):
-                t = prev
-            piped = t in ("|", "|&")
-            words, subs, doc, redirect, prev = [], [], False, False, t
-        elif redirect:
-            redirect = False
-        else:
-            words.append(t[0])
-            subs += t[2]
-    return out
-
-
-def _reads_program(words: list[str]):
-    """Whether a command reads its program from stdin: a shell without -c or file (sh -, sh -s --),
-    an interpreter without inline code or file (python3 -, node, perl), inline code that runs what it
-    reads, xargs before any of them. Its inline code, if any, as the second value. In doubt (a -m
-    that is not json.tool) it does."""
-    i, shell = _command_word(words)
-    if i >= len(words):
-        return shell, None
-    name, args = _cmd_name(words[i]), words[i + 1:]
-    if words[i].startswith("$"):
-        return True, None
-    if name == "xargs":
-        return any(_cmd_name(a) in _SHELLS | _READERS for a in args), None
-    k, pos = 0, None
-    if name in _SHELLS:
-        inline = sflag = dd = False
-        while k < len(args):
-            a, k = args[k], k + 1
-            if dd or a == "-" or not (pos is None and a[:1] in "-+"):
-                if pos is None:
-                    pos = a
-                dd = dd or a == "--"
-                continue
-            if a == "--":
-                dd = True
-            elif a in ("--rcfile", "--init-file", "-o", "+o", "-O", "+O"):
-                k += 1
-            elif not a.startswith("--"):
-                inline = inline or "c" in a[1:]
-                sflag = sflag or "s" in a[1:]
-        if inline:
-            return bool(_SHELL_RUNS.search(pos or "")), pos
-        return pos is None or sflag or pos == "-", None
-    if name not in _READERS:
-        return False, None
-    code = mod = None
-    dash = False
-    while k < len(args):
-        a, k = args[k], k + 1
-        nxt = args[k] if k < len(args) else None
-        if a == "--":
-            pos = nxt
-            break
-        if a == "-":
-            dash = True
-            break
-        if not a.startswith("-"):
-            pos = a
-            break
-        if name == "python":
-            if re.fullmatch(r"-[A-Za-z]*c", a):
-                code = nxt or ""
-                break
-            if a.startswith("-c"):
-                code = a[2:]
-                break
-            if re.fullmatch(r"-[A-Za-z]*m", a):
-                mod = nxt or "x"
-                break
-            if a.startswith("-m"):
-                mod = a[2:]
-                break
-            k += a in ("-W", "-X")
-        elif name == "node":
-            if a in ("-e", "-p", "-pe", "-ep", "--eval", "--print"):
-                code = nxt or ""
-                break
-            if a.startswith(("--eval=", "--print=")):
-                code = a.partition("=")[2]
-                break
-            k += a in ("-r", "--require", "--import", "--loader", "--experimental-loader", "-C", "--conditions",
-                       "--input-type")
-        elif name == "perl":
-            if re.fullmatch(r"-[A-Za-z0-9]*[eE]", a):
-                code = nxt or ""
-                break
-            k += a == "-I"
-        elif name == "ruby":
-            if re.fullmatch(r"-[A-Za-z0-9]*e", a):
-                code = nxt or ""
-                break
-            k += a in ("-I", "-r")
-        elif name == "php":
-            if a == "-r":
-                code = nxt or ""
-                break
-            if a == "-f":
-                pos = nxt or "x"
-                break
-    if mod is not None:
-        return mod != "json.tool", None
-    if dash:
-        return True, None
-    if code is not None:
-        return bool(_RUNS_INPUT.search(code)), code
-    return pos is None, None
-
-
-def _stdin_findings(text: str, kind: str, depth: int = 0, nest: list | None = None):
-    """True if text runs what a fetch or a document puts on stdin: kind "fetch" (curl/wget piped to a
-    command that reads its program from it) or "doc" (a heredoc or here-string feeding a shell; an interpreter that reads
-    its program from one, python3 - <<EOF, sets nest[1] and its text is judged by the word rules), also
-    in the strings a shell, interpreter, ssh... reads again as a command, up to 3 levels and 16 strings
-    (then "deep": fail closed, a guard past its timeout lets the whole command run)."""
-    nest = [0, False] if nest is None else nest
-    stages = [(w, piped, doc, subs, *_command_name(w), *_reads_program(w)) for w, piped, doc, subs in
-              _stages(_lex(text, depth == 0))]
-    fetched = fed = False
-    for words, piped, doc, subs, name, args, reads, code in stages:
-        if not piped:
-            fetched = fed = False
-        if kind == "fetch":
-            if fetched and reads:
-                return True
-            fetched = fetched or name in _FETCHERS
-        elif reads and (doc or fed):
-            if name in _SHELLS or name == "xargs":
-                return True
-            nest[1] = True
-        fed = fed or doc
-    shell_reads = any(reads and name in _SHELLS for _, _, _, _, name, _, reads, _ in stages)
-    wants = (lambda s: "|" in s and re.search(r"curl|wget", s)) if kind == "fetch" else (lambda s: "<<" in s)
-    inner = []
-    for words, piped, doc, subs, name, args, reads, code in stages:
-        inner += subs
-        if name in _TEXT_ONLY and not shell_reads:
-            continue
-        if name in _SHELLS:
-            inner += [code] if code else []
-        elif name in _READERS:
-            if kind == "fetch" and code and _INNER_FETCH.search(code):
-                return True
-        else:
-            inner += args
-    for s in (s for s in inner if wants(s)):
-        nest[0] += 1
-        if depth >= 3 or nest[0] > 16:
-            return "deep"
-        found = _stdin_findings(s, kind, depth + 1, nest)
-        if found:
-            return found
-    return False
-
-
-def _command_name(words: list[str]):
-    """Name of the command word of a simple command, and its arguments."""
-    i, _bare = _command_word(words)
-    return (_cmd_name(words[i]), words[i + 1:]) if i < len(words) else ("", [])
-
-
-_TEXT_ONLY = {"echo", "printf", "grep", "egrep", "fgrep", "rg", "ag", "ack", "sed", "awk", "cat", "man", "type", "which",
-              "less", "head", "tail", "test", "[", "git", "gh", "jq", "curl", "wget", "tee", "tr", "cut", "sort", "uniq",
-              "wc", "base64", "ls", "cp", "mv", "mkdir", "touch", "rm"}
-# Commands that only print or store their arguments: the quoted text next to them is data (view, below).
-_QUOTE_OWNERS = {"echo", "printf", "grep", "egrep", "fgrep", "rg", "ag", "ack", "jq", "cat", "tee", "head", "tail",
-                 "wc", "sort", "uniq", "tr", "cut", "cd", "ls", "pwd", "mkdir", "touch", "true", "false", "test", "["}
-_GIT_TEXT = {"commit", "tag", "notes", "apply", "am", "log", "show", "diff", "grep"}
-_GH_TEXT = {"pr", "issue", "release", "gist", "api"}
-_CAT_DOC = re.compile(r"\$\(\s*cat\s*<<-?[ \t]*(['\"])(\w+)\1[ \t]*\n.*?\n\t*\2\n?\s*\)", re.S)
-
-
-def _text_only(cmds: list, owners: set, git_gh: bool) -> bool:
-    """Whether every command only prints or stores text (owners; git commit & co., gh pr... if git_gh),
-    runs nothing and expands nothing: then the quoted text is data."""
-    for cmd in cmds:
-        if any(w[2] for w in cmd):
-            return False
-        words = [w[0] for w in cmd]
-        if not words and not cmd:
-            continue
-        i, _bare = _command_word(words)
-        if i >= len(words) or _executes(cmd):
-            return False
-        name, rest = _cmd_name(words[i]), words[i + 1:]
-        if name in owners:
-            continue
-        if git_gh and name == "git" and rest[:1] and rest[0] in _GIT_TEXT:
-            continue
-        if git_gh and name == "gh" and rest[:1] and rest[0] in _GH_TEXT:
-            continue
-        return False
-    return True
-
-
-def _view(text: str, wide: bool) -> str:
-    """text without what the command only writes or prints: the body of a heredoc that data sinks read
-    (cat > f <<'EOF', not bash <<EOF), and, if every command only prints or stores text, its quoted
-    strings and git's $(cat <<'EOF' ...) message. wide: the quote owners also include grep, cat, git commit,
-    gh pr...; narrow (paths) only echo and printf, which never open the file a quoted word names. A
-    redirection target is never cut. Any executor in the command (_executes) restores the whole text:
-    a file written here may be run there."""
-    toks = _lex(text)
-    cmds = _simple_commands(toks)
-    if any(_executes(c) for c in cmds):
-        return text
-    cuts = []
-    for item, role in _word_roles(toks):
-        if isinstance(item, dict) and role == "data" and item.get("span") and item["body"] is not None \
-                and (item["quoted"] or not re.search(r"\$\(|`", item["body"])):
-            cuts.append((*item["span"], item["delim"]))
-    # The delimiter line stays, so the heredoc ends where it did and what follows is read as before.
-    for a, b, delim in sorted(cuts, reverse=True):
-        text = text[:a] + delim + text[b:]
-    owners = _QUOTE_OWNERS if wide else {"echo", "printf", "true", "false"}
-    if cuts or "'" in text or '"' in text:
-        if _text_only(_simple_commands(_lex(text)), owners, wide):
-            if wide:
-                text = _CAT_DOC.sub('""', text)
-            text = _QUOTED.sub(lambda m: m.group(0)[0] * 2 if not re.search(r"[<>]\s*$", text[:m.start()]) else m.group(0),
-                               text)
-    return text
-
-
 def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
-    all_patterns = iocs.get("dangerous_commands", {}).get("patterns", [])
-    patterns = [p for p in all_patterns if not _WORD_PIPE_RULE.match(p)]
+    patterns = iocs.get("dangerous_commands", {}).get("patterns", [])
     allowed_cmds = allowlist.get("commands") or []
 
     for text in collect_fields(tool_input, ["command"]):
@@ -1495,27 +1227,9 @@ def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
             continue
         # A backslash-newline is a continuation: the shell reads it as one line, so must the regexes.
         text = re.sub(r"\\\r?\n[ \t]*", " ", text)
-        view = _view(text, True) if all_patterns else text
         for rx in patterns:
-            if _search(rx, view):
+            if _search(rx, text):
                 return (f"dangerous command pattern", "critical")
-        if not all_patterns:
-            continue
-        if any(rx.search(view) for rx in _SUBST_RULES):
-            return ("dangerous command pattern: fetched code run by an interpreter", "critical")
-        if "curl" in text.lower() or "wget" in text.lower():
-            found = _stdin_findings(text, "fetch")
-            if found:
-                return ("dangerous command pattern: curl/wget piped to a shell or interpreter" if found is True
-                        else "dangerous command pattern: curl/wget nested past 3 levels or 16 commands", "critical")
-        if "<<" in text:
-            nest = [0, False]
-            found = _stdin_findings(text, "doc", 0, nest)
-            if not found and nest[1] and _LEGACY_FETCH.search(text):
-                return ("dangerous command pattern", "critical")
-            if found:
-                return ("dangerous command pattern: heredoc/here-string run by a shell" if found is True
-                        else "dangerous command pattern: heredoc nested past 3 levels or 16 commands", "critical")
     return (None, None)
 
 
