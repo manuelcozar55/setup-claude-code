@@ -67,6 +67,12 @@ ok "K8 ~ al 85 %: cierra el turno, sin prometer handoff" "$(command grep -c 'Cie
 echo x >"$NUC"; touch -d '-30 minutes' "$NUC"
 ok "K8 en proyecto: igual que antes" "$(run s54 p60 | ctx | command grep -c "actualiza Paso actual / Siguiente acción / Pendientes en $NUC")" 1
 
+# v1.5 K12: con muchas líneas no-assistant tras el último assistant (adjuntos, api-request…), la ventana de 40 líneas
+# no lo veía y el aviso callaba.
+{ jq -cn '{type:"assistant",message:{usage:{input_tokens:1000,cache_read_input_tokens:149300},content:[]}}'
+  for i in $(seq 1 80); do jq -cn --argjson i "$i" '{type:"attachment",n:$i}'; done; } >"$T/k12.jsonl"
+ok "K12: assistant a más de 40 líneas del final: el aviso mide igual" "$(run k12 k12 | ctx | command grep -c '90 % del airbag')" 1
+
 # v3: una tarea = una sesión dueña (.claude/estado/.dueno). Quien no lo es calla: el aviso le pediría escribir
 # el nucleo de otra. Con el dueño caducado, o sin dueño, avisa cualquiera.
 echo x >"$NUC"; touch -d '-30 minutes' "$NUC"

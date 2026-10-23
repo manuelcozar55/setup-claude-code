@@ -404,11 +404,16 @@ nucleo_indice_ctx() {
 nucleo_ctx() {
   local w=${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-} m=200000 t tm id s
   # Sin `timeout`: 40 líneas no cuelgan a jq, y en coreutils de Rust arrancarlo cuesta ~100 ms.
-  read -r t tm < <(tail -n 40 "$1" 2>/dev/null \
-    | jq -rR 'fromjson? | select(.type=="assistant" and .message.usage!=null) | .message
-        | ((.usage.input_tokens//0)+(.usage.cache_read_input_tokens//0)+(.usage.cache_creation_input_tokens//0)) as $n
-        | select($n>0) | "\($n) \(.model // "-")"' 2>/dev/null \
-    | tail -1)
+  # Tras el último assistant el transcript acumula adjuntos, api-request…: si 40 líneas no lo alcanzan se mira
+  # más atrás (solo en ese caso, que es el menos frecuente y el que antes callaba).
+  for s in 40 600; do
+    read -r t tm < <(tail -n "$s" "$1" 2>/dev/null \
+      | jq -rR 'fromjson? | select(.type=="assistant" and .message.usage!=null) | .message
+          | ((.usage.input_tokens//0)+(.usage.cache_read_input_tokens//0)+(.usage.cache_creation_input_tokens//0)) as $n
+          | select($n>0) | "\($n) \(.model // "-")"' 2>/dev/null \
+      | tail -1)
+    [ -z "$t" ] || break
+  done
   [ -n "$t" ] || return 0
   id=$tm
   # Un id configurado cuenta entero si el transcript no trae modelo; si lo trae, solo por su [1m]
