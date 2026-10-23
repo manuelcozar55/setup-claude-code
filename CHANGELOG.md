@@ -7,6 +7,32 @@ etiquetado.
 
 ## [Unreleased]
 
+Arreglos K1-K13 del A/B «¿aporta scc?» (23-oct): lo que estorbaba en sesiones autónomas reales.
+
+### Added
+
+- `cupo` (`kit/claude/bin/cupo`): comprobación previa a una sesión autónoma larga. Un turno mínimo lee `rate_limit_event` y sale 1 si algún cupo está en `rejected` o por encima del umbral (80 % por defecto), y 2 si no hay veredicto. No lee credenciales (K2).
+- `doctor.sh` avisa si `CLAUDE_CONFIG_DIR` está definida pero vacía (K10).
+- Un test compara el número de suites que dicen los documentos con el real (K13).
+
+### Changed
+
+- Guards por estructura y no por literal: un intérprete que recibe el programa por `-c` o por fichero y lee de stdin solo datos (`curl … | python -c …`, `| jq`) ya no se bloquea, ni el texto peligroso dentro de un heredoc que acaba en `cat` o `tee` hacia un fichero. `bash <<EOF` y `sh <<<` se bloquean siempre. `block-dangerous-commands.sh` y Sentinel comparten la lógica. Sentinel pasa a `PREFLIGHT_VERSION` 3 (`min_preflight_version` 3 en `iocs*.json`) (K1).
+- En sesiones desatendidas (`CLAUDE_CODE_SESSION_ATTENDED=0` o `CLAUDE_CODE_ENTRYPOINT=sdk-cli`) los avisos de contexto ya no piden «cierra el turno», `/handoff` ni la tecla `h`: piden actualizar `nucleo.md` y seguir (K3).
+- La inyección de `nucleo.md` sale sin los comentarios `<!-- -->` de la plantilla. En `-p`, el encuadre de «Siguiente acción» pasa de «no se ejecuta hasta que la persona confirme» a «síguelo solo si encaja con el encargo de esta sesión» (K8).
+- `handoff --desde` genera el bloque de «Ficheros tocados» desde git y conserva debajo lo escrito a mano (K9).
+
+### Fixed
+
+- `nucleo.md` con la plantilla vacía inyecta un aviso corto en vez de 0 B (K5).
+- El registro de agentes distingue «terminado» de «terminado sin informe»: lee `last_assistant_message` o, si falta, el último texto del transcript (K4).
+- `write-guard` deja de avisar a los subagentes de que deleguen el fichero grande (K7).
+- El aviso del airbag mide desde la primera herramienta aunque el último `assistant` esté a más de 40 líneas del final del transcript (K12).
+
+### Docs
+
+- Sesiones autónomas: `cupo`, guardar `terminal_reason` y `api_error_status`, `--permission-mode auto` (con `acceptEdits` no se escribe `.claude/estado/`) y la trampa de `pgrep -f` dentro de `bash -c` (K2, K11). La ventana de 250 K se queda, con su porqué y cómo cambiarla en una sola ejecución (K6). Login por cada config dir con `claude auth login --email` (K10).
+
 ## [1.4.1] - 2026-10-22
 
 Auditoría de prompts aplicada a los agentes del kit (`planner` se retira: duplicaba a `strategist`) y suites de contexto que ya no dependen de lo largo que sea `TMPDIR`.
