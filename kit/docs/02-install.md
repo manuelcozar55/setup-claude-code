@@ -110,6 +110,13 @@ servicio según su documentación y la política de su organización.
 Copiar una plantilla de variables a disco no las carga automáticamente en Claude Code.
 Las claves y los archivos privados quedan fuera del paquete y de Git.
 
+- **Sin TUI** (SSH, WSL sin ventana, un host nuevo): `claude auth login --email tu@correo` inicia
+  sesión desde la terminal y `claude auth status` (JSON: `loggedIn`, `email`, `subscriptionType`) lo comprueba.
+- **El login va por cada directorio de configuración.** Una sesión iniciada en el host no llega a otro
+  `CLAUDE_CONFIG_DIR`, ni a una distro WSL: repite el login en cada uno.
+- **`CLAUDE_CONFIG_DIR` vacía no es lo mismo que sin definir**: `CLAUDE_CONFIG_DIR="" claude auth status`
+  da `loggedIn:false`. Quítala con `unset CLAUDE_CONFIG_DIR`; `doctor.sh` avisa (WARN) si la encuentra vacía.
+
 ## Paso 3b · CLIs `handoff`, `oraculo` y `cupo`
 
 `install.sh` copia `bin/handoff`, `bin/oraculo` y `bin/cupo` a `$CLAUDE_HOME/bin/` (ejecutables) y crea tres enlaces en `~/.local/bin/`:

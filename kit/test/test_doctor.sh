@@ -273,4 +273,13 @@ cp "$tmp/nucleo-original" "$CLAUDE_HOME/hooks/lib/nucleo.sh"
 printf '\n# version distinta\n' >> "$CLAUDE_HOME/bin/handoff"
 set +e; out="$(dr)"; set -e
 ck "$(echo "$out" | grep -c '^WARN .*difieren de los del kit.*bin/handoff')" "1" "doctor detecta CLI de otra version aunque siga siendo ejecutable"
+
+# K10: CLAUDE_CONFIG_DIR definida pero vacia no equivale a no definirla: claude auth status da loggedIn:false.
+set +e; out="$(CLAUDE_CONFIG_DIR="" dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*CLAUDE_CONFIG_DIR.*vac')" "1" "K10: doctor avisa si CLAUDE_CONFIG_DIR esta definida pero vacia"
+set +e; out="$(env -u CLAUDE_CONFIG_DIR HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; set -e
+ck "$(echo "$out" | grep -c 'CLAUDE_CONFIG_DIR')" "0" "K10: sin definir no dice nada"
+set +e; out="$(CLAUDE_CONFIG_DIR="$tmp/cfg" dr)"; set -e
+ck "$(echo "$out" | grep -c 'CLAUDE_CONFIG_DIR.*vac')" "0" "K10: con valor no avisa"
+ck "$(grep -c 'claude auth login --email' "$KIT/docs/02-install.md")" "1" "K10: la guia documenta el login sin TUI y por config dir"
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
