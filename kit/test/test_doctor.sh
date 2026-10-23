@@ -282,4 +282,7 @@ ck "$(echo "$out" | grep -c 'CLAUDE_CONFIG_DIR')" "0" "K10: sin definir no dice 
 set +e; out="$(CLAUDE_CONFIG_DIR="$tmp/cfg" dr)"; set -e
 ck "$(echo "$out" | grep -c 'CLAUDE_CONFIG_DIR.*vac')" "0" "K10: con valor no avisa"
 ck "$(grep -c 'claude auth login --email' "$KIT/docs/02-install.md")" "1" "K10: la guia documenta el login sin TUI y por config dir"
+# K11: pgrep -f "claude -p" se encuentra a si mismo dentro de bash -c. Nada del kit lo recomienda y la guia lo explica.
+ck "$(grep -c '\[c\]laude -p' "$KIT/docs/06-routine.md")" "1" "K11: la guia de autonomia da el patron ps|grep [c]laude -p"
+ck "$(grep -rlE 'pgrep +-f +.?claude' "$KIT/.." --include='*' --exclude-dir=.git --exclude-dir=archive --exclude=06-routine.md --exclude=test_doctor.sh 2>/dev/null | wc -l)" "0" "K11: ningun fichero del repo recomienda pgrep -f claude"
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

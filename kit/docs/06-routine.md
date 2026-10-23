@@ -54,6 +54,11 @@ El runner que lance la sesión debe guardar, además del `rc`, el `terminal_reas
 `api_error_status` del evento `result` (`jq -c 'select(.type=="result") | {terminal_reason, api_error_status}'`):
 `terminal_reason: api_error` con `api_error_status: 429` es cuota agotada, no un fallo del trabajo.
 
+Gotcha: dentro de `wsl.exe … bash -c "…"` (y de cualquier `bash -c`), `pgrep -f "claude -p"` se
+encuentra a sí mismo, porque la línea de órdenes del propio shell contiene el patrón: da procesos
+vivos que no existen. Usa `ps -eo pid,args | grep "[c]laude -p"`; los corchetes impiden que el
+`grep` case consigo mismo.
+
 ## Git worktrees para aislar
 
 Cuando hay dos o más frentes independientes en paralelo (varios agentes, varias tareas que no dependen entre sí), usa `git worktree` para que cada frente tenga su propio directorio de trabajo y su propia rama, sin pisarse:
