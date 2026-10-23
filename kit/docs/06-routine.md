@@ -54,6 +54,9 @@ El runner que lance la sesión debe guardar, además del `rc`, el `terminal_reas
 `api_error_status` del evento `result` (`jq -c 'select(.type=="result") | {terminal_reason, api_error_status}'`):
 `terminal_reason: api_error` con `api_error_status: 429` es cuota agotada, no un fallo del trabajo.
 
+Lánzala con `--permission-mode auto`: con `acceptEdits`, la escritura en `.claude/estado/` se deniega y
+`nucleo.md` no se actualiza. Qué cambia en los hooks sin persona delante: `11-cockpit.md` § «Sesiones no interactivas».
+
 Gotcha: dentro de `wsl.exe … bash -c "…"` (y de cualquier `bash -c`), `pgrep -f "claude -p"` se
 encuentra a sí mismo, porque la línea de órdenes del propio shell contiene el patrón: da procesos
 vivos que no existen. Usa `ps -eo pid,args | grep "[c]laude -p"`; los corchetes impiden que el

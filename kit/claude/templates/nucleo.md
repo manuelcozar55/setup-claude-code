@@ -14,4 +14,4 @@
 ## Pendientes
 <!-- Marca con (persona) lo que solo puede hacer la persona: lo reúne el índice de ~. -->
 ## Ficheros tocados
-<!-- los calientes, con rango: `ruta:L120-180 — qué cambia` -->
+<!-- los calientes, con rango: `ruta:L120-180 — qué cambia`. `handoff --desde` añade arriba el bloque sacado de git -->
