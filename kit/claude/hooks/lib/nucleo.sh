@@ -457,14 +457,18 @@ nucleo_sin_contenido() {
 # Bytes (LC_ALL=C): el tope protege el límite del harness, que se mide en la salida entera.
 nucleo_emitir() {
   [ -f "$1" ] || return 0
-  local kb=$(( ($(wc -c <"$1") + 1023) / 1024 )) rs out
+  # Los <!-- --> de la plantilla son para quien escribe, no para quien retoma: medido, 527 B de 4 695 inyectados.
+  local src=$1 kb rs out dat
+  dat=$(mktemp 2>/dev/null) && _nucleo_sin_comentarios "$1" >"$dat" 2>/dev/null && src=$dat
+  kb=$(( ($(wc -c <"$src") + 1023) / 1024 ))
   # Si cabe entero (o quitando secciones enteras en el orden de handoff) sale así: lo que handoff deja dentro
   # del tope se inyecta sin cortes. Solo si ni así, dos pasadas: la primera mide lo que ocupan las reservadas
   # (no depende del tope); la segunda reparte el resto.
-  if ! out=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" entero); then
-    rs=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" medir)
-    out=$(_nucleo_emitir_awk "$1" "$kb" "$(( NUCLEO_TOPE - ${rs:-0} ))")
+  if ! out=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" entero "$src"); then
+    rs=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" medir "$src")
+    out=$(_nucleo_emitir_awk "$1" "$kb" "$(( NUCLEO_TOPE - ${rs:-0} ))" "" "$src")
   fi
+  [ "$src" = "$1" ] || rm -f "$src"
   out=$(printf '%s\n' "$out" | sed 's|</|<\\/|g')
   [ -z "$out" ] || printf '%s\n' "$out"
   case $out in *'[recortado'* | *'[LEE '*) _nucleo_log_recorte "$1" "$out" ;; esac
@@ -482,7 +486,20 @@ _nucleo_log_recorte() {
   return 0
 }
 
-# _nucleo_emitir_awk <fichero> <kb> <tope> [medir|entero]: la emisión; con «medir», solo los bytes de las
+# _nucleo_sin_comentarios <fichero>: el fichero sin los comentarios <!-- --> (de una o varias líneas), salvo
+# dentro de un bloque ```; la línea que se queda vacía por quitar uno desaparece.
+_nucleo_sin_comentarios() {
+  awk '/^[ \t]*```/ && !c { v = !v; print; next }
+    v { print; next }
+    { l = $0; o = ""; q = 0
+      while (l != "") {
+        if (c) { i = index(l, "-->"); if (!i) { q = 1; break } l = substr(l, i + 3); c = 0; q = 1 }
+        else { i = index(l, "<!--"); if (!i) { o = o l; break } o = o substr(l, 1, i - 1); l = substr(l, i + 4); c = 1; q = 1 }
+      }
+      if (!q || o ~ /[^ \t\r]/) print o }' "$1"
+}
+
+# _nucleo_emitir_awk <fichero> <kb> <tope> [medir|entero] [datos]: la emisión; con «medir», solo los bytes de las
 # reservadas; con «entero», sin topes por sección y rc 3 si ni quitando Pendientes, Plan y Ficheros tocados cabe.
 _nucleo_emitir_awk() {
   LC_ALL=C awk -v f="$1" -v kb="$2" -v sec=3000 -v tope="$3" -v res=700 -v medir="${4:-}" '
@@ -572,5 +589,5 @@ _nucleo_emitir_awk() {
       if (recortes || omitidas != "" || cerradas || cercas % 2) print "[LEE " f " antes de actuar: lo inyectado está incompleto.]"
       if (fuera || kb > 12) print "[fuera de forma: " fuera + 0 " secciones / " kb " KB → muévelas a diario.md, que nunca se inyecta" \
         (cerradas ? " (un ### sin nombre de plantilla cerró una sección: si era un subapartado, escríbelo con ####)" : "") "]"
-    }' "$1" "$1"
+    }' "${5:-$1}" "${5:-$1}"
 }

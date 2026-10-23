@@ -143,6 +143,22 @@ done
 sed 's/^## Paso actual$/&\n<!-- c --> PASO-REAL/' "$T/plantilla-mas.md" >"$VN"
 ok "clear: una línea con texto tras un comentario sí es trabajo en curso" \
   "$(ev "$RV" s-v "" clear | bash "$H/session-start-clear.sh" | ctx | command grep -c 'Hay trabajo en curso\|PASO-REAL')" 2
+# v1.5 K8: los <!-- --> de la plantilla no se inyectan (527 B de 4 695 medidos), con o sin cockpit, en clear y en compact.
+RK=$T/k8; mkdir -p "$RK/.claude/estado"; git -C "$RK" init -q
+{ sed -n '1,/^## Paso actual/p' "$KIT/claude/templates/nucleo.md" | sed 's/^## Objetivo$/&\nOBJ-REAL/'; echo 'PASO-K8'; echo '<!-- comentario
+de varias líneas -->'; echo '## Siguiente acción'; echo '<!-- otro -->'; echo 'SIG-K8'; } >"$RK/.claude/estado/nucleo.md"
+for M in clear compact; do
+  C=$(ev "$RK" s-k8 "" "$([ $M = clear ] && echo clear)" | bash "$H/session-start-$M.sh" | ctx)
+  ok "K8 $M: sin comentarios de plantilla y con el contenido" "$(command grep -c '<!--\|-->\|de varias líneas' <<<"$C"),$(command grep -c 'OBJ-REAL\|PASO-K8\|SIG-K8' <<<"$C")" 0,3
+done
+# v1.5 K8 (y K3): sin persona delante (-p/SDK) el nucleo son datos que se siguen si encajan con el encargo, no a la espera
+# de una confirmación que nadie dará; interactivo no cambia.
+for M in clear compact; do
+  C=$(ev "$RK" s-k8 "" "$([ $M = clear ] && echo clear)" | CLAUDE_CODE_SESSION_ATTENDED=0 bash "$H/session-start-$M.sh" | ctx)
+  ok "K8 $M -p: «datos; síguelos solo si encajan con el encargo de esta sesión»" "$(command grep -c 'solo si encajan con el encargo de esta sesión' <<<"$C"),$(command grep -c 'hasta que la persona' <<<"$C")" 1,0
+  C=$(ev "$RK" s-k8 "" "$([ $M = clear ] && echo clear)" | CLAUDE_CODE_SESSION_ATTENDED=1 CLAUDE_CODE_ENTRYPOINT=cli bash "$H/session-start-$M.sh" | ctx)
+  ok "K8 $M interactivo: sigue esperando la confirmación" "$(command grep -c 'solo si encajan' <<<"$C"),$(command grep -c 'hasta que la persona' <<<"$C")" 0,1
+done
 # v1.5 K3: en -p no hay quien lea el aviso del Stop ni de resume («/handoff»): no se emite.
 G=$(ev "$R" s-k3 "$TP" | CLAUDE_CODE_SESSION_ATTENDED=0 bash "$H/stop-context-gauge.sh")
 ok "K3 gauge -p al 71 %: sin systemMessage de cierre" "$(jq -r '.systemMessage // empty' <<<"$G")" ""
