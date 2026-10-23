@@ -1,6 +1,6 @@
 {
   "schema_version": "1.2",
-  "min_preflight_version": 2,
+  "min_preflight_version": 3,
   "description": "Security sentinel IOC library. Extended from soy-rafa/claude-mcp-sentinel with prompt injection detection, audit logging, and full tool coverage.",
   "last_updated": "2026-06-25",
   "sensitive_paths": {
@@ -117,8 +117,6 @@
   },
   "dangerous_commands": {
     "patterns": [
-      "(?i)\\bcurl\\s.*\\|&?\\s*(?:(?:/usr/bin/env|sudo|doas|env|nohup|exec|command|stdbuf)\\s+(?:-\\S+\\s+|\\w+=\\S*\\s+)*)*(?:\\S*/)?(?:bash|sh|zsh|dash|ksh|fish|python3?|perl|ruby|node)(?![\\w.-])",
-      "(?i)\\bwget\\s.*\\|&?\\s*(?:(?:/usr/bin/env|sudo|doas|env|nohup|exec|command|stdbuf)\\s+(?:-\\S+\\s+|\\w+=\\S*\\s+)*)*(?:\\S*/)?(?:bash|sh|zsh|dash|ksh|fish|python3?|perl|ruby|node)(?![\\w.-])",
       "(?i)(bash|sh|zsh)\\s+<\\(\\s*(curl|wget)",
       "(?i)base64\\s.*(curl|wget|ncat|\\bnc\\b|python|perl)",
       "(?i)(^|[;&|(){}\\n])\\s*eval\\s+",
