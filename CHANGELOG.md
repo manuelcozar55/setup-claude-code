@@ -25,7 +25,7 @@ Arreglos K1-K13 del A/B «¿aporta scc?» (23-oct): lo que estorbaba en sesiones
 ### Fixed
 
 - `nucleo.md` con la plantilla vacía inyecta un aviso corto en vez de 0 B (K5).
-- El registro de agentes distingue «terminado» de «terminado sin informe»: lee `last_assistant_message` o, si falta, el último texto del transcript (K4).
+- El registro de agentes distingue «terminado» de «terminado sin informe»: lee el informe de `SubagentHandback`, después `last_assistant_message` y, si faltan, el último texto del transcript (K4).
 - `write-guard` deja de avisar a los subagentes de que deleguen el fichero grande (K7).
 - El aviso del airbag mide desde la primera herramienta aunque el último `assistant` esté a más de 40 líneas del final del transcript (K12).
 

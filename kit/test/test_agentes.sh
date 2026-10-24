@@ -146,7 +146,7 @@ R=$T/k4; mkdir -p "$R"; git -C "$R" init -q
 E=$(nucleo_estado_dir "$R")
 stop() { jq -cn --arg r "$R" --arg id "$1" --arg tp "$2" --argjson x "$3" \
   '{hook_event_name:"SubagentStop",cwd:$r,session_id:"k4",agent_id:$id,agent_type:"worker",agent_transcript_path:$tp} + $x' | bash "$H/agentes.sh"; }
-for id in k4a k4b k4c k4d; do jq -cn --arg r "$R" --arg id "$id" '{hook_event_name:"SubagentStart",cwd:$r,session_id:"k4",agent_id:$id,agent_type:"worker"}' | bash "$H/agentes.sh"; done
+for id in k4a k4b k4c k4d k4e k4f; do jq -cn --arg r "$R" --arg id "$id" '{hook_event_name:"SubagentStart",cwd:$r,session_id:"k4",agent_id:$id,agent_type:"worker"}' | bash "$H/agentes.sh"; done
 printf '%s\n' '{"type":"user","message":{"content":"haz algo"}}' \
   '{"type":"assistant","message":{"content":[{"type":"text","text":"INFORME-DE-TRANSCRIPT"}]}}' > "$T/k4-tp"
 printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}' '{"type":"user","message":{"content":[{"type":"tool_result","content":"x"}]}}' > "$T/k4-tp-cortado"
@@ -154,10 +154,18 @@ stop k4a "$T/k4-tp-cortado" '{"last_assistant_message":"INFORME-DEL-PAYLOAD hech
 stop k4b "$T/k4-tp" '{}'
 stop k4c "$T/k4-tp-cortado" '{"last_assistant_message":""}'
 stop k4d "$T/missing" '{}'
+# Forma real (Debian, 24-oct): el informe va en un tool_use SubagentHandback; el payload llega vacío o con la frase previa.
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"Voy a entregar:"}]}}' \
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"SubagentHandback","input":{"message":"INFORME-DEL-HANDBACK"}}]}}' \
+  '{"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}' > "$T/k4-tp-handback"
+stop k4e "$T/k4-tp-handback" '{"last_assistant_message":""}'
+stop k4f "$T/k4-tp-handback" '{"last_assistant_message":"Voy a entregar:"}'
 ok 'K4 informe del payload se guarda' "$(jq -r 'select(.id=="k4a" and .ev=="stop").msg' "$E/agentes.jsonl")" 'INFORME-DEL-PAYLOAD hecho'
 ok 'K4 con informe: terminado' "$(row k4a)" terminado
 ok 'K4 sin campo, informe desde el transcript' "$(row k4b)|$(row k4b 7)" 'terminado|INFORME-DE-TRANSCRIPT'
 ok 'K4 sin informe en ninguna parte: terminado sin informe' "$(row k4c),$(row k4d)" 'terminado sin informe,terminado sin informe'
+ok 'K4 informe por SubagentHandback con payload vacío' "$(row k4e)|$(row k4e 7)" 'terminado|INFORME-DEL-HANDBACK'
+ok 'K4 el handback gana a la frase previa del payload' "$(jq -r 'select(.id=="k4f" and .ev=="stop").msg' "$E/agentes.jsonl")" 'INFORME-DEL-HANDBACK'
 ok 'K4 la inyección no marca sin informe al que lo tiene' "$(nucleo_agentes_ctx "$R" | grep -c 'k4a.*terminado$'),$(nucleo_agentes_ctx "$R" | grep -c 'terminado sin informe')" '1,2'
 
 # K9: «Ficheros tocados» sale de git (commits desde el handoff anterior + working tree), no del texto escrito a mano.
