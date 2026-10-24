@@ -69,11 +69,12 @@ ok "K8 en proyecto: igual que antes" "$(run s54 p60 | ctx | command grep -c "act
 
 # v1.5 K3: en -p/SDK nadie cierra el turno ni pulsa /handoff ni h (medido: claude -p da CLAUDE_CODE_SESSION_ATTENDED=0
 # y CLAUDE_CODE_ENTRYPOINT=sdk-cli al hook; el interactivo, 1 y cli). Se pide guardar el estado y seguir.
+# Sin handoff en el PATH (CI) el aviso da la ruta …/bin/handoff: eso no es el comando /handoff.
 echo x >"$NUC"; touch -d '-30 minutes' "$NUC"
 for SEN in "CLAUDE_CODE_SESSION_ATTENDED=0" "CLAUDE_CODE_ENTRYPOINT=sdk-cli"; do
   for B in p72 p90; do
     C=$( (export "${SEN?}"; run "k3${SEN//[^A-Za-z]/}$B" "$B") | ctx)
-    ok "K3 -p ($SEN, $B): no pide cerrar el turno ni /handoff ni tecla h" "$(command grep -ci 'cierra el turno\|/handoff\|tecla\|/clear' <<<"$C"),$([ -n "$C" ] && echo avisa)" 0,avisa
+    ok "K3 -p ($SEN, $B): no pide cerrar el turno ni /handoff ni tecla h" "$(command grep -ciE 'cierra el turno|(^|[^[:alnum:]_.-])/handoff|tecla|/clear' <<<"$C"),$([ -n "$C" ] && echo avisa)" 0,avisa
     ok "K3 -p ($SEN, $B): pide guardar el estado y seguir" "$(command grep -c 'handoff --desde\|nucleo.md' <<<"$C"),$(command grep -c 'sigue' <<<"$C")" 1,1
   done
 done
