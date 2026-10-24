@@ -7,6 +7,8 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-24
+
 Arreglos K1-K13 del A/B «¿aporta scc?» (23-oct): lo que estorbaba en sesiones autónomas reales.
 
 ### Added
@@ -2013,7 +2015,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.2.0...v1.3.0
