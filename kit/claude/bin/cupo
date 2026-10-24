@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# cupo — comprobación previa a una sesión autónoma larga: ¿queda cupo de suscripción? Válido donde haya `claude`.
+# Por qué: dos sesiones de 120 min lanzadas con seven_day al 98 % murieron a los ~10 min con un 429 y rc=1, que no
+# distingue cuota de fallo. El primer rate_limit_event de cualquier turno ya trae la utilización: un turno mínimo
+# basta para saberlo antes de gastar nada. La cuenta sale de `claude auth status`; no se lee ningún fichero.
+set -euo pipefail
+
+uso() {
+  cat <<'USO'
+uso: cupo [--umbral N]
+Hace un turno mínimo con `claude -p … --output-format stream-json --verbose`, lee rate_limit_event e imprime la
+cuenta y la utilización de cada cupo (five_hour, seven_day…).
+Sale 0 si todos están por debajo del umbral (N %, 80 por defecto; también CUPO_UMBRAL) o sin dato de utilización;
+1 si algún cupo está en rejected o por encima; 2 si no hay veredicto (sin claude, sin sesión o sin rate_limit_event);
+64 si el uso es erróneo.
+USO
+}
+
+UMBRAL=${CUPO_UMBRAL:-80}
+while [ $# -gt 0 ]; do
+  case $1 in
+    -h | --help) uso; exit 0 ;;
+    --umbral) [ $# -ge 2 ] || { echo "uso: cupo [--umbral N] (a --umbral le falta el valor)" >&2; exit 64; }
+      UMBRAL=$2; shift 2 ;;
+    *) echo "uso: cupo [--umbral N] («$1» no es una opción)" >&2; exit 64 ;;
+  esac
+done
+case $UMBRAL in '' | *[!0-9]*) echo "uso: cupo [--umbral N] (N es un entero 0-100, no «$UMBRAL»)" >&2; exit 64 ;; esac
+
+command -v claude >/dev/null 2>&1 || { echo "cupo: no hay claude en el PATH" >&2; exit 2; }
+command -v jq >/dev/null 2>&1 || { echo "cupo: falta jq" >&2; exit 2; }
+
+AUTH=$(claude auth status 2>/dev/null || true)
+if [ "$(printf '%s' "$AUTH" | jq -r '.loggedIn // false' 2>/dev/null || echo false)" != true ]; then
+  echo "cupo: sin sesión iniciada (claude auth status); no hay veredicto" >&2; exit 2
+fi
+printf 'cuenta: %s (%s)\n' "$(printf '%s' "$AUTH" | jq -r '.email // "?"')" "$(printf '%s' "$AUTH" | jq -r '.subscriptionType // "?"')"
+
+OUT=$(mktemp "${TMPDIR:-/tmp}/cupo.XXXXXX")
+trap 'rm -f -- "$OUT"' EXIT
+# Un rc≠0 de claude no importa si ya emitió el evento; lo que cuenta es lo que se lee.
+claude -p "responde solo: ok" --output-format stream-json --verbose --max-turns 1 > "$OUT" 2>/dev/null || true
+
+# Una línea por cupo: «nombre<TAB>status<TAB>porcentaje|-». Se queda con la mayor utilización de cada nombre.
+FILAS=$(jq -R -r 'fromjson? | select(.type == "rate_limit_event") | .rate_limit_info // empty
+  | . as $i
+  | (if (.unifiedWindows // {}) | length > 0
+     then (.unifiedWindows | to_entries | map({n: .key, u: .value.utilization, s: (.value.status // $i.status)}))
+     else [{n: (.rateLimitType // "?"), u: .utilization, s: .status}] end)[]
+  | [.n, (.s // "?"), (if .u == null then "-" else ((.u * 100) | round | tostring) end)] | @tsv' "$OUT" 2>/dev/null || true)
+[ -n "$FILAS" ] || { echo "cupo: ningún rate_limit_event en la respuesta; no hay veredicto" >&2; exit 2; }
+
+# El status global puede estar en rejected sin que ninguna ventana lo diga.
+GLOBAL=$(jq -R -r 'fromjson? | select(.type == "rate_limit_event") | .rate_limit_info.status // empty' "$OUT" 2>/dev/null || true)
+rc=0
+while IFS=$'\t' read -r nombre estado pct; do
+  [ -n "$nombre" ] || continue
+  veredicto=ok
+  if [ "$estado" = rejected ]; then veredicto="RECHAZADO"; rc=1
+  elif [ "$pct" != "-" ] && [ "$pct" -gt "$UMBRAL" ]; then veredicto="POR ENCIMA de $UMBRAL %"; rc=1; fi
+  if [ "$pct" = "-" ]; then pct="sin dato"; else pct="$pct %"; fi
+  printf '%s: %s (%s) %s\n' "$nombre" "$pct" "$estado" "$veredicto"
+done <<< "$(printf '%s\n' "$FILAS" | sort -t$'\t' -k1,1 -k3,3nr | awk -F'\t' '!v[$1]++')"
+if printf '%s\n' "$GLOBAL" | grep -qx rejected && [ "$rc" -eq 0 ]; then echo "estado global: rejected"; rc=1; fi
+[ "$rc" -eq 0 ] || echo "cupo: no lances la sesión larga ahora (umbral $UMBRAL %)" >&2
+exit "$rc"

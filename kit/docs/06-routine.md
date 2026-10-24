@@ -40,6 +40,28 @@ Comprueba `/status` y `/context`: la disponibilidad y la ventana dependen de la
 versión y de tu cuenta. Ajusta el modelo y el esfuerzo según la tarea y las pruebas,
 no por una recomendación universal de contexto máximo.
 
+## Sesiones autónomas largas
+
+Antes de lanzar una sesión de horas, ejecuta `cupo`. Hace un turno mínimo con
+`claude -p … --output-format stream-json --verbose`, lee `rate_limit_event` e imprime la cuenta
+(`claude auth status`, sin tocar ficheros de credenciales) y la utilización de cada cupo
+(`five_hour`, `seven_day`…). Sale 1 si algún cupo está en `rejected` o por encima del 80 %
+(`cupo --umbral N` o `CUPO_UMBRAL`), 2 si no hay veredicto (sin sesión o sin evento) y 0 si todo
+está bajo el umbral o sin dato de utilización. Por qué: dos sesiones de 120 min lanzadas con
+`seven_day` al 98 % murieron a los ~10 min con un 429, y un `rc=1` pelado no distingue cuota de fallo.
+
+El runner que lance la sesión debe guardar, además del `rc`, el `terminal_reason` y el
+`api_error_status` del evento `result` (`jq -c 'select(.type=="result") | {terminal_reason, api_error_status}'`):
+`terminal_reason: api_error` con `api_error_status: 429` es cuota agotada, no un fallo del trabajo.
+
+Lánzala con `--permission-mode auto`: con `acceptEdits`, la escritura en `.claude/estado/` se deniega y
+`nucleo.md` no se actualiza. Qué cambia en los hooks sin persona delante: `11-cockpit.md` § «Sesiones no interactivas».
+
+Gotcha: dentro de `wsl.exe … bash -c "…"` (y de cualquier `bash -c`), `pgrep -f "claude -p"` se
+encuentra a sí mismo, porque la línea de órdenes del propio shell contiene el patrón: da procesos
+vivos que no existen. Usa `ps -eo pid,args | grep "[c]laude -p"`; los corchetes impiden que el
+`grep` case consigo mismo.
+
 ## Git worktrees para aislar
 
 Cuando hay dos o más frentes independientes en paralelo (varios agentes, varias tareas que no dependen entre sí), usa `git worktree` para que cada frente tenga su propio directorio de trabajo y su propia rama, sin pisarse:

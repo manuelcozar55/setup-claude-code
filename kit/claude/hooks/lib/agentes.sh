@@ -62,7 +62,7 @@ nucleo_agentes_anotar() (
 # nucleo_agentes_estado <estado>: el estado derivado de cada agente, el único sitio que lo calcula. Una fila por agente,
 # de la más vieja a la más nueva, separada por tabuladores: id, tipo, estado, ruta del RESULTADO («-» si no hay),
 # archivado (1 si handoff --desde ya lo pasó a diario.md), última hora y último mensaje («-» si no hay).
-# Estados: completado | fallido | parcial (el «estado:» del RESULTADO.md) · terminado sin informe · en vuelo ·
+# Estados: completado | fallido | parcial (el «estado:» del RESULTADO.md) · terminado (dejó un mensaje final) · terminado sin informe · en vuelo ·
 # cortado al cerrar · sin cierre. Los agentes internos (tipo vacío) y las líneas rotas no cuentan.
 # De un RESULTADO.md solo se lee la primera línea, y solo si el fichero se llama así y es regular; de ella, solo
 # uno de los tres valores: lo demás es texto de un tercero.
@@ -83,7 +83,7 @@ nucleo_agentes_estado() {
           l=$(head -n 1 -- "$res" 2>/dev/null | head -c 200)
           [[ $l =~ ^estado:[[:space:]]*(completado|fallido|parcial)[[:space:]]*$ ]] && est=${BASH_REMATCH[1]}
         fi
-        [ -n "$est" ] || est="terminado sin informe" ;;
+        [ -n "$est" ] || { [ "$msg" != - ] && est="terminado" || est="terminado sin informe"; } ;;
       corte) est="cortado al cerrar" ;;
       vuelo) est="en vuelo" ;;
       *) est="sin cierre" ;;

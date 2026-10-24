@@ -1218,8 +1218,132 @@ def check_suspicious_network(tool_input: dict, iocs: dict, allowlist: dict):
     return (None, None)
 
 
+# ── K1 narrow exception: download piped to a data-only reader ───────────────────
+# The one relaxation over main's behaviour. A `curl`/`wget` whose output feeds, through a
+# single pipe, a reader that only *consumes* the bytes as data is allowed: a Python
+# interpreter that carries its own program in `-c`, `python -m json.tool`, or `jq`. Nothing
+# that executes the download runs. Every condition fails CLOSED (deny): if the shape is not
+# exactly one of these, main's block stands. This is the companion of the same logic in
+# block-dangerous-commands.sh (`fetch_safe_reader`); both must decide alike.
+
+# Names the `-c` program may use outside its string literals: read JSON from stdin, filter it,
+# print it. An ALLOW list on purpose: Python reaches code execution through too many doors
+# (exec, pdb, code, timeit, `sys._getframe`, `operator.attrgetter`...) to shut them one by one.
+# Any one-letter name and plain integers are fine too. None of these turns text into code, so
+# what is inside the string literals does not count. Same list as PYC_NAMES in the bash guard.
+_PYC_NAMES = frozenset("""
+    import from as for in if else elif and or not is None True False lambda
+    json sys stdin load loads dumps read readlines get keys values items
+    print sep end len sorted reversed str int float bool list dict set tuple min max sum any all
+    enumerate range zip round abs isinstance map filter
+    strip lstrip rstrip split splitlines join lower upper replace startswith endswith append
+    indent sort_keys ensure_ascii key reverse
+    data obj item row line res resp out name value val entry tag
+""".split())
+_PYC_LIT = re.compile(r"""^([^"']*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')""", re.S)
+_PYC_TOKEN = re.compile(r"[A-Za-z0-9_]+")
+_PYC_SMALL = re.compile(r"[0-9]+|[A-Za-z_]")
+
+_PY = r"(?:[^\s|]*/)?python[0-9.]*"
+_FETCH = r"\s*(?:curl|wget)\b[^|]*\|\s*"
+_PYC_SAFE = re.compile(
+    r"^" + _FETCH + _PY + r"\s+-[ISEBsu]*c\s+(?:'([^']*)'|\"([^\"]*)\")\s*$")
+_JSONTOOL_SAFE = re.compile(
+    r"^" + _FETCH + _PY +
+    r"\s+-m\s*json\.tool(?:\s+(?:--sort-keys|--compact|--indent(?:=\d+|\s+\d+)))*\s*$")
+_JQ_SAFE = re.compile(r"^" + _FETCH + r"(?:[^\s|]*/)?jq\b[^|]*$")
+
+
+def _strict_pyc_ok(code: str, quote: str) -> bool:
+    """True iff the `-c` program names only _PYC_NAMES outside its string literals. Fails
+    closed: non-ASCII (Python NFKC-normalises identifiers), `$`, backtick or `\\` inside shell
+    double quotes (the shell expands them first), a prefixed literal (f"{...}" evaluates), a
+    `#` or `\\` outside a literal, or a stray quote."""
+    if len(code) > 1024 or not all(" " <= ch <= "~" or ch in "\t\n\v\f\r" for ch in code):
+        return False
+    if quote == '"' and any(ch in code for ch in "$`\\"):
+        return False
+    out, rest = [], code
+    m = _PYC_LIT.match(rest)
+    while m:
+        if re.search(r"[A-Za-z0-9_]$", m.group(1)):
+            return False
+        out.append(m.group(1) + " ")
+        rest = rest[m.end():]
+        m = _PYC_LIT.match(rest)
+    out = "".join(out) + rest
+    if any(ch in out for ch in "\"'#\\"):
+        return False
+    return all(_PYC_SMALL.fullmatch(t) or t in _PYC_NAMES for t in _PYC_TOKEN.findall(out))
+
+
+def _safe_shape_stmt(st: str) -> bool:
+    m = _PYC_SAFE.match(st)
+    if m:
+        if m.group(1) is not None:
+            return _strict_pyc_ok(m.group(1), "'")
+        return _strict_pyc_ok(m.group(2), '"')
+    return bool(_JSONTOOL_SAFE.match(st) or _JQ_SAFE.match(st))
+
+
+def _split_statements(text: str):
+    out, cur, i, n, q = [], [], 0, len(text), None
+    while i < n:
+        c = text[i]
+        if q is not None:
+            cur.append(c)
+            if c == "\\" and q == '"' and i + 1 < n:
+                cur.append(text[i + 1]); i += 2; continue
+            if c == q:
+                q = None
+            i += 1; continue
+        if c in ("'", '"'):
+            q = c; cur.append(c); i += 1; continue
+        if c == "\\" and i + 1 < n:
+            cur.append(c); cur.append(text[i + 1]); i += 2; continue
+        if c in (";", "\n", "(", ")"):
+            out.append("".join(cur)); cur = []; i += 1; continue
+        if c == "&":
+            if i + 1 < n and text[i + 1] == ">":
+                cur.append(c); i += 1; continue
+            if i + 1 < n and text[i + 1] == "&":
+                i += 1
+            out.append("".join(cur)); cur = []; i += 1; continue
+        if c == "|":
+            if i + 1 < n and text[i + 1] == "|":
+                out.append("".join(cur)); cur = []; i += 2; continue
+            cur.append(c); i += 1; continue
+        cur.append(c); i += 1
+    out.append("".join(cur))
+    return out
+
+
+def _fetch_patterns(patterns: list) -> list:
+    return [rx for rx in patterns if "\\|&?" in rx and ("\\bcurl" in rx or "\\bwget" in rx)]
+
+
+def fetch_safe_reader(text: str, fetch_patterns: list) -> bool:
+    """True iff every download-piped-to-interpreter statement is one of the allowed
+    data-only readers (and at least one such statement exists). Fails closed."""
+    if not fetch_patterns:
+        return False
+    stmts = _split_statements(text)
+    if len(stmts) > 64:
+        return False
+    safe = 0
+    for st in stmts:
+        if not any(_search(rx, st) for rx in fetch_patterns):
+            continue
+        if _safe_shape_stmt(st):
+            safe += 1
+        else:
+            return False
+    return safe > 0
+
+
 def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
     patterns = iocs.get("dangerous_commands", {}).get("patterns", [])
+    fetch_patterns = _fetch_patterns(patterns)
     allowed_cmds = allowlist.get("commands") or []
 
     for text in collect_fields(tool_input, ["command"]):
@@ -1227,7 +1351,10 @@ def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
             continue
         # A backslash-newline is a continuation: the shell reads it as one line, so must the regexes.
         text = re.sub(r"\\\r?\n[ \t]*", " ", text)
+        safe_fetch = fetch_safe_reader(text, fetch_patterns)
         for rx in patterns:
+            if safe_fetch and rx in fetch_patterns:
+                continue
             if _search(rx, text):
                 return (f"dangerous command pattern", "critical")
     return (None, None)

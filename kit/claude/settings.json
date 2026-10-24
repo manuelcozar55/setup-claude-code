@@ -247,7 +247,7 @@
       "source": {
         "source": "github",
         "repo": "manuelcozar55/setup-claude-code",
-        "ref": "v1.4.1"
+        "ref": "v1.5.0"
       }
     }
   },

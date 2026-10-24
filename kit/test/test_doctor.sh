@@ -273,4 +273,29 @@ cp "$tmp/nucleo-original" "$CLAUDE_HOME/hooks/lib/nucleo.sh"
 printf '\n# version distinta\n' >> "$CLAUDE_HOME/bin/handoff"
 set +e; out="$(dr)"; set -e
 ck "$(echo "$out" | grep -c '^WARN .*difieren de los del kit.*bin/handoff')" "1" "doctor detecta CLI de otra version aunque siga siendo ejecutable"
+
+# K10: CLAUDE_CONFIG_DIR definida pero vacia no equivale a no definirla: claude auth status da loggedIn:false.
+set +e; out="$(CLAUDE_CONFIG_DIR="" dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*CLAUDE_CONFIG_DIR.*vac')" "1" "K10: doctor avisa si CLAUDE_CONFIG_DIR esta definida pero vacia"
+set +e; out="$(env -u CLAUDE_CONFIG_DIR HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; set -e
+ck "$(echo "$out" | grep -c 'CLAUDE_CONFIG_DIR')" "0" "K10: sin definir no dice nada"
+set +e; out="$(CLAUDE_CONFIG_DIR="$tmp/cfg" dr)"; set -e
+ck "$(echo "$out" | grep -c 'CLAUDE_CONFIG_DIR.*vac')" "0" "K10: con valor no avisa"
+ck "$(grep -c 'claude auth login --email' "$KIT/docs/02-install.md")" "1" "K10: la guia documenta el login sin TUI y por config dir"
+# K11: pgrep -f "claude -p" se encuentra a si mismo dentro de bash -c. Nada del kit lo recomienda y la guia lo explica.
+ck "$(grep -c '\[c\]laude -p' "$KIT/docs/06-routine.md")" "1" "K11: la guia de autonomia da el patron ps|grep [c]laude -p"
+ck "$(grep -rlE 'pgrep +-f +.?claude' "$KIT/.." --include='*' --exclude-dir=.git --exclude-dir=archive --exclude=06-routine.md --exclude=test_doctor.sh 2>/dev/null | wc -l)" "0" "K11: ningun fichero del repo recomienda pgrep -f claude"
+# K6: la ventana de 250 K se queda (freno de coste), con su porque, y cambiarla en una ejecucion va por --settings.
+ck "$(grep -c -- "--settings '{\"env\":{\"CLAUDE_CODE_AUTO_COMPACT_WINDOW\"" "$KIT/docs/02-install.md")" "1" "K6: la guia documenta --settings con env para cambiar la ventana en una ejecucion"
+ck "$(grep -c 'freno de coste' "$KIT/docs/02-install.md")" "1" "K6: la guia explica por que se queda en 250 K"
+# K13: el numero de suites que da la documentacion cuadra con el real (los ficheros de kit/test y las lineas de `make test`).
+ROOT="$KIT/.."
+real_suites="$(find "$KIT/test" -maxdepth 1 -name 'test_*.sh' | wc -l | tr -d ' ')"
+make_suites="$(sed -n '/^test:/,/^[a-z-]*:/p' "$ROOT/Makefile" | grep -c 'bash kit/test/test_')"
+ck "$make_suites" "$real_suites" "K13: make test corre todas las suites de kit/test ($real_suites)"
+for doc in README.md AGENTS.md CLAUDE.md CONTRIBUTING.md kit/README.md kit/docs/10-onboarding.md; do
+  [ -f "$ROOT/$doc" ] || continue
+  dichos="$(grep -oE '[0-9]+ suites' "$ROOT/$doc" | grep -oE '[0-9]+' | sort -u | tr '\n' ' ')"
+  ck "${dichos% }" "$real_suites" "K13: $doc dice $real_suites suites"
+done
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

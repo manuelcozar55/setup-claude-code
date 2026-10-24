@@ -7,6 +7,34 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-24
+
+Arreglos K1-K13 del A/B «¿aporta scc?» (23-oct): lo que estorbaba en sesiones autónomas reales.
+
+### Added
+
+- `cupo` (`kit/claude/bin/cupo`): comprobación previa a una sesión autónoma larga. Un turno mínimo lee `rate_limit_event` y sale 1 si algún cupo está en `rejected` o por encima del umbral (80 % por defecto), y 2 si no hay veredicto. No lee credenciales (K2).
+- `doctor.sh` avisa si `CLAUDE_CONFIG_DIR` está definida pero vacía (K10).
+- Un test compara el número de suites que dicen los documentos con el real (K13).
+
+### Changed
+
+- Guards: una excepción estrecha al bloqueo de descarga por tubería (`curl`/`wget`). Pasa si va hacia `python -c` con flags simples y un código que solo nombra, fuera de sus cadenas, lo necesario para leer e imprimir JSON. Es una lista blanca, no negra: `exec`, `pdb`, `sys._getframe`, los identificadores no ASCII y la expansión del shell entre comillas dobles quedan fuera, o hacia `jq` o `python -m json.tool` exactos. Todo lo demás decide igual que en v1.4.1, y los mensajes de bloqueo dicen la alternativa (descargar a fichero; escribir texto con la herramienta Write). `block-dangerous-commands.sh` y Sentinel coinciden en toda la excepción. Lo comprueba el corpus de 782 comandos de la revisión adversaria: ninguna regresión respecto a v1.4.1 aparte de las tres relajaciones buscadas (K1).
+- En sesiones desatendidas (`CLAUDE_CODE_SESSION_ATTENDED=0` o `CLAUDE_CODE_ENTRYPOINT=sdk-cli`) los avisos de contexto ya no piden «cierra el turno», `/handoff` ni la tecla `h`: piden actualizar `nucleo.md` y seguir (K3).
+- La inyección de `nucleo.md` sale sin los comentarios `<!-- -->` de la plantilla. En `-p`, el encuadre de «Siguiente acción» pasa de «no se ejecuta hasta que la persona confirme» a «síguelo solo si encaja con el encargo de esta sesión» (K8).
+- `handoff --desde` genera el bloque de «Ficheros tocados» desde git y conserva debajo lo escrito a mano (K9).
+
+### Fixed
+
+- `nucleo.md` con la plantilla vacía inyecta un aviso corto en vez de 0 B (K5).
+- El registro de agentes distingue «terminado» de «terminado sin informe»: lee el informe de `SubagentHandback`, después `last_assistant_message` y, si faltan, el último texto del transcript (K4).
+- `write-guard` deja de avisar a los subagentes de que deleguen el fichero grande (K7).
+- El aviso del airbag mide desde la primera herramienta aunque el último `assistant` esté a más de 40 líneas del final del transcript (K12).
+
+### Docs
+
+- Sesiones autónomas: `cupo`, guardar `terminal_reason` y `api_error_status`, `--permission-mode auto` (con `acceptEdits` no se escribe `.claude/estado/`) y la trampa de `pgrep -f` dentro de `bash -c` (K2, K11). La ventana de 250 K se queda, con su porqué y cómo cambiarla en una sola ejecución (K6). Login por cada config dir con `claude auth login --email` (K10).
+
 ## [1.4.1] - 2026-10-22
 
 Auditoría de prompts aplicada a los agentes del kit (`planner` se retira: duplicaba a `strategist`) y suites de contexto que ya no dependen de lo largo que sea `TMPDIR`.
@@ -1987,7 +2015,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.2.0...v1.3.0

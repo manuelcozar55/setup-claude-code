@@ -11,7 +11,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; H="$HERE/../claude/hooks"; KIT="$HERE/.."
 T=$(mktemp -d -t scc-sA.XXXXXX); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PID CLAUDE_PROJECT_DIR NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PID CLAUDE_PROJECT_DIR NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
 mkdir -p "$HOME"
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
@@ -143,6 +143,33 @@ done
 sed 's/^## Paso actual$/&\n<!-- c --> PASO-REAL/' "$T/plantilla-mas.md" >"$VN"
 ok "clear: una línea con texto tras un comentario sí es trabajo en curso" \
   "$(ev "$RV" s-v "" clear | bash "$H/session-start-clear.sh" | ctx | command grep -c 'Hay trabajo en curso\|PASO-REAL')" 2
+# v1.5 K5: con la plantilla sin rellenar se inyecta un aviso corto y accionable (antes: 0 B, y el modelo ni sabía
+# que había que rellenarla). Sin fichero sigue sin decir nada (no se crea estado en repos que no lo usan).
+for f in /dev/null "$KIT/claude/templates/nucleo.md"; do
+  cp "$f" "$VN"; C=$(ev "$RV" s-v5 "" clear | bash "$H/session-start-clear.sh" | ctx)
+  ok "K5 clear con plantilla vacía ($(basename "$f")): aviso corto con la ruta y la plantilla" \
+    "$(command grep -c 'sin rellenar' <<<"$C"),$(command grep -cF "$VN" <<<"$C"),$(command grep -c 'templates/nucleo.md' <<<"$C"),$([ "${#C}" -le 400 ] && echo corto)" "1,1,1,corto"
+done
+# v1.5 K8: los <!-- --> de la plantilla no se inyectan (527 B de 4 695 medidos), con o sin cockpit, en clear y en compact.
+RK=$T/k8; mkdir -p "$RK/.claude/estado"; git -C "$RK" init -q
+{ sed -n '1,/^## Paso actual/p' "$KIT/claude/templates/nucleo.md" | sed 's/^## Objetivo$/&\nOBJ-REAL/'; echo 'PASO-K8'; echo '<!-- comentario
+de varias líneas -->'; echo '## Siguiente acción'; echo '<!-- otro -->'; echo 'SIG-K8'; } >"$RK/.claude/estado/nucleo.md"
+for M in clear compact; do
+  C=$(ev "$RK" s-k8 "" "$([ $M = clear ] && echo clear)" | bash "$H/session-start-$M.sh" | ctx)
+  ok "K8 $M: sin comentarios de plantilla y con el contenido" "$(command grep -c '<!--\|-->\|de varias líneas' <<<"$C"),$(command grep -c 'OBJ-REAL\|PASO-K8\|SIG-K8' <<<"$C")" 0,3
+done
+# v1.5 K8 (y K3): sin persona delante (-p/SDK) el nucleo son datos que se siguen si encajan con el encargo, no a la espera
+# de una confirmación que nadie dará; interactivo no cambia.
+for M in clear compact; do
+  C=$(ev "$RK" s-k8 "" "$([ $M = clear ] && echo clear)" | CLAUDE_CODE_SESSION_ATTENDED=0 bash "$H/session-start-$M.sh" | ctx)
+  ok "K8 $M -p: «datos; síguelos solo si encajan con el encargo de esta sesión»" "$(command grep -c 'solo si encajan con el encargo de esta sesión' <<<"$C"),$(command grep -c 'hasta que la persona' <<<"$C")" 1,0
+  C=$(ev "$RK" s-k8 "" "$([ $M = clear ] && echo clear)" | CLAUDE_CODE_SESSION_ATTENDED=1 CLAUDE_CODE_ENTRYPOINT=cli bash "$H/session-start-$M.sh" | ctx)
+  ok "K8 $M interactivo: sigue esperando la confirmación" "$(command grep -c 'solo si encajan' <<<"$C"),$(command grep -c 'hasta que la persona' <<<"$C")" 0,1
+done
+# v1.5 K3: en -p no hay quien lea el aviso del Stop ni de resume («/handoff»): no se emite.
+G=$(ev "$R" s-k3 "$TP" | CLAUDE_CODE_SESSION_ATTENDED=0 bash "$H/stop-context-gauge.sh")
+ok "K3 gauge -p al 71 %: sin systemMessage de cierre" "$(jq -r '.systemMessage // empty' <<<"$G")" ""
+ok "K3 resume caducado -p: sin aviso de /handoff" "$(ev "$T/sin-nucleo" s-k3r resume | jq -c '.prompt_cache_likely_expired=true | .context_tokens=150000' | CLAUDE_CODE_ENTRYPOINT=sdk-cli bash "$H/session-start-clear.sh" | jq -r '.systemMessage // empty')" ""
 ok "symlink: compact no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-FUERA)" 0
 ok "symlink: nudge calla" "$(jq -cn --arg c "$R3" --arg t "$TP" '{session_id:"s6",transcript_path:$t,cwd:$c}' | bash "$H/nucleo-nudge.sh")" ""
 ok "symlink: el gate no mira el nucleo enlazado" "$(ev "$R3" s6 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh" | jq -r '.decision // "nada"')" nada

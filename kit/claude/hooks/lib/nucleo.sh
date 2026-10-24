@@ -404,11 +404,16 @@ nucleo_indice_ctx() {
 nucleo_ctx() {
   local w=${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-} m=200000 t tm id s
   # Sin `timeout`: 40 líneas no cuelgan a jq, y en coreutils de Rust arrancarlo cuesta ~100 ms.
-  read -r t tm < <(tail -n 40 "$1" 2>/dev/null \
-    | jq -rR 'fromjson? | select(.type=="assistant" and .message.usage!=null) | .message
-        | ((.usage.input_tokens//0)+(.usage.cache_read_input_tokens//0)+(.usage.cache_creation_input_tokens//0)) as $n
-        | select($n>0) | "\($n) \(.model // "-")"' 2>/dev/null \
-    | tail -1)
+  # Tras el último assistant el transcript acumula adjuntos, api-request…: si 40 líneas no lo alcanzan se mira
+  # más atrás (solo en ese caso, que es el menos frecuente y el que antes callaba).
+  for s in 40 600; do
+    read -r t tm < <(tail -n "$s" "$1" 2>/dev/null \
+      | jq -rR 'fromjson? | select(.type=="assistant" and .message.usage!=null) | .message
+          | ((.usage.input_tokens//0)+(.usage.cache_read_input_tokens//0)+(.usage.cache_creation_input_tokens//0)) as $n
+          | select($n>0) | "\($n) \(.model // "-")"' 2>/dev/null \
+      | tail -1)
+    [ -z "$t" ] || break
+  done
   [ -n "$t" ] || return 0
   id=$tm
   # Un id configurado cuenta entero si el transcript no trae modelo; si lo trae, solo por su [1m]
@@ -423,6 +428,15 @@ nucleo_ctx() {
   [ "$w" -gt "$m" ] && w=$m
   [ "$w" -gt 33000 ] || w=$m
   printf '%s %s\n' "$t" "$((t * 100 / (w - 33000)))"
+}
+
+# nucleo_desatendido: rc 0 si la sesión no tiene a nadie delante (`claude -p`, SDK). Medido en 2.1.308: el hook
+# hereda CLAUDE_CODE_SESSION_ATTENDED=0 y CLAUDE_CODE_ENTRYPOINT=sdk-cli (Claude Code los fija él, un valor
+# heredado no los cambia); interactivo, 1 y cli. Sin ninguna de las dos, se asume persona delante.
+nucleo_desatendido() {
+  [ "${CLAUDE_CODE_SESSION_ATTENDED:-}" = 0 ] && return 0
+  case ${CLAUDE_CODE_ENTRYPOINT:-} in sdk-*) return 0 ;; esac
+  return 1
 }
 
 # nucleo_sin_contenido <fichero>: rc 0 si, quitados los comentarios <!-- --> (también los de varias líneas), solo
@@ -443,14 +457,18 @@ nucleo_sin_contenido() {
 # Bytes (LC_ALL=C): el tope protege el límite del harness, que se mide en la salida entera.
 nucleo_emitir() {
   [ -f "$1" ] || return 0
-  local kb=$(( ($(wc -c <"$1") + 1023) / 1024 )) rs out
+  # Los <!-- --> de la plantilla son para quien escribe, no para quien retoma: medido, 527 B de 4 695 inyectados.
+  local src=$1 kb rs out dat
+  dat=$(mktemp 2>/dev/null) && _nucleo_sin_comentarios "$1" >"$dat" 2>/dev/null && src=$dat
+  kb=$(( ($(wc -c <"$src") + 1023) / 1024 ))
   # Si cabe entero (o quitando secciones enteras en el orden de handoff) sale así: lo que handoff deja dentro
   # del tope se inyecta sin cortes. Solo si ni así, dos pasadas: la primera mide lo que ocupan las reservadas
   # (no depende del tope); la segunda reparte el resto.
-  if ! out=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" entero); then
-    rs=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" medir)
-    out=$(_nucleo_emitir_awk "$1" "$kb" "$(( NUCLEO_TOPE - ${rs:-0} ))")
+  if ! out=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" entero "$src"); then
+    rs=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" medir "$src")
+    out=$(_nucleo_emitir_awk "$1" "$kb" "$(( NUCLEO_TOPE - ${rs:-0} ))" "" "$src")
   fi
+  [ "$src" = "$1" ] || rm -f "$src"
   out=$(printf '%s\n' "$out" | sed 's|</|<\\/|g')
   [ -z "$out" ] || printf '%s\n' "$out"
   case $out in *'[recortado'* | *'[LEE '*) _nucleo_log_recorte "$1" "$out" ;; esac
@@ -468,7 +486,20 @@ _nucleo_log_recorte() {
   return 0
 }
 
-# _nucleo_emitir_awk <fichero> <kb> <tope> [medir|entero]: la emisión; con «medir», solo los bytes de las
+# _nucleo_sin_comentarios <fichero>: el fichero sin los comentarios <!-- --> (de una o varias líneas), salvo
+# dentro de un bloque ```; la línea que se queda vacía por quitar uno desaparece.
+_nucleo_sin_comentarios() {
+  awk '/^[ \t]*```/ && !c { v = !v; print; next }
+    v { print; next }
+    { l = $0; o = ""; q = 0
+      while (l != "") {
+        if (c) { i = index(l, "-->"); if (!i) { q = 1; break } l = substr(l, i + 3); c = 0; q = 1 }
+        else { i = index(l, "<!--"); if (!i) { o = o l; break } o = o substr(l, 1, i - 1); l = substr(l, i + 4); c = 1; q = 1 }
+      }
+      if (!q || o ~ /[^ \t\r]/) print o }' "$1"
+}
+
+# _nucleo_emitir_awk <fichero> <kb> <tope> [medir|entero] [datos]: la emisión; con «medir», solo los bytes de las
 # reservadas; con «entero», sin topes por sección y rc 3 si ni quitando Pendientes, Plan y Ficheros tocados cabe.
 _nucleo_emitir_awk() {
   LC_ALL=C awk -v f="$1" -v kb="$2" -v sec=3000 -v tope="$3" -v res=700 -v medir="${4:-}" '
@@ -558,5 +589,5 @@ _nucleo_emitir_awk() {
       if (recortes || omitidas != "" || cerradas || cercas % 2) print "[LEE " f " antes de actuar: lo inyectado está incompleto.]"
       if (fuera || kb > 12) print "[fuera de forma: " fuera + 0 " secciones / " kb " KB → muévelas a diario.md, que nunca se inyecta" \
         (cerradas ? " (un ### sin nombre de plantilla cerró una sección: si era un subapartado, escríbelo con ####)" : "") "]"
-    }' "$1" "$1"
+    }' "${5:-$1}" "${5:-$1}"
 }

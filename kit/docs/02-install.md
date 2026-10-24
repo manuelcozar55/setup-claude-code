@@ -100,6 +100,8 @@ usa un HOME de prueba o el ensayo `scripts/aceptacion-local.sh` de la entrega.
 - **No uses `--1m` al arrancar**: estampa el sufijo sobre cualquier modelo y rompe Haiku. Tampoco te fíes de la cabecera beta `context-1m`: no indica nada.
 - **`effortLevel: "max"` cae a `high` en silencio.** El máximo que se puede fijar en settings es `xhigh` (el de la plantilla).
 - **El airbag se mueve con `CLAUDE_CODE_AUTO_COMPACT_WINDOW`** (la plantilla: `250000`; compacta solo a la ventana − 33 000 tokens, y sobre esa línea miden sus % los hooks de `nucleo.md`). Sin sufijos `k`/`m`: se lee como entero. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` es un hook de test, no una opción: solo baja el umbral, y en la ruta de 1M no hace nada.
+- **Por qué 250 K y no más** (decisión, no descuido): es el freno de coste. Cada turno reenvía el contexto entero, así que la ventana es el precio del turno; con 1M de ventana el mismo trabajo cuesta mucho más por turno. El coste de quedarse en 250 K también está medido: una compactación en una sesión autónoma larga llegó a `pre_tokens` 218 467 y tardó 129 s (`duration_ms` 129 277), y otra sesión llegó a 208 709 tokens sin compactar. Si una tarea concreta necesita más margen, súbela solo en esa ejecución; no cambies la plantilla.
+- **Cambiarla en una ejecución: `--settings`, no la variable de entorno.** En las pruebas, `CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000 claude -p …` no movió la ventana (causa probable, no verificada: el `env` de `settings.json` se aplica después). Esto sí: `claude -p … --settings '{"env":{"CLAUDE_CODE_AUTO_COMPACT_WINDOW":"400000"}}'` (entero, sin `k`). Compruébalo con `/context` en una sesión interactiva o con el `compact_boundary` del stream-json.
 - `cleanupPeriodDays: 14` acota cuánto tiempo se guardan los transcripts en disco.
 
 ## Paso 3 · Autenticación y servicios externos
@@ -110,18 +112,26 @@ servicio según su documentación y la política de su organización.
 Copiar una plantilla de variables a disco no las carga automáticamente en Claude Code.
 Las claves y los archivos privados quedan fuera del paquete y de Git.
 
-## Paso 3b · CLIs `handoff` y `oraculo`
+- **Sin TUI** (SSH, WSL sin ventana, un host nuevo): `claude auth login --email tu@correo` inicia
+  sesión desde la terminal y `claude auth status` (JSON: `loggedIn`, `email`, `subscriptionType`) lo comprueba.
+- **El login va por cada directorio de configuración.** Una sesión iniciada en el host no llega a otro
+  `CLAUDE_CONFIG_DIR`, ni a una distro WSL: repite el login en cada uno.
+- **`CLAUDE_CONFIG_DIR` vacía no es lo mismo que sin definir**: `CLAUDE_CONFIG_DIR="" claude auth status`
+  da `loggedIn:false`. Quítala con `unset CLAUDE_CONFIG_DIR`; `doctor.sh` avisa (WARN) si la encuentra vacía.
 
-`install.sh` copia `bin/handoff` y `bin/oraculo` a `$CLAUDE_HOME/bin/` (ejecutables) y crea dos enlaces en `~/.local/bin/`:
+## Paso 3b · CLIs `handoff`, `oraculo` y `cupo`
+
+`install.sh` copia `bin/handoff`, `bin/oraculo` y `bin/cupo` a `$CLAUDE_HOME/bin/` (ejecutables) y crea tres enlaces en `~/.local/bin/`:
 
 - `~/.local/bin/handoff` → `$CLAUDE_HOME/bin/handoff`
 - `~/.local/bin/oraculo` → `$CLAUDE_HOME/bin/oraculo`
+- `~/.local/bin/cupo` → `$CLAUDE_HOME/bin/cupo`
 
 Reglas del enlace: solo se crea si `CLAUDE_HOME` es `$HOME/.claude` y además no existe nada con ese nombre, o ya era un enlace a `$CLAUDE_HOME/bin`. Con otro `CLAUDE_HOME` (una ruta de prueba, la CI) no escribe en `~/.local/bin`, porque al borrar esa ruta los enlaces quedarían colgando: imprime las órdenes `ln -s` y las ejecutas tú si quieres. Nunca pisa un fichero tuyo ni un enlace a otro sitio: en ese caso te avisa y lo dejas tú como prefieras. En modo diff-first no escribe nada y lo anota en el plan.
 
-Si `~/.local/bin` no está en tu `PATH`, el instalador lo dice al final. En Debian y Ubuntu esa carpeta entra en el `PATH` al iniciar sesión **solo si ya existía**: si la acaba de crear el instalador, **abre una terminal nueva** antes de usar los comandos. Compruébalo con `command -v handoff oraculo`.
+Si `~/.local/bin` no está en tu `PATH`, el instalador lo dice al final. En Debian y Ubuntu esa carpeta entra en el `PATH` al iniciar sesión **solo si ya existía**: si la acaba de crear el instalador, **abre una terminal nueva** antes de usar los comandos. Compruébalo con `command -v handoff oraculo cupo`.
 
-Los dos son bash + `jq`, sin red, y valen igual en Claude Code, Codex y opencode (`handoff --help`, `oraculo --help`). El camino absoluto (`$CLAUDE_HOME/bin/handoff`) funciona siempre, aunque el `PATH` no esté listo.
+`handoff` y `oraculo` son bash + `jq`, sin red, y valen igual en Claude Code, Codex y opencode (`handoff --help`, `oraculo --help`). `cupo` hace un turno mínimo de `claude -p` (consume un turno, no es offline): ver [`06-routine.md`](06-routine.md#sesiones-autónomas-largas). El camino absoluto (`$CLAUDE_HOME/bin/handoff`) funciona siempre, aunque el `PATH` no esté listo.
 
 ## Paso 4 · Venv de herramientas
 

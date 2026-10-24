@@ -33,8 +33,12 @@ NUC="$ESTADO/nucleo.md"
 if [ "$RAIZ" = "$HOME" ]; then
   mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
   M="CONTEXTO $PCT % del airbag. Sesión abierta desde ~: no tiene nucleo propio. Si trabajas en una tarea, deja su estado en el nucleo de su proyecto; el de ~ actualízalo solo si su Objetivo es tu tarea."
+  if nucleo_desatendido; then
+    [ "$B" = 50 ] || M="$M Sesión no interactiva: deja el estado donde corresponda y sigue con la tarea; nadie cerrará ni limpiará la sesión."
+  else
   [ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, deja su estado donde corresponda y cierra el turno."
   [ "$B" = 85 ] && M="$M Cierra el turno ya."
+  fi
 else
 # Una tarea = una sesión dueña: quien no lo es calla (el aviso le pediría escribir el nucleo de otra).
 nucleo_dueno_ajeno "$RAIZ" "$SID" >/dev/null && exit 0
@@ -52,10 +56,16 @@ else
   M="CONTEXTO $PCT % del airbag y no hay nucleo.md: antes de la siguiente herramienta créalo en $NUC con la forma de \$HOME/.claude/templates/nucleo.md."
 fi
 HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
+if nucleo_desatendido; then
+  # -p/SDK: nadie pulsa /handoff ni cierra el turno, y cerrarlo termina la sesión. Con acceptEdits, Write/Edit bajo
+  # .claude/ se deniegan, pero handoff (un script por Bash) sí escribe: el borrador va fuera de .claude/.
+  [ "$B" = 50 ] || M="$M Sesión no interactiva: deja el estado con \`$HO --desde <borrador> --sesion $SID\` (borrador fuera de .claude/) o editando nucleo.md, y sigue con la tarea; nadie cerrará ni limpiará la sesión."
+else
 [ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno. Cierra la fase con \`$HO --desde <borrador> --sesion $SID\`."
 A="con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff."
 [ "${COCKPIT_AUTO_HANDOFF:-}" = off ] && A="el handoff automático está desactivado; la persona hará /handoff."
 [ "$B" = 85 ] && M="$M Cierra el turno ya: $A"
+fi
 fi
 jq -cn --arg c "$M" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$c}}'
 exit 0

@@ -5,7 +5,8 @@
 # compactación o al reanudar, la sesión nueva no sabe si debe recoger o relanzar. El estado se deriva al leer
 # (nucleo_agentes_estado), no aquí.
 #   SubagentStart: id, tipo, hora, sesión y transcript.
-#   SubagentStop:  lo mismo + las últimas ~300 letras de last_assistant_message y la ruta del RESULTADO.md que pedía su brief
+#   SubagentStop:  lo mismo + las últimas ~300 letras del informe: el message de su SubagentHandback si lo usó; si no,
+#                  last_assistant_message (medido en 2.1.308); si falta o viene vacío, el último texto de su transcript y la ruta del RESULTADO.md que pedía su brief
 #                  (primer mensaje de su transcript; barato: 3 líneas; vacía si no la nombra).
 #                  background_tasks puede contener hermanos: no demuestra descendencia ni trabajo pendiente del agente.
 #   SessionEnd:    los subagentes que seguían vivos en la última foto de Stop de esta sesión (SessionEnd no trae
@@ -46,6 +47,24 @@ res_de() {
   printf '%s' "$r"
 }
 
+# msg_de <transcript del agente>: el último texto del asistente, para cuando el payload no trae last_assistant_message
+# (vacío o ausente). Si el transcript termina en una herramienta sin texto, el agente no entregó nada: vacío.
+msg_de() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 0
+  tail -n 30 -- "$1" 2>/dev/null | jq -rRn '[inputs | fromjson? | select(type == "object" and .type == "assistant")
+      | .message.content | if type == "string" then . else (map(objects | select(.type == "text") | .text) | join(" ")) end
+      | select(test("[^[:space:]]"))] | last // ""' 2>/dev/null | head -c 2000
+}
+
+# handback_de <transcript del agente>: el informe que entregó con la herramienta SubagentHandback (medido en Debian el
+# 24-oct: 6 de 7 agentes lo entregaron así, con last_assistant_message vacío o con la frase previa). Si existe, es el informe.
+handback_de() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 0
+  tail -n 30 -- "$1" 2>/dev/null | jq -rRn '[inputs | fromjson? | select(type == "object" and .type == "assistant")
+      | .message.content | arrays | .[] | objects | select(.type == "tool_use" and .name == "SubagentHandback")
+      | (.input.message // "") | tostring | select(test("[^[:space:]]"))] | last // ""' 2>/dev/null | head -c 2000
+}
+
 case ${EV:-} in
   SubagentStart)
     [ -n "$ID" ] && [ -n "$TIPO" ] || exit 0
@@ -56,9 +75,12 @@ case ${EV:-} in
     [ -n "$ID" ] && [ -n "$TIPO" ] || exit 0
     E=$(estado 2>/dev/null) || exit 0
     RES=$(res_de "$TP")
-    L=$(jq -c --arg t "$NOW" --arg i "$ID" --arg r "$RES" '{ev:"stop", t:$t, sid:(.session_id // ""), id:$i,
+    MSG=$(handback_de "$TP")
+    [[ $MSG =~ [^[:space:]] ]] || MSG=$(jq -r '(.last_assistant_message // "") | tostring' <<<"$IN" 2>/dev/null)
+    [[ $MSG =~ [^[:space:]] ]] || MSG=$(msg_de "$TP")
+    L=$(jq -c --arg t "$NOW" --arg i "$ID" --arg r "$RES" --arg m "$MSG" '{ev:"stop", t:$t, sid:(.session_id // ""), id:$i,
         tipo:(.agent_type // ""), tp:(.agent_transcript_path // .transcript_path // ""),
-        msg:((.last_assistant_message // "") | tostring | .[-300:]),
+        msg:($m | .[-300:]),
         res:$r}' <<<"$IN" 2>/dev/null) || exit 0 ;;
   SessionEnd)
     (

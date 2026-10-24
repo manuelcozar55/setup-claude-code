@@ -92,7 +92,7 @@ $ block-dangerous-commands.sh < {"tool_name":"Bash","tool_input":{"command":"cur
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",
-    "permissionDecisionReason": "BLOCKED: curl piped to shell (RCE)"
+    "permissionDecisionReason": "BLOCKED: curl piped to shell (RCE); descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o python -c que solo lea e imprima (json, sys, print)"
   }
 }
 [rc=0]
