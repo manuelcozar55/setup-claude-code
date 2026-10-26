@@ -7,9 +7,20 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-27
+
 ### Added
 
 - **Compuerta de frescura del nucleo (`nucleo-gate.sh`, `PreToolUse`).** El aviso de `nucleo-nudge.sh` se cumplía en el 47 % de los casos en 3 turnos (186 avisos) y dentro de un turno autónomo no hay Stop que lo fuerce. Tras el aviso de la banda 70 u 85 con el nucleo sin escribir, la 4.ª llamada del hilo principal se deniega una vez por banda y sesión, con el motivo (`actualiza <nucleo>` o `handoff --desde <borrador> --sesion <id>`). Pasan siempre lo que cuelga de `.claude/estado/` y `handoff`; los subagentes (`agent_id`) no cuentan; falla en abierto; `env.CC_NUCLEO_GATE=0` la apaga y `doctor.sh` lo marca WARN. El nudge guarda ahora `nudge-<sid>.nucleo` con la ruta que miró. ADR 020. Tests: `test_nucleo_gate.sh`.
+- **Hook `PostCompact` (`post-compact-check.sh`).** Tras compactar comprueba que el resumen nombre los ficheros que el checkpoint de `pre-compact.sh` declaraba tocados, anota `anclas_perdidas=N` en `session-logs/compact-AAAA-MM.log` (lo lee `compact-audit.py`) y avisa si falta alguno. Sin modelo, timeout 5 s, falla en abierto. Antes era un script suelto que la reinstalación del 21-oct dejó sin cablear. ADR 021.
+- **`doctor.sh` avisa (WARN) de cuatro derivas que antes no veía:** memoria automática con `.md` sin línea en `MEMORY.md` o con enlaces rotos; `MEMORY.md` por encima de 150 líneas o 20 KB (Claude Code carga 200 líneas o 25 KB); worktrees `prunable` o en detached bajo `/tmp` del repo actual; y un `nucleo.md` mayor que `NUCLEO_TOPE`. Nunca FAIL; el coste de `doctor` no cambia.
+- **`test_presupuesto_contexto.sh` suma por evento lo que inyectan los hooks del kit** y falla por encima de 10.000 caracteres. Es un presupuesto propio: la doc de Claude Code pone ese tope por cadena, no por evento.
+
+### Fixed
+
+- **Un `git` colgado ya no agota el timeout de `pre-compact.sh` ni de `session-start-compact.sh`.** `nucleo_raiz` llamaba a git sin tope y el hook moría a los 10 s sin checkpoint ni nucleo; ahora acepta un tope (2 s en ambos hooks) y, si git no responde, cae a `$HOME`. Rescatado de `fix/icm-checkpoint-local`.
+- **`test_evals.sh` y `test_doctor_base_url.sh` ya no dejan sus `mktemp -d` en `/tmp`:** eran 5 y 23 directorios por corrida en un tmpfs de inodos fijos (agotado el 2026-10-03). Cada suite fija un `TMPDIR` propio y lo borra.
+- **`test_evals.sh` anota en `SCC_SKIP_LOG` lo que se salta** (sin pyyaml o sin `claude`): antes imprimía `ok` y el resumen de `make test` no lo listaba.
 
 ## [1.5.1] - 2026-10-26
 
@@ -2082,7 +2093,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.0...v1.4.1
