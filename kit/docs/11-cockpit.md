@@ -21,6 +21,8 @@ la publicación, y `BUILD_ID` con el manifiesto SHA-256 identifican el contenido
 
 **Versión de Claude Code.** El mod se probó con Claude Code 2.1.292 (`claude --version`). No se ha comprobado una versión mínima: los mods son de acceso temprano y pueden cambiar entre versiones. Comprueba la tuya antes de instalar y, si algo no carga, `claude plugin validate kit/mods/cockpit` dice qué falla.
 
+**El `ref` es una etiqueta, no un sha.** La fuente `github` de un marketplace admite `ref` pero no `sha` (solo las fuentes de cada plugin lo admiten), y una etiqueta de git se puede mover. Protege las etiquetas `v*` en el remoto si quieres un pin real.
+
 **Va con la versión del kit.** El marketplace del kit queda fijado al tag de tu versión (`extraKnownMarketplaces` en `settings.json`), y `install.sh` mueve ese ref en cada actualización. Sin el ref, el cockpit seguía a `main` y podía adelantarse a `~/.claude/bin/handoff`: `/handoff` fallaba con «falta …/bin/handoff». Tras pasar el kit a otra versión (ver «Actualizar» en [`02-install.md`](02-install.md)), repite las dos órdenes de abajo y ejecuta `claude plugin update cockpit@setup-claude-code`.
 
 Este repo es un marketplace (`.claude-plugin/marketplace.json`). Para todas tus sesiones, en scope user, desde la raíz de tu copia del repo:
@@ -75,7 +77,7 @@ Antes de escribir, el fork recibe un presupuesto en bytes UTF-8: del tope que da
 
 Si la respuesta del fork no trae ninguna sección `## ` no se escribe nada. Si `.claude/estado/`, `nucleo.md` o una copia `nucleo.prev-*` son enlaces simbólicos, el handoff se niega a leer y escribir. Copias, límite de tamaño, `diario.md`, exclusión de `.git/info/exclude` y dueño son del CLI.
 
-Secciones fijas (las fija el CLI: se escriben una sola vez): Objetivo · Invariantes. Secciones que actualiza cada handoff: Plan (`[x]` con el comando que lo verificó, que el CLI mueve a `diario.md` / `[ ]`) · Paso actual · Siguiente acción · Pendientes (incluye riesgos; las líneas que solo puede hacer la persona empiezan por `(persona)` y el índice de `~` las reúne) · Comandos de verificación · Ficheros tocados (los de fuera de git con su copia de seguridad; `handoff --desde` genera arriba un bloque desde git: lo cambiado desde el handoff anterior, marcado con `<!-- git:SHA -->`, más el árbol de trabajo, sin `.claude/estado`; debajo se conserva lo escrito a mano). No duplica specs, planes, issues ni commits: los referencia por ruta o URL.
+Secciones fijas (las fija el CLI: se escriben una sola vez): Objetivo · Invariantes. Secciones que actualiza cada handoff: Plan (`[x]` con el comando que lo verificó, que el CLI mueve a `diario.md` / `[ ]`) · Paso actual · Siguiente acción · Pendientes (incluye riesgos; las líneas que solo puede hacer la persona empiezan por `(persona)` y el índice de `~` las reúne) · Comandos de verificación · Ficheros tocados (los de fuera de git con su copia de seguridad; `handoff --desde` genera arriba un bloque desde git: lo cambiado desde el handoff anterior, marcado con `<!-- git:SHA -->`, más el árbol de trabajo, sin `.claude/estado` (solo nombres de `git status`: un `.env` aparece únicamente si **no** está en `.gitignore`, y entonces es un aviso útil, no una fuga del contenido); debajo se conserva lo escrito a mano). No duplica specs, planes, issues ni commits: los referencia por ruta o URL.
 
 ```mermaid
 flowchart LR

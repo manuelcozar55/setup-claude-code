@@ -150,6 +150,7 @@ Una sesión por tarea. Esperar a la compactación automática pierde contexto; e
 | `doctor.sh` marca `WARN` por `@AGENTS.md` | Tu `CLAUDE.md` no importa las reglas del kit. Añade esa línea (paso 2). |
 | `handoff --iniciar` sale con error (exit 3) | No estás dentro de un repo git. Haz `git init` en la raíz del proyecto. |
 | Un hook «no hace nada» | CRLF en el fichero o sin bit de ejecución. `kit/test/test_gitattributes.sh` y `kit/test/test_exec_modes.sh` lo cubren en el repo. |
+| «File is in a directory that is denied by your permission settings» al leer o escribir un fichero de credenciales | Es el mensaje de Claude Code para una regla de `permissions.deny` (`Read(//**/.env*)` y similares): dice «directory» aunque la regla sea de un fichero. El bloqueo es el esperado; no hay nada que arreglar. |
 | Un guard bloquea algo legítimo | Reformula el comando. **No amplíes la allowlist para esquivarlo**: los guards bloquean por el literal, así que nombrar un fichero de credenciales, aunque sea para excluirlo, dispara. |
 
 ## 8 · Si vas a contribuir al repo
