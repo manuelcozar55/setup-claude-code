@@ -322,6 +322,7 @@ sen_cost_case() { # $1 etiqueta, $2 prefijo, $3 unidad que se repite, $4 veces, 
 }
 sen_cost_case "curl x | (xN" '' 'curl x | (' 12000 '; cat .env'
 sen_cost_case "curl x | y 120000 parentesis" 'curl x | ' '(' 120000 '; cat .env'
+# shellcheck disable=SC2016  # el `$(` es texto del payload, no una expansion
 sen_cost_case "echo \$(xN" '' 'echo $(' 18000 '; cat .env'
 sen_cost_case "curl x | jq . |xN" '' 'curl x | jq . |' 8500 '; cat .env'
 rm -rf "$BYPASS_HOME"
