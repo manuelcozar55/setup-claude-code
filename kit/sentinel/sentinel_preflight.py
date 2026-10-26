@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import sys
 from datetime import datetime, timezone
 from fnmatch import fnmatchcase
@@ -918,11 +919,19 @@ def _brace_linear(form: str) -> list[str] | None:
     return out
 
 
+# A word that names a .env file: .env, .envrc, .env.local... (not the template variants), also
+# glued to a redirection or a curl upload (@.env). The raw-text regex of iocs.json only sees one
+# behind a slash, so `cat .env` (a space before it) went through; the lexer sees the word.
+_ENV_FILE = re.compile(r"(?i)@?\.env(?:rc|\.(?!(?:example|template|sample|dist)(?:$|[~#+.*?\[{-]))[a-z0-9_*?\[{-][^/]*)?(?:[~#+-].*|\.(?:bak|old|orig|backup|save|swp|tmp|copy|prev))?")
+
+
 def _key_file_word(word: str, rx) -> bool:
     if "." not in word:  # every name with an extension has one, after expansion too
         return False
     for piece in re.split(r"[\s=:,;|&()<>\"'`]+", word):
         for i, comp in enumerate(piece.split("/")):
+            if _ENV_FILE.fullmatch(comp):
+                return True
             m = rx.fullmatch(comp)
             # A bare .key needs a slash before it (./.key): in prose or jq it is a field.
             if m and (_NAME_CHAR.search(m.group(1)) or (i > 0 and not m.group(1))):
@@ -1244,14 +1253,32 @@ _PYC_LIT = re.compile(r"""^([^"']*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')""", re.
 _PYC_TOKEN = re.compile(r"[A-Za-z0-9_]+")
 _PYC_SMALL = re.compile(r"[0-9]+|[A-Za-z_]")
 
-_PY = r"(?:[^\s|]*/)?python[0-9.]*"
+# The reader goes without a path (or `.venv/bin/`, `venv/bin/`): `/tmp/x/python3` or `./python3` is
+# whatever binary someone left there. The download may not touch files either: -o/-O/--output,
+# -K/--config, -T/--upload-file and `@file` data (wget: -O- is stdout, any other -O is a file). jq may
+# not load a program (`-f`, `--from-file`, `--rawfile`) or read the environment (`env`, `$ENV`).
+# Same expressions as fetch_shape_ok in block-dangerous-commands.sh.
+_PY = r"(?:\.?venv/bin/)?python[0-9.]*"
 _FETCH = r"\s*(?:curl|wget)\b[^|]*\|\s*"
+# The output flags are looked for outside quoted strings (a header value is not an option) and only in
+# clusters whose letters before o/O/K/T take no value: in `-XPOST` the O belongs to the method.
+_BAD_CURL_OUT = re.compile(
+    r"(?:^|\s)(?:-[0-9#aBfgGhiIjJklLMnNpqRsSvVZ]*[oOKT]|--(?:output|remote-name|remote-name-all|config|upload-file|output-dir)(?:[\s=]|$))")
+_BAD_CURL_DATA = re.compile(
+    r"(?:^|\s)(?:-[A-Za-z]*d|--data(?:-binary|-raw|-urlencode|-ascii)?|-F|--form|--json)[\s=]*[\"']?(?:[A-Za-z0-9_]*=)?@")
+_QUOTED = re.compile(r"\"[^\"]*\"|'[^']*'")
+_BAD_WGET = re.compile(
+    r"(?:^|\s)(?:-[A-Za-z]*[oiP]|--(?:output-file|input-file|directory-prefix|post-file|body-file|config))(?:[\s=]|$)"
+    r"|(?:^|\s)-[A-Za-z]*O(?:\s+[^-\s]|[^-\s])|(?:^|\s)--output-document[\s=]*[^-\s]")
+_BAD_JQ = re.compile(
+    r"(?:^|\s)(?:-[A-Za-z]*f|-L|--(?:from-file|rawfile|slurpfile|argfile|library-path))(?:[\s=]|$)"
+    r"|(?:^|[^.\w$])(?:env|input_filename)(?:\W|$)|\$(?:ENV|__prog_args)")
 _PYC_SAFE = re.compile(
     r"^" + _FETCH + _PY + r"\s+-[ISEBsu]*c\s+(?:'([^']*)'|\"([^\"]*)\")\s*$")
 _JSONTOOL_SAFE = re.compile(
     r"^" + _FETCH + _PY +
     r"\s+-m\s*json\.tool(?:\s+(?:--sort-keys|--compact|--indent(?:=\d+|\s+\d+)))*\s*$")
-_JQ_SAFE = re.compile(r"^" + _FETCH + r"(?:[^\s|]*/)?jq\b[^|]*$")
+_JQ_SAFE = re.compile(r"^" + _FETCH + r"jq\b[^|]*$")
 
 
 def _strict_pyc_ok(code: str, quote: str) -> bool:
@@ -1278,12 +1305,20 @@ def _strict_pyc_ok(code: str, quote: str) -> bool:
 
 
 def _safe_shape_stmt(st: str) -> bool:
+    dl, _, rest = st.partition("|")
+    if re.match(r"\s*curl", st):
+        # A backslash can open a string the shell does not see (`\"`): then the text is read whole.
+        dq = dl if "\\" in dl else _QUOTED.sub("Q", dl)
+        if _BAD_CURL_OUT.search(dq) or _BAD_CURL_DATA.search(dl):
+            return False
+    if re.match(r"\s*wget", st) and _BAD_WGET.search(dl):
+        return False
     m = _PYC_SAFE.match(st)
     if m:
         if m.group(1) is not None:
             return _strict_pyc_ok(m.group(1), "'")
         return _strict_pyc_ok(m.group(2), '"')
-    return bool(_JSONTOOL_SAFE.match(st) or _JQ_SAFE.match(st))
+    return bool(_JSONTOOL_SAFE.match(st) or (_JQ_SAFE.match(st) and not _BAD_JQ.search(rest)))
 
 
 def _split_statements(text: str):
@@ -1327,6 +1362,10 @@ def fetch_safe_reader(text: str, fetch_patterns: list) -> bool:
     data-only readers (and at least one such statement exists). Fails closed."""
     if not fetch_patterns:
         return False
+    # A pipe into a group (`| (bash)`, `| { bash; }`) splits the statement at the `(`: the half with
+    # the download no longer names the interpreter, and another safe statement would pardon the lot.
+    if re.search(r"\|&?\s*[({]", text):
+        return False
     stmts = _split_statements(text)
     if len(stmts) > 64:
         return False
@@ -1339,6 +1378,133 @@ def fetch_safe_reader(text: str, fetch_patterns: list) -> bool:
         else:
             return False
     return safe > 0
+
+
+# Bash writes over what the kit protects (~/.claude/settings*.json, ~/.claude/hooks/**,
+# ~/.claude/sentinel/**, sentinel-allowlist.json). `Edit(...)` rules only cover the file commands Claude
+# Code recognises; rm, mv, cp, chmod, install, ln or `: > file` reach the guards as plain Bash, and
+# before this a session could take its own guards apart with them. Reads (cat, cp FROM, diff) pass.
+# Never exempt: the allowlist does not apply. Limit: code inside python -c / node -e is not read.
+_HOME_RX = r"(?:/home/[^/]+|/root|/Users/[^/]+)"
+_PROTECTED_CFG = re.compile(
+    rf"^(?:{_HOME_RX}/\.claude/(?:hooks|sentinel)(?:/.*)?|{_HOME_RX}/\.claude/settings[^/]*\.json|.*/sentinel-allowlist\.json)$")
+_WRITE_ALL = {"rm", "unlink", "rmdir", "chmod", "chown", "chgrp", "touch", "truncate", "tee", "shred",
+              "mv", "sponge", "patch", "ed", "curl", "wget"}
+_WRITE_DEST = {"cp", "install", "ln", "rsync"}
+_SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "ash", "fish", "eval", "su"}
+
+
+def _protected_path(word: str, cwd: str) -> bool:
+    if not word or word.startswith("-") and "=" not in word:
+        return False
+    word = word.partition("=")[2] if re.match(r"^(?:of|-[^=]*)=", word) else word
+    path = expand(word)
+    if not os.path.isabs(path):
+        path = os.path.join(cwd, path)
+    path = os.path.normpath(path)
+    home = os.path.expanduser("~").rstrip("/")
+    return bool(_PROTECTED_CFG.match(path)
+                or home and (path in (f"{home}/.claude/hooks", f"{home}/.claude/sentinel")
+                             or path.startswith((f"{home}/.claude/hooks/", f"{home}/.claude/sentinel/"))
+                             or re.fullmatch(re.escape(home) + r"/\.claude/settings[^/]*\.json", path)))
+
+
+def _is_claude_home(word: str, cwd: str) -> bool:
+    """The whole ~/.claude directory (not a child of it): `mv` or `rm -r` on it takes hooks and settings along."""
+    if not word or word.startswith("-"):
+        return False
+    path = expand(word)
+    if not os.path.isabs(path):
+        path = os.path.join(cwd, path)
+    path, home = os.path.normpath(path), os.path.expanduser("~").rstrip("/")
+    return bool(re.fullmatch(_HOME_RX + r"/\.claude", path) or home and path == f"{home}/.claude")
+
+
+def _writes_protected(words: list[str], cwd: str, depth: int) -> str | None:
+    i, _ = _command_word(words)
+    if i >= len(words):
+        return None
+    name, args = _cmd_name(words[i]), words[i + 1:]
+    if name in _SHELLS:
+        for a in args:
+            if re.search(r"\s|;|&|\|", a) and (hit := _protected_write(a, cwd, depth + 1)):
+                return hit
+        return None
+    pos, dd = [], False
+    for a in args:
+        if not dd and a == "--":
+            dd = True
+        elif dd or not a.startswith("-"):
+            pos.append(a)
+    if name == "mv" or (name == "rm" and any(re.match(r"-[A-Za-z]*[rR]", a) or a == "--recursive" for a in args if not dd)):
+        # The parent directory itself as the thing moved or removed; as the last operand of `mv` it is only the destination.
+        tdir = [b for a, b in zip(args, args[1:]) if a == "-t"] + [a.partition("=")[2] for a in args if a.startswith("--target-directory=")]
+        moved = [p for p in pos if p not in tdir] if name == "mv" and tdir else pos[:-1] if name == "mv" else pos
+        if (hit := next((p for p in moved if _is_claude_home(p, cwd)), None)):
+            return hit
+    if name in _WRITE_ALL:
+        cand = args if name in ("curl", "wget") else pos
+    elif name in _WRITE_DEST:
+        cand = pos[-1:]
+        cand += [b for a, b in zip(args, args[1:]) if a == "-t"]
+        cand += [a.partition("=")[2] for a in args if a.startswith("--target-directory=")]
+        cand += [a[2:] for a in args if a.startswith("-t") and len(a) > 2 and not a.startswith("--")]
+    elif name in ("sed", "perl", "ruby"):
+        inplace = any(re.match(r"-[A-Za-z]*i", a) or a.startswith("--in-place") for a in args
+                      if not (name != "sed" and a.startswith("--")))
+        cand = pos if inplace else []
+    elif name == "dd":
+        cand = [a for a in args if a.startswith("of=")]
+    elif name in ("find", "fd", "fdfind"):
+        cand = pos if any(a in ("-delete", "-exec", "-execdir", "-ok", "-okdir") for a in args) else []
+    else:
+        cand = []
+    return next((c for c in cand if _protected_path(c, cwd)), None)
+
+
+def _protected_write(text: str, cwd: str, depth: int = 0) -> str | None:
+    if depth > 3:
+        return None
+    cmd, pending = [], None
+
+    def flush():
+        nonlocal cmd, cwd
+        words = [w[0] for w in cmd]
+        hit = _writes_protected(words, cwd, depth)
+        i, _ = _command_word(words)
+        if not hit and i < len(words) and _cmd_name(words[i]) == "cd" and len(words) > i + 1:
+            d = expand(words[i + 1])
+            cwd = os.path.normpath(d if os.path.isabs(d) else os.path.join(cwd, d))
+        cmd = []
+        return hit
+
+    for t in _lex(text) + ["\n"]:
+        if isinstance(t, str):
+            if "<" in t or ">" in t:
+                pending = "w" if ">" in t else "r"
+                continue
+            pending = None
+            if hit := flush():
+                return hit
+        elif isinstance(t, tuple):
+            for body in t[2]:
+                if hit := _protected_write(body, cwd, depth + 1):
+                    return hit
+            if pending == "w" and _protected_path(t[0], cwd):
+                return t[0]
+            if pending:
+                pending = None
+            else:
+                cmd.append(t)
+    return None
+
+
+def check_protected_writes(tool_input: dict, iocs: dict, allowlist: dict):
+    for text in collect_fields(tool_input, ["command"]):
+        hit = _protected_write(text, os.getcwd())
+        if hit:
+            return (f"write to a file the kit protects (hooks, settings, sentinel): {hit}", "critical")
+    return (None, None)
 
 
 def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
@@ -1364,6 +1530,40 @@ def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
 
 MAX_COMMAND_BYTES = 131072  # el mismo tope que CMDN_MAX_BYTES de cmdnorm.sh
 
+# A hook past its timeout (10 s in settings.json) does not block: the tool runs. Some patterns of iocs.json
+# backtrack quadratically on a padded command (`curl x | ((((…`: 40 KB = 9 s) well under MAX_COMMAND_BYTES,
+# so size alone cannot keep Sentinel inside the timeout. It also gets a wall-clock budget: past it the answer
+# is `ask`, as above the size cap, never an allow. BaseException on purpose: the `except Exception` blocks of
+# the checks must not swallow it and carry on without a budget.
+ANALYSIS_BUDGET_S = 1.5
+
+
+class _OverBudget(BaseException):
+    pass
+
+
+def _over_budget(signum, frame):
+    raise _OverBudget()
+
+
+def decide_within_budget(payload: dict):
+    """decide(payload), or None when the analysis does not fit ANALYSIS_BUDGET_S."""
+    if not hasattr(signal, "setitimer"):
+        return decide(payload)
+    previous = signal.signal(signal.SIGALRM, _over_budget)
+    try:
+        # The timer is disarmed in the inner finally, inside the outer try: a signal that lands between the end
+        # of decide() and setitimer(0) still raises _OverBudget where it is caught, never past this function.
+        try:
+            signal.setitimer(signal.ITIMER_REAL, ANALYSIS_BUDGET_S)
+            return decide(payload)
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+    except _OverBudget:
+        return None
+    finally:
+        signal.signal(signal.SIGALRM, previous)
+
 SEVERITY_RANK = {"medium": 1, "high": 2, "critical": 3}
 
 
@@ -1385,6 +1585,7 @@ def decide(payload: dict):
         check_sensitive_paths,
         check_suspicious_network,
         check_dangerous_commands,
+        check_protected_writes,
         check_sensitive_env,
         check_prompt_injection,
     ]
@@ -1451,7 +1652,22 @@ def main() -> None:
             }
         }))
         sys.exit(0)
-    decision, reason = decide(payload)
+    result = decide_within_budget(payload)
+    if result is None:
+        audit_log(tool_name, "ask", "analysis over budget")
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": (
+                    f"Confirm: Sentinel no pudo analizar la llamada en {ANALYSIS_BUDGET_S:g} s (un comando relleno de "
+                    "parentesis o de `$(` encarece sus patrones), y un guard que se pasa de tiempo deja ejecutar la "
+                    "herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto."
+                ),
+            }
+        }))
+        sys.exit(0)
+    decision, reason = result
 
     if decision == "allow":
         # An allow on a guard/config path is the one allow worth keeping: it is
@@ -1468,10 +1684,20 @@ def main() -> None:
         # The allowlist hint is a lie for a never-exempt deny (no allowlist
         # entry can lift it) and it is also the instruction sheet for disabling
         # the guard, so it is printed only where it is actually true.
-        hint = (
-            "" if always_deny_hit(tool_input)
-            else "\nTo allowlist a false positive: add to ~/.claude/sentinel-allowlist.json"
-        )
+        # A blocked command or a write to the kit's own config gets the way out instead: the
+        # allowlist is no way past a command block (the policy says never widen it to get past one).
+        if reason and "kit protects" in reason:
+            hint = "\nLa configuracion del kit (hooks, settings, sentinel) la cambia la persona, no una sesion."
+        elif reason and "dangerous command pattern" in reason:
+            hint = (
+                "\nAlternativa: descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o "
+                "python -c que solo lea e imprima (json, sys, print)."
+            )
+        else:
+            hint = (
+                "" if always_deny_hit(tool_input)
+                else "\nTo allowlist a false positive: add to ~/.claude/sentinel-allowlist.json"
+            )
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",

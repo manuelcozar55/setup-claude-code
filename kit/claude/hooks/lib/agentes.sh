@@ -59,6 +59,24 @@ nucleo_agentes_anotar() (
   return 0
 )
 
+# msg_de <transcript del agente>: el último texto del asistente, para cuando el payload no trae last_assistant_message
+# (vacío o ausente). Si el transcript termina en una herramienta sin texto, el agente no entregó nada: vacío.
+msg_de() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 0
+  tail -n 30 -- "$1" 2>/dev/null | jq -rRn '[inputs | fromjson? | select(type == "object" and .type == "assistant")
+      | .message.content | if type == "string" then . else (map(objects | select(.type == "text") | .text) | join(" ")) end
+      | select(test("[^[:space:]]"))] | last // ""' 2>/dev/null | head -c 2000
+}
+
+# handback_de <transcript del agente>: el informe que entregó con la herramienta SubagentHandback (medido en Debian el
+# 24-oct: 6 de 7 agentes lo entregaron así, con last_assistant_message vacío o con la frase previa). Si existe, es el informe.
+handback_de() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 0
+  tail -n 30 -- "$1" 2>/dev/null | jq -rRn '[inputs | fromjson? | select(type == "object" and .type == "assistant")
+      | .message.content | arrays | .[] | objects | select(.type == "tool_use" and .name == "SubagentHandback")
+      | (.input.message // "") | tostring | select(test("[^[:space:]]"))] | last // ""' 2>/dev/null | head -c 2000
+}
+
 # nucleo_agentes_estado <estado>: el estado derivado de cada agente, el único sitio que lo calcula. Una fila por agente,
 # de la más vieja a la más nueva, separada por tabuladores: id, tipo, estado, ruta del RESULTADO («-» si no hay),
 # archivado (1 si handoff --desde ya lo pasó a diario.md), última hora y último mensaje («-» si no hay).
@@ -67,18 +85,25 @@ nucleo_agentes_anotar() (
 # De un RESULTADO.md solo se lee la primera línea, y solo si el fichero se llama así y es regular; de ella, solo
 # uno de los tres valores: lo demás es texto de un tercero.
 nucleo_agentes_estado() {
-  local f=$1/agentes.jsonl foto='[]' id tipo base res arch t msg est l fp
+  local f=$1/agentes.jsonl foto='[]' id tipo base res arch t msg tp est l fp m
   [ -f "$f" ] && [ ! -L "$f" ] || return 0
   nucleo_estado_seguro "$1" || return 0
   foto=$(for fp in "$1"/agentes-vivos-*.json; do
     [ -f "$fp" ] && [ ! -L "$fp" ] || continue
     jq -c 'select(type == "object")' "$fp" 2>/dev/null
   done | jq -s '.')
-  while IFS=$'\t' read -r id tipo base res arch t msg; do
+  while IFS=$'\t' read -r id tipo base res arch t msg tp; do
     [ -n "$id" ] || continue
     est=""
     case $base in
       sinforme)
+        # El informe pudo escribirse después del Stop: con el transcript ya completo, su ausencia sí es «sin informe».
+        if [ "$msg" = - ] && [[ $tp == /*.jsonl ]]; then
+          m=$(handback_de "$tp")
+          [[ $m =~ [^[:space:]] ]] || m=$(msg_de "$tp")
+          [[ $m =~ [^[:space:]] ]] && msg=$(printf '%s' "$m" | jq -Rrs '.[-300:] | gsub("[\\p{C}\\p{Z}]+"; " ") | ltrimstr(" ") | .[0:80]' 2>/dev/null)
+          [ -n "$msg" ] || msg=-
+        fi
         if [ "$res" != - ] && [ "${res##*/}" = RESULTADO.md ] && [ -f "$res" ] && [ ! -L "$res" ]; then
           l=$(head -n 1 -- "$res" 2>/dev/null | head -c 200)
           [[ $l =~ ^estado:[[:space:]]*(completado|fallido|parcial)[[:space:]]*$ ]] && est=${BASH_REMATCH[1]}
@@ -106,12 +131,14 @@ nucleo_agentes_estado() {
             arch: ($g | any(.ev == "cerrado" and .n > $last.n)),
             res: ((($s.res // "") | tostring) | if test("^/[^\\p{Cc}]{1,300}$") and (contains("..") | not) then . else "" end),
             msg: ((($s.msg // "") | tostring) | gsub("[\\p{C}\\p{Z}]+"; " ") | ltrimstr(" ") | .[0:80]),
+            tp: ((($s.tp // "") | tostring) | gsub("[\\p{C}]"; "")),
             base: (if (($photo.vivos // []) | any(.id == $id and .type == "subagent")) and ($end == null or $photo.t > $end.t) then "vuelo"
                    elif $end then "corte"
                    elif $s then "sinforme"
                    else "sincierre" end) })
     | map(select(.tipo != "" and .id != "")) | sort_by(.t) | .[]
-    | [.id, .tipo, .base, (if .res == "" then "-" else .res end), (if .arch then 1 else 0 end), .t, (if .msg == "" then "-" else .msg end)]
+    | [.id, .tipo, .base, (if .res == "" then "-" else .res end), (if .arch then 1 else 0 end), .t, (if .msg == "" then "-" else .msg end),
+        (if .tp == "" then "-" else .tp end)]
     | @tsv' "$f" 2>/dev/null)
 }
 

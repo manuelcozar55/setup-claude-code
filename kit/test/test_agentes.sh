@@ -73,6 +73,21 @@ capture SubagentStart
 ok 'capturador start reanuda tras cierre' "$(row agent1)" 'sin cierre'
 ok 'capturador JSON roto falla abierto' "$(printf '{' | bash "$H/agentes.sh" >/dev/null 2>&1; echo $?)" 0
 ok 'capturador no imprime' "$(capture SubagentStop 2>&1)" ''
+# Carrera medida en Debian (24-oct): al saltar SubagentStop el transcript aún no tiene el SubagentHandback y el payload
+# no trae last_assistant_message; el informe aparece después. El estado se resuelve al leer, releyendo el transcript.
+R=$T/carrera; mkdir -p "$R"; git -C "$R" init -q
+E=$(nucleo_estado_dir "$R")
+stop_de() { jq -cn --arg ev "$1" --arg r "$R" --arg id "$2" --arg tp "$T/tp-$2.jsonl" '{hook_event_name:$ev,cwd:$r,session_id:"carrera",agent_id:$id,agent_type:"Explore",agent_transcript_path:$tp}' | bash "$H/agentes.sh"; }
+for a in tarde nunca; do
+  jq -cn '{type:"user",message:{content:"Resume el proyecto"}}' > "$T/tp-$a.jsonl"
+  printf '%s\n' '{"type":"attachment"}' '{"type":"api-request"}' >> "$T/tp-$a.jsonl"
+  stop_de SubagentStart "$a"; stop_de SubagentStop "$a"
+done
+jq -cn '{type:"assistant",message:{content:[{type:"tool_use",name:"SubagentHandback",input:{message:"Demo mínima: un solo fichero."}}]}}' >> "$T/tp-tarde.jsonl"
+ok 'carrera: informe que llega tras SubagentStop' "$(row tarde):$(row tarde 7)" 'terminado:Demo mínima: un solo fichero.'
+ok 'carrera: sin informe sigue siendo sin informe' "$(row nunca):$(row nunca 7)" 'terminado sin informe:-'
+ok 'carrera: el registro no se reescribe' "$(grep -c '"msg":"Demo' "$E/agentes.jsonl")" 0
+
 R=$T/empty; mkdir -p "$R"; git -C "$R" init -q
 nucleo_agentes_foto "$R" empty '[]'
 ok 'foto vacía no crea estado' "$([ -d "$R/.claude/estado" ] && echo creado || echo ausente)" ausente

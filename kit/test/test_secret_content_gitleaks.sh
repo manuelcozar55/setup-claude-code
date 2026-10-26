@@ -39,6 +39,7 @@ expect_commit() { # $1 dir, $2 desc, $3 BLOCK|ALLOW [, $4 CLAUDE_HOME a usar]
 
 if ! command -v gitleaks >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/gitleaks" ]; then
   echo "SKIP: gitleaks no instalado (ver docs/02-install.md); esta suite requiere el binario."
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: capa de contenido de secretos (test_secret_content_gitleaks.sh): gitleaks no instalado" >> "$SCC_SKIP_LOG"
   exit 0
 fi
 

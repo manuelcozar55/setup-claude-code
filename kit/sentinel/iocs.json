@@ -117,9 +117,18 @@
   },
   "dangerous_commands": {
     "patterns": [
-      "(?i)\\bcurl\\s.*\\|&?\\s*(?:(?:/usr/bin/env|sudo|doas|env|nohup|exec|command|stdbuf)\\s+(?:-\\S+\\s+|\\w+=\\S*\\s+)*)*(?:\\S*/)?(?:bash|sh|zsh|dash|ksh|fish|python3?|perl|ruby|node)(?![\\w.-])",
-      "(?i)\\bwget\\s.*\\|&?\\s*(?:(?:/usr/bin/env|sudo|doas|env|nohup|exec|command|stdbuf)\\s+(?:-\\S+\\s+|\\w+=\\S*\\s+)*)*(?:\\S*/)?(?:bash|sh|zsh|dash|ksh|fish|python3?|perl|ruby|node)(?![\\w.-])",
+      "(?i)\\bcurl\\s.*\\|&?\\s*(?:[({]\\s*)*(?:\\w+=\\S*\\s+)*(?:(?:\\S*/)?(?:sudo|doas|env|nohup|exec|command|stdbuf|xargs|time|nice|timeout|setsid|ionice|busybox|unbuffer|chrt|taskset)\\s+(?:-\\S+\\s+|\\w+=\\S*\\s+|[0-9.]+[smhd]?\\s+|(?-i:[A-Z]{3,7})\\s+)*)*(?:\\S*/)?(?:(?:a|ba|z|da|k|mk)?sh|ksh\\d+|fish|python[\\d.]*|perl|ruby|node(?:js)?|php|lua[\\d.]*|tclsh|pwsh|Rscript|deno|bun)(?![\\w.-])",
+      "(?i)\\bwget\\s.*\\|&?\\s*(?:[({]\\s*)*(?:\\w+=\\S*\\s+)*(?:(?:\\S*/)?(?:sudo|doas|env|nohup|exec|command|stdbuf|xargs|time|nice|timeout|setsid|ionice|busybox|unbuffer|chrt|taskset)\\s+(?:-\\S+\\s+|\\w+=\\S*\\s+|[0-9.]+[smhd]?\\s+|(?-i:[A-Z]{3,7})\\s+)*)*(?:\\S*/)?(?:(?:a|ba|z|da|k|mk)?sh|ksh\\d+|fish|python[\\d.]*|perl|ruby|node(?:js)?|php|lua[\\d.]*|tclsh|pwsh|Rscript|deno|bun)(?![\\w.-])",
+      "(?i)\\b(?:nc|ncat|netcat|socat|telnet|openssl\\s+s_client)\\b[^|]*\\|&?\\s*(?:[({]\\s*)*(?:\\w+=\\S*\\s+)*(?:(?:\\S*/)?(?:sudo|doas|env|nohup|exec|command|stdbuf|xargs|time|nice|timeout|setsid|ionice|busybox|unbuffer|chrt|taskset)\\s+(?:-\\S+\\s+|\\w+=\\S*\\s+|[0-9.]+[smhd]?\\s+|(?-i:[A-Z]{3,7})\\s+)*)*(?:\\S*/)?(?:(?:a|ba|z|da|k|mk)?sh|ksh\\d+|fish|python[\\d.]*|perl|ruby|node(?:js)?|php|lua[\\d.]*|tclsh|pwsh|Rscript|deno|bun)(?![\\w.-])",
+      "(?i)\\b(?:curl|wget|nc|ncat|netcat)\\b[^;&]*\\|&?\\s*(?:while|for)\\b.*(?:\\b(?:eval|source)\\s|\\b(?:(?:ba|da|z|k|a)?sh)\\s+-c\\b|\\|\\s*(?:ba|da|z|k|a)?sh\\b)",
+      "(?i)\\b(?:curl|wget|nc|ncat|netcat)\\b[^;&]*\\|&?\\s*(?:g|m|n)?awk\\b[^|]*\\bsystem\\b",
       "(?i)(bash|sh|zsh)\\s+<\\(\\s*(curl|wget)",
+      "(?i)(?:^|[\\s;&|(])(?:\\S*/)?(?:(?:a|ba|z|da|k|mk)?sh|ksh\\d+|fish|python[\\d.]*|perl|ruby|node(?:js)?|php|lua[\\d.]*|tclsh|pwsh|Rscript|deno|bun)\\s+(?:-c\\s+)?[\"']?(?:\\$\\(|<\\(|`)\\s*(?:curl|wget)",
+      "(?i)(?:^|[\\s;&|(])(?:\\S*/)?(?:(?:a|ba|z|da|k|mk)?sh|ksh\\d+|fish|python[\\d.]*|perl|ruby|node(?:js)?|php|lua[\\d.]*|tclsh|pwsh|Rscript|deno|bun)\\s+(?:-\\S+\\s+)*<<<\\s*[\"']?(?:\\$\\(|`)\\s*(?:curl|wget)",
+      "(?i)(?:^|[\\s;&|(])(?:\\S*/)?(?:(?:a|ba|z|da|k|mk)?sh|ksh\\d+|fish|python[\\d.]*|perl|ruby|node(?:js)?|php|lua[\\d.]*|tclsh|pwsh|Rscript|deno|bun)\\s+(?:-\\S+\\s+)*(?:<\\s*)?<\\([^;&|]*\\b(?:curl|wget)\\b",
+      "(?i)(?:^|[;&|(]\\s*)(?:\\.|source)\\s+<\\(\\s*(?:curl|wget)",
+      "(?i)(?:^|[;&|(]\\s*)(?:\\$\\(|`)\\s*(?:curl|wget)\\b",
+      "(?i)=[\"']?(?:\\$\\(|`)\\s*(?:curl|wget)\\b[^;&]*[;&]+\\s*[\"']?\\$\\{?[A-Za-z_]",
       "(?i)base64\\s.*(curl|wget|ncat|\\bnc\\b|python|perl)",
       "(?i)(^|[;&|(){}\\n])\\s*eval\\s+",
       "(?i)nc\\s+-e",
@@ -127,7 +136,7 @@
       "(?i)bash\\s+-i\\s+>&\\s*/dev/tcp/",
       "(?i)bash\\s+-i\\s+>&\\s*/dev/udp/",
       "(?i)python3?\\s+-c.*socket.*connect",
-      "(?i)(>>|tee\\s+(-a\\s+)?)\\s*(~|\\$HOME|/root|/home/[^/\\s]+)/\\.(bashrc|zshrc|bash_profile|profile|bash|zsh)",
+      "(?i)(?:>>?\\|?|\\btee\\s+(?:-a\\s+)?)\\s*[\"']?(?:~|\\$\\{?HOME\\}?|/root|/home/[^/\\s\"']+)/\\.(?:(?:bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(?=[\"'\\s;&|)<>}]|$)|(?:bashrc|profile|zshrc)\\.d/|(?:bash|zsh)(?=[_/-]|[\"'\\s;&|)<>}]|$))",
       "(?i)mkfs\\."
     ]
   },

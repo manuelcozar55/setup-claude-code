@@ -58,6 +58,12 @@ else
   else
     warn "claude $claude_v es anterior a $CLAUDE_PROBADA, la version con la que se probo el kit: actualizalo (claude update)"
   fi
+  # onFailure:"block" (guards de Bash en settings.json) lo honra claude >= 2.1.295: antes, un guard que no
+  # arranca o agota su timeout deja pasar el comando.
+  if [ -n "$claude_v" ] && jq -e '[.. | .onFailure? // empty] | index("block")' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1 \
+     && [ "$(printf '%s\n%s\n' "2.1.295" "$claude_v" | sort -V | head -1)" != "2.1.295" ]; then
+    warn "claude $claude_v es anterior a 2.1.295: no honra onFailure:\"block\", asi que un guard que falla o agota su timeout deja pasar el comando. Actualizalo (claude update)"
+  fi
 fi
 
 # 2. hooks referenciados existen y son ejecutables
@@ -243,7 +249,15 @@ fi
 # 3. agentes
 n=$(find "$CLAUDE_HOME/agents" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 if [ "$n" -ge 1 ]; then
-  pass "agentes instalados: $n  (fuente: find agents/*.md)"
+  ajenos=""
+  for f in "$CLAUDE_HOME"/agents/*.md; do
+    [ -e "$KIT/claude/agents/$(basename "$f")" ] || ajenos="$ajenos $(basename "$f")"
+  done
+  if [ -n "$ajenos" ]; then
+    pass "agentes instalados: $n, de ellos $(echo "$ajenos" | wc -w | tr -d ' ') ajeno(s) al kit:$ajenos  (fuente: find agents/*.md contra kit/claude/agents)"
+  else
+    pass "agentes instalados: $n  (fuente: find agents/*.md)"
+  fi
 else
   warn "sin agentes"
 fi
