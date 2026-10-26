@@ -86,7 +86,7 @@ ck "$(jq '(.permissions.allow | length) == (.permissions.allow | unique | length
 ck "$(jq '(.permissions.deny  | length) == (.permissions.deny  | unique | length)' "$S")" "true" "deny: sin duplicados"
 
 # --- Caso e: hooks -> el kit sustituye LOS SUYOS; los tuyos se quedan ------
-# El 21-oct una reinstalacion borro `PostCompact -> post-compact-check.sh` y un PreCompact de otra
+# El 21-oct una reinstalacion borro un hook propio de un evento que el kit no usaba (entonces `PostCompact`) y un PreCompact de otra
 # capa: el kit poseia `hooks` en bloque. Ahora solo posee las entradas que nombran sus scripts
 # (los que cablea la plantilla, mas los que retiro). La semilla mezcla de todo: un evento que el
 # kit no usa, un ajeno colgado en un grupo junto a un guard del kit, un guard del kit con su forma
@@ -102,13 +102,13 @@ seed e <<'EOF'
       { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/mi-guard.py" } ] } ],
     "PreCompact": [ { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/circe-pre-compact.sh" },
                                  { "type": "command", "command": "$HOME/.claude/hooks/preflight.sh" } ] } ],
-    "PostCompact": [ { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/post-compact-check.sh", "timeout": 5 } ] } ],
+    "Notification": [ { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/mi-aviso.sh", "timeout": 5 } ] } ],
     "Stop": [ { "hooks": [ { "type": "prompt", "prompt": "mi revision" } ] } ] } }
 EOF
 run
 cmds(){ jq -r "[.hooks.$1[]?.hooks[]? | .command // .prompt] | join(\"|\")" "$S"; }
 # shellcheck disable=SC2016 # $HOME literal del settings, no del shell
-ck "$(jq -c '.hooks.PostCompact' "$S")" '[{"hooks":[{"type":"command","command":"$HOME/.claude/hooks/post-compact-check.sh","timeout":5}]}]' \
+ck "$(jq -c '.hooks.Notification' "$S")" '[{"hooks":[{"type":"command","command":"$HOME/.claude/hooks/mi-aviso.sh","timeout":5}]}]' \
    "hooks: un evento que el kit no usa sobrevive byte a byte (EL incidente)"
 ck "$(cmds PreToolUse | tr '|' '\n' | grep -c -e 'mi-linter --hook' -e 'mi-guard.py')" "2" "hooks: tus PreToolUse se quedan, tambien el que va por optional-hook.sh"
 ck "$(jq -c '[.hooks.PreToolUse[] | select(any(.hooks[]; .command // "" | test("mi-linter")))] | map(.matcher, (.hooks | length))' "$S")" '["Bash",1]' \
@@ -134,12 +134,12 @@ ck "$(backups)" "$n" "hooks: reinstalar no crea otro backup"
 seed e2 <<'EOF'
 { "hooks": {
     "Stop": { "no": "es una lista" },
-    "PostCompact": [ { "matcher": "sin-hooks" }, { "hooks": [ { "type": "command", "command": "mio.sh" } ] } ] } }
+    "Notification": [ { "matcher": "sin-hooks" }, { "hooks": [ { "type": "command", "command": "mio.sh" } ] } ] } }
 EOF
 run
 ck "$(dice 'fusion de settings.json fallo')" "n" "hooks: un evento malformado no aborta la fusion"
 ck "$(cmds PreToolUse | tr '|' '\n' | grep -c 'block-dangerous')" "1" "hooks: con un evento malformado los guards del kit llegan igual"
-ck "$(cmds PostCompact)" "mio.sh" "hooks: el grupo sin hooks se descarta y el resto del evento se queda"
+ck "$(cmds Notification)" "mio.sh" "hooks: el grupo sin hooks se descarta y el resto del evento se queda"
 ck "$(jq -r '.hooks.Stop | "\(type) \(length)"' "$S")" "array 1" "hooks: un evento que no es lista se descarta y quedan los del kit"
 seed e3 <<'EOF'
 { "hooks": { "PreToolUse": [ { "hooks": [ { "type": "command", "command": "/opt/mio/log.sh && $HOME/.claude/hooks/branch-guard.sh" } ] } ] } }
