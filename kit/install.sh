@@ -259,6 +259,13 @@ install_claude_md() {  # src dst
   echo "   La version del kit queda en $n.kit.md para que compares y copies lo que quieras."
 }
 
+aviso_claude_md() {
+  [ "$CLAUDE_MD_PREVIO" -eq 1 ] || return 0
+  echo
+  echo "==> AVISO: ya tenias un CLAUDE.md y no se ha tocado. Añade @AGENTS.md a tu CLAUDE.md;"
+  echo "    la plantilla del kit quedo en CLAUDE.kit.md. Sin eso, Claude no lee las instrucciones del kit."
+}
+
 install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   local base="$1" f rel
   mkdir -p "$base/hooks/lib" "$base/agents" "$base/sentinel" "$base/templates" "$base/bin"
@@ -350,7 +357,7 @@ aviso_path() {
 }
 
 run_diff_first() {
-  local out marker=".mcharness-out-marker" real_out real_home solape=0
+  local out marker=".mcharness-out-marker" real_out real_home solape=0 f BK
   if [ -n "${MCHARNESS_OUT:-}" ]; then
     out="$MCHARNESS_OUT"
     real_out="$(realpath -m -- "$out")"; real_home="$(realpath -m -- "$CLAUDE_HOME")"
@@ -378,7 +385,16 @@ run_diff_first() {
     out="$(mktemp -d "${TMPDIR:-/tmp}/mcharness-plan.XXXXXX")"
   fi
   mkdir -p "$out"; : > "$out/$marker"
-  install_kit_files "$out"
+  # El plan ensena lo que haria --apply: lo que se fusiona o no se pisa parte del instalado. Sobre un
+  # arbol vacio daba por borrados tu env, tus permisos, tus hooks y tu CLAUDE.md. Copia y no enlace:
+  # install_settings escribe a traves de un enlace. Sus backups y sus mensajes no son del plan; los
+  # backups, dentro de su arbol, para que un fallo a mitad no deje nada fuera.
+  for f in settings.json CLAUDE.md AGENTS.md; do
+    if [ -f "$CLAUDE_HOME/$f" ]; then cp -L -- "$CLAUDE_HOME/$f" "$out/$f"; fi
+  done
+  BK="$out/.mcharness-plan-bk"
+  install_kit_files "$out" >/dev/null
+  rm -rf -- "$BK"
 
   if is_git_repo_with_remote; then
     echo "==> $CLAUDE_HOME es un repositorio git con remoto configurado: no se escribe nada ahi."
@@ -412,6 +428,7 @@ run_diff_first() {
     echo "----- diff: $rel -----"
     diff -u "$CLAUDE_HOME/$rel" "$out/$rel" || true
   done
+  aviso_claude_md
   avisos_settings "$CLAUDE_HOME/settings.json"
 
   if is_git_repo_with_remote; then
@@ -565,11 +582,7 @@ echo "==> Capa 2 de secretos (gitleaks pre-commit) es opt-in, por repositorio. A
 echo "       bash $KIT/install.sh --enable-secrets-layer2   # ejecútalo dentro del repo a proteger"
 echo "    o el one-liner manual:  git config core.hooksPath \"$CLAUDE_HOME/hooks/git\""
 echo "==> Verifica:            bash $KIT/doctor.sh"
-if [ "$CLAUDE_MD_PREVIO" -eq 1 ]; then
-  echo
-  echo "==> AVISO: ya tenias un CLAUDE.md y no se ha tocado. Añade @AGENTS.md a tu CLAUDE.md;"
-  echo "    la plantilla del kit quedo en CLAUDE.kit.md. Sin eso, Claude no lee las instrucciones del kit."
-fi
+aviso_claude_md
 avisos_settings "$CLAUDE_HOME/settings.json"
 aviso_path
 if [ -n "${LINK_AJENOS:-}" ]; then
