@@ -7,6 +7,10 @@ etiquetado.
 
 ## [Unreleased]
 
+### Fixed
+
+- **El registro de agentes decía «terminado sin informe» aunque el subagente hubiera entregado el suyo por `SubagentHandback` (B-01, prueba de v1.5.0 en Debian).** Al saltar `SubagentStop` el payload no trae `last_assistant_message` y el transcript del agente aún no contiene el `SubagentHandback` (3 de 3 agentes con `msg:""`; el `tool_response` del `Agent` en la sesión madre tampoco repite el informe). Un reintento en el hook añadiría esperas al camino caliente; en su lugar `nucleo_agentes_estado` relee el transcript ya completo cuando el Stop no guardó mensaje, así que «sin informe» solo queda si de verdad no hay. `handback_de` y `msg_de` pasan a `lib/agentes.sh`. Test: `carrera:` en `test_agentes.sh`.
+
 ## [1.5.0] - 2026-10-24
 
 Arreglos K1-K13 del A/B «¿aporta scc?» (23-oct): lo que estorbaba en sesiones autónomas reales.
