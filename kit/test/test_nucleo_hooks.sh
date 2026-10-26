@@ -843,4 +843,31 @@ BORRADOR
 (cd "$WT" && bash "$BIN/handoff" --desde "$T/w2-b.md" >/dev/null 2>&1); RC=$?
 ok "W2 --desde: sobre el tope sobreviven Paso actual, Siguiente acción, Comandos y Ficheros tocados" "$RC,$(sed -n 's/^## //p' "$WT/.claude/estado/nucleo.md" | paste -sd,)" "0,Objetivo,Paso actual,Siguiente acción,Comandos de verificación,Ficheros tocados"
 
+# --- post-compact-check.sh (PostCompact): anclas del checkpoint que el resumen no nombra ---
+pc() { jq -cn --arg c "$1" --arg s "$2" --arg m "$3" '{cwd:$c,session_id:$s,trigger:"auto",compact_summary:$m}' | bash "$H/post-compact-check.sh"; }
+PCL=$HOME/.claude/session-logs/compact-$(date +%Y-%m).log; rm -f "$PCL"
+ev "$R" pc1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
+CKPC=$(find "$R/.claude/estado/checkpoints" -name "checkpoint-compact-*.md" | head -1)
+printf '\ntocados: src/alfa.py src/beta.sh\n' >>"$CKPC"
+CKH=$(printf '%s' pc1 | sha256sum | cut -d' ' -f1); mv "$CKPC" "$R/.claude/estado/checkpoints/checkpoint-compact-$CKH.md"
+OUT=$(pc "$R/sub" pc1 'se tocaron alfa.py, beta.sh y registro-cambios.md'); RC=$?
+ok "post-compact: anclas presentes → rc 0, sin aviso" "$RC,$OUT" "0,"
+ok "post-compact: anclas presentes → log con anclas_perdidas=0" "$(awk -F'\t' '{print $2, $4}' "$PCL")" "auto anclas_perdidas=0"
+OUT=$(pc "$R" pc1 'se tocó alfa.py y registro-cambios.md'); RC=$?
+ok "post-compact: ancla perdida → rc 0 y aviso con la ancla" "$RC,$(jq -r .systemMessage <<<"$OUT" | command grep -c 'src/beta.sh')" "0,1"
+ok "post-compact: ancla perdida queda en el log" "$(tail -n1 "$PCL" | awk -F'\t' '{print $4, $5}')" "anclas_perdidas=1 src/beta.sh"
+N=$(wc -l <"$PCL")
+OUT=$(pc "$R" otra-sesion 'nada'); RC=$?
+ok "post-compact: sin checkpoint → rc 0, sin aviso, anclas_perdidas=0" "$RC,$OUT,$(tail -n1 "$PCL" | awk -F'\t' '{print $4}')" "0,,anclas_perdidas=0"
+OUT=$(printf 'no es json {' | bash "$H/post-compact-check.sh" 2>&1); RC=$?
+ok "post-compact: entrada malformada → rc 0 y en silencio" "$RC,$OUT" "0,"
+ok "post-compact: desde ~ (sin proyecto) → rc 0" "$(pc "$HOME" pc1 x >/dev/null 2>&1; echo $?)" 0
+ok "post-compact: una línea de log por evento válido" "$(( $(wc -l <"$PCL") - N ))" 2
+# El lector: compact-audit.py resume el log con su formato.
+mkdir -p "$T/sin-transcripts/-tmp-demo"
+{ echo '{"type":"user","message":{"role":"user","content":"hola"}}'
+  echo '{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"manual","preTokens":1000,"postTokens":100,"durationMs":2000}}'; } >"$T/sin-transcripts/-tmp-demo/s1.jsonl"
+AUD=$(CLAUDE_PROJECTS_DIR="$T/sin-transcripts" python3 "$KIT/../scripts/compact-audit.py" 2>&1)
+ok "compact-audit.py lee el log del hook (eventos y pérdida)" "$(command grep -c '^post-compact log: 4 eventos, anclas perdidas media 0.[23], con pérdida 1$' <<<"$AUD")" 1
+
 exit $FAIL
