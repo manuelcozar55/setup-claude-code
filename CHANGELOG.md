@@ -57,6 +57,7 @@ etiquetado.
 - Un solo núcleo para los dos guards (hoy `block-dangerous-commands.sh` y `iocs.json` repiten los patrones a mano y los tests los cruzan).
 - Límites de los guards que la revisión de v1.5.1 encontró y que no se cierran en un PATCH (declarados en `05-security.md`): la config del kit desde `Bash` por `cd`/`pushd`, variables, sustituciones, `xargs`, `tar -C`, `unzip -d`, `vim -es`, `awk -i inplace` y el `.claude/settings.local.json` del proyecto (F-05); `gh api` con `state="closed"` entre comillas, `merges`, mutaciones desde fichero y `gh repo archive`/`release delete`/`secret set` (F-08); las diferencias entre `block-dangerous-commands.sh` y Sentinel fuera de las formas citadas (F-10).
 - Ampliar la regla de `git -c` a lo que ejecuta código como `alias.`: `core.pager`, `core.sshCommand`, `core.fsmonitor`, `core.editor` y `credential.helper=!…` (F-11). Se deja para v1.6 porque `core.pager=cat` y `-c credential.helper=` vacío son usos legítimos que hay que separar antes de bloquear.
+- Anclas de `gh api` que siguen sin preguntar, sin regresión (M-02): `find -exec`, `parallel`, `su -c`, `script -qc`, `docker run` y `case`. Una palabra `then`, `do` o `ssh host` dentro de un texto pide confirmación (M-01, falso positivo aceptado). Tampoco se protegen `.zprofile.d/`, `.zshenv.d/` ni las escrituras con `cp`, `mv`, `ln -s` o `sed -i` hacia `~/.bashrc.d/` (M-03).
 
 ## [1.5.0] - 2026-10-24
 
