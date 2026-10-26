@@ -321,6 +321,10 @@ ok "session-start: sin entradas imprime un solo 0" "$(sed -n 's/.*Memory: \(.*\)
 ok "session-start: encuentra la memoria de un cwd con . y _" "$(command grep -c 'Memory: .* entradas' <<<"$SS")" 1
 ok "session-start: sin memoria conserva el aviso" "$(cd "$T/sin-git" && bash "$H/session-start.sh" | command grep -c 'No project memory found')" 1
 
+# B-05: con nucleo.md en el proyecto, el hook de memoria no dice «No project memory found» junto a su inyección
+CN=$T/con-nucleo; mkdir -p "$CN/.claude/estado"; printf '## Objetivo\nx\n' >"$CN/.claude/estado/nucleo.md"
+ok "session-start: con nucleo.md no dice «No project memory found»" "$(cd "$CN" && bash "$H/session-start.sh" | command grep -c 'No project memory found')" 0
+
 # --- #25: rotación por número además de por edad (conserva 5; NUCLEO_CHECKPOINT_KEEP); #sin-sid: el respaldo sin hash también se ignora ---
 RR=$T/rr; mkdir -p "$RR/.claude/estado"; git -C "$RR" init -q; printf '## Objetivo\nx\n' >"$RR/.claude/estado/nucleo.md"
 for i in 1 2 3 4 5 6 7 8; do mkdir -p "$RR/.claude/estado/checkpoints"; : >"$RR/.claude/estado/checkpoints/checkpoint-compact-n$i.md"; touch -d "-$((10 - i)) hours" "$RR/.claude/estado/checkpoints/checkpoint-compact-n$i.md"; done

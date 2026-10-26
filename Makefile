@@ -20,7 +20,14 @@ bootstrap: ## Para quien trabaja EN este repo (perfil de harness, kit, tests y d
 	@echo "==> Harness levantado y verificado."
 	@echo "    Un FAIL de doctor.sh es un hallazgo de tu maquina, no del kit: leelo y actua."
 
+# Las suites que se saltan algo lo anotan en SCC_SKIP_LOG; al final se lista, para que un verde con capas
+# saltadas no se lea como verde completo. El rc no cambia: un skip no es un fallo.
+ifndef SCC_SKIP_LOG
+export SCC_SKIP_LOG := $(shell mktemp -u "$${TMPDIR:-/tmp}/scc-skips.XXXXXX")
+endif
+
 test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
+	@rm -f "$(SCC_SKIP_LOG)"
 	bash kit/test/test_guards.sh
 	bash kit/test/test_guards_falsifiability.sh
 	bash kit/test/test_guards_corpus.sh
@@ -66,6 +73,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_guia.sh
 	bash kit/test/test_plugin_esenciales.sh
 	bash kit/test/test_sesiones_home.sh
+	@if [ -s "$(SCC_SKIP_LOG)" ]; then echo; echo "== make test: verde, pero con capas SALTADAS (no cuentan como verificadas) =="; sort -u "$(SCC_SKIP_LOG)"; fi; rm -f "$(SCC_SKIP_LOG)"
 
 test-cockpit: ## Tests funcionales del cockpit; requiere Claude Code con soporte de mods
 	claude plugin test kit/mods/cockpit

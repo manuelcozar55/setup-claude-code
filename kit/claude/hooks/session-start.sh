@@ -19,6 +19,8 @@ if [ -f "$MEMORY" ]; then
   if [ "$(wc -l < "$MEMORY")" -gt "$LIMIT" ]; then
     echo "[SessionStart] AVISO: MEMORY.md supera $LIMIT lineas; poda el indice."
   fi
-else
+elif [ ! -f "$PWD/.claude/estado/nucleo.md" ]; then
+  # Con nucleo.md session-start-clear.sh inyecta el estado de la tarea en este mismo arranque: decir aqui
+  # «no hay memoria» lo contradice (B-05).
   echo "[SessionStart] No project memory found. Global: ~/.claude/CLAUDE.md active."
 fi

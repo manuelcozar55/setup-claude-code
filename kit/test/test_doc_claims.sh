@@ -692,7 +692,7 @@ fi
 # que hoy absuelve, que es exactamente lo que este fichero no acepta de nadie.
 sed -E 's#([0-9]+)/([0-9]+) mutantes#\1/424242 mutantes#' "$EVALDOC" > "$TMPD/m1.md"
 sed -E 's#([0-9]+) de los ([0-9]+) mutantes#424242 de los \2 mutantes#' "$EVALDOC" > "$TMPD/m2.md"
-sed -E 's#M9.M40#M9-M999#g' "$EVALDOC" > "$TMPD/m3.md"
+sed -E 's#M9[^M]{1,4}M40#M9-M999#g' "$EVALDOC" > "$TMPD/m3.md"
 # Y los dos que el juicio por valor no puede ver, que son los que motivan el juicio
 # por papel: m4 cambia los dos recuentos ciertos de sitio -las dos cifras siguen
 # siendo legales, solo estan en el papel del otro- y m5 escribe la cifra sin pegarla
@@ -1433,6 +1433,7 @@ fi
 
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: comprobaciones de cifras (test_doc_claims.sh): faltan kit/evals/runs.jsonl u otra condicion; esas cifras NO se han comprobado" >> "$SCC_SKIP_LOG"
 else
   echo "== $pass passed, $fail failed =="
 fi

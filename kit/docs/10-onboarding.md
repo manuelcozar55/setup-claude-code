@@ -67,7 +67,9 @@ bash kit/install.sh
 No uses `make bootstrap`: ejecuta además la suite de tests y crea un perfil que no necesitas. Lee la salida del instalador hasta el final. Te puede avisar de dos cosas:
 
 - **Ya tenías un `CLAUDE.md`.** No lo toca. Añade la línea `@AGENTS.md` a tu `CLAUDE.md`; la plantilla del kit quedó en `CLAUDE.kit.md`.
-- **`~/.local/bin` no está en tu `PATH`.** El instalador enlaza `handoff` y `oraculo` ahí. Abre una terminal nueva antes de seguir.
+- **`~/.local/bin` no está en tu `PATH`.** El instalador enlaza `handoff`, `oraculo` y `cupo` ahí. Abre una terminal nueva antes de seguir.
+
+Al final el instalador imprime «Rellena tus claves: cp … .env.example …». Es **opcional**: solo hace falta si vas a usar servicios externos con clave; el kit funciona sin ese fichero.
 
 Si ya tenías hooks propios en `settings.json`, los del kit los sustituyen. Los tuyos quedan en la copia de seguridad de `~/.claude/backups/`.
 
@@ -75,7 +77,7 @@ Si ya tenías hooks propios en `settings.json`, los del kit los sustituyen. Los 
 
 ```bash
 bash kit/doctor.sh
-command -v handoff oraculo   # deben salir dos rutas
+command -v handoff oraculo cupo   # deben salir tres rutas
 ```
 
 Cómo leer `doctor.sh`:
@@ -101,7 +103,7 @@ claude plugin marketplace add "manuelcozar55/setup-claude-code@v$(cat VERSION)"
 claude plugin install cockpit@setup-claude-code
 ```
 
-Queda fijado al tag de tu versión del kit: al actualizar, repite estas dos órdenes y `claude plugin update cockpit@setup-claude-code` (ver «Actualizar» en [`02-install.md`](02-install.md)). Detalle en [`11-cockpit.md`](11-cockpit.md). Sin el mod puedes guardar el estado con la CLI, pero no tienes Dock ni handoff automático.
+`install.sh` ya declara el marketplace (fijado a `v<VERSION>`) y habilita `esenciales@setup-claude-code` en `settings.json` antes de que ejecutes nada de esto; estas dos órdenes instalan el cockpit, y `doctor.sh` no mira plugins. El `ref` es una etiqueta de git, mutable: Claude Code no admite `sha` en la fuente de un marketplace (sí en la de cada plugin), así que protege la etiqueta en tu remoto si te importa. Queda fijado al tag de tu versión del kit: al actualizar, repite estas dos órdenes y `claude plugin update cockpit@setup-claude-code` (ver «Actualizar» en [`02-install.md`](02-install.md)). Detalle en [`11-cockpit.md`](11-cockpit.md). Sin el mod puedes guardar el estado con la CLI, pero no tienes Dock ni handoff automático.
 
 ## 5 · Tu primer proyecto
 
@@ -148,6 +150,7 @@ Una sesión por tarea. Esperar a la compactación automática pierde contexto; e
 | `doctor.sh` marca `WARN` por `@AGENTS.md` | Tu `CLAUDE.md` no importa las reglas del kit. Añade esa línea (paso 2). |
 | `handoff --iniciar` sale con error (exit 3) | No estás dentro de un repo git. Haz `git init` en la raíz del proyecto. |
 | Un hook «no hace nada» | CRLF en el fichero o sin bit de ejecución. `kit/test/test_gitattributes.sh` y `kit/test/test_exec_modes.sh` lo cubren en el repo. |
+| «File is in a directory that is denied by your permission settings» al leer o escribir un fichero de credenciales | Es el mensaje de Claude Code para una regla de `permissions.deny` (`Read(//**/.env*)` y similares): dice «directory» aunque la regla sea de un fichero. El bloqueo es el esperado; no hay nada que arreglar. |
 | Un guard bloquea algo legítimo | Reformula el comando. **No amplíes la allowlist para esquivarlo**: los guards bloquean por el literal, así que nombrar un fichero de credenciales, aunque sea para excluirlo, dispara. |
 
 ## 8 · Si vas a contribuir al repo
@@ -155,10 +158,12 @@ Una sesión por tarea. Esperar a la compactación automática pierde contexto; e
 Esto es solo para quien cambia el propio kit. Antes de tu primer commit:
 
 ```bash
-make test                  # 45 suites en bash puro, sin red. exit 0 o no está hecho.
+make test                  # 45 suites en bash puro, sin red, unos 7 min. exit 0 o no está hecho.
 bash kit/scan-secrets.sh   # secretos y PII en el árbol
 shellcheck -x <tus .sh>
 ```
+
+Si `make test` termina con el bloque «verde, pero con capas SALTADAS» (sin `gitleaks`, sin `claude` en el PATH, sin `kit/evals/runs.jsonl`), el rc es 0 pero esa capa **no se ha verificado**: instala la herramienta y repite antes de darlo por hecho. No lances dos `make test` a la vez: las pruebas de rendimiento miden tiempo de CPU y fallan por carga.
 
 Los guards no se prueban solo con leer el README: `bash kit/test/test_guards_falsifiability.sh` desactiva un guard real y exige que eso rompa exactamente 28 casos `BLOCK` conocidos. Si desactivarlo no rompiera nada, la suite no estaría midiendo nada.
 

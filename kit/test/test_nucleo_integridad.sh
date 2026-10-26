@@ -19,6 +19,10 @@ printf '## Paso actual\nnuevo\n' >"$T/draft"
 printf 'sesion=owner\ndesde=%s\n' "$(date +%s)" >"$E/.dueno"
 ho --desde "$T/draft" --sesion other >"$T/out" 2>"$T/err"; RC=$?
 ok 'dueño ajeno rechaza antes de escribir' "$RC,$(cat "$E/nucleo.md")" $'5,## Paso actual\noriginal'
+CLAUDE_CODE_SESSION_ID=owner ho --desde "$T/draft" >"$T/out" 2>"$T/err"; RC=$?
+ok 'B-02: --desde sin --sesion usa CLAUDE_CODE_SESSION_ID' "$RC,$(grep -c nuevo "$E/nucleo.md")" '0,1'
+printf '## Paso actual\noriginal\n' >"$E/nucleo.md"
+printf 'sesion=owner\ndesde=%s\n' "$(date +%s)" >"$E/.dueno"
 ho --liberar wrong >/dev/null 2>&1; ok 'liberar exige ID esperado' "$?" 5
 ho --liberar owner >"$T/out" 2>"$T/err"; ok 'recuperación explícita libera' "$?,$([ -e "$E/.dueno" ] && echo ocupado || echo libre)" '0,libre'
 exec {FD}>>"$E/.handoff.lock"; flock -x "$FD"

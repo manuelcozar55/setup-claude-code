@@ -10,7 +10,7 @@ después). Mapa para agentes: `AGENTS.md`. Dos capas:
 ## Oráculo de este repo
 
 ```
-make test  # 45 suites bash, sin red, 118-179 s en un i9-14900HX. exit 0 o el trabajo no está hecho.
+make test  # 45 suites bash, sin red; 118-179 s (i9), ~410 s (WSL). exit 0 o el trabajo no está hecho.
 ```
 
 No declares nada terminado sin esa salida delante. `/verify` lo hace bien.
