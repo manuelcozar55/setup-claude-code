@@ -53,6 +53,12 @@ else
   else
     warn "claude $claude_v es anterior a $CLAUDE_PROBADA, la version con la que se probo el kit: actualizalo (claude update)"
   fi
+  # onFailure:"block" (guards de Bash en settings.json) lo honra claude >= 2.1.295: antes, un guard que no
+  # arranca o agota su timeout deja pasar el comando.
+  if [ -n "$claude_v" ] && jq -e '[.. | .onFailure? // empty] | index("block")' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1 \
+     && [ "$(printf '%s\n%s\n' "2.1.295" "$claude_v" | sort -V | head -1)" != "2.1.295" ]; then
+    warn "claude $claude_v es anterior a 2.1.295: no honra onFailure:\"block\", asi que un guard que falla o agota su timeout deja pasar el comando. Actualizalo (claude update)"
+  fi
 fi
 
 # 2. hooks referenciados existen y son ejecutables
