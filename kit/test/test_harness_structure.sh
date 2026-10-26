@@ -503,6 +503,15 @@ else
   ck "n" "y" "test_diagramas_mermaid SI detecta el bloque fabricado: sin tipo, relleno palido y contraste por debajo de AA"
 fi
 
+# --- Las suites no dejan sus mktemp en /tmp: es tmpfs con inodos fijos y corridas en bucle lo agotaron
+# (2026-10-03; con /tmp lleno muere cualquier herramienta). Cada suite fija su TMPDIR y lo borra al salir.
+# test_evals (8 s) se mide corriendo; test_doctor_base_url (46 s) se comprueba por el mecanismo. ---
+leak_tmp="$(mktemp -d)"
+TMPDIR="$leak_tmp" bash "$KIT/test/test_evals.sh" >/dev/null 2>&1 || true
+ck "$(find "$leak_tmp" -mindepth 1 | wc -l | tr -d ' ')" "0" "test_evals no deja directorios temporales tras correr"
+rm -rf "$leak_tmp"
+ck "$(grep -c 'trap .*TMPDIR' "$KIT/test/test_doctor_base_url.sh")" "1" "test_doctor_base_url fija un TMPDIR propio y lo borra al salir"
+
 ck "$([ "$falsified" -ge 6 ] && echo y || echo n)" "y" "al menos 6 checks demuestran deteccion real sobre casos fabricados a proposito (detectados: $falsified de 7) -- si fuera 0, la suite seria decorativa"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

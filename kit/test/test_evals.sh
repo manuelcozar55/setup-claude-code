@@ -12,6 +12,9 @@
 # de checks tautologicos, y que cada modo de grade.py sabe fallar.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
+# TMPDIR propio, borrado al salir: /tmp es tmpfs con inodos fijos y los mktemp -d de la suite se quedaban.
+TMPDIR=$(mktemp -d) || exit 1; export TMPDIR
+trap 'rm -rf "$TMPDIR"' EXIT
 E="$PWD/kit/evals"
 pass=0; fail=0
 
@@ -81,7 +84,6 @@ fi
 # Sin esta seccion, un grader roto daria PASS para siempre y el eval entero
 # se leeria como "todo verde".
 T=$(mktemp -d) || exit 1
-trap 'rm -f "$T"/*.jsonl; rmdir "$T" 2>/dev/null' EXIT
 G="$E/grade.py"
 
 # Transcript sintetico: el agente edita notas.md y ejecuta `python3 test_suma.py`.
