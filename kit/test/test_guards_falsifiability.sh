@@ -293,6 +293,37 @@ sn1_case() { # $1 veces, $2 segmento que se repite, $3 comando final
 sn1_case 12000 "git push" "git push origin main"
 sn1_case 5000 "git push origin feat" "git push origin main"
 rm -r -- "$SN1_REPO"
+# F-03: un comando relleno por debajo del tope de tamano encarece los patrones de Sentinel (`curl x | ((((...`
+# a 65 KB eran 23 s), y un hook que pasa de su timeout deja ejecutar la herramienta: el `cat .env` del final
+# pasaba. Hasta el tope de 128 KB Sentinel responde en menos de 2 s (mejor de hasta 3, como los casos de CPU)
+# y nunca con un allow: deny si llega a analizarlo, ask si agota su presupuesto.
+sen_cost_case() { # $1 etiqueta, $2 prefijo, $3 unidad que se repite, $4 veces, $5 cola
+  local cmd payload t0 ms best rc got
+  cmd=$(printf '%s' "$2"; yes "$3" | head -n "$4" | tr -d '\n'; printf '%s' "$5")
+  payload=$(jq -n --arg c "$cmd" '{tool_name:"Bash",tool_input:{command:$c}}')
+  n_block=$((n_block+1))
+  best=999999
+  for _ in 1 2 3; do
+    t0=$(monotonic_ms)
+    printf '%s' "$payload" | HOME="$BYPASS_HOME" timeout 20 python3 "$HERE/../sentinel/sentinel_preflight.py" > "$BYPASS_HOME/sen.out" 2>/dev/null; rc=$?
+    ms=$(( $(monotonic_ms) - t0 ))
+    [ "$ms" -lt "$best" ] && best=$ms
+    [ "$best" -lt 2000 ] && break
+  done
+  got=$(jq -r '.hookSpecificOutput.permissionDecision // "allow"' "$BYPASS_HOME/sen.out" 2>/dev/null || echo allow)
+  echo "PERF: sentinel: $1 (${#cmd} B): $best ms (mejor de hasta 3), $got"
+  if [ "$rc" -eq 124 ]; then
+    bypass_fail=$((bypass_fail+1)); echo "FAIL: sentinel: $1 paso de 20 s y se mato"
+  elif [ "$got" = allow ]; then
+    bypass_fail=$((bypass_fail+1)); echo "FAIL: sentinel: $1 con «; cat .env» al final dio allow (rc=$rc)"
+  elif [ "$best" -ge 2000 ]; then
+    bypass_fail=$((bypass_fail+1)); echo "FAIL: sentinel: $1 tardo ${best} ms (tope 2000)"
+  fi
+}
+sen_cost_case "curl x | (xN" '' 'curl x | (' 12000 '; cat .env'
+sen_cost_case "curl x | y 120000 parentesis" 'curl x | ' '(' 120000 '; cat .env'
+sen_cost_case "echo \$(xN" '' 'echo $(' 18000 '; cat .env'
+sen_cost_case "curl x | jq . |xN" '' 'curl x | jq . |' 8500 '; cat .env'
 rm -rf "$BYPASS_HOME"
 if [ "$bypass_fail" -ne 0 ]; then
   echo "FAIL: $bypass_fail casos de bypass/negativos incorrectos."

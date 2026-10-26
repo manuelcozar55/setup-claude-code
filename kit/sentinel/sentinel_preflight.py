@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import sys
 from datetime import datetime, timezone
 from fnmatch import fnmatchcase
@@ -1529,6 +1530,36 @@ def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
 
 MAX_COMMAND_BYTES = 131072  # el mismo tope que CMDN_MAX_BYTES de cmdnorm.sh
 
+# A hook past its timeout (10 s in settings.json) does not block: the tool runs. Some patterns of iocs.json
+# backtrack quadratically on a padded command (`curl x | ((((…`: 40 KB = 9 s) well under MAX_COMMAND_BYTES,
+# so size alone cannot keep Sentinel inside the timeout. It also gets a wall-clock budget: past it the answer
+# is `ask`, as above the size cap, never an allow. BaseException on purpose: the `except Exception` blocks of
+# the checks must not swallow it and carry on without a budget.
+ANALYSIS_BUDGET_S = 1.5
+
+
+class _OverBudget(BaseException):
+    pass
+
+
+def _over_budget(signum, frame):
+    raise _OverBudget()
+
+
+def decide_within_budget(payload: dict):
+    """decide(payload), or None when the analysis does not fit ANALYSIS_BUDGET_S."""
+    if not hasattr(signal, "setitimer"):
+        return decide(payload)
+    previous = signal.signal(signal.SIGALRM, _over_budget)
+    signal.setitimer(signal.ITIMER_REAL, ANALYSIS_BUDGET_S)
+    try:
+        return decide(payload)
+    except _OverBudget:
+        return None
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
 SEVERITY_RANK = {"medium": 1, "high": 2, "critical": 3}
 
 
@@ -1617,7 +1648,22 @@ def main() -> None:
             }
         }))
         sys.exit(0)
-    decision, reason = decide(payload)
+    result = decide_within_budget(payload)
+    if result is None:
+        audit_log(tool_name, "ask", "analysis over budget")
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": (
+                    f"Confirm: Sentinel no pudo analizar la llamada en {ANALYSIS_BUDGET_S:g} s (un comando relleno de "
+                    "parentesis o de `$(` encarece sus patrones), y un guard que se pasa de tiempo deja ejecutar la "
+                    "herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto."
+                ),
+            }
+        }))
+        sys.exit(0)
+    decision, reason = result
 
     if decision == "allow":
         # An allow on a guard/config path is the one allow worth keeping: it is
