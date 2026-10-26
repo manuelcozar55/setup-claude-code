@@ -15,6 +15,7 @@ arma() { local s=$1; shift; printf '%s\n' "$@" >"$L/nudge-$s"; echo "$NUC" >"$L/
 # llama SID [json extra]: «deny» si el hook deniega, «pasa» si sale vacío.
 llama() { local o; o=$(jq -cn --arg s "$1" --argjson x "${2:-{\}}" '{session_id:$s,hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:"ls"}} + $x' | bash "$H" 2>/dev/null)
   case $o in '') echo pasa;; *) [ "$(jq -r '.hookSpecificOutput.permissionDecision' <<<"$o" 2>/dev/null)" = deny ] && echo deny || echo "raro:$o";; esac; }
+llama_raw() { jq -cn --arg s "$1" '{session_id:$s,tool_name:"Bash",tool_input:{command:"ls"}}' | bash "$H"; }
 seq5() { local r=""; for _ in 1 2 3 4 5; do r="$r$(llama "$@") "; done; echo "${r% }"; }
 rep() { for _ in 1 2 3 4 5; do llama "$@"; done | sort -u; }
 
@@ -54,8 +55,10 @@ ok "ruta de nucleo vacía: sin deny" "$(seq5 m)" "pasa pasa pasa pasa pasa"
 arma j 70
 ok "JSON vacío: salida 0 sin deny" "$(printf '' | bash "$H"; echo "rc=$?")" "rc=0"
 ok "JSON roto: salida 0 sin deny" "$(echo '{no' | bash "$H"; echo "rc=$?")" "rc=0"
-mkdir -p "$L/nudge-k"; printf '70\n' >"$L/nudge-k/x"; echo "$NUC" >"$L/nudge-k/x.nucleo"; touch -d '-10 minutes' "$L/nudge-k/x.nucleo"; touch -d '-30 minutes' "$NUC"
+mkdir -p "$L/nudge-k" "$L/gate-k"; printf '70\n' >"$L/nudge-k/x"; echo "$NUC" >"$L/nudge-k/x.nucleo"; touch -d '-10 minutes' "$L/nudge-k/x.nucleo"; touch -d '-30 minutes' "$NUC"
+printf '\n\n\n' >"$L/gate-k/x-70"   # sin la guarda del SID, la 4.ª llamada denegaría y escribiría fuera de gate-<sid>
 ok "SID con / : sin deny" "$(rep 'k/x')" pasa
+ok "SID con / : no escribe nada fuera" "$(wc -l <"$L/gate-k/x-70" | tr -d ' '),$(find "$L/gate-k" -type f -printf '%f ')" "3,x-70 "
 arma l 70
 ok "CC_NUCLEO_GATE=0 apaga" "$(CC_NUCLEO_GATE=0 rep l)" pasa
 
@@ -66,5 +69,28 @@ ok "banda 85 deniega otra vez si la 70 ya denegó" "$(seq5 o)" "pasa pasa pasa d
 ok "y la 85 ya denegada no vuelve" "$(seq5 o)" "pasa pasa pasa pasa pasa"
 arma p 70; seq5 p >/dev/null
 ok "la 70 ya denegada no vuelve a denegar" "$(seq5 p)" "pasa pasa pasa pasa pasa"
+
+# contador corrupto o ilegible: falla en abierto, rc 0 y sin ruido en stderr
+arma q 70; printf 'basura sin salto' >"$L/gate-q-70"
+ok "contador con basura: rc 0, sin stderr" "$(llama_raw q 2>&1; echo "rc=$?")" "rc=0"
+arma q2 70; mkdir "$L/gate-q2-70"
+ok "contador ilegible (es un directorio): rc 0, sin stderr" "$(llama_raw q2 2>&1; echo "rc=$?")" "rc=0"
+
+# handoff: solo como palabra de comando, también con ruta; nohandoff y handoffx no son handoff
+arma r 70
+ok "Bash con handoff por ruta absoluta pasa (la ruta del motivo)" "$(rep r '{"tool_input":{"command":"/x/.claude/bin/handoff --desde b --sesion r"}}')" pasa
+arma r2 70
+ok "echo nohandoff no es handoff: la 4.ª deniega" "$(seq5 r2 '{"tool_input":{"command":"echo nohandoff"}}')" "pasa pasa pasa deny pasa"
+arma r3 70
+ok "./handoffx no es handoff: la 4.ª deniega" "$(seq5 r3 '{"tool_input":{"command":"./handoffx --desde b"}}')" "pasa pasa pasa deny pasa"
+
+# ruta relativa bajo .claude/estado/
+arma t 70
+ok "Edit con ruta relativa .claude/estado/nucleo.md pasa" "$(rep t '{"tool_name":"Edit","tool_input":{"file_path":".claude/estado/nucleo.md"}}')" pasa
+
+# carrera: 8 PreToolUse en paralelo con la cuenta en 3 → exactamente una denegación
+arma u 70; for _ in 1 2 3; do llama u >/dev/null; done
+for i in 1 2 3 4 5 6 7 8; do llama u >"$T/par.$i" & done; wait
+ok "8 llamadas en paralelo tras 3: exactamente 1 denegación" "$(cat "$T"/par.* | grep -c deny)" 1
 
 exit $FAIL
