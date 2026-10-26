@@ -11,6 +11,25 @@ etiquetado.
 
 - **El registro de agentes decía «terminado sin informe» aunque el subagente hubiera entregado el suyo por `SubagentHandback` (B-01, prueba de v1.5.0 en Debian).** Al saltar `SubagentStop` el payload no trae `last_assistant_message` y el transcript del agente aún no contiene el `SubagentHandback` (3 de 3 agentes con `msg:""`; el `tool_response` del `Agent` en la sesión madre tampoco repite el informe). Un reintento en el hook añadiría esperas al camino caliente; en su lugar `nucleo_agentes_estado` relee el transcript ya completo cuando el Stop no guardó mensaje, así que «sin informe» solo queda si de verdad no hay. `handback_de` y `msg_de` pasan a `lib/agentes.sh`. Test: `carrera:` en `test_agentes.sh`.
 
+- **`make test` salía rc=2 en un locale C/POSIX (A-01).** La sonda de falsabilidad de `M9–M40` usaba `.` para la raya (3 bytes en UTF-8) y en C casa 1 byte: no inyectaba nada. Ahora `M9[^M]{1,4}M40`, independiente de los bytes.
+- **`handoff --desde` sin `--sesion` usa `$CLAUDE_CODE_SESSION_ID` (B-02).** La sesión dueña ya no sale con rc 5 por no repetir su propio ID. Test en `test_nucleo_integridad.sh`.
+- **`session-start.sh` no dice «No project memory found» junto a la inyección de `nucleo.md` (B-05).**
+- **`doctor.sh` distingue los agentes del kit de los personales (B-08):** «N, de ellos 1 ajeno(s) al kit: planner.md».
+
+### Added
+
+- `make test` termina con un bloque «verde, pero con capas SALTADAS» cuando una suite se salta algo (sin `gitleaks`, sin `claude` en el PATH, sin `kit/evals/runs.jsonl`). Las suites anotan en `SCC_SKIP_LOG`; el rc no cambia (A-03).
+
+### Documentación
+
+- Duración real de `make test` (A-04), `cupo` y el paso opcional de claves del instalador (A-05), el marketplace que fija `install.sh` (A-06), `marketplace add` reescribe `model` a `opus[1m]` (A-07), el árbol de `--plan` no se borra solo (A-08), el mensaje «directory denied» sobre un fichero (B-04), por qué un `.env` sin ignorar sale en «Ficheros tocados» y se deja (B-06), el `ref` del marketplace es una etiqueta mutable y no admite `sha` (C-10), `effortLevel` de primer nivel no rige Opus 5.5 y posteriores según la doc oficial (C-11).
+
+### Lista v1.6 (no entra en un PATCH)
+
+- Registrar el informe de `SubagentHandback` con un hook `PostToolUse` (matcher `SubagentHandback`, `tool_input.message`, `agent_id` para correlar) en vez de leer el transcript (C-05). Es la vía que documenta Claude Code y no tiene carrera ni ventana de 30 líneas, pero cambia el mecanismo de K4 ya verificado en vivo y toca `settings.json`.
+- `effortLevel` por modelo (`modelSettings`) en la plantilla, si `/status` confirma que el de primer nivel es inerte con el alias `opus` (C-11).
+- `source:"fork"` en el matcher de `SessionStart` (C-14): la sesión forkeada hereda el transcript con la inyección ya hecha, así que no urge.
+
 ## [1.5.0] - 2026-10-24
 
 Arreglos K1-K13 del A/B «¿aporta scc?» (23-oct): lo que estorbaba en sesiones autónomas reales.
