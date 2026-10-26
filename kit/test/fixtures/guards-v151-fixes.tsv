@@ -41,3 +41,10 @@ F-02	bdc	A	git config core.hooksPath .githooks
 F-02	bdc	A	git config --global core.hooksPath /tmp/h
 F-02	bdc	B	git -c core.hooksPath=/dev/null commit -m x
 F-02	bdc	N	git config --get core.hooksPath
+F-04	bdc	B	git -c "core.hooksPath=/dev/null" commit -m x
+F-04	bdc	B	git -c 'core.hooksPath=/dev/null' commit -m x
+F-04	bdc	B	git -c core.hooks"Path"=/tmp/h commit -m x
+F-04	bdc	B	git -c 'alias.ci=!sh' ci
+F-04	bdc	B	git -c "alias.x=!sh" x
+F-04	bdc	N	git -c "user.name=x" commit -m y
+F-04	bdc	N	git -c 'color.ui=always' status

@@ -307,9 +307,8 @@ DENY_RULES=(
   # git acepta cualquier prefijo no ambiguo de una opcion larga: `--mirr` es `--mirror`, `--de` es
   # `--delete` y `--no-veri` es `--no-verify` (`--forc` y `--no-v` son ambiguas: git las rechaza).
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--m(i(r(r(or?)?)?)?)?([[:space:]=]|$)'  "BLOCKED: git push --mirror (can delete remote refs)"
-  # Cambiar el directorio de hooks o redefinir un subcomando por `-c` salta los hooks del repo y los guards.
-  '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*core\.hookspath'  "BLOCKED: git -c core.hooksPath (skips the repo's git hooks)"
-  '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*alias\.'  "BLOCKED: git -c alias.* (redefines a git subcommand)"
+  # `git -c core.hooksPath=...` y `git -c alias.x=...` (salta los hooks del repo / redefine un subcomando) se deciden
+  # mas abajo, sobre el texto sin comillas: `-c "core.hooksPath=..."` es el mismo -c.
   # Los borrados remotos requieren tokens descomillados, no regex sobre el texto literal.
 
   # ── CREDENTIAL EXFILTRATION ────────────────────────────────────────────────
@@ -377,6 +376,13 @@ if [[ $COMMAND == *git* ]]; then
   sed -E "s/\"[^\"]*\"|'[^']*'//g" <<<"$COMMAND" \
     | LC_ALL=C grep -qiE '\bgit\b[^;&|]*\b(commit|push)\b[^;&|]*--no-veri|\bgit\b[^;&|]*\bcommit\b[^;&|]*\s-[a-z]*n' \
     && deny "BLOCKED: --no-verify salta los hooks de git; arregla el hook que falla"
+fi
+
+if [[ $COMMAND == *git* ]]; then
+  sed -E "s/[\"']//g" <<<"$COMMAND" | LC_ALL=C grep -qiE '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*core\.hookspath' \
+    && deny "BLOCKED: git -c core.hooksPath (skips the repo's git hooks)"
+  sed -E "s/[\"']//g" <<<"$COMMAND" | LC_ALL=C grep -qiE '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*alias\.' \
+    && deny "BLOCKED: git -c alias.* (redefines a git subcommand)"
 fi
 
 # Los refspecs forzados (`+rama`) y los tres borrados remotos (`--delete`, `-d`, `:rama`) se
