@@ -7,6 +7,10 @@ etiquetado.
 
 ## [Unreleased]
 
+### Added
+
+- **Compuerta de frescura del nucleo (`nucleo-gate.sh`, `PreToolUse`).** El aviso de `nucleo-nudge.sh` se cumplía en el 47 % de los casos en 3 turnos (186 avisos) y dentro de un turno autónomo no hay Stop que lo fuerce. Tras el aviso de la banda 70 u 85 con el nucleo sin escribir, la 4.ª llamada del hilo principal se deniega una vez por banda y sesión, con el motivo (`actualiza <nucleo>` o `handoff --desde <borrador> --sesion <id>`). Pasan siempre lo que cuelga de `.claude/estado/` y `handoff`; los subagentes (`agent_id`) no cuentan; falla en abierto; `env.CC_NUCLEO_GATE=0` la apaga y `doctor.sh` lo marca WARN. El nudge guarda ahora `nudge-<sid>.nucleo` con la ruta que miró. ADR 020. Tests: `test_nucleo_gate.sh`.
+
 ### Fixed
 
 - **`install.sh` ya no borra tus hooks al reinstalar: la fusión de `settings.json` va por propietario.**

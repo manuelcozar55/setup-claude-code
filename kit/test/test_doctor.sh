@@ -239,6 +239,15 @@ set +e; out="$(dr)"; set -e
 ck "$(echo "$out" | grep -c '^WARN .*CC_ALLOW_DESTRUCTIVE')" "0" "CC_ALLOW_DESTRUCTIVE=0 no es WARN"
 cp "$tmp/s.bak" "$CLAUDE_HOME/settings.json"
 
+# env.CC_NUCLEO_GATE=0 apaga nucleo-gate.sh.
+jq '.env.CC_NUCLEO_GATE = "0"' "$tmp/s.bak" > "$CLAUDE_HOME/settings.json"
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*CC_NUCLEO_GATE')" "1" "doctor WARN con env.CC_NUCLEO_GATE=0"
+jq '.env.CC_NUCLEO_GATE = "1"' "$tmp/s.bak" > "$CLAUDE_HOME/settings.json"
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*CC_NUCLEO_GATE')" "0" "CC_NUCLEO_GATE=1 no es WARN"
+cp "$tmp/s.bak" "$CLAUDE_HOME/settings.json"
+
 # Hooks ajenos: install.sh los conserva (fusion por propietario) y doctor los lista, para que un sensor tuyo
 # muerto o duplicado se vea. En una instalacion limpia no hay ninguno.
 set +e; out="$(dr)"; set -e

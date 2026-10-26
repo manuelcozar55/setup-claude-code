@@ -46,6 +46,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/nucleo-gate.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/sentinel/sentinel_preflight.py",
             "timeout": 10
           }

@@ -210,5 +210,6 @@ El otro camino es cerrar la fase uno mismo: `/handoff` (mod [`cockpit`](../11-co
 | Releer tras editar | `stale-read-guard.py` | pagar dos veces el mismo fichero |
 | Cerrar la fase | `destructive-guard.sh`, `branch-guard.sh`, `secret-guard.sh` | perder trabajo, publicar en `main`, subir la config local |
 | Contexto alto a mitad de turno | `nucleo-nudge.sh` | llegar a la compactación con el estado sin escribir |
+| Aviso ignorado durante tres llamadas | `nucleo-gate.sh` | que el aviso de contexto se quede en palabras: deniega una llamada, una vez por banda |
 | Compactación automática | `pre-compact.sh` + `session-start-compact.sh` | perder rama, cambios y pendientes en el resumen |
 | Cambiar de sesión | `/handoff` + `/clear` | una compactación que decide por ti qué olvidar |
