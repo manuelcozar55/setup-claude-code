@@ -23,6 +23,7 @@ ck() { if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1))
 
 PY="${PYTHON3:-python3}"
 if ! "$PY" -c 'import yaml' 2>/dev/null; then
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: eval set (test_evals.sh): pyyaml no disponible, ninguna comprobacion hecha" >> "$SCC_SKIP_LOG"
   echo "ok - pyyaml no disponible: suite omitida"; echo "== 1 passed, 0 failed =="; exit 0
 fi
 
@@ -372,6 +373,7 @@ if command -v claude >/dev/null 2>&1; then
     fi
   done
 else
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: flags del eval set (test_evals.sh): claude no instalado" >> "$SCC_SKIP_LOG"
   echo "ok - claude no instalado: comprobacion de flags omitida"; pass=$((pass+1))
 fi
 

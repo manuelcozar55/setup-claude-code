@@ -70,6 +70,8 @@ mkdir -p "$tmp/sinpath"; for b in bash dirname; do ln -s "$(command -v "$b")" "$
 : > "$tmp/skips.log"
 HOME="$tmp/home" PATH="$tmp/sinpath" SCC_SKIP_LOG="$tmp/skips.log" bash "$KIT/test/test_secret_content_gitleaks.sh" >/dev/null 2>&1
 ck "$(grep -c '^SKIP: capa de contenido de secretos' "$tmp/skips.log")" "1" "skips: la suite de gitleaks se anota en SCC_SKIP_LOG cuando se salta"
+PYTHON3=/bin/false SCC_SKIP_LOG="$tmp/skips-evals.log" bash "$KIT/test/test_evals.sh" >/dev/null 2>&1
+ck "$(grep -c '^SKIP: .*test_evals.sh' "$tmp/skips-evals.log" 2>/dev/null)" "1" "skips: test_evals se anota en SCC_SKIP_LOG cuando no hay pyyaml"
 ck "$(make -C "$REPO" -n test 2>/dev/null | grep -c 'capas SALTADAS')" "1" "skips: make test cierra con el resumen de lo saltado"
 
 echo "PASS=$pass FAIL=$fail"
