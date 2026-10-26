@@ -18,6 +18,10 @@ etiquetado.
   - **Qué hace ahora:** el kit solo sustituye las entradas cuyo comando es uno de sus scripts de `.claude/{hooks,sentinel}/`, a secas, tras un intérprete o con `optional-hook.sh`. Cuentan los que cablea la plantilla y los retirados `smart_approve.py` y `preflight.sh`. Un comando que además hace otra cosa es tuyo.
   - **Lo que se conserva:** el resto queda detrás de las suyas, con su `matcher`, y `doctor.sh` lista los hooks ajenos al kit. Un evento que no es lista o un grupo sin `hooks` se descarta sin abortar la fusión.
   - **Tests:** `test_install_settings_merge.sh` (casos e a e3, 5 rojos contra v1.5.0) y `test_doctor.sh`.
+- **`install.sh --plan` enseña lo que haría `--apply`.**
+  - **Qué pasaba:** el plan generaba su árbol en un directorio vacío. `settings.json` salía como la plantilla sin fusionar, y `CLAUDE.md` y `AGENTS.md` como los del kit. El diff daba por borrados tu `env`, `model`, permisos y hooks propios, y tu `CLAUDE.md`, aunque `--apply` los conserva. Es el modo por defecto cuando `CLAUDE_HOME` es un repo con remoto.
+  - **Qué hace ahora:** siembra el árbol del plan con una copia de los tres instalados (copia y no enlace, para no fusionar a través de él). Los backups de esa fusión se hacen dentro del árbol del plan y se borran, y `CLAUDE_HOME` no se toca. Si tu `CLAUDE.md` no importa `AGENTS.md`, el plan lo avisa como `--apply`.
+  - **Tests:** `test_install_diff_first.sh` compara el `settings.json` del plan con el de `--apply` sobre una copia (6 rojos contra `5de0955`). Un mutante que siembra el enlace cae en 2 checks, y otro sin el aviso ni la limpieza del backup, también en 2.
 
 ## [1.5.0] - 2026-10-24
 
