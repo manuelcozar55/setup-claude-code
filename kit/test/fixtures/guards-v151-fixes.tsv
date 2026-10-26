@@ -48,3 +48,21 @@ F-04	bdc	B	git -c 'alias.ci=!sh' ci
 F-04	bdc	B	git -c "alias.x=!sh" x
 F-04	bdc	N	git -c "user.name=x" commit -m y
 F-04	bdc	N	git -c 'color.ui=always' status
+F-06	bdc	N	echo x > ~/.profile.bak
+F-06	sen	N	echo x > ~/.profile.bak
+F-06	bdc	N	echo x >> ~/.bashrc.d/x
+F-06	sen	N	echo x >> ~/.bashrc.d/x
+F-06	bdc	N	echo x > ~/.bashrc.orig
+F-06	sen	N	echo x > ~/.bashrc.orig
+F-06	bdc	B	echo x >> ~/.bashrc
+F-06	sen	B	echo x >> ~/.bashrc
+F-06	bdc	B	echo x > ~/.profile
+F-06	sen	B	echo x > ~/.profile
+F-06	bdc	B	echo x >> "$HOME/.bashrc"
+F-06	sen	B	echo x >> "$HOME/.bashrc"
+F-06	bdc	B	echo x >>~/.zshrc; ls
+F-06	sen	B	echo x >>~/.zshrc; ls
+F-06	bdc	B	echo x | tee -a ~/.bash_profile
+F-06	sen	B	echo x | tee -a ~/.bash_profile
+F-06	sen	B	echo x >> ~/.bash_logout
+F-06	sen	B	echo x >> ~/.bash_aliases

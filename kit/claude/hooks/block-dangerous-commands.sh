@@ -282,7 +282,7 @@ DENY_RULES=(
   '(^|[;&|(]\s*)(\$\(|`)\s*(curl|wget)\b'  "BLOCKED: curl/wget output executed as a command (RCE)"
   '=["'"'"']?(\$\(|`)\s*(curl|wget)\b[^;&]*[;&]+\s*["'"'"']?\$\{?[A-Za-z_]'  "BLOCKED: curl/wget output executed as a command (RCE)"
   # Redirigir o `tee` hacia los ficheros de arranque del shell planta codigo que corre en la proxima sesion.
-  '(>>?\|?|\btee\s+(-a\s+)?)\s*["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]"'"'"']+)/\.(bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)'  "BLOCKED: write to a shell startup file (persistence)"
+  '(>>?\|?|\btee\s+(-a\s+)?)\s*["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]"'"'"']+)/\.(bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(["'"'"'[:space:];&|)<>}]|$)'  "BLOCKED: write to a shell startup file (persistence)"
   '\bnc\s+-[a-z]*l'                   "BLOCKED: netcat listener (reverse shell)"
   '/dev/tcp/'                         "BLOCKED: /dev/tcp (reverse shell)"
   '/dev/udp/'                         "BLOCKED: /dev/udp (reverse shell)"

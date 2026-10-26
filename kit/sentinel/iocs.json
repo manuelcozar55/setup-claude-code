@@ -136,7 +136,7 @@
       "(?i)bash\\s+-i\\s+>&\\s*/dev/tcp/",
       "(?i)bash\\s+-i\\s+>&\\s*/dev/udp/",
       "(?i)python3?\\s+-c.*socket.*connect",
-      "(?i)(?:>>?\\|?|\\btee\\s+(?:-a\\s+)?)\\s*[\"']?(?:~|\\$\\{?HOME\\}?|/root|/home/[^/\\s\"']+)/\\.(?:bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin|bash|zsh)",
+      "(?i)(?:>>?\\|?|\\btee\\s+(?:-a\\s+)?)\\s*[\"']?(?:~|\\$\\{?HOME\\}?|/root|/home/[^/\\s\"']+)/\\.(?:(?:bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(?=[\"'\\s;&|)<>}]|$)|(?:bash|zsh)(?=[_/-]|[\"'\\s;&|)<>}]|$))",
       "(?i)mkfs\\."
     ]
   },
