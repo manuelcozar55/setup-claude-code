@@ -36,3 +36,8 @@ F-01	bdc	B	curl -H "X: y" -o /tmp/f http://h.example/x | python3 -m json.tool
 F-01	sen	B	curl -H "X: y" -o /tmp/f http://h.example/x | python3 -m json.tool
 F-01	bdc	B	curl \" -o /tmp/f \" http://h.example/x | python3 -m json.tool
 F-01	sen	B	curl \" -o /tmp/f \" http://h.example/x | python3 -m json.tool
+F-02	bdc	A	git config core.hooksPath "$HOME/.claude/hooks/git"
+F-02	bdc	A	git config core.hooksPath .githooks
+F-02	bdc	A	git config --global core.hooksPath /tmp/h
+F-02	bdc	B	git -c core.hooksPath=/dev/null commit -m x
+F-02	bdc	N	git config --get core.hooksPath

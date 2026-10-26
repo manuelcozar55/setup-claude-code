@@ -136,8 +136,8 @@ C-06	bdc	B	git commit --no-verif -m x
 C-06	bdc	B	git push --no-veri origin x
 C-06	bdc	B	git -c core.hooksPath=/dev/null commit -m x
 C-06	bdc	B	git -c core.hookspath=/tmp/h commit -m x
-C-06	bdc	B	git config core.hooksPath /tmp/h
-C-06	bdc	B	git config --global core.hooksPath /tmp/h
+C-06	bdc	A	git config core.hooksPath /tmp/h
+C-06	bdc	A	git config --global core.hooksPath /tmp/h
 C-06	bdc	B	git -c alias.pp=push pp origin feature
 C-06	bdc	N	git push --follow-tags origin feature
 C-06	bdc	N	git push --set-upstream origin feature

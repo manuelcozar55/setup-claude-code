@@ -309,7 +309,6 @@ DENY_RULES=(
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--m(i(r(r(or?)?)?)?)?([[:space:]=]|$)'  "BLOCKED: git push --mirror (can delete remote refs)"
   # Cambiar el directorio de hooks o redefinir un subcomando por `-c` salta los hooks del repo y los guards.
   '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*core\.hookspath'  "BLOCKED: git -c core.hooksPath (skips the repo's git hooks)"
-  '\bgit\b[^;&|]*\bconfig\b[^;&|]*core\.hookspath[[:space:]]+[^-[:space:]]'  "BLOCKED: git config core.hooksPath (skips the repo's git hooks)"
   '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*alias\.'  "BLOCKED: git -c alias.* (redefines a git subcommand)"
   # Los borrados remotos requieren tokens descomillados, no regex sobre el texto literal.
 
@@ -350,6 +349,10 @@ ASK_RULES=(
   '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(-X|--method)[[:space:]=]*(DELETE|PUT|PATCH)\b'  "Confirm: gh api DELETE/PUT/PATCH — changes or deletes remote state"
   '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(/merge\b|force=true|state=closed|\bmutation\b)'  "Confirm: gh api merge/force/close/mutation — changes remote state"
   '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*repo\s+delete\b'  "Confirm: gh repo delete — deletes the repository on the remote"
+
+  # `git config core.hooksPath ruta` es el comando que documenta 05-security.md para la Capa 2 y el de
+  # husky/.githooks: se pregunta, no se niega. Lo de una sola orden (`git -c core.hooksPath=...`) sigue en deny.
+  '\bgit\b[^;&|]*\bconfig\b[^;&|]*core\.hookspath[[:space:]]+[^-[:space:]]'  "Confirm: git config core.hooksPath cambia donde busca git los hooks de este repo (los del repo y los del kit dejan de correr si apunta a otro sitio). Para activar la Capa 2 de secretos: bash install.sh --enable-secrets-layer2"
 
   # ── DATABASE OPERATIONS (ASK — HITL) ───────────────────────────────────────
   '\bDROP\s+DATABASE\b'   "Confirm: DROP DATABASE — irreversible data loss"
