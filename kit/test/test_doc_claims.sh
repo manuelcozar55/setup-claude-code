@@ -1338,7 +1338,7 @@ jq '.hooks.PreToolUse += [{"matcher":"Bash","hooks":[{"type":"command","command"
   "$SETTINGS" > "$NUTMP/s-mas-rtk.json"
 jq 'del(.enabledPlugins["skill-creator@claude-plugins-official"])' "$SETTINGS" > "$NUTMP/s-menos-plugin.json"
 # shellcheck disable=SC2016 # los backticks son los del markdown de 05-security.md, literales
-sed 's/6 hooks `PreToolUse`/9 hooks `PreToolUse`/' "$SECDOC"          > "$NUTMP/d-cadena.md"
+sed 's/7 hooks `PreToolUse`/9 hooks `PreToolUse`/' "$SECDOC"          > "$NUTMP/d-cadena.md"
 # shellcheck disable=SC2016 # idem
 sed 's/hooks `PreToolUse` en serie/hooks en serie/'  "$SECDOC"        > "$NUTMP/d-muda.md"
 # shellcheck disable=SC2016 # idem: es la fila fantasma, con sus backticks de markdown
