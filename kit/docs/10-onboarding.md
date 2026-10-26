@@ -71,7 +71,7 @@ No uses `make bootstrap`: ejecuta además la suite de tests y crea un perfil que
 
 Al final el instalador imprime «Rellena tus claves: cp … .env.example …». Es **opcional**: solo hace falta si vas a usar servicios externos con clave; el kit funciona sin ese fichero.
 
-Si ya tenías hooks propios en `settings.json`, los del kit los sustituyen. Los tuyos quedan en la copia de seguridad de `~/.claude/backups/`.
+Si ya tenías hooks propios en `settings.json`, se conservan junto a los del kit y `doctor.sh` los lista. Hasta la 1.5.0 el kit los sustituía.
 
 ## 3 · Verificar la instalación
 

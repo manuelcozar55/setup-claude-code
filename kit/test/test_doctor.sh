@@ -244,6 +244,15 @@ set +e; out="$(dr)"; set -e
 ck "$(echo "$out" | grep -c '^WARN .*CC_ALLOW_DESTRUCTIVE')" "0" "CC_ALLOW_DESTRUCTIVE=0 no es WARN"
 cp "$tmp/s.bak" "$CLAUDE_HOME/settings.json"
 
+# Hooks ajenos: install.sh los conserva (fusion por propietario) y doctor los lista, para que un sensor tuyo
+# muerto o duplicado se vea. En una instalacion limpia no hay ninguno.
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c 'hooks ajenos al kit')" "0" "doctor no lista hooks ajenos en una instalacion limpia"
+jq '.hooks.PostCompact = [{"hooks":[{"type":"command","command":"mi-sensor.sh"}]}]' "$tmp/s.bak" > "$CLAUDE_HOME/settings.json"
+set +e; out="$(dr)"; set -e
+ck "$(echo "$out" | grep -c '^PASS .*hooks ajenos al kit.*: 1 (PostCompact mi-sensor.sh)')" "1" "doctor lista un hook ajeno con su evento"
+cp "$tmp/s.bak" "$CLAUDE_HOME/settings.json"
+
 # Version de claude (rev-B IMPORTANTE 6): WARN si falta o es anterior a la version con la que se probo el kit.
 # Es la que cita docs/10-onboarding.md, no la de ninguna politica gestionada: las dos no pueden divergir.
 ck "$(grep -cF "se probó con la versión $(sed -n 's/^CLAUDE_PROBADA="\(.*\)"$/\1/p' "$KIT/doctor.sh")." "$KIT/docs/10-onboarding.md")" "1" "doctor.sh y docs/10-onboarding.md citan la misma version probada"

@@ -15,11 +15,12 @@
 # El contrato que se fija aqui, clave por clave (kit/install.sh, install_settings):
 #   statusLine y cualquier otra clave que el kit no conozca -> TUYAS, intactas
 #   env, permissions.allow, permissions.deny                -> union, y gana tu valor
-#   hooks                                                   -> del KIT, reemplazan los tuyos
+#   hooks                                                   -> por propietario: los del kit los
+#                                                              pone el kit, los tuyos se quedan
 #   permissions.disableBypassPermissionsMode                -> del KIT, siempre "disable"
-# Lo de `hooks` es la unica clave que el kit posee en bloque (la cadena de guards es lo que
-# aporta) y esta declarado en el aviso que imprime la funcion: se fija aqui para que un
-# cambio accidental de ese contrato salte, en un sentido o en el otro.
+# Hasta la 1.5.0 el kit poseia `hooks` en bloque y se llevaba los tuyos (caso e). El caso fija
+# las dos mitades para que un cambio de contrato salte en un sentido o en el otro: lo tuyo
+# sobrevive y lo del kit no se duplica.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
@@ -84,14 +85,67 @@ ck "$(jq '[.permissions.deny[] | select(. == "Bash(rm -rf /*)")] | length' "$S")
 ck "$(jq '(.permissions.allow | length) == (.permissions.allow | unique | length)' "$S")" "true" "allow: sin duplicados"
 ck "$(jq '(.permissions.deny  | length) == (.permissions.deny  | unique | length)' "$S")" "true" "deny: sin duplicados"
 
-# --- Caso e: hooks -> los del kit REEMPLAZAN los tuyos --------------------
+# --- Caso e: hooks -> el kit sustituye LOS SUYOS; los tuyos se quedan ------
+# El 21-oct una reinstalacion borro `PostCompact -> post-compact-check.sh` y un PreCompact de otra
+# capa: el kit poseia `hooks` en bloque. Ahora solo posee las entradas que nombran sus scripts
+# (los que cablea la plantilla, mas los que retiro). La semilla mezcla de todo: un evento que el
+# kit no usa, un ajeno colgado en un grupo junto a un guard del kit, un guard del kit con su forma
+# antigua, un retirado y un hook sin `command`.
 seed e <<'EOF'
-{ "hooks": { "PreToolUse": [ { "matcher": "Bash",
-              "hooks": [ { "type": "command", "command": "mi-hook-viejo.sh" } ] } ] } }
+{ "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [
+          { "type": "command", "command": "$HOME/.claude/hooks/block-dangerous-commands.sh" },
+          { "type": "command", "command": "~/.local/bin/mi-linter --hook" } ] },
+      { "hooks": [ { "type": "command", "command": "~/.venvs/tools/bin/python3 ~/.claude/hooks/write-guard.py" } ] },
+      { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/smart_approve.py" } ] },
+      { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/mi-guard.py" } ] } ],
+    "PreCompact": [ { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/circe-pre-compact.sh" },
+                                 { "type": "command", "command": "$HOME/.claude/hooks/preflight.sh" } ] } ],
+    "PostCompact": [ { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/post-compact-check.sh", "timeout": 5 } ] } ],
+    "Stop": [ { "hooks": [ { "type": "prompt", "prompt": "mi revision" } ] } ] } }
 EOF
 run
-ck "$(jq '[.. | strings | select(test("mi-hook-viejo"))] | length' "$S")" "0" "hooks: los tuyos NO sobreviven -- el kit los posee en bloque"
-ck "$(jq '[.hooks.PreToolUse[].hooks[].command | select(test("block-dangerous"))] | length' "$S")" "1" "hooks: los pone el kit"
+cmds(){ jq -r "[.hooks.$1[]?.hooks[]? | .command // .prompt] | join(\"|\")" "$S"; }
+# shellcheck disable=SC2016 # $HOME literal del settings, no del shell
+ck "$(jq -c '.hooks.PostCompact' "$S")" '[{"hooks":[{"type":"command","command":"$HOME/.claude/hooks/post-compact-check.sh","timeout":5}]}]' \
+   "hooks: un evento que el kit no usa sobrevive byte a byte (EL incidente)"
+ck "$(cmds PreToolUse | tr '|' '\n' | grep -c -e 'mi-linter --hook' -e 'mi-guard.py')" "2" "hooks: tus PreToolUse se quedan, tambien el que va por optional-hook.sh"
+ck "$(jq -c '[.hooks.PreToolUse[] | select(any(.hooks[]; .command // "" | test("mi-linter")))] | map(.matcher, (.hooks | length))' "$S")" '["Bash",1]' \
+   "hooks: en un grupo mixto queda solo lo tuyo, con su matcher"
+ck "$(cmds PreToolUse | tr '|' '\n' | grep -c -e 'block-dangerous' -e 'write-guard.py')" "2" "hooks: los guards del kit no se duplican (ni con su forma antigua)"
+ck "$(jq '[.hooks | .. | strings | select(test("smart_approve|preflight\\.sh"))] | length' "$S")" "0" "hooks: los que el kit retiro se van"
+# shellcheck disable=SC2016 # $HOME literal del settings, no del shell
+ck "$(cmds PreCompact)" '$HOME/.claude/hooks/pre-compact.sh|$HOME/.claude/hooks/circe-pre-compact.sh' "hooks: en un evento compartido van los del kit y detras los tuyos"
+ck "$(cmds Stop | tr '|' '\n' | grep -c 'mi revision')" "1" "hooks: uno sin command (type prompt) es tuyo"
+ck "$(jq -c '[.hooks[][]? | select((.hooks | length) == 0)] | length' "$S")" "0" "hooks: no quedan grupos vacios"
+plantilla="$(jq -c '[.hooks[][].hooks[].command] | sort' "$KIT/claude/settings.json")"
+ck "$(jq -c --argjson p "$plantilla" '[.hooks[][].hooks[].command // empty] | map(select(IN($p[]))) | sort' "$S")" "$plantilla" "hooks: estan todos los de la plantilla, una vez cada uno"
+ck "$(jq --slurpfile k "$KIT/claude/settings.json" '. as $s | [$k[0].hooks | to_entries[] | .value == $s.hooks[.key][:(.value | length)]] | all' "$S")" "true" \
+   "hooks: los grupos del kit van primero y tal cual la plantilla, matcher incluido"
+antes="$(sha256sum < "$S")"; n="$(backups)"
+run
+ck "$(sha256sum < "$S")" "$antes" "hooks: reinstalar no cambia nada (idempotente)"
+ck "$(backups)" "$n" "hooks: reinstalar no crea otro backup"
+
+# --- Caso e2: lo que no es del todo del kit se queda; lo malformado no tumba la fusion --
+# Un comando que nombra un guard pero hace algo mas es tuyo: borrarlo entero perderia tu parte. Y un
+# evento que no es lista o un grupo sin `hooks` no pueden abortar la fusion: sin ella no llegan los guards.
+seed e2 <<'EOF'
+{ "hooks": {
+    "Stop": { "no": "es una lista" },
+    "PostCompact": [ { "matcher": "sin-hooks" }, { "hooks": [ { "type": "command", "command": "mio.sh" } ] } ] } }
+EOF
+run
+ck "$(dice 'fusion de settings.json fallo')" "n" "hooks: un evento malformado no aborta la fusion"
+ck "$(cmds PreToolUse | tr '|' '\n' | grep -c 'block-dangerous')" "1" "hooks: con un evento malformado los guards del kit llegan igual"
+ck "$(cmds PostCompact)" "mio.sh" "hooks: el grupo sin hooks se descarta y el resto del evento se queda"
+ck "$(jq -r '.hooks.Stop | "\(type) \(length)"' "$S")" "array 1" "hooks: un evento que no es lista se descarta y quedan los del kit"
+seed e3 <<'EOF'
+{ "hooks": { "PreToolUse": [ { "hooks": [ { "type": "command", "command": "/opt/mio/log.sh && $HOME/.claude/hooks/branch-guard.sh" } ] } ] } }
+EOF
+run
+ck "$(cmds PreToolUse | tr '|' '\n' | grep -c '/opt/mio/log.sh')" "1" "hooks: un comando con algo mas que un guard del kit es tuyo y se queda"
 
 # --- Caso f: settings.json con JSON invalido -> reemplazo con backup ------
 seed f <<'EOF'

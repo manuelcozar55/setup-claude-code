@@ -143,7 +143,9 @@ install_file() {  # src dst
 }
 
 # settings.json NO se reemplaza si ya existe: se fusiona. Regla, y es deliberada:
-#   - `hooks`      -> gana el KIT. La cadena de guards es lo que el kit aporta.
+#   - `hooks`      -> por PROPIETARIO. Las entradas que nombran un script del kit (los que cablea
+#     la plantilla y los que retiro) las pone el kit; las demas son tuyas y quedan detras de las
+#     suyas. En bloque, la reinstalacion del 21-oct borro en silencio un PostCompact ajeno.
 #   - `permissions`-> UNION. Nunca se pierde un deny (seguridad) ni un allow (tu trabajo).
 #     Salvo `permissions.disableBypassPermissionsMode`, que queda en "disable" siempre: con la
 #     union ganaba tu valor, y un "" previo dejaba el modo sin permisos al alcance.
@@ -177,11 +179,24 @@ install_settings() {  # src dst
   name="${dst#"$CLAUDE_HOME"/}"; real="$dst"
   [ -L "$dst" ] && real="$(readlink -f "$dst")"
   tmp="$(mktemp "$real.XXXXXX")"
+  # Un hook es del kit si su comando es un script de .claude/{hooks,sentinel}/ que cablea la plantilla
+  # (optional-hook.sh solo envuelve: no cuenta) o que el kit retiro, a secas o tras un interprete o
+  # optional-hook.sh con sus flags. Asi caen las formas antiguas de sus guards; un comando con algo mas
+  # (`mio.sh && ...guard.sh`) es tuyo y se queda: un duplicado se ve en doctor, una perdida no. Lo que
+  # no tiene forma de hook (un evento que no es lista, un grupo sin `hooks`) se descarta y queda en el backup.
   if jq -s '
       .[0] as $kit | .[1] as $old |
+      ([$kit.hooks // {} | .. | .command? // empty | splits(" +") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")]
+        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh"] | unique) as $suyos |
+      def propio: ("/" + .) as $t | any($suyos[]; . as $s | $t | endswith("/.claude/hooks/" + $s) or endswith("/.claude/sentinel/" + $s));
+      def del_kit: [(.command | strings // "") | splits(" +") | gsub("[\"\u0027]"; "") | select(length > 0)]
+        | any(.[]; propio) and all(.[]; propio or startswith("-") or (sub(".*/"; "") | test("^(optional-hook\\.sh|python[0-9.]*|bash|sh)$")));
       ($kit + $old)
       | .env = (($kit.env // {}) + ($old.env // {}))
-      | .hooks = ($kit.hooks // $old.hooks)
+      | .hooks = (reduce (($old.hooks | objects) // {} | to_entries[] | select(.value | type == "array")) as $e ($kit.hooks // {};
+            .[$e.key] = ((.[$e.key] // []) + [$e.value[] | objects | select(.hooks | type == "array")
+              | .hooks |= map(select(type == "object" and (del_kit | not))) | select(.hooks | length > 0)]))
+          | with_entries(select(.value | length > 0)))
       | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
           | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
           | .deny  = (($kit.permissions.deny  // []) + (($old.permissions.deny  // []) - ($kit.permissions.deny  // []))))
@@ -192,7 +207,7 @@ install_settings() {  # src dst
     if ! cmp -s "$tmp" "$real"; then
       mkdir -p "$(dirname "$BK/$name")"
       cp -p "$real" "$BK/$name"
-      echo "   backup: $name (fusionado: hooks del kit, permisos unidos, tu env y tu model intactos)"
+      echo "   backup: $name (fusionado: hooks del kit mas los tuyos, permisos unidos, tu env y tu model intactos)"
       if jq -e '.permissions.disableBypassPermissionsMode | . != null and . != "disable"' "$real" >/dev/null 2>&1; then
         echo "   permissions.disableBypassPermissionsMode: tu valor se sustituye por \"disable\" (gana el kit)"
       fi

@@ -11,6 +11,11 @@ etiquetado.
 
 ### Fixed
 
+- **`install.sh` ya no borra tus hooks al reinstalar: la fusión de `settings.json` va por propietario.**
+  - **Qué pasaba:** `install_settings` sustituía el bloque `hooks` entero (`$kit.hooks // $old.hooks`). La reinstalación del 21-oct se llevó en silencio un `PostCompact → post-compact-check.sh` y un `PreCompact` de otra capa.
+  - **Qué hace ahora:** el kit solo sustituye las entradas cuyo comando es uno de sus scripts de `.claude/{hooks,sentinel}/`, a secas, tras un intérprete o con `optional-hook.sh`. Cuentan los que cablea la plantilla y los retirados `smart_approve.py` y `preflight.sh`. Un comando que además hace otra cosa es tuyo.
+  - **Lo que se conserva:** el resto queda detrás de las suyas, con su `matcher`, y `doctor.sh` lista los hooks ajenos al kit. Un evento que no es lista o un grupo sin `hooks` se descarta sin abortar la fusión.
+  - **Tests:** `test_install_settings_merge.sh` (casos e a e3, 5 rojos contra v1.5.0) y `test_doctor.sh`.
 - **Guards, pipe-a-shell (C-01).** `block-dangerous-commands.sh` y Sentinel bloquean también `busybox sh`, `ash`, `dash`, `ksh`, `fish`, `node`/`nodejs`, `perl`, `ruby`, `php`, `lua`, los envoltorios `time`/`nice`/`timeout`/`stdbuf`/`setsid`/`env`/`nohup`/`xargs`, `( … )`, `{ …; }`, asignaciones de entorno, `bash <<< "$(curl …)"`, `nc … | sh`, `| while read; eval` y `| awk system`. Test: `fixtures/guards-v151.tsv` (C-01), 47 filas rojas antes. Lo que ninguna regla ve (`cur''l`, `$S` con `S=bash`) queda en `05-security.md`.
 - **Guards, `.env` sin barra inicial en Sentinel (C-03).** `cat .env`, `head`, `source`, `cp`, `tar`, `xxd`, `base64`, `curl -d @.env` y `git show HEAD:.env` se bloquean por palabra del comando; `.env.example` y las demás plantillas pasan. `secret-guard.sh` sigue mirando solo `git add` (documentado).
 - **Guards, escrituras por Bash sobre la config del kit (C-04).** Sentinel bloquea `rm`, `mv`, `cp` hacia, `chmod`, `tee`, `sed -i`, `>`, `install`, `ln`, `dd of=`… sobre `~/.claude/settings*.json`, `hooks/`, `sentinel/` y `sentinel-allowlist.json`, sin que la allowlist lo levante. Leerlos sigue permitido. Límite: el código de `python -c` no se lee.
