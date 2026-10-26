@@ -29,6 +29,7 @@ etiquetado.
 - **`git -c "core.hooksPath=…"` y `git -c 'alias.x=!sh'` entre comillas se bloquean (F-04).** La regla de C-06 miraba el texto con comillas y no veía `-c "core.hooksPath=/dev/null"`, `-c 'core.hooksPath=…'` ni `core.hooks"Path"`; ahora se aplica al texto sin comillas, como la de `--no-verify`.
 - **Escribir en `~/.profile.bak` o `~/.bashrc.d/x` ya no se bloquea (F-06).** El patrón de ficheros de arranque no tenía límite de palabra tras `profile`/`bashrc`; ahora el nombre ha de terminar ahí (comilla, espacio, `;`, `&`, `|`, `)`, `<`, `>`, `}` o fin). En Sentinel, `.bash_*` y `.zsh_*` (`.bash_logout`, `.bash_aliases`) y `.bash/`, `.zsh/` se siguen bloqueando como antes.
 - **`gh api` destructivo ya no pide confirmación por texto (F-07).** La regla se ancla a un `gh api` real en posición de comando y `mutation` cuenta solo dentro de `-f/-F query=`. El cuerpo de un `gh pr create --body`, un `echo "gh api -X DELETE …" >> notas.md` o una ruta como `contents/mutation.md` ya no disparan `ask`; los `gh api` reales siguen pidiéndolo.
+- **Sentinel bloquea `mv` y `rm -r` sobre `~/.claude` entero (F-05).** C-04 protegía `hooks/`, `sentinel/` y `settings*.json` pero no el directorio padre: `mv ~/.claude ~/.claude.old` se llevaba hooks y settings de una vez. Ahora `mv` (no como destino) y `rm -r`/`-rf`/`-R` sobre `~/.claude` se bloquean; los hijos legítimos (`projects/`, `plans/`) siguen libres. El resto de formas de llegar a la config (`cd`, variables, `xargs`, `tar -C`…) queda como límite declarado en `05-security.md`.
 
 ### Added
 

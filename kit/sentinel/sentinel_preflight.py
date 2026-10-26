@@ -1408,6 +1408,17 @@ def _protected_path(word: str, cwd: str) -> bool:
                              or re.fullmatch(re.escape(home) + r"/\.claude/settings[^/]*\.json", path)))
 
 
+def _is_claude_home(word: str, cwd: str) -> bool:
+    """The whole ~/.claude directory (not a child of it): `mv` or `rm -r` on it takes hooks and settings along."""
+    if not word or word.startswith("-"):
+        return False
+    path = expand(word)
+    if not os.path.isabs(path):
+        path = os.path.join(cwd, path)
+    path, home = os.path.normpath(path), os.path.expanduser("~").rstrip("/")
+    return bool(re.fullmatch(_HOME_RX + r"/\.claude", path) or home and path == f"{home}/.claude")
+
+
 def _writes_protected(words: list[str], cwd: str, depth: int) -> str | None:
     i, _ = _command_word(words)
     if i >= len(words):
@@ -1424,6 +1435,12 @@ def _writes_protected(words: list[str], cwd: str, depth: int) -> str | None:
             dd = True
         elif dd or not a.startswith("-"):
             pos.append(a)
+    if name == "mv" or (name == "rm" and any(re.match(r"-[A-Za-z]*[rR]", a) or a == "--recursive" for a in args if not dd)):
+        # The parent directory itself as the thing moved or removed; as the last operand of `mv` it is only the destination.
+        tdir = [b for a, b in zip(args, args[1:]) if a == "-t"] + [a.partition("=")[2] for a in args if a.startswith("--target-directory=")]
+        moved = [p for p in pos if p not in tdir] if name == "mv" and tdir else pos[:-1] if name == "mv" else pos
+        if (hit := next((p for p in moved if _is_claude_home(p, cwd)), None)):
+            return hit
     if name in _WRITE_ALL:
         cand = args if name in ("curl", "wget") else pos
     elif name in _WRITE_DEST:

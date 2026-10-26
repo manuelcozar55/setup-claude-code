@@ -48,6 +48,17 @@ F-04	bdc	B	git -c 'alias.ci=!sh' ci
 F-04	bdc	B	git -c "alias.x=!sh" x
 F-04	bdc	N	git -c "user.name=x" commit -m y
 F-04	bdc	N	git -c 'color.ui=always' status
+F-05	sen	B	mv ~/.claude ~/.claude.old
+F-05	sen	B	mv ~/.claude/ /tmp/claude-old
+F-05	sen	B	mv -t /tmp ~/.claude
+F-05	sen	B	rm -r ~/.claude
+F-05	sen	B	rm -rf ~/.claude
+F-05	sen	B	rm -R "$HOME/.claude"
+F-05	sen	N	ls ~/.claude/projects
+F-05	sen	N	mv x ~/.claude
+F-05	sen	N	mv ~/.claude/projects/a ~/.claude/projects/b
+F-05	sen	N	rm -r ~/.claude/projects/old
+F-05	sen	N	rm ~/.claude/x.log
 F-06	bdc	N	echo x > ~/.profile.bak
 F-06	sen	N	echo x > ~/.profile.bak
 F-06	bdc	N	echo x >> ~/.bashrc.d/x
