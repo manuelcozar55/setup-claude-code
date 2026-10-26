@@ -29,7 +29,7 @@ COMMAND=$(jq -r '.tool_input.command // empty' 2>/dev/null) \
   || deny "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable, asi que este guard no puede evaluar el comando."
 [[ -z "$COMMAND" ]] && exit 0
 
-ALLOWLIST_FILE="${HOME}/.claude/sentinel-allowlist.json"
+ALLOWLIST_FILE="${HOME:-/nonexistent}/.claude/sentinel-allowlist.json"
 
 command_allowlisted() {
   [[ -f "$ALLOWLIST_FILE" ]] || return 1
