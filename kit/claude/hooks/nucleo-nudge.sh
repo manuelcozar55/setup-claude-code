@@ -46,6 +46,8 @@ MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
 EDAD=$(( $(date +%s) - ${MT:-0} ))
 [ -z "$MT" ] || [ "$EDAD" -gt 600 ] || exit 0
 mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
+# Para nucleo-gate.sh (PreToolUse): el nucleo que miré; el mtime de este fichero es la hora del aviso. Aviso nuevo, cuenta nueva.
+echo "$NUC" >"$MARCA.nucleo"; rm -f -- "${MARCA/nudge-/gate-}-$B" "${MARCA/nudge-/gate-}-$B.d"
 if [ -n "$MT" ]; then
   M="CONTEXTO $PCT % del airbag. nucleo.md lleva $((EDAD / 60)) min sin actualizar: antes de la siguiente herramienta actualiza Paso actual / Siguiente acción / Pendientes en $NUC."
   # Editado a mano no pasa por el tope de handoff: pasado el tope, al retomar se omiten secciones enteras.

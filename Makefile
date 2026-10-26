@@ -64,6 +64,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_agentes.sh
 	bash kit/test/test_nucleo_hooks.sh
 	bash kit/test/test_nucleo_nudge.sh
+	bash kit/test/test_nucleo_gate.sh
 	bash kit/test/test_settings_template.sh
 	bash kit/test/test_install_plugins.sh
 	bash kit/test/test_claude_md_template.sh

@@ -158,7 +158,7 @@ Una sesión por tarea. Esperar a la compactación automática pierde contexto; e
 Esto es solo para quien cambia el propio kit. Antes de tu primer commit:
 
 ```bash
-make test                  # 45 suites en bash puro, sin red, unos 7 min. exit 0 o no está hecho.
+make test                  # 46 suites en bash puro, sin red, unos 7 min. exit 0 o no está hecho.
 bash kit/scan-secrets.sh   # secretos y PII en el árbol
 shellcheck -x <tus .sh>
 ```

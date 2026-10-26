@@ -126,5 +126,11 @@ touch -d '-30 minutes' "$NUC"
 WC=$(PATH=/usr/bin:/bin run s40 p72 | ctx); WP=$(sed -n 's/.*`\([^ ]*\) --desde.*/\1/p' <<<"$WC")
 ok "W2 nudge: sin handoff en el PATH enseña la ruta absoluta y existe" "$WP,$([ -x "$WP" ] && echo si)" "$HOME/.claude/bin/handoff,si"
 ok "W2 nudge 70 % con la ruta ≤ 600 chars" "$([ "$(largo "$WC")" -le 600 ] && echo si)" si
+# --- compuerta: el nudge deja la ruta del nucleo que miró (el mtime es la hora del aviso) y rearma la cuenta ---
+touch -d '-30 minutes' "$NUC"; run s50 p72 >/dev/null
+ok "nudge deja nudge-<sid>.nucleo con la ruta exacta" "$(cat "$HOME/.claude/session-logs/nudge-s50.nucleo" 2>/dev/null)" "$NUC"
+G=$(dirname "$H")/nucleo-gate.sh; GC='{"session_id":"s50","tool_name":"Bash","tool_input":{"command":"ls"}}'
+gate() { case $(bash "$G" <<<"$GC") in '') echo pasa;; *deny*) echo deny;; esac; }
+ok "nudge + compuerta de extremo a extremo: 1.ª a 3.ª pasan, 4.ª deniega" "$(for _ in 1 2 3 4; do gate; done | tr '\n' ' ')" "pasa pasa pasa deny "
 
 exit $FAIL
