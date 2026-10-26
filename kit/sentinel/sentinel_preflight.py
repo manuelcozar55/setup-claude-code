@@ -1259,9 +1259,13 @@ _PYC_SMALL = re.compile(r"[0-9]+|[A-Za-z_]")
 # Same expressions as fetch_shape_ok in block-dangerous-commands.sh.
 _PY = r"(?:\.?venv/bin/)?python[0-9.]*"
 _FETCH = r"\s*(?:curl|wget)\b[^|]*\|\s*"
-_BAD_CURL = re.compile(
-    r"(?:^|\s)(?:-[A-Za-z]*[oOKT][A-Za-z]*|--(?:output|remote-name|remote-name-all|config|upload-file|output-dir))(?:[\s=]|$)"
-    r"|(?:^|\s)(?:-[A-Za-z]*d|--data(?:-binary|-raw|-urlencode|-ascii)?|-F|--form|--json)[\s=]*[\"']?(?:[A-Za-z0-9_]*=)?@")
+# The output flags are looked for outside quoted strings (a header value is not an option) and only in
+# clusters whose letters before o/O/K/T take no value: in `-XPOST` the O belongs to the method.
+_BAD_CURL_OUT = re.compile(
+    r"(?:^|\s)(?:-[0-9#aBfgGhiIjJklLMnNpqRsSvVZ]*[oOKT]|--(?:output|remote-name|remote-name-all|config|upload-file|output-dir)(?:[\s=]|$))")
+_BAD_CURL_DATA = re.compile(
+    r"(?:^|\s)(?:-[A-Za-z]*d|--data(?:-binary|-raw|-urlencode|-ascii)?|-F|--form|--json)[\s=]*[\"']?(?:[A-Za-z0-9_]*=)?@")
+_QUOTED = re.compile(r"\"[^\"]*\"|'[^']*'")
 _BAD_WGET = re.compile(
     r"(?:^|\s)(?:-[A-Za-z]*[oiP]|--(?:output-file|input-file|directory-prefix|post-file|body-file|config))(?:[\s=]|$)"
     r"|(?:^|\s)-[A-Za-z]*O(?:\s+[^-\s]|[^-\s])|(?:^|\s)--output-document[\s=]*[^-\s]")
@@ -1301,8 +1305,11 @@ def _strict_pyc_ok(code: str, quote: str) -> bool:
 
 def _safe_shape_stmt(st: str) -> bool:
     dl, _, rest = st.partition("|")
-    if re.match(r"\s*curl", st) and _BAD_CURL.search(dl):
-        return False
+    if re.match(r"\s*curl", st):
+        # A backslash can open a string the shell does not see (`\"`): then the text is read whole.
+        dq = dl if "\\" in dl else _QUOTED.sub("Q", dl)
+        if _BAD_CURL_OUT.search(dq) or _BAD_CURL_DATA.search(dl):
+            return False
     if re.match(r"\s*wget", st) and _BAD_WGET.search(dl):
         return False
     m = _PYC_SAFE.match(st)

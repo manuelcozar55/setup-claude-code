@@ -1,0 +1,38 @@
+F-01	bdc	N	curl -XGET http://h.example/x | python3 -m json.tool
+F-01	sen	N	curl -XGET http://h.example/x | python3 -m json.tool
+F-01	bdc	N	curl -XPOST http://h.example/x -d '{}' | python3 -c 'import sys,json; print(json.load(sys.stdin))'
+F-01	sen	N	curl -XPOST http://h.example/x -d '{}' | python3 -c 'import sys,json; print(json.load(sys.stdin))'
+F-01	bdc	N	curl -sXGET http://h.example/x | python3 -m json.tool
+F-01	sen	N	curl -sXGET http://h.example/x | python3 -m json.tool
+F-01	bdc	N	curl -XPUT http://h.example/x | python3 -m json.tool
+F-01	sen	N	curl -XPUT http://h.example/x | python3 -m json.tool
+F-01	bdc	N	curl -XPATCH http://h.example/x | python3 -m json.tool
+F-01	sen	N	curl -XPATCH http://h.example/x | python3 -m json.tool
+F-01	bdc	N	curl --header "X-Token: ab -o cd" http://h.example/x | python3 -m json.tool
+F-01	sen	N	curl --header "X-Token: ab -o cd" http://h.example/x | python3 -m json.tool
+F-01	bdc	N	curl -H 'X-A: b -O c' http://h.example/x | jq .
+F-01	sen	N	curl -H 'X-A: b -O c' http://h.example/x | jq .
+F-01	bdc	B	curl -XPOST -o /tmp/f http://h.example/x | python3 -c 'import sys'
+F-01	sen	B	curl -XPOST -o /tmp/f http://h.example/x | python3 -c 'import sys'
+F-01	bdc	B	curl -XGET -O http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -XGET -O http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -sXGET -o /tmp/f http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -sXGET -o /tmp/f http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -so /tmp/f http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -so /tmp/f http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -sO http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -sO http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -o/tmp/f http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -o/tmp/f http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -o"/tmp/f" http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -o"/tmp/f" http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -XGET -K /tmp/x.cfg http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -XGET -K /tmp/x.cfg http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -XPUT -T /tmp/f http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -XPUT -T /tmp/f http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -XPOST -d '@/tmp/f' http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -XPOST -d '@/tmp/f' http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -H "X: y" -o /tmp/f http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -H "X: y" -o /tmp/f http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl \" -o /tmp/f \" http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl \" -o /tmp/f \" http://h.example/x | python3 -m json.tool

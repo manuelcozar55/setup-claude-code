@@ -24,6 +24,7 @@ etiquetado.
 - **`session-start.sh` no dice «No project memory found» junto a la inyección de `nucleo.md` (B-05).**
 - **`doctor.sh` distingue los agentes del kit de los personales (B-08):** «N, de ellos 1 ajeno(s) al kit: planner.md».
 - **`05-security.md` publicaba cifras de `iocs.json` que no cuadraban (C-13).** Decía 31 patrones de ruta y 12 de comando; el fichero trae 21 de ruta (más 5 expresiones regulares y 6 extensiones de clave) y 21 de comando. `test_doc_claims.sh` las cuenta ahora con `jq`.
+- **Guards, falso positivo de K1 con `curl -XGET`, `-XPOST` o `-XPUT` hacia `python3 -m json.tool` (F-01).** La excepción buscaba `-o/-O/-K/-T` en cualquier letra del cluster corto, y `-XPOST` lleva una `O` y una `T`. Ahora una opción corta que toma valor (`-X`, `-H`, `-d`…) se come el resto del cluster y el texto entre comillas (`--header "X-Token: ab -o cd"`) no cuenta como opciones, en `block-dangerous-commands.sh` y en Sentinel. Lo que se bloqueaba de verdad (`-o`, `-O`, `-K`, `-T`, `-d @fichero`) sigue igual; de paso, `-o/ruta` y `-o"ruta"` pegados, que no se veían, ahora también se bloquean.
 
 ### Added
 

@@ -176,11 +176,21 @@ fetch_shape_ok() {
   local pyc=$fetch$pyre'[[:space:]]+-[ISEBsu]*c[[:space:]]+('\''[^'\'']*'\''|"[^"]*")[[:space:]]*$'
   local jtool=$fetch$pyre'[[:space:]]+-m[[:space:]]*json\.tool([[:space:]]+(--sort-keys|--compact|--indent(=[0-9]+|[[:space:]]+[0-9]+)))*[[:space:]]*$'
   local jqre=$fetch'jq([[:space:]][^|]*)?$'
-  local bad_curl='(^|[[:space:]])(-[A-Za-z]*[oOKT][A-Za-z]*|--(output|remote-name|remote-name-all|config|upload-file|output-dir))([[:space:]=]|$)|(^|[[:space:]])(-[A-Za-z]*d|--data(-binary|-raw|-urlencode|-ascii)?|-F|--form|--json)[[:space:]=]*["'\'']?([A-Za-z0-9_]*=)?@'
+  # bad_curl_out mira el texto SIN las cadenas entre comillas (un valor de cabecera no son opciones) y sin
+  # clusters que abren con una opcion que toma valor: en `-XPOST` la O es parte del metodo, no `-O`. Las
+  # letras sin valor de curl (0-9 # a B f g G h i I j J k l L M n N p q R s S v V Z) pueden ir delante de
+  # o/O/K/T; cualquier otra se come el resto del cluster. Con una barra invertida no se quitan comillas
+  # (`\"` abre una cadena que el shell no ve): se mira el texto entero, como antes.
+  local bad_curl_out='(^|[[:space:]])(-[0-9#aBfgGhiIjJklLMnNpqRsSvVZ]*[oOKT]|--(output|remote-name|remote-name-all|config|upload-file|output-dir)([[:space:]=]|$))'
+  local bad_curl_data='(^|[[:space:]])(-[A-Za-z]*d|--data(-binary|-raw|-urlencode|-ascii)?|-F|--form|--json)[[:space:]=]*["'\'']?([A-Za-z0-9_]*=)?@'
   local bad_wget='(^|[[:space:]])(-[A-Za-z]*[oiP]|--(output-file|input-file|directory-prefix|post-file|body-file|config))([[:space:]=]|$)|(^|[[:space:]])-[A-Za-z]*O([[:space:]]+[^-[:space:]]|[^-[:space:]])|(^|[[:space:]])--output-document[[:space:]=]*[^-[:space:]]'
   # shellcheck disable=SC2016 # patron literal para =~, no interpolacion de shell
   local bad_jq='(^|[[:space:]])(-[A-Za-z]*f|-L|--(from-file|rawfile|slurpfile|argfile|library-path))([[:space:]=]|$)|(^|[^.[:alnum:]_$])(env|input_filename)([^[:alnum:]_]|$)|\$(ENV|__prog_args)'
-  [[ $st =~ ^[[:space:]]*curl && $dl =~ $bad_curl ]] && return 1
+  if [[ $st =~ ^[[:space:]]*curl ]]; then
+    local dq=$dl
+    [[ $dl == *\\* ]] || dq=$(sed -E "s/\"[^\"]*\"|'[^']*'/Q/g" <<<"$dl")
+    [[ $dq =~ $bad_curl_out || $dl =~ $bad_curl_data ]] && return 1
+  fi
   [[ $st =~ ^[[:space:]]*wget && $dl =~ $bad_wget ]] && return 1
   if [[ $st =~ $pyc ]]; then
     code=${BASH_REMATCH[4]}
