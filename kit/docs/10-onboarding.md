@@ -69,7 +69,7 @@ No uses `make bootstrap`: ejecuta además la suite de tests y crea un perfil que
 - **Ya tenías un `CLAUDE.md`.** No lo toca. Añade la línea `@AGENTS.md` a tu `CLAUDE.md`; la plantilla del kit quedó en `CLAUDE.kit.md`.
 - **`~/.local/bin` no está en tu `PATH`.** El instalador enlaza `handoff` y `oraculo` ahí. Abre una terminal nueva antes de seguir.
 
-Si ya tenías hooks propios en `settings.json`, los del kit los sustituyen. Los tuyos quedan en la copia de seguridad de `~/.claude/backups/`.
+Si ya tenías hooks propios en `settings.json`, se conservan junto a los del kit y `doctor.sh` los lista. Hasta la 1.5.0 el kit los sustituía.
 
 ## 3 · Verificar la instalación
 
