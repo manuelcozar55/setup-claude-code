@@ -75,7 +75,7 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   # tuyo muerto o duplicado se vea: el 21-oct la reinstalacion se llevo un sensor y nada lo dijo.
   ajenos="$(jq -r --slurpfile k "$KIT/claude/settings.json" '
       [$k[0].hooks // {} | .. | .command? // empty] as $kit
-      | [.hooks // {} | to_entries[] | .key as $e | .value[]?.hooks[]? | (.command // .url // "type \(.type)") as $c
+      | [.hooks // {} | to_entries[] | .key as $e | .value[]?.hooks[]? | (.command // "type \(.type)") as $c
          | select($c | IN($kit[]) | not) | "\($e) \($c)"]
       | select(length > 0) | "\(length) (\(join("; ")))"' "$CLAUDE_HOME/settings.json" 2>/dev/null)"
   [ -n "$ajenos" ] && pass "hooks ajenos al kit, conservados al instalar: $ajenos  (fuente: jq .hooks contra kit/claude/settings.json)"

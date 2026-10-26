@@ -121,6 +121,8 @@ ck "$(cmds Stop | tr '|' '\n' | grep -c 'mi revision')" "1" "hooks: uno sin comm
 ck "$(jq -c '[.hooks[][]? | select((.hooks | length) == 0)] | length' "$S")" "0" "hooks: no quedan grupos vacios"
 plantilla="$(jq -c '[.hooks[][].hooks[].command] | sort' "$KIT/claude/settings.json")"
 ck "$(jq -c --argjson p "$plantilla" '[.hooks[][].hooks[].command // empty] | map(select(IN($p[]))) | sort' "$S")" "$plantilla" "hooks: estan todos los de la plantilla, una vez cada uno"
+ck "$(jq --slurpfile k "$KIT/claude/settings.json" '. as $s | [$k[0].hooks | to_entries[] | .value == $s.hooks[.key][:(.value | length)]] | all' "$S")" "true" \
+   "hooks: los grupos del kit van primero y tal cual la plantilla, matcher incluido"
 antes="$(sha256sum < "$S")"; n="$(backups)"
 run
 ck "$(sha256sum < "$S")" "$antes" "hooks: reinstalar no cambia nada (idempotente)"
