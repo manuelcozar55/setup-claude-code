@@ -179,19 +179,23 @@ install_settings() {  # src dst
   name="${dst#"$CLAUDE_HOME"/}"; real="$dst"
   [ -L "$dst" ] && real="$(readlink -f "$dst")"
   tmp="$(mktemp "$real.XXXXXX")"
-  # Un hook es del kit si algun token de su comando acaba en .claude/{hooks,sentinel}/<script> y ese
-  # script lo cablea la plantilla (optional-hook.sh solo envuelve: no cuenta) o el kit lo retiro.
-  # Asi caen tambien las formas antiguas de sus guards, y un grupo mixto conserva solo lo tuyo.
+  # Un hook es del kit si su comando es un script de .claude/{hooks,sentinel}/ que cablea la plantilla
+  # (optional-hook.sh solo envuelve: no cuenta) o que el kit retiro, a secas o tras un interprete o
+  # optional-hook.sh con sus flags. Asi caen las formas antiguas de sus guards; un comando con algo mas
+  # (`mio.sh && ...guard.sh`) es tuyo y se queda: un duplicado se ve en doctor, una perdida no. Lo que
+  # no tiene forma de hook (un evento que no es lista, un grupo sin `hooks`) se descarta y queda en el backup.
   if jq -s '
       .[0] as $kit | .[1] as $old |
       ([$kit.hooks // {} | .. | .command? // empty | splits(" +") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")]
         - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh"] | unique) as $suyos |
-      def del_kit: [(.command // "") | splits(" +") | gsub("[\"\u0027]"; "")]
-        | any(.[]; . as $t | any($suyos[]; . as $s | $t | endswith("/.claude/hooks/" + $s) or endswith("/.claude/sentinel/" + $s)));
+      def propio: ("/" + .) as $t | any($suyos[]; . as $s | $t | endswith("/.claude/hooks/" + $s) or endswith("/.claude/sentinel/" + $s));
+      def del_kit: [(.command | strings // "") | splits(" +") | gsub("[\"\u0027]"; "") | select(length > 0)]
+        | any(.[]; propio) and all(.[]; propio or startswith("-") or (sub(".*/"; "") | test("^(optional-hook\\.sh|python[0-9.]*|bash|sh)$")));
       ($kit + $old)
       | .env = (($kit.env // {}) + ($old.env // {}))
-      | .hooks = (reduce (($old.hooks // {}) | to_entries[]) as $e ($kit.hooks // {};
-            .[$e.key] = ((.[$e.key] // []) + [$e.value[] | .hooks |= ((. // []) | map(select(del_kit | not))) | select(.hooks | length > 0)]))
+      | .hooks = (reduce (($old.hooks | objects) // {} | to_entries[] | select(.value | type == "array")) as $e ($kit.hooks // {};
+            .[$e.key] = ((.[$e.key] // []) + [$e.value[] | objects | select(.hooks | type == "array")
+              | .hooks |= map(select(type == "object" and (del_kit | not))) | select(.hooks | length > 0)]))
           | with_entries(select(.value | length > 0)))
       | .permissions = ((($kit.permissions // {}) + ($old.permissions // {}))
           | .allow = (($kit.permissions.allow // []) + (($old.permissions.allow // []) - ($kit.permissions.allow // [])))
