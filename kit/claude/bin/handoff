@@ -27,7 +27,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
   --commit  además hace commit solo de .claude/estado/ (para repos propios); sin él, .claude/estado/ se añade
             a .git/info/exclude.
   --sesion  ID real de la sesión que escribe. Con dueño vigente es obligatorio y debe coincidir;
-            sin ID o con otro devuelve 5 sin escribir. No copies el ID de otra sesión desde --estado.
+            sin ID o con otro devuelve 5 sin escribir. En --desde, sin --sesion vale $CLAUDE_CODE_SESSION_ID si existe. No copies el ID de otra sesión desde --estado.
             Al guardar libera ese dueño (o el dueño caducado).
 --iniciar crea <raíz>/.claude/estado/nucleo.md desde $CLAUDE_HOME/templates/nucleo.md (el primero del proyecto) y añade
           .claude/estado/ a .git/info/exclude; si ya existe no lo toca (sale 0 y lo dice). En cualquier caso deja
@@ -89,6 +89,8 @@ while [ $# -gt 0 ]; do
     *) echo "uso: handoff: opción desconocida «$1» (handoff --help)" >&2; exit 64 ;;
   esac
 done
+# Sin --sesion, en --desde vale la sesión que corre este Bash (Claude Code la exporta): quien ya es dueño no tiene que repetirla.
+[ "$MODO" != desde ] || [ -n "$SESION" ] || SESION=${CLAUDE_CODE_SESSION_ID:-}
 [ -n "$MODO" ] || { echo "uso: handoff --desde BORRADOR.md | --iniciar | --informe TEMA | --migrar DIR | --estado (handoff --help)" >&2; exit 64; }
 
 if [ -n "$ESPERADO" ]; then

@@ -692,7 +692,7 @@ fi
 # que hoy absuelve, que es exactamente lo que este fichero no acepta de nadie.
 sed -E 's#([0-9]+)/([0-9]+) mutantes#\1/424242 mutantes#' "$EVALDOC" > "$TMPD/m1.md"
 sed -E 's#([0-9]+) de los ([0-9]+) mutantes#424242 de los \2 mutantes#' "$EVALDOC" > "$TMPD/m2.md"
-sed -E 's#M9.M40#M9-M999#g' "$EVALDOC" > "$TMPD/m3.md"
+sed -E 's#M9[^M]{1,4}M40#M9-M999#g' "$EVALDOC" > "$TMPD/m3.md"
 # Y los dos que el juicio por valor no puede ver, que son los que motivan el juicio
 # por papel: m4 cambia los dos recuentos ciertos de sitio -las dos cifras siguen
 # siendo legales, solo estan en el papel del otro- y m5 escribe la cifra sin pegarla
@@ -1206,6 +1206,15 @@ cadena_bash() {
 hr_check "la cifra de hooks PreToolUse de 05-security.md es la que cuenta jq en settings.json" \
   cadena_bash "$SETTINGS" "$SECDOC"
 
+# Las cifras de la capa de IOCs que publica 05-security.md, contadas en el iocs.json que
+# distribuye el kit. Decia "31 de ruta y 12 de comando" con 21 y 21 en el fichero (C-13).
+IOCS=kit/sentinel/iocs.json
+claim "$(jq '.sensitive_paths.patterns | length' "$IOCS")" 'patrones de ruta' "$SECDOC"
+claim "$(jq '.sensitive_paths.regex_patterns | length' "$IOCS")" 'expresiones regulares' "$SECDOC"
+claim "$(jq '.sensitive_paths.key_file_extensions | length' "$IOCS")" 'extensiones de fichero de clave' "$SECDOC"
+claim "$(jq '.dangerous_commands.patterns | length' "$IOCS")" 'de comando' "$SECDOC"
+claim "$(jq '[.suspicious_network[] | arrays | length] | add' "$IOCS")" 'de red' "$SECDOC"
+
 # El inventario de plugins, del mismo settings.json. `claim` vale tal cual para el total
 # ("siete plugins") y para los oficiales anclado a su frase ("cuatro del marketplace
 # oficial"): "oficiales" a secas no aparece con cifra delante en ningun documento. El numeral
@@ -1433,6 +1442,7 @@ fi
 
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: comprobaciones de cifras (test_doc_claims.sh): faltan kit/evals/runs.jsonl u otra condicion; esas cifras NO se han comprobado" >> "$SCC_SKIP_LOG"
 else
   echo "== $pass passed, $fail failed =="
 fi

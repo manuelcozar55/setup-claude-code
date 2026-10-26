@@ -1,0 +1,121 @@
+F-01	bdc	N	curl -XGET http://h.example/x | python3 -m json.tool
+F-01	sen	N	curl -XGET http://h.example/x | python3 -m json.tool
+F-01	bdc	N	curl -XPOST http://h.example/x -d '{}' | python3 -c 'import sys,json; print(json.load(sys.stdin))'
+F-01	sen	N	curl -XPOST http://h.example/x -d '{}' | python3 -c 'import sys,json; print(json.load(sys.stdin))'
+F-01	bdc	N	curl -sXGET http://h.example/x | python3 -m json.tool
+F-01	sen	N	curl -sXGET http://h.example/x | python3 -m json.tool
+F-01	bdc	N	curl -XPUT http://h.example/x | python3 -m json.tool
+F-01	sen	N	curl -XPUT http://h.example/x | python3 -m json.tool
+F-01	bdc	N	curl -XPATCH http://h.example/x | python3 -m json.tool
+F-01	sen	N	curl -XPATCH http://h.example/x | python3 -m json.tool
+F-01	bdc	N	curl --header "X-Token: ab -o cd" http://h.example/x | python3 -m json.tool
+F-01	sen	N	curl --header "X-Token: ab -o cd" http://h.example/x | python3 -m json.tool
+F-01	bdc	N	curl -H 'X-A: b -O c' http://h.example/x | jq .
+F-01	sen	N	curl -H 'X-A: b -O c' http://h.example/x | jq .
+F-01	bdc	B	curl -XPOST -o /tmp/f http://h.example/x | python3 -c 'import sys'
+F-01	sen	B	curl -XPOST -o /tmp/f http://h.example/x | python3 -c 'import sys'
+F-01	bdc	B	curl -XGET -O http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -XGET -O http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -sXGET -o /tmp/f http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -sXGET -o /tmp/f http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -so /tmp/f http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -so /tmp/f http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -sO http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -sO http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -o/tmp/f http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -o/tmp/f http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -o"/tmp/f" http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -o"/tmp/f" http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -XGET -K /tmp/x.cfg http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -XGET -K /tmp/x.cfg http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -XPUT -T /tmp/f http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -XPUT -T /tmp/f http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -XPOST -d '@/tmp/f' http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -XPOST -d '@/tmp/f' http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl -H "X: y" -o /tmp/f http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl -H "X: y" -o /tmp/f http://h.example/x | python3 -m json.tool
+F-01	bdc	B	curl \" -o /tmp/f \" http://h.example/x | python3 -m json.tool
+F-01	sen	B	curl \" -o /tmp/f \" http://h.example/x | python3 -m json.tool
+F-02	bdc	A	git config core.hooksPath "$HOME/.claude/hooks/git"
+F-02	bdc	A	git config core.hooksPath .githooks
+F-02	bdc	A	git config --global core.hooksPath /tmp/h
+F-02	bdc	B	git -c core.hooksPath=/dev/null commit -m x
+F-02	bdc	N	git config --get core.hooksPath
+F-04	bdc	B	git -c "core.hooksPath=/dev/null" commit -m x
+F-04	bdc	B	git -c 'core.hooksPath=/dev/null' commit -m x
+F-04	bdc	B	git -c core.hooks"Path"=/tmp/h commit -m x
+F-04	bdc	B	git -c 'alias.ci=!sh' ci
+F-04	bdc	B	git -c "alias.x=!sh" x
+F-04	bdc	N	git -c "user.name=x" commit -m y
+F-04	bdc	N	git -c 'color.ui=always' status
+F-05	sen	B	mv ~/.claude ~/.claude.old
+F-05	sen	B	mv ~/.claude/ /tmp/claude-old
+F-05	sen	B	mv -t /tmp ~/.claude
+F-05	sen	B	rm -r ~/.claude
+F-05	sen	B	rm -rf ~/.claude
+F-05	sen	B	rm -R "$HOME/.claude"
+F-05	sen	N	ls ~/.claude/projects
+F-05	sen	N	mv x ~/.claude
+F-05	sen	N	mv ~/.claude/projects/a ~/.claude/projects/b
+F-05	sen	N	rm -r ~/.claude/projects/old
+F-05	sen	N	rm ~/.claude/x.log
+F-06	bdc	N	echo x > ~/.profile.bak
+F-06	sen	N	echo x > ~/.profile.bak
+F-06	bdc	N	echo x > ~/.bashrc.orig
+F-06	sen	N	echo x > ~/.bashrc.orig
+F-06	bdc	B	echo x >> ~/.bashrc
+F-06	sen	B	echo x >> ~/.bashrc
+F-06	bdc	B	echo x > ~/.profile
+F-06	sen	B	echo x > ~/.profile
+F-06	bdc	B	echo x >> "$HOME/.bashrc"
+F-06	sen	B	echo x >> "$HOME/.bashrc"
+F-06	bdc	B	echo x >>~/.zshrc; ls
+F-06	sen	B	echo x >>~/.zshrc; ls
+F-06	bdc	B	echo x | tee -a ~/.bash_profile
+F-06	sen	B	echo x | tee -a ~/.bash_profile
+F-06	sen	B	echo x >> ~/.bash_logout
+F-06	sen	B	echo x >> ~/.bash_aliases
+F-07	bdc	N	gh pr create --title t --body "gh api -X DELETE repos/o/r"
+F-07	bdc	N	echo "gh api -X DELETE repos/o/r" >> notas.md
+F-07	bdc	N	gh api repos/o/r/contents/docs/mutation.md
+F-07	bdc	N	gh api graphql -f query='query{viewer{login}}' --jq .data
+F-07	bdc	N	gh pr create --body "docs: gh api graphql -f query=mutation"
+F-07	bdc	A	cd /tmp && gh api -X DELETE repos/o/r/git/refs/heads/x
+F-07	bdc	A	echo hi; gh api graphql -f query='mutation{x}'
+F-07	bdc	A	gh api graphql -F query='mutation { x }'
+F-07	bdc	A	gh api graphql --raw-field "query=mutation{x}"
+F-07	bdc	A	GH_TOKEN=x gh api -X PUT repos/o/r/pulls/3/merge
+F-07	bdc	A	echo x | gh api -X DELETE repos/o/r/git/refs/heads/x
+F-07	bdc	A	gh --repo o/r api -X PATCH repos/o/r/issues/3
+N-01	bdc	A	bash -c 'gh api -X DELETE repos/o/r/git/refs/heads/x'
+N-01	bdc	A	sh -c "gh api -X DELETE repos/o/r/git/refs/heads/x"
+N-01	bdc	A	bash -lc 'cd /tmp && gh api -X PUT repos/o/r/pulls/3/merge'
+N-01	bdc	A	ls | xargs -I{} gh api -X DELETE repos/o/r/git/refs/heads/{}
+N-01	bdc	A	if true; then gh api -X DELETE repos/o/r/git/refs/heads/x; fi
+N-01	bdc	A	for b in a b; do gh api -X DELETE repos/o/r/git/refs/heads/$b; done
+N-01	bdc	A	if false; then ls; else gh api -X DELETE repos/o/r/git/refs/heads/x; fi
+N-01	bdc	A	! gh api -X DELETE repos/o/r/git/refs/heads/x
+N-01	bdc	A	timeout 30 gh api -X DELETE repos/o/r/git/refs/heads/x
+N-01	bdc	A	nice -n 5 gh api -X DELETE repos/o/r/git/refs/heads/x
+N-01	bdc	A	watch -n 5 gh api -X DELETE repos/o/r/git/refs/heads/x
+N-01	bdc	A	ssh host gh api -X DELETE repos/o/r/git/refs/heads/x
+N-01	bdc	A	ssh -p 22 host 'gh api -X DELETE repos/o/r/git/refs/heads/x'
+N-01	bdc	A	sudo -u deploy gh api -X DELETE repos/o/r/git/refs/heads/x
+N-01	bdc	A	time gh api -X DELETE repos/o/r/git/refs/heads/x
+N-01	bdc	A	nohup gh api -X DELETE repos/o/r/git/refs/heads/x
+N-01	bdc	A	env GH_TOKEN=x gh api graphql -f query='mutation{x}'
+N-01	bdc	N	gh pr create -t "gh api -X DELETE x" -b "y"
+N-01	bdc	N	git commit -m "docs: gh api -X DELETE repos/o/r"
+N-01	bdc	N	gh pr create --body 'bash says gh api -X DELETE repos/o/r'
+N-01	bdc	N	echo 'gh api -X PUT repos/o/r/pulls/3/merge' | tee notas.md
+N-01	bdc	N	bash -c 'echo gh api -X DELETE x'
+N-02	bdc	B	echo x >> ~/.bashrc.d/x
+N-02	sen	B	echo x >> ~/.bashrc.d/x
+N-02	bdc	B	echo x > ~/.profile.d/x.sh
+N-02	sen	B	echo x > ~/.profile.d/x.sh
+N-02	bdc	B	echo x | tee ~/.zshrc.d/x
+N-02	sen	B	echo x | tee ~/.zshrc.d/x
+N-02	bdc	N	echo x > ~/.profile.bak
+N-02	sen	N	echo x > ~/.profile.bak
+N-02	bdc	N	echo x > ~/.bashrc.orig
+N-02	sen	N	echo x > ~/.bashrc.orig

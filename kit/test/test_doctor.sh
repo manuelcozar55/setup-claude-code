@@ -29,6 +29,11 @@ rm "$CLAUDE_HOME/AGENTS.md"
 set +e; run_doctor; rc=$?; set -e
 ck "$rc" "1" "doctor FAIL si falta AGENTS.md"
 HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
+# B-08: un agente personal no se cuenta como del kit
+printf -- '---\nname: planner\n---\n' > "$CLAUDE_HOME/agents/planner.md"
+ag="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1 | grep 'agentes instalados' || true)"
+ck "$(grep -c '1 ajeno(s) al kit: planner.md' <<<"$ag")" "1" "doctor distingue un agente personal de los del kit"
+rm "$CLAUDE_HOME/agents/planner.md"
 printf '# skill personalizada\n' > "$tmp/skill-personalizada.md"
 rm "$CLAUDE_HOME/skills/deep-change/SKILL.md"
 set +e; run_doctor; rc=$?; set -e
@@ -261,6 +266,13 @@ set +e; out="$(PATH="$tmp/fk-2.1.292:$PATH" dr)"; set -e
 ck "$(echo "$out" | grep -c '^PASS .*claude 2\.1\.292')" "1" "claude 2.1.292 (la probada justa) es PASS"
 set +e; out="$(PATH="$tmp/fk-2.2.0:$PATH" dr)"; set -e
 ck "$(echo "$out" | grep -c '^PASS .*claude 2\.2\.0')" "1" "claude 2.2.0 es PASS (comparacion por version, no por texto)"
+# C-02: los guards de Bash llevan onFailure:"block" (claude >= 2.1.295); con uno anterior el doctor avisa.
+ck "$(jq '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.onFailure == "block")] | length' "$CLAUDE_HOME/settings.json")" "5" "los 5 guards de Bash de settings.json llevan onFailure:block"
+set +e; out="$(PATH="$tmp/fk-2.1.292:$PATH" dr)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*2\.1\.292.*2\.1\.295.*onFailure')" "1" "doctor WARN con claude 2.1.292 (< 2.1.295) porque settings.json usa onFailure:block"
+ck "$(echo "$out" | grep -c 'onFailure')" "1" "el aviso de onFailure sale una sola vez"
+set +e; out="$(PATH="$tmp/fk-2.2.0:$PATH" dr)"; set -e
+ck "$(echo "$out" | grep -c 'onFailure')" "0" "claude 2.2.0 no da el aviso de onFailure"
 farm="$tmp/sinclaude"; mkdir -p "$farm"
 IFS=: read -ra dirs <<< "$PATH"
 for d in "${dirs[@]}"; do

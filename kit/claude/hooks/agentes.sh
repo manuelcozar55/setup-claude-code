@@ -3,7 +3,8 @@
 # <raíz>/.claude/estado/agentes.jsonl (lib/nucleo.sh: nucleo_agentes_anotar, que rota a 200 líneas o 14 días).
 # Por qué: SubagentStop marca el fin del *turno* del agente, no el de su trabajo, y no trae resultado; tras /clear, una
 # compactación o al reanudar, la sesión nueva no sabe si debe recoger o relanzar. El estado se deriva al leer
-# (nucleo_agentes_estado), no aquí.
+# (nucleo_agentes_estado), no aquí; el informe también: al saltar SubagentStop el transcript aún no tiene el
+# SubagentHandback (medido en Debian, 3 de 3), así que si no hay informe aquí, el estado lo relee al leer.
 #   SubagentStart: id, tipo, hora, sesión y transcript.
 #   SubagentStop:  lo mismo + las últimas ~300 letras del informe: el message de su SubagentHandback si lo usó; si no,
 #                  last_assistant_message (medido en 2.1.308); si falta o viene vacío, el último texto de su transcript y la ruta del RESULTADO.md que pedía su brief
@@ -45,24 +46,6 @@ res_de() {
   fi
   case $r in *..*) r="" ;; esac
   printf '%s' "$r"
-}
-
-# msg_de <transcript del agente>: el último texto del asistente, para cuando el payload no trae last_assistant_message
-# (vacío o ausente). Si el transcript termina en una herramienta sin texto, el agente no entregó nada: vacío.
-msg_de() {
-  [ -f "$1" ] && [ ! -L "$1" ] || return 0
-  tail -n 30 -- "$1" 2>/dev/null | jq -rRn '[inputs | fromjson? | select(type == "object" and .type == "assistant")
-      | .message.content | if type == "string" then . else (map(objects | select(.type == "text") | .text) | join(" ")) end
-      | select(test("[^[:space:]]"))] | last // ""' 2>/dev/null | head -c 2000
-}
-
-# handback_de <transcript del agente>: el informe que entregó con la herramienta SubagentHandback (medido en Debian el
-# 24-oct: 6 de 7 agentes lo entregaron así, con last_assistant_message vacío o con la frase previa). Si existe, es el informe.
-handback_de() {
-  [ -f "$1" ] && [ ! -L "$1" ] || return 0
-  tail -n 30 -- "$1" 2>/dev/null | jq -rRn '[inputs | fromjson? | select(type == "object" and .type == "assistant")
-      | .message.content | arrays | .[] | objects | select(.type == "tool_use" and .name == "SubagentHandback")
-      | (.input.message // "") | tostring | select(test("[^[:space:]]"))] | last // ""' 2>/dev/null | head -c 2000
 }
 
 case ${EV:-} in
