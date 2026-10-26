@@ -1551,13 +1551,17 @@ def decide_within_budget(payload: dict):
     if not hasattr(signal, "setitimer"):
         return decide(payload)
     previous = signal.signal(signal.SIGALRM, _over_budget)
-    signal.setitimer(signal.ITIMER_REAL, ANALYSIS_BUDGET_S)
     try:
-        return decide(payload)
+        # The timer is disarmed in the inner finally, inside the outer try: a signal that lands between the end
+        # of decide() and setitimer(0) still raises _OverBudget where it is caught, never past this function.
+        try:
+            signal.setitimer(signal.ITIMER_REAL, ANALYSIS_BUDGET_S)
+            return decide(payload)
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
     except _OverBudget:
         return None
     finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
 
 SEVERITY_RANK = {"medium": 1, "high": 2, "critical": 3}
