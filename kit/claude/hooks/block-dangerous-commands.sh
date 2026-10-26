@@ -228,6 +228,12 @@ fetch_safe_reader() {
 # recorre la tabla regla a regla para saber cual fue y devolver su mensaje exacto (el
 # mensaje es contrato). La union se DERIVA de las tablas, asi que no hay copia paralela
 # que se pueda quedar sin la regla nueva que alguien anada aqui manana.
+# Posicion de comando de un `gh api` para las dos reglas de abajo: inicio, tras `; & | ( { ` !`, `then`/`do`/`else`,
+# el programa de un `sh -c '...'`/`eval '...'`/`ssh host '...'` y envoltorios con sus opciones (`timeout 5`, `nice -n 5`,
+# `sudo -u u`, `xargs -I{}`, `watch -n 5`, `env VAR=x`). Una comilla NO es ancla por si sola: el texto de un
+# `--body "gh api -X DELETE"` o de un `echo` no pide confirmacion. Un `;` o un `|` dentro de ese texto si (ask aceptado).
+GH_PRE='(^[[:space:]]*|[;&|({`!][[:space:]]*|\b(then|do|else)[[:space:]]+|\b(ba|z|da)?sh[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*c[[:space:]]+["'"'"']|\beval[[:space:]]+["'"'"']|\bssh[[:space:]]+(-\S+[[:space:]]+(\w+[[:space:]]+)?)*\S+[[:space:]]+["'"'"']?)(\w+=\S*[[:space:]]+)*((sudo|env|command|exec|time|nohup|nice|timeout|watch|xargs|stdbuf|setsid|ionice|doas)[[:space:]]+(-\S+[[:space:]]+(\w+[[:space:]]+)?|[0-9.]+[smhd]?[[:space:]]+|\w+=\S*[[:space:]]+)*)*'
+
 DENY_RULES=(
   # ── DESTRUCTIVE FILE/DISK ──────────────────────────────────────────────────
   '\brm\s+-[a-z]*r[a-z]*f'            "BLOCKED: rm -rf (recursive force delete)"
@@ -282,7 +288,7 @@ DENY_RULES=(
   '(^|[;&|(]\s*)(\$\(|`)\s*(curl|wget)\b'  "BLOCKED: curl/wget output executed as a command (RCE)"
   '=["'"'"']?(\$\(|`)\s*(curl|wget)\b[^;&]*[;&]+\s*["'"'"']?\$\{?[A-Za-z_]'  "BLOCKED: curl/wget output executed as a command (RCE)"
   # Redirigir o `tee` hacia los ficheros de arranque del shell planta codigo que corre en la proxima sesion.
-  '(>>?\|?|\btee\s+(-a\s+)?)\s*["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]"'"'"']+)/\.(bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(["'"'"'[:space:];&|)<>}]|$)'  "BLOCKED: write to a shell startup file (persistence)"
+  '(>>?\|?|\btee\s+(-a\s+)?)\s*["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]"'"'"']+)/\.((bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(["'"'"'[:space:];&|)<>}]|$)|(bashrc|profile|zshrc)\.d/)'  "BLOCKED: write to a shell startup file (persistence)"
   '\bnc\s+-[a-z]*l'                   "BLOCKED: netcat listener (reverse shell)"
   '/dev/tcp/'                         "BLOCKED: /dev/tcp (reverse shell)"
   '/dev/udp/'                         "BLOCKED: /dev/udp (reverse shell)"
@@ -347,8 +353,8 @@ ASK_RULES=(
   # las mutaciones GraphQL se confirman igual. Un GET o un POST de crear (comentario, issue) pasa.
   # Se ancla a un `gh api` en posicion de comando y `mutation` solo cuenta dentro de `-f/-F query=`: el texto de un
   # `gh pr create --body`, un `echo` o una ruta con esa palabra no piden confirmacion.
-  '(^[[:space:]]*|[;&|({`][[:space:]]*)(\w+=\S*[[:space:]]+)*((sudo|env|command|exec|time|nohup)[[:space:]]+)*gh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(-X|--method)[[:space:]=]*(DELETE|PUT|PATCH)\b'  "Confirm: gh api DELETE/PUT/PATCH — changes or deletes remote state"
-  '(^[[:space:]]*|[;&|({`][[:space:]]*)(\w+=\S*[[:space:]]+)*((sudo|env|command|exec|time|nohup)[[:space:]]+)*gh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(/merge\b|force=true|state=closed|(-[fF]|--raw-field|--field)[[:space:]=]*["'"'"']?query=[^;&|]*\bmutation\b)'  "Confirm: gh api merge/force/close/mutation — changes remote state"
+  "$GH_PRE"'gh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(-X|--method)[[:space:]=]*(DELETE|PUT|PATCH)\b'  "Confirm: gh api DELETE/PUT/PATCH — changes or deletes remote state"
+  "$GH_PRE"'gh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(/merge\b|force=true|state=closed|(-[fF]|--raw-field|--field)[[:space:]=]*["'"'"']?query=[^;&|]*\bmutation\b)'  "Confirm: gh api merge/force/close/mutation — changes remote state"
   '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*repo\s+delete\b'  "Confirm: gh repo delete — deletes the repository on the remote"
 
   # `git config core.hooksPath ruta` es el comando que documenta 05-security.md para la Capa 2 y el de
