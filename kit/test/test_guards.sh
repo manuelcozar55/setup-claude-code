@@ -937,7 +937,7 @@ bdc "source <(kubectl)"       "source <(kubectl completion $B)"  allow
 # 14c-ter) K1: la unica relajacion del pipe-a-shell es una descarga a un interprete Python que
 # recibe su programa por -c y pasa el chequeo estricto, o a `python -m json.tool`/`jq`. Los dos
 # guards (block-dangerous-commands.sh y sentinel_preflight.py) deben decidir lo mismo en cada
-# caso. Corpus verificado en fixtures/k1-guards.tsv: las 15 formas seguras pasan, el resto se
+# caso. Corpus verificado en fixtures/k1-guards.tsv: las 16 formas seguras pasan, el resto se
 # bloquea (exec/eval/dunders, palabras prohibidas, forma no cubierta, interprete no-Python).
 k1() { # $1 desc, $2 comando, $3 allow|deny -- exige que AMBOS guards coincidan
   k1g=$(run_bdc "$2")

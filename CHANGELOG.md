@@ -23,6 +23,7 @@ etiquetado.
 - **`handoff --desde` sin `--sesion` usa `$CLAUDE_CODE_SESSION_ID` (B-02).** La sesión dueña ya no sale con rc 5 por no repetir su propio ID. Test en `test_nucleo_integridad.sh`.
 - **`session-start.sh` no dice «No project memory found» junto a la inyección de `nucleo.md` (B-05).**
 - **`doctor.sh` distingue los agentes del kit de los personales (B-08):** «N, de ellos 1 ajeno(s) al kit: planner.md».
+- **`05-security.md` publicaba cifras de `iocs.json` que no cuadraban (C-13).** Decía 31 patrones de ruta y 12 de comando; el fichero trae 21 de ruta (más 5 expresiones regulares y 6 extensiones de clave) y 21 de comando. `test_doc_claims.sh` las cuenta ahora con `jq`.
 
 ### Added
 

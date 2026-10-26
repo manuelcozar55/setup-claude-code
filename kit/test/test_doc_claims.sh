@@ -1206,6 +1206,15 @@ cadena_bash() {
 hr_check "la cifra de hooks PreToolUse de 05-security.md es la que cuenta jq en settings.json" \
   cadena_bash "$SETTINGS" "$SECDOC"
 
+# Las cifras de la capa de IOCs que publica 05-security.md, contadas en el iocs.json que
+# distribuye el kit. Decia "31 de ruta y 12 de comando" con 21 y 21 en el fichero (C-13).
+IOCS=kit/sentinel/iocs.json
+claim "$(jq '.sensitive_paths.patterns | length' "$IOCS")" 'patrones de ruta' "$SECDOC"
+claim "$(jq '.sensitive_paths.regex_patterns | length' "$IOCS")" 'expresiones regulares' "$SECDOC"
+claim "$(jq '.sensitive_paths.key_file_extensions | length' "$IOCS")" 'extensiones de fichero de clave' "$SECDOC"
+claim "$(jq '.dangerous_commands.patterns | length' "$IOCS")" 'de comando' "$SECDOC"
+claim "$(jq '[.suspicious_network[] | arrays | length] | add' "$IOCS")" 'de red' "$SECDOC"
+
 # El inventario de plugins, del mismo settings.json. `claim` vale tal cual para el total
 # ("siete plugins") y para los oficiales anclado a su frase ("cuatro del marketplace
 # oficial"): "oficiales" a secas no aparece con cifra delante en ningun documento. El numeral
