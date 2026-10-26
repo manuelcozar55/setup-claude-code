@@ -9,7 +9,24 @@ etiquetado.
 
 ### Fixed
 
+- **Guards, pipe-a-shell (C-01).** `block-dangerous-commands.sh` y Sentinel bloquean también `busybox sh`, `ash`, `dash`, `ksh`, `fish`, `node`/`nodejs`, `perl`, `ruby`, `php`, `lua`, los envoltorios `time`/`nice`/`timeout`/`stdbuf`/`setsid`/`env`/`nohup`/`xargs`, `( … )`, `{ …; }`, asignaciones de entorno, `bash <<< "$(curl …)"`, `nc … | sh`, `| while read; eval` y `| awk system`. Test: `fixtures/guards-v151.tsv` (C-01), 47 filas rojas antes. Lo que ninguna regla ve (`cur''l`, `$S` con `S=bash`) queda en `05-security.md`.
+- **Guards, `.env` sin barra inicial en Sentinel (C-03).** `cat .env`, `head`, `source`, `cp`, `tar`, `xxd`, `base64`, `curl -d @.env` y `git show HEAD:.env` se bloquean por palabra del comando; `.env.example` y las demás plantillas pasan. `secret-guard.sh` sigue mirando solo `git add` (documentado).
+- **Guards, escrituras por Bash sobre la config del kit (C-04).** Sentinel bloquea `rm`, `mv`, `cp` hacia, `chmod`, `tee`, `sed -i`, `>`, `install`, `ln`, `dd of=`… sobre `~/.claude/settings*.json`, `hooks/`, `sentinel/` y `sentinel-allowlist.json`, sin que la allowlist lo levante. Leerlos sigue permitido. Límite: el código de `python -c` no se lee.
+- **Guards, git y `gh` (C-06, C-07).** Se bloquean las abreviaturas reales de `--mirror`, `--delete` y `--no-verify`, `git -c core.hooksPath=…`, `git config core.hooksPath ruta` y `git -c alias.…`. `gh api` con DELETE/PUT/PATCH, `/merge`, `force=true`, `state=closed` o una mutación, y `gh repo delete`, piden confirmación.
+- **Guards, la excepción de K1 era demasiado ancha (C-08, C-09).** `python` con ruta o con prefijo de entorno y descargas con `-o`/`-K`/`-T`/`-d @fichero` ya no entran en ella; los dos guards coinciden en la sustitución `$(curl …)` en posición de comando, `X=$(curl …); $X` y la redirección o `tee` hacia `~/.bashrc`, `~/.profile`… Los `jq -f`, `jq -n env` o `curl -K … | jq` no pasaban por la excepción (`curl … | jq` no es pipe-a-shell): no se bloquean y queda dicho en `05-security.md`.
+- **Los cinco guards de Bash fallan cerrados (C-02).** `settings.json` lleva `"onFailure": "block"` en ellos: un guard que no arranca o agota su timeout ya no deja ejecutar el comando. Documentado en la referencia de hooks (Claude Code ≥ 2.1.295) y comprobado con `claude` 2.1.308; `doctor.sh` avisa con una versión anterior.
+- **El bloqueo de Sentinel ya no manda a ampliar la allowlist (B-03).** En un bloqueo de comando o de config del kit el mensaje da la salida (descarga a fichero, `jq` o `python -c` que solo lea) en lugar de la línea de la allowlist.
+- **El tope de CPU de `test_guards_falsifiability.sh` mide el mejor de hasta 3 (A-02).** Con otra suite en marcha en la misma CPU, una sola medida daba falsos rojos; el tope sigue en 1000 ms.
+- **`05-security.md` decía que `Edit(...)` no frena a `Bash` (C-12, C-15).** La referencia de permisos dice que las reglas de Read/Edit sí alcanzan a `cat`, `head`, `tail`, `sed`, `tee` y a las redirecciones, y no a `grep -r` ni a scripts. Corregido, con los límites que seguían sin declararse.
 - **El registro de agentes decía «terminado sin informe» aunque el subagente hubiera entregado el suyo por `SubagentHandback` (B-01, prueba de v1.5.0 en Debian).** Al saltar `SubagentStop` el payload no trae `last_assistant_message` y el transcript del agente aún no contiene el `SubagentHandback` (3 de 3 agentes con `msg:""`; el `tool_response` del `Agent` en la sesión madre tampoco repite el informe). Un reintento en el hook añadiría esperas al camino caliente; en su lugar `nucleo_agentes_estado` relee el transcript ya completo cuando el Stop no guardó mensaje, así que «sin informe» solo queda si de verdad no hay. `handback_de` y `msg_de` pasan a `lib/agentes.sh`. Test: `carrera:` en `test_agentes.sh`.
+
+### Pendiente para v1.6 (límites conocidos que piden rediseño, no un parche)
+
+- Los guards leen el literal del comando, no el argv que el shell expandirá: `cur''l`, `b""ash`, `/bin/b*sh`, `S=bash; … | $S`, `rm -"rf"` y `F=-rf; rm $F` solo los cubriría un guard que ejecute la expansión en un shell de prueba o el sandbox del sistema operativo.
+- Escrituras desde código en línea (`python -c`, `node -e`) sobre la config del kit, `shutil.rmtree` y `rsync --delete`: ninguna regex las ve; hace falta el sandbox.
+- git: comodines en `git push` (`ma*`, `refs/heads/*:refs/heads/*`), `xargs git push`, `HUSKY=0`, `git config alias.*` y `GIT_CONFIG_*`.
+- `secret-guard.sh` solo mira `git add`; el resto de lecturas de `.env` las cubre Sentinel, que es opcional (necesita Python).
+- Un solo núcleo para los dos guards (hoy `block-dangerous-commands.sh` y `iocs.json` repiten los patrones a mano y los tests los cruzan).
 
 ## [1.5.0] - 2026-10-24
 
