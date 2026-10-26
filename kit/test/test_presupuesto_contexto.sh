@@ -45,6 +45,36 @@ if [ "$(cifra 'bloque de agentes')" -gt 0 ]; then
   echo 'ok - registro lleno genera bloque de agentes'; pass=$((pass+1))
 else echo 'NOT ok - registro lleno no genera bloque de agentes'; fail=$((fail+1)); fi
 
+# Suma por evento. La doc de hooks (code.claude.com/docs/en/hooks, «Output limits», 2026-10-26) fija 10 000 chars
+# por cadena de additionalContext/stdout, medida cada una por separado aunque varios hooks corran en el mismo
+# evento; lo que pasa va a un fichero con vista previa de 2 000 y sin ajuste. Esta suma es un presupuesto propio y
+# más estricto del kit: lo que un evento puede meter de golpe en la ventana cabe en un solo tope. Se suman las filas
+# de TAB que disparan juntas (las alternativas de un mismo evento cuentan por su máximo, no se suman).
+TOPE_EVENTO=10000
+# evento | filas que disparan juntas (+) con alternativas (/): prefijos de TAB
+EVENTOS='SessionStart|SessionStart memoria+SessionStart compact/SessionStart startup/SessionStart clear/SessionStart resume
+PostToolUse|PostToolUse nucleo-nudge+narthex
+PreToolUse|write-guard (fichero nuevo/write-guard (secretos/stale-read-guard
+Stop|Stop context-gauge'
+suma_evento() { # tabla spec -> suma de los hooks que disparan juntos
+  local tab=$1 spec=$2 total=0 grupo alt m v
+  while IFS= read -r grupo; do
+    m=0
+    while IFS= read -r alt; do
+      v=$(awk -v p="$alt" 'index($0, p) == 1 { print $(NF-1); exit }' <<<"$tab"); v=${v:-0}
+      [ "$v" -gt "$m" ] && m=$v
+    done < <(tr '/' '\n' <<<"$grupo")
+    total=$((total + m))
+  done < <(tr '+' '\n' <<<"$spec")
+  echo "$total"
+}
+while IFS='|' read -r ev spec; do ck "evento $ev: suma de sus hooks" "$(suma_evento "$TAB" "$spec")" "$TOPE_EVENTO"; done <<<"$EVENTOS"
+# falsable: dos hooks del mismo evento que juntos pasan del tope hacen caer la comprobación; uno solo, no
+FIX=$'hook-a (fixture)   6000   6000\nhook-b (fixture)   5000   5000'
+if juzga evento "$(suma_evento "$FIX" 'hook-a+hook-b')" "$TOPE_EVENTO" || ! juzga evento "$(suma_evento "$FIX" 'hook-a')" "$TOPE_EVENTO"
+then echo "NOT ok - falsable: la suma por evento no distingue 6000+5000 de 6000"; fail=$((fail+1))
+else echo "ok - falsable: dos hooks de 6000 y 5000 en un evento dan FAIL; uno solo, ok"; pass=$((pass+1)); fi
+
 # W6: SessionStart en ~ con la ranura de sesión llena (nucleo al tope) y el índice lleno (15 raíces, 2 500 chars):
 # la frase + la ranura + el índice caben en el tope del canal: nucleo_tope no corta y el índice llega hasta su cierre.
 # El «[recortado]» que el índice pone en su propio tope de 2 500 es por diseño y no cuenta aquí.

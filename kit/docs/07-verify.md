@@ -87,6 +87,7 @@ Ver `kit/evals/README.md` para el criterio de admisión de tareas y por qué usa
 | `gitleaks` instalado (opcional; requerido para la Capa 2 de secretos), con versión | `command -v gitleaks` + `gitleaks version` | (lo hace `doctor.sh` internamente) | `PASS` si está (con versión), `WARN` si no (la Capa 1 sigue activa) |
 | Checksum de `gitleaks` no coincidió en una instalación anterior | marca `$CLAUDE_HOME/.gitleaks-checksum-mismatch` | (lo hace `doctor.sh` internamente) | `FAIL` si la marca existe (posible ataque a la cadena de suministro); nada si no |
 | Capa 2 (`core.hooksPath`) activa en el repo actual | `git config --get core.hooksPath` | (lo hace `doctor.sh` internamente) | `PASS` si está configurado, `WARN` si no |
+| Memoria automática, `nucleo.md` y worktrees | en `$CLAUDE_HOME/projects/*/memory`: `.md` sin línea en `MEMORY.md`, enlaces rotos y `MEMORY.md` de más de 150 líneas o 20 KB (Claude Code carga solo 200 líneas o 25 KB); en el repo actual: `nucleo.md` mayor que `NUCLEO_TOPE` y worktrees `prunable` o en detached bajo `/tmp` | (lo hace `doctor.sh` internamente) | `WARN` con qué pasa y qué hacer; nunca `FAIL` |
 | Instalación completa sin `FAIL` | agregado de todo lo anterior | `CLAUDE_HOME=... bash doctor.sh` | exit 0, 0 `FAIL` |
 | Idempotencia del instalador | backup timestamped tras reinstalar | `bash install.sh` (segunda vez) | sin error, backup creado, original no pisado |
 | Regresión de cada script | arnés TDD en bash puro | `bash test/test_scan_secrets.sh` / `test_install.sh` / `test_doctor.sh` | `N passed, 0 failed` |
