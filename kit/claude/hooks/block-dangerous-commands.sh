@@ -62,12 +62,18 @@ ask() {
   exit 0
 }
 
-# Las dos reglas de `curl`/`wget` tras un pipe a interprete viven en variables porque la
-# excepcion estrecha de K1 (fetch_safe_reader, mas abajo) necesita reconocerlas por identidad
-# para saltarlas cuando la descarga alimenta solo a un lector de datos. Una sola fuente: la
-# tabla y la excepcion ven el mismo patron.
-RCE_CURL='\bcurl\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'
-RCE_WGET='\bwget\b.*\|&?\s*((sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?(\S*/)?((ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|php)\b'
+# Las reglas de `curl`/`wget` tras un pipe a interprete viven en variables porque la excepcion
+# estrecha de K1 (fetch_safe_reader, mas abajo) necesita reconocerlas por identidad para saltarlas
+# cuando la descarga alimenta solo a un lector de datos. Una sola fuente: la tabla y la excepcion ven
+# el mismo patron. RCE_TAIL es lo que sigue al pipe: agrupadores `( {`, prefijos (sudo, env...),
+# envoltorios con sus opciones (`time`, `nice -n 5`, `timeout 9`, `stdbuf -o0`, `busybox`), ruta
+# opcional e interprete (sh, ash, dash, ksh93, fish, node/nodejs, lua, php...).
+RCE_INTERP='((a|ba|z|da|k|mk)?sh|ksh[0-9]+|fish|python[0-9.]*|perl|ruby|node(js)?|php|lua[0-9.]*|tclsh|pwsh|Rscript|deno|bun)'
+RCE_TAIL='\|&?\s*([({]\s*)*(\w+=\S*\s+)*((\S*/)?(sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?((\S*/)?(time|nice|timeout|stdbuf|setsid|ionice|busybox|doas|unbuffer|chrt|taskset)\s+(-\S+\s+|[0-9.]+[smhd]?\s+|[A-Z]{3,7}\s+|\w+=\S*\s+)*)*(\S*/)?'$RCE_INTERP'\b'
+RCE_CURL='\bcurl\b.*'$RCE_TAIL
+RCE_WGET='\bwget\b.*'$RCE_TAIL
+# Un socket o un canal TLS crudo por tuberia a un shell es la misma ejecucion remota que la descarga.
+RCE_NET='\b(nc|ncat|netcat|socat|telnet|openssl\s+s_client)\b[^|]*'$RCE_TAIL
 RCE_MSG_CURL="BLOCKED: curl piped to shell (RCE); descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o python -c que solo lea e imprima (json, sys, print)"
 RCE_MSG_WGET="BLOCKED: wget piped to shell (RCE); descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o python -c que solo lea e imprima (json, sys, print)"
 
@@ -157,18 +163,31 @@ strict_pyc_ok() {
 
 # fetch_shape_ok "$sentencia": 0 si es EXACTAMENTE `curl|wget … | LECTOR` sin nada despues,
 # con LECTOR uno de los tres lectores de datos. Un pipe intermedio, una bandera ajena, codigo
-# despues de la cadena o un `-` posicional la dejan fuera (bloquea).
+# despues de la cadena o un `-` posicional la dejan fuera (bloquea). El lector va SIN ruta (o
+# `.venv/bin/`, `venv/bin/`): `/tmp/x/python3` o `./python3` es el binario que alguien dejo ahi, y un
+# prefijo de entorno (`PYTHONPATH=… python3`) no casa con la forma. La descarga tampoco puede tocar
+# ficheros: `-o/-O/--output`, `-K/--config`, `-T/--upload-file` y los datos `@fichero` la excluyen
+# (la excepcion es leer JSON de la red sin escribir ni leer nada del disco). En wget valen `-O-`/`-O -`.
+# `jq -f`, `--from-file`, `--rawfile`, `env` y `$ENV` tampoco entran.
 fetch_shape_ok() {
-  local st=$1 code
+  local st=$1 code dl=${1%%|*}
   local fetch='^[[:space:]]*(curl|wget)([^A-Za-z0-9_|][^|]*)?\|[[:space:]]*'
-  local pyc=$fetch'([^[:space:]|]*/)?python[0-9.]*[[:space:]]+-[ISEBsu]*c[[:space:]]+('\''[^'\'']*'\''|"[^"]*")[[:space:]]*$'
-  local jtool=$fetch'([^[:space:]|]*/)?python[0-9.]*[[:space:]]+-m[[:space:]]*json\.tool([[:space:]]+(--sort-keys|--compact|--indent(=[0-9]+|[[:space:]]+[0-9]+)))*[[:space:]]*$'
-  local jqre=$fetch'([^[:space:]|]*/)?jq([[:space:]][^|]*)?$'
+  local pyre='(\.?venv/bin/)?python[0-9.]*'
+  local pyc=$fetch$pyre'[[:space:]]+-[ISEBsu]*c[[:space:]]+('\''[^'\'']*'\''|"[^"]*")[[:space:]]*$'
+  local jtool=$fetch$pyre'[[:space:]]+-m[[:space:]]*json\.tool([[:space:]]+(--sort-keys|--compact|--indent(=[0-9]+|[[:space:]]+[0-9]+)))*[[:space:]]*$'
+  local jqre=$fetch'jq([[:space:]][^|]*)?$'
+  local bad_curl='(^|[[:space:]])(-[A-Za-z]*[oOKT][A-Za-z]*|--(output|remote-name|remote-name-all|config|upload-file|output-dir))([[:space:]=]|$)|(^|[[:space:]])(-[A-Za-z]*d|--data(-binary|-raw|-urlencode|-ascii)?|-F|--form|--json)[[:space:]=]*["'\'']?([A-Za-z0-9_]*=)?@'
+  local bad_wget='(^|[[:space:]])(-[A-Za-z]*[oiP]|--(output-file|input-file|directory-prefix|post-file|body-file|config))([[:space:]=]|$)|(^|[[:space:]])-[A-Za-z]*O([[:space:]]+[^-[:space:]]|[^-[:space:]])|(^|[[:space:]])--output-document[[:space:]=]*[^-[:space:]]'
+  # shellcheck disable=SC2016 # patron literal para =~, no interpolacion de shell
+  local bad_jq='(^|[[:space:]])(-[A-Za-z]*f|-L|--(from-file|rawfile|slurpfile|argfile|library-path))([[:space:]=]|$)|(^|[^.[:alnum:]_$])(env|input_filename)([^[:alnum:]_]|$)|\$(ENV|__prog_args)'
+  [[ $st =~ ^[[:space:]]*curl && $dl =~ $bad_curl ]] && return 1
+  [[ $st =~ ^[[:space:]]*wget && $dl =~ $bad_wget ]] && return 1
   if [[ $st =~ $pyc ]]; then
     code=${BASH_REMATCH[4]}
     strict_pyc_ok "${code:1:${#code}-2}" "${code:0:1}"; return
   fi
-  [[ $st =~ $jtool || $st =~ $jqre ]]
+  [[ $st =~ $jtool ]] && return 0
+  [[ $st =~ $jqre && ! ${st#*|} =~ $bad_jq ]]
 }
 
 # fetch_safe_reader "$cmd": 0 (SAFE) si TODA sentencia que descarga hacia un interprete es un
@@ -177,6 +196,10 @@ fetch_shape_ok() {
 fetch_safe_reader() {
   local stmt safe=0
   local -a S
+  # Un pipe hacia un agrupador (`| (bash)`, `| { bash; }`) parte la sentencia en el `(`: la mitad con la
+  # descarga ya no nombra al interprete y la otra no baja nada, y otra sentencia segura bastaria para
+  # perdonar el conjunto. Sin excepcion posible: se mantiene el bloqueo.
+  printf '%s' "$1" | LC_ALL=C grep -qE '\|&?[[:space:]]*[({]' && return 1
   mapfile -t -d $'\036' S < <(printf '%s' "$1" | awk "$FETCH_SPLIT_AWK")
   (( ${#S[@]} > 64 )) && return 1
   for stmt in "${S[@]}"; do
@@ -229,14 +252,27 @@ DENY_RULES=(
   # la forma canonica de NodeSource (`| sudo -E bash -`), `| dash`, `| python3` o `| node` pasaban.
   "$RCE_CURL"  "$RCE_MSG_CURL"
   "$RCE_WGET"  "$RCE_MSG_WGET"
+  "$RCE_NET"   "BLOCKED: network stream piped to shell (RCE); guarda la salida en un fichero, revisalo y ejecutalo aparte"
+  # `| while read l; do eval "$l"; done` y `| awk '{system($0)}'` ejecutan linea a linea lo que baja.
+  '\b(curl|wget|nc|ncat|netcat)\b[^;&]*\|&?\s*(while|for)\b.*(\b(eval|source)\s|\b((ba|da|z|k|a)?sh)\s+-c\b|\|\s*(ba|da|z|k|a)?sh\b)'  "BLOCKED: download piped to a loop that executes it (RCE); descarga a fichero (-o), revisalo y ejecutalo aparte"
+  '\b(curl|wget|nc|ncat|netcat)\b[^;&]*\|&?\s*(g|m|n)?awk\b[^|]*\bsystem\b'  "BLOCKED: download piped to awk system() (RCE); descarga a fichero (-o), revisalo y ejecutalo aparte"
   '\b(curl|wget)\b.*\|\s*(\.|source)\s+/dev/stdin'  "BLOCKED: curl/wget piped to source (RCE)"
   # Sustitucion de comando/proceso: `sh -c "$(curl ..)"`, `eval "$(curl ..)"`, `bash < <(curl ..)`.
   # El curl tiene que estar en posicion de CODIGO (justo tras el interprete o su -c): como
   # argumento (`bash script.sh "$(curl ..)"`, `node x.js "$(curl ..)"`) no se ejecuta.
-  '(^|[[:space:];&|(])(\S*/)?((ba|z)?sh|python[0-9.]*|perl|ruby|node)\s+(-c\s+)?["'"'"']?(\$\(|<\(|`)\s*(curl|wget)'  "BLOCKED: curl/wget output executed by an interpreter (RCE)"
+  '(^|[[:space:];&|(])(\S*/)?'"$RCE_INTERP"'\s+(-c\s+)?["'"'"']?(\$\(|<\(|`)\s*(curl|wget)'  "BLOCKED: curl/wget output executed by an interpreter (RCE)"
+  # `bash <<< "$(curl ..)"` y `bash <(cat <(curl ..))`: la descarga entra al interprete como programa.
+  '(^|[[:space:];&|(])(\S*/)?'"$RCE_INTERP"'\s+(-\S+\s+)*<<<\s*["'"'"']?(\$\(|`)\s*(curl|wget)'  "BLOCKED: curl/wget output executed by an interpreter (RCE)"
+  '(^|[[:space:];&|(])(\S*/)?'"$RCE_INTERP"'\s+(-\S+\s+)*(<\s*)?<\([^;&|]*\b(curl|wget)\b'  "BLOCKED: curl/wget output executed by an interpreter (RCE)"
   '\beval\s+["'"'"']?\$\(\s*(curl|wget)'      "BLOCKED: curl/wget output executed by an interpreter (RCE)"
   '<\s*<\(\s*(curl|wget)'                      "BLOCKED: curl/wget output executed by an interpreter (RCE)"
   '(^|[;&|]\s*)(\.|source)\s+<\(\s*(curl|wget)'  "BLOCKED: curl/wget output executed by an interpreter (RCE)"
+  # La salida de la descarga como COMANDO: `$(curl ..)` o `` `curl ..` `` en posicion de comando, y
+  # `X=$(curl ..); $X`. Mismas formas que en Sentinel: los dos guards tienen que coincidir.
+  '(^|[;&|(]\s*)(\$\(|`)\s*(curl|wget)\b'  "BLOCKED: curl/wget output executed as a command (RCE)"
+  '=["'"'"']?(\$\(|`)\s*(curl|wget)\b[^;&]*[;&]+\s*["'"'"']?\$\{?[A-Za-z_]'  "BLOCKED: curl/wget output executed as a command (RCE)"
+  # Redirigir o `tee` hacia los ficheros de arranque del shell planta codigo que corre en la proxima sesion.
+  '(>>?\|?|\btee\s+(-a\s+)?)\s*["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]"'"'"']+)/\.(bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)'  "BLOCKED: write to a shell startup file (persistence)"
   '\bnc\s+-[a-z]*l'                   "BLOCKED: netcat listener (reverse shell)"
   '/dev/tcp/'                         "BLOCKED: /dev/tcp (reverse shell)"
   '/dev/udp/'                         "BLOCKED: /dev/udp (reverse shell)"
@@ -258,7 +294,13 @@ DENY_RULES=(
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--force'        "BLOCKED: git push --force"
   '\bgit\b[^;&|]*\bpush\b[^;&|]*\s-[A-Za-z]*f'  "BLOCKED: git push -f / -uf (force push)"
   # El refspec forzado (`+rama`) no va en esta tabla: se decide sobre tokens, mas abajo.
-  '\bgit\b[^;&|]*\bpush\b[^;&|]*--mirror'       "BLOCKED: git push --mirror (can delete remote refs)"
+  # git acepta cualquier prefijo no ambiguo de una opcion larga: `--mirr` es `--mirror`, `--de` es
+  # `--delete` y `--no-veri` es `--no-verify` (`--forc` y `--no-v` son ambiguas: git las rechaza).
+  '\bgit\b[^;&|]*\bpush\b[^;&|]*--m(i(r(r(or?)?)?)?)?([[:space:]=]|$)'  "BLOCKED: git push --mirror (can delete remote refs)"
+  # Cambiar el directorio de hooks o redefinir un subcomando por `-c` salta los hooks del repo y los guards.
+  '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*core\.hookspath'  "BLOCKED: git -c core.hooksPath (skips the repo's git hooks)"
+  '\bgit\b[^;&|]*\bconfig\b[^;&|]*core\.hookspath[[:space:]]+[^-[:space:]]'  "BLOCKED: git config core.hooksPath (skips the repo's git hooks)"
+  '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*alias\.'  "BLOCKED: git -c alias.* (redefines a git subcommand)"
   # Los borrados remotos requieren tokens descomillados, no regex sobre el texto literal.
 
   # ── CREDENTIAL EXFILTRATION ────────────────────────────────────────────────
@@ -292,6 +334,12 @@ ASK_RULES=(
   # NO esta aqui a proposito: sigue en DENY (decision 1 del plan v3).
   '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*(pr|issue)\s+(close|merge)\b'  "Confirm: gh pr/issue close|merge — closes or merges on the remote"
   '\bsudo\s+(-[A-Za-z-]+\s+)*(apt|apt-get|dnf|pip3?)\b'          "Confirm: sudo apt/apt-get/dnf/pip — installs or removes system packages"
+  # `gh api` hace por la API lo que `gh pr merge` o `gh repo delete` hacen con su subcomando, y se
+  # salta la regla de arriba: DELETE/PUT/PATCH, fusionar (`/merge`), forzar una ref, cerrar un issue y
+  # las mutaciones GraphQL se confirman igual. Un GET o un POST de crear (comentario, issue) pasa.
+  '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(-X|--method)[[:space:]=]*(DELETE|PUT|PATCH)\b'  "Confirm: gh api DELETE/PUT/PATCH — changes or deletes remote state"
+  '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(/merge\b|force=true|state=closed|\bmutation\b)'  "Confirm: gh api merge/force/close/mutation — changes remote state"
+  '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*repo\s+delete\b'  "Confirm: gh repo delete — deletes the repository on the remote"
 
   # ── DATABASE OPERATIONS (ASK — HITL) ───────────────────────────────────────
   '\bDROP\s+DATABASE\b'   "Confirm: DROP DATABASE — irreversible data loss"
@@ -303,7 +351,7 @@ ASK_RULES=(
   '\bdocker\s+volume\s+rm'     "Confirm: docker volume rm — permanent volume data loss"
 
   # ── DOWNLOAD AND EXECUTE (ASK — HITL) ──────────────────────────────────────
-  '\b(curl|wget)\b[^|]*(&&|;)\s*(sudo\s+)?(ba|z)?sh\b'  "Confirm: download then run a script — review it before executing"
+  '\b(curl|wget)\b[^|]*(&&|;)\s*(sudo\s+)?((a|ba|z|da|k)?sh\b|(\.|source)\s+\S)'  "Confirm: download then run a script — review it before executing"
 
   # ── PACKAGE PUBLISH / INSTALL FROM URL (ASK — HITL) ────────────────────────
   '\bnpm\s+publish'             "Confirm: npm publish — will publish to public npm registry"
@@ -314,7 +362,7 @@ ASK_RULES=(
 # entre comillas: en el mensaje (`git commit -m "skip --no-verify docs"`) es texto, no un flag.
 if [[ $COMMAND == *git* ]]; then
   sed -E "s/\"[^\"]*\"|'[^']*'//g" <<<"$COMMAND" \
-    | LC_ALL=C grep -qiE '\bgit\b[^;&|]*\b(commit|push)\b[^;&|]*--no-verify|\bgit\b[^;&|]*\bcommit\b[^;&|]*\s-[a-z]*n' \
+    | LC_ALL=C grep -qiE '\bgit\b[^;&|]*\b(commit|push)\b[^;&|]*--no-veri|\bgit\b[^;&|]*\bcommit\b[^;&|]*\s-[a-z]*n' \
     && deny "BLOCKED: --no-verify salta los hooks de git; arregla el hook que falla"
 fi
 
@@ -333,7 +381,7 @@ push_refspec() {
   for seg in "${segs[@]}"; do
     case $kind in
       force) [[ $seg == *push* && $seg == *+* ]] || continue ;;
-      delete) [[ $seg == *push* && ( $seg == *-d* || $seg == *-[A-Za-z]*d* || $seg == *--delete* || $seg == *:* ) ]] || continue ;;
+      delete) [[ $seg == *push* && ( $seg == *-d* || $seg == *-[A-Za-z]*d* || $seg == *--de* || $seg == *:* ) ]] || continue ;;
     esac
     cmdn_fields "$seg"
     if [[ ${T[1]:-} != git ]]; then
@@ -349,7 +397,7 @@ push_refspec() {
         esac
         case $kind in
           force) [[ $inner == *push* && $inner == *+* ]] || continue ;;
-          delete) [[ $inner == *push* && ( $inner == *-d* || $inner == *-[A-Za-z]*d* || $inner == *--delete* || $inner == *:* ) ]] || continue ;;
+          delete) [[ $inner == *push* && ( $inner == *-d* || $inner == *-[A-Za-z]*d* || $inner == *--de* || $inner == *:* ) ]] || continue ;;
         esac
         (( depth < 3 && ++NEST <= 16 )) || return 2
         cmdn_parse "$inner" || continue
@@ -366,8 +414,7 @@ push_refspec() {
       if (( ! dd )) && [[ $a == -* ]]; then
         if [[ $kind == delete ]]; then
           case $a in
-            --delete) return 0 ;;
-            --*) ;;
+            --*) [[ ${#a} -ge 4 && --delete == "$a"* ]] && return 0 ;;
             -*) [[ ${a#-} == *d* ]] && return 0 ;;
           esac
         fi
@@ -390,7 +437,7 @@ if [[ $COMMAND == *git* && $COMMAND == *push* && $COMMAND == *+* ]]; then
   (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"
 fi
 NEST=0
-if [[ $COMMAND == *git* && $COMMAND == *push* && ( $COMMAND == *-d* || $COMMAND == *-[A-Za-z]*d* || $COMMAND == *--delete* || $COMMAND == *:* ) ]]; then
+if [[ $COMMAND == *git* && $COMMAND == *push* && ( $COMMAND == *-d* || $COMMAND == *-[A-Za-z]*d* || $COMMAND == *--de* || $COMMAND == *:* ) ]]; then
   push_refspec 0 delete; rc_refspec=$?
   (( rc_refspec == 0 )) && deny "BLOCKED: git push --delete/-d/:rama (deletes a remote branch)"
   (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"

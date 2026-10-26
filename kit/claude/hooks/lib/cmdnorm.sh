@@ -179,7 +179,7 @@ cmdn_pipes_to_shell() {
   local -a T
   for seg in "${CMDN_SEGS[@]}"; do
     cmd=${seg#*"$CMDN_US"}; cmd=${cmd%%"$CMDN_US"*}
-    case $cmd in bash|sh|zsh|dash|ksh) ;; *) continue ;; esac
+    case $cmd in bash|sh|zsh|dash|ksh|ash|fish|mksh|ksh93) ;; *) continue ;; esac
     cmdn_fields "$seg"
     ok=1
     for a in "${T[@]:2}"; do
