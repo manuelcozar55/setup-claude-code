@@ -12,6 +12,9 @@
 # de checks tautologicos, y que cada modo de grade.py sabe fallar.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
+# TMPDIR propio, borrado al salir: /tmp es tmpfs con inodos fijos y los mktemp -d de la suite se quedaban.
+TMPDIR=$(mktemp -d) || exit 1; export TMPDIR
+trap 'rm -rf "$TMPDIR"' EXIT
 E="$PWD/kit/evals"
 pass=0; fail=0
 
@@ -20,6 +23,7 @@ ck() { if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1))
 
 PY="${PYTHON3:-python3}"
 if ! "$PY" -c 'import yaml' 2>/dev/null; then
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: eval set (test_evals.sh): pyyaml no disponible, ninguna comprobacion hecha" >> "$SCC_SKIP_LOG"
   echo "ok - pyyaml no disponible: suite omitida"; echo "== 1 passed, 0 failed =="; exit 0
 fi
 
@@ -81,7 +85,6 @@ fi
 # Sin esta seccion, un grader roto daria PASS para siempre y el eval entero
 # se leeria como "todo verde".
 T=$(mktemp -d) || exit 1
-trap 'rm -f "$T"/*.jsonl; rmdir "$T" 2>/dev/null' EXIT
 G="$E/grade.py"
 
 # Transcript sintetico: el agente edita notas.md y ejecuta `python3 test_suma.py`.
@@ -370,6 +373,7 @@ if command -v claude >/dev/null 2>&1; then
     fi
   done
 else
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: flags del eval set (test_evals.sh): claude no instalado" >> "$SCC_SKIP_LOG"
   echo "ok - claude no instalado: comprobacion de flags omitida"; pass=$((pass+1))
 fi
 

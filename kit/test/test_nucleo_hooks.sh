@@ -233,6 +233,13 @@ ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: el checkpoint recién publicado no se rota" "$([ -e "$OUT1" ] && [ -z "$(find "$OUT1" -mtime +14)" ] && echo si)" si
 ok "pre-compact: tras publicar, rota el viejo" "$([ -e "$VIEJO" ] && echo sigue || echo rotado)" rotado
 
+# Un git que se cuelga no puede agotar los 10 s del hook: Claude Code lo mata y la compactación sigue sin checkpoint.
+mkdir -p "$T/gitlento"; printf '#!/bin/sh\nexec sleep 60\n' >"$T/gitlento/git"; chmod +x "$T/gitlento/git"
+ev "$R" s1 "$TP" | PATH="$T/gitlento:$PATH" timeout -k 1 10 bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: un git colgado termina antes de los 10 s del hook" "$?" 0
+ev "$R" s1 "$TP" | PATH="$T/gitlento:$PATH" timeout -k 1 10 bash "$H/session-start-compact.sh" >/dev/null 2>&1
+ok "session-start-compact: un git colgado termina antes del timeout" "$?" 0
+
 # nucleo-freshness.log: una línea por compactación; no crece sin límite.
 FLOG=$HOME/.claude/session-logs/nucleo-freshness.log
 seq 1 2500 >"$FLOG"

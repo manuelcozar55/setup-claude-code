@@ -15,7 +15,7 @@ SID=$(jq -r '.session_id // empty' <<<"$IN" 2>/dev/null)
 CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 # shellcheck source=SCRIPTDIR/lib/nucleo.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
-RAIZ=$(nucleo_raiz "$CWD")
+RAIZ=$(nucleo_raiz "$CWD" 2)
 nucleo_enlazado "$RAIZ" && exit 0
 ESTADO=$(nucleo_estado_leer "$RAIZ") || exit 0
 NUC="$ESTADO/nucleo.md"

@@ -28,6 +28,9 @@
 # el 5e ya enumeraba el ambito de proyecto. Ese estado tenia su fixture construido aqui
 # desde el principio (el caso F) y la suite lo declaraba limpio: ver el caso F.
 set -u
+# TMPDIR propio, borrado al salir: /tmp es tmpfs con inodos fijos y esta suite dejaba 23 directorios por corrida.
+TMPDIR=$(mktemp -d) || exit 1; export TMPDIR
+trap 'rm -rf "$TMPDIR"' EXIT
 HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 pass=0; fail=0
 ok(){ pass=$((pass+1)); }
