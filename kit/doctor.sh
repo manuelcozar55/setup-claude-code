@@ -230,7 +230,15 @@ fi
 # 3. agentes
 n=$(find "$CLAUDE_HOME/agents" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 if [ "$n" -ge 1 ]; then
-  pass "agentes instalados: $n  (fuente: find agents/*.md)"
+  ajenos=""
+  for f in "$CLAUDE_HOME"/agents/*.md; do
+    [ -e "$KIT/claude/agents/$(basename "$f")" ] || ajenos="$ajenos $(basename "$f")"
+  done
+  if [ -n "$ajenos" ]; then
+    pass "agentes instalados: $n, de ellos $(echo "$ajenos" | wc -w | tr -d ' ') ajeno(s) al kit:$ajenos  (fuente: find agents/*.md contra kit/claude/agents)"
+  else
+    pass "agentes instalados: $n  (fuente: find agents/*.md)"
+  fi
 else
   warn "sin agentes"
 fi
