@@ -7,6 +7,14 @@ etiquetado.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`install.sh` ya no borra tus hooks al reinstalar: la fusión de `settings.json` va por propietario.**
+  - **Qué pasaba:** `install_settings` sustituía el bloque `hooks` entero (`$kit.hooks // $old.hooks`). La reinstalación del 21-oct se llevó en silencio un `PostCompact → post-compact-check.sh` y un `PreCompact` de otra capa.
+  - **Qué hace ahora:** el kit solo sustituye las entradas cuyo comando es uno de sus scripts de `.claude/{hooks,sentinel}/`, a secas, tras un intérprete o con `optional-hook.sh`. Cuentan los que cablea la plantilla y los retirados `smart_approve.py` y `preflight.sh`. Un comando que además hace otra cosa es tuyo.
+  - **Lo que se conserva:** el resto queda detrás de las suyas, con su `matcher`, y `doctor.sh` lista los hooks ajenos al kit. Un evento que no es lista o un grupo sin `hooks` se descarta sin abortar la fusión.
+  - **Tests:** `test_install_settings_merge.sh` (casos e a e3, 5 rojos contra v1.5.0) y `test_doctor.sh`.
+
 ## [1.5.0] - 2026-10-24
 
 Arreglos K1-K13 del A/B «¿aporta scc?» (23-oct): lo que estorbaba en sesiones autónomas reales.
