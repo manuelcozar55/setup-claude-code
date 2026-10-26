@@ -122,4 +122,38 @@ ck "$(jq -r '.model + "|" + .env.MIA' "$tmp/repo-propio/settings.json")" "mi-mod
 ck "$(jq '.hooks | length > 0' "$tmp/repo-propio/settings.json")" "true" "el destino del enlace lleva los hooks del kit"
 ck "$(find "$CLAUDE_HOME/backups" -name settings.json | wc -l | tr -d ' ')" "1" "--apply con enlace deja backup del settings.json"
 
+# --- El plan ensena lo que haria --apply: partia de un arbol vacio y daba por borrado lo tuyo ---
+# (env, model, permisos, hooks propios, tu CLAUDE.md). Se compara con --apply sobre una copia.
+export CLAUDE_HOME="$tmp/dot-planfus"
+mkdir -p "$CLAUDE_HOME" "$tmp/tmpd2"
+# Con sangria, como lo guarda Claude Code: en una linea el diff da por borrado todo lo reformateado.
+jq . > "$CLAUDE_HOME/settings.json" <<'EOF'
+{"model":"mi-modelo","env":{"MIA":"1"},"permissions":{"allow":["Bash(mio:*)"]},
+ "hooks":{"PostCompact":[{"hooks":[{"type":"command","command":"/opt/mio/sensor.sh"}]}]}}
+EOF
+echo "MIO CLAUDE" > "$CLAUDE_HOME/CLAUDE.md"
+echo "MIO AGENTS" > "$CLAUDE_HOME/AGENTS.md"
+cp -a "$CLAUDE_HOME" "$tmp/dot-planfus-apply"
+set +e
+out="$(TMPDIR="$tmp/tmpd2" HOME="$tmp/fakehome" MCHARNESS_OUT="$tmp/plan-fus" bash "$KIT/install.sh" --plan 2>&1)"; rc=$?
+CLAUDE_HOME="$tmp/dot-planfus-apply" HOME="$tmp/fakehome" bash "$KIT/install.sh" --apply >/dev/null 2>&1
+set -e
+ck "$rc" "0" "--plan con settings.json, CLAUDE.md y AGENTS.md propios: exit 0"
+ck "$(jq -S . "$tmp/plan-fus/settings.json")" "$(jq -S . "$tmp/dot-planfus-apply/settings.json")" "--plan: el settings.json del plan es el que deja --apply"
+ck "$(jq -r '[.model, .env.MIA, (.permissions.allow | index("Bash(mio:*)") != null), ([.. | .command? // empty | select(. == "/opt/mio/sensor.sh")] | length)] | map(tostring) | join("|")' "$tmp/plan-fus/settings.json")" "mi-modelo|1|true|1" "--plan conserva tu model, env, permisos y hook propio"
+ck "$(echo "$out" | grep -c '^-.*sensor\.sh' || true)" "0" "el diff del plan no da tu hook por borrado"
+ck "$(cat "$tmp/plan-fus/CLAUDE.md")|$(cat "$tmp/plan-fus/AGENTS.md")" "MIO CLAUDE|MIO AGENTS" "--plan no pisa tu CLAUDE.md ni tu AGENTS.md, como --apply"
+ck "$([ -f "$tmp/plan-fus/CLAUDE.kit.md" ] && [ -f "$tmp/plan-fus/AGENTS.kit.md" ] && echo y || echo n)" "y" "--plan deja la version del kit en *.kit.md, como --apply"
+ck "$([ -e "$CLAUDE_HOME/backups" ] && echo y || echo n)" "n" "--plan no escribe backups en CLAUDE_HOME"
+ck "$(find "$tmp/tmpd2" -mindepth 1 | wc -l | tr -d ' ')|$([ -e "$tmp/plan-fus/.mcharness-plan-bk" ] && echo y || echo n)" "0|n" "--plan no deja temporales en TMPDIR ni backups en su arbol"
+ck "$(echo "$out" | grep -c 'Añade @AGENTS.md a tu CLAUDE.md' || true)" "1" "--plan avisa, como --apply, de que tu CLAUDE.md no importa AGENTS.md"
+# Sembrar con un enlace haria que la fusion escribiese a traves de el, en tu repo.
+export CLAUDE_HOME="$tmp/dot-planlink"
+mkdir -p "$CLAUDE_HOME" "$tmp/repo-plan"
+echo '{"model":"mi-modelo"}' > "$tmp/repo-plan/settings.json"
+ln -s "$tmp/repo-plan/settings.json" "$CLAUDE_HOME/settings.json"
+set +e; HOME="$tmp/fakehome" MCHARNESS_OUT="$tmp/plan-link" bash "$KIT/install.sh" --plan >/dev/null 2>&1; set -e
+ck "$(cat "$tmp/repo-plan/settings.json")" '{"model":"mi-modelo"}' "--plan no escribe a traves de un settings.json enlazado"
+ck "$([ -L "$tmp/plan-link/settings.json" ] && echo y || echo n)|$(jq -r .model "$tmp/plan-link/settings.json")" "n|mi-modelo" "--plan siembra el enlazado como copia y lo fusiona"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
