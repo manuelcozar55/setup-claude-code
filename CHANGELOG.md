@@ -7,6 +7,8 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-10-26
+
 ### Fixed
 
 - **Guards, pipe-a-shell (C-01).** `block-dangerous-commands.sh` y Sentinel bloquean también `busybox sh`, `ash`, `dash`, `ksh`, `fish`, `node`/`nodejs`, `perl`, `ruby`, `php`, `lua`, los envoltorios `time`/`nice`/`timeout`/`stdbuf`/`setsid`/`env`/`nohup`/`xargs`, `( … )`, `{ …; }`, asignaciones de entorno, `bash <<< "$(curl …)"`, `nc … | sh`, `| while read; eval` y `| awk system`. Test: `fixtures/guards-v151.tsv` (C-01), 47 filas rojas antes. Lo que ninguna regla ve (`cur''l`, `$S` con `S=bash`) queda en `05-security.md`.
@@ -2067,7 +2069,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.3.0...v1.4.0
