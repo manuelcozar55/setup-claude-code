@@ -28,6 +28,7 @@ etiquetado.
 - **`git config core.hooksPath ruta` pasa de bloqueo a confirmación (F-02).** Es el comando que `05-security.md` documenta para activar la Capa 2 de secretos y el flujo normal de husky/`.githooks`; negarlo dejaba a la compañera sin poder activarla desde Claude Code. Ahora pregunta, con un mensaje que explica el efecto y apunta a `install.sh --enable-secrets-layer2`. `git -c core.hooksPath=…` de una sola orden sigue bloqueado.
 - **`git -c "core.hooksPath=…"` y `git -c 'alias.x=!sh'` entre comillas se bloquean (F-04).** La regla de C-06 miraba el texto con comillas y no veía `-c "core.hooksPath=/dev/null"`, `-c 'core.hooksPath=…'` ni `core.hooks"Path"`; ahora se aplica al texto sin comillas, como la de `--no-verify`.
 - **Escribir en `~/.profile.bak` o `~/.bashrc.d/x` ya no se bloquea (F-06).** El patrón de ficheros de arranque no tenía límite de palabra tras `profile`/`bashrc`; ahora el nombre ha de terminar ahí (comilla, espacio, `;`, `&`, `|`, `)`, `<`, `>`, `}` o fin). En Sentinel, `.bash_*` y `.zsh_*` (`.bash_logout`, `.bash_aliases`) y `.bash/`, `.zsh/` se siguen bloqueando como antes.
+- **`gh api` destructivo ya no pide confirmación por texto (F-07).** La regla se ancla a un `gh api` real en posición de comando y `mutation` cuenta solo dentro de `-f/-F query=`. El cuerpo de un `gh pr create --body`, un `echo "gh api -X DELETE …" >> notas.md` o una ruta como `contents/mutation.md` ya no disparan `ask`; los `gh api` reales siguen pidiéndolo.
 
 ### Added
 

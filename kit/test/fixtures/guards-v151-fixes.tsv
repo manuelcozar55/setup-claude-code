@@ -66,3 +66,15 @@ F-06	bdc	B	echo x | tee -a ~/.bash_profile
 F-06	sen	B	echo x | tee -a ~/.bash_profile
 F-06	sen	B	echo x >> ~/.bash_logout
 F-06	sen	B	echo x >> ~/.bash_aliases
+F-07	bdc	N	gh pr create --title t --body "gh api -X DELETE repos/o/r"
+F-07	bdc	N	echo "gh api -X DELETE repos/o/r" >> notas.md
+F-07	bdc	N	gh api repos/o/r/contents/docs/mutation.md
+F-07	bdc	N	gh api graphql -f query='query{viewer{login}}' --jq .data
+F-07	bdc	N	gh pr create --body "docs: gh api graphql -f query=mutation"
+F-07	bdc	A	cd /tmp && gh api -X DELETE repos/o/r/git/refs/heads/x
+F-07	bdc	A	echo hi; gh api graphql -f query='mutation{x}'
+F-07	bdc	A	gh api graphql -F query='mutation { x }'
+F-07	bdc	A	gh api graphql --raw-field "query=mutation{x}"
+F-07	bdc	A	GH_TOKEN=x gh api -X PUT repos/o/r/pulls/3/merge
+F-07	bdc	A	echo x | gh api -X DELETE repos/o/r/git/refs/heads/x
+F-07	bdc	A	gh --repo o/r api -X PATCH repos/o/r/issues/3

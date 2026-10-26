@@ -345,8 +345,10 @@ ASK_RULES=(
   # `gh api` hace por la API lo que `gh pr merge` o `gh repo delete` hacen con su subcomando, y se
   # salta la regla de arriba: DELETE/PUT/PATCH, fusionar (`/merge`), forzar una ref, cerrar un issue y
   # las mutaciones GraphQL se confirman igual. Un GET o un POST de crear (comentario, issue) pasa.
-  '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(-X|--method)[[:space:]=]*(DELETE|PUT|PATCH)\b'  "Confirm: gh api DELETE/PUT/PATCH — changes or deletes remote state"
-  '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(/merge\b|force=true|state=closed|\bmutation\b)'  "Confirm: gh api merge/force/close/mutation — changes remote state"
+  # Se ancla a un `gh api` en posicion de comando y `mutation` solo cuenta dentro de `-f/-F query=`: el texto de un
+  # `gh pr create --body`, un `echo` o una ruta con esa palabra no piden confirmacion.
+  '(^[[:space:]]*|[;&|({`][[:space:]]*)(\w+=\S*[[:space:]]+)*((sudo|env|command|exec|time|nohup)[[:space:]]+)*gh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(-X|--method)[[:space:]=]*(DELETE|PUT|PATCH)\b'  "Confirm: gh api DELETE/PUT/PATCH — changes or deletes remote state"
+  '(^[[:space:]]*|[;&|({`][[:space:]]*)(\w+=\S*[[:space:]]+)*((sudo|env|command|exec|time|nohup)[[:space:]]+)*gh\s+([-A-Za-z0-9_./=@]+\s+)*api\b[^;&|]*(/merge\b|force=true|state=closed|(-[fF]|--raw-field|--field)[[:space:]=]*["'"'"']?query=[^;&|]*\bmutation\b)'  "Confirm: gh api merge/force/close/mutation — changes remote state"
   '\bgh\s+([-A-Za-z0-9_./=@]+\s+)*repo\s+delete\b'  "Confirm: gh repo delete — deletes the repository on the remote"
 
   # `git config core.hooksPath ruta` es el comando que documenta 05-security.md para la Capa 2 y el de
