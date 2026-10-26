@@ -42,6 +42,7 @@ if command -v claude >/dev/null 2>&1; then
   check "$rc" "0" "claude plugin validate"
 else
   echo "SKIP - claude no esta en PATH (plugin validate)"
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: plugin validate del cockpit (test_mod_cockpit.sh): claude no esta en PATH" >> "$SCC_SKIP_LOG"
 fi
 
 echo "pass=$pass fail=$fail"

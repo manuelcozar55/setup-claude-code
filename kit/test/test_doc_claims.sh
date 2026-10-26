@@ -1433,6 +1433,7 @@ fi
 
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: comprobaciones de cifras (test_doc_claims.sh): faltan kit/evals/runs.jsonl u otra condicion; esas cifras NO se han comprobado" >> "$SCC_SKIP_LOG"
 else
   echo "== $pass passed, $fail failed =="
 fi

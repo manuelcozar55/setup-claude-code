@@ -65,5 +65,12 @@ bat "$tmp/bat-mk" BATERIA_TEST_CMD=false BATERIA_SCAN_CMD=false
 ck "$(cat "$tmp/bat-mk/make.rc" "$tmp/bat-mk/scan.rc" | tr '\n' ' ')" "1 1 " "bateria: make test y scan que fallan dejan su .rc"
 ck "$([ "$brc" -ne 0 ] && echo y || echo n)" "y" "bateria: make test y scan que fallan -> rc != 0"
 
+# --- make test lista lo que se salto (A-03): un verde sin gitleaks no es un verde completo ---
+mkdir -p "$tmp/sinpath"; for b in bash dirname; do ln -s "$(command -v "$b")" "$tmp/sinpath/$b"; done
+: > "$tmp/skips.log"
+HOME="$tmp/home" PATH="$tmp/sinpath" SCC_SKIP_LOG="$tmp/skips.log" bash "$KIT/test/test_secret_content_gitleaks.sh" >/dev/null 2>&1
+ck "$(grep -c '^SKIP: capa de contenido de secretos' "$tmp/skips.log")" "1" "skips: la suite de gitleaks se anota en SCC_SKIP_LOG cuando se salta"
+ck "$(make -C "$REPO" -n test 2>/dev/null | grep -c 'capas SALTADAS')" "1" "skips: make test cierra con el resumen de lo saltado"
+
 echo "PASS=$pass FAIL=$fail"
 [ "$fail" -eq 0 ]
