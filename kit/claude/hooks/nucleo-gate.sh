@@ -5,6 +5,7 @@
 # y sesión, con el motivo accionable. Falla en abierto: cualquier duda → salida 0 sin nada. ADR 020.
 # Estado en ~/.claude/session-logs: nudge-$SID (bandas avisadas) y nudge-$SID.nucleo (ruta del nucleo que miró el
 # nudge; su mtime es la hora del aviso), ambos del nudge; gate-$SID-$B (una línea por llamada contada) y gate-$SID-$B.d (la denegación ya reclamada).
+# Para medirla: gate-denegaciones.log, una línea por denegación (fecha, sesión, banda, herramienta, nucleo).
 # Apagado: env.CC_NUCLEO_GATE=0.
 set -u
 [ "${CC_NUCLEO_GATE:-1}" = 0 ] && exit 0
@@ -32,6 +33,7 @@ G=$LOG/gate-$SID-$B
 N=$({ wc -l <"$G"; } 2>/dev/null) || exit 0
 [ $((N)) -ge 4 ] || exit 0   # wc -l: siempre un entero, aunque el fichero tenga basura
 ( set -C; : >"$G.d" ) 2>/dev/null || exit 0
+{ printf '%s\t%s\t%s\t%s\t%s\n' "$(date +%FT%T%z)" "$SID" "$B" "$TOOL" "$NUC" >>"$LOG/gate-denegaciones.log"; } 2>/dev/null
 HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
 jq -cn --arg r "nucleo.md sin actualizar tras el aviso de contexto: actualiza $NUC o cierra la fase con \`$HO --desde <borrador> --sesion $SID\`, y después reintenta." \
   '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'

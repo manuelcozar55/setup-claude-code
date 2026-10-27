@@ -24,6 +24,8 @@ ok "banda 70 + nucleo viejo: 1-3 pasan, 4.ª deniega, 5.ª pasa" "$(seq5 a)" "pa
 O=$(jq -cn '{session_id:"a2",tool_name:"Bash",tool_input:{command:"ls"}}'); arma a2 70; for _ in 1 2 3; do bash "$H" <<<"$O" >/dev/null; done
 M=$(bash "$H" <<<"$O" | jq -r '.hookSpecificOutput.permissionDecisionReason')
 ok "el motivo cita la ruta del nucleo y handoff" "$(command grep -c "$NUC.*handoff --desde <borrador> --sesion a2" <<<"$M")" 1
+# Para poder medirla: una línea fechada por denegación (fecha, sesión, banda, herramienta, nucleo); las que pasan no escriben.
+ok "cada denegación deja una línea fechada en gate-denegaciones.log" "$(awk -F'\t' '$2=="a" && $1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}T/ {print $3, $4, $5}' "$L/gate-denegaciones.log" 2>/dev/null)" "70 Bash $NUC"
 
 arma b 70
 ok "con agent_id nunca deniega" "$(seq5 b '{"agent_id":"sub1"}')" "pasa pasa pasa pasa pasa"
