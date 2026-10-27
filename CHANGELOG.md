@@ -7,6 +7,16 @@ etiquetado.
 
 ## [Unreleased]
 
+### Fixed
+
+- **La compuerta del nucleo no actuaba en sesiones abiertas desde `~`**, la carpeta con más sesiones: el nudge avisaba pero no dejaba `nudge-<sid>.nucleo`. Ahora, si se conoce el pid de la sesión, el nudge mira el nucleo de su ranura (`estado/sesiones/<id>/nucleo.md`, el que usa `handoff`), lo trata como el de un proyecto (calla si está fresco, nombra su ruta) y deja la marca. Sin pid, igual que antes. Tests: `test_nucleo_nudge.sh`.
+- **`post-compact-check.sh` contaba como anclas las líneas `??` del git status**, que listan todo lo no seguido aunque la sesión no lo tocara (12 de 12 anclas perdidas eran falsas), y desde `~` sacaba anclas del git status de toda la carpeta personal. Ambas sesgaban `compact-audit.py`. Tests: `test_nucleo_hooks.sh`.
+- **El registro de agentes inventaba rutas `…/BRIEF.md/RESULTADO.md`**: cuando el brief no nombra un `RESULTADO.md`, `res_de()` tomaba la primera ruta bajo `informes/` aunque fuera un fichero. Ahora un fichero (lo que no es un directorio y tiene extensión) da su carpeta; una carpeta con punto en el tema sigue siendo carpeta. Tests: `test_agentes.sh`.
+
+### Added
+
+- **Registro fechado de denegaciones de la compuerta** (`session-logs/gate-denegaciones.log`: fecha, sesión, banda, herramienta, nucleo). Sin él no había forma de medir la compuerta para decidir si se queda (ADR 020). Tests: `test_nucleo_gate.sh`.
+
 ## [1.6.0] - 2026-10-27
 
 ### Added
