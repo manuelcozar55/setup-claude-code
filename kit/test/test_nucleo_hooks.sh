@@ -233,6 +233,13 @@ ev "$R" s1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: el checkpoint recién publicado no se rota" "$([ -e "$OUT1" ] && [ -z "$(find "$OUT1" -mtime +14)" ] && echo si)" si
 ok "pre-compact: tras publicar, rota el viejo" "$([ -e "$VIEJO" ] && echo sigue || echo rotado)" rotado
 
+# Un git que se cuelga no puede agotar los 10 s del hook: Claude Code lo mata y la compactación sigue sin checkpoint.
+mkdir -p "$T/gitlento"; printf '#!/bin/sh\nexec sleep 60\n' >"$T/gitlento/git"; chmod +x "$T/gitlento/git"
+ev "$R" s1 "$TP" | PATH="$T/gitlento:$PATH" timeout -k 1 10 bash "$H/pre-compact.sh" 2>/dev/null
+ok "pre-compact: un git colgado termina antes de los 10 s del hook" "$?" 0
+ev "$R" s1 "$TP" | PATH="$T/gitlento:$PATH" timeout -k 1 10 bash "$H/session-start-compact.sh" >/dev/null 2>&1
+ok "session-start-compact: un git colgado termina antes del timeout" "$?" 0
+
 # nucleo-freshness.log: una línea por compactación; no crece sin límite.
 FLOG=$HOME/.claude/session-logs/nucleo-freshness.log
 seq 1 2500 >"$FLOG"
@@ -835,5 +842,38 @@ BORRADOR
   head -c 6800 /dev/zero | tr '\0' l; printf '\n## Pendientes\n'; head -c 4000 /dev/zero | tr '\0' p; printf '\n## Ficheros tocados\n- a.sh\n- b.sh\n'; } >"$T/w2-b.md"
 (cd "$WT" && bash "$BIN/handoff" --desde "$T/w2-b.md" >/dev/null 2>&1); RC=$?
 ok "W2 --desde: sobre el tope sobreviven Paso actual, Siguiente acción, Comandos y Ficheros tocados" "$RC,$(sed -n 's/^## //p' "$WT/.claude/estado/nucleo.md" | paste -sd,)" "0,Objetivo,Paso actual,Siguiente acción,Comandos de verificación,Ficheros tocados"
+
+# --- post-compact-check.sh (PostCompact): anclas del checkpoint que el resumen no nombra ---
+pc() { jq -cn --arg c "$1" --arg s "$2" --arg m "$3" '{cwd:$c,session_id:$s,trigger:"auto",compact_summary:$m}' | bash "$H/post-compact-check.sh"; }
+ev "$R" pc1 | PATH="$T/gitlento:$PATH" timeout -k 1 5 bash "$H/post-compact-check.sh" >/dev/null 2>&1
+ok "post-compact: un git colgado termina antes de sus 5 s de timeout" "$?" 0
+PCL=$HOME/.claude/session-logs/compact-$(date +%Y-%m).log; rm -f "$PCL"
+# Anclas = ficheros del git status del checkpoint real; los que la persona nombra en un prompt no cuentan.
+mkdir -p "$R/src"; echo a >"$R/src/alfa.py"; echo b >"$R/src/beta.sh"
+git -C "$R" add src; git -C "$R" -c user.email=t@t -c user.name=t commit -q -m src
+echo a2 >>"$R/src/alfa.py"; echo b2 >>"$R/src/beta.sh"
+TPC=$T/tpc.jsonl; jq -cn '{type:"user",message:{content:"revisa solo-en-prompt.md"}}' >"$TPC"
+ev "$R" pc1 "$TPC" | bash "$H/pre-compact.sh" 2>/dev/null
+CKPC=$R/.claude/estado/checkpoints/checkpoint-compact-$(printf '%s' pc1 | sha256sum | cut -d' ' -f1).md
+ok "post-compact: el checkpoint real nombra los modificados y el fichero del prompt" "$(command grep -c 'src/alfa.py\|src/beta.sh\|solo-en-prompt.md' "$CKPC")" 3
+OUT=$(pc "$R/sub" pc1 'se tocaron alfa.py, beta.sh y registro-cambios.md'); RC=$?
+ok "post-compact: anclas presentes → rc 0, sin aviso" "$RC,$OUT" "0,"
+ok "post-compact: anclas presentes → log con anclas_perdidas=0" "$(awk -F'\t' '{print $2, $4}' "$PCL")" "auto anclas_perdidas=0"
+OUT=$(pc "$R" pc1 'se tocó alfa.py y registro-cambios.md'); RC=$?
+ok "post-compact: ancla perdida → rc 0 y aviso con la ancla" "$RC,$(jq -r .systemMessage <<<"$OUT" | command grep -c 'src/beta.sh')" "0,1"
+ok "post-compact: ancla perdida queda en el log" "$(tail -n1 "$PCL" | awk -F'\t' '{print $4, $5}')" "anclas_perdidas=1 src/beta.sh"
+N=$(wc -l <"$PCL")
+OUT=$(pc "$R" otra-sesion 'nada'); RC=$?
+ok "post-compact: sin checkpoint → rc 0, sin aviso, anclas_perdidas=0" "$RC,$OUT,$(tail -n1 "$PCL" | awk -F'\t' '{print $4}')" "0,,anclas_perdidas=0"
+OUT=$(printf 'no es json {' | bash "$H/post-compact-check.sh" 2>&1); RC=$?
+ok "post-compact: entrada malformada → rc 0 y en silencio" "$RC,$OUT" "0,"
+ok "post-compact: desde ~ (sin proyecto) → rc 0" "$(pc "$HOME" pc1 x >/dev/null 2>&1; echo $?)" 0
+ok "post-compact: una línea de log por evento válido" "$(( $(wc -l <"$PCL") - N ))" 2
+# El lector: compact-audit.py resume el log con su formato.
+mkdir -p "$T/sin-transcripts/-tmp-demo"
+{ echo '{"type":"user","message":{"role":"user","content":"hola"}}'
+  echo '{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"manual","preTokens":1000,"postTokens":100,"durationMs":2000}}'; } >"$T/sin-transcripts/-tmp-demo/s1.jsonl"
+AUD=$(CLAUDE_PROJECTS_DIR="$T/sin-transcripts" python3 "$KIT/../scripts/compact-audit.py" 2>&1)
+ok "compact-audit.py lee el log del hook (eventos y pérdida)" "$(command grep -c '^post-compact log: 4 eventos, anclas perdidas media 0.[23], con pérdida 1$' <<<"$AUD")" 1
 
 exit $FAIL

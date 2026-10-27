@@ -12,7 +12,7 @@ CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
 # shellcheck source=SCRIPTDIR/lib/agentes.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/agentes.sh"
-RAIZ=$(nucleo_raiz "$CWD")
+RAIZ=$(nucleo_raiz "$CWD" 2)
 nucleo_enlazado "$RAIZ" && exit 0
 ESTADO=$(nucleo_estado_leer "$RAIZ") || exit 0
 AGENTES=$(nucleo_agentes_ctx "$RAIZ")

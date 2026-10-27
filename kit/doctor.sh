@@ -449,6 +449,62 @@ if [ -n "$estado_raiz" ] && [ -d "$estado_raiz/.claude/estado" ]; then
   if [ "${informes_kb:-0}" -gt $((informes_mb * 1024)) ]; then
     warn "$estado_raiz/.claude/estado/informes/ pesa $((informes_kb / 1024)) MB (> $informes_mb MB): archiva o borra los informes que ya no hagan falta"
   fi
+  # nucleo.md por encima de NUCLEO_TOPE: los SessionStart lo recortan al inyectarlo y se pierde la cola. El tope se
+  # lee de la lib de hooks (el unico sitio con la cifra; el entorno manda, como en la lib), no se duplica aqui.
+  nuc_lib="$CLAUDE_HOME/hooks/lib/nucleo.sh"; [ -f "$nuc_lib" ] || nuc_lib="$KIT/claude/hooks/lib/nucleo.sh"
+  # shellcheck disable=SC2016 # patron literal para sed
+  nuc_tope="${NUCLEO_TOPE:-$(sed -n 's/^NUCLEO_TOPE=\${NUCLEO_TOPE:-\([0-9][0-9]*\)}.*/\1/p' "$nuc_lib" 2>/dev/null | head -n 1)}"
+  nuc_bytes="$(wc -c < "$estado_raiz/.claude/estado/nucleo.md" 2>/dev/null | tr -d ' ')"
+  case "$nuc_tope$nuc_bytes" in *[!0-9]*|'') ;; *)
+    if [ "$nuc_bytes" -gt "$nuc_tope" ]; then
+      warn "$estado_raiz/.claude/estado/nucleo.md pesa $nuc_bytes B (> NUCLEO_TOPE $nuc_tope): se recorta al inyectarlo y pierdes la cola; cierra lo hecho a diario.md con handoff"
+    fi ;;
+  esac
+fi
+
+# 5d3. Memoria automatica (~/.claude/projects/*/memory). Claude Code carga al arrancar solo las primeras 200
+# lineas o 25 KB de MEMORY.md, lo que llegue antes (code.claude.com/docs/en/memory, «Storage location»/auto memory;
+# medido 2026-10-26): lo de mas allá no se carga. Se avisa al 75 % de ese limite (150 lineas, 20 KB) para
+# dar margen antes de perder contenido. Un .md sin linea en el indice no se encuentra nunca, y un enlace roto
+# promete algo que no existe. Todo WARN: la memoria es de la persona y borrarla no es cosa de doctor.
+for mem in "$CLAUDE_HOME"/projects/*/memory; do
+  [ -d "$mem" ] || continue
+  idx="$mem/MEMORY.md"; idx_txt=""; [ -f "$idx" ] && idx_txt="$(cat "$idx")"
+  proy="$(basename "$(dirname "$mem")")"; sin=""; rotos=""
+  for f in "$mem"/*.md; do
+    [ -e "$f" ] || continue
+    base="${f##*/}"; [ "$base" = MEMORY.md ] && continue
+    # El índice también enlaza por slug entre corchetes, sin .md: «- [slug] …».
+    case "$idx_txt" in *"$base"* | *"[${base%.md}]"*) ;; *) sin="$sin $base" ;; esac
+  done
+  while IFS= read -r l; do
+    l="${l#\](}"; l="${l%)}"
+    [ -e "$mem/$l" ] || rotos="$rotos $l"
+  done < <(printf '%s\n' "$idx_txt" | grep -oE '\]\([^):#]+\.md\)')
+  sin="${sin# }"; rotos="${rotos# }"
+  [ -n "$sin" ] && warn "memoria $proy: $(wc -w <<<"$sin" | tr -d ' ') .md sin linea en MEMORY.md (p. ej. ${sin%% *}): añade su linea al indice o borra el fichero si sobra"
+  [ -n "$rotos" ] && warn "memoria $proy: MEMORY.md enlaza a ficheros que no existen ($(wc -w <<<"$rotos" | tr -d ' '); p. ej. ${rotos%% *}): quita o corrige esas lineas"
+  if [ -f "$idx" ]; then
+    idx_l="$(wc -l < "$idx" | tr -d ' ')"; idx_b="$(wc -c < "$idx" | tr -d ' ')"
+    if [ "$idx_l" -gt 150 ] || [ "$idx_b" -gt 20480 ]; then
+      warn "memoria $proy: MEMORY.md tiene $idx_l lineas y $idx_b B; Claude Code solo carga 200 lineas o 25 KB: una linea por entrada, detalle a ficheros aparte, y funde o borra las obsoletas"
+    fi
+  fi
+done
+
+# 5d4. Worktrees del repo actual que ya no sirven: prunable (su directorio desaparecio) o en detached bajo /tmp (las
+# revisiones desechables; medido 2026-10-26 en setup-claude-code: 3 prunable y 3 detached en /tmp/rev-D de 18). Solo
+# mira el repo actual (un git, sin barrer proyectos); los worktrees vivos de otras sesiones no se tocan ni se avisan.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  wt_malos="$(git worktree list --porcelain 2>/dev/null | awk '
+    function flush() { if (p != "" && (pr || (det && p ~ /^\/tmp\//))) printf " %s", p; p = ""; pr = 0; det = 0 }
+    /^worktree / { flush(); p = substr($0, 10) }
+    /^detached$/ { det = 1 }
+    /^prunable/ { pr = 1 }
+    END { flush() }')"
+  if [ -n "$wt_malos" ]; then
+    warn "worktrees prunable o en detached bajo /tmp:$wt_malos: git worktree prune borra los prunable; los de /tmp, con git worktree remove si ya no los usas"
+  fi
 fi
 
 # 6. gate de secretos sobre el kit

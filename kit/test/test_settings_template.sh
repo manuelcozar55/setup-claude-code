@@ -20,6 +20,8 @@ ok "compuerta con timeout ≤ 5 s" "$(q '[.hooks.PreToolUse[].hooks[] | select(.
 ok "Stop → stop-context-gauge.sh" "$(cmd Stop '' | command grep -c 'hooks/stop-context-gauge.sh')" 1
 ok "un solo PreCompact" "$(q '.hooks.PreCompact | length')" 1
 ok "PreCompact → pre-compact.sh" "$(q '.hooks.PreCompact[0].hooks[0].command' | command grep -c 'hooks/pre-compact.sh')" 1
+ok "PostCompact → post-compact-check.sh" "$(q '.hooks.PostCompact[0].hooks[0].command' | command grep -c 'hooks/post-compact-check.sh')" 1
+ok "PostCompact con timeout ≤ 5 s" "$(q '.hooks.PostCompact[0].hooks[0].timeout <= 5')" true
 ok "cleanupPeriodDays = 14" "$(q '.cleanupPeriodDays')" 14
 ok "tui = fullscreen" "$(q '.tui')" fullscreen
 ok "theme = dark" "$(q '.theme')" dark

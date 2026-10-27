@@ -328,4 +328,53 @@ for doc in README.md AGENTS.md CLAUDE.md CONTRIBUTING.md kit/README.md kit/docs/
   dichos="$(grep -oE '[0-9]+ suites' "$ROOT/$doc" | grep -oE '[0-9]+' | sort -u | tr '\n' ' ')"
   ck "${dichos% }" "$real_suites" "K13: $doc dice $real_suites suites"
 done
+# v1.6.0: cuatro WARN nuevos, todos reproducibles con fixtures en el HOME temporal y nunca FAIL.
+HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
+dr_en() { (cd "$1" && dr); }   # git worktree list y nucleo.md miran el repo del cwd
+rp="$tmp/repo-v160"; mkdir -p "$rp"
+git -C "$rp" init -q -b main; git -C "$rp" -c user.name=t -c user.email=t@x commit -q --allow-empty -m i
+set +e; out="$(dr_en "$rp")"; set -e
+ck "$(echo "$out" | grep -cE '^WARN .*(memoria |worktrees prunable|NUCLEO_TOPE)')" "0" "v1.6: caso limpio, ninguno de los cuatro WARN nuevos"
+# 1. memoria: un .md sin linea en el indice y un enlace roto
+mem="$CLAUDE_HOME/projects/-p/memory"; mkdir -p "$mem"
+printf -- '- [Uno](uno.md) — ok\n- [Roto](roto.md) — no existe\n' > "$mem/MEMORY.md"
+printf 'x\n' > "$mem/uno.md"; printf 'x\n' > "$mem/huerfana.md"
+set +e; out="$(dr_en "$rp")"; rc=$?; set -e
+ck "$(echo "$out" | grep -c '^WARN · memoria -p: 1 .md sin linea en MEMORY.md (p. ej. huerfana.md)')" "1" "v1.6: WARN por memoria sin linea en el indice"
+ck "$(echo "$out" | grep -c '^WARN · memoria -p: MEMORY.md enlaza a ficheros que no existen (1; p. ej. roto.md)')" "1" "v1.6: WARN por enlace roto en MEMORY.md"
+ck "$rc" "0" "v1.6: los WARN de memoria no son FAIL"
+rm "$mem/huerfana.md"; printf -- '- [Uno](uno.md) — ok\n' > "$mem/MEMORY.md"
+set +e; out="$(dr_en "$rp")"; set -e
+ck "$(echo "$out" | grep -c '^WARN · memoria ')" "0" "v1.6: memoria coherente no avisa"
+printf 'x\n' > "$mem/dos.md"; printf -- '- [Uno](uno.md) — ok\n- [dos] indexada por slug, sin .md\n' > "$mem/MEMORY.md"
+set +e; out="$(dr_en "$rp")"; set -e
+ck "$(echo "$out" | grep -c '^WARN · memoria ')" "0" "v1.6: una entrada [slug] sin .md cuenta como indexada"
+rm "$mem/dos.md"; printf -- '- [Uno](uno.md) — ok\n' > "$mem/MEMORY.md"
+# 2. MEMORY.md por encima del 75 % de lo que Claude Code carga (150 lineas o 20 KB)
+{ printf -- '- [Uno](uno.md) — ok\n'; for i in $(seq 1 150); do printf -- '- nota %s\n' "$i"; done; } > "$mem/MEMORY.md"
+set +e; out="$(dr_en "$rp")"; set -e
+ck "$(echo "$out" | grep -c '^WARN · memoria -p: MEMORY.md tiene 151 lineas')" "1" "v1.6: WARN si MEMORY.md pasa de 150 lineas"
+printf -- '- [Uno](uno.md) — ok\n' > "$mem/MEMORY.md"
+# 3. worktrees: uno prunable y otro en detached bajo /tmp
+wtp="$tmp/wt-prunable"; git -C "$rp" worktree add -q "$wtp" -b ramap
+rm -r "$wtp"
+wtd="$(mktemp -d /tmp/doctor-wt.XXXXXX)"; rmdir "$wtd"; git -C "$rp" worktree add -q --detach "$wtd"
+set +e; out="$(dr_en "$rp")"; rc=$?; set -e
+ck "$(echo "$out" | grep -c "^WARN · worktrees prunable o en detached bajo /tmp:.*wt-prunable")" "1" "v1.6: WARN por worktree prunable"
+ck "$(echo "$out" | grep -c "^WARN · worktrees prunable.*$wtd")" "1" "v1.6: WARN por worktree en detached bajo /tmp"
+ck "$rc" "0" "v1.6: los WARN de worktrees no son FAIL"
+git -C "$rp" worktree remove --force "$wtd"; git -C "$rp" worktree prune
+set +e; out="$(dr_en "$rp")"; set -e
+ck "$(echo "$out" | grep -c '^WARN · worktrees')" "0" "v1.6: sin worktrees sobrantes no avisa"
+# 4. nucleo.md mayor que NUCLEO_TOPE (el tope sale de la lib de hooks)
+mkdir -p "$rp/.claude/estado"; printf '*\n' > "$rp/.claude/estado/.gitignore"
+head -c 3000 /dev/zero | tr '\0' 'n' > "$rp/.claude/estado/nucleo.md"
+set +e; out="$(dr_en "$rp")"; set -e
+ck "$(echo "$out" | grep -c 'NUCLEO_TOPE')" "0" "v1.6: nucleo.md bajo el tope no avisa"
+head -c 7000 /dev/zero | tr '\0' 'n' > "$rp/.claude/estado/nucleo.md"
+set +e; out="$(dr_en "$rp")"; rc=$?; set -e
+ck "$(echo "$out" | grep -c '^WARN · .*nucleo.md pesa 7000 B (> NUCLEO_TOPE 6500)')" "1" "v1.6: WARN si nucleo.md pasa de NUCLEO_TOPE"
+ck "$rc" "0" "v1.6: el WARN de nucleo.md no es FAIL"
+rm -r "$CLAUDE_HOME/projects"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

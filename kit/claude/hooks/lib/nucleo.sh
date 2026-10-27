@@ -11,14 +11,18 @@ NUCLEO_TOPE=${NUCLEO_TOPE:-6500}
 # shellcheck disable=SC2034  # la consumen handoff y los tests que cargan esta lib.
 NUCLEO_RESERVA_AGENTES=800
 
-# nucleo_raiz <cwd>: raíz del proyecto dueño de <raíz>/.claude/estado/nucleo.md = toplevel git de
+# nucleo_raiz <cwd> [segundos]: raíz del proyecto dueño de <raíz>/.claude/estado/nucleo.md = toplevel git de
 # CLAUDE_PROJECT_DIR (o del cwd), rc 0. Sin proyecto —un directorio sin git, $HOME o lo que cuelga de
 # $HOME/.claude (que es un repo git, pero de configuración)— imprime $HOME y sale con rc 1: es el valor que
 # los hooks ya leen como «sin proyecto» (índice de tareas, nada de nucleo propio). Un worktree de
 # `claude --worktree` vive en <repo>/.claude/worktrees/<rama> y es su propia raíz.
 nucleo_raiz() {
   local base=${CLAUDE_PROJECT_DIR:-$1} r
-  r=$(git -C "$base" rev-parse --show-toplevel 2>/dev/null) || r=$HOME
+  if [ -n "${2:-}" ]; then
+    r=$(timeout -k 1 "$2" git -C "$base" rev-parse --show-toplevel 2>/dev/null) || r=$HOME
+  else
+    r=$(git -C "$base" rev-parse --show-toplevel 2>/dev/null) || r=$HOME
+  fi
   case $r in "$HOME" | "$HOME/.claude" | "$HOME/.claude/"*) printf '%s\n' "$HOME"; return 1 ;; esac
   printf '%s\n' "$r"
 }
