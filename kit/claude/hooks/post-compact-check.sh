@@ -2,7 +2,8 @@
 # PostCompact — ¿sobrevivieron al resumen las anclas del checkpoint? Deja una línea medible en el log.
 # stdin: {"trigger":"manual|auto","compact_summary":"...","session_id":"...","cwd":"..."}
 # Por qué: sin sensor, «el resumen conserva lo importante» es una creencia. Anclas = ficheros que el
-# checkpoint de pre-compact.sh declara tocados; los que el resumen no nombra se anotan en
+# checkpoint de pre-compact.sh declara tocados (su sección «## git», el `git status --short`; un fichero
+# que la persona solo nombra en un prompt no es ancla); los que el resumen no nombra se anotan en
 # session-logs/compact-AAAA-MM.log (campo anclas_perdidas=, que lee scripts/compact-audit.py).
 # Observacional y gratis: sin modelo, nunca bloquea (exit 0 siempre).
 set -u
@@ -13,7 +14,7 @@ SID=$(jq -r '.session_id // empty' <<<"$IN" 2>/dev/null)
 CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 # shellcheck source=SCRIPTDIR/lib/nucleo.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
-RAIZ=$(nucleo_raiz "$CWD")
+RAIZ=$(nucleo_raiz "$CWD" 2)
 nucleo_enlazado "$RAIZ" && exit 0
 # Mismo sitio y nombre que escribe pre-compact.sh: bajo ~ no hay proyecto y cae en estado/ a secas.
 CPD="$RAIZ/.claude/estado/checkpoints"; [ "$RAIZ" = "$HOME" ] && CPD="$RAIZ/.claude/estado"
@@ -26,7 +27,8 @@ if [ -f "$CK" ] && [ ! -L "$CK" ]; then
   while read -r f; do
     [ -n "$f" ] || continue
     grep -qF -- "$(basename "$f")" <<<"$S" || MISS="$MISS $f"
-  done < <(grep -oE '[A-Za-z0-9_./-]+\.(py|ts|tsx|js|md|sh|json|sql|toml|ya?ml)' "$CK" 2>/dev/null | grep -v '/estado/' | sort -u | head -40)
+  done < <(awk '/^## /{g=($0=="## git");next} g && !/^rama: /' "$CK" 2>/dev/null \
+    | grep -oE '[A-Za-z0-9_./-]+\.(py|ts|tsx|js|md|sh|json|sql|toml|ya?ml)' | grep -v '/estado/' | sort -u | head -40)
 fi
 MISS=${MISS# }
 # shellcheck disable=SC2086  # contar palabras

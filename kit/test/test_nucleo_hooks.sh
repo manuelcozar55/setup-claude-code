@@ -845,11 +845,17 @@ ok "W2 --desde: sobre el tope sobreviven Paso actual, Siguiente acción, Comando
 
 # --- post-compact-check.sh (PostCompact): anclas del checkpoint que el resumen no nombra ---
 pc() { jq -cn --arg c "$1" --arg s "$2" --arg m "$3" '{cwd:$c,session_id:$s,trigger:"auto",compact_summary:$m}' | bash "$H/post-compact-check.sh"; }
+ev "$R" pc1 | PATH="$T/gitlento:$PATH" timeout -k 1 5 bash "$H/post-compact-check.sh" >/dev/null 2>&1
+ok "post-compact: un git colgado termina antes de sus 5 s de timeout" "$?" 0
 PCL=$HOME/.claude/session-logs/compact-$(date +%Y-%m).log; rm -f "$PCL"
-ev "$R" pc1 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
-CKPC=$(find "$R/.claude/estado/checkpoints" -name "checkpoint-compact-*.md" | head -1)
-printf '\ntocados: src/alfa.py src/beta.sh\n' >>"$CKPC"
-CKH=$(printf '%s' pc1 | sha256sum | cut -d' ' -f1); mv "$CKPC" "$R/.claude/estado/checkpoints/checkpoint-compact-$CKH.md"
+# Anclas = ficheros del git status del checkpoint real; los que la persona nombra en un prompt no cuentan.
+mkdir -p "$R/src"; echo a >"$R/src/alfa.py"; echo b >"$R/src/beta.sh"
+git -C "$R" add src; git -C "$R" -c user.email=t@t -c user.name=t commit -q -m src
+echo a2 >>"$R/src/alfa.py"; echo b2 >>"$R/src/beta.sh"
+TPC=$T/tpc.jsonl; jq -cn '{type:"user",message:{content:"revisa solo-en-prompt.md"}}' >"$TPC"
+ev "$R" pc1 "$TPC" | bash "$H/pre-compact.sh" 2>/dev/null
+CKPC=$R/.claude/estado/checkpoints/checkpoint-compact-$(printf '%s' pc1 | sha256sum | cut -d' ' -f1).md
+ok "post-compact: el checkpoint real nombra los modificados y el fichero del prompt" "$(command grep -c 'src/alfa.py\|src/beta.sh\|solo-en-prompt.md' "$CKPC")" 3
 OUT=$(pc "$R/sub" pc1 'se tocaron alfa.py, beta.sh y registro-cambios.md'); RC=$?
 ok "post-compact: anclas presentes → rc 0, sin aviso" "$RC,$OUT" "0,"
 ok "post-compact: anclas presentes → log con anclas_perdidas=0" "$(awk -F'\t' '{print $2, $4}' "$PCL")" "auto anclas_perdidas=0"
