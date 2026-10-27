@@ -33,7 +33,8 @@ case $ID in *[!A-Za-z0-9_-]*) exit 0 ;; esac
 NOW=$(date -u +%FT%T.%NZ)
 
 # res_de <transcript del agente>: la ruta absoluta del RESULTADO.md que pide su brief. Una ruta que acaba en
-# RESULTADO.md vale tal cual; una carpeta de informes/ (la que imprime `handoff --informe`) lleva el fichero dentro.
+# RESULTADO.md vale tal cual; una carpeta de informes/ (la que imprime `handoff --informe`) lleva el fichero dentro, y un
+# fichero de esa carpeta (…/BRIEF.md: lo que no es un directorio y tiene extensión) da su carpeta.
 res_de() {
   local m r
   [ -f "$1" ] && [ ! -L "$1" ] || return 0
@@ -41,8 +42,9 @@ res_de() {
       | if type == "string" then . else (map(.text? // "") | join(" ")) end' 2>/dev/null | head -c 20000)
   r=$(grep -oE '/[^][:space:]"'\''`<>|;(),]*RESULTADO\.md' <<<"$m" | head -n 1)
   if [ -z "$r" ]; then
-    r=$(grep -oE '/[^][:space:]"'\''`<>|;(),]*/informes/[^][:space:]"'\''`<>|;(),]+' <<<"$m" | head -n 1)
-    [ -z "$r" ] || r="${r%/}/RESULTADO.md"
+    r=$(grep -oE '/[^][:space:]"'\''`<>|;(),]*/informes/[^][:space:]"'\''`<>|;(),]+' <<<"$m" | head -n 1); r=${r%/}
+    [ -d "$r" ] || case ${r##*/} in *.*) r=${r%/*} ;; esac
+    [ -z "$r" ] || r="$r/RESULTADO.md"
   fi
   case $r in *..*) r="" ;; esac
   printf '%s' "$r"

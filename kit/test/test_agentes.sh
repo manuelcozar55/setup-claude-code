@@ -61,6 +61,14 @@ printf 'estado: completado\n' > "$T/RESULTADO.md"
 capture SubagentStart
 capture SubagentStop
 ok 'capturador obtiene RESULTADO del brief' "$(row agent1)" completado
+# El brief nombra un fichero de su carpeta de informes (…/BRIEF.md) y no un RESULTADO.md absoluto: se toma la carpeta,
+# no …/BRIEF.md/RESULTADO.md. Una carpeta existente con punto en el tema (v1.6) sigue siendo carpeta.
+IR=$T/inf/.claude/estado/informes; mkdir -p "$IR/2026-10-27-tema" "$IR/2026-10-27-v1.6"
+res() { jq -cn --arg m "$1" '{type:"user",message:{content:$m}}' >"$T/tr-$2"
+  jq -cn --arg r "$R" --arg tp "$T/tr-$2" --arg i "$2" '{hook_event_name:"SubagentStop",cwd:$r,session_id:"capture",agent_id:$i,agent_type:"worker",agent_transcript_path:$tp}' | bash "$H/agentes.sh"
+  jq -r --arg i "$2" 'select(.id == $i) | .res' "$E/agentes.jsonl"; }
+ok 'res_de: un fichero bajo informes/ da su carpeta' "$(res "Lee $IR/2026-10-27-tema/BRIEF.md y deja ahí RESULTADO.md" res1)" "$IR/2026-10-27-tema/RESULTADO.md"
+ok 'res_de: carpeta con punto en el tema' "$(res "Trabaja en $IR/2026-10-27-v1.6 y deja ahí RESULTADO.md" res2)" "$IR/2026-10-27-v1.6/RESULTADO.md"
 nucleo_agentes_foto "$R" capture '[{"id":"agent1","type":"subagent","status":"running"},{"id":"done","type":"subagent","status":"completed"}]'
 nucleo_agentes_foto "$R" other '[{"id":"other","type":"subagent","status":"running"}]'
 ok 'foto propia conserva solo running' "$(nucleo_agentes_vivos "$E" capture | jq -r 'map(.id)|join(",")')" agent1
