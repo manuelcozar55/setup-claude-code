@@ -28,9 +28,13 @@ RAIZ=$(nucleo_raiz "${CWD:-$PWD}")
 nucleo_enlazado "$RAIZ" && exit 0
 ESTADO=$(nucleo_estado_leer "$RAIZ") || exit 0
 NUC="$ESTADO/nucleo.md"
-# D1: desde ~ el nucleo compartido puede ser de otra tarea: el aviso no lo nombra, no se calla por su edad
+# Desde ~ con ranura (se sabe el pid de la sesión) el nucleo es el de la ranura, el que usa handoff: se trata como el de
+# un proyecto y la compuerta también actúa.
+RANURA=""; [ "$RAIZ" = "$HOME" ] && { RANURA=$(nucleo_sesion_dir crear 2>/dev/null) || RANURA=""; }
+[ -z "$RANURA" ] || NUC=$RANURA/nucleo.md
+# D1: desde ~ sin ranura el nucleo compartido puede ser de otra tarea: el aviso no lo nombra, no se calla por su edad
 # y no promete handoff (el automático está desactivado en ~).
-if [ "$RAIZ" = "$HOME" ]; then
+if [ "$RAIZ" = "$HOME" ] && [ -z "$RANURA" ]; then
   mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
   M="CONTEXTO $PCT % del airbag. Sesión abierta desde ~: no tiene nucleo propio. Si trabajas en una tarea, deja su estado en el nucleo de su proyecto; el de ~ actualízalo solo si su Objetivo es tu tarea."
   if nucleo_desatendido; then
@@ -41,7 +45,7 @@ if [ "$RAIZ" = "$HOME" ]; then
   fi
 else
 # Una tarea = una sesión dueña: quien no lo es calla (el aviso le pediría escribir el nucleo de otra).
-nucleo_dueno_ajeno "$RAIZ" "$SID" >/dev/null && exit 0
+[ -z "$RANURA" ] && nucleo_dueno_ajeno "$RAIZ" "$SID" >/dev/null && exit 0
 MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
 EDAD=$(( $(date +%s) - ${MT:-0} ))
 [ -z "$MT" ] || [ "$EDAD" -gt 600 ] || exit 0
