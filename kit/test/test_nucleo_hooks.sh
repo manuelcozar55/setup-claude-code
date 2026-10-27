@@ -875,5 +875,14 @@ mkdir -p "$T/sin-transcripts/-tmp-demo"
   echo '{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"manual","preTokens":1000,"postTokens":100,"durationMs":2000}}'; } >"$T/sin-transcripts/-tmp-demo/s1.jsonl"
 AUD=$(CLAUDE_PROJECTS_DIR="$T/sin-transcripts" python3 "$KIT/../scripts/compact-audit.py" 2>&1)
 ok "compact-audit.py lee el log del hook (eventos y pérdida)" "$(command grep -c '^post-compact log: 4 eventos, anclas perdidas media 0.[23], con pérdida 1$' <<<"$AUD")" 1
+# Un «??» del git status no es un fichero que la sesión declare tocado: medido, 12 de 12 anclas falsas. Y desde ~
+# el git status (si ~ es un repo) es el de toda la carpeta personal: no da anclas.
+echo n >"$R/sin-seguimiento.md"
+ev "$R" pc2 "$TPC" | bash "$H/pre-compact.sh" 2>/dev/null
+pc "$R" pc2 'se tocaron alfa.py y beta.sh' >/dev/null
+ok "post-compact: un ?? del checkpoint no es ancla" "$(tail -n1 "$PCL" | awk -F'\t' '{print $4, $5}')" "anclas_perdidas=0 "
+mkdir -p "$HOME/.claude/estado"; printf '## git\nrama: main\n M dotfile.sh\n' >"$HOME/.claude/estado/checkpoint-compact-$(printf '%s' pc3 | sha256sum | cut -d' ' -f1).md"
+pc "$HOME" pc3 'nada' >/dev/null
+ok "post-compact: desde ~ el git status no da anclas" "$(tail -n1 "$PCL" | awk -F'\t' '{print $4, $5}')" "anclas_perdidas=0 "
 
 exit $FAIL
