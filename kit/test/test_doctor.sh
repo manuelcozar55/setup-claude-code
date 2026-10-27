@@ -346,6 +346,10 @@ ck "$rc" "0" "v1.6: los WARN de memoria no son FAIL"
 rm "$mem/huerfana.md"; printf -- '- [Uno](uno.md) — ok\n' > "$mem/MEMORY.md"
 set +e; out="$(dr_en "$rp")"; set -e
 ck "$(echo "$out" | grep -c '^WARN · memoria ')" "0" "v1.6: memoria coherente no avisa"
+printf 'x\n' > "$mem/dos.md"; printf -- '- [Uno](uno.md) — ok\n- [dos] indexada por slug, sin .md\n' > "$mem/MEMORY.md"
+set +e; out="$(dr_en "$rp")"; set -e
+ck "$(echo "$out" | grep -c '^WARN · memoria ')" "0" "v1.6: una entrada [slug] sin .md cuenta como indexada"
+rm "$mem/dos.md"; printf -- '- [Uno](uno.md) — ok\n' > "$mem/MEMORY.md"
 # 2. MEMORY.md por encima del 75 % de lo que Claude Code carga (150 lineas o 20 KB)
 { printf -- '- [Uno](uno.md) — ok\n'; for i in $(seq 1 150); do printf -- '- nota %s\n' "$i"; done; } > "$mem/MEMORY.md"
 set +e; out="$(dr_en "$rp")"; set -e

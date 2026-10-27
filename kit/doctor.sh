@@ -474,7 +474,8 @@ for mem in "$CLAUDE_HOME"/projects/*/memory; do
   for f in "$mem"/*.md; do
     [ -e "$f" ] || continue
     base="${f##*/}"; [ "$base" = MEMORY.md ] && continue
-    case "$idx_txt" in *"$base"*) ;; *) sin="$sin $base" ;; esac
+    # El índice también enlaza por slug entre corchetes, sin .md: «- [slug] …».
+    case "$idx_txt" in *"$base"* | *"[${base%.md}]"*) ;; *) sin="$sin $base" ;; esac
   done
   while IFS= read -r l; do
     l="${l#\](}"; l="${l%)}"
