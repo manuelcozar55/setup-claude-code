@@ -15,6 +15,8 @@ Stop que lo fuerce.
 (actualizar el nucleo o `handoff --desde`). Una denegación por banda y sesión. Pasan siempre `.claude/estado/` y
 `handoff`; un nucleo escrito tras el aviso la desarma; los subagentes (`agent_id`) no cuentan; falla en abierto;
 `env.CC_NUCLEO_GATE=0` la apaga. El nudge deja `nudge-<sid>.nucleo` (ruta que miró; su mtime es la hora del aviso).
+Desde `~` mira el nucleo de la ranura de la sesión, si se conoce su pid; sin ranura no hay compuerta (v1.6.1). Cada
+denegación deja una línea en `session-logs/gate-denegaciones.log` (fecha, sesión, banda, herramienta, nucleo) para medirla.
 
 ## Por qué PreToolUse
 
