@@ -4,7 +4,7 @@
 # Uso: test_nucleo_gate.sh [ruta al hook]. Sin red; HOME falso en un mktemp que se borra.
 set -u
 H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-gate.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home; unset CLAUDE_PID CLAUDE_PROJECT_DIR CC_NUCLEO_GATE
+export HOME=$T/home; unset CLAUDE_PID CLAUDE_PROJECT_DIR; export CC_NUCLEO_GATE=1
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
 L=$HOME/.claude/session-logs; mkdir -p "$L" "$T/r/.claude/estado"
