@@ -402,12 +402,13 @@ fi
 # puede llevar el refspec (push y +), y pasadas 16 se deniega: fallar cerrado.
 NEST=0
 push_refspec() {
-  local depth=$1 kind=$2 seg a i inner skip dd rc
+  local depth=$1 kind=$2 seg a i inner skip dd rc v
   local -a T segs
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
     case $kind in
       force) [[ $seg == *push* ]] || continue ;;
+      verify) [[ $seg == *push* || $seg == *commit* ]] || continue ;;
       delete) [[ $seg == *push* && ( $seg == *-d* || $seg == *-[A-Za-z]*d* || $seg == *--de* || $seg == *:* ) ]] || continue ;;
     esac
     cmdn_fields "$seg"
@@ -424,6 +425,7 @@ push_refspec() {
         esac
         case $kind in
           force) [[ $inner == *push* ]] || continue ;;
+          verify) [[ $inner == *push* || $inner == *commit* ]] || continue ;;
           delete) [[ $inner == *push* && ( $inner == *-d* || $inner == *-[A-Za-z]*d* || $inner == *--de* || $inner == *:* ) ]] || continue ;;
         esac
         (( depth < 3 && ++NEST <= 16 )) || return 2
@@ -433,7 +435,8 @@ push_refspec() {
       done
       continue
     fi
-    [[ ${T[2]:-} == push ]] || continue
+    if [[ $kind == verify ]]; then [[ ${T[2]:-} == push || ${T[2]:-} == commit ]] || continue
+    else [[ ${T[2]:-} == push ]] || continue; fi
     skip=0; dd=0
     for a in "${T[@]:3}"; do
       if (( skip )); then skip=0; continue; fi
@@ -452,12 +455,30 @@ push_refspec() {
             -*) [[ ${a#-} == *d* ]] && return 0 ;;
           esac
         fi
-        case $a in --repo|-o|--push-option|--receive-pack|--exec) skip=1 ;; esac
+        if [[ $kind == verify ]]; then
+          # `--no-veri` ya es `--no-verify` (`--no-v` es ambigua). Un flag corto de commit con `n` (`-n`, `-an`) salta los
+          # hooks; en cuanto sale una letra que toma valor (`-m`, `-F`...) lo que sigue es ese valor, no mas flags.
+          case $a in
+            --no-veri|--no-verif|--no-verify) return 0 ;;
+            --*) ;;
+            *) if [[ ${T[2]} == commit ]]; then
+                 v=${a#-}
+                 while [[ -n $v ]]; do
+                   case ${v:0:1} in
+                     n) return 0 ;;
+                     m|F|C|c|t) [[ ${#v} -eq 1 ]] && skip=1; break ;;
+                   esac
+                   v=${v:1}
+                 done
+               fi ;;
+          esac
+        fi
+        case $a in --repo|-o|--push-option|--receive-pack|--exec|--message|--file|--reuse-message|--reedit-message|--author|--date|--template) skip=1 ;; esac
         continue
       fi
       if [[ $kind == force ]]; then
         [[ $a == +* || $a == '$'+* ]] && return 0
-      else
+      elif [[ $kind == delete ]]; then
         [[ $a == :?* || $a == '$':?* ]] && return 0
       fi
     done
@@ -469,6 +490,12 @@ if [[ $COMMAND == *git* && $COMMAND == *push* ]]; then
   push_refspec 0 force; rc_refspec=$?
   (( rc_refspec == 0 )) && deny "BLOCKED: git push --force / -f / +refspec (force push)"
   (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"
+fi
+NEST=0
+if [[ $COMMAND == *git* && ( $COMMAND == *push* || $COMMAND == *commit* ) ]]; then
+  push_refspec 0 verify; rc_refspec=$?
+  (( rc_refspec == 0 )) && deny "BLOCKED: --no-verify salta los hooks de git; arregla el hook que falla"
+  (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git commit/push: no caben en el timeout del guard; dividelo en comandos cortos"
 fi
 NEST=0
 if [[ $COMMAND == *git* && $COMMAND == *push* && ( $COMMAND == *-d* || $COMMAND == *-[A-Za-z]*d* || $COMMAND == *--de* || $COMMAND == *:* ) ]]; then

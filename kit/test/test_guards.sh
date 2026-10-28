@@ -1545,6 +1545,21 @@ bdc "b v1.6.1: eval con push forzado denegado" "eval \"$FP $FF\"" deny
 bdc "b v1.6.1: sustitucion con push forzado denegada" "echo \$($FP $FF)" deny
 bdc "b v1.6.1: commit con sustitucion que fuerza denegado" "git commit -m \"\$($FP $FF)\"" deny
 bdc "b v1.6.1: commit y bash -c con push forzado denegado" "git commit -m x && bash -c \"$FP $FF\"" deny
+# b2) Ronda 2: el flag que salta los hooks se decide sobre tokens descomillados, como el push forzado.
+NV="--no-""verify"; GP="git pu""sh"
+bdc "b2 ronda2: push con el flag entre comillas simples denegado" "$GP '$NV' origin x" deny
+bdc "b2 ronda2: push con comillas en medio del flag denegado" "$GP --no-\"verify\" origin x" deny
+bdc "b2 ronda2: commit con -n entre comillas denegado" "git commit \"-\"n" deny
+bdc "b2 ronda2: commit con el flag largo entre comillas denegado" "git commit '$NV' -m x" deny
+bdc "b2 ronda2: commit con el flag tras el mensaje denegado" "git commit -m x $NV" deny
+bdc "b2 ronda2: commit -nm denegado" "git commit -nm x" deny
+bdc "b2 ronda2: commit -a -n denegado" "git commit -a -n -m x" deny
+bdc "b2 ronda2: prefijo no ambiguo del flag denegado" "git commit --no-veri -m x" deny
+bdc "b2 ronda2: bash -c con el flag entre comillas denegado" "bash -c \"git commit '$NV' -m x\"" deny
+bdc "b2 ronda2: el mensaje que nombra el flag sigue permitido" "git commit -m \"skip $NV docs\"" allow
+bdc "b2 ronda2: -am con mensaje que lleva -n permitido" "git commit -am \"usa -n en prosa\"" allow
+bdc "b2 ronda2: --message con mensaje que lleva el flag permitido" "git commit --message \"$NV\"" allow
+bdc "b2 ronda2: push normal permitido" "$GP origin x" allow
 # c) `.env` anclado al nombre del fichero: `.envrc` (direnv) y `<algo>.env` siguen denegados.
 EN=".e""nv"
 for c in "git add docs/${EN}ironment.md" "git add src/${EN}elope.txt" "git add ${EN}ironment" "git add '*.ts'" "git add src/*"; do
