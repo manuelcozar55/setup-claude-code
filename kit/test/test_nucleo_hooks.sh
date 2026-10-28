@@ -888,6 +888,7 @@ ok "post-compact: desde ~ el git status no da anclas" "$(tail -n1 "$PCL" | awk -
 # --- una sola ruta del nucleo de sesión: desde ~ con ranura, nudge, edad del KPI y pendientes del checkpoint salen de la ranura ---
 mkdir -p "$HOME/.claude/estado"
 printf '## Pendientes\n- [ ] PEND-COMPARTIDO\n' >"$HOME/.claude/estado/nucleo.md"; touch -d '-3 hours' "$HOME/.claude/estado/nucleo.md"
+# shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
 RS=$(export CLAUDE_PID=$$; . "$H/lib/nucleo.sh"; nucleo_sesion_dir crear)
 printf '## Pendientes\n- [ ] PEND-RANURA\n' >"$RS/nucleo.md"; touch -d '-30 minutes' "$RS/nucleo.md"
 jq -cn --arg c "$HOME" --arg t "$TP" '{session_id:"rs1",transcript_path:$t,cwd:$c,tool_name:"Bash"}' | CLAUDE_PID=$$ bash "$H/nucleo-nudge.sh" >/dev/null
@@ -912,6 +913,7 @@ ev "$R" pc1 "$TPC" | bash "$H/pre-compact.sh" 2>/dev/null
 pc "$R" pc1 'se tocó alfa.py' >/dev/null
 ok "post-compact: con anclas → medida=ok, total y perdidas" "$(pk medida),$(pk anclas_total),$(pk anclas_perdidas)" "ok,2,1"
 R9=$T/repo9; mkdir -p "$R9"; git -C "$R9" init -q
+# shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
 FB9=$(. "$H/lib/nucleo.sh"; nucleo_estado_fallback "$R9"); mkdir -p "$FB9/checkpoints"; : >"$FB9/.nucleo-fallback"
 printf '## git\nrama: main\n M src/fb.py\n' >"$FB9/checkpoints/checkpoint-compact-$(printf '%s' fb9 | sha256sum | cut -d' ' -f1).md"
 pc "$R9" fb9 'nada' >/dev/null
