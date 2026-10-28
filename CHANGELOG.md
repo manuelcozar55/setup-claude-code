@@ -7,6 +7,8 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-10-28
+
 ### Changed
 
 - **La compuerta del nucleo pasa a ser opt-in**: solo actúa con `env.CC_NUCLEO_GATE=1`. Llegó activa por defecto sin A/B y con métricas que, desde `~`, miraban otro nucleo (ver Fixed). Hasta medirla, no deniega a quien no la pida. `doctor` ya no avisa de `CC_NUCLEO_GATE=0`, que ahora equivale al valor por defecto. Tests: `test_nucleo_gate.sh`, `test_doctor.sh`.
@@ -21,6 +23,8 @@ etiquetado.
 - **Sentinel dejaba copiar sobre la config viva si el destino era un directorio**: `cp|mv|install|ln <origen>/settings.json ~/.claude/` (también sin barra, con `-t` o con `--target-directory`) pasaba, porque se juzgaba el operando y no `dir/basename(origen)`. Ahora se juzga el fichero efectivo con la misma protección que el destino explícito. Política conservadora: `cp -r` y `rsync` hacia `~/.claude` o un ancestro suyo (`~`, `/home`, `/`) se deniegan siempre, porque el árbol copiado puede llevar `settings.json` o `hooks/`. Con eso, `cp -r <dir> ~/` también se deniega. Un glob de origen hacia `~/.claude` se deniega si casa con `settings.json`, `hooks` o `sentinel`; los globs hacia otros directorios no se expanden. Cierre incompleto de v1.5.1. Tests: `test_guards.sh`.
 
 ### Fixed
+
+- **El índice del nucleo respeta el tope de 2 500 con cualquier locale**: el marcador `[recortado]` se sumaba después del corte y, con `LANG` sin definir (bytes), el total llegaba a 2 507. Con `env -i` sin `LANG`, `make test` se paraba en `test_nucleo_lib.sh`. El K11 de `test_doctor.sh` mira solo lo versionado: un `.out` ignorado ya no lo rompe.
 
 - **El push forzado con el flag entrecomillado vuelve a denegarse** (`git push '-f' origin rama`, `--"force"`, `"-"f`, `'-uf'`, el flag tras el refspec). `block-dangerous-commands.sh` lo decide ahora sobre los tokens descomillados de la sentencia `git push`, como ya hacía con `+rama`; el mensaje de un `git commit` que nombra el flag sigue siendo texto.
 - **Cuatro falsos positivos de los guards** que se sufrían a diario:
@@ -2126,7 +2130,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.4.1...v1.5.0
