@@ -59,7 +59,9 @@ for seg in "${CMDN_SEGS[@]}"; do
       continue
     fi
     # .env files (allow known-safe template variants: .env.example, .env.template, .env.sample, .env.dist)
-    if [[ $op =~ \.env ]] && ! [[ $op =~ \.env\.(example|template|sample|dist) ]]; then
+    # Anclado al nombre: `.environment.md` o `venv.env.ts` no son un .env. `.envrc` se deniega a proposito (direnv).
+    name=${op##*/}
+    if [[ $name =~ ^(.*\.env|\.env(\..+)?|\.envrc)$ ]] && ! [[ $name =~ \.env\.(example|template|sample|dist)$ ]]; then
       echo "BLOCKED: Staging .env file — add to .gitignore instead." >&2
       exit 2
     fi

@@ -496,9 +496,23 @@ writes_text_to_file() {
   return 1
 }
 
+# Las dos reglas de force push se juzgan sin el argumento de -m/--message de un commit: ahi es texto
+# (`git commit -m "nunca git push --force"`). Solo se quita si nada del comando ejecuta texto: ni `$(`
+# ni backtick (en el mensaje se ejecutan), ni un interprete, `eval`, `ssh`, `xargs`, `source`, `exec` o
+# `<(` fuera de ese argumento (`bash -c "..."` se sigue leyendo entero). Si algo de eso aparece, el
+# literal se juzga como antes.
+FORCE_SCAN=$COMMAND
+if [[ $COMMAND == *commit* && $COMMAND != *"\$("* &&$COMMAND != *\`* ]]; then
+  nomsg=$(sed -E "s/(-[A-Za-z]*m|--message)[[:space:]=]*(\"[^\"]*\"|'[^']*')//g" <<<"$COMMAND")
+  LC_ALL=C grep -qiE '(^|[^[:alnum:]_-])((ba|z|da|k|c|fi)?sh|eval|ssh|xargs|source|exec|python[0-9.]*|perl|ruby|node|php)([^[:alnum:]_]|$)|<\(' <<<"$nomsg" \
+    || FORCE_SCAN=$nomsg
+fi
+
 SAFE_FETCH=''
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do
-  echo "$COMMAND" | LC_ALL=C grep -qiE "${DENY_RULES[i]}" || continue
+  rule_text=$COMMAND
+  [[ ${DENY_RULES[i + 1]} == "BLOCKED: git push --force" || ${DENY_RULES[i + 1]} == "BLOCKED: git push -f / -uf (force push)" ]] && rule_text=$FORCE_SCAN
+  echo "$rule_text" | LC_ALL=C grep -qiE "${DENY_RULES[i]}" || continue
   if [[ ${DENY_RULES[i]} == "$RCE_CURL" || ${DENY_RULES[i]} == "$RCE_WGET" ]]; then
     [[ -z $SAFE_FETCH ]] && { if fetch_safe_reader "$COMMAND"; then SAFE_FETCH=yes; else SAFE_FETCH=no; fi; }
     [[ $SAFE_FETCH == yes ]] && continue

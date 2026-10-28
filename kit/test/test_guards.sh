@@ -1496,6 +1496,54 @@ expect "destino-dir: cp otro fichero a ~/.claude/ pasa"   "$(run_sentinel "cp /t
 expect "destino-dir: cp settings a /tmp/dest/ pasa"       "$(run_sentinel "cp /tmp/x/$CFGJ /tmp/dest/")"            ALLOW
 expect "destino-dir: cp -r a /tmp/dest pasa"              "$(run_sentinel "cp -r /tmp/x/arbol /tmp/dest")"          ALLOW
 expect "destino-dir: mv a /tmp/dest/ pasa"                "$(run_sentinel "mv /tmp/x/$CFGJ /tmp/dest/")"            ALLOW
+# v1.6.1 (T2): falsos positivos de los guards de shell y del aviso de stale-read.
+# a) `git clean` con `n` agrupada es simulacion (`-nd` igual que `-n -d`); `-fd`, `-fdx` y `-df` se deniegan.
+for c in 'git clean -nd' 'git clean -dn' 'git clean -ndx' 'git clean -n -d' 'git clean --dry-run -d'; do
+  expect "destructive v1.6.1: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+for c in 'git clean -fd' 'git clean -fdx' 'git clean -df' 'git clean -d -f' 'git clean -f'; do
+  expect "destructive v1.6.1: $c denegado" "$(run_dg "$c")" BLOCK
+done
+# b) El mensaje de un commit es texto: no se juzga como push forzado. El texto de un `bash -c`, `sh -c`,
+# `eval` o `$(...)` se ejecuta: ahi se sigue denegando. Los comandos se montan por partes (guard vivo).
+FP="git pu""sh"; FF="--for""ce"
+bdc "b v1.6.1: commit con push forzado en el mensaje (dobles)" "git commit -m \"never $FP $FF\"" allow
+bdc "b v1.6.1: commit con push forzado en el mensaje (simples)" "git commit -m 'never $FP $FF'" allow
+bdc "b v1.6.1: commit con push -f en el mensaje" "git commit -m \"nunca $FP -f\"" allow
+bdc "b v1.6.1: commit -am con push forzado en el mensaje" "git commit -am \"no $FP $FF\"" allow
+bdc "b v1.6.1: push forzado real sigue denegado" "$FP $FF origin main" deny
+bdc "b v1.6.1: push -f real sigue denegado" "$FP -f origin main" deny
+bdc "b v1.6.1: commit y push forzado encadenado denegado" "git commit -m \"x\" && $FP $FF" deny
+bdc "b v1.6.1: flag entre comillas denegado" "$FP \"$FF\" origin main" deny
+bdc "b v1.6.1: bash -c con push forzado denegado" "bash -c \"$FP $FF\"" deny
+bdc "b v1.6.1: sh -c con push forzado denegado" "sh -c '$FP $FF'" deny
+bdc "b v1.6.1: eval con push forzado denegado" "eval \"$FP $FF\"" deny
+bdc "b v1.6.1: sustitucion con push forzado denegada" "echo \$($FP $FF)" deny
+bdc "b v1.6.1: commit con sustitucion que fuerza denegado" "git commit -m \"\$($FP $FF)\"" deny
+bdc "b v1.6.1: commit y bash -c con push forzado denegado" "git commit -m x && bash -c \"$FP $FF\"" deny
+# c) `.env` anclado al nombre del fichero: `.envrc` (direnv) y `<algo>.env` siguen denegados.
+EN=".e""nv"
+for c in "git add docs/${EN}ironment.md" "git add venv${EN}.ts" "git add src/${EN}elope.txt"; do
+  expect "secret-guard v1.6.1: $c NO denegado" "$(run_secret "$c")" ALLOW
+done
+for c in "git add $EN" "git add sub/$EN" "git add ${EN}rc" "git add $EN.local" "git add sub/$EN.production" "git add config$EN" \
+         "git add -f $EN.staging" "git add ok.txt ${EN}rc"; do
+  expect "secret-guard v1.6.1: $c denegado" "$(run_secret "$c")" BLOCK
+done
+for c in "git add $EN.example" "git add sub/$EN.template" "git add $EN.sample" "git add $EN.dist"; do
+  expect "secret-guard v1.6.1: $c NO denegado" "$(run_secret "$c")" ALLOW
+done
+# d) stale-read: un subagente no ha editado "en esta sesion" el fichero que otro hilo tocó; no se le avisa.
+SR_TR="$GUARDS_TEST_HOME/sr-transcript.jsonl"
+SR_F="$GUARDS_TEST_HOME/sr-target.txt"
+jq -nc --arg f "$SR_F" '{message:{content:[{type:"tool_use",name:"Edit",input:{file_path:$f}}]}}' > "$SR_TR"
+sr_run() { jq -nc --arg f "$SR_F" --arg t "$SR_TR" --argjson extra "$1" '{tool_name:"Read",tool_input:{file_path:$f},transcript_path:$t} + $extra' | "$PY" "$KIT/claude/hooks/stale-read-guard.py" 2>&1; }
+sr_out=$(sr_run '{}')
+[[ $sr_out == *STALE-READ* ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: stale-read v1.6.1: el hilo principal que edito y relee debe recibir el aviso: $sr_out"; }
+sr_out=$(sr_run '{"agent_id":"a1"}')
+[ -z "$sr_out" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: stale-read v1.6.1: un subagente (agent_id) no debe recibir el aviso: $sr_out"; }
+sr_out=$(sr_run '{"parent_tool_use_id":"toolu_1"}')
+[ -z "$sr_out" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: stale-read v1.6.1: un subagente (parent_tool_use_id) no debe recibir el aviso: $sr_out"; }
 
 rm -rf "$SG_DIR"
 rm -rf "$GUARDS_TEST_HOME" "$FIELDS_HOME"

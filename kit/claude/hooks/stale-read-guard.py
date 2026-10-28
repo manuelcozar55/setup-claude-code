@@ -74,10 +74,20 @@ def _edited_in_session(transcript: str, targets: set[str], needle: str) -> bool:
     return False
 
 
+def in_subagent(data: dict) -> bool:
+    """Un subagente no "ya edito" nada: arranca sin ese contexto. Mismo discriminador que write-guard.py."""
+    transcript = data.get("transcript_path")
+    return bool(data.get("agent_id") or data.get("parent_tool_use_id")
+                or isinstance(transcript, str) and "/subagents/" in transcript)
+
+
 def main() -> None:
     payload = json.load(sys.stdin)
 
     if payload.get("tool_name") != "Read":
+        return
+
+    if in_subagent(payload):
         return
 
     tool_input = payload.get("tool_input") or {}
