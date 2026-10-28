@@ -394,7 +394,8 @@ nucleo_indice() {
   pers=$(printf '%s' "$pers" | sort -t$'\t' -s -k1,1rn | head -n 8 | cut -f2-)
   while IFS= read -r l; do
     [ -n "$l" ] || continue
-    [ $(( ${#out} + ${#l} + 1 )) -le 2500 ] || { out="$out"$'\n[recortado]'; break; }
+    # 2488 = 2500 menos el marcador «\n[recortado]» (12), que se añade tras el último que cabe
+    [ $(( ${#out} + ${#l} + 1 )) -le 2488 ] || { out="$out"$'\n[recortado]'; break; }
     out="${out:+$out$'\n'}$l"
   done < <(printf '%s\n%s\n' "$rows" "$pers" | LC_ALL=C tr -d '\000-\010\013-\037\177' | nucleo_sin_bidi | sed 's|</|<\\/|g')
   printf '%s\n' "$out"
