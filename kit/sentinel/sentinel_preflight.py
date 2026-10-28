@@ -1420,16 +1420,79 @@ def _is_claude_home(word: str, cwd: str) -> bool:
     return bool(re.fullmatch(_HOME_RX + r"/\.claude", path) or home and path == f"{home}/.claude")
 
 
-def _effective_dest_hit(name: str, args: list[str], pos: list[str], cwd: str) -> str | None:
+# Opciones cortas con valor de cada orden (`cp -S .bak`, `install -m 644`...) y las largas que el kit reconoce, con el
+# minimo de letras que las hace inequivocas (cp, mv, install y ln aceptan abreviaturas: `--target` es `--target-directory`).
+_VAL_SHORT = {"cp": "tS", "mv": "tS", "ln": "tS", "install": "tSmog"}
+_LONG_OPTS = {"--target-directory": 3, "--suffix": 4, "--parents": 4, "--recursive": 5, "--archive": 4,
+              "--no-target-directory": 6, "--mode": 4, "--owner": 4, "--group": 4}
+_LONG_VAL = {"--target-directory", "--suffix", "--mode", "--owner", "--group"}
+
+
+def _dest_args(name: str, args: list[str]) -> tuple[list[str], list[str], set[str]]:
+    """cp/mv/install/ln: (operandos sin los valores de las opciones, destinos de -t/--target-directory, opciones vistas).
+    Las cortas se leen letra a letra (`-ft DIR`, `-sr`, `-vt`): `-r` es recursivo en cp y relativo en ln."""
+    pos, tdirs, flags, dd, i = [], [], set(), False, 0
+    valued = _VAL_SHORT.get(name, "")
+    while i < len(args):
+        a, i = args[i], i + 1
+        if dd or not a.startswith("-") or a == "-":
+            pos.append(a)
+        elif a == "--":
+            dd = True
+        elif a.startswith("--"):
+            key, eq, val = a.partition("=")
+            key = next((k for k, n in _LONG_OPTS.items() if len(key) >= n and k.startswith(key)), key)
+            flags.add(key)
+            if key in _LONG_VAL and not eq and i < len(args):
+                val, i = args[i], i + 1
+            if key == "--target-directory":
+                tdirs.append(val)
+        else:
+            for k, ch in enumerate(a[1:], 1):
+                flags.add(ch)
+                if ch in valued:
+                    val = a[k + 1:]
+                    if not val and i < len(args):
+                        val, i = args[i], i + 1
+                    if ch == "t":
+                        tdirs.append(val)
+                    break
+    return pos, tdirs, flags
+
+
+def _braces(word: str, limit: int = 64) -> list[str]:
+    """`{a,b}` de la shell, una variante por alternativa (sin pasar de `limit`: quien llama deniega si se pasa)."""
+    m = re.search(r"\{([^{}]*,[^{}]*)\}", word)
+    if not m:
+        return [word]
+    out: list[str] = []
+    for alt in m.group(1).split(","):
+        out += _braces(word[:m.start()] + alt + word[m.end():], limit)
+        if len(out) > limit:
+            break
+    return out
+
+
+def _hits_protected(full: str, cwd: str) -> bool:
+    """Ruta final del fichero escrito. Con glob se compara, componente a componente, con los nombres protegidos de
+    ~/.claude (settings.json, settings.local.json, hooks, sentinel y lo que cuelga de los dos ultimos)."""
+    if not re.search(r"[*?\[]", full):
+        return _protected_path(full, cwd)
+    claude = os.path.expanduser("~").rstrip("/") + "/.claude"
+    cands = [f"{claude}/{n}" for n in ("settings.json", "settings.local.json", "hooks", "sentinel", "hooks/x", "sentinel/x")]
+    parts = full.split("/")
+    return any(len(c.split("/")) == len(parts) and all(fnmatchcase(a, b) for a, b in zip(c.split("/"), parts)) for c in cands)
+
+
+def _effective_dest_hit(name: str, args: list[str], pos: list[str], tdir: list[str], flags: set[str], cwd: str) -> str | None:
     """cp/mv/install/ln/rsync onto a directory write `dir/basename(source)`: judge that file, not the operand.
     Directory = trailing slash, -t/--target-directory, or one that exists (`~/.claude` without slash).
-    Recursive cp and any rsync into ~/.claude or one of its ancestors are denied outright (conservative:
-    the tree being copied may carry settings.json or hooks/)."""
-    tdir = [b for a, b in zip(args, args[1:]) if a == "-t"] + [a.partition("=")[2] for a in args if a.startswith("--target-directory=")]
-    tdir += [a[2:] for a in args if a.startswith("-t") and len(a) > 2 and not a.startswith("--")]
+    `cp --parents` writes `dir/<path of the source>`. Sources are expanded (`{a,b}`) and globs are compared with the
+    protected names. Recursive cp and any rsync into ~/.claude or one of its ancestors are denied outright
+    (conservative: the tree being copied may carry settings.json or hooks/)."""
     dest = tdir[-1] if tdir else (pos[-1] if pos else "")
-    srcs = [p for p in pos if p not in tdir] if tdir else pos[:-1]
-    if not dest or not srcs:
+    srcs = pos if tdir else pos[:-1]
+    if not dest or not srcs or "-T" in flags or "--no-target-directory" in flags:
         return None
     path = expand(dest)
     path = os.path.normpath(path if os.path.isabs(path) else os.path.join(cwd, path))
@@ -1437,16 +1500,79 @@ def _effective_dest_hit(name: str, args: list[str], pos: list[str], cwd: str) ->
         return None
     home = os.path.expanduser("~").rstrip("/")
     claude = f"{home}/.claude"
-    recursive = name == "rsync" or any(re.match(r"-[A-Za-z]*[rRa]", a) or a in ("--recursive", "--archive") for a in args)
+    recursive = name == "rsync" or (name == "cp" and bool(flags & {"r", "R", "a", "--recursive", "--archive"}))
     if recursive and (_is_claude_home(path, cwd) or claude.startswith(path.rstrip("/") + "/")):
         return dest
+    parents = name == "cp" and "--parents" in flags
     for src in srcs:
-        base = os.path.basename(os.path.normpath(src))
-        if re.search(r"[*?\[]", base):
-            if _is_claude_home(path, cwd) and any(fnmatchcase(n, base) for n in ("settings.json", "hooks", "sentinel")):
-                return dest
-        elif base and _protected_path(os.path.join(path, base), cwd):
+        variants = _braces(src)
+        if len(variants) > 64:
             return dest
+        for v in variants:
+            if parents:
+                rel = os.path.normpath(expand(v)).lstrip("/")
+                full = os.path.normpath(os.path.join(path, rel))
+            else:
+                base = os.path.basename(os.path.normpath(v))
+                full = os.path.join(path, base) if base else ""
+            if full and _hits_protected(full, cwd):
+                return dest
+    return None
+
+
+# tar: opciones cortas con valor (`-f ARCH`, `-C DIR`...). Extraer en ~/.claude, en un ancestro suyo o en hooks/ o sentinel/
+# planta ficheros sobre la config viva, sea cual sea el miembro: no se leen los nombres de miembro (una opcion larga con
+# valor separado, `--exclude X`, se confundiria con uno).
+_TAR_VAL = "fCTXIKLNVbgFH"
+
+
+def _tar_hit(args: list[str], cwd: str) -> str | None:
+    dirs: list[str] = []
+    st = {"cur": cwd, "archive": None, "extract": False}
+    pending: list[str] = []
+
+    def take(opt: str, val: str) -> None:
+        if opt == "C":
+            st["cur"] = os.path.normpath(os.path.join(st["cur"], expand(val)))
+            dirs.append(st["cur"])
+        elif opt == "f":
+            st["archive"] = val
+
+    dd = False
+    for n, a in enumerate(args):
+        if pending:
+            take(pending.pop(0), a)
+        elif dd or a == "-" or not (a.startswith("-") or n == 0):
+            continue
+        elif a == "--":
+            dd = True
+        elif a.startswith("--"):
+            key, eq, v = a.partition("=")
+            st["extract"] |= len(key) >= 4 and ("--extract".startswith(key) or "--get".startswith(key))
+            for opt, long in (("C", "--directory"), ("f", "--file")):
+                if len(key) >= 4 and long.startswith(key):
+                    take(opt, v) if eq else pending.append(opt)
+        else:
+            letters = a.lstrip("-")
+            for k, c in enumerate(letters, 1):
+                st["extract"] |= c == "x"
+                if c in _TAR_VAL and n == 0 and not a.startswith("-"):
+                    pending.append(c)
+                elif c in _TAR_VAL:
+                    if letters[k:]:
+                        take(c, letters[k:])
+                    else:
+                        pending.append(c)
+                    break
+    claude = os.path.expanduser("~").rstrip("/") + "/.claude"
+    if st["extract"]:
+        for d in dirs or [cwd]:
+            d = os.path.normpath(d)
+            broad = _is_claude_home(d, cwd) or d == claude or (bool(dirs) and claude.startswith(d.rstrip("/") + "/"))
+            if broad or _protected_path(d, cwd):
+                return d
+    elif st["archive"] and _protected_path(st["archive"], cwd):
+        return st["archive"]
     return None
 
 
@@ -1466,19 +1592,21 @@ def _writes_protected(words: list[str], cwd: str, depth: int) -> str | None:
             dd = True
         elif dd or not a.startswith("-"):
             pos.append(a)
+    tdir: list[str] = []
+    flags: set[str] = set()
+    if name in ("mv", "cp", "install", "ln"):
+        pos, tdir, flags = _dest_args(name, args)
+    if name in ("tar", "bsdtar", "gtar") and (hit := _tar_hit(args, cwd)):
+        return hit
     if name == "mv" or (name == "rm" and any(re.match(r"-[A-Za-z]*[rR]", a) or a == "--recursive" for a in args if not dd)):
         # The parent directory itself as the thing moved or removed; as the last operand of `mv` it is only the destination.
-        tdir = [b for a, b in zip(args, args[1:]) if a == "-t"] + [a.partition("=")[2] for a in args if a.startswith("--target-directory=")]
-        moved = [p for p in pos if p not in tdir] if name == "mv" and tdir else pos[:-1] if name == "mv" else pos
+        moved = pos if name == "rm" or tdir else pos[:-1]
         if (hit := next((p for p in moved if _is_claude_home(p, cwd)), None)):
             return hit
     if name in _WRITE_ALL:
-        cand = args if name in ("curl", "wget") else pos
+        cand = args if name in ("curl", "wget") else pos + tdir
     elif name in _WRITE_DEST:
-        cand = pos[-1:]
-        cand += [b for a, b in zip(args, args[1:]) if a == "-t"]
-        cand += [a.partition("=")[2] for a in args if a.startswith("--target-directory=")]
-        cand += [a[2:] for a in args if a.startswith("-t") and len(a) > 2 and not a.startswith("--")]
+        cand = tdir or pos[-1:]
     elif name in ("sed", "perl", "ruby"):
         inplace = any(re.match(r"-[A-Za-z]*i", a) or a.startswith("--in-place") for a in args
                       if not (name != "sed" and a.startswith("--")))
@@ -1489,7 +1617,7 @@ def _writes_protected(words: list[str], cwd: str, depth: int) -> str | None:
         cand = pos if any(a in ("-delete", "-exec", "-execdir", "-ok", "-okdir") for a in args) else []
     else:
         cand = []
-    if name in ("mv", "cp", "install", "ln", "rsync") and (hit := _effective_dest_hit(name, args, pos, cwd)):
+    if name in ("mv", "cp", "install", "ln", "rsync") and (hit := _effective_dest_hit(name, args, pos, tdir, flags, cwd)):
         return hit
     return next((c for c in cand if _protected_path(c, cwd)), None)
 

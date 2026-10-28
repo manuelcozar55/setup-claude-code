@@ -1512,6 +1512,26 @@ expect "destino-dir: cp otro fichero a ~/.claude/ pasa"   "$(run_sentinel "cp /t
 expect "destino-dir: cp settings a /tmp/dest/ pasa"       "$(run_sentinel "cp /tmp/x/$CFGJ /tmp/dest/")"            ALLOW
 expect "destino-dir: cp -r a /tmp/dest pasa"              "$(run_sentinel "cp -r /tmp/x/arbol /tmp/dest")"          ALLOW
 expect "destino-dir: mv a /tmp/dest/ pasa"                "$(run_sentinel "mv /tmp/x/$CFGJ /tmp/dest/")"            ALLOW
+# Ronda 2 (Sentinel): destino por -t/--target-directory (con espacio, agrupado), --parents, globs y llaves, tar -x.
+CFGL="settings.local"".json"; TD="--target-""directory"
+for c in "cp $TD ~/.claude /tmp/x/$CFGJ" "cp $TD=~/.claude /tmp/x/$CFGJ" "cp --target ~/.claude /tmp/x/$CFGJ" "cp -ft ~/.claude /tmp/x/$CFGJ" \
+         "cp -t ~/.claude /tmp/x/$CFGJ" "cp -t~/.claude /tmp/x/$CFGJ" "install $TD ~/.claude/ /tmp/x/$CFGJ" "install -Dt ~/.claude /tmp/x/$CFGJ" \
+         "install -m 644 -t ~/.claude /tmp/x/$CFGJ" "install -m 644 /tmp/x/$CFGJ ~/.claude/" "mv $TD ~/.claude /tmp/x/$CFGJ" "mv -vt ~/.claude /tmp/x/$CFGJ" \
+         "ln -sft ~/.claude /tmp/x/$CFGJ" "ln $TD ~/.claude -s /tmp/x/$CFGJ" "cp -S .bak /tmp/x/$CFGJ ~/.claude/" \
+         "cp --parents .claude/$CFGJ ~/" "cp --parents .claude/hooks/x.sh ~/" "cp --parents -r .claude/sentinel ~/" "cd ~ && cp --parents .claude/$CFGJ ." \
+         "cp /tmp/$CFGL* ~/.claude/" "cp /tmp/[s]ettings.local.json ~/.claude/" "cp /tmp/{$CFGJ,notes.md} ~/.claude/" "cp /tmp/{notes.md,$CFGL} ~/.claude/" \
+         "cp /tmp/$CFGJ* ~/.claude/" "cp /tmp/x/* ~/.claude/hooks/" "cp /tmp/{a,b}/{c,$CFGJ} ~/.claude/" \
+         "tar -xf /tmp/p.tar -C ~/.claude" "tar -xf /tmp/p.tar -C ~/.claude -- $CFGJ" "tar -xzf /tmp/p.tgz --directory=~/.claude" \
+         "tar -C ~/.claude -xf /tmp/p.tar" "tar xf /tmp/p.tar -C ~" "tar -xf /tmp/p.tar --directory ~/.claude" \
+         "tar xCf ~/.claude /tmp/p.tar" "tar -x -C ~/.claude/hooks -f /tmp/p.tar" "tar -cf ~/.claude/hooks/p.tar x" "tar --extract --file /tmp/p.tar -C ~/.claude"; do
+  expect "destino ronda2: $c denegado" "$(run_sentinel "$c")" BLOCK
+done
+for c in "ln -sr /tmp/notes.md ~/" "ln -sr /tmp/x/$CFGJ /tmp/y/" "cp --parents safe/$CFGJ ~/.claude/" "cp -ft /tmp/y /tmp/x/$CFGJ" \
+         "cp -t /tmp/y ~/.claude/$CFGJ" "cp --parents .claude/$CFGJ /tmp/y/" "cp /tmp/{a,b} ~/.claude/" "cp /tmp/*.md ~/.claude/" \
+         "cp /tmp/*.json ~/" "cp -S .bak /tmp/x/notas.md ~/.claude/" "install -m 644 /tmp/x/notas.md ~/.claude/" \
+         "tar -xf /tmp/p.tar -C /tmp/y" "tar -cf /tmp/p.tar -C ~/.claude ." "tar -tf /tmp/p.tar" "tar xzf /tmp/p.tgz" "tar -xf /tmp/p.tar -C ~/proyecto"; do
+  expect "destino ronda2: $c NO denegado" "$(run_sentinel "$c")" ALLOW
+done
 # v1.6.1 (T2): falsos positivos de los guards de shell y del aviso de stale-read.
 # a) `git clean` con `n` agrupada es simulacion (`-nd` igual que `-n -d`); `-fd`, `-fdx` y `-df` se deniegan.
 for c in 'git clean -nd' 'git clean -dn' 'git clean -ndx' 'git clean -n -d' 'git clean --dry-run -d'; do
