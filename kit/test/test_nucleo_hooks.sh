@@ -889,7 +889,7 @@ ok "post-compact: desde ~ el git status no da anclas" "$(tail -n1 "$PCL" | awk -
 mkdir -p "$HOME/.claude/estado"
 printf '## Pendientes\n- [ ] PEND-COMPARTIDO\n' >"$HOME/.claude/estado/nucleo.md"; touch -d '-3 hours' "$HOME/.claude/estado/nucleo.md"
 # shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
-RS=$(export CLAUDE_PID=$$; . "$H/lib/nucleo.sh"; nucleo_sesion_dir crear)
+RS=$(. "$H/lib/nucleo.sh"; CLAUDE_PID=$$ nucleo_sesion_dir crear)
 printf '## Pendientes\n- [ ] PEND-RANURA\n' >"$RS/nucleo.md"; touch -d '-30 minutes' "$RS/nucleo.md"
 jq -cn --arg c "$HOME" --arg t "$TP" '{session_id:"rs1",transcript_path:$t,cwd:$c,tool_name:"Bash"}' | CLAUDE_PID=$$ bash "$H/nucleo-nudge.sh" >/dev/null
 ok "ranura desde ~: el nudge exige la ranura" "$(cat "$HOME/.claude/session-logs/nudge-rs1.nucleo" 2>/dev/null)" "$RS/nucleo.md"
