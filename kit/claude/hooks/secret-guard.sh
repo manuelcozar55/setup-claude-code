@@ -45,6 +45,37 @@ if ! cmdn_parse "$COMMAND"; then
   exit 2
 fi
 
+# Un componente que nombra un fichero de entorno. `.envrc` se deniega a proposito (direnv).
+env_name() {
+  local n=$1 c
+  if [[ $n == *[*?[]* ]]; then
+    [[ $n =~ ^\*+$ ]] && return 1
+    # Un glob casa con un fichero de entorno si casa con alguno de estos nombres tipicos. Acepta el falso
+    # positivo de `*.bak`, `*~` o `*.local`: no se puede saber que ficheros hay detras.
+    for c in .env .env.local .env.production .envrc x.env x.env.local production.env.bak config.env~ .env.bak .env-prod .env_local; do
+      # shellcheck disable=SC2053  # el glob es justo lo que se compara
+      [[ $c == $n ]] && return 0
+    done
+    return 1
+  fi
+  [[ $n =~ \.env\.(example|template|sample|dist)$ ]] && return 1
+  [[ $n =~ (\.env($|[.~_-])|\.envrc) ]]
+}
+# Expande las llaves `{a,b}` de un operando (una por pasada), una variante por linea.
+brace_expand() {
+  local w=$1 pre alt post a
+  if [[ $w =~ ^([^{]*)\{([^{}]*,[^{}]*)\}(.*)$ ]]; then
+    pre=${BASH_REMATCH[1]} alt=${BASH_REMATCH[2]} post=${BASH_REMATCH[3]}
+    alt+=,
+    while [[ -n $alt ]]; do
+      a=${alt%%,*}; alt=${alt#*,}
+      brace_expand "$pre$a$post"
+    done
+  else
+    printf '%s\n' "$w"
+  fi
+}
+
 shopt -s nocasematch
 for seg in "${CMDN_SEGS[@]}"; do
   cmdn_fields "$seg"
@@ -59,12 +90,19 @@ for seg in "${CMDN_SEGS[@]}"; do
       continue
     fi
     # .env files (allow known-safe template variants: .env.example, .env.template, .env.sample, .env.dist)
-    # Anclado al nombre: `.environment.md` o `venv.env.ts` no son un .env. `.envrc` se deniega a proposito (direnv).
-    name=${op##*/}
-    if [[ $name =~ ^(.*\.env|\.env(\..+)?|\.envrc)$ ]] && ! [[ $name =~ \.env\.(example|template|sample|dist)$ ]]; then
-      echo "BLOCKED: Staging .env file — add to .gitignore instead." >&2
-      exit 2
-    fi
+    # `.env` solo cuenta seguido de fin de nombre o de un separador (`.`, `~`, `-`, `_`): `.environment.md` no es un
+    # .env, pero `production.env.bak`, `config.env~` y `.env_local` si. Se mira cada componente de la ruta (`.env.d/x`)
+    # y los globs y llaves, que los interpreta git (o la shell) y no pasan por un nombre literal.
+    mapfile -t variants < <(brace_expand "$op")
+    for expanded in "${variants[@]}"; do
+      IFS=/ read -r -a comps <<<"$expanded"
+      for comp in "${comps[@]}"; do
+        if env_name "$comp"; then
+          echo "BLOCKED: Staging .env file — add to .gitignore instead." >&2
+          exit 2
+        fi
+      done
+    done
     # Credential/key files by name. Con los tokens ya descomillados la extension se ancla al final del
     # operando: `bundle.p12/data` no casa, igual que antes. No hay un "secret" suelto: casaba dentro de
     # palabras ajenas como "secreto".
