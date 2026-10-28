@@ -7,7 +7,24 @@ etiquetado.
 
 ## [Unreleased]
 
+### Changed
+
+- **La compuerta del nucleo pasa a ser opt-in**: solo actúa con `env.CC_NUCLEO_GATE=1`. Llegó activa por defecto sin A/B y con métricas que, desde `~`, miraban otro nucleo (ver Fixed). Hasta medirla, no deniega a quien no la pida. `doctor` ya no avisa de `CC_NUCLEO_GATE=0`, que ahora equivale al valor por defecto. Tests: `test_nucleo_gate.sh`, `test_doctor.sh`.
+
+### Security
+
+- **Sentinel dejaba copiar sobre la config viva si el destino era un directorio**: `cp|mv|install|ln <origen>/settings.json ~/.claude/` (también sin barra, con `-t` o con `--target-directory`) pasaba, porque se juzgaba el operando y no `dir/basename(origen)`. Ahora se juzga el fichero efectivo con la misma protección que el destino explícito. Política conservadora: `cp -r` y `rsync` hacia `~/.claude` o un ancestro suyo (`~`, `/home`, `/`) se deniegan siempre, porque el árbol copiado puede llevar `settings.json` o `hooks/`. Con eso, `cp -r <dir> ~/` también se deniega. Un glob de origen hacia `~/.claude` se deniega si casa con `settings.json`, `hooks` o `sentinel`; los globs hacia otros directorios no se expanden. Cierre incompleto de v1.5.1. Tests: `test_guards.sh`.
+
 ### Fixed
+
+- **Cuatro falsos positivos de los guards** que se sufrían a diario:
+  - `git clean -nd` (simulación, banderas agrupadas) se denegaba, mientras `-n -d` pasaba; `-fd`, `-fdx` y `-df` se siguen denegando.
+  - Un `git commit -m "…"` cuyo mensaje mencionaba un push forzado se denegaba. El texto entre comillas ya no cuenta; lo que se ejecuta (`bash -c`, `sh -c`, `eval`, `$(…)`, comillas invertidas, `&&`, `;`) se sigue denegando.
+  - `secret-guard` bloqueaba en `git add` cualquier nombre que contuviera `.env` (`.environment.md`, `venv.env.ts`). Ahora se ancla al nombre del fichero: `.env`, `.env.<algo>`, `<algo>.env` y `.envrc` (direnv) siguen denegados, y las plantillas siguen permitidas.
+  - `stale-read-guard` avisaba en falso a los subagentes de que «ya editaste» un fichero; ahora usa el mismo discriminador que `write-guard`.
+  Tests: `test_guards.sh`; la falsabilidad pasa a esperar 36 casos BLOCK.
+- **Desde `~`, la compuerta y su indicador miraban nucleos distintos**: el nudge exigía el de la ranura, pero `pre-compact.sh` registraba en `nucleo-freshness.log` la edad del nucleo compartido y sacaba de él los pendientes. Ahora los dos usan `nucleo_ruta` (`lib/nucleo.sh`). Tests: `test_nucleo_hooks.sh`, `test_nucleo_lib.sh`.
+- **`post-compact-check.sh` registraba «0 anclas perdidas» cuando no medía** (sin checkpoint, desde `~` o sin ficheros elegibles) y buscaba el checkpoint en una ruta fija. Ahora lo resuelve como PreCompact y cada fila lleva `medida=ok|sin_checkpoint|home|sin_anclas` y `anclas_total=`. `compact-audit.py` excluye de la media las filas sin dato y las cuenta aparte; las filas antiguas se siguen leyendo. Tests: `test_nucleo_hooks.sh`.
 
 - **La compuerta del nucleo no actuaba en sesiones abiertas desde `~`**, la carpeta con más sesiones: el nudge avisaba pero no dejaba `nudge-<sid>.nucleo`. Ahora, si se conoce el pid de la sesión, el nudge mira el nucleo de su ranura (`estado/sesiones/<id>/nucleo.md`, el que usa `handoff`), lo trata como el de un proyecto (calla si está fresco, nombra su ruta) y deja la marca. Sin pid, igual que antes. Tests: `test_nucleo_nudge.sh`.
 - **`post-compact-check.sh` contaba como anclas las líneas `??` del git status**, que listan todo lo no seguido aunque la sesión no lo tocara (12 de 12 anclas perdidas eran falsas), y desde `~` sacaba anclas del git status de toda la carpeta personal. Ambas sesgaban `compact-audit.py`. Tests: `test_nucleo_hooks.sh`.
