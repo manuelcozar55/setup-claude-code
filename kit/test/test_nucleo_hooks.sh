@@ -899,4 +899,29 @@ ok "ranura desde ~: PreCompact registra la edad de la ranura (≈100 s, no la de
 RCK=$HOME/.claude/estado/checkpoint-compact-$(printf '%s' rs1 | sha256sum | cut -d' ' -f1).md
 ok "ranura desde ~: los pendientes del checkpoint son los de la ranura" "$(command grep -c PEND-RANURA "$RCK"),$(command grep -c PEND-COMPARTIDO "$RCK")" 1,0
 
+# --- post-compact: la falta de medida no es «cero pérdidas»: el log dice qué se midió (medida=) y cuántas anclas había ---
+pk() { tail -n1 "$PCL" | tr '\t' '\n' | sed -n "s/^$1=//p"; }
+pc "$R" sin-ck-1 'nada' >/dev/null
+ok "post-compact: sin checkpoint → medida=sin_checkpoint, anclas_total=0" "$(pk medida),$(pk anclas_total)" "sin_checkpoint,0"
+pc "$HOME" pc3 'nada' >/dev/null
+ok "post-compact: desde ~ → medida=home" "$(pk medida)" home
+mkdir -p "$R/.claude/estado/checkpoints"; printf '## git\nrama: main\n?? solo-nuevo.md\n' >"$R/.claude/estado/checkpoints/checkpoint-compact-$(printf '%s' sin-an | sha256sum | cut -d' ' -f1).md"
+pc "$R" sin-an 'nada' >/dev/null
+ok "post-compact: checkpoint sin ficheros elegibles → medida=sin_anclas" "$(pk medida),$(pk anclas_total),$(pk anclas_perdidas)" "sin_anclas,0,0"
+ev "$R" pc1 "$TPC" | bash "$H/pre-compact.sh" 2>/dev/null
+pc "$R" pc1 'se tocó alfa.py' >/dev/null
+ok "post-compact: con anclas → medida=ok, total y perdidas" "$(pk medida),$(pk anclas_total),$(pk anclas_perdidas)" "ok,2,1"
+R9=$T/repo9; mkdir -p "$R9"; git -C "$R9" init -q
+FB9=$(. "$H/lib/nucleo.sh"; nucleo_estado_fallback "$R9"); mkdir -p "$FB9/checkpoints"; : >"$FB9/.nucleo-fallback"
+printf '## git\nrama: main\n M src/fb.py\n' >"$FB9/checkpoints/checkpoint-compact-$(printf '%s' fb9 | sha256sum | cut -d' ' -f1).md"
+pc "$R9" fb9 'nada' >/dev/null
+ok "post-compact: busca el checkpoint donde lo escribe PreCompact (estado de fallback)" "$(pk medida),$(pk anclas_total),$(pk anclas_perdidas)" "ok,1,1"
+# El lector excluye de la media las filas sin dato y las cuenta aparte; las filas antiguas (sin medida=) siguen valiendo.
+PCL2=$T/logs-audit; mkdir -p "$PCL2/.claude/session-logs"
+printf '2026-01-01T00:00:00+00:00\tauto\tresumen_chars=9\tanclas_perdidas=2\tx y\n' >"$PCL2/.claude/session-logs/compact-2026-01.log"
+printf '2026-01-02T00:00:00+00:00\tauto\tresumen_chars=9\tanclas_perdidas=0\t\tmedida=sin_checkpoint\tanclas_total=0\n' >>"$PCL2/.claude/session-logs/compact-2026-01.log"
+printf '2026-01-03T00:00:00+00:00\tauto\tresumen_chars=9\tanclas_perdidas=0\t\tmedida=ok\tanclas_total=3\n' >>"$PCL2/.claude/session-logs/compact-2026-01.log"
+AUD=$(HOME="$PCL2" CLAUDE_PROJECTS_DIR="$T/sin-transcripts" python3 "$KIT/../scripts/compact-audit.py" 2>&1)
+ok "compact-audit.py: media solo sobre filas medidas (antiguas incluidas) y cuenta aparte las sin dato" "$(command grep -c '^post-compact log: 3 eventos, 2 medidos, 1 sin medida, anclas perdidas media 1.0, con pérdida 1$' <<<"$AUD")" 1
+
 exit $FAIL
