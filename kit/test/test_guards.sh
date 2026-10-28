@@ -1478,6 +1478,25 @@ for nh_g in block-dangerous-commands.sh bash-write-guard.sh branch-guard.sh dest
 done
 [ "$v151_rows" -ge 100 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: guards-v151.tsv ejecuto solo $v151_rows filas (se esperaban >=100)"; }
 
+# v1.6.1: cp/mv/install/ln hacia un directorio escriben dir/basename(origen); se juzga ese fichero, no el operando.
+CFGJ="settings"".json"
+expect "destino-dir: cp a ~/.claude/ denegado"            "$(run_sentinel "cp /tmp/x/$CFGJ ~/.claude/")"            BLOCK
+expect "destino-dir: cp a ~/.claude sin barra denegado"   "$(run_sentinel "cp /tmp/x/$CFGJ ~/.claude")"             BLOCK
+expect "destino-dir: cp -t ~/.claude/ denegado"           "$(run_sentinel "cp -t ~/.claude/ /tmp/x/$CFGJ")"         BLOCK
+expect "destino-dir: cp --target-directory denegado"      "$(run_sentinel "cp --target-directory=~/.claude /tmp/x/$CFGJ")" BLOCK
+expect "destino-dir: mv a ~/.claude/ denegado"            "$(run_sentinel "mv /tmp/x/$CFGJ ~/.claude/")"            BLOCK
+expect "destino-dir: install a ~/.claude/ denegado"       "$(run_sentinel "install /tmp/x/$CFGJ ~/.claude/")"       BLOCK
+expect "destino-dir: ln -s a ~/.claude/ denegado"         "$(run_sentinel "ln -sf /tmp/x/$CFGJ ~/.claude/")"        BLOCK
+expect "destino-dir: cp -r a ~/.claude denegado"          "$(run_sentinel "cp -r /tmp/x/arbol ~/.claude")"          BLOCK
+expect "destino-dir: rsync a ~/.claude/ denegado"         "$(run_sentinel "rsync -a /tmp/x/arbol/ ~/.claude/")"     BLOCK
+expect "destino-dir: cp -r a ~ (ancestro) denegado"       "$(run_sentinel "cp -r /tmp/x/arbol ~/")"                 BLOCK
+expect "destino-dir: glob a ~/.claude/ denegado"          "$(run_sentinel "cp /tmp/x/*.json ~/.claude/")"           BLOCK
+expect "destino-dir: destino explicito sigue denegado"    "$(run_sentinel "cp /tmp/x/$CFGJ ~/.claude/$CFGJ")"       BLOCK
+expect "destino-dir: cp otro fichero a ~/.claude/ pasa"   "$(run_sentinel "cp /tmp/x/notas.md ~/.claude/")"         ALLOW
+expect "destino-dir: cp settings a /tmp/dest/ pasa"       "$(run_sentinel "cp /tmp/x/$CFGJ /tmp/dest/")"            ALLOW
+expect "destino-dir: cp -r a /tmp/dest pasa"              "$(run_sentinel "cp -r /tmp/x/arbol /tmp/dest")"          ALLOW
+expect "destino-dir: mv a /tmp/dest/ pasa"                "$(run_sentinel "mv /tmp/x/$CFGJ /tmp/dest/")"            ALLOW
+
 rm -rf "$SG_DIR"
 rm -rf "$GUARDS_TEST_HOME" "$FIELDS_HOME"
 echo "PASS=$pass FAIL=$fail"; [ $fail -eq 0 ]

@@ -1420,6 +1420,36 @@ def _is_claude_home(word: str, cwd: str) -> bool:
     return bool(re.fullmatch(_HOME_RX + r"/\.claude", path) or home and path == f"{home}/.claude")
 
 
+def _effective_dest_hit(name: str, args: list[str], pos: list[str], cwd: str) -> str | None:
+    """cp/mv/install/ln/rsync onto a directory write `dir/basename(source)`: judge that file, not the operand.
+    Directory = trailing slash, -t/--target-directory, or one that exists (`~/.claude` without slash).
+    Recursive cp and any rsync into ~/.claude or one of its ancestors are denied outright (conservative:
+    the tree being copied may carry settings.json or hooks/)."""
+    tdir = [b for a, b in zip(args, args[1:]) if a == "-t"] + [a.partition("=")[2] for a in args if a.startswith("--target-directory=")]
+    tdir += [a[2:] for a in args if a.startswith("-t") and len(a) > 2 and not a.startswith("--")]
+    dest = tdir[-1] if tdir else (pos[-1] if pos else "")
+    srcs = [p for p in pos if p not in tdir] if tdir else pos[:-1]
+    if not dest or not srcs:
+        return None
+    path = expand(dest)
+    path = os.path.normpath(path if os.path.isabs(path) else os.path.join(cwd, path))
+    if not (tdir or dest.endswith("/") or os.path.isdir(path)):
+        return None
+    home = os.path.expanduser("~").rstrip("/")
+    claude = f"{home}/.claude"
+    recursive = name == "rsync" or any(re.match(r"-[A-Za-z]*[rRa]", a) or a in ("--recursive", "--archive") for a in args)
+    if recursive and (_is_claude_home(path, cwd) or claude.startswith(path.rstrip("/") + "/")):
+        return dest
+    for src in srcs:
+        base = os.path.basename(os.path.normpath(src))
+        if re.search(r"[*?\[]", base):
+            if _is_claude_home(path, cwd) and any(fnmatchcase(n, base) for n in ("settings.json", "hooks", "sentinel")):
+                return dest
+        elif base and _protected_path(os.path.join(path, base), cwd):
+            return dest
+    return None
+
+
 def _writes_protected(words: list[str], cwd: str, depth: int) -> str | None:
     i, _ = _command_word(words)
     if i >= len(words):
@@ -1459,6 +1489,8 @@ def _writes_protected(words: list[str], cwd: str, depth: int) -> str | None:
         cand = pos if any(a in ("-delete", "-exec", "-execdir", "-ok", "-okdir") for a in args) else []
     else:
         cand = []
+    if name in ("mv", "cp", "install", "ln", "rsync") and (hit := _effective_dest_hit(name, args, pos, cwd)):
+        return hit
     return next((c for c in cand if _protected_path(c, cwd)), None)
 
 
