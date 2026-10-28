@@ -15,7 +15,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # README.md cita este 36 como hecho medido: sin fijarlo aqui, esa cifra podia quedarse
 # falsa en silencio. Si cambias los casos de test_guards.sh, actualiza este numero Y el
 # del README en el mismo commit -- ese es justo el punto de tenerlo aqui.
-STUB_BLOCK_CASES=36
+STUB_BLOCK_CASES=52
 
 STUB=$(mktemp)
 printf '#!/bin/bash\nexit 0\n' > "$STUB"
