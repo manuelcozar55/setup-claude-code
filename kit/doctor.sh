@@ -38,11 +38,6 @@ if jq -e '(.env.CC_ALLOW_DESTRUCTIVE // "" | tostring) == "1"' "$CLAUDE_HOME/set
   warn "settings.json tiene env.CC_ALLOW_DESTRUCTIVE=1: destructive-guard.sh esta apagado. Quita la clave para recuperar esa proteccion"
 fi
 
-# 1c2. env.CC_NUCLEO_GATE=0 apaga nucleo-gate.sh (la denegacion unica tras el aviso del airbag). WARN: puede ser deliberado.
-if jq -e '(.env.CC_NUCLEO_GATE // "" | tostring) == "0"' "$CLAUDE_HOME/settings.json" >/dev/null 2>&1; then
-  warn "settings.json tiene env.CC_NUCLEO_GATE=0: nucleo-gate.sh esta apagado. Quita la clave para que el aviso del airbag se cumpla"
-fi
-
 # 1d. Version de claude. CLAUDE_PROBADA es la version con la que se probo el kit, la misma que cita
 # docs/10-onboarding.md (test_doctor.sh lo comprueba); no hay minima comprobada. WARN y no FAIL: con otra
 # puede funcionar, pero no esta probado. Comparacion por version (sort -V).
