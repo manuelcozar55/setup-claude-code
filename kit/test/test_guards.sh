@@ -1520,6 +1520,14 @@ done
 for c in 'git clean -fd' 'git clean -fdx' 'git clean -df' 'git clean -d -f' 'git clean -f'; do
   expect "destructive v1.6.1: $c denegado" "$(run_dg "$c")" BLOCK
 done
+# a2) Ronda 2: en git gana la ultima opcion, asi que `--no-dry-run` anula la `-n` anterior (tambien sus prefijos).
+for c in 'git clean -fn --no-dry-run' 'git clean -nd --no-dry-run -f' 'git clean -n -f --no-dry-run' \
+         'git clean -f --no-dry' 'git clean -nf --dry-run --no-dry-run' 'git clean -nf --no-d' 'git clean -n --forc -d --no-dry-run'; do
+  expect "destructive ronda2: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'git clean -nd' 'git clean -fn' 'git clean -fn --dr' 'git clean --force --dry-run -d'; do
+  expect "destructive ronda2: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
 # b) El mensaje de un commit es texto: no se juzga como push forzado. El texto de un `bash -c`, `sh -c`,
 # `eval` o `$(...)` se ejecuta: ahi se sigue denegando. Los comandos se montan por partes (guard vivo).
 FP="git pu""sh"; FF="--for""ce"

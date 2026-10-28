@@ -328,9 +328,12 @@ for seg in "${CMDN_SEGS[@]}"; do
         clean)
           force=0; dry=0
           for a in "${T[@]:3}"; do
+            # En git gana la ultima opcion: `-n --no-dry-run` NO es simulacion. Tambien valen los prefijos
+            # no ambiguos (`--no-dry`, `--dry`, `--forc`), que git acepta igual.
             case $a in
-              --force) force=1 ;;
-              --dry-run) dry=1 ;;
+              --f|--fo|--for|--forc|--force) force=1 ;;
+              --d|--dr|--dry|--dry-|--dry-r|--dry-ru|--dry-run) dry=1 ;;
+              --no-d|--no-dr|--no-dry|--no-dry-|--no-dry-r|--no-dry-ru|--no-dry-run) dry=0 ;;
               --*) ;;
               -*) [[ $a == -*[fd]* ]] && force=1; [[ $a == -*n* ]] && dry=1 ;;
             esac
