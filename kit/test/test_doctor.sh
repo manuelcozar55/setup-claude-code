@@ -305,7 +305,10 @@ ck "$(echo "$out" | grep -c 'CLAUDE_CONFIG_DIR.*vac')" "0" "K10: con valor no av
 ck "$(grep -c 'claude auth login --email' "$KIT/docs/02-install.md")" "1" "K10: la guia documenta el login sin TUI y por config dir"
 # K11: pgrep -f "claude -p" se encuentra a si mismo dentro de bash -c. Nada del kit lo recomienda y la guia lo explica.
 ck "$(grep -c '\[c\]laude -p' "$KIT/docs/06-routine.md")" "1" "K11: la guia de autonomia da el patron ps|grep [c]laude -p"
-ck "$(grep -rlE 'pgrep +-f +.?claude' "$KIT/.." --include='*' --exclude-dir=.git --exclude-dir=archive --exclude=06-routine.md --exclude=test_doctor.sh 2>/dev/null | wc -l)" "0" "K11: ningun fichero del repo recomienda pgrep -f claude"
+# Solo lo versionado: un .out ignorado (p. ej. en .claude/estado/) no es una recomendacion del repo.
+K11F="$KIT/../.claude/estado/k11-prueba.out"; mkdir -p "${K11F%/*}"; echo 'pgrep -f claude' >"$K11F"
+ck "$(git -C "$KIT/.." grep -lE 'pgrep +-f +.?claude' -- . ':(exclude,glob)**/archive/**' ':(exclude,glob)**/06-routine.md' ':(exclude,glob)**/test_doctor.sh' 2>/dev/null | wc -l)" "0" "K11: ningun fichero versionado del repo recomienda pgrep -f claude (los ignorados no cuentan)"
+rm -f "$K11F"
 # K6: la ventana de 250 K se queda (freno de coste), con su porque, y cambiarla en una ejecucion va por --settings.
 ck "$(grep -c -- "--settings '{\"env\":{\"CLAUDE_CODE_AUTO_COMPACT_WINDOW\"" "$KIT/docs/02-install.md")" "1" "K6: la guia documenta --settings con env para cambiar la ventana en una ejecucion"
 ck "$(grep -c 'freno de coste' "$KIT/docs/02-install.md")" "1" "K6: la guia explica por que se queda en 250 K"
