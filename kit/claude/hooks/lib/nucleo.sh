@@ -231,6 +231,18 @@ nucleo_sesion_dir() {
   printf '%s\n' "$d"
 }
 
+# nucleo_ruta <raíz> [crear]: el nucleo.md de ESTA sesión, la única fuente para quien lo lea (nudge, PreCompact...): desde
+# ~ con ranura (se sabe el pid) es sesiones/*-<pid>/nucleo.md, el que usa handoff; en el resto, <estado>/nucleo.md de la
+# raíz. Con «crear» abre la ranura si aún no existe. rc 1 y nada impreso si la raíz no tiene estado legible.
+nucleo_ruta() {
+  local e s
+  e=$(nucleo_estado_leer "$1") || return 1
+  if [ "$1" = "$HOME" ] && s=$(nucleo_sesion_dir ${2:+"$2"} 2>/dev/null) && [ -d "$s" ]; then
+    printf '%s/nucleo.md\n' "$s"; return 0
+  fi
+  printf '%s/nucleo.md\n' "$e"
+}
+
 # nucleo_tope <contexto>: recorta a 9 500 chars (el harness manda a fichero lo que pasa de 10 000; las rutas no
 # tienen tope) y, si recortó, cierra el <nucleo-datos> que pudiera haber quedado abierto.
 nucleo_tope() {

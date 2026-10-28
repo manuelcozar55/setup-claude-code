@@ -111,8 +111,11 @@ def main():
     logs = sorted(glob.glob(os.path.expanduser("~/.claude/session-logs/compact-*.log")))
     if logs:
         rows = [l.split("\t") for f in logs for l in open(f) if l.strip()]
-        lost = [int(x.split("=")[1]) for r in rows for x in r if x.startswith("anclas_perdidas=")]
-        print(f"post-compact log: {len(rows)} eventos, anclas perdidas media {sum(lost)/max(1,len(lost)):.1f}, con pérdida {sum(1 for x in lost if x)}")
+        # medida= (ausente en las filas antiguas, que se leen como medidas) separa «0 perdidas» de «sin dato».
+        med = [(r, dict(x.split("=", 1) for x in r if "=" in x)) for r in rows]
+        lost = [int(k["anclas_perdidas"]) for _, k in med if "anclas_perdidas" in k and k.get("medida", "ok") == "ok"]
+        sin = sum(1 for _, k in med if k.get("medida", "ok") != "ok")
+        print(f"post-compact log: {len(rows)} eventos, {len(lost)} medidos, {sin} sin medida, anclas perdidas media {sum(lost)/max(1,len(lost)):.1f}, con pérdida {sum(1 for x in lost if x)}")
 
 
 if __name__ == "__main__":

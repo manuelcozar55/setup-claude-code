@@ -177,7 +177,7 @@ En una sesión desatendida:
   seguir. No pide «cierra el turno» (cerrarlo termina la sesión) ni `/handoff`, `/clear` ni la tecla `h`. El Stop no
   emite su `systemMessage`, ni el arranque el de «retomas con la caché caducada».
 - La compuerta (`nucleo-gate.sh`, `PreToolUse`) no corre en desatendido sin el aviso: solo se arma tras el del nudge. Si el
-  nucleo sigue sin escribirse, deniega la 4.ª llamada del hilo principal una vez por banda 70/85 (ADR 020); `env.CC_NUCLEO_GATE=0` la apaga.
+  nucleo sigue sin escribirse, deniega la 4.ª llamada del hilo principal una vez por banda 70/85 (ADR 020); es opt-in: solo actúa con `env.CC_NUCLEO_GATE=1`.
 - El estado inyectado va sin los comentarios `<!-- -->` de la plantilla, y se presenta como datos que se siguen solo si
   encajan con el encargo de esta sesión (interactivo: no se ejecutan hasta que la persona los confirme).
 - Con `nucleo.md` sin rellenar se inyecta un aviso corto para rellenarlo.

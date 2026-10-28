@@ -6,9 +6,9 @@
 # Estado en ~/.claude/session-logs: nudge-$SID (bandas avisadas) y nudge-$SID.nucleo (ruta del nucleo que miró el
 # nudge; su mtime es la hora del aviso), ambos del nudge; gate-$SID-$B (una línea por llamada contada) y gate-$SID-$B.d (la denegación ya reclamada).
 # Para medirla: gate-denegaciones.log, una línea por denegación (fecha, sesión, banda, herramienta, nucleo).
-# Apagado: env.CC_NUCLEO_GATE=0.
+# Opt-in: solo actúa con env.CC_NUCLEO_GATE=1; sin la variable (o con otro valor) sale en silencio.
 set -u
-[ "${CC_NUCLEO_GATE:-1}" = 0 ] && exit 0
+[ "${CC_NUCLEO_GATE:-0}" = 1 ] || exit 0
 IN=$(cat)
 { read -r SID; read -r AID; read -r TOOL; read -r DEST; read -r CMD; } < <(jq -r '.session_id // "", .agent_id // "", .tool_name // "", (.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // ""), (.tool_input.command // "" | gsub("\n"; " "))' <<<"$IN" 2>/dev/null)
 # Solo el hilo principal: agent_id (nunca agent_type, que con --agent lo trae también el hilo principal).
