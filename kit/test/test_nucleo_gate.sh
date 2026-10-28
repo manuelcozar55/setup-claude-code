@@ -63,6 +63,10 @@ ok "SID con / : sin deny" "$(rep 'k/x')" pasa
 ok "SID con / : no escribe nada fuera" "$(wc -l <"$L/gate-k/x-70" | tr -d ' '),$(find "$L/gate-k" -type f -printf '%f ')" "3,x-70 "
 arma l 70
 ok "CC_NUCLEO_GATE=0 apaga" "$(CC_NUCLEO_GATE=0 rep l)" pasa
+arma l2 70
+ok "opt-in: sin CC_NUCLEO_GATE no deniega" "$(unset CC_NUCLEO_GATE; seq5 l2)" "pasa pasa pasa pasa pasa"
+arma l2 70
+ok "opt-in: CC_NUCLEO_GATE=1 sí deniega" "$(seq5 l2)" "pasa pasa pasa deny pasa"
 
 arma n 70 85
 ok "banda 85 avisada: cuenta propia, deniega la 4.ª" "$(seq5 n)" "pasa pasa pasa deny pasa"
