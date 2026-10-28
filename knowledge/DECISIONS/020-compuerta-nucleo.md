@@ -14,7 +14,7 @@ Stop que lo fuerce.
 70 u 85 con el nucleo viejo; cuenta las llamadas del hilo principal y deniega la 4.ª con el motivo accionable
 (actualizar el nucleo o `handoff --desde`). Una denegación por banda y sesión. Pasan siempre `.claude/estado/` y
 `handoff`; un nucleo escrito tras el aviso la desarma; los subagentes (`agent_id`) no cuentan; falla en abierto;
-`env.CC_NUCLEO_GATE=0` la apaga. El nudge deja `nudge-<sid>.nucleo` (ruta que miró; su mtime es la hora del aviso).
+opt-in desde v1.6.1: solo actúa con `env.CC_NUCLEO_GATE=1` (sin A/B no se impone). El nudge deja `nudge-<sid>.nucleo` (ruta que miró; su mtime es la hora del aviso).
 Desde `~` mira el nucleo de la ranura de la sesión, si se conoce su pid; sin ranura no hay compuerta (v1.6.1). Cada
 denegación deja una línea en `session-logs/gate-denegaciones.log` (fecha, sesión, banda, herramienta, nucleo) para medirla.
 
@@ -39,4 +39,4 @@ Medida con `frescura.py` y `nudge.py` de la base, tras dos semanas de uso:
 
 Si no se alcanzan, o si genera denegaciones que la persona sufre sin ganancia: quitar la entrada de `PreToolUse` en
 `kit/claude/settings.json` y borrar `nucleo-gate.sh`; el nudge sigue valiendo solo (el fichero `.nucleo` es inocuo).
-Apagado sin código: `env.CC_NUCLEO_GATE=0`.
+Apagado sin código: es el valor por defecto; se activa con `env.CC_NUCLEO_GATE=1` (v1.6.1).
