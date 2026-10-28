@@ -17,6 +17,7 @@ etiquetado.
 
 ### Fixed
 
+- **El push forzado con el flag entrecomillado vuelve a denegarse** (`git push '-f' origin rama`, `--"force"`, `"-"f`, `'-uf'`, el flag tras el refspec). `block-dangerous-commands.sh` lo decide ahora sobre los tokens descomillados de la sentencia `git push`, como ya hacía con `+rama`; el mensaje de un `git commit` que nombra el flag sigue siendo texto.
 - **Cuatro falsos positivos de los guards** que se sufrían a diario:
   - `git clean -nd` (simulación, banderas agrupadas) se denegaba, mientras `-n -d` pasaba; `-fd`, `-fdx` y `-df` se siguen denegando.
   - Un `git commit -m "…"` cuyo mensaje mencionaba un push forzado se denegaba. El texto entre comillas ya no cuenta; lo que se ejecuta (`bash -c`, `sh -c`, `eval`, `$(…)`, comillas invertidas, `&&`, `;`) se sigue denegando.

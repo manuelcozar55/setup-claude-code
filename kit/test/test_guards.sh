@@ -508,6 +508,22 @@ expect "guard: --mirror denegado"                 "$(run_blockdc 'git push --mir
 expect "guard: --delete de rama remota denegado"  "$(run_blockdc 'git push origin --delete release')"            BLOCK
 expect "guard: --force-with-lease sigue denegado" "$(run_blockdc 'git push --force-with-lease origin feature')"  BLOCK
 expect "guard: -C sin forzar NO denegado"         "$(run_blockdc 'git -C /home/user/repo push origin feature')"  ALLOW
+# El flag entrecomillado es el mismo flag para git: `'-f'`, `--"force"` y `"-"f` fuerzan igual. Se decide
+# sobre tokens descomillados de la sentencia `git push`, no sobre el texto; el mensaje de un commit
+# que nombra el flag sigue siendo texto (ALLOW). Rama que no es main: ahi solo este guard puede pararlo.
+run_blockjq() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1; }
+FF='--force'
+expect "guard: flag corto entre comillas simples denegado"  "$(run_blockjq "git push '-f' origin rama-x")"           BLOCK
+expect "guard: flag largo con comillas parciales denegado"  "$(run_blockjq "git push --\"force\" origin rama-x")"    BLOCK
+expect "guard: guion y letra separados por comillas denegado" "$(run_blockjq "git push \"-\"f origin rama-x")"       BLOCK
+expect "guard: flag largo entrecomillado denegado"          "$(run_blockjq "git push '$FF' origin rama-x")"          BLOCK
+expect "guard: --force-with-lease entrecomillado denegado"  "$(run_blockjq "git push '$FF-with-lease' origin rama-x")" BLOCK
+expect "guard: -uf entrecomillado denegado"                 "$(run_blockjq "git push '-uf' origin rama-x")"          BLOCK
+expect "guard: flag entrecomillado tras el refspec denegado" "$(run_blockjq "git push origin rama-x '-f'")"          BLOCK
+expect "guard: flag entrecomillado tras -C denegado"        "$(run_blockjq "git -C /r push '-f' origin rama-x")"     BLOCK
+expect "guard: commit que nombra el force push NO denegado" "$(run_blockjq "git commit -m \"no usar git push $FF\"")" ALLOW
+expect "guard: push normal con rama entrecomillada NO denegado" "$(run_blockjq "git push origin 'rama-x'")"          ALLOW
+expect "guard: -o con valor f NO denegado"                  "$(run_blockjq "git push -o '-f' origin rama-x")"        ALLOW
 expect "branch-guard: master tras cd + && denegado" "$(run_branchguard 'cd /tmp && git push origin master')"     BLOCK
 expect "branch-guard: -C antes de push a main denegado" "$(run_branchguard 'git -C /home/user/repo push origin main')" BLOCK
 expect "branch-guard: rama de feature NO denegada"  "$(run_branchguard 'git push origin feature/x')"             ALLOW
