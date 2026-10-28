@@ -26,12 +26,10 @@ else [ -s "$MARCA" ] && : >"$MARCA"; exit 0; fi
 command grep -qx "$B" "$MARCA" 2>/dev/null && exit 0
 RAIZ=$(nucleo_raiz "${CWD:-$PWD}")
 nucleo_enlazado "$RAIZ" && exit 0
-ESTADO=$(nucleo_estado_leer "$RAIZ") || exit 0
-NUC="$ESTADO/nucleo.md"
+NUC=$(nucleo_ruta "$RAIZ" crear) || exit 0
 # Desde ~ con ranura (se sabe el pid de la sesión) el nucleo es el de la ranura, el que usa handoff: se trata como el de
 # un proyecto y la compuerta también actúa.
-RANURA=""; [ "$RAIZ" = "$HOME" ] && { RANURA=$(nucleo_sesion_dir crear 2>/dev/null) || RANURA=""; }
-[ -z "$RANURA" ] || NUC=$RANURA/nucleo.md
+RANURA=""; [ "$RAIZ" = "$HOME" ] && case $NUC in "$HOME"/.claude/estado/sesiones/*/nucleo.md) RANURA=${NUC%/nucleo.md};; esac
 # D1: desde ~ sin ranura el nucleo compartido puede ser de otra tarea: el aviso no lo nombra, no se calla por su edad
 # y no promete handoff (el automático está desactivado en ~).
 if [ "$RAIZ" = "$HOME" ] && [ -z "$RANURA" ]; then

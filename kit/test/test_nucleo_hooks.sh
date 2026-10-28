@@ -885,4 +885,18 @@ mkdir -p "$HOME/.claude/estado"; printf '## git\nrama: main\n M dotfile.sh\n' >"
 pc "$HOME" pc3 'nada' >/dev/null
 ok "post-compact: desde ~ el git status no da anclas" "$(tail -n1 "$PCL" | awk -F'\t' '{print $4, $5}')" "anclas_perdidas=0 "
 
+# --- una sola ruta del nucleo de sesión: desde ~ con ranura, nudge, edad del KPI y pendientes del checkpoint salen de la ranura ---
+mkdir -p "$HOME/.claude/estado"
+printf '## Pendientes\n- [ ] PEND-COMPARTIDO\n' >"$HOME/.claude/estado/nucleo.md"; touch -d '-3 hours' "$HOME/.claude/estado/nucleo.md"
+RS=$(export CLAUDE_PID=$$; . "$H/lib/nucleo.sh"; nucleo_sesion_dir crear)
+printf '## Pendientes\n- [ ] PEND-RANURA\n' >"$RS/nucleo.md"; touch -d '-30 minutes' "$RS/nucleo.md"
+jq -cn --arg c "$HOME" --arg t "$TP" '{session_id:"rs1",transcript_path:$t,cwd:$c,tool_name:"Bash"}' | CLAUDE_PID=$$ bash "$H/nucleo-nudge.sh" >/dev/null
+ok "ranura desde ~: el nudge exige la ranura" "$(cat "$HOME/.claude/session-logs/nudge-rs1.nucleo" 2>/dev/null)" "$RS/nucleo.md"
+touch -d '-100 seconds' "$RS/nucleo.md"
+jq -cn --arg c "$HOME" --arg t "$TP" '{session_id:"rs1",transcript_path:$t,cwd:$c,trigger:"auto"}' | CLAUDE_PID=$$ bash "$H/pre-compact.sh" 2>/dev/null
+RSL=$(tail -n1 "$HOME/.claude/session-logs/nucleo-freshness.log")
+ok "ranura desde ~: PreCompact registra la edad de la ranura (≈100 s, no la del compartido)" "$(awk '$2=="rs1" && $4>=90 && $4<=300 {print "si"}' <<<"$RSL")" si
+RCK=$HOME/.claude/estado/checkpoint-compact-$(printf '%s' rs1 | sha256sum | cut -d' ' -f1).md
+ok "ranura desde ~: los pendientes del checkpoint son los de la ranura" "$(command grep -c PEND-RANURA "$RCK"),$(command grep -c PEND-COMPARTIDO "$RCK")" 1,0
+
 exit $FAIL

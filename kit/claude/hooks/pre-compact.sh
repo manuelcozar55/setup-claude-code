@@ -17,8 +17,7 @@ CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nucleo.sh"
 RAIZ=$(nucleo_raiz "$CWD" 2)
 nucleo_enlazado "$RAIZ" && exit 0
-ESTADO=$(nucleo_estado_leer "$RAIZ") || exit 0
-NUC="$ESTADO/nucleo.md"
+NUC=$(nucleo_ruta "$RAIZ") || exit 0
 
 # KPI: ts sesión ctx% edad_nucleo_s (-1 si no existe). Se mide con nucleo_audit o con awk.
 MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
