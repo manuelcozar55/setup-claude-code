@@ -148,11 +148,13 @@ jq -cn --arg r "$LIVE" '{cwd:$r,session_id:"rival",source:"clear"}' | bash "$HOO
 ok 'clear ajeno no roba propietario vivo' "$(nucleo_dueno "$LIVE" | cut -d' ' -f1)" live
 # M10: un [x] sin comando entre comillas invertidas se archiva con la marca y el CLI lo avisa.
 R=$T/m10; E=$R/.claude/estado; mkdir -p "$E"; git -C "$R" init -q
+# shellcheck disable=SC2016  # Backticks literales.
 printf '## Paso actual\nx\n\n## Plan\n- [x] a\n- [x] b \xe2\x80\x94 `cmd`\n' >"$T/draft-m10"
 ho --desde "$T/draft-m10" >"$T/out" 2>"$T/err"; RC=$?
 ok 'M10: solo el cierre sin comando lleva la marca' "$RC,$(grep -c '(sin comando)' "$E/diario.md"),$(grep -c 'a (sin comando)' "$E/diario.md")" '0,1,1'
 ok 'M10: el CLI avisa de los cierres sin comando' "$(grep -c '1 cierre(s) sin comando' "$T/err")" 1
 rm -f "$E/.dueno" "$E/diario.md"
+# shellcheck disable=SC2016  # Backticks literales.
 printf '## Paso actual\nx\n\n## Plan\n- [x] b \xe2\x80\x94 `cmd`\n' >"$T/draft-m10"
 ho --desde "$T/draft-m10" >"$T/out" 2>"$T/err"; RC=$?
 ok 'M10: con comando el diario no cambia y no hay aviso' "$RC,$(grep -c 'sin comando' "$E/diario.md"),$(grep -c 'sin comando' "$T/err")" '0,0,0'
