@@ -245,7 +245,7 @@ ok "handoff --desde: lo sin equivalente (Plan) se añade, no se pierde" "$(comma
 HASH1=$(sha256sum <"$E/ESTADO.md")
 bash "$HO" --desde "$T/b.md" --raiz "$E" >/dev/null 2>&1
 ok "handoff --desde repetido: mismo ESTADO.md, sin duplicar secciones" "$([ "$(sha256sum <"$E/ESTADO.md")" = "$HASH1" ] && echo igual || echo distinto),$(command grep -c '^## ' "$E/ESTADO.md")" igual,4
-ok "handoff --desde: la copia previa va a .claude/estado, fuera del árbol versionado" "$(find "$E/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" 2
+ok "handoff --desde: la copia previa va a .claude/estado (fuera del árbol versionado) y un repetido sin cambios no la duplica" "$(find "$E/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" 1
 ok "handoff --estado: nombra ESTADO.md y su modo" "$(bash "$HO" --estado --raiz "$E" | jq -r '(.estado | endswith("/ESTADO.md")), .modo' | paste -sd,)" true,estado-md
 # El comando que dictan stop-context-gauge.sh y session-start-compact.sh: --desde con --sesion y sin --ranura, desde un cwd dentro del repo.
 estado "$E/ESTADO.md"
@@ -253,9 +253,9 @@ ok "handoff --desde --sesion sin --ranura (el que dictan los hooks) funciona en 
 printf '# Estado\n## Cosa rara\nX\n' >"$T/mala.md"
 HASH1=$(sha256sum <"$E/ESTADO.md")
 ok "handoff --desde en modo ESTADO.md: un borrador inválido sale con 2 sin tocar nada" "$(bash "$HO" --desde "$T/mala.md" --raiz "$E" >/dev/null 2>&1; echo $?),$([ "$(sha256sum <"$E/ESTADO.md")" = "$HASH1" ] && echo igual)" 2,igual
-{ printf '## Paso actual\n'; for i in $(seq 1 30); do echo "- linea $i"; done; printf '## Plan\n'; for i in $(seq 1 400); do echo "- [ ] relleno largo del plan numero $i para pasar el tope del estado"; done; } >"$T/g.md"
+{ printf '## Paso actual\n'; for i in $(seq 1 30); do echo "- linea $i"; done; printf '## Ficheros tocados\n'; for i in $(seq 1 400); do echo "- ruta/larga/numero/$i con relleno para pasar el tope del estado"; done; } >"$T/g.md"
 bash "$HO" --desde "$T/g.md" --raiz "$E" >/dev/null 2>&1
-ok "handoff --desde: respeta el tope de bytes y lo omitido va a diario.md" "$([ "$(wc -c <"$E/ESTADO.md")" -le 5700 ] && echo si),$(command grep -c 'omitido por tope: Plan' "$E/.claude/estado/diario.md")" si,1
+ok "handoff --desde: respeta el tope: lo que el borrador añadió y no cabe va a diario.md" "$([ "$(wc -c <"$E/ESTADO.md")" -le 5700 ] && echo si),$(command grep -c 'omitido por tope: Ficheros tocados' "$E/.claude/estado/diario.md")" si,1
 ok "handoff --iniciar en modo ESTADO.md: rc 0 y no crea nucleo.md" "$(bash "$HO" --iniciar --raiz "$E" >/dev/null 2>&1; echo $?),$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" 0,no
 ok "handoff --desde --solo en modo ESTADO.md: no aplica (64)" "$(bash "$HO" --desde "$T/b.md" --raiz "$E" --solo >/dev/null 2>&1; echo $?)" 64
 
@@ -323,7 +323,7 @@ ok "H6: tras rotar sobreviven 3 copias y la nueva (la de mtime más reciente) no
 X=$(nuevo tmp); mkdir -p "$T/stub"
 # shellcheck disable=SC2016  # el stub lleva su propio $PPID
 printf '#!/usr/bin/env bash\nkill -TERM "$PPID"; sleep 2\n' >"$T/stub/mv"; chmod +x "$T/stub/mv"
-printf '## Paso actual\nTMP\n' >"$T/dt.md"; PATH=$T/stub:$PATH bash "$HO" --desde "$T/dt.md" --raiz "$X" >/dev/null 2>&1
+printf '## Paso actual\nTMP\n' >"$T/dt.md"; { PATH=$T/stub:$PATH bash "$HO" --desde "$T/dt.md" --raiz "$X"; } >/dev/null 2>&1
 ok "temporal: un handoff muerto antes del mv no deja .ESTADO.* en el árbol" "$(find "$X" -maxdepth 1 -name '.ESTADO.*' | wc -l | tr -d ' ')" 0
 exit $FAIL
 ) || FAIL=1
