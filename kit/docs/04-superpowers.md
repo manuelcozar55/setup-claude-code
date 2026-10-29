@@ -1,6 +1,6 @@
 # 04 · El método (plugin esenciales), agentes y agent-browser
 
-Este documento cubre el método (el plugin `esenciales` y sus seis skills), quién lo ejecuta (los 7 agentes con tiering) y una herramienta que se apoya en ese método (agent-browser). `esenciales` y los agentes los reparte el kit; agent-browser es de terceros y se instala por separado. El nombre del fichero se conserva por los enlaces que lo citan: el kit usó superpowers hasta la 1.2.0.
+Este documento cubre el método (el plugin `esenciales` y sus seis skills), quién lo ejecuta (los 6 agentes con tiering) y una herramienta que se apoya en ese método (agent-browser). `esenciales` y los agentes los reparte el kit; agent-browser es de terceros y se instala por separado. El nombre del fichero se conserva por los enlaces que lo citan: el kit usó superpowers hasta la 1.2.0.
 
 ## El plugin esenciales
 
@@ -34,17 +34,17 @@ Invariantes que el bucle operativo nunca se salta, con independencia de la tarea
 2. **Test antes que implementación**: un fix lleva un test que falla antes del cambio y pasa después.
 3. **Verificar antes de completar**: nada se da por "hecho" sin enseñar el comando y su salida. Evidencia, no afirmaciones.
 
-## Los 7 agentes, con tiering
+## Los 6 agentes, con tiering
 
 Cuando el método delega, delega con tiering de coste: el modelo más caro para pensar, uno intermedio para ejecutar y revisar, y el más barato para verificar. No tiene sentido pagar un modelo de razonamiento caro para correr un linter.
 
 | Tier | Modelo | Agentes | Para qué |
 |---|---|---|---|
-| Pensar | `opus` | `orchestrator`, `strategist` | descomponer tareas complejas en frentes paralelos, IntentGate antes de ejecutar, planes verificables |
+| Pensar | `opus` | `strategist` | IntentGate antes de ejecutar, planes verificables |
 | Ejecutar y revisar | `sonnet` | `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer` | implementación autónoma end-to-end, revisión de código pre-PR, auditoría de seguridad, exploración de codebase |
 | Verificar | `haiku` | `quick-checker` | PASS/FAIL rápido: tipos, lint, tests, sin análisis ni sugerencias |
 
-Estos 7 agentes están definidos en `claude/agents/*.md` (front-matter con `name`, `description`, `model`, `tools`) y `install.sh` los coloca en `$CLAUDE_HOME/agents/`.
+Estos 6 agentes están definidos en `claude/agents/*.md` (front-matter con `name`, `description`, `model`, `tools`) y `install.sh` los coloca en `$CLAUDE_HOME/agents/`.
 
 ## agent-browser
 
