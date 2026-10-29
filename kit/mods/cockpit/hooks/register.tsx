@@ -277,9 +277,19 @@ const openSpan = (s: string) => {
   }
   return open
 }
+// ESTADO.md keeps it as a bullet «- Siguiente acción: …» whose following lines are indented two spaces.
+const bulletBody = (doc: string) => {
+  const lines = doc.replace(/<!--[\s\S]*?-->/g, '').split('\n')
+  const at = lines.findIndex(l => /^[-*]\s+siguiente accion\b[^:]*:/.test(norm(l)))
+  if (at < 0) return ''
+  const first = (lines[at] ?? '').replace(/^[^:]*:/, '')
+  const more = lines.slice(at + 1)
+  const end = more.findIndex(l => !/^ {2,}\S/.test(l))
+  return [first, ...(end < 0 ? more : more.slice(0, end))].join('\n')
+}
 export function nextLine(doc: string, path = '.claude/estado/nucleo.md') {
   const sec = sections(doc).find(s => s.key.startsWith('siguiente accion'))
-  const [line, ...rest] = bodyOf(sec?.text ?? '')
+  const [line, ...rest] = (sec ? bodyOf(sec.text) : bulletBody(doc))
     .split('\n')
     .map(l => l.replace(/^\s*(?:[-*]|\d+\.)\s+/, '').replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim())
     .filter(l => l !== '' && !l.startsWith('```'))
@@ -473,7 +483,8 @@ async function resolveState($: $) {
   const active = state.agentes_vivos
   // The CLI's tope already leaves room for the agents block the next SessionStart injects; 6500 is the pre-reserve contract.
   const tope = 'tope' in state && typeof state.tope === 'number' && Number.isSafeInteger(state.tope) && state.tope > 0 ? state.tope : 6500
-  return { ...location, path: state.nucleo, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active, tope }
+  const estadoMd = 'modo' in state && state.modo === 'estado-md' && 'estado' in state && typeof state.estado === 'string' && state.estado.startsWith('/') ? state.estado : null
+  return { ...location, path: state.nucleo, estadoMd, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active, tope }
 }
 
 const readState = async ($: $, path: string) => ((await $.fs.exists(path)) ? await $.fs.read(path) : '')
@@ -499,11 +510,12 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
   await update($, handoff, (): Handoff => ({ phase: 'working' }))
   let tmp = ''
   try {
-    const { root, dir, path, bin, active, tope } = await resolveState($)
+    const { root, dir, path, estadoMd, bin, active, tope } = await resolveState($)
     if (andClear && (active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) throw new Error('hay agentes o shells vivos: no limpio; espera o usa /handoff solo')
     if (!(await $.fs.exists(bin))) throw new Error(`falta ${bin}: ejecuta kit/install.sh, que copia handoff y oraculo a ~/.claude/bin (si ~/.claude es tu repo git, genera un plan diff-first: cópialos desde él)`)
     await refuseLinks($, dir)
-    const prev = await readState($, path)
+    // In ESTADO.md mode nucleo.md does not exist: the current state the fork must see is ESTADO.md.
+    const prev = await readState($, estadoMd ?? path)
     const encoder = new TextEncoder()
     const preserved = sections(prev).filter(s => /^(objetivo|encargo original|invariantes)/.test(s.key)).map(s => s.text).join('')
     const budget = tope - encoder.encode(preserved).length - 768
