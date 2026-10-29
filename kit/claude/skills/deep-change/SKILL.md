@@ -44,7 +44,8 @@ user's package-manager, browser and approval preferences over generic skill defa
 2. **Investigate the affected paths.** Use independent subagents when delegation is available,
    authorized and helps separate substantial work; otherwise investigate directly. Give each
    worker explicit ownership and collect evidence, not raw file dumps.
-3. **Plan as an artifact.** Reuse an existing approved plan, or write it in the `## Plan`
+3. **Plan as an artifact.** In a project in ESTADO.md mode (it has `ESTADO.md`, no `nucleo.md`), write the plan and mark tasks in `ESTADO.md` instead, create no `nucleo.md` (`handoff --desde` merges its draft into `ESTADO.md` there, and creates none); read every «nucleo» below as ESTADO.md.
+    Reuse an existing approved plan, or write it in the `## Plan`
    section of `.claude/estado/nucleo.md`, under `## Encargo original (literal)`: bite-
    sized, independently verifiable tasks, each with the exact files, the change, and how it
    is tested. The plan is a durable spec, not chat. «Encargo original» and «Invariantes» are
@@ -99,7 +100,7 @@ otherwise request approval for the concrete result. Record a rollback path to th
 - [ ] Scope and consequential design decisions resolved; existing authorizations honored.
 - [ ] The approved plan exists in nucleo and every task is checked off with its verifying command.
 - [ ] Every change is in a commit with its why, and in nucleo's Ficheros tocados (with its backup if outside git).
-- [ ] Phase closed with `/handoff` if context passed the Stop hook's soft line.
+- [ ] Phase closed with `/handoff` if context passed the Stop hook's soft line (in ESTADO.md mode it merges into `ESTADO.md`).
 - [ ] Claims are backed by evidence (tests run, path driven) — recorded, not asserted.
 - [ ] Risk contained: isolated copy validated; production apply is a separate authorized step
       with a known rollback.

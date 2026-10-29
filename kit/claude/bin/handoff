@@ -45,6 +45,12 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
 --agentes tabla del registro persistente; no crea estado ni archiva agentes.
 --estado  una línea JSON: raíz, nucleo, bytes, tope, pct, dueño, sha256 y agentes_vivos de --sesion (sin proyecto: {"raiz":null}).
 Raíz: la del directorio actual (raíz git; no $HOME ni un directorio sin git) o --raiz DIR.
+Con ESTADO.md en la raíz y sin nucleo.md, ese es el estado del proyecto y --desde lo fusiona en él (nunca crea nucleo.md):
+          Paso actual y Siguiente acción sustituyen a sus viñetas (el Objetivo solo si está vacío o es plantilla RELLENAR; Invariantes solo
+          crece con las líneas nuevas, como en nucleo.md); Decisiones, Pendientes (o «Pendientes y riesgos») y Comandos
+          de verificación (o «Cómo se comprueba») sustituyen a su sección, y la crean si falta; lo sin equivalente (Plan, Ficheros tocados) se añade como sección propia y se informa. Mismo tope en bytes; lo omitido va a .claude/estado/diario.md y
+          la copia previa a .claude/estado/ESTADO.prev-* (3). --iniciar no crea nada (sale 0); --estado añade «modo» y «estado»;
+          --solo no aplica (64). Con --json el aviso «supera el tope» va al recibo (campo avisos), no a stderr.
 Salida: 0 ok · 2 borrador inválido (stderr nombra la cabecera) · 3 sin proyecto o con enlaces simbólicos en estado/ · 4 nucleo.md cambió durante la
 fusión o estado ocupado (reintenta) · 5 dueño ajeno · 1 otro error · 64 uso erróneo.
 Sesión en ~: sin proyecto y sin --raiz, el estado de esta sesión vive en su ranura ~/.claude/estado/sesiones/<fecha>-<pid de claude>/
@@ -149,17 +155,19 @@ if [ "$MODO" = estado ]; then
   fi
   if nucleo_enlazado "$RAIZ"; then echo '{"raiz":null}'; exit 3; fi
   E=$(nucleo_estado_leer "$RAIZ") || die 3 "estado enlazado o inseguro"
-  NUC=$E/nucleo.md
-  B=0; SHA=""
-  if [ -f "$NUC" ]; then B=$(wc -c <"$NUC" | tr -d ' '); SHA=$(sha256sum <"$NUC" | cut -d' ' -f1); fi
+  NUC=$E/nucleo.md; EJ=""
+  # En modo ESTADO.md el tamaño y el hash son los de ESTADO.md; «nucleo» sigue siendo la ruta de nucleo.md que no existe (los clientes la validan).
+  if nucleo_modo_estado_md "$RAIZ"; then EJ=$RAIZ/ESTADO.md; fi
+  B=0; SHA=""; F=${EJ:-$NUC}
+  if [ -f "$F" ]; then B=$(wc -c <"$F" | tr -d ' '); SHA=$(sha256sum <"$F" | cut -d' ' -f1); fi
   DJ=null
   if D=$(nucleo_dueno "$RAIZ"); then
     V=false; ! nucleo_dueno_vigente "$RAIZ" >/dev/null || V=true
     DJ=$(jq -cn --arg s "${D% *}" --arg d "$(iso_de "${D#* }")" --argjson v "$V" '{sesion:$s,desde:$d,vigente:$v}')
   fi
   VIVOS=$(nucleo_agentes_vivos "$E" "$SESION" | jq length) || die 1 "no puedo leer la foto de agentes de $SESION"
-  jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg r "$RAIZ" --arg n "$NUC" --argjson b "$B" --argjson t "$TOPE" --argjson p "$((B * 100 / TOPE))" --argjson d "$DJ" \
-    '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d,agentes_vivos:$av,sha256:(if $sha == "" then null else $sha end)}'
+  jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg r "$RAIZ" --arg n "$NUC" --arg ej "$EJ" --argjson b "$B" --argjson t "$TOPE" --argjson p "$((B * 100 / TOPE))" --argjson d "$DJ" \
+    '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d,agentes_vivos:$av,sha256:(if $sha == "" then null else $sha end)} + (if $ej == "" then {} else {modo:"estado-md",estado:$ej} end)'
   exit 0
 fi
 
@@ -178,6 +186,7 @@ fi
 if [ "$MODO" = iniciar ]; then
   resolver_raiz || sesion crear || die 3 "sin proyecto ni ranura de sesión (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
   [ -n "$SES" ] || ! nucleo_enlazado "$RAIZ" || die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
+  if [ -z "$SES" ] && nucleo_modo_estado_md "$RAIZ"; then echo "handoff: $RAIZ/ESTADO.md es el estado del proyecto: no creo un nucleo.md en paralelo"; exit 0; fi
   PLANTILLA=${CLAUDE_HOME:-$HOME/.claude}/templates/nucleo.md
   [ -f "$PLANTILLA" ] || PLANTILLA=$(dirname "$SELF")/../templates/nucleo.md
   [ -f "$PLANTILLA" ] || die 1 "no encuentro la plantilla templates/nucleo.md (¿instalaste el kit?)"
@@ -262,6 +271,9 @@ if [ -n "$RANURA_ARG" ]; then
 else
   resolver_raiz || sesion crear || die 3 "sin proyecto ni ranura de sesión (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
 fi
+# ESTMD=1: el estado del proyecto es ESTADO.md (sin nucleo.md propio): se fusiona en él y no se crea un nucleo.md en paralelo.
+ESTMD=0; [ -n "$SES" ] || ! nucleo_modo_estado_md "$RAIZ" || ESTMD=1
+[ "$ESTMD" -eq 0 ] || [ "$SOLO" -eq 0 ] || die 64 "--solo no aplica con ESTADO.md como estado: el borrador se fusiona, no lo sustituye"
 if [ -n "$SES" ]; then E=$SES; ORIGEN=$E/nucleo.md
 else
   nucleo_enlazado "$RAIZ" && die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
@@ -278,7 +290,8 @@ NUC=$E/nucleo.md; DIARIO=$E/diario.md; VLOG=$E/verificaciones.log
 HOY=$(date -u +%F)
 
 W=$(mktemp -d "${TMPDIR:-/tmp}/handoff.XXXXXX")
-trap 'rm -rf -- "$W"' EXIT
+TMP=""
+trap 'rm -rf -- "$W"; [ -z "$TMP" ] || rm -f -- "$TMP"' EXIT
 
 # norm <título>: NORM = minúsculas, sin acentos y con espacios simples (también con mayúsculas acentuadas en LC_ALL=C).
 norm() {
@@ -297,11 +310,13 @@ clave() {
     objetivo* | "encargo original"*) KEY=objetivo ;;
     invariantes*) KEY=invariantes ;;
     "pendientes y riesgos") KEY=pendientes ;;
+    "como se comprueba") [ "${ESTMD:-0}" -eq 1 ] && KEY="comandos de verificacion" || KEY=$NORM ;;
     *) KEY=$NORM ;;
   esac
 }
 admitida() {
   case $1 in
+    decisiones) [ "${ESTMD:-0}" -eq 1 ] && return 0 ;;
     objetivo | invariantes | "paso actual" | "siguiente accion" | "comandos de verificacion" | plan | pendientes | "ficheros tocados") return 0 ;;
   esac
   return 1
@@ -356,6 +371,222 @@ for ((i = 0; i < ${#DK[@]}; i++)); do
   VISTAS+="${DK[i]} "
 done
 dindice() { local j; DI=-1; for ((j = 0; j < ${#DK[@]}; j++)); do [ "${DK[j]}" != "$1" ] || { DI=$j; return 0; }; done; }
+
+# ---------------------------------------------------------------- --desde con ESTADO.md como estado
+# Mapeo borrador (secciones de nucleo.md) → ESTADO.md. Viñetas de la cabecera, que sustituyen a la suya (o se añaden si falta):
+#   Objetivo → «- Objetivo (una línea):» (todo el cuerpo en una línea; solo si la existente está vacía o es RELLENAR) · Paso actual → «- Paso actual:» · Siguiente acción → «- Siguiente acción:»
+#   (la primera línea va en la viñeta y el resto sangrado). Secciones, que sustituyen a la suya y se crean si faltan:
+#   Decisiones → «## Decisiones» · Pendientes / Pendientes y riesgos → «## Pendientes y riesgos» · Comandos de verificación /
+#   Cómo se comprueba → «## Cómo se comprueba». Invariantes: las de la persona se conservan y solo se añaden líneas nuevas (vacía o RELLENAR: se reemplaza).
+#   Sin equivalente (Plan, Ficheros tocados): sección propia, reemplazada si ya existe; los [x] del Plan van a diario.md. Una sección vacía del borrador conserva la de ESTADO.md. El borrador no
+#   puede dejar a ESTADO.md sin sus secciones: lo que no trae se queda como estaba.
+if [ "$ESTMD" -eq 1 ]; then
+  EST=$RAIZ/ESTADO.md
+  cp -- "$EST" "$W/viejo.md"
+  OLD_CK=$(cksum <"$EST")
+  parsear "$W/viejo.md"
+  OK=("${PK[@]}"); OTIT=("${PTIT[@]}"); OT=("${PT[@]}"); HEADX=$PHEAD
+  # cuerpo <clave>: BODY = cuerpo del borrador sin comentarios ni líneas en blanco extremas; rc 1 si no hay borrador o está vacío.
+  cuerpo() {
+    dindice "$1"; [ "$DI" -ge 0 ] && ! vacio "${DT[DI]}" || return 1
+    printf '%s' "${DT[DI]#*$'\n'}" >"$W/cuerpo"
+    BODY=$(_nucleo_sin_comentarios "$W/cuerpo" | awk 'NF { p = 1 } p { b[++n] = $0 } END { while (n && b[n] !~ /[^ \t]/) n--; for (i = 1; i <= n; i++) print b[i] }')
+    [ -n "${BODY//[$' \t\r\n']/}" ]
+  }
+  # vineta <patrón de la línea> <etiqueta si falta> <cuerpo>: reemplaza la viñeta (con sus líneas sangradas) o, si falta, la añade tras
+  # la última línea con texto de la cabecera. El resto de la cabecera sale tal cual (las líneas en blanco finales incluidas).
+  vineta() {
+    HEADX=$(printf '%s' "$HEADX" | B=$3 awk -v pat="$1" -v def="$2" '
+      function put(s) { out[++m] = s }
+      function emit(label,   n, a, i) { n = split(ENVIRON["B"], a, "\n"); put("- " label ": " a[1]); for (i = 2; i <= n; i++) put(a[i] ~ /[^ \t]/ ? "  " a[i] : "") }
+      skip && /^[ \t]+[^ \t]/ { next }
+      { skip = 0 }
+      /^[ \t]*(```|~~~)/ { f = !f }
+      !f && !done && $0 ~ pat { l = $0; sub(/^- /, "", l); sub(/:.*/, "", l); emit(l); done = 1; skip = 1; next }
+      { put($0) }
+      END {
+        if (!done) {
+          last = m; while (last > 0 && out[last] !~ /[^ \t]/) last--
+          for (i = last + 1; i <= m; i++) tail[++t] = out[i]
+          m = last; emit(def); if (!t) put("")
+          for (i = 1; i <= t; i++) put(tail[i])
+        }
+        for (i = 1; i <= m; i++) print out[i]
+      }'; printf x)
+    HEADX=${HEADX%x}
+  }
+  # sin_marca <texto>: quita la viñeta «- » o «* » inicial.
+  sin_marca() { local t=$1; t=${t#"${t%%[![:space:]]*}"}; case $t in '- '* | '* '*) t=${t:2} ;; esac; printf '%s' "$t"; }
+  # con_resto <texto>: la primera línea sin su viñeta y, sangradas por vineta, las demás.
+  con_resto() { local r=""; [ "$1" = "${1#*$'\n'}" ] || r=$'\n'${1#*$'\n'}; printf '%s%s' "$(sin_marca "${1%%$'\n'*}")" "$r"; }
+  # vacio_e <sección con cabecera>: como vacio, y las líneas con RELLENAR (plantilla sin rellenar) cuentan como vacías.
+  vacio_e() {
+    vacio "$1" && return 0
+    printf '%s' "${1#*$'\n'}" >"$W/ve"
+    _nucleo_sin_comentarios "$W/ve" | awk '/RELLENAR/ { next } /[^ \t]/ { f = 1 } END { exit f ? 1 : 0 }'
+  }
+  # bvacio <patrón>: la viñeta de la cabecera (fuera de cercas, con sus líneas sangradas) no existe, está vacía o es de plantilla.
+  bvacio() {
+    printf '%s' "$HEADX" | awk -v pat="$1" '
+      /^[ \t]*(```|~~~)/ { f = !f; skip = 0; next }
+      skip && /^[ \t]+[^ \t]/ { v = v $0; next }
+      { skip = 0 }
+      !f && !done && $0 ~ pat { l = $0; sub(/^[^:]*:/, "", l); v = l; done = 1; skip = 1 }
+      END { gsub(/[ \t]/, "", v); exit (v == "" || v ~ /RELLENAR/) ? 0 : 1 }'
+  }
+  EXTRAS=""
+  if cuerpo objetivo && bvacio '^- Objetivo'; then
+    OBJ=$(tr '\n' ' ' <<<"$BODY" | tr -s ' '); OBJ=$(sin_marca "${OBJ% }")
+    vineta '^- Objetivo' 'Objetivo (una línea)' "$OBJ"
+  fi
+  if cuerpo "paso actual"; then vineta '^- Paso actual' 'Paso actual' "$(con_resto "$BODY")"; fi
+  if cuerpo "siguiente accion"; then vineta '^- Siguiente acci' 'Siguiente acción' "$(con_resto "$BODY")"; fi
+  # sec_e <título> <texto del borrador con cabecera> <texto original o vacío>: SEC = la sección con su título, el cuerpo del borrador sin
+  # líneas en blanco finales y detrás tantos saltos como tenía la original (la separación con la siguiente se conserva).
+  sec_e() {
+    local b=${2#*$'\n'} o=$3 n=0 x
+    while [[ $b == *$'\n' ]]; do b=${b%$'\n'}; done
+    while [[ $o == *$'\n' ]]; do o=${o%$'\n'}; n=$((n + 1)); done
+    [ "$n" -ge 1 ] || n=1
+    SEC="## $1"$'\n'$b
+    for ((x = 0; x < n; x++)); do SEC+=$'\n'; done
+  }
+  # Los [x] del Plan del borrador van a diario y salen del texto que se escribe.
+  : >"$W/hechos"
+  for ((j = 0; j < ${#DK[@]}; j++)); do
+    [ "${DK[j]}" = plan ] || continue
+    DT[j]=$(awk -v d="$W/hechos" '
+      /^[ \t]*(```|~~~)/ { c = !c }
+      !c && /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { print > d; next }
+      { print }' <<<"${DT[j]}")$'\n'
+  done
+  # Solo se sustituye la PRIMERA sección de cada clave; las demás, y todo lo que el borrador no trae, salen tal cual.
+  # RA[i]=1: sección añadida por el borrador (sin equivalente en ESTADO.md): la única que el tope puede omitir.
+  RK=(); RT=(); RA=(); HECHA=" "
+  for ((i = 0; i < ${#OK[@]}; i++)); do
+    k=${OK[i]}; dindice "$k"; di=$DI
+    RK+=("$k"); RA+=(0)
+    case $k in objetivo | "paso actual" | "siguiente accion") RT+=("${OT[i]}"); continue ;; esac
+    if [ "$k" = invariantes ] && [ "$di" -ge 0 ] && [[ $HECHA != *" $k "* ]] && ! vacio "${DT[di]}" && ! vacio_e "${OT[i]}"; then
+      # Las Invariantes de la persona no se tocan: solo se añaden las líneas del borrador que no estén ya (misma regla que nucleo.md).
+      HECHA+="$k "; t=${OT[i]}; n=0
+      while [[ $t == *$'\n' ]]; do t=${t%$'\n'}; n=$((n + 1)); done
+      while IFS= read -r l; do
+        tl=${l#"${l%%[![:space:]]*}"}; tl=${tl%"${tl##*[![:space:]]}"}
+        [ -n "$tl" ] && [[ $tl != *RELLENAR* ]] || continue
+        yaesta=0
+        while IFS= read -r ol; do
+          ol=${ol#"${ol%%[![:space:]]*}"}; ol=${ol%"${ol##*[![:space:]]}"}
+          [ "$ol" != "$tl" ] || { yaesta=1; break; }
+        done <<<"${t#*$'\n'}"
+        [ "$yaesta" -eq 1 ] || t+=$'\n'$l
+      done <<<"${DT[di]#*$'\n'}"
+      [ "$n" -ge 1 ] || n=1
+      for ((x = 0; x < n; x++)); do t+=$'\n'; done
+      RT+=("$t"); continue
+    fi
+    if [ "$di" -ge 0 ] && [[ $HECHA != *" $k "* ]] && ! vacio "${DT[di]}"; then
+      HECHA+="$k "; sec_e "${OTIT[i]}" "${DT[di]}" "${OT[i]}"; RT+=("$SEC")
+      case $k in decisiones | pendientes | "comandos de verificacion") ;; *) EXTRAS+="|${OTIT[i]}" ;; esac
+    else RT+=("${OT[i]}")
+    fi
+  done
+  for ((j = 0; j < ${#DK[@]}; j++)); do
+    k=${DK[j]}
+    case $k in objetivo | "paso actual" | "siguiente accion") continue ;; esac
+    [[ $HECHA == *" $k "* ]] && continue
+    vacio "${DT[j]}" && continue
+    case $k in
+      decisiones) T=Decisiones ;;
+      pendientes) T="Pendientes y riesgos" ;;
+      "comandos de verificacion") T="Cómo se comprueba" ;;
+      *) titulo_de "${DTIT[j]}"; T=$TITULO; EXTRAS+="|$T" ;;
+    esac
+    ult=$HEADX; [ "${#RT[@]}" -eq 0 ] || ult=${RT[${#RT[@]} - 1]}
+    sec_e "$T" "${DT[j]}" ""; [[ $ult == *$'\n\n' ]] || SEC=$'\n'$SEC
+    HECHA+="$k "; RK+=("$k"); RT+=("$SEC"); RA+=(1)
+  done
+  armar_e() {
+    local i; TEXTO=$HEADX
+    for ((i = 0; i < ${#RK[@]}; i++)); do TEXTO+=${RT[i]}; done
+    [ "$NOEOL" -eq 0 ] || TEXTO=${TEXTO%$'\n'}
+  }
+  NOEOL=0; [ -z "$(tail -c1 "$EST")" ] || NOEOL=1
+  CRLF=0; IFS= read -r l1 <"$EST" || true; [[ ${l1-} != *$'\r' ]] || CRLF=1
+  bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
+  armar_e
+  # ESTADO.md es de la persona: el tope solo omite (a diario.md) las secciones que el borrador añadió sin equivalente, desde el final.
+  # Si aun así lo pasa se escribe igual y se avisa: la inyección de SessionStart ya recorta.
+  OMITIDAS=""
+  for ((i = ${#RK[@]} - 1; i >= 0; i--)); do
+    [ "$(bytes "$TEXTO")" -gt "$TOPE" ] || break
+    [ "${RA[i]}" -eq 1 ] && [ -n "${RT[i]}" ] || continue
+    t=${RT[i]#$'\n'}; t=${t%%$'\n'*}; t=${t#\#\# }
+    printf '## %s omitido por tope: %s\n%s\n' "$HOY" "$t" "${RT[i]#*$'\n'}" >>"$W/omitido"
+    OMITIDAS+=" $t"; RT[i]=""; armar_e
+  done
+  AVISOS=""
+  [ -z "$OMITIDAS" ] || AVISOS="omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
+  AVTOPE=""
+  [ "$(bytes "$TEXTO")" -le "$TOPE" ] || AVTOPE="ESTADO.md ocupa $(bytes "$TEXTO") B y supera el tope (${TOPE} B): recórtalo a mano; la inyección de SessionStart ya lo recorta"
+  TEXTOW=$TEXTO; [ "$CRLF" -eq 0 ] || TEXTOW=${TEXTO//$'\n'/$'\r\n'}
+
+  [ -z "${NUCLEO_FUSION_PAUSA:-}" ] || sleep "$NUCLEO_FUSION_PAUSA"
+  [ "$(cksum <"$EST")" = "$OLD_CK" ] || die 4 "ESTADO.md cambió mientras se fusionaba (otra sesión): no lo piso; reintenta"
+  # Solo si el texto cambia: copia previa, rotación (3, por mtime), escritura y diario. Un handoff repetido no toca nada.
+  if [ "$(printf '%s' "$TEXTOW" | cksum)" != "$OLD_CK" ]; then
+    mkdir -p "$E"
+    P=$E/ESTADO.prev-$(date -u +%Y%m%dT%H%M%SZ).md
+    [ ! -e "$P" ] || P=${P%.md}-$$.md
+    cp -- "$W/viejo.md" "$P"
+    # shellcheck disable=SC2012  # nombres propios (ESTADO.prev-FECHA.md), y hace falta el orden por mtime
+    mapfile -t COPIAS < <(ls -1t "$E"/ESTADO.prev-*.md 2>/dev/null)
+    for ((i = 3; i < ${#COPIAS[@]}; i++)); do rm -f -- "${COPIAS[i]}"; done
+    TMP=$(mktemp "$RAIZ/.ESTADO.XXXXXX")
+    printf '%s' "$TEXTOW" >"$TMP"
+    chmod "$(stat -c %a "$EST" 2>/dev/null || stat -f %Lp "$EST")" "$TMP" 2>/dev/null || true
+    mv -f -- "$TMP" "$EST"; TMP=""
+    HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
+    # shellcheck disable=SC2094  # diario.md solo se añade; lo que se lee es $W/hechos
+    {
+      [ -s "$DIARIO" ] || printf '# Diario\n'
+      while IFS= read -r l; do
+        l=${l#"${l%%[![:space:]]*}"}; l=${l#[-*] }; l=${l#[0-9]*. }; l=${l#\[[xX]\]}; l=${l# }
+        [ -z "$l" ] || printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
+      done <"$W/hechos"
+      [ ! -s "$W/omitido" ] || cat "$W/omitido"
+    } >>"$DIARIO"
+  fi
+  ERRC=""
+  if [ "$COMMIT" -eq 1 ]; then
+    if ! git -C "$RAIZ" add -- ESTADO.md; then ERRC="ESTADO.md escrito, pero git add falló"
+    elif ! git -C "$RAIZ" diff --cached --quiet -- ESTADO.md; then
+      git -C "$RAIZ" commit -q -m "docs(estado): handoff de $HOY" -- ESTADO.md || ERRC="ESTADO.md escrito, pero el commit falló"
+    fi
+  fi
+  if EX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
+    case $EX in /*) ;; *) EX=$RAIZ/$EX ;; esac
+    mkdir -p "$(dirname "$EX")" 2>/dev/null || true
+    command grep -qFx '.claude/estado/' "$EX" 2>/dev/null || printf '.claude/estado/\n' >>"$EX" 2>/dev/null || true
+  fi
+  if D=$(nucleo_dueno "$RAIZ"); then
+    if [ -z "$SESION" ] || [ "${D% *}" = "$SESION" ] || ! nucleo_dueno_vigente "$RAIZ" >/dev/null; then rm -f -- "$E/.dueno"
+    else AVISOS+="${AVISOS:+; }la sesión dueña es otra (${D% *}): no se libera"
+    fi
+  fi
+  # El aviso de tope es permanente mientras ESTADO.md pase del tope: con --json va al recibo (el cockpit trata todo stderr como «no limpio»).
+  [ -z "$AVTOPE" ] || [ "$JSON" = 1 ] || AVISOS+="${AVISOS:+; }$AVTOPE"
+  [ -z "$AVISOS" ] || echo "handoff: $AVISOS" >&2
+  if [ "$JSON" = 1 ]; then
+    SHA=$(sha256sum <"$EST" | cut -d' ' -f1)
+    jq -cn --arg n "$EST" --arg s "$SHA" --arg x "${EXTRAS#|}" --arg v "$AVTOPE" '{nucleo:$n,sha256:$s,modo:"estado-md",extras:($x | split("|") | map(select(. != "")))} + (if $v == "" then {} else {avisos:[$v]} end)'
+  else
+    echo "handoff: $EST escrito ($(wc -c <"$EST" | tr -d ' ') B de $TOPE)"
+    [ -z "$EXTRAS" ] || echo "handoff: sin equivalente en ESTADO.md, añadidas como secciones propias: ${EXTRAS#|}"
+  fi
+  [ -z "$ERRC" ] || die 1 "$ERRC"
+  exit 0
+fi
 
 # --- el nucleo actual ---
 OLD_CK=ausente; [ ! -f "$NUC" ] || OLD_CK=$(cksum <"$NUC")
