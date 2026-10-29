@@ -230,10 +230,34 @@ ok "nudge: no nombra nucleo.md ni manda a handoff" "$(command grep -c 'nucleo\.m
 ev "$E" s4 "$T/p60.jsonl" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: la edad del KPI es la de ESTADO.md" "$(tail -1 "$HOME/.claude/session-logs/nucleo-freshness.log" | awk '{print ($4 >= 1790)}')" 1
 
-printf '# Estado\n## Objetivo\nX\n' >"$T/b.md"
-ok "handoff --desde: no crea un nucleo.md en paralelo y dice qué hacer" "$(bash "$HO" --desde "$T/b.md" --raiz "$E" 2>&1 >/dev/null | command grep -c 'ESTADO.md'),$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" 1,no
-ok "handoff --iniciar: tampoco" "$(bash "$HO" --iniciar --raiz "$E" 2>&1 >/dev/null | command grep -c 'ESTADO.md'),$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" 1,no
-ok "handoff --desde en modo ESTADO.md sale con rc 1" "$(bash "$HO" --desde "$T/b.md" --raiz "$E" >/dev/null 2>&1; echo $?)" 1
+# handoff en modo ESTADO.md: fusiona en ESTADO.md (rc 0), sin crear nucleo.md. Borrador en forma nucleo: lo que tiene
+# equivalente sustituye a su viñeta o sección; lo que no (Plan) se añade como sección propia, nunca se pierde.
+# shellcheck disable=SC2016  # los backticks son markdown del borrador, no una expansión
+printf '## Objetivo\nOBJ-NUEVO\n## Paso actual\nPASO-NUEVO\ndetalle del paso\n## Siguiente acción\nSIG-NUEVA\n## Decisiones\n- 2026-10-29: DEC-NUEVA\n## Pendientes\n- PEND-NUEVO\n## Comandos de verificación\n- `make test` → rc=0\n## Plan\n- [ ] PLAN-UNO\n' >"$T/b.md"
+estado "$E/ESTADO.md"
+OUT=$(bash "$HO" --desde "$T/b.md" --raiz "$E" --json 2>"$T/err"); RC=$?
+ok "handoff --desde en modo ESTADO.md: rc 0, sin stderr, sin nucleo.md" "$RC,$(wc -c <"$T/err" | tr -d ' '),$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" 0,0,no
+ok "handoff --desde: el recibo apunta a ESTADO.md y trae sha256" "$(jq -r '.nucleo' <<<"$OUT"),$(jq -r '.sha256 | length' <<<"$OUT")" "$E/ESTADO.md,64"
+ok "handoff --desde: objetivo, paso y siguiente acción sustituyen a sus viñetas" "$(command grep -c '^- Objetivo (una línea): OBJ-NUEVO$' "$E/ESTADO.md"),$(command grep -c '^- Paso actual: PASO-NUEVO$' "$E/ESTADO.md"),$(command grep -c '^- Siguiente acción: SIG-NUEVA$' "$E/ESTADO.md"),$(command grep -c 'OBJETIVO-VIVO\|PASO-VIVO' "$E/ESTADO.md")" 1,1,1,0
+ok "handoff --desde: el detalle del paso queda sangrado bajo su viñeta" "$(command grep -c '^  detalle del paso$' "$E/ESTADO.md")" 1
+ok "handoff --desde: decisiones, pendientes y verificación sustituyen o crean su sección" "$(command grep -c '^## Decisiones$' "$E/ESTADO.md"),$(command grep -c 'DEC-NUEVA' "$E/ESTADO.md"),$(command grep -c '^## Pendientes y riesgos$' "$E/ESTADO.md"),$(command grep -c 'PEND-NUEVO' "$E/ESTADO.md"),$(command grep -c '^## Cómo se comprueba$' "$E/ESTADO.md"),$(command grep -c 'make test. → rc=0' "$E/ESTADO.md"),$(command grep -c 'DECISION-UNICA' "$E/ESTADO.md")" 1,1,1,1,1,1,0
+ok "handoff --desde: lo sin equivalente (Plan) se añade, no se pierde" "$(command grep -c '^## Plan$' "$E/ESTADO.md"),$(command grep -c 'PLAN-UNO' "$E/ESTADO.md")" 1,1
+HASH1=$(sha256sum <"$E/ESTADO.md")
+bash "$HO" --desde "$T/b.md" --raiz "$E" >/dev/null 2>&1
+ok "handoff --desde repetido: mismo ESTADO.md, sin duplicar secciones" "$([ "$(sha256sum <"$E/ESTADO.md")" = "$HASH1" ] && echo igual || echo distinto),$(command grep -c '^## ' "$E/ESTADO.md")" igual,4
+ok "handoff --desde: la copia previa va a .claude/estado, fuera del árbol versionado" "$(find "$E/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" 2
+ok "handoff --estado: nombra ESTADO.md y su modo" "$(bash "$HO" --estado --raiz "$E" | jq -r '(.estado | endswith("/ESTADO.md")), .modo' | paste -sd,)" true,estado-md
+# El comando que dictan stop-context-gauge.sh y session-start-compact.sh: --desde con --sesion y sin --ranura, desde un cwd dentro del repo.
+estado "$E/ESTADO.md"
+ok "handoff --desde --sesion sin --ranura (el que dictan los hooks) funciona en modo ESTADO.md" "$(cd "$E" && bash "$HO" --desde "$T/b.md" --sesion s-h5 >/dev/null 2>&1; echo $?),$(command grep -c 'PASO-NUEVO' "$E/ESTADO.md"),$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" 0,1,no
+printf '# Estado\n## Cosa rara\nX\n' >"$T/mala.md"
+HASH1=$(sha256sum <"$E/ESTADO.md")
+ok "handoff --desde en modo ESTADO.md: un borrador inválido sale con 2 sin tocar nada" "$(bash "$HO" --desde "$T/mala.md" --raiz "$E" >/dev/null 2>&1; echo $?),$([ "$(sha256sum <"$E/ESTADO.md")" = "$HASH1" ] && echo igual)" 2,igual
+{ printf '## Paso actual\n'; for i in $(seq 1 30); do echo "- linea $i"; done; printf '## Plan\n'; for i in $(seq 1 400); do echo "- [ ] relleno largo del plan numero $i para pasar el tope del estado"; done; } >"$T/g.md"
+bash "$HO" --desde "$T/g.md" --raiz "$E" >/dev/null 2>&1
+ok "handoff --desde: respeta el tope de bytes y lo omitido va a diario.md" "$([ "$(wc -c <"$E/ESTADO.md")" -le 5700 ] && echo si),$(command grep -c 'omitido por tope: Plan' "$E/.claude/estado/diario.md")" si,1
+ok "handoff --iniciar en modo ESTADO.md: rc 0 y no crea nucleo.md" "$(bash "$HO" --iniciar --raiz "$E" >/dev/null 2>&1; echo $?),$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" 0,no
+ok "handoff --desde --solo en modo ESTADO.md: no aplica (64)" "$(bash "$HO" --desde "$T/b.md" --raiz "$E" --solo >/dev/null 2>&1; echo $?)" 64
 
 # ESTADO.md enlazado: el repo es de terceros, no decide qué fichero de fuera se inyecta.
 L=$T/enlazado; repo "$L"; echo SECRETO-DE-FUERA >"$T/fuera.md"; ln -s "$T/fuera.md" "$L/ESTADO.md"
