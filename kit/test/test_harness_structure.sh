@@ -512,6 +512,13 @@ ck "$(find "$leak_tmp" -mindepth 1 | wc -l | tr -d ' ')" "0" "test_evals no deja
 rm -rf "$leak_tmp"
 ck "$(grep -c 'trap .*TMPDIR' "$KIT/test/test_doctor_base_url.sh")" "1" "test_doctor_base_url fija un TMPDIR propio y lo borra al salir"
 
+# --- harness arma y para el modo autonomo; no cita skills inexistentes (superpowers:*); allow minimo ---
+HSK=".claude/skills/harness/SKILL.md"
+ck "$(awk '/^### Fase 3/{f=1} /^### Fase 4/{f=0} f' "$HSK" | grep -c 'autonomy.sh start')" "1" "harness Fase 3 arma el modo autonomo (autonomy.sh start)"
+ck "$(awk '/^### Fase 4/{f=1} /^## Como|^## Cómo/{f=0} f' "$HSK" | grep -c 'autonomy.sh stop')" "1" "harness Fase 4 para el modo autonomo (autonomy.sh stop)"
+ck "$(grep -c 'superpowers:' "$HSK" || true)" "0" "harness no cita superpowers:* (no existe en el kit)"
+ck "$(jq -r '.permissions.allow[]' .claude/settings.json | grep -cFx 'Bash(scripts/autonomy.sh *)')" "1" "settings permite Bash(scripts/autonomy.sh *)"
+
 ck "$([ "$falsified" -ge 6 ] && echo y || echo n)" "y" "al menos 6 checks demuestran deteccion real sobre casos fabricados a proposito (detectados: $falsified de 7) -- si fuera 0, la suite seria decorativa"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
