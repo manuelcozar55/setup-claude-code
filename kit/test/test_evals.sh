@@ -343,12 +343,13 @@ fi
 # --- 11. Mitad debe-disparar, mitad no-debe-disparar (E11) ----------------
 # Sin tareas negativas el eval solo puede premiar un harness mas ruidoso: nada
 # mide lo que cuesta un falso positivo. La proporcion se declara por tarea en
-# `tipo:` y se cuenta aqui; se admite un desvio de una tarea para numeros impares.
+# `tipo:` y se cuenta aqui (`tipo: resultado` mide otra cosa y no entra en el
+# equilibrio); se admite un desvio de una tarea para numeros impares.
 pos=$(grep -l '^tipo: positiva' "$E"/tasks/*.yaml 2>/dev/null | wc -l)
 neg=$(grep -l '^tipo: negativa' "$E"/tasks/*.yaml 2>/dev/null | wc -l)
-sin=$(grep -L '^tipo: \(positiva\|negativa\)' "$E"/tasks/*.yaml 2>/dev/null | tr '\n' ' ')
+sin=$(grep -L '^tipo: \(positiva\|negativa\|resultado\)' "$E"/tasks/*.yaml 2>/dev/null | tr '\n' ' ')
 if [ -n "$sin" ]; then
-  echo "NOT ok - tareas sin 'tipo: positiva|negativa': $sin"; fail=$((fail+1))
+  echo "NOT ok - tareas sin 'tipo: positiva|negativa|resultado': $sin"; fail=$((fail+1))
 else
   echo "ok - toda tarea declara si el harness debe disparar o no"; pass=$((pass+1))
 fi
@@ -357,6 +358,63 @@ if [ "$d" -le 1 ]; then
   echo "ok - mezcla equilibrada: $pos positivas / $neg negativas"; pass=$((pass+1))
 else
   echo "NOT ok - mezcla desequilibrada: $pos positivas / $neg negativas (desvio $d)"; fail=$((fail+1))
+fi
+
+# --- 11b. Tres tareas de RESULTADO (M7) -------------------------------------
+# Las 20 primeras miden trayectoria o contencion. Estas tres miden si el trabajo
+# queda hecho: bug con test oculto, feature en dos ficheros y test antes que fix.
+# Que el check suspenda el estado inicial y apruebe la solucion de referencia lo
+# cubren §10 y §20 al recorrer tasks/*.yaml; aqui se exige que existan, que sean
+# `tipo: resultado`, que report.py las trate aparte y que los docs cuenten 23.
+for t in 21-bug-con-test-oculto 22-feature-dos-ficheros 23-test-antes-que-fix; do
+  if [ -f "$E/tasks/$t.yaml" ] && grep -q '^tipo: resultado' "$E/tasks/$t.yaml" \
+     && grep -q '^solucion:' "$E/tasks/$t.yaml"; then
+    echo "ok - $t existe, es tipo resultado y declara solucion"; pass=$((pass+1))
+  else
+    echo "NOT ok - falta $t, o no es 'tipo: resultado' con solucion"; fail=$((fail+1))
+  fi
+done
+Z=$(mktemp -d) || exit 1
+"$PY" - "$Z/res.jsonl" <<'PYEOF'
+import json, sys
+def r(task, arm, res, tipo):
+    return {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": tipo,
+            "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
+            "duration_api_ms": 1, "input_tokens": 1}
+rows = []
+for i in range(4):
+    rows += [r("p%d" % i, "on", "pass", "positiva"), r("p%d" % i, "off", "pass", "positiva"),
+             r("n%d" % i, "on", "pass", "negativa"), r("n%d" % i, "off", "pass", "negativa"),
+             r("r%d" % i, "on", "pass", "resultado"), r("r%d" % i, "off", "fail", "resultado")]
+open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+PYEOF
+res=$("$PY" "$E/report.py" --store "$Z/res.jsonl" 2>&1)
+rm -rf "$Z"
+if printf '%s' "$res" | grep -q '^  resultado *(' ; then
+  echo "ok - report.py desglosa 'resultado' en su propia linea"; pass=$((pass+1))
+else
+  echo "NOT ok - report.py no desglosa 'resultado': $(printf '%s' "$res" | tr '\n' ' ' | cut -c1-200)"; fail=$((fail+1))
+fi
+# Las de resultado no entran en el veredicto agregado: SIRVE/PERJUDICA esta definido
+# sobre el equilibrio positiva/negativa. Aqui positiva/negativa dan lo mismo en los
+# dos brazos y resultado sube: el lift agregado tiene que seguir en 0.
+if printf '%s' "$res" | grep -q 'lift +0.00 -> NEUTRO'; then
+  echo "ok - el veredicto agregado ignora las tareas de resultado"; pass=$((pass+1))
+else
+  echo "NOT ok - las tareas de resultado mueven el veredicto agregado: $(printf '%s' "$res" | grep 'lift [+-]' | head -1)"; fail=$((fail+1))
+fi
+n=$(find "$E/tasks" -name '*.yaml' | wc -l)
+for doc in README.md kit/README.md kit/evals/README.md; do
+  if grep -q "\b$n tareas\b" "$doc"; then
+    echo "ok - $doc cita $n tareas"; pass=$((pass+1))
+  else
+    echo "NOT ok - $doc no dice '$n tareas'"; fail=$((fail+1))
+  fi
+done
+if [ "$(grep -c "sobre 23 tareas" Makefile)" -ge 2 ]; then
+  echo "ok - el Makefile avisa de 23 tareas en evals-paid y evals-ablacion-paid"; pass=$((pass+1))
+else
+  echo "NOT ok - el Makefile no dice 'sobre 23 tareas' en sus dos avisos"; fail=$((fail+1))
 fi
 
 # --- 12. El lift agregado no puede tapar una cancelacion ------------------
