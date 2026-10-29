@@ -81,5 +81,29 @@ else
   echo "NOT ok - el hook no discrimina: produce lo mismo ante entradas opuestas"; fail=$((fail+1))
 fi
 
+# --- 9. oracle-log: el marcador de sesion solo con un oraculo cuyo rc es fiable ----
+OLOG="$PWD/.claude/hooks/oracle-log.sh"
+olog() { # olog <session_id> <comando> [exit_code]
+  if [ $# -ge 3 ]; then
+    jq -n --arg s "$1" --arg c "$2" --argjson r "$3" \
+      '{session_id:$s,tool_input:{command:$c},tool_response:{exit_code:$r}}' | "$OLOG" >/dev/null 2>&1
+  else
+    jq -n --arg s "$1" --arg c "$2" '{session_id:$s,tool_input:{command:$c}}' | "$OLOG" >/dev/null 2>&1
+  fi
+}
+marca() { if [ -f "$MCHARNESS_STATE/session-$1.oracle" ]; then echo y; else echo n; fi; }
+olog ol1 "make test | tail -n 5" 1
+ck "$(marca ol1)" "n" "oracle-log: tuberia con rc != 0 -> no marca verde"
+olog ol1b "make test | tail -n 5"
+ck "$(marca ol1b)" "n" "oracle-log: tuberia sin rc -> no marca verde (el rc seria el de tail)"
+olog ol2 "$(printf 'make test\n&& echo hecho')"
+ck "$(grep -c "ol2.*make test.*hecho" "$MCHARNESS_STATE/oracle-runs.tsv")" "1" "oracle-log: comando multilinea -> una sola linea en el TSV"
+olog ol3 "make test"
+ck "$(marca ol3)" "y" "oracle-log: make test plano marca session-<sid>.oracle"
+olog ol4 "make test" 2
+ck "$(marca ol4)" "n" "oracle-log: rc != 0 declarado en el payload -> no marca verde"
+o=$(run "arregla el bug del login" s9)
+ckhas "$o" "oraculo -- make test" y "auto-spec: recomienda 'oraculo -- <cmd>' para ejecutar el oraculo"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
