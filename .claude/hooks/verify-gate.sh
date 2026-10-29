@@ -46,6 +46,27 @@ if [ -x "$AUT" ] && oracle=$(aut oracle 2>/dev/null) && [ -n "$oracle" ]; then
   out=$(cd "$cwd" && timeout 600 sh -c "$oracle" 2>&1)
   rc=$?
   if [ "$rc" -eq 0 ]; then
+    # Verde con el sensor tocado no prueba nada: se bloquea (cuenta como intento) con la lista.
+    altered=$(aut sensor-check 2>/dev/null); src=$?
+    if [ "$src" -ne 0 ] && [ -n "$altered" ]; then
+      n=$(aut attempt 2>/dev/null); arc=$?
+      if [ "$arc" -ne 0 ]; then
+        aut stop >/dev/null 2>&1
+        {
+          echo "── mcharness: SENSOR ALTERADO y presupuesto agotado ($n) ──"
+          echo "El oraculo esta verde, pero estos ficheros del sensor cambiaron desde el arranque:"
+          echo "$altered"
+        } >&2
+        exit 0
+      fi
+      jq -n --arg r "El oraculo esta verde, pero SENSOR ALTERADO (intento $n): estos ficheros del sensor cambiaron o desaparecieron desde que arranco el run:
+
+$altered
+
+Un verde con el sensor tocado no prueba nada. Revierte esos cambios y repara el codigo; si crees que el sensor esta mal, para y dilo: eso se decide fuera de este lazo." \
+        '{decision:"block", reason:$r}'
+      exit 0
+    fi
     aut stop >/dev/null 2>&1
     printf '%s\n' "$out" | tail -5 >&2
     echo "── mcharness: oraculo VERDE, run autonomo cerrado ──" >&2
