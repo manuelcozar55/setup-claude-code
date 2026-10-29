@@ -279,6 +279,13 @@ ok "clear sin ninguno: nada que inyectar" "$(ev "$N" s8 "" startup | bash "$H/se
 ok "handoff --iniciar sin ninguno: crea nucleo.md" "$(bash "$HO" --iniciar --raiz "$N" >/dev/null 2>&1; [ -f "$N/.claude/estado/nucleo.md" ] && echo si)" si
 
 
+# Las tres situaciones, con la lib, handoff --estado y el aviso de los hooks: solo nucleo.md, solo ESTADO.md y los dos (manda nucleo.md).
+SN=$T/solo-nucleo; repo "$SN"; mkdir -p "$SN/.claude/estado"; printf '# Estado\n## Paso actual\nPASO-NUCLEO\n' >"$SN/.claude/estado/nucleo.md"
+modo() { if nucleo_modo_estado_md "$1"; then echo estado-md; else echo nucleo; fi; }
+ok "tres situaciones: solo nucleo.md / solo ESTADO.md / los dos / ninguno (lib)" "$(modo "$SN"),$(modo "$E"),$(modo "$B"),$(modo "$N")" nucleo,estado-md,nucleo,nucleo
+ok "tres situaciones: handoff --estado, «modo» solo con ESTADO.md como estado" "$(for d in "$SN" "$E" "$B"; do bash "$HO" --estado --raiz "$d" | jq -r '.modo // "nucleo"'; done | paste -sd,)" nucleo,estado-md,nucleo
+touch -d '-30 minutes' "$SN/.claude/estado/nucleo.md" "$E/ESTADO.md" "$B/.claude/estado/nucleo.md" "$B/ESTADO.md"
+ok "tres situaciones: el aviso del nudge nombra el fichero que manda (con los dos, ya cubierto arriba)" "$(for d in "$SN" "$E"; do nudge "$d" "s9-${d##*/}" | ctx | command grep -o '[A-Za-z]*\.md lleva 30 min' | head -1; done | paste -sd,)" "nucleo.md lleva 30 min,ESTADO.md lleva 30 min"
 exit $FAIL
 ) || FAIL=1
 exit "$FAIL"
