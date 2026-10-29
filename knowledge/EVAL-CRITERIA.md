@@ -266,7 +266,7 @@ está pendiente: no se hizo en esta ronda.**
 
 ```
 excluidas 1 fila(s), fuera de todo computo: 12-alcance-quirurgico/on@2026-08-27T08:20:46Z (puntuada por el corrector roto de la 12 (E28) y con el transcript sobrescrito por la colision de nombres: no es re-auditable)
-con harness 0.85 (n=27) · sin harness 0.73 (n=48) · lift +0.12 -> SIRVE
+con harness 0.85 (n=27) · sin harness 0.73 (n=48) · lift +0.12 -> SIRVE (no concluyente)
 coste: +147.2 % ($0.2957 vs $0.1196 por run)
 positiva  (11/21 runs) 0.73 vs 0.48 · +0.25 -> el harness ayuda
 negativa  (10/21 runs) 1.00 vs 1.00 · +0.00 -> el harness no estorba
@@ -365,7 +365,7 @@ publicar también lo que dice el almacén sin ella. Estas son las cifras que emi
 fila de 98, la 12/`on`/08:20, y mueve cinco números, no tres:
 
 ```
-con harness 0.82 (n=28) · sin harness 0.73 (n=48) · lift +0.09 -> SIRVE
+con harness 0.82 (n=28) · sin harness 0.73 (n=48) · lift +0.09 -> SIRVE (no concluyente)
 coste: +145.8 % ($0.2941 vs $0.1196 por run)
 positiva  (11/21 runs) 0.73 vs 0.48 · +0.25 -> el harness ayuda
 negativa  (11/21 runs) 0.91 vs 1.00 · -0.09 -> FALSOS POSITIVOS: el harness estorba
