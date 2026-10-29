@@ -147,7 +147,7 @@ ok 'proceso vivo protege dueño incluso con TTL vencido' "$?" 5
 jq -cn --arg r "$LIVE" '{cwd:$r,session_id:"rival",source:"clear"}' | bash "$HOOK/session-start-clear.sh" >"$T/rival-clear"
 ok 'clear ajeno no roba propietario vivo' "$(nucleo_dueno "$LIVE" | cut -d' ' -f1)" live
 # M10: un [x] sin comando entre comillas invertidas se archiva con la marca y el CLI lo avisa.
-rm -f "$E/.dueno" "$E/diario.md"
+R=$T/m10; E=$R/.claude/estado; mkdir -p "$E"; git -C "$R" init -q
 printf '## Paso actual\nx\n\n## Plan\n- [x] a\n- [x] b \xe2\x80\x94 `cmd`\n' >"$T/draft-m10"
 ho --desde "$T/draft-m10" >"$T/out" 2>"$T/err"; RC=$?
 ok 'M10: solo el cierre sin comando lleva la marca' "$RC,$(grep -c '(sin comando)' "$E/diario.md"),$(grep -c 'a (sin comando)' "$E/diario.md")" '0,1,1'
