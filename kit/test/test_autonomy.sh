@@ -170,6 +170,21 @@ sruns stop >/dev/null; git -C "$S" checkout -q .
 sruns start --oracle "/bin/true" --goal "x" >/dev/null
 r=$(sp "$(uuid)" | "$GATE" 2>/dev/null)
 ck "$(printf '%s' "$r" | grep -c . || true)" "0" "sensor: sin tocar el sensor, verde libera como siempre"
+# Fichero sensor ya borrado al arrancar (ultimo en el orden) y start desde un subdirectorio:
+# la linea base no puede quedar vacia (M4 quedaria anulada en silencio).
+echo a > "$S/tests/a.py"; echo z > "$S/tests/zz.py"; mkdir -p "$S/sub"
+git -C "$S" add -A && git -C "$S" -c user.name=t -c user.email=t@t commit -q -m j
+rm "$S/tests/zz.py"
+sruns start --oracle "/bin/true" --goal "x" >/dev/null
+echo flojo >> "$S/tests/a.py"
+out=$(sp "$(uuid)" | "$GATE" 2>/dev/null)
+ck "$(decision "$out")" "block" "sensor: con un sensor ya borrado al arrancar, la linea base sigue viva -> block"
+sruns stop >/dev/null; git -C "$S" checkout -q . ; rm -f "$S/tests/nuevo.sh"
+(cd "$S/sub" && ../scripts/autonomy.sh start --oracle "/bin/true" --goal "x" >/dev/null)
+echo flojo >> "$S/Makefile"
+(cd "$S/sub" && ../scripts/autonomy.sh sensor-check >/dev/null 2>&1)
+ck "$?" "1" "sensor: start desde un subdirectorio tambien guarda la linea base"
+sruns stop >/dev/null 2>&1; (cd "$S/sub" && ../scripts/autonomy.sh stop >/dev/null 2>&1); git -C "$S" checkout -q .
 export MCHARNESS_STATE="$T/state"
 
 echo "== $pass passed, $fail failed =="

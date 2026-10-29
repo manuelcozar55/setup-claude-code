@@ -54,13 +54,11 @@ H="$STATE_DIR/run-$SESSION.sensor"
 # Ficheros rastreados que son el sensor: aflojarlos cierra el lazo en falso. Hashes y no
 # `git diff`: asi no se culpa al modelo de cambios que ya estaban sin commitear al arrancar.
 sensor_hashes() {
-  local f
-  git rev-parse --git-dir >/dev/null 2>&1 || return 0
-  git ls-files -z -- Makefile conftest.py pytest.ini '.github/workflows/' 'tests/' 'test/' 'kit/test/' \
+  local top
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+  git -C "$top" ls-files -z -- Makefile conftest.py pytest.ini '.github/workflows/' 'tests/' 'test/' 'kit/test/' \
     '**/conftest.py' '**/pytest.ini' '**/Makefile' 2>/dev/null |
-    while IFS= read -r -d '' f; do
-      [ -f "$f" ] && printf '%s\t%s\n' "$(sha1sum < "$f" | cut -d' ' -f1)" "$f"
-    done
+    (cd "$top" && xargs -0 sha1sum 2>/dev/null) || true
 }
 
 case "$cmd" in
@@ -113,14 +111,14 @@ case "$cmd" in
   sensor-check)
     # Falla en abierto: sin run o sin fichero de hashes no hay nada que comparar.
     [ -f "$F" ] && [ -f "$H" ] || exit 0
+    now=$'\n'"$(sensor_hashes)"$'\n'
     altered=""
-    while IFS=$'\t' read -r h f; do
-      [ -n "$f" ] || continue
-      if [ ! -f "$f" ]; then altered="$altered$f (borrado)"$'\n'
-      else
-        now=$(sha1sum < "$f" | cut -d' ' -f1)
-        [ "$now" = "$h" ] || altered="$altered$f"$'\n'
-      fi
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      case "$now" in
+        *$'\n'"$line"$'\n'*) ;;
+        *) altered="$altered${line#*  }"$'\n' ;;
+      esac
     done < "$H"
     [ -z "$altered" ] || { printf '%s' "$altered"; exit 1; }
     ;;
