@@ -1440,6 +1440,29 @@ else
   fail=$((fail+1))
 fi
 
+# Mismo sensor para CLAUDE.md. rutas_rotas <doc> imprime las citas en backticks que no
+# resuelven; se ejecuta desde la raiz del arbol que se mira.
+CM_FALSO=$(mktemp -d)
+# shellcheck disable=SC2016  # el fixture lleva backticks literales.
+printf 'cita `kit/no/existe/jamas.md` y `ORACLES.md`\n' > "$CM_FALSO/CLAUDE.md"
+mkdir "$CM_FALSO/knowledge" && : > "$CM_FALSO/knowledge/ORACLES.md"
+cm_fake=$( (cd "$CM_FALSO" && rutas_rotas CLAUDE.md 2>/dev/null) | wc -l)
+if [ "$cm_fake" -eq 1 ]; then
+  echo "ok - el sensor de rutas de CLAUDE.md detecta una ruta inventada y resuelve la de knowledge/ (falsable)"
+  pass=$((pass+1))
+else
+  echo "NOT ok - el sensor de rutas de CLAUDE.md no distingue ($cm_fake rotas, esperaba 1)"
+  fail=$((fail+1))
+fi
+rm -f "$CM_FALSO"/knowledge/* "$CM_FALSO"/CLAUDE.md; rmdir "$CM_FALSO/knowledge" "$CM_FALSO"
+
+cm_rotas=$(rutas_rotas CLAUDE.md 2>/dev/null)
+if [ -z "$cm_rotas" ]; then
+  echo "ok - todas las rutas que cita CLAUDE.md existen"; pass=$((pass+1))
+else
+  echo "NOT ok - CLAUDE.md cita rutas inexistentes: $cm_rotas"; fail=$((fail+1))
+fi
+
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
   [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: comprobaciones de cifras (test_doc_claims.sh): faltan kit/evals/runs.jsonl u otra condicion; esas cifras NO se han comprobado" >> "$SCC_SKIP_LOG"
