@@ -2158,7 +2158,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.0...v1.5.1
