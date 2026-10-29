@@ -138,5 +138,39 @@ ck "$(grep -c ' n6 1$' "$MCHARNESS_STATE/gate-avisos.log" 2>/dev/null || true)" 
 git -C "$G" checkout -q f.txt
 export MCHARNESS_STATE="$T/state"
 
+# --- 10. Sensor alterado: oraculo verde no cierra si se toco el sensor (M4) ---
+S="$T/s"; mkdir -p "$S/scripts" "$S/tests" "$S/dir sp/test"
+cp "$AUT" "$S/scripts/autonomy.sh"
+echo 'test:' > "$S/Makefile"; echo ok > "$S/tests/t.sh"; echo ok > "$S/dir sp/test/a b.sh"; echo v > "$S/src.txt"
+git -C "$S" init -q && git -C "$S" add -A && git -C "$S" -c user.name=t -c user.email=t@t commit -q -m i
+export MCHARNESS_STATE="$T/state10"
+sp() { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"Stop","stop_hook_active":false}' "$1" "$S"; }
+sruns() { (cd "$S" && ./scripts/autonomy.sh "$@"); }
+sruns start --oracle "/bin/true" --goal "x" --max-repairs 2 >/dev/null
+echo src2 > "$S/src.txt"; echo nuevo > "$S/tests/nuevo.sh"
+r=$(sp "$(uuid)" | "$GATE" 2>/dev/null)
+ck "$(printf '%s' "$r" | grep -c . || true)" "0" "sensor: solo codigo cambiado y fichero de test NUEVO -> libera (TDD legitimo)"
+sruns start --oracle "/bin/true" --goal "x" --max-repairs 2 >/dev/null
+echo flojo >> "$S/Makefile"
+out=$(sp "$(uuid)" | "$GATE" 2>/dev/null)
+ck "$(decision "$out")" "block" "sensor: oraculo verde pero Makefile modificado -> block"
+ckhas "$(printf '%s' "$out" | jq -r '.reason // ""')" "Makefile" y "sensor: el motivo lista el fichero alterado"
+sruns status >/dev/null 2>&1; ck "$?" "0" "sensor: el run sigue activo tras el bloqueo"
+sp "$(uuid)" | "$GATE" >/dev/null 2>&1
+r=$(sp "$(uuid)" | "$GATE" 2>&1 >/dev/null)
+ckhas "$r" "SENSOR ALTERADO" y "sensor: agotado el presupuesto libera con SENSOR ALTERADO"
+sruns status >/dev/null 2>&1; ck "$?" "1" "sensor: y cierra el run"
+git -C "$S" checkout -q Makefile
+sruns start --oracle "/bin/true" --goal "x" >/dev/null
+rm "$S/dir sp/test/a b.sh"
+out=$(sp "$(uuid)" | "$GATE" 2>/dev/null)
+ck "$(decision "$out")" "block" "sensor: fichero sensor borrado (con espacios en la ruta) -> block"
+ckhas "$(printf '%s' "$out" | jq -r '.reason // ""')" "a b.sh" y "sensor: el motivo lista el borrado"
+sruns stop >/dev/null; git -C "$S" checkout -q .
+sruns start --oracle "/bin/true" --goal "x" >/dev/null
+r=$(sp "$(uuid)" | "$GATE" 2>/dev/null)
+ck "$(printf '%s' "$r" | grep -c . || true)" "0" "sensor: sin tocar el sensor, verde libera como siempre"
+export MCHARNESS_STATE="$T/state"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
