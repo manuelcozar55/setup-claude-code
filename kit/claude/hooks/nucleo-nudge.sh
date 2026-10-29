@@ -63,9 +63,9 @@ HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claud
 if nucleo_desatendido; then
   # -p/SDK: nadie pulsa /handoff ni cierra el turno, y cerrarlo termina la sesión. Con acceptEdits, Write/Edit bajo
   # .claude/ se deniegan, pero handoff (un script por Bash) sí escribe: el borrador va fuera de .claude/.
-  [ "$B" = 50 ] || M="$M Sesión no interactiva: deja el estado con \`$HO --desde <borrador> --sesion $SID\` (borrador fuera de .claude/) o editando nucleo.md, y sigue con la tarea; nadie cerrará ni limpiará la sesión."
+  [ "$B" = 50 ] || M="$M Sesión no interactiva: deja el estado con \`$HO --desde <borrador> --sesion $SID${RANURA:+ --ranura $RANURA}\` (borrador fuera de .claude/) o editando nucleo.md, y sigue con la tarea; nadie cerrará ni limpiará la sesión."
 else
-[ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno. Cierra la fase con \`$HO --desde <borrador> --sesion $SID\`."
+[ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno. Cierra la fase con \`$HO --desde <borrador> --sesion $SID${RANURA:+ --ranura $RANURA}\`."
 A="con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff."
 [ "${COCKPIT_AUTO_HANDOFF:-}" = off ] && A="el handoff automático está desactivado; la persona hará /handoff."
 [ "$B" = 85 ] && M="$M Cierra el turno ya: $A"
