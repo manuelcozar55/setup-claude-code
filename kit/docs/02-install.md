@@ -152,7 +152,7 @@ ln -sf $HOME/.venvs/tools/bin/ruff $HOME/.local/bin/ruff
 
 El kit no instala esto por ti; solo lo documenta:
 
-- **Los 7 agentes y las skills del método** ya están instalados con la base.
+- **Los 6 agentes y las skills del método** ya están instalados con la base.
 - **esenciales** está incluido en el repo y `scripts/scc.sh` lo carga localmente; la
   instalación global se hace con `bash install-plugins.sh` (diff-first).
   Que un plugin figure en `enabledPlugins` no demuestra que esté cargado: comprueba `/plugin`.

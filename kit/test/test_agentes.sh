@@ -211,7 +211,7 @@ ok 'K9 el texto manual del borrador sobrevive' "$(grep -c 'viejo.txt' "$NU")" 1
 SR=$HERE/../claude/agents/security-reviewer.md
 ok 'M6 security-reviewer es de solo lectura (tools sin Write ni Edit)' "$(grep '^tools:' "$SR" | grep -c 'Write\|Edit')" 0
 ok 'M6 security-reviewer no promete remediación' "$(grep -ci 'remediat' "$SR")" 0
-ok 'M13 el kit trae 6 agentes (orchestrator retirado)' "$(ls "$HERE"/../claude/agents/*.md | wc -l | tr -d ' ')" 6
-ok 'M13 ningún agente del kit es orchestrator' "$(ls "$HERE"/../claude/agents/orchestrator.md 2>/dev/null | wc -l | tr -d ' ')" 0
+ok 'M13 el kit trae 6 agentes (orchestrator retirado)' "$(find "$HERE/../claude/agents" -name "*.md" | wc -l | tr -d ' ')" 6
+ok 'M13 ningún agente del kit es orchestrator' "$(find "$HERE/../claude/agents" -name orchestrator.md | wc -l | tr -d ' ')" 0
 ok 'M13 sin menciones de orchestrator en agentes, READMEs y docs' "$(cd "$HERE/../.." && git grep -i -l orchestrator -- kit/claude README.md kit/README.md kit/docs | wc -l | tr -d ' ')" 0
 [ "$FAIL" -eq 0 ]

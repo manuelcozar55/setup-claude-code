@@ -24,7 +24,7 @@ Si eres Claude Code leyendo esto en una máquina nueva: los pasos 2 a 4 son el a
 
 | Capa | Qué recibes | Cómo se activa |
 |---|---|---|
-| Base `kit/` | Guards, Sentinel, 7 agentes, skills del método, `handoff`, `oraculo` y plantilla de estado | `bash kit/install.sh` |
+| Base `kit/` | Guards, Sentinel, 6 agentes, skills del método, `handoff`, `oraculo` y plantilla de estado | `bash kit/install.sh` |
 | Aspecto y continuidad | Pantalla completa, tema oscuro, statusline, ventana de autocompactación, checkpoint y reinyección del estado | Se instalan con la base; se conservan los ajustes visuales propios |
 | Cockpit y esenciales incluidos | Dock de agentes, vigía, `/handoff`, `/nueva`, `/simple`, `/autonomo` y skills del plugin | `scripts/scc.sh` en la consolidación; marketplace como alternativa |
 | Harness y memoria del repo | `/work`, sensores del repo, `knowledge/` y `scripts/recuerda` | Solo al trabajar en este repo; `recuerda` requiere enlace manual |
