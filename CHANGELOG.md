@@ -12,6 +12,7 @@ etiquetado.
 - **`metrics.py` mide la adopción real del oráculo** (M2a): `oraculo_adopcion_pct` (sesiones con al menos un `oraculo -- <cmd>`) y `oraculo_antes_de_editar_pct` (ediciones precedidas por un oráculo en la misma sesión); `sessions_with_oracle_pct` se conserva y, por literal, sigue contando `make test | tail`. Salida redirigible con `METRICS_OUT_DIR`. Tests: `test_metrics.sh`.
 - **`nucleo_audit.py` gana la columna `lecturas_previas`** (M15): cuántas lecturas hace la sesión antes de su primera edición tras un arranque, `/clear` o compactación; es el coste de reconstruir contexto que el nucleo reinyectado debería ahorrar. Tests: `test_scripts_audit.sh`.
 - **`test_doc_claims` vigila también las rutas citadas en `CLAUDE.md`** (M14): una ruta inventada en el CLAUDE.md del kit falla el oráculo (resuelve en raíz y en `knowledge/`; excluye `PreToolUse/Bash`). Tests: `test_doc_claims.sh`.
+- **Tres evals de resultado** (M7): tareas 21 (bug con test oculto), 22 (feature en dos ficheros) y 23 (test antes que fix), con `tipo: resultado`; `report.py` las lista en línea propia y quedan fuera del veredicto SIRVE/PERJUDICA (miden si el harness termina la tarea, no cómo). De 20 a 23 tareas; la tirada completa pasa de 40 a 46 llamadas (`make evals-dryrun`: 3,86 USD por brazo con la media de los runs del store). Tests: `test_evals.sh` (bloque 11b).
 
 ### Changed
 
@@ -21,6 +22,8 @@ etiquetado.
 - **La skill `harness` arma y para el modo autónomo** (M5, M12): invoca `scripts/autonomy.sh start|stop` y deja de citar `superpowers:*`; el `allow` de `settings.json` se acota a `Bash(scripts/autonomy.sh *)`. Tests: `test_harness_structure.sh` (+4).
 - **`handoff --desde` acepta `--ranura DIR` y el aviso de contexto lo dicta desde sesiones abiertas en `~`** (B5a): la ranura debe ser la de la propia sesión (`nucleo_sesion_dir`) o sale rc 5 sin escribir; en un proyecto ajeno el rc 5 nombra la ranura propia y el comando exacto. Tests: `test_nucleo_integridad.sh`, `test_nucleo_nudge.sh`.
 - **`handoff` avisa de los `[x]` sin comando de verificación** (M10): un paso cerrado sin comando entre comillas invertidas se archiva en `diario.md` con la marca `(sin comando)` y sale en `AVISOS`; no bloquea. ADR 022 registra por qué el veto de compactación no se implementa desde shell. Tests: `test_nucleo_integridad.sh`.
+- **El Stop del modo normal avisa de las ediciones posteriores al último oráculo verde** (M9): deja rastro en `gate-avisos.log`, `metrics.py` publica `avisos_atendidos_pct` (un rc vacío en el TSV cuenta como atendido) y `oracle-log` sanea el `sid` del marcador. Tests: `test_autonomy.sh` (+9), `test_metrics.sh` (+3), `test_auto_spec.sh` (+2).
+- **`COST-LOG.md` registra la segunda medición de adopción del oráculo** (M8): del 27,7 % de sesiones con oráculo (2026-10-20) al 44,8 % recalculado el 2026-10-29 (73/163, `metrics.py` sin filtro de fecha; definición por literal de comando, no comparable con M2a); las cifras históricas quedan marcadas como instantáneas y el ADR 020 la enlaza como evidencia, sin atribuirla a la compuerta (no hay A/B). Tests: `test_doc_claims.sh` (+2).
 
 ## [1.6.1] - 2026-10-28
 
