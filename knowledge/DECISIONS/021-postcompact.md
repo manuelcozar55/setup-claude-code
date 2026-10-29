@@ -14,8 +14,9 @@ reinstalación del 21-oct lo dejó sin cablear, porque el kit no lo conocía. Ad
 El kit trae `hooks/post-compact-check.sh` y es dueño de la entrada `PostCompact` (timeout 5 s). Contrato
 verificado en la doc oficial (code.claude.com/docs/en/hooks, «PostCompact input»): además de los campos comunes,
 `trigger` (`manual|auto`) y `compact_summary`. Sin control de decisión: solo efectos laterales; no puede
-bloquear. Mismo formato de log (`anclas_perdidas=N`), misma ruta de checkpoint que `pre-compact.sh` (bajo `~`,
-`estado/` a secas). Sin modelo, falla en abierto, exit 0 siempre.
+bloquear. Mismo formato de log (`anclas_perdidas=N`) y misma ruta de checkpoint que `pre-compact.sh`. Las líneas
+`??` del git status no son anclas, y desde `~` no hay anclas (v1.6.1: 12 de 12 eran falsas). Sin modelo, falla en
+abierto, exit 0 siempre.
 
 ## Descartado
 

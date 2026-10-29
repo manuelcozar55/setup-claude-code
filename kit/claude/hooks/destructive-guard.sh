@@ -78,8 +78,8 @@ if echo "$COMMAND_SCAN" | grep -qE '^\s*git\s+reset\s+--hard|[;&|]\s*git\s+reset
   exit 2
 fi
 
-# Check 3: git clean -fd
-if echo "$COMMAND_SCAN" | grep -qE '(^|[;&|])\s*git\s+clean\s+-[a-z]*[fd]'; then
+# Check 3: git clean -fd. Un grupo de banderas con `n` (-nd, -dn, -fdn) es simulacion, como `-n -d`: no casa.
+if echo "$COMMAND_SCAN" | grep -qE '(^|[;&|])\s*git\s+clean\s+-[a-mo-z]*[fd][a-mo-z]*([[:space:]]|$)'; then
   log_block "git clean"
   echo "BLOCKED: git clean removes untracked files permanently." >&2
   echo "Run: git clean -n (dry run) first to verify what would be deleted." >&2
@@ -328,9 +328,12 @@ for seg in "${CMDN_SEGS[@]}"; do
         clean)
           force=0; dry=0
           for a in "${T[@]:3}"; do
+            # En git gana la ultima opcion: `-n --no-dry-run` NO es simulacion. Tambien valen los prefijos
+            # no ambiguos (`--no-dry`, `--dry`, `--forc`), que git acepta igual.
             case $a in
-              --force) force=1 ;;
-              --dry-run) dry=1 ;;
+              --f|--fo|--for|--forc|--force) force=1 ;;
+              --d|--dr|--dry|--dry-|--dry-r|--dry-ru|--dry-run) dry=1 ;;
+              --no-d|--no-dr|--no-dry|--no-dry-|--no-dry-r|--no-dry-ru|--no-dry-run) dry=0 ;;
               --*) ;;
               -*) [[ $a == -*[fd]* ]] && force=1; [[ $a == -*n* ]] && dry=1 ;;
             esac

@@ -309,7 +309,7 @@ DENY_RULES=(
   # --force-with-lease y --force-if-includes siguen cayendo por la regla de --force.
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--force'        "BLOCKED: git push --force"
   '\bgit\b[^;&|]*\bpush\b[^;&|]*\s-[A-Za-z]*f'  "BLOCKED: git push -f / -uf (force push)"
-  # El refspec forzado (`+rama`) no va en esta tabla: se decide sobre tokens, mas abajo.
+  # El refspec forzado (`+rama`) y el flag entrecomillado no van en esta tabla: se deciden sobre tokens, mas abajo.
   # git acepta cualquier prefijo no ambiguo de una opcion larga: `--mirr` es `--mirror`, `--de` es
   # `--delete` y `--no-veri` es `--no-verify` (`--forc` y `--no-v` son ambiguas: git las rechaza).
   '\bgit\b[^;&|]*\bpush\b[^;&|]*--m(i(r(r(or?)?)?)?)?([[:space:]=]|$)'  "BLOCKED: git push --mirror (can delete remote refs)"
@@ -393,7 +393,7 @@ if [[ $COMMAND == *git* ]]; then
     && deny "BLOCKED: git -c alias.* (redefines a git subcommand)"
 fi
 
-# Los refspecs forzados (`+rama`) y los tres borrados remotos (`--delete`, `-d`, `:rama`) se
+# Los force push (flag entrecomillado o `+rama`) y los tres borrados remotos (`--delete`, `-d`, `:rama`) se
 # deciden sobre operandos de `git push` descomillados. El argumento de `-o` y compania no cuenta.
 # Como en branch-guard.sh, la cadena de un `bash -c`, `eval`, `ssh`, `xargs`... se vuelve a
 # normalizar, hasta 3 niveles; lo que solo muestra texto no cuenta.
@@ -402,12 +402,13 @@ fi
 # puede llevar el refspec (push y +), y pasadas 16 se deniega: fallar cerrado.
 NEST=0
 push_refspec() {
-  local depth=$1 kind=$2 seg a i inner skip dd rc
+  local depth=$1 kind=$2 seg a i inner skip dd rc v
   local -a T segs
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
     case $kind in
-      force) [[ $seg == *push* && $seg == *+* ]] || continue ;;
+      force) [[ $seg == *push* ]] || continue ;;
+      verify) [[ $seg == *push* || $seg == *commit* ]] || continue ;;
       delete) [[ $seg == *push* && ( $seg == *-d* || $seg == *-[A-Za-z]*d* || $seg == *--de* || $seg == *:* ) ]] || continue ;;
     esac
     cmdn_fields "$seg"
@@ -423,7 +424,8 @@ push_refspec() {
           echo|printf) inner=${inner//\\n/$'\n'} ;;
         esac
         case $kind in
-          force) [[ $inner == *push* && $inner == *+* ]] || continue ;;
+          force) [[ $inner == *push* ]] || continue ;;
+          verify) [[ $inner == *push* || $inner == *commit* ]] || continue ;;
           delete) [[ $inner == *push* && ( $inner == *-d* || $inner == *-[A-Za-z]*d* || $inner == *--de* || $inner == *:* ) ]] || continue ;;
         esac
         (( depth < 3 && ++NEST <= 16 )) || return 2
@@ -433,24 +435,50 @@ push_refspec() {
       done
       continue
     fi
-    [[ ${T[2]:-} == push ]] || continue
+    if [[ $kind == verify ]]; then [[ ${T[2]:-} == push || ${T[2]:-} == commit ]] || continue
+    else [[ ${T[2]:-} == push ]] || continue; fi
     skip=0; dd=0
     for a in "${T[@]:3}"; do
       if (( skip )); then skip=0; continue; fi
       if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
       if (( ! dd )) && [[ $a == -* ]]; then
+        if [[ $kind == force ]]; then
+          case $a in
+            --force*) return 0 ;;
+            --*) ;;
+            -*) [[ ${a#-} == *f* ]] && return 0 ;;
+          esac
+        fi
         if [[ $kind == delete ]]; then
           case $a in
             --*) [[ ${#a} -ge 4 && --delete == "$a"* ]] && return 0 ;;
             -*) [[ ${a#-} == *d* ]] && return 0 ;;
           esac
         fi
-        case $a in --repo|-o|--push-option|--receive-pack|--exec) skip=1 ;; esac
+        if [[ $kind == verify ]]; then
+          # `--no-veri` ya es `--no-verify` (`--no-v` es ambigua). Un flag corto de commit con `n` (`-n`, `-an`) salta los
+          # hooks; en cuanto sale una letra que toma valor (`-m`, `-F`...) lo que sigue es ese valor, no mas flags.
+          case $a in
+            --no-veri|--no-verif|--no-verify) return 0 ;;
+            --*) ;;
+            *) if [[ ${T[2]} == commit ]]; then
+                 v=${a#-}
+                 while [[ -n $v ]]; do
+                   case ${v:0:1} in
+                     n) return 0 ;;
+                     m|F|C|c|t) [[ ${#v} -eq 1 ]] && skip=1; break ;;
+                   esac
+                   v=${v:1}
+                 done
+               fi ;;
+          esac
+        fi
+        case $a in --repo|-o|--push-option|--receive-pack|--exec|--message|--file|--reuse-message|--reedit-message|--author|--date|--template) skip=1 ;; esac
         continue
       fi
       if [[ $kind == force ]]; then
         [[ $a == +* || $a == '$'+* ]] && return 0
-      else
+      elif [[ $kind == delete ]]; then
         [[ $a == :?* || $a == '$':?* ]] && return 0
       fi
     done
@@ -458,10 +486,16 @@ push_refspec() {
   return 1
 }
 PIPED=0; cmdn_pipes_to_shell && PIPED=1
-if [[ $COMMAND == *git* && $COMMAND == *push* && $COMMAND == *+* ]]; then
+if [[ $COMMAND == *git* && $COMMAND == *push* ]]; then
   push_refspec 0 force; rc_refspec=$?
-  (( rc_refspec == 0 )) && deny "BLOCKED: git push +refspec (forced refspec)"
+  (( rc_refspec == 0 )) && deny "BLOCKED: git push --force / -f / +refspec (force push)"
   (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"
+fi
+NEST=0
+if [[ $COMMAND == *git* && ( $COMMAND == *push* || $COMMAND == *commit* ) ]]; then
+  push_refspec 0 verify; rc_refspec=$?
+  (( rc_refspec == 0 )) && deny "BLOCKED: --no-verify salta los hooks de git; arregla el hook que falla"
+  (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git commit/push: no caben en el timeout del guard; dividelo en comandos cortos"
 fi
 NEST=0
 if [[ $COMMAND == *git* && $COMMAND == *push* && ( $COMMAND == *-d* || $COMMAND == *-[A-Za-z]*d* || $COMMAND == *--de* || $COMMAND == *:* ) ]]; then
@@ -496,9 +530,23 @@ writes_text_to_file() {
   return 1
 }
 
+# Las dos reglas de force push se juzgan sin el argumento de -m/--message de un commit: ahi es texto
+# (`git commit -m "nunca git push --force"`). Solo se quita si nada del comando ejecuta texto: ni `$(`
+# ni backtick (en el mensaje se ejecutan), ni un interprete, `eval`, `ssh`, `xargs`, `source`, `exec` o
+# `<(` fuera de ese argumento (`bash -c "..."` se sigue leyendo entero). Si algo de eso aparece, el
+# literal se juzga como antes.
+FORCE_SCAN=$COMMAND
+if [[ $COMMAND == *commit* && $COMMAND != *"\$("* &&$COMMAND != *\`* ]]; then
+  nomsg=$(sed -E "s/(-[A-Za-z]*m|--message)[[:space:]=]*(\"[^\"]*\"|'[^']*')//g" <<<"$COMMAND")
+  LC_ALL=C grep -qiE '(^|[^[:alnum:]_-])((ba|z|da|k|c|fi)?sh|eval|ssh|xargs|source|exec|python[0-9.]*|perl|ruby|node|php)([^[:alnum:]_]|$)|<\(' <<<"$nomsg" \
+    || FORCE_SCAN=$nomsg
+fi
+
 SAFE_FETCH=''
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do
-  echo "$COMMAND" | LC_ALL=C grep -qiE "${DENY_RULES[i]}" || continue
+  rule_text=$COMMAND
+  [[ ${DENY_RULES[i + 1]} == "BLOCKED: git push --force" || ${DENY_RULES[i + 1]} == "BLOCKED: git push -f / -uf (force push)" ]] && rule_text=$FORCE_SCAN
+  echo "$rule_text" | LC_ALL=C grep -qiE "${DENY_RULES[i]}" || continue
   if [[ ${DENY_RULES[i]} == "$RCE_CURL" || ${DENY_RULES[i]} == "$RCE_WGET" ]]; then
     [[ -z $SAFE_FETCH ]] && { if fetch_safe_reader "$COMMAND"; then SAFE_FETCH=yes; else SAFE_FETCH=no; fi; }
     [[ $SAFE_FETCH == yes ]] && continue

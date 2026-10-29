@@ -231,6 +231,18 @@ nucleo_sesion_dir() {
   printf '%s\n' "$d"
 }
 
+# nucleo_ruta <raíz> [crear]: el nucleo.md de ESTA sesión, la única fuente para quien lo lea (nudge, PreCompact...): desde
+# ~ con ranura (se sabe el pid) es sesiones/*-<pid>/nucleo.md, el que usa handoff; en el resto, <estado>/nucleo.md de la
+# raíz. Con «crear» abre la ranura si aún no existe. rc 1 y nada impreso si la raíz no tiene estado legible.
+nucleo_ruta() {
+  local e s
+  e=$(nucleo_estado_leer "$1") || return 1
+  if [ "$1" = "$HOME" ] && s=$(nucleo_sesion_dir ${2:+"$2"} 2>/dev/null) && [ -d "$s" ]; then
+    printf '%s/nucleo.md\n' "$s"; return 0
+  fi
+  printf '%s/nucleo.md\n' "$e"
+}
+
 # nucleo_tope <contexto>: recorta a 9 500 chars (el harness manda a fichero lo que pasa de 10 000; las rutas no
 # tienen tope) y, si recortó, cierra el <nucleo-datos> que pudiera haber quedado abierto.
 nucleo_tope() {
@@ -382,7 +394,8 @@ nucleo_indice() {
   pers=$(printf '%s' "$pers" | sort -t$'\t' -s -k1,1rn | head -n 8 | cut -f2-)
   while IFS= read -r l; do
     [ -n "$l" ] || continue
-    [ $(( ${#out} + ${#l} + 1 )) -le 2500 ] || { out="$out"$'\n[recortado]'; break; }
+    # 2488 = 2500 menos el marcador «\n[recortado]» (12), que se añade tras el último que cabe
+    [ $(( ${#out} + ${#l} + 1 )) -le 2488 ] || { out="$out"$'\n[recortado]'; break; }
     out="${out:+$out$'\n'}$l"
   done < <(printf '%s\n%s\n' "$rows" "$pers" | LC_ALL=C tr -d '\000-\010\013-\037\177' | nucleo_sin_bidi | sed 's|</|<\\/|g')
   printf '%s\n' "$out"

@@ -4,7 +4,7 @@
 # Uso: test_nucleo_gate.sh [ruta al hook]. Sin red; HOME falso en un mktemp que se borra.
 set -u
 H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-gate.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home; unset CLAUDE_PID CLAUDE_PROJECT_DIR CC_NUCLEO_GATE
+export HOME=$T/home; unset CLAUDE_PID CLAUDE_PROJECT_DIR; export CC_NUCLEO_GATE=1
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
 L=$HOME/.claude/session-logs; mkdir -p "$L" "$T/r/.claude/estado"
@@ -24,6 +24,8 @@ ok "banda 70 + nucleo viejo: 1-3 pasan, 4.ª deniega, 5.ª pasa" "$(seq5 a)" "pa
 O=$(jq -cn '{session_id:"a2",tool_name:"Bash",tool_input:{command:"ls"}}'); arma a2 70; for _ in 1 2 3; do bash "$H" <<<"$O" >/dev/null; done
 M=$(bash "$H" <<<"$O" | jq -r '.hookSpecificOutput.permissionDecisionReason')
 ok "el motivo cita la ruta del nucleo y handoff" "$(command grep -c "$NUC.*handoff --desde <borrador> --sesion a2" <<<"$M")" 1
+# Para poder medirla: una línea fechada por denegación (fecha, sesión, banda, herramienta, nucleo); las que pasan no escriben.
+ok "cada denegación deja una línea fechada en gate-denegaciones.log" "$(awk -F'\t' '$2=="a" && $1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}T/ {print $3, $4, $5}' "$L/gate-denegaciones.log" 2>/dev/null)" "70 Bash $NUC"
 
 arma b 70
 ok "con agent_id nunca deniega" "$(seq5 b '{"agent_id":"sub1"}')" "pasa pasa pasa pasa pasa"
@@ -61,6 +63,10 @@ ok "SID con / : sin deny" "$(rep 'k/x')" pasa
 ok "SID con / : no escribe nada fuera" "$(wc -l <"$L/gate-k/x-70" | tr -d ' '),$(find "$L/gate-k" -type f -printf '%f ')" "3,x-70 "
 arma l 70
 ok "CC_NUCLEO_GATE=0 apaga" "$(CC_NUCLEO_GATE=0 rep l)" pasa
+arma l2 70
+ok "opt-in: sin CC_NUCLEO_GATE no deniega" "$(unset CC_NUCLEO_GATE; seq5 l2)" "pasa pasa pasa pasa pasa"
+arma l2 70
+ok "opt-in: CC_NUCLEO_GATE=1 sí deniega" "$(seq5 l2)" "pasa pasa pasa deny pasa"
 
 arma n 70 85
 ok "banda 85 avisada: cuenta propia, deniega la 4.ª" "$(seq5 n)" "pasa pasa pasa deny pasa"

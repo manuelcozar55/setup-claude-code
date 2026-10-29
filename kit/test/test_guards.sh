@@ -508,6 +508,22 @@ expect "guard: --mirror denegado"                 "$(run_blockdc 'git push --mir
 expect "guard: --delete de rama remota denegado"  "$(run_blockdc 'git push origin --delete release')"            BLOCK
 expect "guard: --force-with-lease sigue denegado" "$(run_blockdc 'git push --force-with-lease origin feature')"  BLOCK
 expect "guard: -C sin forzar NO denegado"         "$(run_blockdc 'git -C /home/user/repo push origin feature')"  ALLOW
+# El flag entrecomillado es el mismo flag para git: `'-f'`, `--"force"` y `"-"f` fuerzan igual. Se decide
+# sobre tokens descomillados de la sentencia `git push`, no sobre el texto; el mensaje de un commit
+# que nombra el flag sigue siendo texto (ALLOW). Rama que no es main: ahi solo este guard puede pararlo.
+run_blockjq() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1; }
+FF='--force'
+expect "guard: flag corto entre comillas simples denegado"  "$(run_blockjq "git push '-f' origin rama-x")"           BLOCK
+expect "guard: flag largo con comillas parciales denegado"  "$(run_blockjq "git push --\"force\" origin rama-x")"    BLOCK
+expect "guard: guion y letra separados por comillas denegado" "$(run_blockjq "git push \"-\"f origin rama-x")"       BLOCK
+expect "guard: flag largo entrecomillado denegado"          "$(run_blockjq "git push '$FF' origin rama-x")"          BLOCK
+expect "guard: --force-with-lease entrecomillado denegado"  "$(run_blockjq "git push '$FF-with-lease' origin rama-x")" BLOCK
+expect "guard: -uf entrecomillado denegado"                 "$(run_blockjq "git push '-uf' origin rama-x")"          BLOCK
+expect "guard: flag entrecomillado tras el refspec denegado" "$(run_blockjq "git push origin rama-x '-f'")"          BLOCK
+expect "guard: flag entrecomillado tras -C denegado"        "$(run_blockjq "git -C /r push '-f' origin rama-x")"     BLOCK
+expect "guard: commit que nombra el force push NO denegado" "$(run_blockjq "git commit -m \"no usar git push $FF\"")" ALLOW
+expect "guard: push normal con rama entrecomillada NO denegado" "$(run_blockjq "git push origin 'rama-x'")"          ALLOW
+expect "guard: -o con valor f NO denegado"                  "$(run_blockjq "git push -o '-f' origin rama-x")"        ALLOW
 expect "branch-guard: master tras cd + && denegado" "$(run_branchguard 'cd /tmp && git push origin master')"     BLOCK
 expect "branch-guard: -C antes de push a main denegado" "$(run_branchguard 'git -C /home/user/repo push origin main')" BLOCK
 expect "branch-guard: rama de feature NO denegada"  "$(run_branchguard 'git push origin feature/x')"             ALLOW
@@ -1477,6 +1493,127 @@ for nh_g in block-dangerous-commands.sh bash-write-guard.sh branch-guard.sh dest
   if [ "$nh_rc" -eq 0 ] || [ "$nh_rc" -eq 2 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [F-09] $nh_g sin HOME salio con rc $nh_rc (se esperaba 0 o 2)"; fi
 done
 [ "$v151_rows" -ge 100 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: guards-v151.tsv ejecuto solo $v151_rows filas (se esperaban >=100)"; }
+
+# v1.6.1: cp/mv/install/ln hacia un directorio escriben dir/basename(origen); se juzga ese fichero, no el operando.
+CFGJ="settings"".json"
+expect "destino-dir: cp a ~/.claude/ denegado"            "$(run_sentinel "cp /tmp/x/$CFGJ ~/.claude/")"            BLOCK
+expect "destino-dir: cp a ~/.claude sin barra denegado"   "$(run_sentinel "cp /tmp/x/$CFGJ ~/.claude")"             BLOCK
+expect "destino-dir: cp -t ~/.claude/ denegado"           "$(run_sentinel "cp -t ~/.claude/ /tmp/x/$CFGJ")"         BLOCK
+expect "destino-dir: cp --target-directory denegado"      "$(run_sentinel "cp --target-directory=~/.claude /tmp/x/$CFGJ")" BLOCK
+expect "destino-dir: mv a ~/.claude/ denegado"            "$(run_sentinel "mv /tmp/x/$CFGJ ~/.claude/")"            BLOCK
+expect "destino-dir: install a ~/.claude/ denegado"       "$(run_sentinel "install /tmp/x/$CFGJ ~/.claude/")"       BLOCK
+expect "destino-dir: ln -s a ~/.claude/ denegado"         "$(run_sentinel "ln -sf /tmp/x/$CFGJ ~/.claude/")"        BLOCK
+expect "destino-dir: cp -r a ~/.claude denegado"          "$(run_sentinel "cp -r /tmp/x/arbol ~/.claude")"          BLOCK
+expect "destino-dir: rsync a ~/.claude/ denegado"         "$(run_sentinel "rsync -a /tmp/x/arbol/ ~/.claude/")"     BLOCK
+expect "destino-dir: cp -r a ~ (ancestro) denegado"       "$(run_sentinel "cp -r /tmp/x/arbol ~/")"                 BLOCK
+expect "destino-dir: glob a ~/.claude/ denegado"          "$(run_sentinel "cp /tmp/x/*.json ~/.claude/")"           BLOCK
+expect "destino-dir: destino explicito sigue denegado"    "$(run_sentinel "cp /tmp/x/$CFGJ ~/.claude/$CFGJ")"       BLOCK
+expect "destino-dir: cp otro fichero a ~/.claude/ pasa"   "$(run_sentinel "cp /tmp/x/notas.md ~/.claude/")"         ALLOW
+expect "destino-dir: cp settings a /tmp/dest/ pasa"       "$(run_sentinel "cp /tmp/x/$CFGJ /tmp/dest/")"            ALLOW
+expect "destino-dir: cp -r a /tmp/dest pasa"              "$(run_sentinel "cp -r /tmp/x/arbol /tmp/dest")"          ALLOW
+expect "destino-dir: mv a /tmp/dest/ pasa"                "$(run_sentinel "mv /tmp/x/$CFGJ /tmp/dest/")"            ALLOW
+# Ronda 2 (Sentinel): destino por -t/--target-directory (con espacio, agrupado), --parents, globs y llaves, tar -x.
+CFGL="settings.local"".json"; TD="--target-""directory"
+for c in "cp $TD ~/.claude /tmp/x/$CFGJ" "cp $TD=~/.claude /tmp/x/$CFGJ" "cp --target ~/.claude /tmp/x/$CFGJ" "cp -ft ~/.claude /tmp/x/$CFGJ" \
+         "cp -t ~/.claude /tmp/x/$CFGJ" "cp -t~/.claude /tmp/x/$CFGJ" "install $TD ~/.claude/ /tmp/x/$CFGJ" "install -Dt ~/.claude /tmp/x/$CFGJ" \
+         "install -m 644 -t ~/.claude /tmp/x/$CFGJ" "install -m 644 /tmp/x/$CFGJ ~/.claude/" "mv $TD ~/.claude /tmp/x/$CFGJ" "mv -vt ~/.claude /tmp/x/$CFGJ" \
+         "ln -sft ~/.claude /tmp/x/$CFGJ" "ln $TD ~/.claude -s /tmp/x/$CFGJ" "cp -S .bak /tmp/x/$CFGJ ~/.claude/" \
+         "cp --parents .claude/$CFGJ ~/" "cp --parents .claude/hooks/x.sh ~/" "cp --parents -r .claude/sentinel ~/" "cd ~ && cp --parents .claude/$CFGJ ." \
+         "cp /tmp/$CFGL* ~/.claude/" "cp /tmp/[s]ettings.local.json ~/.claude/" "cp /tmp/{$CFGJ,notes.md} ~/.claude/" "cp /tmp/{notes.md,$CFGL} ~/.claude/" \
+         "cp /tmp/$CFGJ* ~/.claude/" "cp /tmp/x/* ~/.claude/hooks/" "cp /tmp/{a,b}/{c,$CFGJ} ~/.claude/" \
+         "tar -xf /tmp/p.tar -C ~/.claude" "tar -xf /tmp/p.tar -C ~/.claude -- $CFGJ" "tar -xzf /tmp/p.tgz --directory=~/.claude" \
+         "tar -C ~/.claude -xf /tmp/p.tar" "tar xf /tmp/p.tar -C ~" "tar -xf /tmp/p.tar --directory ~/.claude" \
+         "tar xCf ~/.claude /tmp/p.tar" "tar -x -C ~/.claude/hooks -f /tmp/p.tar" "tar -cf ~/.claude/hooks/p.tar x" "tar --extract --file /tmp/p.tar -C ~/.claude"; do
+  expect "destino ronda2: $c denegado" "$(run_sentinel "$c")" BLOCK
+done
+for c in "ln -sr /tmp/notes.md ~/" "ln -sr /tmp/x/$CFGJ /tmp/y/" "cp --parents safe/$CFGJ ~/.claude/" "cp -ft /tmp/y /tmp/x/$CFGJ" \
+         "cp -t /tmp/y ~/.claude/$CFGJ" "cp --parents .claude/$CFGJ /tmp/y/" "cp /tmp/{a,b} ~/.claude/" "cp /tmp/*.md ~/.claude/" \
+         "cp /tmp/*.json ~/" "cp -S .bak /tmp/x/notas.md ~/.claude/" "install -m 644 /tmp/x/notas.md ~/.claude/" \
+         "tar -xf /tmp/p.tar -C /tmp/y" "tar -cf /tmp/p.tar -C ~/.claude ." "tar -tf /tmp/p.tar" "tar xzf /tmp/p.tgz" "tar -xf /tmp/p.tar -C ~/proyecto"; do
+  expect "destino ronda2: $c NO denegado" "$(run_sentinel "$c")" ALLOW
+done
+# v1.6.1 (T2): falsos positivos de los guards de shell y del aviso de stale-read.
+# a) `git clean` con `n` agrupada es simulacion (`-nd` igual que `-n -d`); `-fd`, `-fdx` y `-df` se deniegan.
+for c in 'git clean -nd' 'git clean -dn' 'git clean -ndx' 'git clean -n -d' 'git clean --dry-run -d'; do
+  expect "destructive v1.6.1: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+for c in 'git clean -fd' 'git clean -fdx' 'git clean -df' 'git clean -d -f' 'git clean -f'; do
+  expect "destructive v1.6.1: $c denegado" "$(run_dg "$c")" BLOCK
+done
+# a2) Ronda 2: en git gana la ultima opcion, asi que `--no-dry-run` anula la `-n` anterior (tambien sus prefijos).
+for c in 'git clean -fn --no-dry-run' 'git clean -nd --no-dry-run -f' 'git clean -n -f --no-dry-run' \
+         'git clean -f --no-dry' 'git clean -nf --dry-run --no-dry-run' 'git clean -nf --no-d' 'git clean -n --forc -d --no-dry-run'; do
+  expect "destructive ronda2: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'git clean -nd' 'git clean -fn' 'git clean -fn --dr' 'git clean --force --dry-run -d'; do
+  expect "destructive ronda2: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+# b) El mensaje de un commit es texto: no se juzga como push forzado. El texto de un `bash -c`, `sh -c`,
+# `eval` o `$(...)` se ejecuta: ahi se sigue denegando. Los comandos se montan por partes (guard vivo).
+FP="git pu""sh"; FF="--for""ce"
+bdc "b v1.6.1: commit con push forzado en el mensaje (dobles)" "git commit -m \"never $FP $FF\"" allow
+bdc "b v1.6.1: commit con push forzado en el mensaje (simples)" "git commit -m 'never $FP $FF'" allow
+bdc "b v1.6.1: commit con push -f en el mensaje" "git commit -m \"nunca $FP -f\"" allow
+bdc "b v1.6.1: commit -am con push forzado en el mensaje" "git commit -am \"no $FP $FF\"" allow
+bdc "b v1.6.1: push forzado real sigue denegado" "$FP $FF origin main" deny
+bdc "b v1.6.1: push -f real sigue denegado" "$FP -f origin main" deny
+bdc "b v1.6.1: commit y push forzado encadenado denegado" "git commit -m \"x\" && $FP $FF" deny
+bdc "b v1.6.1: flag entre comillas denegado" "$FP \"$FF\" origin main" deny
+bdc "b v1.6.1: bash -c con push forzado denegado" "bash -c \"$FP $FF\"" deny
+bdc "b v1.6.1: sh -c con push forzado denegado" "sh -c '$FP $FF'" deny
+bdc "b v1.6.1: eval con push forzado denegado" "eval \"$FP $FF\"" deny
+bdc "b v1.6.1: sustitucion con push forzado denegada" "echo \$($FP $FF)" deny
+bdc "b v1.6.1: commit con sustitucion que fuerza denegado" "git commit -m \"\$($FP $FF)\"" deny
+bdc "b v1.6.1: commit y bash -c con push forzado denegado" "git commit -m x && bash -c \"$FP $FF\"" deny
+# b2) Ronda 2: el flag que salta los hooks se decide sobre tokens descomillados, como el push forzado.
+NV="--no-""verify"; GP="git pu""sh"
+bdc "b2 ronda2: push con el flag entre comillas simples denegado" "$GP '$NV' origin x" deny
+bdc "b2 ronda2: push con comillas en medio del flag denegado" "$GP --no-\"verify\" origin x" deny
+bdc "b2 ronda2: commit con -n entre comillas denegado" "git commit \"-\"n" deny
+bdc "b2 ronda2: commit con el flag largo entre comillas denegado" "git commit '$NV' -m x" deny
+bdc "b2 ronda2: commit con el flag tras el mensaje denegado" "git commit -m x $NV" deny
+bdc "b2 ronda2: commit -nm denegado" "git commit -nm x" deny
+bdc "b2 ronda2: commit -a -n denegado" "git commit -a -n -m x" deny
+bdc "b2 ronda2: prefijo no ambiguo del flag denegado" "git commit --no-veri -m x" deny
+bdc "b2 ronda2: bash -c con el flag entre comillas denegado" "bash -c \"git commit '$NV' -m x\"" deny
+bdc "b2 ronda2: el mensaje que nombra el flag sigue permitido" "git commit -m \"skip $NV docs\"" allow
+bdc "b2 ronda2: -am con mensaje que lleva -n permitido" "git commit -am \"usa -n en prosa\"" allow
+bdc "b2 ronda2: --message con mensaje que lleva el flag permitido" "git commit --message \"$NV\"" allow
+bdc "b2 ronda2: push normal permitido" "$GP origin x" allow
+# c) `.env` anclado al nombre del fichero: `.envrc` (direnv) y `<algo>.env` siguen denegados.
+EN=".e""nv"
+for c in "git add docs/${EN}ironment.md" "git add src/${EN}elope.txt" "git add ${EN}ironment" "git add '*.ts'" "git add src/*"; do
+  expect "secret-guard v1.6.1: $c NO denegado" "$(run_secret "$c")" ALLOW
+done
+for c in "git add $EN" "git add sub/$EN" "git add ${EN}rc" "git add $EN.local" "git add sub/$EN.production" "git add config$EN" \
+         "git add -f $EN.staging" "git add ok.txt ${EN}rc"; do
+  expect "secret-guard v1.6.1: $c denegado" "$(run_secret "$c")" BLOCK
+done
+# Ronda 2: `.env` seguido de fin de nombre o separador (`.`, `~`, `-`, `_`), en cualquier componente de la ruta, y los
+# globs y llaves que puedan casar con un fichero de entorno. Falso positivo aceptado: `venv.env.ts` (indistinguible de
+# `production.env.bak`) y los globs `*.bak`, `*~`, `*.local`.
+for c in "git add '*$EN'" "git add *$EN" "git add production$EN.bak" "git add config$EN~" "git add $EN.production/config.json" \
+         "git add $EN-prod" "git add $EN""_local" "git add '$EN*'" "git add '*$EN*'" "git add {$EN,notes.md}" "git add {notes.md,$EN.local}" \
+         "git add sub/$EN.d/x" "git add venv$EN.ts" "git add '$EN.l*'" "git add '[.]env'" "git add '.e?v'"; do
+  expect "secret-guard ronda2: $c denegado" "$(run_secret "$c")" BLOCK
+done
+for c in "git add {a,b}.txt" "git add src/{a,b}/*.py" "git add '*'" "git add ${EN}ironment.md"; do
+  expect "secret-guard ronda2: $c NO denegado" "$(run_secret "$c")" ALLOW
+done
+for c in "git add $EN.example" "git add sub/$EN.template" "git add $EN.sample" "git add $EN.dist"; do
+  expect "secret-guard v1.6.1: $c NO denegado" "$(run_secret "$c")" ALLOW
+done
+# d) stale-read: un subagente no ha editado "en esta sesion" el fichero que otro hilo tocó; no se le avisa.
+SR_TR="$GUARDS_TEST_HOME/sr-transcript.jsonl"
+SR_F="$GUARDS_TEST_HOME/sr-target.txt"
+jq -nc --arg f "$SR_F" '{message:{content:[{type:"tool_use",name:"Edit",input:{file_path:$f}}]}}' > "$SR_TR"
+sr_run() { jq -nc --arg f "$SR_F" --arg t "$SR_TR" --argjson extra "$1" '{tool_name:"Read",tool_input:{file_path:$f},transcript_path:$t} + $extra' | "$PY" "$KIT/claude/hooks/stale-read-guard.py" 2>&1; }
+sr_out=$(sr_run '{}')
+[[ $sr_out == *STALE-READ* ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: stale-read v1.6.1: el hilo principal que edito y relee debe recibir el aviso: $sr_out"; }
+sr_out=$(sr_run '{"agent_id":"a1"}')
+[ -z "$sr_out" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: stale-read v1.6.1: un subagente (agent_id) no debe recibir el aviso: $sr_out"; }
+sr_out=$(sr_run '{"parent_tool_use_id":"toolu_1"}')
+[ -z "$sr_out" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: stale-read v1.6.1: un subagente (parent_tool_use_id) no debe recibir el aviso: $sr_out"; }
 
 rm -rf "$SG_DIR"
 rm -rf "$GUARDS_TEST_HOME" "$FIELDS_HOME"

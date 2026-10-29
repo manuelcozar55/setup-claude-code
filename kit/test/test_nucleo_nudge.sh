@@ -4,7 +4,7 @@
 # nucleo rancio (> 10 min) o ausente, en ≤ 400 chars y con la ruta exacta; si no toca, nada.
 # Uso: test_nucleo_nudge.sh [ruta al hook]. Sin red; HOME falso en un mktemp que se borra.
 set -u
-H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-nudge.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
+H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-nudge.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT; export CC_NUCLEO_GATE=1
 export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
@@ -132,5 +132,12 @@ ok "nudge deja nudge-<sid>.nucleo con la ruta exacta" "$(cat "$HOME/.claude/sess
 G=$(dirname "$H")/nucleo-gate.sh; GC='{"session_id":"s50","tool_name":"Bash","tool_input":{"command":"ls"}}'
 gate() { case $(bash "$G" <<<"$GC") in '') echo pasa;; *deny*) echo deny;; esac; }
 ok "nudge + compuerta de extremo a extremo: 1.ª a 3.ª pasan, 4.ª deniega" "$(for _ in 1 2 3 4; do gate; done | tr '\n' ' ')" "pasa pasa pasa deny "
+# Desde ~ con ranura (se sabe el pid de la sesión): la marca apunta al nucleo de la ranura, el que usa handoff, y la
+# compuerta actúa también ahí. Sin pid (K8) sigue sin marca.
+C=$(CLAUDE_PID=$$ runh s60 p72 | ctx); SN=$(cat "$HOME/.claude/session-logs/nudge-s60.nucleo" 2>/dev/null)
+ok "~ con ranura: nudge-<sid>.nucleo apunta a sesiones/*-<pid>/nucleo.md" "$(case $SN in "$HOME"/.claude/estado/sesiones/*-$$/nucleo.md) echo ranura;; *) echo "${SN:-nada}";; esac)" ranura
+ok "~ con ranura: el aviso nombra la ranura y no el nucleo de ~" "$(command grep -cF "${SN:-nada}" <<<"$C"),$(command grep -cF "$HN" <<<"$C")" 1,0
+GC='{"session_id":"s60","tool_name":"Bash","tool_input":{"command":"ls"}}'
+ok "~ con ranura: nudge + compuerta, la 4.ª deniega" "$(for _ in 1 2 3 4; do gate; done | tr '\n' ' ')" "pasa pasa pasa deny "
 
 exit $FAIL
