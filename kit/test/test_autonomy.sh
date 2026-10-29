@@ -132,6 +132,9 @@ ck "$(printf '%s' "$r" | grep -c . || true)" "0" "normal: sin cambios -> silenci
 printf '%s\n' $(seq 1 700) > "$T/big"; sed 's/^/2026-01-01T00:00:00Z x /' "$T/big" > "$LOG9"
 echo b > "$G/f.txt"; gp n5 | "$GATE" >/dev/null 2>&1
 ck "$([ "$(wc -l < "$LOG9")" -le 500 ] && echo y || echo n)" "y" "normal: gate-avisos.log tiene tope"
+export MCHARNESS_STATE="$T/estado-nuevo/x"
+gp n6 | "$GATE" >/dev/null 2>&1
+ck "$(grep -c ' n6 1$' "$MCHARNESS_STATE/gate-avisos.log" 2>/dev/null || true)" "1" "normal: con el directorio de estado inexistente el aviso se registra"
 git -C "$G" checkout -q f.txt
 export MCHARNESS_STATE="$T/state"
 

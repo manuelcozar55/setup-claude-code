@@ -112,12 +112,10 @@ ck "$(echo "$out5" | jq -r '.sessions_with_oracle_pct')" "75.0" "M2a: sessions_w
 # --- M9: avisos_atendidos_pct desde gate-avisos.log + oracle-runs.tsv --------
 SD="$tmp/state"; mkdir -p "$SD"
 run_state() { MCHARNESS_STATE="$SD" run_metrics; }
-out6="$(run_state)"
-ck "$(echo "$out6" | jq 'has("avisos_atendidos_pct")')" "false" "M9: sin gate-avisos.log, la clave no sale"
-printf '2026-01-01T10:00:00Z\ts1\t1\n2026-01-01T10:00:00Z\ts2\t1\n2026-01-01T10:00:00Z\ts3\t2\n2026-01-01T10:00:00Z\ts4\t1\n' > "$SD/gate-avisos.log"
-printf '2026-01-01T10:05:00Z\ts1\tmake test\t0\n2026-01-01T10:05:00Z\ts2\tmake test\t1\n2025-12-31T10:05:00Z\ts4\tmake test\t0\n' > "$SD/oracle-runs.tsv"
+printf '2026-01-01T10:00:00Z\ts1\t1\n2026-01-01T10:00:00Z\ts2\t1\n2026-01-01T10:00:00Z\ts3\t2\n2026-01-01T10:00:00Z\ts4\t1\n2026-01-01T10:00:00Z\ts5\t1\n' > "$SD/gate-avisos.log"
+printf '2026-01-01T10:05:00Z\ts1\tmake test\t0\n2026-01-01T10:05:00Z\ts2\tmake test\t1\n2025-12-31T10:05:00Z\ts4\tmake test\t0\n2026-01-01T10:05:00Z\ts5\tmake test\t\n' > "$SD/oracle-runs.tsv"
 out7="$(run_state)"
-ck "$(echo "$out7" | jq -r '.avisos_atendidos_pct')" "25.0" "M9: 1 de 4 avisos atendido (rc 0, misma sid, fecha >=)"
-ck "$(echo "$out7" | jq -r '.avisos_total')" "4" "M9: avisos_total = 4"
+ck "$(echo "$out7" | jq -r '.avisos_atendidos_pct')" "40.0" "M9: 2 de 5 avisos atendidos (rc 0 o vacio, misma sid, fecha >=; rc 1 y fecha previa no)"
+ck "$(echo "$out7" | jq -r '.avisos_total')" "5" "M9: avisos_total = 5"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
