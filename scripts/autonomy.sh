@@ -113,6 +113,21 @@ tsv() {
   } 2>/dev/null || true
 }
 
+# El env se LEE, no se `source`a: quien pueda escribirlo no ejecuta nada. Solo se toman las
+# claves conocidas; ORACLE se revalida y lo numerico se descarta si no son cifras.
+load() {
+  ORACLE=""; GOAL=""; MAXREP=3; MAXMIN=240; ATTEMPTS=0; STARTED=""
+  local line k v
+  while IFS= read -r line; do
+    k="${line%%=*}"; v="${line#*=}"
+    case "$k" in
+      ORACLE|GOAL) printf -v "$k" '%s' "$v" ;;
+      MAXREP|MAXMIN|ATTEMPTS) case "$v" in ''|*[!0-9]*) ;; *) printf -v "$k" '%s' "$v" ;; esac ;;
+      STARTED) case "$v" in *[!0-9TZ:-]*) ;; *) STARTED="$v" ;; esac ;;
+    esac
+  done < "$F"
+}
+
 case "$cmd" in
   start)
     [ -n "$ORACLE" ] || die "start requiere --oracle CMD"
@@ -122,8 +137,8 @@ case "$cmd" in
     # que verifica con el comando equivocado es peor que uno que no verifica: parece que si.
     oracle_ok "$ORACLE" || die "oraculo no admitido: use 'make ...', 'bash kit/test/X.sh', 'oraculo -- ...' o una ruta relativa del repo, sin rutas absolutas, '..' ni encadenados (recibido: $ORACLE)"
     case "$MAXMIN" in ''|*[!0-9]*|0) die "--max-minutes debe ser un entero positivo (recibido: $MAXMIN)" ;; esac
-    { echo "ORACLE=$(printf '%q' "$ORACLE")"
-      echo "GOAL=$(printf '%q' "$GOAL")"
+    { echo "ORACLE=$ORACLE"
+      echo "GOAL=$(printf '%s' "$GOAL" | tr '\n\t' '  ')"
       echo "MAXREP=$MAXREP"
       echo "MAXMIN=$MAXMIN"
       echo "ATTEMPTS=0"
@@ -138,8 +153,7 @@ case "$cmd" in
     ;;
   status)
     [ -f "$F" ] || { echo "sin run autonomo activo"; exit 1; }
-    # shellcheck disable=SC1090
-    . "$F"
+    load
     echo "activo desde $STARTED"
     echo "  objetivo : $GOAL"
     echo "  oraculo  : $ORACLE"
@@ -147,13 +161,12 @@ case "$cmd" in
     ;;
   oracle)
     [ -f "$F" ] || exit 1
-    # shellcheck disable=SC1090
-    . "$F"; printf '%s\n' "$ORACLE"
+    load; oracle_ok "$ORACLE" || exit 1
+    printf '%s\n' "$ORACLE"
     ;;
   attempt)
     [ -f "$F" ] || exit 1
-    # shellcheck disable=SC1090
-    . "$F"
+    load
     ATTEMPTS=$((ATTEMPTS + 1))
     sed -i.bak "s/^ATTEMPTS=.*/ATTEMPTS=$ATTEMPTS/" "$F" && rm -f "$F.bak"
     echo "$ATTEMPTS"
@@ -180,15 +193,16 @@ case "$cmd" in
     ;;
   expired)
     [ -f "$F" ] || exit 1
-    # shellcheck disable=SC1090
-    . "$F"
+    load
+    # STARTED vacio, ilegible o en el futuro: se libera (date -d vacio daria las 00:00 de hoy).
+    [ -n "$STARTED" ] || exit 0
     started=$(date -u -d "$STARTED" +%s 2>/dev/null) || exit 0
-    [ "$(( $(date -u +%s) - started ))" -ge "$(( ${MAXMIN:-240} * 60 ))" ]
+    age=$(( $(date -u +%s) - started ))
+    [ "$age" -lt 0 ] || [ "$age" -ge "$(( MAXMIN * 60 ))" ]
     ;;
   stop)
     if [ -f "$F" ]; then
-      # shellcheck disable=SC1090
-      . "$F"; tsv stop "$ATTEMPTS"
+      load; tsv stop "$ATTEMPTS"
       rm -f "$F" "$H"; echo "run autonomo cerrado"; else echo "no habia run activo"; fi
     ;;
   *)
