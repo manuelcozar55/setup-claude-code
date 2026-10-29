@@ -23,6 +23,7 @@ else
   rc=""
 fi
 [ -n "$cmd" ] || exit 0
+sid=${sid//[^A-Za-z0-9_-]/_}
 cmd=$(printf '%s' "$cmd" | tr '\n\t' '  ')
 
 # Heuristica deliberadamente estrecha. Falso negativo conocido y aceptado: un oraculo con

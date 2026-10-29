@@ -295,6 +295,25 @@ def analyze():
             "subagent_transcripts": "*.jsonl cuya ruta contiene '/subagents/'",
         },
     }
+    # M9: un aviso del gate cuenta como atendido si hay un oraculo rc 0 de la misma sid
+    # con fecha >= la del aviso. Sin gate-avisos.log, la clave no sale.
+    sd = os.environ.get("MCHARNESS_STATE") or os.path.join(
+        os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "mcharness")
+    try:
+        with open(os.path.join(sd, "gate-avisos.log")) as fh:
+            avisos = [l.split() for l in fh if len(l.split()) >= 2]
+        runs = []
+        try:
+            with open(os.path.join(sd, "oracle-runs.tsv")) as fh:
+                runs = [l.rstrip("\n").split("\t") for l in fh]
+        except OSError:
+            pass
+        ok = [(r[0], r[1]) for r in runs if len(r) >= 3 and (r[3:4] or [""])[0] in ("", "0")]
+        atend = sum(1 for a in avisos if any(sid == a[1] and ts >= a[0] for ts, sid in ok))
+        out["avisos_total"] = len(avisos)
+        out["avisos_atendidos_pct"] = pct(atend, len(avisos))
+    except OSError:
+        pass
     return out
 
 if __name__ == "__main__":

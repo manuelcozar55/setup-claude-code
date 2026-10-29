@@ -105,5 +105,38 @@ else
   echo "NOT ok - el gate no discrimina rojo de verde ('$rojo' vs '$verde')"; fail=$((fail+1))
 fi
 
+# --- 9. Modo normal: el aviso mira la edicion y deja rastro (M3+M9) ---------
+G="$T/g"; mkdir -p "$G"
+git -C "$G" init -q && git -C "$G" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+echo a > "$G/f.txt"; git -C "$G" add f.txt
+git -C "$G" -c user.name=t -c user.email=t@t commit -q -m f
+export MCHARNESS_STATE="$T/state9"; mkdir -p "$MCHARNESS_STATE"
+LOG9="$MCHARNESS_STATE/gate-avisos.log"
+gp() { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"Stop","stop_hook_active":false}' "$1" "$G"; }
+echo b > "$G/f.txt"
+: > "$MCHARNESS_STATE/session-n1.oracle"; touch -d '2 hours ago' "$MCHARNESS_STATE/session-n1.oracle"
+r=$(gp n1 | "$GATE" 2>&1 >/dev/null); rc=$?
+ckhas "$r" "NINGÚN oráculo" y "normal: marcador anterior a la edicion -> avisa"
+ck "$rc" "0" "normal: avisa con exit 0 (ADR 004)"
+: > "$MCHARNESS_STATE/session-n2.oracle"; touch -d '1 hour from now' "$MCHARNESS_STATE/session-n2.oracle"
+r=$(gp n2 | "$GATE" 2>&1 >/dev/null); rc=$?
+ck "$(printf '%s' "$r" | grep -c . || true)" "0" "normal: marcador posterior a la edicion -> silencio"
+ck "$rc" "0" "normal: silencio con exit 0"
+r=$(gp n3 | "$GATE" 2>&1 >/dev/null); rc=$?
+ckhas "$r" "NINGÚN oráculo" y "normal: sin marcador -> avisa"
+ck "$rc" "0" "normal: sin marcador, exit 0"
+ck "$(grep -c ' n3 1$' "$LOG9")" "1" "normal: el aviso deja una linea 'fecha sid n' en gate-avisos.log"
+git -C "$G" checkout -q f.txt
+r=$(gp n4 | "$GATE" 2>&1 >/dev/null)
+ck "$(printf '%s' "$r" | grep -c . || true)" "0" "normal: sin cambios -> silencio como siempre"
+printf '%s\n' $(seq 1 700) > "$T/big"; sed 's/^/2026-01-01T00:00:00Z x /' "$T/big" > "$LOG9"
+echo b > "$G/f.txt"; gp n5 | "$GATE" >/dev/null 2>&1
+ck "$([ "$(wc -l < "$LOG9")" -le 500 ] && echo y || echo n)" "y" "normal: gate-avisos.log tiene tope"
+export MCHARNESS_STATE="$T/estado-nuevo/x"
+gp n6 | "$GATE" >/dev/null 2>&1
+ck "$(grep -c ' n6 1$' "$MCHARNESS_STATE/gate-avisos.log" 2>/dev/null || true)" "1" "normal: con el directorio de estado inexistente el aviso se registra"
+git -C "$G" checkout -q f.txt
+export MCHARNESS_STATE="$T/state"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1

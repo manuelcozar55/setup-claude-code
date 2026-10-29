@@ -112,6 +112,10 @@ olog ol8 "oraculo -- make test" 0
 ck "$(marca ol8)" "y" "oracle-log: 'oraculo -- make test' rc=0 -> marca verde"
 olog ol9 "make test" 0
 ck "$(marca ol9)" "y" "oracle-log: 'make test' solo, rc=0 -> marca verde"
+mkdir -p "$MCHARNESS_STATE/session-../esc"
+olog "../esc/ol10" "make test" 0
+ck "$([ -f "$MCHARNESS_STATE/session-___esc_ol10.oracle" ] && echo y || echo n)" "y" "oracle-log: sid con ../ se sanea y no escapa del directorio"
+ck "$([ -e "$MCHARNESS_STATE/session-../esc/ol10.oracle" ] && echo y || echo n)" "n" "oracle-log: sid con ../ no crea rutas fuera del estado"
 o=$(run "arregla el bug del login" s9)
 ckhas "$o" "oraculo -- make test" y "auto-spec: recomienda 'oraculo -- <cmd>' para ejecutar el oraculo"
 
