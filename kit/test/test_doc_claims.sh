@@ -1440,6 +1440,22 @@ else
   fail=$((fail+1))
 fi
 
+# rutas_rotas <doc>: citas en backticks de <doc> que no existen. Mismo criterio que el
+# sensor de AGENTS.md (arriba), con dos diferencias declaradas para CLAUDE.md:
+#  - cada cita se resuelve primero en la raiz y luego en knowledge/: CLAUDE.md nombra
+#    `ORACLES.md`, `DECISIONS/`... sueltos porque viven ahi.
+#  - exclusion declarada: `PreToolUse/Bash` es un evento de hook, no una ruta.
+RUTAS_NO_RUTA='^PreToolUse/Bash$'
+rutas_rotas() {
+  local r
+  # shellcheck disable=SC2016  # backticks literales en el patron.
+  grep -oE '`[^`]+`' "$1" | tr -d '`' \
+    | grep -vE '^[~/$.]|[*[:space:]]' | grep -E '/|\.md$' | grep -vE "$RUTAS_NO_RUTA" | sort -u \
+    | while read -r r; do
+        [ -e "$r" ] || [ -e "knowledge/$r" ] || echo "$r"
+      done
+}
+
 # Mismo sensor para CLAUDE.md. rutas_rotas <doc> imprime las citas en backticks que no
 # resuelven; se ejecuta desde la raiz del arbol que se mira.
 CM_FALSO=$(mktemp -d)
