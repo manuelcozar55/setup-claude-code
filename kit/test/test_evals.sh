@@ -395,6 +395,14 @@ if printf '%s' "$res" | grep -q '^  resultado *(' ; then
 else
   echo "NOT ok - report.py no desglosa 'resultado': $(printf '%s' "$res" | tr '\n' ' ' | cut -c1-200)"; fail=$((fail+1))
 fi
+# Las de resultado no entran en el veredicto agregado: SIRVE/PERJUDICA esta definido
+# sobre el equilibrio positiva/negativa. Aqui positiva/negativa dan lo mismo en los
+# dos brazos y resultado sube: el lift agregado tiene que seguir en 0.
+if printf '%s' "$res" | grep -q 'lift +0.00 -> NEUTRO'; then
+  echo "ok - el veredicto agregado ignora las tareas de resultado"; pass=$((pass+1))
+else
+  echo "NOT ok - las tareas de resultado mueven el veredicto agregado: $(printf '%s' "$res" | grep 'lift [+-]' | head -1)"; fail=$((fail+1))
+fi
 n=$(find "$E/tasks" -name '*.yaml' | wc -l)
 for doc in README.md kit/README.md kit/evals/README.md; do
   if grep -q "\b$n tareas\b" "$doc"; then
