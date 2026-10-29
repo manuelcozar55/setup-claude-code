@@ -4,7 +4,7 @@
 
 ## Contexto
 
-El cockpit veta la compactación automática para que actúe el handoff (`kit/mods/cockpit/hooks/register.tsx:742`,
+El cockpit veta la compactación automática para que actúe el handoff (ADR 013; `kit/mods/cockpit/hooks/register.tsx:742`,
 `on('session.compact', { trigger: 'auto' }, …)`): por debajo del techo `min(1,5 × límite, 0,5 × ventana)` devuelve
 `skip` y el handoff corre al cerrar el turno. El 29-oct, en dos sesiones (Claude Code 2.1.308, cockpit 0.6.0), el
 runtime avisó «cockpit: its session.compact hook was skipped. "cc-plugin-sec-default" runs first and sent the
@@ -23,9 +23,13 @@ reinyecta el nucleo. El aviso del runtime ya hace visible el salto. La causa la 
 ## Descartado
 
 - Veto desde un hook `PreCompact` de shell. La doc oficial (code.claude.com/docs/en/hooks) permite bloquear con
-  exit 2 o `{"decision":"block"}`. No se implementa por tres razones: `PreCompact` no recibe tokens, así que no
-  puede aplicar el techo y vetaría sin límite; si la compactación viene de un error de límite, bloquear hace
-  fallar la petición; y `pre-compact.sh` es observacional por contrato (`exit 0` siempre, línea 9).
+  exit 2 o `{"decision":"block"}`. El ADR 013 ya lo rechazó porque un hook no puede lanzar `/clear` ni rellenar el
+  prompt, y se suman tres razones:
+  - `PreCompact` no recibe el recuento de tokens, solo el transcript (`transcript_path`). Para aplicar el techo
+    habría que medirlo en cada compactación con `nucleo_ctx`, como hace `stop-context-gauge.sh:27`, y eso tiene
+    coste y es una aproximación.
+  - Si la compactación viene de un error de límite, bloquear hace fallar la petición.
+  - `pre-compact.sh` es observacional por contrato (`exit 0` siempre, línea 9).
 - Toast del cockpit cuando el contexto cae más de un 50 % sin handoff propio (commits 2cd758e y ace1674 en
   `feat/v170-handoff-b3`, que no se fusiona). Duplica el aviso del runtime, da falsos positivos con `/compact`
   manual y con `/clear` desde encima del umbral, y atribuye una causa que no comprueba.
