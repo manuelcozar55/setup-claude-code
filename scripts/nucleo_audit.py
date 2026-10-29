@@ -5,7 +5,8 @@ Uso: python3 scripts/nucleo_audit.py
 Lee las sesiones de los últimos 60 días en $CLAUDE_PROJECTS_DIR (por defecto
 ~/.claude/projects), sin subagentes. Por compactación: si en los 6 turnos siguientes se
 vuelve a tocar nucleo.md, si se escribió en los 5 previos, y si un aviso de contexto alto
-del hook Stop fue seguido de una escritura o un /handoff.
+del hook Stop fue seguido de una escritura o un /handoff. Columna 9: Read/Grep/Glob antes de la
+primera edición tras cada reinyección (arranque, /clear, compactación); mediana por tipo.
 """
 import glob, json, os, re, time, statistics as st
 from collections import defaultdict
@@ -27,10 +28,13 @@ def blocks(m):
 S = dict(n=0, sc=0, comp=0, ref_yes=0, ref_no=0, inj=0, writes=[], wpos=defaultdict(int),
          w_pre5=0, comp_nowrite20=0, ss=[], ss_trunc=0, stop=0, stop_fu=0,
          lenc=[], lenn=[], endcomp=0)
+LP = dict(startup=[], clear=[], compact=[]); LP_NA = dict(startup=0, clear=0, compact=0)
+READ_T = ('Read', 'Grep', 'Glob'); EDIT_T = ('Edit', 'Write', 'MultiEdit', 'NotebookEdit')
 cwdinfo = defaultdict(lambda: [0, False])  # cwd -> [sessions, touched]
 for f in files:
     turns = 0; seen = set(); recs = []; cwd = None; first_user_done = False
     ss_blk = None; sawA = False; last_comp = False
+    cur = ['startup', 0]; evs = []  # reinyeccion abierta [tipo, lecturas]; cerradas con edicion
     for line in open(f, errors='replace'):
         try: r = json.loads(line)
         except Exception: continue
@@ -44,6 +48,9 @@ for f in files:
             sawA = True
             for b in blocks(r.get('message')):
                 if b.get('type') == 'tool_use':
+                    if cur and not r.get('isSidechain'):
+                        if b.get('name') in EDIT_T: evs.append(tuple(cur)); cur = None
+                        elif b.get('name') in READ_T: cur[1] += 1
                     inp = json.dumps(b.get('input', {}), ensure_ascii=False)
                     if 'handoff' in inp.lower(): handoff = True
                     if 'nucleo.md' in inp:
@@ -72,9 +79,16 @@ for f in files:
             if 'nucleo' in low: inj = True
             if 'contexto alto' in low or 'handoff' in low: stopw = True
         if comp or r.get('isCompactSummary'): comp = True
+        if t == 'user' and not r.get('isSidechain'):
+            kind = 'compact' if comp else 'clear' if '<command-name>/clear' in full else None
+            if kind:
+                if cur: LP_NA[cur[0]] += 1
+                cur = [kind, 0]
         last_comp = comp if t != 'summary' else last_comp
         recs.append((t, turns, comp, bool(refs), wr, inj, stopw, handoff))
     if not recs: continue
+    if cur: LP_NA[cur[0]] += 1
+    for k, n in evs: LP[k].append(n)
     S['n'] += 1
     comps = [x for x in recs if x[2]]
     allw = [x[1] for x in recs if x[4]]
@@ -117,3 +131,5 @@ print('5 stop/handoff records', S['stop'], 'followed by write/handoff in 3 turns
 print('6 distinct cwd', len(cwdinfo), 'with nucleo.md on disk', len(ex), 'of those touched by a session', sum(1 for c in ex if cwdinfo[c][1]))
 print('7 turns with comp: n/mean/median', len(S['lenc']), mean(S['lenc']), st.median(S['lenc']) if S['lenc'] else None, '| without:', len(S['lenn']), mean(S['lenn']), st.median(S['lenn']) if S['lenn'] else None)
 print('8 sessions ending on compaction', S['endcomp'])
+lp = lambda k: int(st.median(LP[k])) if LP[k] else 'n/a'
+print('9 lecturas_previas', ' '.join(f'{k}={lp(k)}' for k in LP), '| sin edicion posterior:', ' '.join(f'{k} {LP_NA[k]}' for k in LP_NA))
