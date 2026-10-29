@@ -362,11 +362,11 @@ fi
 
 # --- 11b. Tres tareas de RESULTADO (M7) -------------------------------------
 # Las 20 primeras miden trayectoria o contencion. Estas tres miden si el trabajo
-# queda hecho: bug con test oculto, feature en dos ficheros y oraculo rojo previo.
+# queda hecho: bug con test oculto, feature en dos ficheros y test antes que fix.
 # Que el check suspenda el estado inicial y apruebe la solucion de referencia lo
 # cubren §10 y §20 al recorrer tasks/*.yaml; aqui se exige que existan, que sean
 # `tipo: resultado`, que report.py las trate aparte y que los docs cuenten 23.
-for t in 21-bug-con-test-oculto 22-feature-dos-ficheros 23-oraculo-rojo-previo; do
+for t in 21-bug-con-test-oculto 22-feature-dos-ficheros 23-test-antes-que-fix; do
   if [ -f "$E/tasks/$t.yaml" ] && grep -q '^tipo: resultado' "$E/tasks/$t.yaml" \
      && grep -q '^solucion:' "$E/tasks/$t.yaml"; then
     echo "ok - $t existe, es tipo resultado y declara solucion"; pass=$((pass+1))

@@ -145,7 +145,9 @@ for arm in sorted(by_arm):
 
 # --- 2: lift, solo si hay con que comparar ----------------------------------
 if "on" in by_arm and "off" in by_arm:
-    on, off = agg(by_arm["on"]), agg(by_arm["off"])
+    # El veredicto se define sobre positiva/negativa; 'resultado' va en su linea.
+    on = agg([r for r in by_arm["on"] if r.get("tipo") != "resultado"])
+    off = agg([r for r in by_arm["off"] if r.get("tipo") != "resultado"])
     ok, ma, mb = comparables(by_arm["on"], by_arm["off"])
     if not ok:
         print("\n== lift del harness ==")

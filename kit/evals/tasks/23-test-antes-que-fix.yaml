@@ -1,7 +1,7 @@
-# 23 · RESULTADO — oraculo rojo previo: antes de arreglar hay que tener un test
-# que falle por el bug, commiteado, y despues el arreglo. El check recorre el
-# historial: el commit del test tiene que estar en rojo y HEAD en verde.
-id: 23-oraculo-rojo-previo
+# 23 · RESULTADO — test antes que fix en el historial: el check mira el ORDEN de
+# los commits (el del test falla, HEAD pasa), no que el agente ejecutara el oraculo
+# antes de arreglar; esa parte de la trayectoria no la mide.
+id: 23-test-antes-que-fix
 tipo: resultado
 prompt: |
   duplica(n) de util.py devuelve n + n + 1 en vez de 2 * n. Arreglalo con
