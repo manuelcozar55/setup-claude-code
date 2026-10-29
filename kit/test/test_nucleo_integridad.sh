@@ -286,6 +286,45 @@ ok "tres situaciones: solo nucleo.md / solo ESTADO.md / los dos / ninguno (lib)"
 ok "tres situaciones: handoff --estado, «modo» solo con ESTADO.md como estado" "$(for d in "$SN" "$E" "$B"; do bash "$HO" --estado --raiz "$d" | jq -r '.modo // "nucleo"'; done | paste -sd,)" nucleo,estado-md,nucleo
 touch -d '-30 minutes' "$SN/.claude/estado/nucleo.md" "$E/ESTADO.md" "$B/.claude/estado/nucleo.md" "$B/ESTADO.md"
 ok "tres situaciones: el aviso del nudge nombra el fichero que manda (con los dos, ya cubierto arriba)" "$(for d in "$SN" "$E"; do nudge "$d" "s9-${d##*/}" | ctx | command grep -o '[A-Za-z]*\.md lleva 30 min' | head -1; done | paste -sd,)" "nucleo.md lleva 30 min,ESTADO.md lleva 30 min"
+# Revisión de la fusión en ESTADO.md (H1-H6 + temporal): ESTADO.md es de la persona; solo se reescribe lo que el borrador aporta.
+nuevo() { local d=$T/$1; repo "$d"; estado "$d/ESTADO.md"; printf '%s' "$d"; }
+relleno() { seq 1 "$1" | sed 's/$/ linea de relleno para pasar el tope de bytes del estado/'; }
+# H1: una sección ajena al borrador nunca se omite por tope; si pasa del tope se escribe igual, rc 0, y se avisa.
+X=$(nuevo h1); { echo; echo '## Notas del cliente'; relleno 120; } >>"$X/ESTADO.md"
+printf '## Paso actual\nx\n' >"$T/d1.md"
+bash "$HO" --desde "$T/d1.md" --raiz "$X" >"$T/o1" 2>"$T/e1"; RC=$?
+ok "H1: sección ajena al borrador no se omite por tope (rc 0, avisa, no va a diario)" "$RC,$(command grep -c '^## Notas del cliente' "$X/ESTADO.md"),$(command grep -c 'supera el tope' "$T/e1"),$(command grep -c 'Notas del cliente' "$X/.claude/estado/diario.md" 2>/dev/null)" 0,1,1,0
+# H2: sin cambios no hay copia ni rotación.
+X=$(nuevo h2); printf '## Paso actual\nigual\n' >"$T/d2.md"
+bash "$HO" --desde "$T/d2.md" --raiz "$X" >/dev/null 2>&1; bash "$HO" --desde "$T/d2.md" --raiz "$X" >/dev/null 2>&1; bash "$HO" --desde "$T/d2.md" --raiz "$X" >/dev/null 2>&1
+ok "H2: el mismo borrador repetido no copia ni rota ESTADO.prev-*" "$(find "$X/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' '),$(command grep -c 'PASO-VIVO' "$(find "$X/.claude/estado" -name 'ESTADO.prev-*.md' | head -1)")" 1,1
+# H3: varias secciones con la misma clave: solo se sustituye la primera.
+X=$(nuevo h3); printf '\n## PENDIENTES\nPRIMERO\n\n## Pendientes y riesgos\nSEGUNDO\n\n## Invariantes del dominio\nINV-A\n\n## Invariantes\nINV-B\n' >>"$X/ESTADO.md"
+printf '## Pendientes\nPEND-NUEVO\n## Invariantes\nINV-NUEVO\n' >"$T/d3.md"
+bash "$HO" --desde "$T/d3.md" --raiz "$X" >/dev/null 2>&1
+ok "H3: se sustituye solo la primera sección de cada clave (la familia invariantes* incluida)" "$(command grep -c 'PEND-NUEVO' "$X/ESTADO.md"),$(command grep -c 'SEGUNDO' "$X/ESTADO.md"),$(command grep -c 'PRIMERO' "$X/ESTADO.md"),$(command grep -c 'INV-NUEVO' "$X/ESTADO.md"),$(command grep -c 'INV-A' "$X/ESTADO.md"),$(command grep -c 'INV-B' "$X/ESTADO.md")" 1,1,0,1,0,1
+# H4: CRLF de entrada, CRLF de salida.
+X=$(nuevo h4); sed -i 's/$/\r/' "$X/ESTADO.md"; printf '## Paso actual\nCRLF-NUEVO\n## Decisiones\n- d\n' >"$T/d4.md"
+bash "$HO" --desde "$T/d4.md" --raiz "$X" >/dev/null 2>&1
+ok "H4: un ESTADO.md con CRLF sale con CRLF en todas sus líneas" "$(command grep -c 'CRLF-NUEVO' "$X/ESTADO.md"),$(command grep -vc $'\r$' "$X/ESTADO.md")" 1,0
+# H5: línea en blanco antes de la siguiente sección; un borrador solo con comentarios no cambia nada.
+X=$(nuevo h5); printf '\n## Pendientes y riesgos\nviejo\n\n## Cómo se comprueba\nviejo\n' >>"$X/ESTADO.md"
+printf '## Pendientes\nPEND-H5\n' >"$T/d5.md"; bash "$HO" --desde "$T/d5.md" --raiz "$X" >/dev/null 2>&1
+ok "H5: la sección sustituida conserva la línea en blanco antes de la siguiente" "$(command grep -B1 '^## Cómo se comprueba' "$X/ESTADO.md" | head -1 | command grep -c '^$')" 1
+H5=$(sha256sum <"$X/ESTADO.md"); printf '## Pendientes\n<!-- nada -->\n## Paso actual\n<!-- nada -->\n' >"$T/d5c.md"
+bash "$HO" --desde "$T/d5c.md" --raiz "$X" >/dev/null 2>&1
+ok "H5: un borrador solo con comentarios no cambia ESTADO.md" "$([ "$(sha256sum <"$X/ESTADO.md")" = "$H5" ] && echo igual)" igual
+# H6: la rotación borra la copia más vieja por mtime, no por nombre.
+X=$(nuevo h6); mkdir -p "$X/.claude/estado"
+for n in 1 2 3; do f=$X/.claude/estado/ESTADO.prev-2099123${n}T000000Z.md; echo "viejo-$n" >"$f"; touch -d "-$((n + 1)) days" "$f"; done
+printf '## Paso actual\nH6\n' >"$T/d6.md"; bash "$HO" --desde "$T/d6.md" --raiz "$X" >/dev/null 2>&1
+ok "H6: tras rotar sobreviven 3 copias y la nueva (la de mtime más reciente) no se borra" "$(find "$X/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' '),$(command grep -lc 'PASO-VIVO' "$X"/.claude/estado/ESTADO.prev-*.md | wc -l | tr -d ' ')" 3,1
+# Temporal: si el proceso muere entre mktemp y mv no queda un .ESTADO.* en el árbol.
+X=$(nuevo tmp); mkdir -p "$T/stub"
+# shellcheck disable=SC2016  # el stub lleva su propio $PPID
+printf '#!/usr/bin/env bash\nkill -TERM "$PPID"; sleep 2\n' >"$T/stub/mv"; chmod +x "$T/stub/mv"
+printf '## Paso actual\nTMP\n' >"$T/dt.md"; PATH=$T/stub:$PATH bash "$HO" --desde "$T/dt.md" --raiz "$X" >/dev/null 2>&1
+ok "temporal: un handoff muerto antes del mv no deja .ESTADO.* en el árbol" "$(find "$X" -maxdepth 1 -name '.ESTADO.*' | wc -l | tr -d ' ')" 0
 exit $FAIL
 ) || FAIL=1
 exit "$FAIL"
