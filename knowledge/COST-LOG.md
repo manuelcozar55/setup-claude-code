@@ -117,7 +117,7 @@ Fuente: `metrics-2026-10-20.json` (`generated_at` 2026-10-20T11:55Z; idéntico a
 | fecha | snapshot | sesiones | `sessions_with_oracle_pct` | `rework_sessions_pct` | nota |
 |---|---|---|---|---|---|
 | 2026-08-21 | metrics-2026-08-21.json | 47 | 27,7 % (13) | 19,1 % (9) | Línea base. |
-| 2026-10-20 | metrics-2026-10-20.json | 141 | **40,4 %** (57) | 7,1 % (10) | +12,7 pp. Definición por literal de comando (`make test`, `pytest`, `shellcheck`, `gitleaks`, CLI `oraculo`); no comparable con M2 (rc visto, no literal). |
+| 2026-10-20 | metrics-2026-10-20.json | 141 | **40,4 %** (57) | 7,1 % (10) | +12,7 pp en `sessions_with_oracle_pct`. Definición por literal de comando (`make test`, `pytest`, `shellcheck`, `gitleaks`, CLI `oraculo`); no comparable con M2 (rc visto, no literal). |
 
 ---
 
