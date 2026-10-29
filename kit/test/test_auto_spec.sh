@@ -102,6 +102,16 @@ olog ol3 "make test"
 ck "$(marca ol3)" "y" "oracle-log: make test plano marca session-<sid>.oracle"
 olog ol4 "make test" 2
 ck "$(marca ol4)" "n" "oracle-log: rc != 0 declarado en el payload -> no marca verde"
+olog ol5 "make test | tail -n 5" 0
+ck "$(marca ol5)" "n" "oracle-log: rc=0 con tuberia (el de tail) -> no marca verde"
+olog ol6 "make test || true" 0
+ck "$(marca ol6)" "n" "oracle-log: 'make test || true' rc=0 -> no marca verde"
+olog ol7 "true; make test" 0
+ck "$(marca ol7)" "n" "oracle-log: 'true; make test' rc=0 -> no marca verde"
+olog ol8 "oraculo -- make test" 0
+ck "$(marca ol8)" "y" "oracle-log: 'oraculo -- make test' rc=0 -> marca verde"
+olog ol9 "make test" 0
+ck "$(marca ol9)" "y" "oracle-log: 'make test' solo, rc=0 -> marca verde"
 o=$(run "arregla el bug del login" s9)
 ckhas "$o" "oraculo -- make test" y "auto-spec: recomienda 'oraculo -- <cmd>' para ejecutar el oraculo"
 
