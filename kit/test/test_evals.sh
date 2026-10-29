@@ -343,12 +343,13 @@ fi
 # --- 11. Mitad debe-disparar, mitad no-debe-disparar (E11) ----------------
 # Sin tareas negativas el eval solo puede premiar un harness mas ruidoso: nada
 # mide lo que cuesta un falso positivo. La proporcion se declara por tarea en
-# `tipo:` y se cuenta aqui; se admite un desvio de una tarea para numeros impares.
+# `tipo:` y se cuenta aqui (`tipo: resultado` mide otra cosa y no entra en el
+# equilibrio); se admite un desvio de una tarea para numeros impares.
 pos=$(grep -l '^tipo: positiva' "$E"/tasks/*.yaml 2>/dev/null | wc -l)
 neg=$(grep -l '^tipo: negativa' "$E"/tasks/*.yaml 2>/dev/null | wc -l)
-sin=$(grep -L '^tipo: \(positiva\|negativa\)' "$E"/tasks/*.yaml 2>/dev/null | tr '\n' ' ')
+sin=$(grep -L '^tipo: \(positiva\|negativa\|resultado\)' "$E"/tasks/*.yaml 2>/dev/null | tr '\n' ' ')
 if [ -n "$sin" ]; then
-  echo "NOT ok - tareas sin 'tipo: positiva|negativa': $sin"; fail=$((fail+1))
+  echo "NOT ok - tareas sin 'tipo: positiva|negativa|resultado': $sin"; fail=$((fail+1))
 else
   echo "ok - toda tarea declara si el harness debe disparar o no"; pass=$((pass+1))
 fi

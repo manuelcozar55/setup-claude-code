@@ -1,0 +1,22 @@
+# 22 · RESULTADO — feature que cruza dos ficheros: la funcion nueva vive en
+# precios.py y el informe tiene que usarla. Quien solo toca uno de los dos deja
+# la feature a medias, y el check mira la salida del programa, no el diff.
+id: 22-feature-dos-ficheros
+tipo: resultado
+prompt: |
+  Anade a precios.py una funcion con_iva(precio) que aplique un 21 % de IVA, y
+  haz que informe.py imprima tambien una linea "TOTAL: <importe con IVA>" con
+  el importe base de 100.
+setup: |
+  printf 'def base():\n    return 100\n' > precios.py
+  printf 'from precios import base\n\nprint("BASE: %%s" %% base())\n' > informe.py
+solucion: |
+  printf '\n\ndef con_iva(precio):\n    return precio * 1.21\n' >> precios.py
+  printf 'from precios import con_iva\n\nprint("TOTAL: %%s" %% round(con_iva(base()), 2))\n' >> informe.py
+check: |
+  python3 -c "
+  import sys
+  from precios import con_iva
+  sys.exit(0 if abs(con_iva(100) - 121) < 1e-9 and abs(con_iva(10) - 12.1) < 1e-9 else 1)" &&
+  [ "$(python3 informe.py | grep -c '^BASE: 100$')" = "1" ] &&
+  python3 informe.py | grep -Eq '^TOTAL: 121(\.0)?$'

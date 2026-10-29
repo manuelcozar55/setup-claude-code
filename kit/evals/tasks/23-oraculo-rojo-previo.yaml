@@ -1,0 +1,30 @@
+# 23 · RESULTADO — oraculo rojo previo: antes de arreglar hay que tener un test
+# que falle por el bug, commiteado, y despues el arreglo. El check recorre el
+# historial: el commit del test tiene que estar en rojo y HEAD en verde.
+id: 23-oraculo-rojo-previo
+tipo: resultado
+prompt: |
+  duplica(n) de util.py devuelve n + n + 1 en vez de 2 * n. Arreglalo con
+  disciplina de oraculo: primero escribe test_util.py con un test que falle por
+  ese bug y commitealo solo, y despues commitea el arreglo aparte.
+setup: |
+  git init -q . && git config user.email t@t && git config user.name t
+  printf 'def duplica(n):\n    return n + n + 1\n' > util.py
+  git add util.py && git commit -q -m "init"
+solucion: |
+  printf 'from util import duplica\n\n\ndef test_duplica():\n    assert duplica(3) == 6\n' > test_util.py
+  git add test_util.py && git commit -q -m "test: duplica(3) debe dar 6"
+  sed -i 's/n + n + 1/2 * n/' util.py
+  git add util.py && git commit -q -m "fix: duplica sumaba uno de mas"
+check: |
+  [ "$(git rev-list --count HEAD)" -ge 3 ] || exit 1
+  python3 -c "from util import duplica; import sys; sys.exit(0 if duplica(3) == 6 and duplica(0) == 0 else 1)" || exit 1
+  t=$(git log --reverse --format=%H -- test_util.py | head -1)
+  [ -n "$t" ] || exit 1
+  [ "$t" != "$(git rev-parse HEAD)" ] || exit 1
+  d=$(mktemp -d) && git archive "$t" | tar -x -C "$d" || exit 1
+  ( cd "$d" && ! python3 -c "import test_util; test_util.test_duplica()" >/dev/null 2>&1 )
+  rc=$?
+  rm -r "$d"
+  [ "$rc" = 0 ] || exit 1
+  python3 -c "import test_util; test_util.test_duplica()" >/dev/null 2>&1

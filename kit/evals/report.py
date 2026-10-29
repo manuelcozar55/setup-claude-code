@@ -186,8 +186,9 @@ if "on" in by_arm and "off" in by_arm:
     LECTURA = {
         "positiva": ("el harness ayuda", "el harness no llega"),
         "negativa": ("el harness no estorba", "FALSOS POSITIVOS: el harness estorba"),
+        "resultado": ("el harness mejora el resultado", "el harness no mejora el resultado"),
     }
-    for tipo in ("positiva", "negativa") if ok else ():
+    for tipo in ("positiva", "negativa", "resultado") if ok else ():
         sub_on = [r for r in by_arm["on"] if r.get("tipo") == tipo]
         sub_off = [r for r in by_arm["off"] if r.get("tipo") == tipo]
         if not sub_on or not sub_off:

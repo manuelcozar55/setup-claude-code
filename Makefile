@@ -115,14 +115,14 @@ evals-dryrun: ## Ensayo: cuantas llamadas y cuanto costaria, sin gastar nada
 	DRYRUN=1 bash kit/evals/run.sh
 
 evals-paid: ## Eval set, LOS DOS BRAZOS: llamadas REALES a la API. CUESTA DINERO. Pide confirmacion.
-	@read -p "Esto corre los dos brazos sobre 20 tareas: llamadas reales a la API (cuantas y a que coste: 'make evals-dryrun'). Continuar? [y/N] " ans; \
+	@read -p "Esto corre los dos brazos sobre 23 tareas: llamadas reales a la API (cuantas y a que coste: 'make evals-dryrun'). Continuar? [y/N] " ans; \
 	[ "$$ans" = "y" ] || [ "$$ans" = "Y" ] || { echo "Cancelado."; exit 1; }
 	bash kit/evals/run.sh
 	ARM=off bash kit/evals/run.sh
 	@echo; python3 kit/evals/report.py
 
 evals-ablacion-paid: ## Los 3 brazos de ablacion (E22): quita una pieza cada vez. MAS llamadas reales, sobre las de arriba.
-	@read -p "Esto corre 3 brazos mas sobre 20 tareas: llamadas reales a la API (cuantas y a que coste: 'make evals-dryrun'). Necesita un ARM=on previo con el MISMO modelo. Continuar? [y/N] " ans; \
+	@read -p "Esto corre 3 brazos mas sobre 23 tareas: llamadas reales a la API (cuantas y a que coste: 'make evals-dryrun'). Necesita un ARM=on previo con el MISMO modelo. Continuar? [y/N] " ans; \
 	[ "$$ans" = "y" ] || [ "$$ans" = "Y" ] || { echo "Cancelado."; exit 1; }
 	ARM=sin-ajustes bash kit/evals/run.sh
 	ARM=sin-skills  bash kit/evals/run.sh
