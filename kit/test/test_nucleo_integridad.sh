@@ -325,6 +325,29 @@ X=$(nuevo tmp); mkdir -p "$T/stub"
 printf '#!/usr/bin/env bash\nkill -TERM "$PPID"; sleep 2\n' >"$T/stub/mv"; chmod +x "$T/stub/mv"
 printf '## Paso actual\nTMP\n' >"$T/dt.md"; { PATH=$T/stub:$PATH bash "$HO" --desde "$T/dt.md" --raiz "$X"; } >/dev/null 2>&1
 ok "temporal: un handoff muerto antes del mv no deja .ESTADO.* en el árbol" "$(find "$X" -maxdepth 1 -name '.ESTADO.*' | wc -l | tr -d ' ')" 0
+# Segunda revisión: Objetivo e Invariantes de la persona no los pisa el borrador (misma regla que nucleo.md); el aviso de tope va al recibo
+# con --json (el cockpit trata cualquier stderr como «no limpio»); una viñeta dentro de una cerca no es la viñeta.
+# N1: Objetivo ya escrito (no RELLENAR): se conserva; las líneas nuevas de Invariantes se añaden sin borrar ninguna.
+X=$(nuevo n1); sed -i 's/^- Objetivo.*/- Objetivo (una línea): PALABRAS-DE-LA-PERSONA/' "$X/ESTADO.md"; printf '\n## Invariantes\n- INV-PERSONA\n' >>"$X/ESTADO.md"
+printf '## Objetivo\nreescrito por el modelo\n## Invariantes\n- INV-NUEVA\n- INV-PERSONA\n## Paso actual\nb\n' >"$T/dn1.md"
+bash "$HO" --desde "$T/dn1.md" --raiz "$X" >/dev/null 2>&1
+ok "N1: el Objetivo de la persona se conserva y las Invariantes solo crecen (sin duplicar)" "$(command grep -c 'PALABRAS-DE-LA-PERSONA' "$X/ESTADO.md"),$(command grep -c 'reescrito por el modelo' "$X/ESTADO.md"),$(command grep -c 'INV-PERSONA' "$X/ESTADO.md"),$(command grep -c 'INV-NUEVA' "$X/ESTADO.md")" 1,0,1,1
+# N1: la plantilla sin rellenar (RELLENAR:) cuenta como vacía: el borrador la rellena.
+X=$(nuevo n1b); printf '# Estado\n\n- Objetivo (una línea): RELLENAR: ¿qué se quiere? [x]\n- Paso actual: RELLENAR\n\n## Invariantes\n- RELLENAR: ¿qué no se toca?\n' >"$X/ESTADO.md"
+bash "$HO" --desde "$T/dn1.md" --raiz "$X" >/dev/null 2>&1
+ok "N1: con RELLENAR el Objetivo y las Invariantes del borrador entran" "$(command grep -c 'reescrito por el modelo' "$X/ESTADO.md"),$(command grep -c 'RELLENAR' "$X/ESTADO.md" | head -1),$(command grep -c 'INV-NUEVA' "$X/ESTADO.md")" 1,0,1
+# N4: el aviso de tope no impide limpiar: con --json va al recibo (campo avisos) y no a stderr; sin --json sigue en stderr.
+X=$(nuevo n4); { echo; echo '## Notas del cliente'; relleno 120; } >>"$X/ESTADO.md"; printf '## Paso actual\nx\n' >"$T/dn4.md"
+OUT=$(bash "$HO" --desde "$T/dn4.md" --raiz "$X" --json 2>"$T/en4"); RC=$?
+ok "N4: --json: aviso de tope en el recibo y stderr vacío (rc 0)" "$RC,$(wc -c <"$T/en4" | tr -d ' '),$(jq -r '.avisos | map(select(contains("supera el tope"))) | length' <<<"$OUT")" 0,0,1
+bash "$HO" --desde "$T/dn4.md" --raiz "$X" >/dev/null 2>"$T/en4b"
+ok "N4: sin --json el aviso de tope sigue en stderr" "$(command grep -c 'supera el tope' "$T/en4b")" 1
+# N6: una viñeta «- Paso actual:» dentro de una cerca no se sustituye.
+X=$(nuevo n6)
+# shellcheck disable=SC2016
+printf '# Estado\n\n```\n- Paso actual: EN-LA-CERCA\n```\n\n- Paso actual: REAL\n- Siguiente acción: s\n' >"$X/ESTADO.md"
+printf '## Paso actual\nNUEVO-N6\n' >"$T/dn6.md"; bash "$HO" --desde "$T/dn6.md" --raiz "$X" >/dev/null 2>&1
+ok "N6: la viñeta dentro de una cerca no cuenta; se sustituye la real" "$(command grep -c 'EN-LA-CERCA' "$X/ESTADO.md"),$(command grep -c 'REAL' "$X/ESTADO.md"),$(command grep -c '^- Paso actual: NUEVO-N6$' "$X/ESTADO.md")" 1,0,1
 exit $FAIL
 ) || FAIL=1
 exit "$FAIL"
