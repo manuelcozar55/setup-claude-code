@@ -557,12 +557,16 @@ mv -f -- "$TMP" "$NUC"
 [ -n "$SES" ] || [ "$E" = "$RAIZ/.claude/estado" ] || : >"$E/.nucleo-fallback"
 
 HASH=sin-commit; [ -n "$SES" ] || HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
+SINCMD=0
 # shellcheck disable=SC2094  # diario.md solo se añade; lo que se lee es $W/hechos
 {
   [ -s "$DIARIO" ] || printf '# Diario\n'
   while IFS= read -r l; do
     l=${l#"${l%%[![:space:]]*}"}; l=${l#[-*] }; l=${l#[0-9]*. }; l=${l#\[[xX]\]}; l=${l# }
-    [ -z "$l" ] || printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
+    [ -n "$l" ] || continue
+    # shellcheck disable=SC2016  # Backticks literales: el comando va entre ellos.
+    if [[ $l != *\`?*\`* ]]; then l+=" (sin comando)"; SINCMD=$((SINCMD + 1)); fi
+    printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
   done <"$W/hechos"
   [ ! -s "$W/omitido" ] || cat "$W/omitido"
 } >>"$DIARIO"
@@ -595,6 +599,7 @@ if [ -z "$SES" ] && D=$(nucleo_dueno "$RAIZ"); then
   else AVISOS+="${AVISOS:+; }la sesión dueña es otra (${D% *}): no se libera"
   fi
 fi
+[ "$SINCMD" -eq 0 ] || AVISOS+="${AVISOS:+; }$SINCMD cierre(s) sin comando de verificación"
 [ -z "$AVISOS" ] || echo "handoff: $AVISOS" >&2
 if [ "$JSON" = 1 ]; then
   SHA=$(printf '%s' "$TEXTO" | sha256sum | cut -d' ' -f1)
