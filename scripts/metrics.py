@@ -308,7 +308,7 @@ def analyze():
                 runs = [l.rstrip("\n").split("\t") for l in fh]
         except OSError:
             pass
-        ok = [(r[0], r[1]) for r in runs if len(r) >= 4 and r[3] == "0"]
+        ok = [(r[0], r[1]) for r in runs if len(r) >= 3 and (r[3:4] or [""])[0] in ("", "0")]
         atend = sum(1 for a in avisos if any(sid == a[1] and ts >= a[0] for ts, sid in ok))
         out["avisos_total"] = len(avisos)
         out["avisos_atendidos_pct"] = pct(atend, len(avisos))

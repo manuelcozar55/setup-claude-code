@@ -116,6 +116,7 @@ oracle=""
 # Rastro para medir si el aviso se atiende (metrics.py). Fallos de escritura, ignorados;
 # el log se recorta para no crecer sin tope.
 {
+  mkdir -p "$STATE_DIR"
   avisos="$STATE_DIR/gate-avisos.log"
   printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$sid" "$((changed + staged))" >> "$avisos"
   if [ "$(wc -l < "$avisos")" -gt 500 ]; then
