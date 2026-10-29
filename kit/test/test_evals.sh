@@ -359,6 +359,55 @@ else
   echo "NOT ok - mezcla desequilibrada: $pos positivas / $neg negativas (desvio $d)"; fail=$((fail+1))
 fi
 
+# --- 11b. Tres tareas de RESULTADO (M7) -------------------------------------
+# Las 20 primeras miden trayectoria o contencion. Estas tres miden si el trabajo
+# queda hecho: bug con test oculto, feature en dos ficheros y oraculo rojo previo.
+# Que el check suspenda el estado inicial y apruebe la solucion de referencia lo
+# cubren §10 y §20 al recorrer tasks/*.yaml; aqui se exige que existan, que sean
+# `tipo: resultado`, que report.py las trate aparte y que los docs cuenten 23.
+for t in 21-bug-con-test-oculto 22-feature-dos-ficheros 23-oraculo-rojo-previo; do
+  if [ -f "$E/tasks/$t.yaml" ] && grep -q '^tipo: resultado' "$E/tasks/$t.yaml" \
+     && grep -q '^solucion:' "$E/tasks/$t.yaml"; then
+    echo "ok - $t existe, es tipo resultado y declara solucion"; pass=$((pass+1))
+  else
+    echo "NOT ok - falta $t, o no es 'tipo: resultado' con solucion"; fail=$((fail+1))
+  fi
+done
+Z=$(mktemp -d) || exit 1
+"$PY" - "$Z/res.jsonl" <<'PYEOF'
+import json, sys
+def r(task, arm, res, tipo):
+    return {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": tipo,
+            "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
+            "duration_api_ms": 1, "input_tokens": 1}
+rows = []
+for i in range(4):
+    rows += [r("p%d" % i, "on", "pass", "positiva"), r("p%d" % i, "off", "pass", "positiva"),
+             r("n%d" % i, "on", "pass", "negativa"), r("n%d" % i, "off", "pass", "negativa"),
+             r("r%d" % i, "on", "pass", "resultado"), r("r%d" % i, "off", "fail", "resultado")]
+open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
+PYEOF
+res=$("$PY" "$E/report.py" --store "$Z/res.jsonl" 2>&1)
+rm -rf "$Z"
+if printf '%s' "$res" | grep -q '^  resultado *(' ; then
+  echo "ok - report.py desglosa 'resultado' en su propia linea"; pass=$((pass+1))
+else
+  echo "NOT ok - report.py no desglosa 'resultado': $(printf '%s' "$res" | tr '\n' ' ' | cut -c1-200)"; fail=$((fail+1))
+fi
+n=$(find "$E/tasks" -name '*.yaml' | wc -l)
+for doc in README.md kit/README.md kit/evals/README.md; do
+  if grep -q "\b$n tareas\b" "$doc"; then
+    echo "ok - $doc cita $n tareas"; pass=$((pass+1))
+  else
+    echo "NOT ok - $doc no dice '$n tareas'"; fail=$((fail+1))
+  fi
+done
+if [ "$(grep -c "sobre 23 tareas" Makefile)" -ge 2 ]; then
+  echo "ok - el Makefile avisa de 23 tareas en evals-paid y evals-ablacion-paid"; pass=$((pass+1))
+else
+  echo "NOT ok - el Makefile no dice 'sobre 23 tareas' en sus dos avisos"; fail=$((fail+1))
+fi
+
 # --- 12. El lift agregado no puede tapar una cancelacion ------------------
 # Caso construido: el harness acierta TODAS las positivas y suspende TODAS las
 # negativas. Sumado da lift 0,00 y report.py lo llama "NEUTRO (ruido)", que es
