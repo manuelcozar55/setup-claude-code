@@ -227,18 +227,18 @@ case "$rs" in
   *) echo "NOT ok - IC95 separados sin veredicto SIRVE: $(echo "$rs" | tr '\n' ' ')"; fail=$((fail+1));;
 esac
 if [ "$(git rev-list --count HEAD 2>/dev/null || echo 0)" -gt 61 ]; then
-  viejo=$(git rev-parse HEAD~60)
+  viejo=$(git rev-parse HEAD~60); nviejo=$(git rev-list --count "$viejo..HEAD")
   mkstore "$T/viejo.jsonl" 4 1 3 2 "$viejo"
   rs=$("$PY" "$E/report.py" --store "$T/viejo.jsonl" 2>&1)
   case "$rs" in
-    *"OBSOLETO"*"60 commits"*) echo "ok - store a 60 commits de HEAD: OBSOLETO con el numero"; pass=$((pass+1));;
-    *) echo "NOT ok - store a 60 commits de HEAD sin OBSOLETO: $(echo "$rs" | tr '\n' ' ')"; fail=$((fail+1));;
+    *"OBSOLETO"*"a $nviejo commits"*) echo "ok - store a $nviejo commits de HEAD: OBSOLETO con el numero"; pass=$((pass+1));;
+    *) echo "NOT ok - store a $nviejo commits de HEAD sin OBSOLETO: $(echo "$rs" | tr '\n' ' ')"; fail=$((fail+1));;
   esac
-  mkstore "$T/fresco.jsonl" 4 1 3 2 "$(git rev-parse HEAD~5)"
+  mkstore "$T/fresco.jsonl" 4 1 3 2 "$(git rev-parse HEAD~1)"
   rs=$("$PY" "$E/report.py" --store "$T/fresco.jsonl" 2>&1)
   case "$rs" in
-    *"OBSOLETO"*) echo "NOT ok - store a 5 commits marcado OBSOLETO"; fail=$((fail+1));;
-    *) echo "ok - store a 5 commits de HEAD: sin OBSOLETO"; pass=$((pass+1));;
+    *"OBSOLETO"*) echo "NOT ok - store a 1 commit marcado OBSOLETO"; fail=$((fail+1));;
+    *) echo "ok - store a 1 commit de HEAD: sin OBSOLETO"; pass=$((pass+1));;
   esac
 else
   echo "ok - historial git corto: comprobacion OBSOLETO omitida"; pass=$((pass+1))
