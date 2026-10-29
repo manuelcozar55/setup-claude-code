@@ -221,11 +221,15 @@ ok "compact: fresco, sin aviso de edad" "$(command grep -c 'sin actualizarse' <<
 touch -d '-30 minutes' "$E/ESTADO.md"
 C=$(ev "$E" s2 | bash "$H/session-start-compact.sh" | ctx)
 ok "compact: aviso de edad con ESTADO.md rancio, nombrándolo" "$(command grep -c "Aviso del hook: $E/ESTADO.md lleva más de 10 min sin actualizarse" <<<"$C")" 1
-ok "compact: el aviso no manda a handoff ni a nucleo.md" "$(command grep -c 'nucleo\.md\|handoff' <<<"$C")" 0
+ok "compact: el aviso dicta handoff --desde con --sesion y no nombra nucleo.md" "$(command grep -c 'nucleo\.md' <<<"$C"),$(command grep -c 'handoff --desde <borrador> --sesion s2' <<<"$C"),$(command grep -c 'a mano' <<<"$C")" 0,1,0
 
 C=$(nudge "$E" s3 | ctx)
 ok "nudge: nombra ESTADO.md y su ruta" "$(command grep -c "CONTEXTO 60 % del airbag. ESTADO.md lleva 30 min .* en $E/ESTADO.md\." <<<"$C")" 1
 ok "nudge: no nombra nucleo.md ni manda a handoff" "$(command grep -c 'nucleo\.md\|handoff' <<<"$C")" 0
+# N3: en la banda 70 el nudge dicta la misma forma que en modo nucleo (handoff --desde <borrador> --sesion <id>), no «a mano».
+printf '%s\n' '{"type":"assistant","message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":119000},"content":[]}}' >"$T/p70.jsonl"
+C=$(jq -cn --arg c "$E" --arg t "$T/p70.jsonl" '{session_id:"s70",transcript_path:$t,cwd:$c,tool_name:"Bash"}' | bash "$H/nucleo-nudge.sh" | ctx)
+ok "nudge 70: dicta handoff --desde <borrador> --sesion <id>; ni «a mano» ni nucleo.md" "$(command grep -c 'handoff --desde <borrador> --sesion s70' <<<"$C"),$(command grep -c 'handoff no lo escribe\|a mano' <<<"$C"),$(command grep -c 'nucleo\.md' <<<"$C")" 1,0,0
 
 ev "$E" s4 "$T/p60.jsonl" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "pre-compact: la edad del KPI es la de ESTADO.md" "$(tail -1 "$HOME/.claude/session-logs/nucleo-freshness.log" | awk '{print ($4 >= 1790)}')" 1
