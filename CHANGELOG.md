@@ -7,6 +7,20 @@ etiquetado.
 
 ## [Unreleased]
 
+### Added
+
+- **`metrics.py` mide la adopción real del oráculo** (M2a): `oraculo_adopcion_pct` (sesiones con al menos un `oraculo -- <cmd>`) y `oraculo_antes_de_editar_pct` (ediciones precedidas por un oráculo en la misma sesión); `sessions_with_oracle_pct` se conserva y, por literal, sigue contando `make test | tail`. Salida redirigible con `METRICS_OUT_DIR`. Tests: `test_metrics.sh`.
+- **`nucleo_audit.py` gana la columna `lecturas_previas`** (M15): cuántas lecturas hace la sesión antes de su primera edición tras un arranque, `/clear` o compactación; es el coste de reconstruir contexto que el nucleo reinyectado debería ahorrar. Tests: `test_scripts_audit.sh`.
+- **`test_doc_claims` vigila también las rutas citadas en `CLAUDE.md`** (M14): una ruta inventada en el CLAUDE.md del kit falla el oráculo (resuelve en raíz y en `knowledge/`; excluye `PreToolUse/Bash`). Tests: `test_doc_claims.sh`.
+
+### Changed
+
+- **`report.py` deja de declarar SIRVE con intervalos solapados** (M1): cuando los IC95 de Wilson de los dos brazos se cruzan, el veredicto es `SIRVE (no concluyente)` (o `PERJUDICA (no concluyente)`), y emite `OBSOLETO` si el último run medido está a más de `OBSOLETO_COMMITS=50` commits de HEAD. `knowledge/EVAL-CRITERIA.md` y `kit/evals/README.md` citan la salida nueva. Tests: `test_evals.sh` (+4).
+- **`oracle-log` solo cuenta oráculos limpios** (M2b): el marcador de sesión y el TSV registran el rc en la cuarta columna y solo marcan verde un comando sin tubería, `||`, `;`, `&` ni sustitución y con rc 0; `make test | tail`, `make test || true` o `true; make test` ya no cuentan. `auto-spec` recomienda `oraculo -- <cmd>` (M2c). Tests: `test_auto_spec.sh`.
+- **`security-reviewer` pasa a solo lectura** (M6): sin `Write`/`Edit`; reporta hallazgos y no los corrige. Tests: `test_agentes.sh`.
+- **La skill `harness` arma y para el modo autónomo** (M5, M12): invoca `scripts/autonomy.sh start|stop` y deja de citar `superpowers:*`; el `allow` de `settings.json` se acota a `Bash(scripts/autonomy.sh *)`. Tests: `test_harness_structure.sh` (+4).
+- **`handoff` avisa de los `[x]` sin comando de verificación** (M10): un paso cerrado sin comando entre comillas invertidas se archiva en `diario.md` con la marca `(sin comando)` y sale en `AVISOS`; no bloquea. ADR 022 registra por qué el veto de compactación no se implementa desde shell. Tests: `test_nucleo_integridad.sh`.
+
 ## [1.6.1] - 2026-10-28
 
 ### Changed
