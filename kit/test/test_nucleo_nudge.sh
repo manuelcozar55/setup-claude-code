@@ -137,6 +137,7 @@ ok "nudge + compuerta de extremo a extremo: 1.ª a 3.ª pasan, 4.ª deniega" "$(
 C=$(CLAUDE_PID=$$ runh s60 p72 | ctx); SN=$(cat "$HOME/.claude/session-logs/nudge-s60.nucleo" 2>/dev/null)
 ok "~ con ranura: nudge-<sid>.nucleo apunta a sesiones/*-<pid>/nucleo.md" "$(case $SN in "$HOME"/.claude/estado/sesiones/*-$$/nucleo.md) echo ranura;; *) echo "${SN:-nada}";; esac)" ranura
 ok "~ con ranura: el aviso nombra la ranura y no el nucleo de ~" "$(command grep -cF "${SN:-nada}" <<<"$C"),$(command grep -cF "$HN" <<<"$C")" 1,0
+ok "~ con ranura: el comando del nudge lleva --ranura con la ranura" "$(command grep -cF -- "--sesion s60 --ranura ${SN%/nucleo.md}" <<<"$C")" 1
 GC='{"session_id":"s60","tool_name":"Bash","tool_input":{"command":"ls"}}'
 ok "~ con ranura: nudge + compuerta, la 4.ª deniega" "$(for _ in 1 2 3 4; do gate; done | tr '\n' ' ')" "pasa pasa pasa deny "
 

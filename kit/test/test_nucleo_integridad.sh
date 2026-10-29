@@ -158,4 +158,18 @@ rm -f "$E/.dueno" "$E/diario.md"
 printf '## Paso actual\nx\n\n## Plan\n- [x] b \xe2\x80\x94 `cmd`\n' >"$T/draft-m10"
 ho --desde "$T/draft-m10" >"$T/out" 2>"$T/err"; RC=$?
 ok 'M10: con comando el diario no cambia y no hay aviso' "$RC,$(grep -c 'sin comando' "$E/diario.md"),$(grep -c 'sin comando' "$T/err")" '0,0,0'
+# B5a/H1: el comando del nudge desde una ranura lleva destino explícito y funciona con el cwd en un proyecto ajeno.
+export CLAUDE_HOME=$HOME/.claude
+SLOT=$(CLAUDE_PID=$$ nucleo_sesion_dir crear); X=$T/ajeno; XE=$X/.claude/estado; mkdir -p "$XE"; git -C "$X" init -q
+printf '## Paso actual\nPROYECTO\n' >"$XE/nucleo.md"; printf '## Paso actual\nDE-LA-RANURA\n' >"$T/draft-r"
+printf 'sesion=otra\ndesde=%s\n' "$(date +%s)" >"$XE/.dueno"
+(cd "$X" && CLAUDE_PID=$$ bash "$BIN" --desde "$T/draft-r" --sesion mia) >"$T/out" 2>"$T/err"; RC=$?
+ok 'B5a: dueño ajeno (rc 5) nombra la ranura y el comando' "$RC,$(grep -cF -- "tu ranura es $SLOT" "$T/err"),$(grep -cF -- "--ranura $SLOT" "$T/err")" '5,1,1'
+(cd "$X" && bash "$BIN" --desde "$T/draft-r" --sesion mia --ranura "$SLOT") >"$T/out" 2>"$T/err"; RC=$?
+ok 'B5a: --ranura escribe la ranura con cwd en proyecto ajeno' "$RC,$(grep -c DE-LA-RANURA "$SLOT/nucleo.md"),$(grep -c PROYECTO "$XE/nucleo.md")" '0,1,1'
+mkdir -p "$T/fuera" "$CLAUDE_HOME/estado/sesiones/x"; ln -s "$T/fuera" "$CLAUDE_HOME/estado/sesiones/enlace"
+for MALA in "$T/fuera" "$CLAUDE_HOME/estado/sesiones/../../.." "$CLAUDE_HOME/estado/sesiones/x/../../.." "$CLAUDE_HOME/estado/sesiones/enlace" "$CLAUDE_HOME/estado/sesiones"; do
+  (cd "$X" && bash "$BIN" --desde "$T/draft-r" --sesion mia --ranura "$MALA") >"$T/out" 2>"$T/err"; RC=$?
+  ok "B5a: --ranura fuera de sesiones/ se rechaza ($MALA)" "$([ "$RC" -ne 0 ] && echo rc),$(find "$T/fuera" -type f | wc -l),$(grep -c DE-LA-RANURA "$XE/nucleo.md")" 'rc,0,0'
+done
 exit "$FAIL"
