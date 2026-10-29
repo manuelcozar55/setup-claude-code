@@ -24,7 +24,7 @@ const no = () => ({ value: { exitCode: 1, stdout: '', stderr: '' } }) as never
 function repo(
   on: Parameters<TestBody>[1],
   files: Record<string, string>,
-  opts: { links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number } = {},
+  opts: { links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string } = {},
 ) {
   let stateReads = 0
   const runs: Run[] = []
@@ -52,7 +52,7 @@ function repo(
     if (e.argv[0] === bin && e.argv[1] === '--estado') {
       await opts.beforeState?.(++stateReads)
       if (!e.argv.includes('--raiz') && !opts.statePath) return { value: { exitCode: 3, stdout: '', stderr: '' } } as never
-      return ok(JSON.stringify({ nucleo: opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`, pct: 1, bytes: 10, tope: opts.tope ?? 5700, dueno: null, agentes_vivos: opts.live ?? 0 }))
+      return ok(JSON.stringify({ nucleo: opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`, pct: 1, bytes: 10, tope: opts.tope ?? 5700, dueno: null, agentes_vivos: opts.live ?? 0, ...(opts.estadoMd ? { modo: 'estado-md', estado: opts.estadoMd } : {}) }))
     }
     if (e.argv[0] === bin && e.argv[1] === '--migrar') {
       const path = opts.statePath ?? `${EST}/nucleo.md`
@@ -67,8 +67,8 @@ function repo(
       calls.push({ argv: e.argv, draft })
       const seq = opts.cli ?? [0]
       const code = seq[Math.min(calls.length - 1, seq.length - 1)] ?? 0
-      if (code === 0) files[opts.statePath ?? `${e.argv[e.argv.indexOf('--raiz') + 1]}/.claude/estado/nucleo.md`] = draft
-      return { value: { exitCode: code, stdout: JSON.stringify({ nucleo: opts.statePath ?? `${EST}/nucleo.md`, sha256: HASH }), stderr: opts.stderr ?? '' } } as never
+      if (code === 0) files[opts.estadoMd ?? opts.statePath ?? `${e.argv[e.argv.indexOf('--raiz') + 1]}/.claude/estado/nucleo.md`] = draft
+      return { value: { exitCode: code, stdout: JSON.stringify({ nucleo: opts.estadoMd ?? opts.statePath ?? `${EST}/nucleo.md`, sha256: HASH }), stderr: opts.stderr ?? '' } } as never
     }
     return ok()
   })
@@ -154,6 +154,29 @@ test('con nucleo: el prompt lleva el estado como datos y el mod no escribe nucle
   expect(seen.prompt).not.toContain('Aún no hay nucleo.md')
   expect(r.writes.map(w => w.path)).toEqual([TMP])
   expect(r.runs.some(x => ['mv', 'cp'].includes(x.argv[0] ?? '') || x.argv.includes('--git-path') || x.argv.includes('check-ignore'))).toBe(false)
+})
+
+test('con ESTADO.md: el prompt lleva ESTADO.md como estado actual y no el aviso de «aún no hay nucleo.md»', async ($, on) => {
+  const seen = fork(on, '## Plan\n- [x] T1\n## Pendientes\n- p\n')
+  const estadoMd = '/work/proyecto/ESTADO.md'
+  repo(on, { [estadoMd]: '# Estado\n\n- Objetivo (una línea): haz X\n\n## Pendientes y riesgos\n- (persona) abrir PR\n' }, { estadoMd })
+  await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+
+  expect(seen.prompt).toContain('<nucleo-actual>')
+  expect(seen.prompt).toContain('(persona) abrir PR')
+  expect(seen.prompt).not.toContain('Aún no hay nucleo.md')
+})
+
+test('con ESTADO.md: el recibo apunta a ESTADO.md y el /clear rellena con la viñeta «Siguiente acción»', async ($, on) => {
+  const clock = mock.clock(on)
+  const estadoMd = '/work/proyecto/ESTADO.md'
+  const seen = auto(on, { tokens: 130_000, forkText: '## Plan\n- [ ] T2\n- Siguiente acción: T2 con `make test`\n  detalle\n' })
+  repo(on, { [estadoMd]: '# Estado\n' }, { estadoMd })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(400)
+  await clock.advance(400)
+  expect(seen.cleared).toBe(1)
+  expect(seen.fills).toEqual([`adelante con la Siguiente acción de ${estadoMd}: T2 con \`make test\` (sigue en ${estadoMd})`])
 })
 
 test('el prompt pide los tres campos de la decisión 13: correcciones, ficheros calientes con rango y rc', async ($, on) => {
@@ -593,6 +616,16 @@ test('nextLine: primera línea con contenido, sin marcador de lista, comentarios
   expect(nextLine(siguiente('1. T2'))).toBe('T2')
   expect(nextLine(siguiente('<!-- pon una -->\n\n  corre   la\tsuite \u0007 ya\n<!-- otra -->'))).toBe('corre la suite ya')
   expect(nextLine('## Siguiente acción (una sola)\nT9\n')).toBe('T9')
+})
+
+test('nextLine: en ESTADO.md la acción es la viñeta «- Siguiente acción:», con su continuación sangrada', () => {
+  const doc = (b: string) => `# Estado\n\n- Objetivo (una línea): O\n- Paso actual: P\n${b}\n\n## Decisiones\n- d\n`
+  expect(nextLine(doc('- Siguiente acción: T2'))).toBe('T2')
+  expect(nextLine(doc('- Siguiente acción: T2\n  detalle'), '/r/ESTADO.md')).toBe('T2 (sigue en /r/ESTADO.md)')
+  expect(nextLine(doc('- Siguiente acción:\n  T3'))).toBe('T3')
+  expect(nextLine(doc('- Siguiente acción:'))).toBe('')
+  expect(fillFor(doc('- Siguiente acción: T2'), '/r/ESTADO.md')).toBe('adelante con la Siguiente acción de /r/ESTADO.md: T2')
+  expect(nextLine('## Siguiente acción\nS1\n- Siguiente acción: V1\n')).toBe('S1 (sigue en .claude/estado/nucleo.md)')
 })
 
 test('nextLine: si «Siguiente acción» sigue tras la primera línea, el relleno dice dónde', () => {
