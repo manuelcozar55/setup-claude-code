@@ -564,6 +564,7 @@ SINCMD=0
   while IFS= read -r l; do
     l=${l#"${l%%[![:space:]]*}"}; l=${l#[-*] }; l=${l#[0-9]*. }; l=${l#\[[xX]\]}; l=${l# }
     [ -n "$l" ] || continue
+    # Forma, no contenido: «` `» cuenta como comando. Marca el cierre sin comando por descuido, no al que lo esquiva.
     # shellcheck disable=SC2016  # Backticks literales: el comando va entre ellos.
     if [[ $l != *\`?*\`* ]]; then l+=" (sin comando)"; SINCMD=$((SINCMD + 1)); fi
     printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
