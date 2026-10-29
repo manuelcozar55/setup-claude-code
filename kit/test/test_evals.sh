@@ -202,6 +202,48 @@ case "$rep2" in
   *) echo "NOT ok - report.py no calcula el lift con dos brazos: $(echo "$rep2" | tr '\n' ' ')"; fail=$((fail+1));;
 esac
 
+# --- 7b. Veredicto honesto: intervalos solapados y store obsoleto -----------
+mkstore() { # mkstore FICHERO ON_PASS ON_FAIL OFF_PASS OFF_FAIL SHA
+  "$PY" -I -c '
+import json,sys
+f,op,of,fp,ff,sha=sys.argv[1],*map(int,sys.argv[2:6]),sys.argv[6]
+with open(f,"w") as o:
+    for arm,p,q in (("on",op,of),("off",fp,ff)):
+        for i in range(p+q):
+            o.write(json.dumps({"task":"t","arm":arm,"result":"pass" if i<p else "fail","ts":"2026-01-01T00:00:00Z","harness_sha":sha})+"\n")
+' "$@"
+}
+mkstore "$T/solapa.jsonl" 4 1 3 2 deadbee
+rs=$("$PY" "$E/report.py" --store "$T/solapa.jsonl" 2>&1)
+case "$rs" in
+  *"lift"*"SIRVE (no concluyente)"*) echo "ok - IC95 solapados: SIRVE (no concluyente)"; pass=$((pass+1));;
+  *) echo "NOT ok - IC95 solapados sin la marca 'no concluyente': $(echo "$rs" | tr '\n' ' ')"; fail=$((fail+1));;
+esac
+mkstore "$T/separa.jsonl" 40 0 0 40 deadbee
+rs=$("$PY" "$E/report.py" --store "$T/separa.jsonl" 2>&1)
+case "$rs" in
+  *"no concluyente"*) echo "NOT ok - un caso concluyente quedo marcado 'no concluyente'"; fail=$((fail+1));;
+  *"-> SIRVE"*) echo "ok - IC95 separados: SIRVE a secas"; pass=$((pass+1));;
+  *) echo "NOT ok - IC95 separados sin veredicto SIRVE: $(echo "$rs" | tr '\n' ' ')"; fail=$((fail+1));;
+esac
+if [ "$(git rev-list --count HEAD 2>/dev/null || echo 0)" -gt 61 ]; then
+  viejo=$(git rev-parse HEAD~60); nviejo=$(git rev-list --count "$viejo..HEAD")
+  mkstore "$T/viejo.jsonl" 4 1 3 2 "$viejo"
+  rs=$("$PY" "$E/report.py" --store "$T/viejo.jsonl" 2>&1)
+  case "$rs" in
+    *"OBSOLETO"*"a $nviejo commits"*) echo "ok - store a $nviejo commits de HEAD: OBSOLETO con el numero"; pass=$((pass+1));;
+    *) echo "NOT ok - store a $nviejo commits de HEAD sin OBSOLETO: $(echo "$rs" | tr '\n' ' ')"; fail=$((fail+1));;
+  esac
+  mkstore "$T/fresco.jsonl" 4 1 3 2 "$(git rev-parse HEAD~1)"
+  rs=$("$PY" "$E/report.py" --store "$T/fresco.jsonl" 2>&1)
+  case "$rs" in
+    *"OBSOLETO"*) echo "NOT ok - store a 1 commit marcado OBSOLETO"; fail=$((fail+1));;
+    *) echo "ok - store a 1 commit de HEAD: sin OBSOLETO"; pass=$((pass+1));;
+  esac
+else
+  echo "ok - historial git corto: comprobacion OBSOLETO omitida"; pass=$((pass+1))
+fi
+
 # --- 8. EVAL-CRITERIA.md no puede mentir sobre el numero de tareas ----------
 # E12 (20-50 tareas) es el criterio incumplido que mas limita al resto. Si el doc
 # dice "hay 6" cuando ya hay 20, el hueco declarado desaparece de la vista sin que
