@@ -32,10 +32,13 @@ case "$cmd" in
   *"make test"*|*pytest*|*shellcheck*|*gitleaks*|*"npm test"*|*"cargo test"*|*"go test"*)
     printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$sid" "${cmd:0:200}" "$rc" \
       >> "$STATE_DIR/oracle-runs.tsv" 2>/dev/null
-    # Verde solo si el rc es fiable: con tuberia (sin '||') el rc del tool es el del ultimo
-    # tramo (tail), no el del oraculo; y un rc declarado distinto de 0 no es verde.
-    if [ "${rc:-0}" = "0" ] && { [ -n "$rc" ] || [[ "${cmd//||/}" != *"|"* ]]; }; then
-      : > "$STATE_DIR/session-$sid.oracle" 2>/dev/null
+    # Verde solo si el rc es el del oraculo: con tuberia, '||', ';', '&&', '&' o sustitucion
+    # el rc del tool es el de otro tramo (tail, true...). Un rc declarado != 0 tampoco es verde.
+    if [ "${rc:-0}" = "0" ]; then
+      case "$cmd" in
+        *"|"*|*";"*|*"&"*|*"\$("*|*"\`"*) ;;
+        *) : > "$STATE_DIR/session-$sid.oracle" 2>/dev/null ;;
+      esac
     fi
     ;;
 esac
