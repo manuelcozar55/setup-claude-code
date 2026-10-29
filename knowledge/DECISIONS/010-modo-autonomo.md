@@ -53,8 +53,10 @@ el fallo que el lazo existe para evitar: cerrar la tarea rompiendo la medición.
 
 ## El oráculo tiene que ser real
 
-`autonomy.sh start` **rechaza** un oráculo que no sea ruta absoluta, `rtk proxy …` o
-`make …`. No es purismo: el hook `PreToolUse/Bash` sustituye el ejecutable en posición de
+`autonomy.sh start` **rechaza** un oráculo que no sea del repo: admite `make …`,
+`bash kit/test/X.sh`, `oraculo -- …` o una ruta relativa, y rechaza rutas absolutas, `..`, `~`,
+`rtk proxy …` y encadenados (desde v1.7.0, M11: el Stop hook ejecutaba sin pasar por permisos
+cualquier ruta absoluta que `start` aceptase; hasta entonces exigía justo lo contrario). No es purismo: el hook `PreToolUse/Bash` sustituye el ejecutable en posición de
 comando (M-001), así que un run desatendido verificando con `pytest` a secas estaría
 ejecutando otra cosa. **Un run autónomo que verifica con el comando equivocado es peor que
 uno que no verifica: parece que sí.**

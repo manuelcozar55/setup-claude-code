@@ -43,13 +43,21 @@ aut() { (cd "$cwd" && "$AUT" "$@"); }
 
 # ─────────────────────────── MODO AUTONOMO ───────────────────────────
 if [ -x "$AUT" ] && oracle=$(aut oracle 2>/dev/null) && [ -n "$oracle" ]; then
+  # Un run olvidado no puede bloquear el Stop para siempre: pasado su plazo se cierra sin
+  # ejecutar el oraculo. Falla en abierto (STARTED ilegible tambien libera).
+  if aut expired 2>/dev/null; then
+    aut stop >/dev/null 2>&1
+    echo "── mcharness: run caducado (superó --max-minutes), run autonomo cerrado ──" >&2
+    exit 0
+  fi
   out=$(cd "$cwd" && timeout 600 sh -c "$oracle" 2>&1)
   rc=$?
+  h=$(printf '%s\n' "$out" | tail -25 | sha1sum 2>/dev/null | cut -d' ' -f1)
   if [ "$rc" -eq 0 ]; then
     # Verde con el sensor tocado no prueba nada: se bloquea (cuenta como intento) con la lista.
     altered=$(aut sensor-check 2>/dev/null); src=$?
     if [ "$src" -ne 0 ] && [ -n "$altered" ]; then
-      n=$(aut attempt 2>/dev/null); arc=$?
+      n=$(aut attempt --rc "$rc" --hash "$h" 2>/dev/null); arc=$?
       if [ "$arc" -ne 0 ]; then
         aut stop >/dev/null 2>&1
         {
@@ -67,13 +75,13 @@ Un verde con el sensor tocado no prueba nada. Revierte esos cambios y repara el 
         '{decision:"block", reason:$r}'
       exit 0
     fi
-    aut stop >/dev/null 2>&1
+    aut stop --rc "$rc" --hash "$h" >/dev/null 2>&1
     printf '%s\n' "$out" | tail -5 >&2
     echo "── mcharness: oraculo VERDE, run autonomo cerrado ──" >&2
     exit 0
   fi
 
-  n=$(aut attempt 2>/dev/null); arc=$?
+  n=$(aut attempt --rc "$rc" --hash "$h" 2>/dev/null); arc=$?
   tail_out=$(printf '%s' "$out" | tail -25)
 
   if [ "$arc" -ne 0 ]; then
@@ -98,6 +106,12 @@ $tail_out
 Repara la causa, no el sintoma. PROHIBIDO tocar el propio sensor: si en 'git diff --name-only' aparece un fichero de test, un conftest, un pytest.ini, un umbral o el comando del oraculo, revierte ese cambio -- aflojar el sensor no cierra el lazo, lo rompe dejando apariencia de exito. Si crees que el test esta mal, para y dilo: eso se decide fuera de este lazo." \
     '{decision:"block", reason:$r}'
   exit 0
+fi
+
+# Hay run pero su oraculo no valida (env manipulado o de una version anterior): se cae a
+# modo normal, y se dice, para que no parezca que el gate dejo de bloquear sin motivo.
+if [ -x "$AUT" ] && aut status >/dev/null 2>&1; then
+  echo "autonomia: estado invalido, modo normal (el run sigue en disco; relanza 'autonomy.sh start')" >&2
 fi
 
 # ─────────────────────────── MODO NORMAL ───────────────────────────

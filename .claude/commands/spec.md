@@ -54,7 +54,7 @@ Cada uno debe ser comprobable por un comando o una observación inequívoca.
 ## Oráculo
 El comando exacto que dice si esto está bien:
 
-    <comando por ruta absoluta, `rtk proxy …` o `make …`>
+    <comando: `make …`, `bash kit/test/X.sh` o ruta relativa del repo; el run autónomo no admite rutas absolutas>
 
 Resultado esperado: …
 Resultado HOY (en frío): …          <- si ya pasa, el oráculo no mide lo que vas a cambiar
