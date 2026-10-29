@@ -101,6 +101,7 @@ if [ "$es_encargo" -eq 1 ] && [ "$trae_criterio" -eq 0 ]; then
   add "  pregunta ahora -- no a mitad."
   if [ -n "$oracle" ]; then
     add "  Oraculo de este proyecto (detectado): $oracle"
+    add "  Ejecutalo con 'oraculo -- $oracle': el rc que registra es el del oraculo, no el de una tuberia."
     add "  Ejecutalo EN FRIO antes de tocar nada: si ya pasa, no mide lo que vas a cambiar."
   else
     add "  No se ha detectado oraculo en este proyecto. Si vas a modificar codigo, la primera"
