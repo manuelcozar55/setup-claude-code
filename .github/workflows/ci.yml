@@ -216,6 +216,8 @@ jobs:
         run: bash kit/test/test_nucleo_nudge.sh
       - name: "test_nucleo_gate.sh (PreToolUse: una denegación por banda 70/85 con el nucleo sin escribir, solo hilo principal, falla en abierto)"
         run: bash kit/test/test_nucleo_gate.sh
+      - name: "test_estado_md.sh (ESTADO.md como estado del proyecto: inyección, avisos y handoff; con nucleo.md manda nucleo.md)"
+        run: bash kit/test/test_estado_md.sh
       - name: "test_settings_template.sh (plantilla de settings: hooks de nucleo, un PreCompact, ventana, cleanupPeriodDays, sin LangSmith)"
         run: bash kit/test/test_settings_template.sh
 

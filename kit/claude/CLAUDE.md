@@ -18,6 +18,7 @@ de los hooks, skills y subagentes que este kit instala en `~/.claude/`.
   `quick-checker`): al hilo principal vuelve la conclusión, no el volcado.
 - Salidas de Bash acotadas y honestas (`| tail -n 40`, `grep -c`, `--stat`); nunca un filtro que reescriba la salida.
 - Busca antes de leer un fichero entero (`rg -n <patrón>`) y no releas lo que ya está cargado.
+- Si el proyecto tiene `ESTADO.md` en la raíz y no `nucleo.md`, ese es su estado; no crees `nucleo.md`.
 - `.claude/estado/nucleo.md` es el estado; el hook avisa cuándo actualizarlo; tras compactar llega inyectado; la historia va a `diario.md`.
 - Fin de fase = parada válida: con el aviso del 70 % del umbral, `handoff`, informe y propuesta de siguiente foco; después `/clear`.
   El autocompact es solo el airbag.

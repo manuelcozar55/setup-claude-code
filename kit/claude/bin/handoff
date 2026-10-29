@@ -45,6 +45,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
 --agentes tabla del registro persistente; no crea estado ni archiva agentes.
 --estado  una línea JSON: raíz, nucleo, bytes, tope, pct, dueño, sha256 y agentes_vivos de --sesion (sin proyecto: {"raiz":null}).
 Raíz: la del directorio actual (raíz git; no $HOME ni un directorio sin git) o --raiz DIR.
+Con ESTADO.md en la raíz y sin nucleo.md, ese es el estado del proyecto: --desde y --iniciar salen con 1 sin escribir nada.
 Salida: 0 ok · 2 borrador inválido (stderr nombra la cabecera) · 3 sin proyecto o con enlaces simbólicos en estado/ · 4 nucleo.md cambió durante la
 fusión o estado ocupado (reintenta) · 5 dueño ajeno · 1 otro error · 64 uso erróneo.
 Sesión en ~: sin proyecto y sin --raiz, el estado de esta sesión vive en su ranura ~/.claude/estado/sesiones/<fecha>-<pid de claude>/
@@ -178,6 +179,7 @@ fi
 if [ "$MODO" = iniciar ]; then
   resolver_raiz || sesion crear || die 3 "sin proyecto ni ranura de sesión (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
   [ -n "$SES" ] || ! nucleo_enlazado "$RAIZ" || die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
+  [ -n "$SES" ] || ! nucleo_modo_estado_md "$RAIZ" || die 1 "$RAIZ usa ESTADO.md como estado: no creo un nucleo.md en paralelo"
   PLANTILLA=${CLAUDE_HOME:-$HOME/.claude}/templates/nucleo.md
   [ -f "$PLANTILLA" ] || PLANTILLA=$(dirname "$SELF")/../templates/nucleo.md
   [ -f "$PLANTILLA" ] || die 1 "no encuentro la plantilla templates/nucleo.md (¿instalaste el kit?)"
@@ -262,6 +264,7 @@ if [ -n "$RANURA_ARG" ]; then
 else
   resolver_raiz || sesion crear || die 3 "sin proyecto ni ranura de sesión (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
 fi
+[ -n "$SES" ] || ! nucleo_modo_estado_md "$RAIZ" || die 1 "$RAIZ usa ESTADO.md como estado: handoff no lo fusiona ni crea un nucleo.md en paralelo; edita ESTADO.md a mano"
 if [ -n "$SES" ]; then E=$SES; ORIGEN=$E/nucleo.md
 else
   nucleo_enlazado "$RAIZ" && die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"

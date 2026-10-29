@@ -35,6 +35,8 @@ N=$({ wc -l <"$G"; } 2>/dev/null) || exit 0
 ( set -C; : >"$G.d" ) 2>/dev/null || exit 0
 { printf '%s\t%s\t%s\t%s\t%s\n' "$(date +%FT%T%z)" "$SID" "$B" "$TOOL" "$NUC" >>"$LOG/gate-denegaciones.log"; } 2>/dev/null
 HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
-jq -cn --arg r "nucleo.md sin actualizar tras el aviso de contexto: actualiza $NUC o cierra la fase con \`$HO --desde <borrador> --sesion $SID\`, y después reintenta." \
+R="${NUC##*/} sin actualizar tras el aviso de contexto: actualiza $NUC o cierra la fase con \`$HO --desde <borrador> --sesion $SID\`, y después reintenta."
+[ "${NUC##*/}" != ESTADO.md ] || R="ESTADO.md sin actualizar tras el aviso de contexto: actualiza $NUC y después reintenta."
+jq -cn --arg r "$R" \
   '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 exit 0

@@ -26,7 +26,11 @@ else [ -s "$MARCA" ] && : >"$MARCA"; exit 0; fi
 command grep -qx "$B" "$MARCA" 2>/dev/null && exit 0
 RAIZ=$(nucleo_raiz "${CWD:-$PWD}")
 nucleo_enlazado "$RAIZ" && exit 0
-NUC=$(nucleo_ruta "$RAIZ" crear) || exit 0
+NOM=nucleo.md
+# ESTADO.md sin nucleo.md propio es el estado del proyecto (lib/nucleo.sh): se avisa de él y no se manda a handoff.
+if nucleo_modo_estado_md "$RAIZ"; then NUC=$RAIZ/ESTADO.md; NOM=ESTADO.md
+else NUC=$(nucleo_ruta "$RAIZ" crear) || exit 0
+fi
 # Desde ~ con ranura (se sabe el pid de la sesión) el nucleo es el de la ranura, el que usa handoff: se trata como el de
 # un proyecto y la compuerta también actúa.
 RANURA=""; [ "$RAIZ" = "$HOME" ] && case $NUC in "$HOME"/.claude/estado/sesiones/*/nucleo.md) RANURA=${NUC%/nucleo.md};; esac
@@ -51,16 +55,20 @@ mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
 # Para nucleo-gate.sh (PreToolUse): el nucleo que miré; el mtime de este fichero es la hora del aviso. Aviso nuevo, cuenta nueva.
 echo "$NUC" >"$MARCA.nucleo"; rm -f -- "${MARCA/nudge-/gate-}-$B" "${MARCA/nudge-/gate-}-$B.d"
 if [ -n "$MT" ]; then
-  M="CONTEXTO $PCT % del airbag. nucleo.md lleva $((EDAD / 60)) min sin actualizar: antes de la siguiente herramienta actualiza Paso actual / Siguiente acción / Pendientes en $NUC."
+  M="CONTEXTO $PCT % del airbag. $NOM lleva $((EDAD / 60)) min sin actualizar: antes de la siguiente herramienta actualiza Paso actual / Siguiente acción / Pendientes en $NUC."
   # Editado a mano no pasa por el tope de handoff: pasado el tope, al retomar se omiten secciones enteras.
   # Es el mismo tope con el que escribe handoff, con la reserva del bloque de agentes ya descontada.
   SZ=$(wc -c <"$NUC" 2>/dev/null | tr -d ' ') T=$((NUCLEO_TOPE - NUCLEO_RESERVA_AGENTES))
-  [ "${SZ:-0}" -le "$T" ] || M="$M Ocupa $SZ B (tope $T): pasa lo cerrado a diario.md."
+  if [ "$NOM" = ESTADO.md ]; then HIST="saca lo cerrado del fichero"; else HIST="pasa lo cerrado a diario.md"; fi
+  [ "${SZ:-0}" -le "$T" ] || M="$M Ocupa $SZ B (tope $T): $HIST."
 else
   M="CONTEXTO $PCT % del airbag y no hay nucleo.md: antes de la siguiente herramienta créalo en $NUC con la forma de \$HOME/.claude/templates/nucleo.md."
 fi
 HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
-if nucleo_desatendido; then
+if [ "$NOM" = ESTADO.md ]; then
+  [ "$B" = 50 ] || M="$M Es el estado del proyecto: edítalo a mano, handoff no lo escribe."
+  [ "$B" != 85 ] || M="$M Cierra el turno ya."
+elif nucleo_desatendido; then
   # -p/SDK: nadie pulsa /handoff ni cierra el turno, y cerrarlo termina la sesión. Con acceptEdits, Write/Edit bajo
   # .claude/ se deniegan, pero handoff (un script por Bash) sí escribe: el borrador va fuera de .claude/.
   [ "$B" = 50 ] || M="$M Sesión no interactiva: deja el estado con \`$HO --desde <borrador> --sesion $SID${RANURA:+ --ranura $RANURA}\` (borrador fuera de .claude/) o editando nucleo.md, y sigue con la tarea; nadie cerrará ni limpiará la sesión."
