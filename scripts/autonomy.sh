@@ -19,6 +19,8 @@
 #   autonomy.sh attempt [--session ID]     consume un intento; exit 1 si se agotaron
 #   autonomy.sh stop [--session ID]        cierra el run
 #   autonomy.sh oracle [--session ID]      imprime solo el comando del oraculo
+#   autonomy.sh sensor-check [--session ID] lista los ficheros sensor cambiados o borrados
+#                                          desde `start`; exit 1 si hay alguno
 set -euo pipefail
 
 STATE_DIR="${MCHARNESS_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/mcharness}"
@@ -47,6 +49,19 @@ done
 # real de uso. `--session` se conserva como override explicito para los tests.
 [ -n "$SESSION" ] || SESSION="$(basename "$PWD")-$(printf '%s' "$PWD" | cksum | cut -d' ' -f1)"
 F="$STATE_DIR/run-$SESSION.env"
+H="$STATE_DIR/run-$SESSION.sensor"
+
+# Ficheros rastreados que son el sensor: aflojarlos cierra el lazo en falso. Hashes y no
+# `git diff`: asi no se culpa al modelo de cambios que ya estaban sin commitear al arrancar.
+sensor_hashes() {
+  local f
+  git rev-parse --git-dir >/dev/null 2>&1 || return 0
+  git ls-files -z -- Makefile conftest.py pytest.ini '.github/workflows/' 'tests/' 'test/' 'kit/test/' \
+    '**/conftest.py' '**/pytest.ini' '**/Makefile' 2>/dev/null |
+    while IFS= read -r -d '' f; do
+      [ -f "$f" ] && printf '%s\t%s\n' "$(sha1sum < "$f" | cut -d' ' -f1)" "$f"
+    done
+}
 
 case "$cmd" in
   start)
@@ -64,6 +79,7 @@ case "$cmd" in
       echo "MAXREP=$MAXREP"
       echo "ATTEMPTS=0"
       echo "STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; } > "$F"
+    sensor_hashes > "$H" 2>/dev/null || : > "$H"
     echo "run autonomo activo (sesion $SESSION)"
     echo "  objetivo : $GOAL"
     echo "  oraculo  : $ORACLE"
@@ -94,10 +110,24 @@ case "$cmd" in
     # sin condicion de salida, y es justo donde aparece la tentacion de aflojar el sensor.
     [ "$ATTEMPTS" -le "$MAXREP" ] || exit 1
     ;;
+  sensor-check)
+    # Falla en abierto: sin run o sin fichero de hashes no hay nada que comparar.
+    [ -f "$F" ] && [ -f "$H" ] || exit 0
+    altered=""
+    while IFS=$'\t' read -r h f; do
+      [ -n "$f" ] || continue
+      if [ ! -f "$f" ]; then altered="$altered$f (borrado)"$'\n'
+      else
+        now=$(sha1sum < "$f" | cut -d' ' -f1)
+        [ "$now" = "$h" ] || altered="$altered$f"$'\n'
+      fi
+    done < "$H"
+    [ -z "$altered" ] || { printf '%s' "$altered"; exit 1; }
+    ;;
   stop)
-    if [ -f "$F" ]; then rm -f "$F"; echo "run autonomo cerrado"; else echo "no habia run activo"; fi
+    if [ -f "$F" ]; then rm -f "$F" "$H"; echo "run autonomo cerrado"; else echo "no habia run activo"; fi
     ;;
   *)
-    die "uso: autonomy.sh {start|status|attempt|oracle|stop} [opciones]"
+    die "uso: autonomy.sh {start|status|attempt|oracle|sensor-check|stop} [opciones]"
     ;;
 esac

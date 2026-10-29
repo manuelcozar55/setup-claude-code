@@ -139,9 +139,9 @@ git -C "$G" checkout -q f.txt
 export MCHARNESS_STATE="$T/state"
 
 # --- 10. Sensor alterado: oraculo verde no cierra si se toco el sensor (M4) ---
-S="$T/s"; mkdir -p "$S/scripts" "$S/tests" "$S/dir sp/test"
+S="$T/s"; mkdir -p "$S/scripts" "$S/tests" "$S/tests/dir sp"
 cp "$AUT" "$S/scripts/autonomy.sh"
-echo 'test:' > "$S/Makefile"; echo ok > "$S/tests/t.sh"; echo ok > "$S/dir sp/test/a b.sh"; echo v > "$S/src.txt"
+echo 'test:' > "$S/Makefile"; echo ok > "$S/tests/t.sh"; echo ok > "$S/tests/dir sp/a b.sh"; echo v > "$S/src.txt"
 git -C "$S" init -q && git -C "$S" add -A && git -C "$S" -c user.name=t -c user.email=t@t commit -q -m i
 export MCHARNESS_STATE="$T/state10"
 sp() { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"Stop","stop_hook_active":false}' "$1" "$S"; }
@@ -162,7 +162,7 @@ ckhas "$r" "SENSOR ALTERADO" y "sensor: agotado el presupuesto libera con SENSOR
 sruns status >/dev/null 2>&1; ck "$?" "1" "sensor: y cierra el run"
 git -C "$S" checkout -q Makefile
 sruns start --oracle "/bin/true" --goal "x" >/dev/null
-rm "$S/dir sp/test/a b.sh"
+rm "$S/tests/dir sp/a b.sh"
 out=$(sp "$(uuid)" | "$GATE" 2>/dev/null)
 ck "$(decision "$out")" "block" "sensor: fichero sensor borrado (con espacios en la ruta) -> block"
 ckhas "$(printf '%s' "$out" | jq -r '.reason // ""')" "a b.sh" y "sensor: el motivo lista el borrado"
