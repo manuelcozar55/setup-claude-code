@@ -108,6 +108,12 @@ Repara la causa, no el sintoma. PROHIBIDO tocar el propio sensor: si en 'git dif
   exit 0
 fi
 
+# Hay run pero su oraculo no valida (env manipulado o de una version anterior): se cae a
+# modo normal, y se dice, para que no parezca que el gate dejo de bloquear sin motivo.
+if [ -x "$AUT" ] && aut status >/dev/null 2>&1; then
+  echo "autonomia: estado invalido, modo normal (el run sigue en disco; relanza 'autonomy.sh start')" >&2
+fi
+
 # ─────────────────────────── MODO NORMAL ───────────────────────────
 sid=${sid//[^A-Za-z0-9_-]/_}
 marker="$STATE_DIR/session-$sid.oracle"

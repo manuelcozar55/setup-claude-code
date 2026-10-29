@@ -268,10 +268,11 @@ ckhas "$(cat "$T/err")" "estado invalido" y "estado: el hook dice por que cae a 
 runp status >/dev/null 2>&1; ck "$?" "0" "estado: y no borra el estado invalido"
 runp stop >/dev/null 2>&1; rm -f "$MCHARNESS_STATE"/run-*.env
 # Env de la version anterior (ORACLE con printf %q): no valida, cae a modo normal con aviso.
-printf 'ORACLE=make\\ ok\nGOAL=x\nMAXREP=3\nATTEMPTS=0\nSTARTED=%s\n' "$(hace '1 minute')" > "$MCHARNESS_STATE/run-viejo.env"
+runp start --oracle "make ok" --goal "x" >/dev/null
+printf 'ORACLE=make\\ ok\nGOAL=x\nMAXREP=3\nATTEMPTS=0\nSTARTED=%s\n' "$(hace '1 minute')" > "$(envf)"
 out=$(pl "$(uuid)" | "$GATE" 2>"$T/err")
 ck "$(decision "$out")-$(grep -c 'estado invalido' "$T/err")" "ninguna-1" "estado: env antiguo con %q cae a modo normal con aviso"
-rm -f "$MCHARNESS_STATE/run-viejo.env"
+runp stop >/dev/null 2>&1
 runp start --oracle "make ko" --goal "x" >/dev/null
 echo "touch $T/pwned" >> "$(envf)"
 d=$(decision "$(pl "$(uuid)" | "$GATE" 2>/dev/null)")
