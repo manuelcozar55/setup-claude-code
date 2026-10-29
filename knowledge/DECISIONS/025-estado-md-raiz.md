@@ -23,9 +23,16 @@ automático del cockpit no guardaba nada.
 - Los hooks leen la raíz por `nucleo_raiz` y solo cambian el nombre del fichero en sus textos; el tope de
   inyección es el mismo.
 - `handoff --desde` fusiona en `ESTADO.md` (nunca crea `nucleo.md`): las secciones del borrador con equivalente
-  sustituyen a su viñeta o sección; las demás (Plan, Invariantes, Ficheros tocados) se añaden y se informan. Mismo
-  tope en bytes; lo omitido va a `.claude/estado/diario.md` y la copia previa a `.claude/estado/ESTADO.prev-*`,
-  fuera del árbol versionado. `--iniciar` no crea nada y sale 0. `--estado` añade `modo` y `estado`.
+  sustituyen a su viñeta o a la **primera** sección de esa clave; las demás (Plan, Invariantes, Ficheros tocados)
+  se añaden y se informan. Lo que el borrador no trae sale tal cual (CRLF, líneas en blanco y todo). La copia previa
+  va a `.claude/estado/ESTADO.prev-*` (3, por mtime) y solo si el texto cambia; un handoff repetido no toca nada.
+  `--iniciar` no crea nada y sale 0. `--estado` añade `modo` y `estado`.
+- **El tope nunca borra lo que es de la persona.** `ESTADO.md` es suyo y versionado: el tope solo puede mandar a
+  `diario.md` las secciones que el propio borrador añadió sin equivalente (y los `[x]` del Plan). Si aun así
+  `ESTADO.md` pasa del tope, se escribe igual, rc 0, y se avisa por stderr de que conviene recortarlo a mano; la
+  inyección de SessionStart ya lo recorta. Se descartó omitir Decisiones, Pendientes o secciones ajenas (la primera
+  versión lo hacía: un borrador de una línea dejó un fichero de 8 KB en 893 B con sus notas en un diario que nunca se
+  inyecta) y se descartó fallar con rc 1 (el cierre automático no guardaría nada). Pérdida cero antes que tope exacto.
 
 ## Descartado
 
