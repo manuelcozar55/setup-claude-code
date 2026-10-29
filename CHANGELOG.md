@@ -19,6 +19,7 @@ etiquetado.
 - **`oracle-log` solo cuenta oráculos limpios** (M2b): el marcador de sesión y el TSV registran el rc en la cuarta columna y solo marcan verde un comando sin tubería, `||`, `;`, `&` ni sustitución y con rc 0; `make test | tail`, `make test || true` o `true; make test` ya no cuentan. `auto-spec` recomienda `oraculo -- <cmd>` (M2c). Tests: `test_auto_spec.sh`.
 - **`security-reviewer` pasa a solo lectura** (M6): sin `Write`/`Edit`; reporta hallazgos y no los corrige. Tests: `test_agentes.sh`.
 - **La skill `harness` arma y para el modo autónomo** (M5, M12): invoca `scripts/autonomy.sh start|stop` y deja de citar `superpowers:*`; el `allow` de `settings.json` se acota a `Bash(scripts/autonomy.sh *)`. Tests: `test_harness_structure.sh` (+4).
+- **`handoff --desde` acepta `--ranura DIR` y el aviso de contexto lo dicta desde sesiones abiertas en `~`** (B5a): la ranura debe ser la de la propia sesión (`nucleo_sesion_dir`) o sale rc 5 sin escribir; en un proyecto ajeno el rc 5 nombra la ranura propia y el comando exacto. Tests: `test_nucleo_integridad.sh`, `test_nucleo_nudge.sh`.
 - **`handoff` avisa de los `[x]` sin comando de verificación** (M10): un paso cerrado sin comando entre comillas invertidas se archiva en `diario.md` con la marca `(sin comando)` y sale en `AVISOS`; no bloquea. ADR 022 registra por qué el veto de compactación no se implementa desde shell. Tests: `test_nucleo_integridad.sh`.
 
 ## [1.6.1] - 2026-10-28
