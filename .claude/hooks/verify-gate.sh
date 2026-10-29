@@ -80,7 +80,8 @@ Repara la causa, no el sintoma. PROHIBIDO tocar el propio sensor: si en 'git dif
 fi
 
 # ─────────────────────────── MODO NORMAL ───────────────────────────
-[ -f "$STATE_DIR/session-$sid.oracle" ] && exit 0
+sid=${sid//[^A-Za-z0-9_-]/_}
+marker="$STATE_DIR/session-$sid.oracle"
 
 # Solo habla si de verdad se toco codigo: en una sesion de lectura el aviso seria el ruido
 # que hace que manana se ignore el aviso que si importaba.
@@ -88,6 +89,18 @@ git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1 || exit 0
 changed=$(git -C "$cwd" diff --name-only 2>/dev/null | grep -c . || true)
 staged=$(git -C "$cwd" diff --cached --name-only 2>/dev/null | grep -c . || true)
 [ "$((changed + staged))" -gt 0 ] || exit 0
+
+# Un marcador solo vale si es posterior a la ultima edicion: oracle-log lo trunca en cada
+# oraculo verde, asi que su mtime es el del ultimo. Rutas con -z desde la raiz git (los
+# nombres de git diff son relativos a ella, no a cwd).
+if [ -f "$marker" ]; then
+  top=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || exit 0
+  newer=n
+  while IFS= read -r -d '' f; do
+    [ "$top/$f" -nt "$marker" ] && { newer=y; break; }
+  done < <({ git -C "$cwd" diff --name-only -z; git -C "$cwd" diff --cached --name-only -z; } 2>/dev/null)
+  [ "$newer" = "y" ] || exit 0
+fi
 
 oracle=""
 [ -x "$cwd/scripts/detect-oracle.sh" ] && oracle=$("$cwd/scripts/detect-oracle.sh" "$cwd" 2>/dev/null | head -1)
@@ -99,5 +112,15 @@ oracle=""
   echo "  Evidencia antes que afirmaciones:  /verify"
   echo "───────────────────────────────────────────────────────────"
 } >&2
+
+# Rastro para medir si el aviso se atiende (metrics.py). Fallos de escritura, ignorados;
+# el log se recorta para no crecer sin tope.
+{
+  avisos="$STATE_DIR/gate-avisos.log"
+  printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$sid" "$((changed + staged))" >> "$avisos"
+  if [ "$(wc -l < "$avisos")" -gt 500 ]; then
+    tail -n 300 "$avisos" > "$avisos.tmp" && mv "$avisos.tmp" "$avisos"
+  fi
+} 2>/dev/null || true
 
 exit 0
