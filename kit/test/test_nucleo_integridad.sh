@@ -167,12 +167,14 @@ printf 'sesion=otra\ndesde=%s\n' "$(date +%s)" >"$XE/.dueno"
 ok 'B5a: dueño ajeno (rc 5) nombra la ranura y el comando' "$RC,$(grep -cF -- "tu ranura es $SLOT" "$T/err"),$(grep -cF -- "--ranura $SLOT" "$T/err")" '5,1,1'
 (cd "$X" && CLAUDE_PID=$$ bash "$BIN" --desde "$T/draft-r" --sesion mia --ranura "$SLOT") >"$T/out" 2>"$T/err"; RC=$?
 ok 'B5a: --ranura escribe la ranura con cwd en proyecto ajeno' "$RC,$(grep -c DE-LA-RANURA "$SLOT/nucleo.md"),$(grep -c PROYECTO "$XE/nucleo.md")" '0,1,1'
+# Dentro de sesiones/ y sin enlaces, pero de otra sesión: sin --ranura nadie podía escribir la ranura ajena; con él tampoco.
+# Va antes del enlace de abajo: con un enlace en sesiones/, nucleo_estado_seguro la da por insegura y no hay ranura propia.
+mkdir -p "$CLAUDE_HOME/estado/sesiones/otra"
+(cd "$X" && CLAUDE_PID=$$ bash "$BIN" --desde "$T/draft-r" --sesion mia --ranura "$CLAUDE_HOME/estado/sesiones/otra") >"$T/out" 2>"$T/err"; RC=$?
+ok 'B5a: --ranura de otra sesión se rechaza (rc 5) y nombra la propia' "$RC,$(find "$CLAUDE_HOME/estado/sesiones/otra" -type f | wc -l),$(grep -cF -- "la tuya es $SLOT" "$T/err")" '5,0,1'
 mkdir -p "$T/fuera" "$CLAUDE_HOME/estado/sesiones/x"; ln -s "$T/fuera" "$CLAUDE_HOME/estado/sesiones/enlace"
 for MALA in "$T/fuera" "$CLAUDE_HOME/estado/sesiones/../../.." "$CLAUDE_HOME/estado/sesiones/x/../../.." "$CLAUDE_HOME/estado/sesiones/enlace" "$CLAUDE_HOME/estado/sesiones"; do
   (cd "$X" && bash "$BIN" --desde "$T/draft-r" --sesion mia --ranura "$MALA") >"$T/out" 2>"$T/err"; RC=$?
   ok "B5a: --ranura fuera de sesiones/ se rechaza ($MALA)" "$([ "$RC" -ne 0 ] && echo rc),$(find "$T/fuera" -type f | wc -l),$(grep -c DE-LA-RANURA "$XE/nucleo.md")" 'rc,0,0'
 done
-# Dentro de sesiones/ y sin enlaces, pero de otra sesión: sin --ranura nadie podía escribir la ranura ajena; con él tampoco.
-(cd "$X" && CLAUDE_PID=$$ bash "$BIN" --desde "$T/draft-r" --sesion mia --ranura "$CLAUDE_HOME/estado/sesiones/x") >"$T/out" 2>"$T/err"; RC=$?
-ok 'B5a: --ranura de otra sesión se rechaza (rc 5) y nombra la propia' "$RC,$(find "$CLAUDE_HOME/estado/sesiones/x" -type f | wc -l),$(grep -cF -- "la tuya es $SLOT" "$T/err")" '5,0,1'
 exit "$FAIL"

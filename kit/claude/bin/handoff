@@ -255,6 +255,10 @@ if [ -n "$RANURA_ARG" ]; then
   RBASE=$(realpath -- "${CLAUDE_HOME:-$HOME/.claude}/estado/sesiones" 2>/dev/null) || die 1 "--ranura: no existe ${CLAUDE_HOME:-$HOME/.claude}/estado/sesiones"
   SES=$(realpath -- "$RANURA_ARG" 2>/dev/null) && [ -d "$SES" ] && [ "$(dirname "$SES")" = "$RBASE" ] || die 1 "--ranura «$RANURA_ARG» no es una ranura dentro de $RBASE: no escribo nada"
   for f in "$SES"/* "$SES"/.[!.]*; do [ ! -L "$f" ] || die 1 "--ranura: hay un enlace simbólico dentro de $SES: no escribo nada"; done
+  # Y solo la propia: nucleo_sesion_dir la ata al proceso (.proceso), como cuando se llega sin --ranura.
+  MIA=$(nucleo_sesion_dir 2>/dev/null) || MIA=""
+  [ -n "$MIA" ] && [ "$(realpath -- "$MIA" 2>/dev/null)" = "$SES" ] ||
+    die 5 "--ranura «$RANURA_ARG» es de otra sesión${MIA:+; la tuya es $MIA}: no escribo nada"
 else
   resolver_raiz || sesion crear || die 3 "sin proyecto ni ranura de sesión (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
 fi
