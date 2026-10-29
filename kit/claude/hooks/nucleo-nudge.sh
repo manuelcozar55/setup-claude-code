@@ -66,7 +66,7 @@ else
 fi
 HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
 if [ "$NOM" = ESTADO.md ]; then
-  [ "$B" = 50 ] || M="$M Es el estado del proyecto: edítalo a mano, handoff no lo escribe."
+  [ "$B" != 70 ] || M="$M Cierra la fase con \`$HO --desde <borrador> --sesion $SID${RANURA:+ --ranura $RANURA}\`."
   [ "$B" != 85 ] || M="$M Cierra el turno ya."
 elif nucleo_desatendido; then
   # -p/SDK: nadie pulsa /handoff ni cierra el turno, y cerrarlo termina la sesión. Con acceptEdits, Write/Edit bajo

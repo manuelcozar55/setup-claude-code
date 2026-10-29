@@ -81,13 +81,8 @@ if { [ "$RAIZ" != "$HOME" ] || [ -n "$SD" ]; } && [ -f "$NUC" ] && [ ! -L "$NUC"
         if [ $(( $(date +%s) - MT )) -gt 600 ] && [ "$(cat "$MARCA" 2>/dev/null)" != "$MT" ]; then
           HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
           mkdir -p "$(dirname "$MARCA")" && echo "$MT" >"$MARCA"
-          if [ "$NOM" = ESTADO.md ]; then
-            CTX="Aviso del hook: $NUC lleva más de 10 min sin actualizarse y se acaba de compactar. Antes de seguir, actualízalo a mano con el estado de la tarea.
+          CTX="Aviso del hook: $NUC lleva más de 10 min sin actualizarse y se acaba de compactar. Antes de seguir, actualiza Paso actual / Siguiente acción / Pendientes / Ficheros tocados con \`$HO --desde <borrador> --sesion $SID\`.
 $CTX"
-          else
-            CTX="Aviso del hook: $NUC lleva más de 10 min sin actualizarse y se acaba de compactar. Antes de seguir, actualiza Paso actual / Siguiente acción / Pendientes / Ficheros tocados con \`$HO --desde <borrador> --sesion $SID\`.
-$CTX"
-          fi
         fi;;
       esac
     fi;;

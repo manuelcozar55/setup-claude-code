@@ -25,6 +25,8 @@ read -r NUC <"$AVISO" 2>/dev/null; [ -n "${NUC:-}" ] || exit 0
 [ ! "$NUC" -nt "$AVISO" ] || exit 0
 # Quien obedece no queda bloqueado: estado/ (nucleo y borradores) y handoff pasan sin contar.
 case "/$DEST" in */.claude/estado/*) exit 0;; esac
+# En modo ESTADO.md (sin nucleo.md) el estado es <raíz>/ESTADO.md exacto: actualizarlo también es obedecer.
+if [ "${NUC##*/}" = ESTADO.md ] && [ "$DEST" = "$NUC" ] && [ ! -e "${NUC%/*}/.claude/estado/nucleo.md" ]; then exit 0; fi
 if [ "$TOOL" = Bash ] && [[ $CMD =~ (^|[^A-Za-z0-9_.-])handoff([^A-Za-z0-9_-]|$) ]]; then exit 0; fi
 # Llamadas en paralelo: la cuenta es un append (una línea por llamada) y la denegación se reclama con un
 # fichero que solo crea una (set -C), así que no hay lectura-suma-escritura que pisar.
@@ -36,7 +38,6 @@ N=$({ wc -l <"$G"; } 2>/dev/null) || exit 0
 { printf '%s\t%s\t%s\t%s\t%s\n' "$(date +%FT%T%z)" "$SID" "$B" "$TOOL" "$NUC" >>"$LOG/gate-denegaciones.log"; } 2>/dev/null
 HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
 R="${NUC##*/} sin actualizar tras el aviso de contexto: actualiza $NUC o cierra la fase con \`$HO --desde <borrador> --sesion $SID\`, y después reintenta."
-[ "${NUC##*/}" != ESTADO.md ] || R="ESTADO.md sin actualizar tras el aviso de contexto: actualiza $NUC y después reintenta."
 jq -cn --arg r "$R" \
   '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 exit 0
