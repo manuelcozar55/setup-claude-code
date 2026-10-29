@@ -41,6 +41,8 @@ python3 kit/evals/report.py           # agrega los dos
 comiteado). El JSON diario se sobrescribe y no tiene historia; sin historia no hay
 regresión detectable, y un eval que no detecta regresiones solo sirve el día que se
 corre. `report.py` agrega ese histórico y acepta `--since YYYY-MM-DD` y `--md`.
+`report.py` añade `(no concluyente)` al veredicto si los IC95 de ambos brazos solapan, y avisa
+`OBSOLETO` si el último run medido está a más de `OBSOLETO_COMMITS=50` commits de HEAD.
 
 Con `RUNS=1` no hay varianza que medir y el intervalo sale enorme. Eso es la
 respuesta correcta, no un defecto del informe: una sola muestra no distingue una
