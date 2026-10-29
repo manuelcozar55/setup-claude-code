@@ -9,7 +9,7 @@ set -euo pipefail
 
 uso() {
   cat <<'EOF'
-uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
+uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--solo] [--commit]
      handoff --iniciar [--raiz DIR]
      handoff --informe TEMA [--raiz DIR]
      handoff --migrar [DIR] [--sesion ID] [--esperado SHA256] [--json]
@@ -29,6 +29,9 @@ uso: handoff --desde BORRADOR.md [--raiz DIR] [--sesion ID] [--solo] [--commit]
   --sesion  ID real de la sesión que escribe. Con dueño vigente es obligatorio y debe coincidir;
             sin ID o con otro devuelve 5 sin escribir. En --desde, sin --sesion vale $CLAUDE_CODE_SESSION_ID si existe. No copies el ID de otra sesión desde --estado.
             Al guardar libera ese dueño (o el dueño caducado).
+--ranura  solo con --desde: escribe en esa ranura de sesión (~/.claude/estado/sesiones/<id>/) sea cual sea el cwd; es lo que
+          dicta el aviso de contexto en una sesión abierta desde ~. Se acepta solo si, resuelta con realpath, es un hijo directo de
+          $CLAUDE_HOME/estado/sesiones/ y no contiene enlaces; si no, sale 1 sin escribir. Excluye --raiz y --commit.
 --iniciar crea <raíz>/.claude/estado/nucleo.md desde $CLAUDE_HOME/templates/nucleo.md (el primero del proyecto) y añade
           .claude/estado/ a .git/info/exclude; si ya existe no lo toca (sale 0 y lo dice). En cualquier caso deja
           listos informes/ y checkpoints/ y un .gitignore interno con «*» (nada de ahí va a git).
@@ -62,19 +65,20 @@ TOPE=$((NUCLEO_TOPE - NUCLEO_RESERVA_AGENTES))
 die() { local rc=$1; shift; echo "handoff: $*" >&2; exit "$rc"; }
 iso_de() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 
-MODO="" DESDE="" MIGRAR="" TEMA="" RAIZ_ARG="" SESION="" ESPERADO="" JSON=0 SOLO=0 COMMIT=0
+MODO="" DESDE="" MIGRAR="" TEMA="" RAIZ_ARG="" RANURA_ARG="" SESION="" ESPERADO="" JSON=0 SOLO=0 COMMIT=0
 while [ $# -gt 0 ]; do
   case $1 in
     -h | --help) uso; exit 0 ;;
     --migrar)
       MODO=migrar; shift
       if [ $# -gt 0 ] && [[ $1 != --* ]]; then MIGRAR=$1; shift; fi ;;
-    --desde | --informe | --raiz | --sesion | --liberar | --esperado)
+    --desde | --informe | --raiz | --ranura | --sesion | --liberar | --esperado)
       [ $# -ge 2 ] || { echo "uso: handoff: a $1 le falta su argumento (handoff --help)" >&2; exit 64; }
       case $1 in
         --desde) MODO=desde; DESDE=$2 ;;
         --informe) MODO=informe; TEMA=$2 ;;
         --raiz) RAIZ_ARG=$2 ;;
+        --ranura) RANURA_ARG=$2 ;;
         --sesion) SESION=$2 ;;
         --liberar) MODO=liberar; SESION=$2 ;;
         --esperado) [ -n "$2" ] || die 64 "--esperado requiere un SHA256"; ESPERADO=$2 ;;
@@ -92,6 +96,11 @@ done
 # Sin --sesion, en --desde vale la sesión que corre este Bash (Claude Code la exporta): quien ya es dueño no tiene que repetirla.
 [ "$MODO" != desde ] || [ -n "$SESION" ] || SESION=${CLAUDE_CODE_SESSION_ID:-}
 [ -n "$MODO" ] || { echo "uso: handoff --desde BORRADOR.md | --iniciar | --informe TEMA | --migrar DIR | --estado (handoff --help)" >&2; exit 64; }
+
+if [ -n "$RANURA_ARG" ]; then
+  [ "$MODO" = desde ] && [ -z "$RAIZ_ARG" ] || die 64 "--ranura solo va con --desde y sin --raiz"
+  [ "$COMMIT" -eq 0 ] || die 3 "--commit no aplica al estado de una sesión (no hay repo): no escribo nada"
+fi
 
 if [ -n "$ESPERADO" ]; then
   [ "$MODO" = migrar ] && [[ $ESPERADO =~ ^[[:xdigit:]]{64}$ ]] || die 64 "--esperado requiere --migrar y un SHA256 de 64 dígitos hexadecimales"
@@ -241,7 +250,18 @@ fi
 # ---------------------------------------------------------------- --desde
 [ -f "$DESDE" ] && [ -r "$DESDE" ] || die 2 "no puedo leer el borrador «$DESDE»"
 [ "$(wc -c <"$DESDE")" -le 262144 ] || die 2 "el borrador pasa de 256 KB: un estado no es un volcado"
-resolver_raiz || sesion crear || die 3 "sin proyecto ni ranura de sesión (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
+if [ -n "$RANURA_ARG" ]; then
+  # El destino explícito solo vale dentro de sesiones/: realpath resuelve «..» y enlaces antes de comparar.
+  RBASE=$(realpath -- "${CLAUDE_HOME:-$HOME/.claude}/estado/sesiones" 2>/dev/null) || die 1 "--ranura: no existe ${CLAUDE_HOME:-$HOME/.claude}/estado/sesiones"
+  SES=$(realpath -- "$RANURA_ARG" 2>/dev/null) && [ -d "$SES" ] && [ "$(dirname "$SES")" = "$RBASE" ] || die 1 "--ranura «$RANURA_ARG» no es una ranura dentro de $RBASE: no escribo nada"
+  for f in "$SES"/* "$SES"/.[!.]*; do [ ! -L "$f" ] || die 1 "--ranura: hay un enlace simbólico dentro de $SES: no escribo nada"; done
+  # Y solo la propia: nucleo_sesion_dir la ata al proceso (.proceso), como cuando se llega sin --ranura.
+  MIA=$(nucleo_sesion_dir 2>/dev/null) || MIA=""
+  [ -n "$MIA" ] && [ "$(realpath -- "$MIA" 2>/dev/null)" = "$SES" ] ||
+    die 5 "--ranura «$RANURA_ARG» es de otra sesión${MIA:+; la tuya es $MIA}: no escribo nada"
+else
+  resolver_raiz || sesion crear || die 3 "sin proyecto ni ranura de sesión (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
+fi
 if [ -n "$SES" ]; then E=$SES; ORIGEN=$E/nucleo.md
 else
   nucleo_enlazado "$RAIZ" && die 3 "$RAIZ/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
@@ -250,6 +270,8 @@ else
 fi
 nucleo_bloquear "$E" || die "$?" "estado ocupado o inseguro: reintenta"
 if [ -z "$SES" ] && D=$(nucleo_dueno_ajeno "$RAIZ" "$SESION"); then
+  MIA=$(nucleo_sesion_dir 2>/dev/null) || MIA=""
+  [ -z "$MIA" ] || die 5 "la sesión dueña es otra ($D): estás en un proyecto de otra sesión; tu ranura es $MIA: handoff --desde $DESDE --sesion ${SESION:-<id>} --ranura $MIA"
   die 5 "la sesión dueña es otra ($D): no escribo"
 fi
 NUC=$E/nucleo.md; DIARIO=$E/diario.md; VLOG=$E/verificaciones.log
