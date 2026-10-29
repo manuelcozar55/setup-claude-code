@@ -46,11 +46,11 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
 --estado  una línea JSON: raíz, nucleo, bytes, tope, pct, dueño, sha256 y agentes_vivos de --sesion (sin proyecto: {"raiz":null}).
 Raíz: la del directorio actual (raíz git; no $HOME ni un directorio sin git) o --raiz DIR.
 Con ESTADO.md en la raíz y sin nucleo.md, ese es el estado del proyecto y --desde lo fusiona en él (nunca crea nucleo.md):
-          Objetivo, Paso actual y Siguiente acción sustituyen a sus viñetas; Decisiones, Pendientes (o «Pendientes y riesgos») y Comandos
-          de verificación (o «Cómo se comprueba») sustituyen a su sección, y la crean si falta; lo sin equivalente (Plan, Invariantes,
-          Ficheros tocados) se añade como sección propia y se informa. Mismo tope en bytes; lo omitido va a .claude/estado/diario.md y
+          Paso actual y Siguiente acción sustituyen a sus viñetas (el Objetivo solo si está vacío o es plantilla RELLENAR; Invariantes solo
+          crece con las líneas nuevas, como en nucleo.md); Decisiones, Pendientes (o «Pendientes y riesgos») y Comandos
+          de verificación (o «Cómo se comprueba») sustituyen a su sección, y la crean si falta; lo sin equivalente (Plan, Ficheros tocados) se añade como sección propia y se informa. Mismo tope en bytes; lo omitido va a .claude/estado/diario.md y
           la copia previa a .claude/estado/ESTADO.prev-* (3). --iniciar no crea nada (sale 0); --estado añade «modo» y «estado»;
-          --solo no aplica (64).
+          --solo no aplica (64). Con --json el aviso «supera el tope» va al recibo (campo avisos), no a stderr.
 Salida: 0 ok · 2 borrador inválido (stderr nombra la cabecera) · 3 sin proyecto o con enlaces simbólicos en estado/ · 4 nucleo.md cambió durante la
 fusión o estado ocupado (reintenta) · 5 dueño ajeno · 1 otro error · 64 uso erróneo.
 Sesión en ~: sin proyecto y sin --raiz, el estado de esta sesión vive en su ranura ~/.claude/estado/sesiones/<fecha>-<pid de claude>/
@@ -374,11 +374,11 @@ dindice() { local j; DI=-1; for ((j = 0; j < ${#DK[@]}; j++)); do [ "${DK[j]}" !
 
 # ---------------------------------------------------------------- --desde con ESTADO.md como estado
 # Mapeo borrador (secciones de nucleo.md) → ESTADO.md. Viñetas de la cabecera, que sustituyen a la suya (o se añaden si falta):
-#   Objetivo → «- Objetivo (una línea):» (todo el cuerpo en una línea) · Paso actual → «- Paso actual:» · Siguiente acción → «- Siguiente acción:»
+#   Objetivo → «- Objetivo (una línea):» (todo el cuerpo en una línea; solo si la existente está vacía o es RELLENAR) · Paso actual → «- Paso actual:» · Siguiente acción → «- Siguiente acción:»
 #   (la primera línea va en la viñeta y el resto sangrado). Secciones, que sustituyen a la suya y se crean si faltan:
 #   Decisiones → «## Decisiones» · Pendientes / Pendientes y riesgos → «## Pendientes y riesgos» · Comandos de verificación /
-#   Cómo se comprueba → «## Cómo se comprueba». Sin equivalente (Plan, Invariantes, Ficheros tocados): sección propia, reemplazada
-#   si ya existe; los [x] del Plan van a diario.md. Una sección vacía del borrador conserva la de ESTADO.md. El borrador no
+#   Cómo se comprueba → «## Cómo se comprueba». Invariantes: las de la persona se conservan y solo se añaden líneas nuevas (vacía o RELLENAR: se reemplaza).
+#   Sin equivalente (Plan, Ficheros tocados): sección propia, reemplazada si ya existe; los [x] del Plan van a diario.md. Una sección vacía del borrador conserva la de ESTADO.md. El borrador no
 #   puede dejar a ESTADO.md sin sus secciones: lo que no trae se queda como estaba.
 if [ "$ESTMD" -eq 1 ]; then
   EST=$RAIZ/ESTADO.md
@@ -401,7 +401,8 @@ if [ "$ESTMD" -eq 1 ]; then
       function emit(label,   n, a, i) { n = split(ENVIRON["B"], a, "\n"); put("- " label ": " a[1]); for (i = 2; i <= n; i++) put(a[i] ~ /[^ \t]/ ? "  " a[i] : "") }
       skip && /^[ \t]+[^ \t]/ { next }
       { skip = 0 }
-      !done && $0 ~ pat { l = $0; sub(/^- /, "", l); sub(/:.*/, "", l); emit(l); done = 1; skip = 1; next }
+      /^[ \t]*(```|~~~)/ { f = !f }
+      !f && !done && $0 ~ pat { l = $0; sub(/^- /, "", l); sub(/:.*/, "", l); emit(l); done = 1; skip = 1; next }
       { put($0) }
       END {
         if (!done) {
@@ -418,8 +419,23 @@ if [ "$ESTMD" -eq 1 ]; then
   sin_marca() { local t=$1; t=${t#"${t%%[![:space:]]*}"}; case $t in '- '* | '* '*) t=${t:2} ;; esac; printf '%s' "$t"; }
   # con_resto <texto>: la primera línea sin su viñeta y, sangradas por vineta, las demás.
   con_resto() { local r=""; [ "$1" = "${1#*$'\n'}" ] || r=$'\n'${1#*$'\n'}; printf '%s%s' "$(sin_marca "${1%%$'\n'*}")" "$r"; }
+  # vacio_e <sección con cabecera>: como vacio, y las líneas con RELLENAR (plantilla sin rellenar) cuentan como vacías.
+  vacio_e() {
+    vacio "$1" && return 0
+    printf '%s' "${1#*$'\n'}" >"$W/ve"
+    _nucleo_sin_comentarios "$W/ve" | awk '/RELLENAR/ { next } /[^ \t]/ { f = 1 } END { exit f ? 1 : 0 }'
+  }
+  # bvacio <patrón>: la viñeta de la cabecera (fuera de cercas, con sus líneas sangradas) no existe, está vacía o es de plantilla.
+  bvacio() {
+    printf '%s' "$HEADX" | awk -v pat="$1" '
+      /^[ \t]*(```|~~~)/ { f = !f; skip = 0; next }
+      skip && /^[ \t]+[^ \t]/ { v = v $0; next }
+      { skip = 0 }
+      !f && !done && $0 ~ pat { l = $0; sub(/^[^:]*:/, "", l); v = l; done = 1; skip = 1 }
+      END { gsub(/[ \t]/, "", v); exit (v == "" || v ~ /RELLENAR/) ? 0 : 1 }'
+  }
   EXTRAS=""
-  if cuerpo objetivo; then
+  if cuerpo objetivo && bvacio '^- Objetivo'; then
     OBJ=$(tr '\n' ' ' <<<"$BODY" | tr -s ' '); OBJ=$(sin_marca "${OBJ% }")
     vineta '^- Objetivo' 'Objetivo (una línea)' "$OBJ"
   fi
@@ -451,6 +467,24 @@ if [ "$ESTMD" -eq 1 ]; then
     k=${OK[i]}; dindice "$k"; di=$DI
     RK+=("$k"); RA+=(0)
     case $k in objetivo | "paso actual" | "siguiente accion") RT+=("${OT[i]}"); continue ;; esac
+    if [ "$k" = invariantes ] && [ "$di" -ge 0 ] && [[ $HECHA != *" $k "* ]] && ! vacio "${DT[di]}" && ! vacio_e "${OT[i]}"; then
+      # Las Invariantes de la persona no se tocan: solo se añaden las líneas del borrador que no estén ya (misma regla que nucleo.md).
+      HECHA+="$k "; t=${OT[i]}; n=0
+      while [[ $t == *$'\n' ]]; do t=${t%$'\n'}; n=$((n + 1)); done
+      while IFS= read -r l; do
+        tl=${l#"${l%%[![:space:]]*}"}; tl=${tl%"${tl##*[![:space:]]}"}
+        [ -n "$tl" ] && [[ $tl != *RELLENAR* ]] || continue
+        yaesta=0
+        while IFS= read -r ol; do
+          ol=${ol#"${ol%%[![:space:]]*}"}; ol=${ol%"${ol##*[![:space:]]}"}
+          [ "$ol" != "$tl" ] || { yaesta=1; break; }
+        done <<<"${t#*$'\n'}"
+        [ "$yaesta" -eq 1 ] || t+=$'\n'$l
+      done <<<"${DT[di]#*$'\n'}"
+      [ "$n" -ge 1 ] || n=1
+      for ((x = 0; x < n; x++)); do t+=$'\n'; done
+      RT+=("$t"); continue
+    fi
     if [ "$di" -ge 0 ] && [[ $HECHA != *" $k "* ]] && ! vacio "${DT[di]}"; then
       HECHA+="$k "; sec_e "${OTIT[i]}" "${DT[di]}" "${OT[i]}"; RT+=("$SEC")
       case $k in decisiones | pendientes | "comandos de verificacion") ;; *) EXTRAS+="|${OTIT[i]}" ;; esac
@@ -493,7 +527,8 @@ if [ "$ESTMD" -eq 1 ]; then
   done
   AVISOS=""
   [ -z "$OMITIDAS" ] || AVISOS="omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
-  [ "$(bytes "$TEXTO")" -le "$TOPE" ] || AVISOS+="${AVISOS:+; }ESTADO.md ocupa $(bytes "$TEXTO") B y supera el tope (${TOPE} B): recórtalo a mano; la inyección de SessionStart ya lo recorta"
+  AVTOPE=""
+  [ "$(bytes "$TEXTO")" -le "$TOPE" ] || AVTOPE="ESTADO.md ocupa $(bytes "$TEXTO") B y supera el tope (${TOPE} B): recórtalo a mano; la inyección de SessionStart ya lo recorta"
   TEXTOW=$TEXTO; [ "$CRLF" -eq 0 ] || TEXTOW=${TEXTO//$'\n'/$'\r\n'}
 
   [ -z "${NUCLEO_FUSION_PAUSA:-}" ] || sleep "$NUCLEO_FUSION_PAUSA"
@@ -539,10 +574,12 @@ if [ "$ESTMD" -eq 1 ]; then
     else AVISOS+="${AVISOS:+; }la sesión dueña es otra (${D% *}): no se libera"
     fi
   fi
+  # El aviso de tope es permanente mientras ESTADO.md pase del tope: con --json va al recibo (el cockpit trata todo stderr como «no limpio»).
+  [ -z "$AVTOPE" ] || [ "$JSON" = 1 ] || AVISOS+="${AVISOS:+; }$AVTOPE"
   [ -z "$AVISOS" ] || echo "handoff: $AVISOS" >&2
   if [ "$JSON" = 1 ]; then
     SHA=$(sha256sum <"$EST" | cut -d' ' -f1)
-    jq -cn --arg n "$EST" --arg s "$SHA" --arg x "${EXTRAS#|}" '{nucleo:$n,sha256:$s,modo:"estado-md",extras:($x | split("|") | map(select(. != "")))}'
+    jq -cn --arg n "$EST" --arg s "$SHA" --arg x "${EXTRAS#|}" --arg v "$AVTOPE" '{nucleo:$n,sha256:$s,modo:"estado-md",extras:($x | split("|") | map(select(. != "")))} + (if $v == "" then {} else {avisos:[$v]} end)'
   else
     echo "handoff: $EST escrito ($(wc -c <"$EST" | tr -d ' ') B de $TOPE)"
     [ -z "$EXTRAS" ] || echo "handoff: sin equivalente en ESTADO.md, añadidas como secciones propias: ${EXTRAS#|}"

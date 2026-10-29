@@ -238,7 +238,7 @@ estado "$E/ESTADO.md"
 OUT=$(bash "$HO" --desde "$T/b.md" --raiz "$E" --json 2>"$T/err"); RC=$?
 ok "handoff --desde en modo ESTADO.md: rc 0, sin stderr, sin nucleo.md" "$RC,$(wc -c <"$T/err" | tr -d ' '),$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" 0,0,no
 ok "handoff --desde: el recibo apunta a ESTADO.md y trae sha256" "$(jq -r '.nucleo' <<<"$OUT"),$(jq -r '.sha256 | length' <<<"$OUT")" "$E/ESTADO.md,64"
-ok "handoff --desde: objetivo, paso y siguiente acción sustituyen a sus viñetas" "$(command grep -c '^- Objetivo (una línea): OBJ-NUEVO$' "$E/ESTADO.md"),$(command grep -c '^- Paso actual: PASO-NUEVO$' "$E/ESTADO.md"),$(command grep -c '^- Siguiente acción: SIG-NUEVA$' "$E/ESTADO.md"),$(command grep -c 'OBJETIVO-VIVO\|PASO-VIVO' "$E/ESTADO.md")" 1,1,1,0
+ok "handoff --desde: paso y siguiente acción sustituyen a sus viñetas; el Objetivo de la persona se conserva" "$(command grep -c '^- Objetivo (una línea): OBJ-NUEVO$' "$E/ESTADO.md"),$(command grep -c '^- Paso actual: PASO-NUEVO$' "$E/ESTADO.md"),$(command grep -c '^- Siguiente acción: SIG-NUEVA$' "$E/ESTADO.md"),$(command grep -c 'OBJETIVO-VIVO\|PASO-VIVO' "$E/ESTADO.md")" 0,1,1,1
 ok "handoff --desde: el detalle del paso queda sangrado bajo su viñeta" "$(command grep -c '^  detalle del paso$' "$E/ESTADO.md")" 1
 ok "handoff --desde: decisiones, pendientes y verificación sustituyen o crean su sección" "$(command grep -c '^## Decisiones$' "$E/ESTADO.md"),$(command grep -c 'DEC-NUEVA' "$E/ESTADO.md"),$(command grep -c '^## Pendientes y riesgos$' "$E/ESTADO.md"),$(command grep -c 'PEND-NUEVO' "$E/ESTADO.md"),$(command grep -c '^## Cómo se comprueba$' "$E/ESTADO.md"),$(command grep -c 'make test. → rc=0' "$E/ESTADO.md"),$(command grep -c 'DECISION-UNICA' "$E/ESTADO.md")" 1,1,1,1,1,1,0
 ok "handoff --desde: lo sin equivalente (Plan) se añade, no se pierde" "$(command grep -c '^## Plan$' "$E/ESTADO.md"),$(command grep -c 'PLAN-UNO' "$E/ESTADO.md")" 1,1
@@ -302,7 +302,7 @@ ok "H2: el mismo borrador repetido no copia ni rota ESTADO.prev-*" "$(find "$X/.
 X=$(nuevo h3); printf '\n## PENDIENTES\nPRIMERO\n\n## Pendientes y riesgos\nSEGUNDO\n\n## Invariantes del dominio\nINV-A\n\n## Invariantes\nINV-B\n' >>"$X/ESTADO.md"
 printf '## Pendientes\nPEND-NUEVO\n## Invariantes\nINV-NUEVO\n' >"$T/d3.md"
 bash "$HO" --desde "$T/d3.md" --raiz "$X" >/dev/null 2>&1
-ok "H3: se sustituye solo la primera sección de cada clave (la familia invariantes* incluida)" "$(command grep -c 'PEND-NUEVO' "$X/ESTADO.md"),$(command grep -c 'SEGUNDO' "$X/ESTADO.md"),$(command grep -c 'PRIMERO' "$X/ESTADO.md"),$(command grep -c 'INV-NUEVO' "$X/ESTADO.md"),$(command grep -c 'INV-A' "$X/ESTADO.md"),$(command grep -c 'INV-B' "$X/ESTADO.md")" 1,1,0,1,0,1
+ok "H3: se sustituye solo la primera sección de cada clave; las Invariantes solo crecen (primera de la familia)" "$(command grep -c 'PEND-NUEVO' "$X/ESTADO.md"),$(command grep -c 'SEGUNDO' "$X/ESTADO.md"),$(command grep -c 'PRIMERO' "$X/ESTADO.md"),$(command grep -c 'INV-NUEVO' "$X/ESTADO.md"),$(command grep -c 'INV-A' "$X/ESTADO.md"),$(command grep -c 'INV-B' "$X/ESTADO.md")" 1,1,0,1,1,1
 # H4: CRLF de entrada, CRLF de salida.
 X=$(nuevo h4); sed -i 's/$/\r/' "$X/ESTADO.md"; printf '## Paso actual\nCRLF-NUEVO\n## Decisiones\n- d\n' >"$T/d4.md"
 bash "$HO" --desde "$T/d4.md" --raiz "$X" >/dev/null 2>&1
