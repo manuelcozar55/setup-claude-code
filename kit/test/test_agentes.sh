@@ -208,4 +208,7 @@ ok 'K9 handoff no lista lo anterior a su base ni lo propio del estado' "$(grep -
 (cd "$R" && bash "$BIN" --desde "$T/k9-b.md" >/dev/null 2>&1)
 ok 'K9 repetir no duplica el bloque generado' "$(grep -c 'sucio.txt' "$NU"),$(grep -c '<!-- git:' "$NU")" '1,1'
 ok 'K9 el texto manual del borrador sobrevive' "$(grep -c 'viejo.txt' "$NU")" 1
+SR=$HERE/../claude/agents/security-reviewer.md
+ok 'M6 security-reviewer es de solo lectura (tools sin Write ni Edit)' "$(grep '^tools:' "$SR" | grep -c 'Write\|Edit')" 0
+ok 'M6 security-reviewer no promete remediación' "$(grep -ci 'remediat' "$SR")" 0
 [ "$FAIL" -eq 0 ]
