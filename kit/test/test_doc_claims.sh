@@ -1444,6 +1444,7 @@ fi
 # sensor de AGENTS.md (arriba), con dos diferencias declaradas para CLAUDE.md:
 #  - cada cita se resuelve primero en la raiz y luego en knowledge/: CLAUDE.md nombra
 #    `ORACLES.md`, `DECISIONS/`... sueltos porque viven ahi.
+#    El fallback antepone knowledge/ a la cita entera: `kit/x.md` se busca en knowledge/kit/x.md, nunca en knowledge/x.md.
 #  - exclusion declarada: `PreToolUse/Bash` es un evento de hook, no una ruta.
 RUTAS_NO_RUTA='^PreToolUse/Bash$'
 rutas_rotas() {
@@ -1460,17 +1461,17 @@ rutas_rotas() {
 # resuelven; se ejecuta desde la raiz del arbol que se mira.
 CM_FALSO=$(mktemp -d)
 # shellcheck disable=SC2016  # el fixture lleva backticks literales.
-printf 'cita `kit/no/existe/jamas.md` y `ORACLES.md`\n' > "$CM_FALSO/CLAUDE.md"
-mkdir "$CM_FALSO/knowledge" && : > "$CM_FALSO/knowledge/ORACLES.md"
+printf 'cita `kit/no/existe/jamas.md`, `ORACLES.md` y `kit/ORACLES.md`\n' > "$CM_FALSO/CLAUDE.md"
+mkdir "$CM_FALSO/knowledge" "$CM_FALSO/kit" && : > "$CM_FALSO/knowledge/ORACLES.md"
 cm_fake=$( (cd "$CM_FALSO" && rutas_rotas CLAUDE.md 2>/dev/null) | wc -l)
-if [ "$cm_fake" -eq 1 ]; then
-  echo "ok - el sensor de rutas de CLAUDE.md detecta una ruta inventada y resuelve la de knowledge/ (falsable)"
+if [ "$cm_fake" -eq 2 ]; then
+  echo "ok - el sensor de rutas de CLAUDE.md detecta una ruta inventada y un prefijo real mal puesto, y resuelve la suelta de knowledge/ (falsable)"
   pass=$((pass+1))
 else
-  echo "NOT ok - el sensor de rutas de CLAUDE.md no distingue ($cm_fake rotas, esperaba 1)"
+  echo "NOT ok - el sensor de rutas de CLAUDE.md no distingue ($cm_fake rotas, esperaba 2)"
   fail=$((fail+1))
 fi
-rm -f "$CM_FALSO"/knowledge/* "$CM_FALSO"/CLAUDE.md; rmdir "$CM_FALSO/knowledge" "$CM_FALSO"
+rm -f "$CM_FALSO"/knowledge/* "$CM_FALSO"/CLAUDE.md; rmdir "$CM_FALSO/knowledge" "$CM_FALSO/kit" "$CM_FALSO"
 
 cm_rotas=$(rutas_rotas CLAUDE.md 2>/dev/null)
 if [ -z "$cm_rotas" ]; then
