@@ -3,7 +3,7 @@
 Harness personal para Claude Code: **guías** (antes de actuar) y **sensores** (miden
 después). Mapa para agentes: `AGENTS.md`. Dos capas:
 
-- `kit/` — **capa de instalación**, v1.6.1, estable. Guards, hooks, Sentinel, `install.sh`,
+- `kit/` — **capa de instalación**, v1.7.0, estable. Guards, hooks, Sentinel, `install.sh`,
   46 suites de test. No se toca sin ejecutar `make test`.
 - raíz — **capa de harness**: `.claude/`, `knowledge/`, `scripts/`. Lo nuevo va aquí.
 

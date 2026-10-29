@@ -7,6 +7,8 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-29
+
 ### Added
 
 - **`metrics.py` mide la adopción real del oráculo** (M2a): `oraculo_adopcion_pct` (sesiones con al menos un `oraculo -- <cmd>`) y `oraculo_antes_de_editar_pct` (ediciones precedidas por un oráculo en la misma sesión); `sessions_with_oracle_pct` se conserva y, por literal, sigue contando `make test | tail`. Salida redirigible con `METRICS_OUT_DIR`. Tests: `test_metrics.sh`.
