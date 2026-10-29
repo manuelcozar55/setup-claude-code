@@ -257,5 +257,25 @@ done
 "$AUT" start --session ok-1.2_x --oracle "make ok" --goal x >/dev/null 2>&1; ck "$?" "0" "sesion con letras, cifras y .-_ aceptada"
 "$AUT" stop --session ok-1.2_x >/dev/null 2>&1
 
+# --- 13. El estado en disco no es de fiar: el hook lo revalida y no lo ejecuta (revision T13) ---
+export MCHARNESS_STATE="$T/state13"
+envf() { ls "$MCHARNESS_STATE"/run-*.env; }
+runp start --oracle "make ok" --goal "x" >/dev/null
+sed -i 's|^ORACLE=.*|ORACLE=/bin/false|' "$(envf)"
+ck "$(decision "$(pl "$(uuid)" | "$GATE" 2>/dev/null)")" "ninguna" "estado: ORACLE absoluto editado en el env -> el hook no lo ejecuta"
+runp stop >/dev/null 2>&1; rm -f "$MCHARNESS_STATE"/run-*.env
+runp start --oracle "make ko" --goal "x" >/dev/null
+echo "touch $T/pwned" >> "$(envf)"
+ck "$(decision "$(pl "$(uuid)" | "$GATE" 2>/dev/null)")" "block" "estado: una linea extra en el env no rompe el gate (oraculo valido sigue bloqueando)"
+ck "$([ -e "$T/pwned" ] && echo y || echo n)" "n" "estado: una linea extra en el env no se ejecuta"
+runp stop >/dev/null 2>&1
+runp start --oracle "make ko" --goal "x" --max-minutes 100000 >/dev/null
+setstart ""
+runp expired >/dev/null 2>&1; ck "$?" "0" "ttl: STARTED vacio cuenta como caducado (no como las 00:00 de hoy)"
+setstart "$(date -u -d '1 day' +%Y-%m-%dT%H:%M:%SZ)"
+runp expired >/dev/null 2>&1; ck "$?" "0" "ttl: STARTED en el futuro cuenta como ilegible -> caducado"
+runp stop >/dev/null 2>&1
+export MCHARNESS_STATE="$T/state"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
