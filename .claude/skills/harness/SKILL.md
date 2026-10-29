@@ -120,7 +120,8 @@ Todo lo demás lo decides tú y lo declaras en el informe como supuesto.
 ### Fase 3 · Ejecutar una tarea
 
 **Arma el modo autónomo** una vez, antes de la primera tarea, con el oráculo del brief:
-`scripts/autonomy.sh start --oracle "<oráculo>" --goal "<condición verificable>" --max-repairs 3`.
+`scripts/autonomy.sh start --oracle "<oráculo>" --goal "<condición verificable>" --max-repairs 3`
+(el oráculo ha de ser del repo: `make …`, `bash kit/test/X.sh` o ruta relativa; `start` rechaza rutas absolutas).
 Mientras el oráculo esté rojo y queden intentos, el turno no puede terminar. Si el lazo
 acaba por cualquier vía (cola vacía, tarea `bloqueada`, error), **para** en la Fase 4: no
 dejes el Stop hook armado.
