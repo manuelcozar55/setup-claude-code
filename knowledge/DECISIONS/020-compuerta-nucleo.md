@@ -31,7 +31,7 @@ convertiría la compuerta en un bloqueo que quien no puede escribir el nucleo (p
 
 ## Evidencia (2026-10-29)
 
-Segunda medición del harness: [COST-LOG.md#segunda-medicion-2026-10](../COST-LOG.md#segunda-medicion-2026-10) (sesiones con oráculo 27,7 % → 40,4 %). Es una medida general del harness, no atribuible a la compuerta: sigue sin A/B, así que la decisión sigue a prueba.
+Segunda medición del harness: [COST-LOG.md#segunda-medicion-2026-10](../COST-LOG.md#segunda-medicion-2026-10) (sesiones con oráculo 27,7 % → 44,8 % recalculado el 2026-10-29). Es una medida general del harness, no atribuible a la compuerta: sigue sin A/B, así que la decisión sigue a prueba.
 
 ## Métrica de éxito
 

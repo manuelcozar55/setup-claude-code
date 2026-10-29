@@ -112,12 +112,13 @@ fecha | sesión | modelo | turnos | correcciones | tool calls | oráculo ejecuta
 
 ### Segunda medicion 2026-10
 
-Fuente: `metrics-2026-10-20.json` (`generated_at` 2026-10-20T11:55Z; idéntico a `latest.json`) frente a `metrics-2026-08-21.json`. `scripts/cost-report.sh` ya imprime el delta entre snapshots.
+Fuente: la fila de hoy sale de ejecutar `scripts/metrics.py` (comando en la fila); la de agosto y la del 20-oct, de los snapshots `metrics-*.json` de `~/ai-mastery/bucle/data/`. Los snapshots no son reproducibles con el corpus actual. `scripts/cost-report.sh` imprime el delta entre snapshots.
 
 | fecha | snapshot | sesiones | `sessions_with_oracle_pct` | `rework_sessions_pct` | nota |
 |---|---|---|---|---|---|
 | 2026-08-21 | metrics-2026-08-21.json | 47 | 27,7 % (13) | 19,1 % (9) | Línea base. |
-| 2026-10-20 | metrics-2026-10-20.json | 141 | **40,4 %** (57) | 7,1 % (10) | +12,7 pp en `sessions_with_oracle_pct`. Definición por literal de comando (`make test`, `pytest`, `shellcheck`, `gitleaks`, CLI `oraculo`); no comparable con M2 (rc visto, no literal). |
+| 2026-10-29 | recalculo hoy (`METRICS_OUT_DIR=$(mktemp -d) python3 scripts/metrics.py`, sin filtro de fecha: todo `~/.claude/projects`) | 163 | **44,8 %** (73) | no recalculado | +17,1 pp en `sessions_with_oracle_pct` frente a agosto. Definición por literal de comando (`make test`, `pytest`, `shellcheck`, `gitleaks`, CLI `oraculo`); no comparable con M2 (rc visto, no literal). Reproducible hoy, pero el corpus crece y metrics.py no filtra por fecha. |
+| 2026-10-20 | `metrics-2026-10-20.json` | 141 | 40,4 % (57) | 7,1 % (10) | Histórica, no reproducible: el corpus de entonces ya no se recupera con metrics.py (sin filtro de fecha). Solo es trazable al snapshot citado en `~/ai-mastery/bucle/data/`; `sessions_with_oracle_pct`. |
 
 ---
 
