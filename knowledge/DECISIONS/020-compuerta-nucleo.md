@@ -29,6 +29,10 @@ denegación deja una línea en `session-logs/gate-denegaciones.log` (fecha, sesi
 Cada denegación cuesta una llamada. Una sola da el empujón y vuelve a confiar en el aviso; denegar sin límite
 convertiría la compuerta en un bloqueo que quien no puede escribir el nucleo (permisos, sesión ajena) no resuelve.
 
+## Evidencia (2026-10-29)
+
+Segunda medición del harness: [COST-LOG.md#segunda-medicion-2026-10](../COST-LOG.md#segunda-medicion-2026-10) (sesiones con oráculo 27,7 % → 44,8 % recalculado el 2026-10-29). Es una medida general del harness, no atribuible a la compuerta: sigue sin A/B, así que la decisión sigue a prueba.
+
 ## Métrica de éxito
 
 Medida con `frescura.py` y `nudge.py` de la base, tras dos semanas de uso:

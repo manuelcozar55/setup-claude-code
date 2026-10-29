@@ -1480,6 +1480,20 @@ else
   echo "NOT ok - CLAUDE.md cita rutas inexistentes: $cm_rotas"; fail=$((fail+1))
 fi
 
+# M8: la segunda medicion (octubre) tiene fila en COST-LOG con la definicion usada, y
+# el ADR 020 (a prueba, se retira si no gana) enlaza esa fila como evidencia.
+if grep -qE '^\| *2026-10[^|]*\|.*sessions_with_oracle_pct' knowledge/COST-LOG.md \
+   && grep -qE '^\| *2026-10[^|]*\|.*literal de comando' knowledge/COST-LOG.md; then
+  echo "ok - COST-LOG.md tiene la fila 2026-10 con sessions_with_oracle_pct y su definicion"; pass=$((pass+1))
+else
+  echo "NOT ok - COST-LOG.md no tiene fila 2026-10 con sessions_with_oracle_pct y la definicion por literal de comando"; fail=$((fail+1))
+fi
+if grep -q 'COST-LOG.md#segunda-medicion-2026-10' knowledge/DECISIONS/020-compuerta-nucleo.md; then
+  echo "ok - el ADR 020 enlaza la fila de octubre de COST-LOG.md"; pass=$((pass+1))
+else
+  echo "NOT ok - el ADR 020 no enlaza COST-LOG.md#segunda-medicion-2026-10"; fail=$((fail+1))
+fi
+
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
   [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: comprobaciones de cifras (test_doc_claims.sh): faltan kit/evals/runs.jsonl u otra condicion; esas cifras NO se han comprobado" >> "$SCC_SKIP_LOG"
