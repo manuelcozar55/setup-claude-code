@@ -7,6 +7,10 @@ etiquetado.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`doctor.sh` ya no se cuelga en un terminal real**: el check de la statusLine la lanzaba con `timeout 5`, que la pone en un grupo de procesos de fondo; la statusline del kit lee el ancho con `stty -F /dev/pts/N size`, recibe SIGTTOU y el grupo entero queda parado, `timeout` incluido. Fuera de un TTY (CI, `make test`) no se veía. Ahora `timeout --foreground 5`; el caso I3 de `test_doctor_base_url.sh` corre doctor dentro de un pty con `script(1)` (rojo: rc=124 a los 60 s; verde: 24/24).
+
 ## [1.7.0] - 2026-10-29
 
 ### Added

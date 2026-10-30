@@ -211,6 +211,9 @@ fi
 # Si no hay statusLine este check calla: el kit instala una, pero quitarla es valido y eso
 # no es un defecto. Ejecutarla es solo WARN (con timeout) porque el fallo puede ser del
 # entorno de doctor y no de la barra.
+# --foreground: sin el, timeout pone la barra en un grupo de fondo y la del kit, que lee el
+# ancho con `stty -F /dev/pts/N`, recibe SIGTTOU en un terminal real y se para todo, timeout
+# incluido: doctor colgado para siempre (30-oct, v1.7.0; caso I3 de test_doctor_base_url).
 sl_cmd="$(jq -r '.statusLine.command // empty' "$CLAUDE_HOME/settings.json" 2>/dev/null)"
 if [ -n "$sl_cmd" ]; then
   read -r -a sl_argv <<< "$sl_cmd"
@@ -229,7 +232,7 @@ if [ -n "$sl_cmd" ]; then
     fail "statusLine declarada pero $sl_bin no es ejecutable: la barra sale en blanco sin aviso. Corrigelo con: chmod +x \"$sl_bin\""
   else
     sl_out="$(printf '{"hook_event_name":"Status","session_id":"doctor","cwd":"%s","model":{"display_name":"doctor"},"workspace":{"current_dir":"%s","project_dir":"%s"}}' \
-              "$PWD" "$PWD" "$PWD" | timeout 5 bash -c "$sl_cmd" 2>/dev/null)"
+              "$PWD" "$PWD" "$PWD" | timeout --foreground 5 bash -c "$sl_cmd" 2>/dev/null)"
     sl_rc=$?
     if [ "$sl_rc" -ne 0 ]; then
       warn "statusLine: '$sl_cmd' salio con codigo $sl_rc sobre un payload JSON de prueba; con ese codigo Claude Code dejaria la barra en blanco sin avisar"
