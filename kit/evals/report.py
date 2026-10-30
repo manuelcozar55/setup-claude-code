@@ -12,7 +12,10 @@ y costar el triple. Meterlo todo en un numero borra justo eso.
 
 Uso:  python3 report.py [--store runs.jsonl] [--since YYYY-MM-DD] [--md]
 """
-import argparse, collections, json, math, os, sys
+import argparse, collections, json, math, os, subprocess, sys
+
+# Un store medido hace mas commits que esto ya no describe el harness actual.
+OBSOLETO_COMMITS = 50
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--store", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs.jsonl"))
@@ -50,6 +53,19 @@ if excluidas:
 
 if not runs:
     print("el almacen no tiene runs en el rango pedido"); sys.exit(1)
+
+ultimo = max(runs, key=lambda r: r.get("ts") or "")
+if ultimo.get("harness_sha"):
+    try:
+        dist = int(subprocess.run(
+            ["git", "-C", os.path.dirname(os.path.abspath(__file__)), "rev-list", "--count",
+             "%s..HEAD" % ultimo["harness_sha"]],
+            capture_output=True, text=True, check=True, timeout=5).stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        dist = 0
+    if dist > OBSOLETO_COMMITS:
+        print("OBSOLETO: el ultimo run medido (%s) esta a %d commits de HEAD (umbral %d); "
+              "no describe el harness actual." % (ultimo["harness_sha"], dist, OBSOLETO_COMMITS))
 
 
 def wilson(k, n, z=1.96):
@@ -129,7 +145,9 @@ for arm in sorted(by_arm):
 
 # --- 2: lift, solo si hay con que comparar ----------------------------------
 if "on" in by_arm and "off" in by_arm:
-    on, off = agg(by_arm["on"]), agg(by_arm["off"])
+    # El veredicto se define sobre positiva/negativa; 'resultado' va en su linea.
+    on = agg([r for r in by_arm["on"] if r.get("tipo") != "resultado"])
+    off = agg([r for r in by_arm["off"] if r.get("tipo") != "resultado"])
     ok, ma, mb = comparables(by_arm["on"], by_arm["off"])
     if not ok:
         print("\n== lift del harness ==")
@@ -142,6 +160,9 @@ if "on" in by_arm and "off" in by_arm:
         # aplican a dimensiones 0-1; aqui a una tasa de acierto. Con n pequeno
         # casi todo cae en NEUTRO, y esa es la lectura honesta, no un defecto.
         band = "SIRVE" if lift >= 0.05 else ("PERJUDICA" if lift <= -0.10 else "NEUTRO (ruido)")
+        if band in ("SIRVE", "PERJUDICA") and on["ci"] and off["ci"] \
+                and on["ci"][0] <= off["ci"][1] and off["ci"][0] <= on["ci"][1]:
+            band += " (no concluyente)"
         print("\n== lift del harness ==")
         print("  con harness %.2f (n=%d) · sin harness %.2f (n=%d) · lift %+.2f -> %s"
               % (on["rate"], on["n"], off["rate"], off["n"], lift, band))
@@ -167,8 +188,9 @@ if "on" in by_arm and "off" in by_arm:
     LECTURA = {
         "positiva": ("el harness ayuda", "el harness no llega"),
         "negativa": ("el harness no estorba", "FALSOS POSITIVOS: el harness estorba"),
+        "resultado": ("el harness mejora el resultado", "el harness no mejora el resultado"),
     }
-    for tipo in ("positiva", "negativa") if ok else ():
+    for tipo in ("positiva", "negativa", "resultado") if ok else ():
         sub_on = [r for r in by_arm["on"] if r.get("tipo") == tipo]
         sub_off = [r for r in by_arm["off"] if r.get("tipo") == tipo]
         if not sub_on or not sub_off:

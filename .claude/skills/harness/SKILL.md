@@ -105,7 +105,7 @@ Todo lo demás lo decides tú y lo declaras en el informe como supuesto.
 ### Fase 2 · Aislamiento
 
 - **Proyecto con git**: trabaja en una rama o worktree dedicada
-  (`superpowers:using-git-worktrees` si aplica). Nunca en la rama por defecto.
+  (`git worktree add` si aplica). Nunca en la rama por defecto.
 - **Proyecto sin git**: si el usuario rechazó `git init` en la Fase 1, **esa decisión
   manda**: no ejecutes tareas destructivas, y para las aditivas haz copia de seguridad de
   cada fichero antes de tocarlo y dilo en el informe.
@@ -118,6 +118,13 @@ Todo lo demás lo decides tú y lo declaras en el informe como supuesto.
     dejar sucio el árbol principal ni provocar conflictos al integrar.
 
 ### Fase 3 · Ejecutar una tarea
+
+**Arma el modo autónomo** una vez, antes de la primera tarea, con el oráculo del brief:
+`scripts/autonomy.sh start --oracle "<oráculo>" --goal "<condición verificable>" --max-repairs 3`
+(el oráculo ha de ser del repo: `make …`, `bash kit/test/X.sh` o ruta relativa; `start` rechaza rutas absolutas).
+Mientras el oráculo esté rojo y queden intentos, el turno no puede terminar. Si el lazo
+acaba por cualquier vía (cola vacía, tarea `bloqueada`, error), **para** en la Fase 4: no
+dejes el Stop hook armado.
 
 Por cada tarea:
 
@@ -145,11 +152,13 @@ Por cada tarea:
 
 ### Fase 4 · Cierre
 
+0. **Para el modo autónomo**: `scripts/autonomy.sh stop`, también si cierras con tareas
+   `bloqueadas`.
 1. **Informe único** al final, no narración durante. Por tarea: qué se hizo, qué oráculo la
    cerró y con qué salida, qué supuestos asumiste, y qué queda abierto.
 2. Estado final de la cola: hechas / bloqueadas / pendientes.
-3. **Nunca declares nada terminado sin la salida del comando delante.** Aplica
-   `superpowers:verification-before-completion`.
+3. **Nunca declares nada terminado sin la salida del comando delante.** Ejecuta
+   `/verify`.
 
 ## Cómo mantener el lazo honesto
 

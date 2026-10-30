@@ -12,6 +12,7 @@
     "allow": [
       "Bash(make test)",
       "Bash(make help)",
+      "Bash(scripts/autonomy.sh *)",
       "Bash(shellcheck *)",
       "Bash(git status)",
       "Bash(git diff *)",

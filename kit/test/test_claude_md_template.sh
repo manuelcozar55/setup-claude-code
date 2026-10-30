@@ -41,7 +41,9 @@ ck "$(has "$A" 'una sola ronda de aclaración; el test va tras la lógica nueva,
 ck "$(has "$C" 'Ceremonia según riesgo')" "y" "ceremonia segun riesgo"
 # shellcheck disable=SC2016 # los backticks son los del markdown de la plantilla, literales
 ck "$(has "$C" '`.claude/estado/nucleo.md` es el estado; el hook avisa cuándo actualizarlo; tras compactar llega inyectado; la historia va a `diario.md`.')" "y" "nucleo.md en una sola frase"
-ck "$(grep -c 'nucleo.md' "$C" "$A" | awk -F: '{s+=$2} END{print s}')" "1" "nucleo.md se cita una sola vez entre las dos"
+# shellcheck disable=SC2016 # los backticks son los del markdown de la plantilla, literales
+ck "$(has "$C" 'Si el proyecto tiene `ESTADO.md` en la raíz y no `nucleo.md`, ese es su estado; no crees `nucleo.md`.')" "y" "ESTADO.md sin nucleo.md es el estado"
+ck "$(grep -c 'nucleo.md' "$C" "$A" | awk -F: '{s+=$2} END{print s}')" "2" "nucleo.md se cita en dos frases entre las dos: el estado y la excepción de ESTADO.md"
 ck "$(has "$A" 'recuerda <términos>')" "y" "AGENTS.md ensena recuerda"
 ck "$(grep -liE 'headroom|\[1m\]|ventana de 1M|ccstatusline|/home/|~/work|~/repos' "$C" "$A" | wc -l | tr -d ' ')" "0" \
   "sin Headroom, ventana 1M, ccstatusline ni rutas privadas"

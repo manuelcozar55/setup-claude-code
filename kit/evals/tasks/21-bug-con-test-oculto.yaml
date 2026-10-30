@@ -1,0 +1,19 @@
+# 21 · RESULTADO — bug con test oculto: el enunciado describe el sintoma y no
+# enseña la prueba. El check ejecuta casos que el agente no ha visto, asi que
+# solo aprueba quien arregla la causa y no quien parchea el ejemplo del prompt.
+id: 21-bug-con-test-oculto
+tipo: resultado
+prompt: |
+  En precios.py, descuento(precio, pct) deberia devolver el precio tras
+  aplicar un descuento de pct por ciento, pero devuelve valores absurdos.
+  descuento(200, 10) tiene que dar 180. Arreglalo.
+setup: |
+  printf 'def descuento(precio, pct):\n    return precio - precio * pct / 10\n' > precios.py
+solucion: |
+  sed -i 's|pct / 10|pct / 100|' precios.py
+check: |
+  python3 -c "
+  import sys
+  from precios import descuento
+  casos = [((200, 10), 180), ((50, 0), 50), ((80, 25), 60), ((10, 100), 0)]
+  sys.exit(0 if all(abs(descuento(*a) - e) < 1e-9 for a, e in casos) else 1)"

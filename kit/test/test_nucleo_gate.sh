@@ -76,6 +76,23 @@ ok "y la 85 ya denegada no vuelve" "$(seq5 o)" "pasa pasa pasa pasa pasa"
 arma p 70; seq5 p >/dev/null
 ok "la 70 ya denegada no vuelve a denegar" "$(seq5 p)" "pasa pasa pasa pasa pasa"
 
+# N2: en modo ESTADO.md (sin nucleo.md) escribir <raíz>/ESTADO.md exacto es obedecer: no cuenta ni deniega. Solo ese fichero y solo en ese modo.
+R2=$T/re; mkdir -p "$R2/sub" "$T/r3/.claude/estado"; echo x >"$R2/ESTADO.md"; echo x >"$T/r3/ESTADO.md"; echo x >"$T/r3/.claude/estado/nucleo.md"
+armaE() { local s=$1 n=$2; shift 2; printf '%s\n' "$@" >"$L/nudge-$s"; echo "$n" >"$L/nudge-$s.nucleo"; rm -f "$L/gate-$s"*
+  touch -d '-30 minutes' "$n"; touch -d '-10 minutes' "$L/nudge-$s.nucleo"; }
+escribe() { local r=""; for _ in 1 2 3 4 5; do r="$r$(llama "$1" "$(jq -cn --arg p "$2" '{tool_name:"Write",tool_input:{file_path:$p}}')") "; done; echo "${r% }"; }
+armaE e1 "$R2/ESTADO.md" 70
+ok "N2: Write de <raíz>/ESTADO.md en modo ESTADO.md no deniega" "$(escribe e1 "$R2/ESTADO.md")" "pasa pasa pasa pasa pasa"
+armaE e2 "$R2/ESTADO.md" 70
+ok "N2: otro fichero sí cuenta y deniega la 4.ª" "$(escribe e2 "$R2/otro.md")" "pasa pasa pasa deny pasa"
+armaE e3 "$R2/ESTADO.md" 70
+ok "N2: un ESTADO.md de un subdirectorio no se exime" "$(escribe e3 "$R2/sub/ESTADO.md")" "pasa pasa pasa deny pasa"
+armaE e4 "$T/r3/.claude/estado/nucleo.md" 70
+ok "N2: con nucleo.md (no es modo ESTADO.md) el ESTADO.md de la raíz no se exime" "$(escribe e4 "$T/r3/ESTADO.md")" "pasa pasa pasa deny pasa"
+armaE e5 "$R2/ESTADO.md" 70
+for _ in 1 2 3; do llama e5 >/dev/null; done
+ok "N2: el motivo con ESTADO.md dicta handoff --desde <borrador> --sesion <id>" "$(jq -cn '{session_id:"e5",tool_name:"Bash",tool_input:{command:"ls"}}' | bash "$H" | jq -r '.hookSpecificOutput.permissionDecisionReason' | command grep -c 'handoff --desde <borrador> --sesion e5')" 1
+
 # contador corrupto o ilegible: falla en abierto, rc 0 y sin ruido en stderr
 arma q 70; printf 'basura sin salto' >"$L/gate-q-70"
 ok "contador con basura: rc 0, sin stderr" "$(llama_raw q 2>&1; echo "rc=$?")" "rc=0"

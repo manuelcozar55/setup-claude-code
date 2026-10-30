@@ -27,6 +27,27 @@ nucleo_raiz() {
   printf '%s\n' "$r"
 }
 
+# nucleo_modo_estado_md <raíz>: rc 0 si el estado del proyecto es <raíz>/ESTADO.md: existe (fichero normal, no un enlace:
+# el repo puede ser de terceros) y no hay nucleo.md propio, ni en .claude/estado ni en el fallback. Con los dos ficheros
+# manda nucleo.md, como antes; con ninguno, nada cambia. Desde ~ nunca: no es un proyecto.
+nucleo_modo_estado_md() {
+  local e
+  [ "$1" != "$HOME" ] && [ -f "$1/ESTADO.md" ] && [ ! -L "$1/ESTADO.md" ] || return 1
+  e=$(nucleo_estado_leer "$1") || return 1
+  [ ! -e "$e/nucleo.md" ]
+}
+
+# nucleo_emitir_plano <fichero>: el ESTADO.md tal cual, sin los comentarios <!-- -->, con el mismo tope que nucleo_emitir
+# (NUCLEO_TOPE) cortado en un límite de carácter y `</` escapado. No filtra secciones: su forma es la de quien lo escribe.
+nucleo_emitir_plano() {
+  [ -f "$1" ] || return 0
+  _nucleo_sin_comentarios "$1" | LC_ALL=C awk -v n="$NUCLEO_TOPE" '{ s = s $0 "\n" } END {
+      if (length(s) <= n) { printf "%s", s; exit }
+      r = substr(s, 1, n)
+      if (substr(s, n + 1, 1) ~ /[\200-\277]/) sub(/[\300-\377][\200-\277]*$/, "", r)
+      printf "%s\n[recortado: lee el fichero entero]\n", r }' | sed 's|</|<\\/|g'
+}
+
 # nucleo_enlazado <raíz>: .claude, .claude/estado, nucleo.md o cualquier otra entrada directa de estado/
 # (diario.md, verificaciones.log, .gitignore, archivo…: los CLIs las escriben) es un symlink, o la ruta
 # resuelta de nucleo.md cae fuera de la raíz. El repo puede ser de terceros: con un enlace decidiría qué fichero de fuera se

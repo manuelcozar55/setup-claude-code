@@ -151,7 +151,9 @@ ck "$(grep -c 'cp .*\.env\.example' "$tmp/install.log")" "$([ -f "$KIT/.env.exam
 # ("cp: -r not specified; omitting directory"), el instalador salia rc=1 y dejaba la
 # instalacion a medias -- y con ella test_doctor.sh en rojo por una causa ajena al doctor.
 # Los bucles filtran con -f: un directorio se ignora en vez de matar la instalacion.
-cp -a "$KIT" "$tmp/kitcopy"
+# Solo lo versionado: un cp -a arrastraria evals/ ignorados con rutas del HOME y, sin .git,
+# scan-secrets los marcaria como fuga.
+mkdir "$tmp/kitsrc"; git -C "$HERE/.." archive HEAD . | tar -x -C "$tmp/kitsrc"; mv "$tmp/kitsrc" "$tmp/kitcopy"
 mkdir -p "$tmp/kitcopy/sentinel/__pycache__" "$tmp/kitcopy/claude/agents/__pycache__"
 : > "$tmp/kitcopy/sentinel/__pycache__/sentinel_preflight.cpython-314.pyc"
 set +e; CLAUDE_HOME="$tmp/dot2" bash "$tmp/kitcopy/install.sh" >"$tmp/pyc.log" 2>&1; prc=$?; set -e

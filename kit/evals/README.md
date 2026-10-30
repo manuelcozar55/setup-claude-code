@@ -1,13 +1,15 @@
 # Eval set mínimo
 
-**20 tareas** en `tasks/*.yaml`, sacadas de fallos reales (no inventadas):
-10 **positivas** (el harness debe actuar) y 10 **negativas** (debe apartarse).
+**23 tareas** en `tasks/*.yaml`, sacadas de fallos reales (no inventadas):
+10 **positivas** (el harness debe actuar), 10 **negativas** (debe apartarse) y
+3 de **resultado** (21-23: bug con test oculto, feature en dos ficheros y test antes que fix en el historial;
+miden si el trabajo queda hecho y `report.py` las desglosa aparte).
 Cada tarea lo declara en su campo `tipo:`. Corre con
 `bash run.sh`; grader de transcript en `grade.py`; agregado en `report.py`.
 
 **Opt-in, no automático.** Esto NO se ejecuta via `make test`, `doctor.sh` ni CI.
-Correrlo cuesta dinero real: `run.sh` hace 20 llamadas reales a `claude -p` (una
-API call por tarea) **por brazo**, así que una tirada completa son 40. Ejecútalo a mano solo cuando quieras medir el comportamiento
+Correrlo cuesta dinero real: `run.sh` hace 23 llamadas reales a `claude -p` (una
+API call por tarea) **por brazo**, así que una tirada completa son 46. Ejecútalo a mano solo cuando quieras medir el comportamiento
 del agente en esta instalación:
 
 ```bash
@@ -41,6 +43,8 @@ python3 kit/evals/report.py           # agrega los dos
 comiteado). El JSON diario se sobrescribe y no tiene historia; sin historia no hay
 regresión detectable, y un eval que no detecta regresiones solo sirve el día que se
 corre. `report.py` agrega ese histórico y acepta `--since YYYY-MM-DD` y `--md`.
+`report.py` añade `(no concluyente)` al veredicto si los IC95 de ambos brazos solapan, y avisa
+`OBSOLETO` si el último run medido está a más de `OBSOLETO_COMMITS=50` commits de HEAD.
 
 Con `RUNS=1` no hay varianza que medir y el intervalo sale enorme. Eso es la
 respuesta correcta, no un defecto del informe: una sola muestra no distingue una

@@ -43,16 +43,45 @@ aut() { (cd "$cwd" && "$AUT" "$@"); }
 
 # ─────────────────────────── MODO AUTONOMO ───────────────────────────
 if [ -x "$AUT" ] && oracle=$(aut oracle 2>/dev/null) && [ -n "$oracle" ]; then
+  # Un run olvidado no puede bloquear el Stop para siempre: pasado su plazo se cierra sin
+  # ejecutar el oraculo. Falla en abierto (STARTED ilegible tambien libera).
+  if aut expired 2>/dev/null; then
+    aut stop >/dev/null 2>&1
+    echo "── mcharness: run caducado (superó --max-minutes), run autonomo cerrado ──" >&2
+    exit 0
+  fi
   out=$(cd "$cwd" && timeout 600 sh -c "$oracle" 2>&1)
   rc=$?
+  h=$(printf '%s\n' "$out" | tail -25 | sha1sum 2>/dev/null | cut -d' ' -f1)
   if [ "$rc" -eq 0 ]; then
-    aut stop >/dev/null 2>&1
+    # Verde con el sensor tocado no prueba nada: se bloquea (cuenta como intento) con la lista.
+    altered=$(aut sensor-check 2>/dev/null); src=$?
+    if [ "$src" -ne 0 ] && [ -n "$altered" ]; then
+      n=$(aut attempt --rc "$rc" --hash "$h" 2>/dev/null); arc=$?
+      if [ "$arc" -ne 0 ]; then
+        aut stop >/dev/null 2>&1
+        {
+          echo "── mcharness: SENSOR ALTERADO y presupuesto agotado ($n) ──"
+          echo "El oraculo esta verde, pero estos ficheros del sensor cambiaron desde el arranque:"
+          echo "$altered"
+        } >&2
+        exit 0
+      fi
+      jq -n --arg r "El oraculo esta verde, pero SENSOR ALTERADO (intento $n): estos ficheros del sensor cambiaron o desaparecieron desde que arranco el run:
+
+$altered
+
+Un verde con el sensor tocado no prueba nada. Revierte esos cambios y repara el codigo; si crees que el sensor esta mal, para y dilo: eso se decide fuera de este lazo." \
+        '{decision:"block", reason:$r}'
+      exit 0
+    fi
+    aut stop --rc "$rc" --hash "$h" >/dev/null 2>&1
     printf '%s\n' "$out" | tail -5 >&2
     echo "── mcharness: oraculo VERDE, run autonomo cerrado ──" >&2
     exit 0
   fi
 
-  n=$(aut attempt 2>/dev/null); arc=$?
+  n=$(aut attempt --rc "$rc" --hash "$h" 2>/dev/null); arc=$?
   tail_out=$(printf '%s' "$out" | tail -25)
 
   if [ "$arc" -ne 0 ]; then
@@ -79,8 +108,15 @@ Repara la causa, no el sintoma. PROHIBIDO tocar el propio sensor: si en 'git dif
   exit 0
 fi
 
+# Hay run pero su oraculo no valida (env manipulado o de una version anterior): se cae a
+# modo normal, y se dice, para que no parezca que el gate dejo de bloquear sin motivo.
+if [ -x "$AUT" ] && aut status >/dev/null 2>&1; then
+  echo "autonomia: estado invalido, modo normal (el run sigue en disco; relanza 'autonomy.sh start')" >&2
+fi
+
 # ─────────────────────────── MODO NORMAL ───────────────────────────
-[ -f "$STATE_DIR/session-$sid.oracle" ] && exit 0
+sid=${sid//[^A-Za-z0-9_-]/_}
+marker="$STATE_DIR/session-$sid.oracle"
 
 # Solo habla si de verdad se toco codigo: en una sesion de lectura el aviso seria el ruido
 # que hace que manana se ignore el aviso que si importaba.
@@ -88,6 +124,18 @@ git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1 || exit 0
 changed=$(git -C "$cwd" diff --name-only 2>/dev/null | grep -c . || true)
 staged=$(git -C "$cwd" diff --cached --name-only 2>/dev/null | grep -c . || true)
 [ "$((changed + staged))" -gt 0 ] || exit 0
+
+# Un marcador solo vale si es posterior a la ultima edicion: oracle-log lo trunca en cada
+# oraculo verde, asi que su mtime es el del ultimo. Rutas con -z desde la raiz git (los
+# nombres de git diff son relativos a ella, no a cwd).
+if [ -f "$marker" ]; then
+  top=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || exit 0
+  newer=n
+  while IFS= read -r -d '' f; do
+    [ "$top/$f" -nt "$marker" ] && { newer=y; break; }
+  done < <({ git -C "$cwd" diff --name-only -z; git -C "$cwd" diff --cached --name-only -z; } 2>/dev/null)
+  [ "$newer" = "y" ] || exit 0
+fi
 
 oracle=""
 [ -x "$cwd/scripts/detect-oracle.sh" ] && oracle=$("$cwd/scripts/detect-oracle.sh" "$cwd" 2>/dev/null | head -1)
@@ -99,5 +147,16 @@ oracle=""
   echo "  Evidencia antes que afirmaciones:  /verify"
   echo "───────────────────────────────────────────────────────────"
 } >&2
+
+# Rastro para medir si el aviso se atiende (metrics.py). Fallos de escritura, ignorados;
+# el log se recorta para no crecer sin tope.
+{
+  mkdir -p "$STATE_DIR"
+  avisos="$STATE_DIR/gate-avisos.log"
+  printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$sid" "$((changed + staged))" >> "$avisos"
+  if [ "$(wc -l < "$avisos")" -gt 500 ]; then
+    tail -n 300 "$avisos" > "$avisos.tmp" && mv "$avisos.tmp" "$avisos"
+  fi
+} 2>/dev/null || true
 
 exit 0

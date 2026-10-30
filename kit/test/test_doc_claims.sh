@@ -424,6 +424,9 @@ for l in filas:
         continue
     if not isinstance(r, dict) or str(r.get("excluded") or "").strip():
         continue
+    # El lift se define sobre positiva/negativa (report.py): las de resultado no cuentan en n.
+    if r.get("tipo") == "resultado":
+        continue
     n[r.get("arm")] = n.get(r.get("arm"), 0) + 1
 m = re.search(r"con harness [0-9.]+ \(n=(\d+)\).*?sin harness [0-9.]+ \(n=(\d+)\)", tramo)
 if not m:
@@ -746,6 +749,10 @@ if [ -f "$STORE" ]; then
   # pudiera borrar en silencio, publicarla no costaria nada ni garantizaria nada.
   # (Sin '^excluidas ': su informe no la emite, porque ahi la fila esta contada.)
   for pat in "${LINEAS[@]:1}"; do
+    # Una linea que su informe no emite (SATURADO con 3 mudas de 23) no esta en el
+    # bloque: borrarla tocaria la tirada fechada de mas arriba, no la vigente.
+    awk '/^### La lectura alternativa/ && !on {on=1; next} on && /^##/ {exit} on' "$EVALDOC" \
+      | /usr/bin/grep -Eq "$pat" || continue
     sin_linea "$pat" '^### La lectura alternativa' > "$TMPD/borrada.md"
     n_borradas=$((n_borradas+1))
     if [ -z "$(cifras_eval "$TMPD/borrada.md" "$STORE")" ]; then
@@ -1438,6 +1445,60 @@ AM
 else
   echo "NOT ok - AGENTS.md no existe: el mapa que los harness buscan por ese nombre falta"
   fail=$((fail+1))
+fi
+
+# rutas_rotas <doc>: citas en backticks de <doc> que no existen. Mismo criterio que el
+# sensor de AGENTS.md (arriba), con dos diferencias declaradas para CLAUDE.md:
+#  - cada cita se resuelve primero en la raiz y luego en knowledge/: CLAUDE.md nombra
+#    `ORACLES.md`, `DECISIONS/`... sueltos porque viven ahi.
+#    El fallback antepone knowledge/ a la cita entera: `kit/x.md` se busca en knowledge/kit/x.md, nunca en knowledge/x.md.
+#  - exclusion declarada: `PreToolUse/Bash` es un evento de hook, no una ruta.
+RUTAS_NO_RUTA='^PreToolUse/Bash$'
+rutas_rotas() {
+  local r
+  # shellcheck disable=SC2016  # backticks literales en el patron.
+  grep -oE '`[^`]+`' "$1" | tr -d '`' \
+    | grep -vE '^[~/$.]|[*[:space:]]' | grep -E '/|\.md$' | grep -vE "$RUTAS_NO_RUTA" | sort -u \
+    | while read -r r; do
+        [ -e "$r" ] || [ -e "knowledge/$r" ] || echo "$r"
+      done
+}
+
+# Mismo sensor para CLAUDE.md. rutas_rotas <doc> imprime las citas en backticks que no
+# resuelven; se ejecuta desde la raiz del arbol que se mira.
+CM_FALSO=$(mktemp -d)
+# shellcheck disable=SC2016  # el fixture lleva backticks literales.
+printf 'cita `kit/no/existe/jamas.md`, `ORACLES.md` y `kit/ORACLES.md`\n' > "$CM_FALSO/CLAUDE.md"
+mkdir "$CM_FALSO/knowledge" "$CM_FALSO/kit" && : > "$CM_FALSO/knowledge/ORACLES.md"
+cm_fake=$( (cd "$CM_FALSO" && rutas_rotas CLAUDE.md 2>/dev/null) | wc -l)
+if [ "$cm_fake" -eq 2 ]; then
+  echo "ok - el sensor de rutas de CLAUDE.md detecta una ruta inventada y un prefijo real mal puesto, y resuelve la suelta de knowledge/ (falsable)"
+  pass=$((pass+1))
+else
+  echo "NOT ok - el sensor de rutas de CLAUDE.md no distingue ($cm_fake rotas, esperaba 2)"
+  fail=$((fail+1))
+fi
+rm -f "$CM_FALSO"/knowledge/* "$CM_FALSO"/CLAUDE.md; rmdir "$CM_FALSO/knowledge" "$CM_FALSO/kit" "$CM_FALSO"
+
+cm_rotas=$(rutas_rotas CLAUDE.md 2>/dev/null)
+if [ -z "$cm_rotas" ]; then
+  echo "ok - todas las rutas que cita CLAUDE.md existen"; pass=$((pass+1))
+else
+  echo "NOT ok - CLAUDE.md cita rutas inexistentes: $cm_rotas"; fail=$((fail+1))
+fi
+
+# M8: la segunda medicion (octubre) tiene fila en COST-LOG con la definicion usada, y
+# el ADR 020 (a prueba, se retira si no gana) enlaza esa fila como evidencia.
+if grep -qE '^\| *2026-10[^|]*\|.*sessions_with_oracle_pct' knowledge/COST-LOG.md \
+   && grep -qE '^\| *2026-10[^|]*\|.*literal de comando' knowledge/COST-LOG.md; then
+  echo "ok - COST-LOG.md tiene la fila 2026-10 con sessions_with_oracle_pct y su definicion"; pass=$((pass+1))
+else
+  echo "NOT ok - COST-LOG.md no tiene fila 2026-10 con sessions_with_oracle_pct y la definicion por literal de comando"; fail=$((fail+1))
+fi
+if grep -q 'COST-LOG.md#segunda-medicion-2026-10' knowledge/DECISIONS/020-compuerta-nucleo.md; then
+  echo "ok - el ADR 020 enlaza la fila de octubre de COST-LOG.md"; pass=$((pass+1))
+else
+  echo "NOT ok - el ADR 020 no enlaza COST-LOG.md#segunda-medicion-2026-10"; fail=$((fail+1))
 fi
 
 if [ "$skipped" -gt 0 ]; then

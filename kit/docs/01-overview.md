@@ -38,7 +38,7 @@ El mapa de arriba no es teoría suelta: cada pieza que instala este kit tapa un 
 - **Sentinel** (`docs/05-security.md`) pone las **barreras**: un motor de políticas determinista que se ejecuta antes de cada acción, sin depender de que el modelo decida autolimitarse. Cubre el pilar de guardrails.
 - **La memoria y `nucleo.md`** (`docs/13-memoria.md`, `docs/12-metodologia.md`) cuidan el **contexto**: un hecho por fichero recordado bajo demanda, y el estado de la tarea en disco para que una compactación no lo borre. Cubre el pilar de contexto. (Un proxy de compresión, Headroom, ahorró un 0,2-0,6 % medido y se retiró: [`archive/03-headroom.md`](archive/03-headroom.md).)
 - **El venv de tools** (`docs/02-install.md`) da las **herramientas**: CLIs curados, aislados del Python del sistema, invocables por los propios hooks del kit. Cubre el pilar de tools.
-- **El tiering opus/sonnet/haiku** (`docs/06-routine.md`) reparte el coste según la tarea: opus para pensar (orchestrator, strategist), sonnet para ejecutar y revisar (deep-worker, los reviewers, el explorador de código), haiku para verificar barato (quick-checker). Es la expresión práctica del pilar de orquestación.
+- **El tiering opus/sonnet/haiku** (`docs/06-routine.md`) reparte el coste según la tarea: opus para pensar (strategist), sonnet para ejecutar y revisar (deep-worker, los reviewers, el explorador de código), haiku para verificar barato (quick-checker). Es la expresión práctica del pilar de orquestación.
 - **`doctor.sh` y `scan-secrets.sh`** (`docs/07-verify.md`) son los evals y la observabilidad de este kit: nada se da por bueno sin su comando y su salida esperada, "cifra → fuente → comando".
 
 ## Diagrama: del mapa al territorio
@@ -77,7 +77,7 @@ flowchart LR
 ## Qué documenta cada doc siguiente
 
 - **`02-install.md`**: prerrequisitos y los pasos exactos para instalar la config saneada de este kit en `CLAUDE_HOME`.
-- **`04-superpowers.md`**: el plugin esenciales, sus seis skills, los 7 agentes con tiering, y agent-browser.
+- **`04-superpowers.md`**: el plugin esenciales, sus seis skills, los 6 agentes con tiering, y agent-browser.
 - **`05-security.md`**: Sentinel, los guards de Bash/git, y el manejo de secretos.
 - **`06-routine.md`**: la rutina diaria (tiering, ping de las 6:00, `/compact`, opus[1m], worktrees).
 - **`07-verify.md`**: cómo comprobar, con evidencia, que todo lo anterior funciona de verdad.

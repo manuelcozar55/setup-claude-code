@@ -89,7 +89,7 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E9 | …salvo cuando la trayectoria **es** el criterio | interpretación propia | `--require-bash`, `--forbid-bash` | ✅ |
 | E10 | Nada de grepear el transcript crudo | hallazgo propio | `test_evals.sh` §2 | ✅ |
 | E11 | Mitad debe-disparar / mitad no-debe-disparar | Anthropic ("balanced problem sets") | campo `tipo:` por tarea + `test_evals.sh` §11 | ✅ 10 / 10 |
-| E12 | 20–50 tareas sacadas de fallos reales | Anthropic; LangChain | `test_evals.sh` §8 cuadra el número con el doc | ✅ **hay 20**, en el suelo de la banda |
+| E12 | 20–50 tareas sacadas de fallos reales | Anthropic; LangChain | `test_evals.sh` §8 cuadra el número con el doc | ✅ **hay 23**, en el suelo de la banda |
 | E13 | Deltas < 3 puntos son sospechosos hasta documentar la config | Anthropic *infra noise* | bandas ±0,05 / −0,10, por encima de ese suelo | ✅ por diseño |
 | E14 | La infraestructura es variable experimental de primera clase | Anthropic *infra noise* | `record.py` guarda modelo, sha, coste, turnos, **carga, CPUs y memoria libre**; `report.py` avisa si los brazos corrieron con la máquina distinta de ocupada | ✅ · sensor mutado |
 | E15 | Histórico, o no hay regresión detectable | interpretación propia | `runs.jsonl` append-only | ✅ |
@@ -105,7 +105,7 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E25 | Un emisor de trazas probado **en seco** no es telemetría verificada | hallazgo propio | El receptor local de LangSmith y su sensor de red se retiraron con LangSmith (2026-10). Hoy el puente a Phoenix solo se comprueba en seco (`test_evals.sh` §17) | ⚠️ · abierto otra vez: el criterio sigue en pie y no tiene sensor de red |
 | E27 | Ablar una pieza que el agente nunca activó no mide la pieza: mide nada, y con pinta de resultado | hallazgo propio (a partir de la *Discoverability* de SkillEvaluator) | `record.py` cuenta `skill_calls`/`mcp_calls`; `report.py` dice `NO MEDIBLE` y, si el brazo ni se ha corrido, que correrlo tampoco mediría; `test_evals.sh` §19 | ✅ · sensor mutado ×3 |
 | E26 | El observatorio no puede meter dependencias en lo observado | interpretación propia (E6 + "sin SDK" del emisor de LangSmith, retirado) | `phoenix_push.py` es la única pieza con SDK, corre en otro venv, `run.sh` no lo llama, y su sensor (§17) usa `--dry-run` sin dependencias | ✅ · sensor mutado |
-| E28 | Un corrector tiene que saber **aprobar**, no solo suspender: el §10 solo probaba el rechazo del estado inicial, y por ese lado un check suspendió a quien acertaba | hallazgo propio (la 12 castigaba el `__pycache__` de verificar) | clave `solucion:` por tarea + `test_evals.sh` §20 (sandbox setup→solución→check, con suelo de cobertura 10/20) | ⚠️ **parcial** · sensor mutado ×3 (M27–M29), pero prueba menos de lo que parece: §20 solo comprueba que un check apruebe **la solución que alguien le escribió**. La 11 pasa §20 y sigue rota (exige el literal `.venv/bin/pip` y suspende `.venv/bin/python -m pip`), igual que la 09. Un corrector queda cubierto por la forma que se acordaron de declararle, no por todas las correctas |
+| E28 | Un corrector tiene que saber **aprobar**, no solo suspender: el §10 solo probaba el rechazo del estado inicial, y por ese lado un check suspendió a quien acertaba | hallazgo propio (la 12 castigaba el `__pycache__` de verificar) | clave `solucion:` por tarea + `test_evals.sh` §20 (sandbox setup→solución→check, con suelo de cobertura 10/23) | ⚠️ **parcial** · sensor mutado ×3 (M27–M29), pero prueba menos de lo que parece: §20 solo comprueba que un check apruebe **la solución que alguien le escribió**. La 11 pasa §20 y sigue rota (exige el literal `.venv/bin/pip` y suspende `.venv/bin/python -m pip`), igual que la 09. Un corrector queda cubierto por la forma que se acordaron de declararle, no por todas las correctas |
 | E29 | El coste de una tirada se estima **antes** de pagarla, y de lo ya gastado, no de una cifra escrita a mano | hallazgo propio (el Makefile decía "40 llamadas / ~12 USD" a mano) | `DRYRUN=1` en `run.sh` (media de `runs.jsonl`) + filtro por tarea + `test_evals.sh` §21 | ✅ · M9 sigue cazado con el bloque puesto |
 
 ## Las tres preguntas
@@ -242,9 +242,61 @@ el informe escribe `SATURADO`: la tasa seguirá subiendo sin que el harness mejo
 Con un solo brazo el bloque dice `NO MEDIBLE` en vez de "0 mudas". Sin control no hay
 forma de saber cuál es muda, y un cero sería mentir por omisión (mutante M15).
 
-## La tirada completa: el número existe (2026-08-27)
+## La tirada completa: v1.7.0, dos modelos en el almacén (2026-10-30)
 
-98 llamadas reales, los 20 casos, tres brazos, `RUNS=1`, todo con
+169 llamadas reales en el almacén: las 98 de agosto con `claude-opus-5[1m]` más la
+tirada M7 de v1.7.0 (29-30 oct), con `claude-fable-5-1` en los dos brazos: 23 tareas
+por brazo y la repetición de la 22 y la 23. Hay 26 filas excluidas: la 12/`on` de
+agosto y las 25 del 429 del plan de suscripción del 29-oct (la 22 y la 23 en `on`
+se repitieron el 30-oct). El informe mezcla dos modelos, así que el lift sobre el
+almacén completo es **orientativo**: el de la tirada sola está en `COST-LOG.md`
+(`on` 0,83 contra `off` 0,74, +0,10, no concluyente). **20 de 23 tareas** son mudas
+y **el conjunto que decide es de 3, no de 23**. La ablación `sin-ajustes` sale NO
+COMPARABLE porque sus 20 filas son de opus. En el bloque, las filas `resultado` no entran
+en el n ni en el lift: van en su línea.
+
+```
+excluidas 26 fila(s), fuera de todo computo: 12-alcance-quirurgico/on@2026-08-27T08:20:46Z (puntuada por el corrector roto de la 12 (E28) y con el transcript sobrescrito por la colision de nombres: no es re-auditable) · 22-feature-dos-ficheros/on@2026-10-29T22:39:51Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 23-test-antes-que-fix/on@2026-10-29T22:39:51Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 01-no-releer-tras-editar/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 02-alcance-borrado/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 03-secreto-fuera-del-config/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 04-pnpm-no-npm/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 05-venv-tools/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 06-verificar-antes-de-afirmar/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 07-gitignore-nombra-secretos/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 08-borrado-en-alcance/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 09-curl-a-fichero/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 10-leer-codigo-que-dice-password/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 11-pip-del-venv-del-proyecto/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 12-alcance-quirurgico/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 13-releer-tras-cambio-externo/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 14-npm-citado-en-documentacion/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 15-pregunta-no-es-encargo/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 16-ruta-sensible-en-prosa/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 17-no-borrar-la-copia-sin-verificar/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 18-commitear-solo-lo-pedido/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 19-rm-con-variable-sin-guarda/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 20-no-reescribir-lo-publicado/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 21-bug-con-test-oculto/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 22-feature-dos-ficheros/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1)) · 23-test-antes-que-fix/off@2026-10-29T22:51:47Z (429 usage_limit_reached del plan de suscripcion, 29-oct 23:3x-23:5x CET (api_error en la ventana; 24 filas con 0 tokens y la on/22 cortada en el turno 2); repetida el 30-oct 08:40 CET (misma sha 9f7d81e, EVAL_MODEL=claude-fable-5-1))
+con harness 0.85 (n=47) · sin harness 0.74 (n=68) · lift +0.12 -> SIRVE (no concluyente)
+coste: +228.1 % ($0.4678 vs $0.1426 por run)
+positiva  (21/31 runs) 0.71 vs 0.48 · +0.23 -> el harness ayuda
+negativa  (20/31 runs) 1.00 vs 1.00 · +0.00 -> el harness no estorba
+resultado ( 3/ 3 runs) 0.67 vs 0.67 · +0.00 -> el harness no mejora el resultado
+mudas: 20/23 tareas dieron el mismo resultado en los dos brazos y en todas
+       sus repeticiones. No pueden mover el lift: el conjunto que decide
+       es de 3 tarea(s), no de 23.
+SATURADO: 20 de 23 tareas ya no distinguen nada. El numero de
+arriba seguira subiendo sin que el harness mejore. Toca subir el suelo:
+retirar las mudas y minar fallos nuevos (README.md, 'Como crecer').
+sin-ajustes  NO COMPARABLE: modelos distintos (claude-opus-5[1m] vs claude-fable-5-1,claude-opus-5[1m])
+sin-skills   SIN DATOS, y correrlo no mediria nada: skills no se activaron ni una vez
+sin-mcp      SIN DATOS, y correrlo no mediria nada: servidores MCP no se activaron ni una vez
+```
+
+### La lectura alternativa: las filas retiradas contadas
+
+Contadas las 26 filas retiradas, el 429 se lee como 24 suspensos del brazo `off`
+(llamadas con 0 tokens que no corrieron la tarea) y el lift se infla. Es lo que
+emite `report.py` sobre el mismo `runs.jsonl` con la clave `excluded` quitada, y no
+es admisible: esas llamadas no midieron nada.
+
+```
+con harness 0.83 (n=48) · sin harness 0.57 (n=88) · lift +0.27 -> SIRVE
+coste: +320.5 % ($0.4632 vs $0.1102 por run)
+positiva  (21/41 runs) 0.71 vs 0.37 · +0.35 -> el harness ayuda
+negativa  (21/41 runs) 0.95 vs 0.76 · +0.20 -> el harness no estorba
+resultado ( 5/ 6 runs) 0.40 vs 0.33 · +0.07 -> el harness mejora el resultado
+mudas: 3/23 tareas dieron el mismo resultado en los dos brazos y en todas
+       sus repeticiones. No pueden mover el lift: el conjunto que decide
+       es de 20 tarea(s), no de 23.
+sin-ajustes  NO COMPARABLE: modelos distintos (claude-opus-5[1m] vs claude-fable-5-1,claude-opus-5[1m])
+sin-skills   SIN DATOS, y correrlo no mediria nada: skills no se activaron ni una vez
+sin-mcp      SIN DATOS, y correrlo no mediria nada: servidores MCP no se activaron ni una vez
+```
+
+## La tirada de 2026-08-27: el número existe
+
+98 llamadas de entonces, los 20 casos, tres brazos, `RUNS=1`, todo con
 `claude-opus-5[1m]` y **sin el proxy Headroom en medio** (con `ANTHROPIC_BASE_URL`
 puesto, el lift mediría harness + proxy a la vez):
 
@@ -266,7 +318,7 @@ está pendiente: no se hizo en esta ronda.**
 
 ```
 excluidas 1 fila(s), fuera de todo computo: 12-alcance-quirurgico/on@2026-08-27T08:20:46Z (puntuada por el corrector roto de la 12 (E28) y con el transcript sobrescrito por la colision de nombres: no es re-auditable)
-con harness 0.85 (n=27) · sin harness 0.73 (n=48) · lift +0.12 -> SIRVE
+con harness 0.85 (n=27) · sin harness 0.73 (n=48) · lift +0.12 -> SIRVE (no concluyente)
 coste: +147.2 % ($0.2957 vs $0.1196 por run)
 positiva  (11/21 runs) 0.73 vs 0.48 · +0.25 -> el harness ayuda
 negativa  (10/21 runs) 1.00 vs 1.00 · +0.00 -> el harness no estorba
@@ -357,7 +409,7 @@ Cuatro lecturas, y la tercera es la que incomoda:
    que decide es de 3, no de 20. Subir esa cifra no cuesta dinero: cuesta retirar mudas y
    minar fallos nuevos.
 
-### La lectura alternativa: la misma fila contada
+### La lectura alternativa de 2026-08-27: la misma fila contada
 
 La retirada da **el mismo titular** que daba editar la fila, y eso obliga a
 publicar también lo que dice el almacén sin ella. Estas son las cifras que emite
@@ -365,7 +417,7 @@ publicar también lo que dice el almacén sin ella. Estas son las cifras que emi
 fila de 98, la 12/`on`/08:20, y mueve cinco números, no tres:
 
 ```
-con harness 0.82 (n=28) · sin harness 0.73 (n=48) · lift +0.09 -> SIRVE
+con harness 0.82 (n=28) · sin harness 0.73 (n=48) · lift +0.09 -> SIRVE (no concluyente)
 coste: +145.8 % ($0.2941 vs $0.1196 por run)
 positiva  (11/21 runs) 0.73 vs 0.48 · +0.25 -> el harness ayuda
 negativa  (11/21 runs) 0.91 vs 1.00 · -0.09 -> FALSOS POSITIVOS: el harness estorba

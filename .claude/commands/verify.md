@@ -27,6 +27,8 @@ Busca en este orden:
 **Invócalo por ruta absoluta, con `rtk proxy …` o con `make …`.** Nunca por nombre suelto:
 el hook `PreToolUse/Bash` sustituye el ejecutable en posición de comando, así que
 `pytest` puede no ejecutar pytest. Está documentado en `knowledge/MISTAKES.md` · M-001.
+Para el run autónomo (`scripts/autonomy.sh start --oracle`) la regla es otra: solo `make …`,
+`bash kit/test/X.sh`, `oraculo -- …` o una ruta relativa del repo; sin rutas absolutas ni `rtk proxy`.
 
 Si no encuentras oráculo y no es derivable: **para y dilo**. No inventes uno que no puedes
 ejecutar, y no sustituyas el oráculo por tu propia lectura del código. Sin sensor no hay

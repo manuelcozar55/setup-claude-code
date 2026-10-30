@@ -208,4 +208,10 @@ ok 'K9 handoff no lista lo anterior a su base ni lo propio del estado' "$(grep -
 (cd "$R" && bash "$BIN" --desde "$T/k9-b.md" >/dev/null 2>&1)
 ok 'K9 repetir no duplica el bloque generado' "$(grep -c 'sucio.txt' "$NU"),$(grep -c '<!-- git:' "$NU")" '1,1'
 ok 'K9 el texto manual del borrador sobrevive' "$(grep -c 'viejo.txt' "$NU")" 1
+SR=$HERE/../claude/agents/security-reviewer.md
+ok 'M6 security-reviewer es de solo lectura (tools sin Write ni Edit)' "$(grep '^tools:' "$SR" | grep -c 'Write\|Edit')" 0
+ok 'M6 security-reviewer no promete remediación' "$(grep -ci 'remediat' "$SR")" 0
+ok 'M13 el kit trae 6 agentes (orchestrator retirado)' "$(find "$HERE/../claude/agents" -name "*.md" | wc -l | tr -d ' ')" 6
+ok 'M13 ningún agente del kit es orchestrator' "$(find "$HERE/../claude/agents" -name orchestrator.md | wc -l | tr -d ' ')" 0
+ok 'M13 sin menciones de orchestrator en agentes, READMEs y docs' "$(cd "$HERE/../.." && grep -rli orchestrator kit/claude README.md kit/README.md kit/docs | wc -l | tr -d ' ')" 0
 [ "$FAIL" -eq 0 ]

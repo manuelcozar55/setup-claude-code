@@ -110,6 +110,16 @@ fecha | sesión | modelo | turnos | correcciones | tool calls | oráculo ejecuta
 |---|---|---|---|---|---|---|---|
 | 2026-08-21 | mcharness v0.1.0 | opus-5 | — | 1 (rechazo de ejecutar la suite ajena) | — | **sí** · `make test` → exit 0, 22 s | backup falsable, baseline sellada, canal de sensado caracterizado |
 
+### Segunda medicion 2026-10
+
+Fuente: la fila de hoy sale de ejecutar `scripts/metrics.py` (comando en la fila); la de agosto y la del 20-oct, de los snapshots `metrics-*.json` de `~/ai-mastery/bucle/data/`. Los snapshots no son reproducibles con el corpus actual. `scripts/cost-report.sh` imprime el delta entre snapshots.
+
+| fecha | snapshot | sesiones | `sessions_with_oracle_pct` | `rework_sessions_pct` | nota |
+|---|---|---|---|---|---|
+| 2026-08-21 | metrics-2026-08-21.json | 47 | 27,7 % (13) | 19,1 % (9) | Línea base. |
+| 2026-10-29 | recalculo hoy (`METRICS_OUT_DIR=$(mktemp -d) python3 scripts/metrics.py`, sin filtro de fecha: todo `~/.claude/projects`) | 163 | **44,8 %** (73) | no recalculado | +17,1 pp en `sessions_with_oracle_pct` frente a agosto. Definición por literal de comando (`make test`, `pytest`, `shellcheck`, `gitleaks`, CLI `oraculo`); no comparable con M2 (rc visto, no literal). Reproducible hoy, pero el corpus crece y metrics.py no filtra por fecha. |
+| 2026-10-20 | `metrics-2026-10-20.json` | 141 | 40,4 % (57) | 7,1 % (10) | Histórica, no reproducible: el corpus de entonces ya no se recupera con metrics.py (sin filtro de fecha). Solo es trazable al snapshot citado en `~/ai-mastery/bucle/data/`; `sessions_with_oracle_pct`. |
+
 ---
 
 ## Contexto de arranque, línea base (ADR 018) — 2026-10-20
@@ -191,3 +201,17 @@ cada cosa) y 260 de la sección «Delegación». resume ya no suma el aviso de c
 SessionStart del peor caso (9.488) queda a 12 chars del de `nucleo_tope`: cualquier texto nuevo allí lo recorta la cola.
 Propuesta (no aplicada): si hay que recortar, el candidato es el protocolo de arranque de `session-start-clear.sh`
 (~1.100 chars), no las instrucciones globales.
+
+## Tirada M7 del eval set, dos brazos — 2026-10-29/30, v1.7.0 (harness 9f7d81e)
+
+Comando: `EVAL_MODEL=claude-fable-5-1 ARM=off bash kit/evals/run.sh` y `ARM=on` (`RUNS=1`, 23 tareas, 46 filas válidas). Informe: `python3 -I kit/evals/report.py --since 2026-10-29T22:30` sobre `kit/evals/runs.jsonl` (no versionado; copia en el informe de cierre del 29-oct). Modelo en los dos brazos: `claude-fable-5-1` (el `settings.json` fija `fable`; con `--safe-mode` ese ajuste desaparece, así que `EVAL_MODEL` va explícito o `report.py` declara los brazos no comparables).
+
+| brazo | n | pass | IC95 | USD/run | USD gastados | filas excluidas |
+|---|---|---|---|---|---|---|
+| on (harness) | 23 | 19 (0,83) | 0,63-0,93 | 0,70 | 16,69 | 2 (tareas 22 y 23 del 29-oct, bajo el 429) |
+| off (`--safe-mode`) | 23 | 17 (0,74) | 0,54-0,87 | 0,20 | 4,55 | 23 (toda la pasada del 29-oct, bajo el 429) |
+
+- **Lift** sobre las 20 micro-conductas: 0,85 frente a 0,75, **+0,10 → SIRVE (no concluyente)**: los intervalos se solapan con `RUNS=1`. Positivas +0,20 (0,70 vs 0,50); negativas 1,00 vs 1,00 (no estorba); **resultado** (M7, 3 tareas) 0,67 vs 0,67: el harness no mejora el resultado. Discriminan 2 de 23: `05-venv-tools` y `17-no-borrar-la-copia-sin-verificar` (on pass, off fail). **SATURADO**: 21 de 23 mudas. Ablación: SIN DATOS.
+- **Coste**: +254 % por run (0,70 vs 0,20 USD) con el mismo modelo: el contexto fijo del harness. Total 21,24 USD equivalente-API (cuenta de suscripción: no se factura, consume la ventana de uso). `make evals-dryrun` estimaba 3,86 USD por brazo con la media del store, que era de opus: fable multiplica por 4.
+- **AVISO de carga**: brazo on con la máquina a 11 de carga media (otras sesiones a la vez), brazo off a 0,8: latencias no comparables; la nota sí (grader determinista).
+- **Incidencias del instrumento**: (1) `429 usage_limit_reached` del plan a las 23:51 CET del 29-oct: 24 filas con 0 tokens y una cortada en el turno 2, marcadas `excluded` en `runs.jsonl` con el motivo; `report.py` las lista fuera del cómputo. (2) `record.py` moría con el evento `system/permission_denied` de auto mode (`message` de texto) y la fila se perdía sin aviso: dos filas del brazo off re-grabadas desde su transcript tras el fix (`cbb8f03`, test `550e0b0`).

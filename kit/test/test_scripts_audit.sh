@@ -37,6 +37,28 @@ ck "$(grep -c '^1 sessions 1 with_comp 1 compactions 1$' <<<"$out")" "1" "nucleo
 ck "$(grep -c '^2 comp: nucleo tool_use in next6 yes/no 1 0 ' <<<"$out")" "1" "nucleo_audit.py: nucleo.md releido tras compactar"
 ck "$(grep -c '^3 comps w/ write within 5 turns before 1 ' <<<"$out")" "1" "nucleo_audit.py: nucleo.md escrito antes de compactar"
 
+# lecturas_previas (M15): Read/Grep/Glob antes de la primera edicion tras cada reinyeccion, por tipo.
+# Sesion sintetica: arranque -> Edit (0); /clear -> 3 Read + 1 Grep -> Edit (4); compact -> Edit (0);
+# /clear final sin edicion posterior (n/a, no excepcion).
+P2="$tmp/projects2"; mkdir -p "$P2/-tmp-demo2"
+cat > "$P2/-tmp-demo2/s2.jsonl" <<EOF
+{"type":"user","message":{"role":"user","content":"arranca"}}
+{"type":"assistant","message":{"id":"a1","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/tmp/demo2/x"}}]}}
+{"type":"user","message":{"role":"user","content":"<command-name>/clear</command-name>"}}
+{"type":"assistant","message":{"id":"a2","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/demo2/a"}},{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/demo2/b"}}]}}
+{"type":"assistant","message":{"id":"a3","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/demo2/c"}},{"type":"tool_use","name":"Grep","input":{"pattern":"x"}},{"type":"tool_use","name":"Edit","input":{"file_path":"/tmp/demo2/x"}}]}}
+$BOUNDARY
+{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"This session is being continued from a previous conversation"}}
+{"type":"assistant","message":{"id":"a4","content":[{"type":"tool_use","name":"Write","input":{"file_path":"/tmp/demo2/y"}}]}}
+{"type":"user","message":{"role":"user","content":"<command-name>/clear</command-name>"}}
+{"type":"assistant","message":{"id":"a5","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/demo2/z"}}]}}
+EOF
+out=$(HOME="$tmp/home" CLAUDE_PROJECTS_DIR="$P2" python3 "$REPO/scripts/nucleo_audit.py"); rc=$?
+ck "$rc" "0" "nucleo_audit.py: sesion con reinyecciones sale 0"
+ck "$(grep -c '^9 lecturas_previas startup=0 clear=4 compact=0 | sin edicion posterior: startup 0 clear 1 compact 0$' <<<"$out")" "1" \
+  "nucleo_audit.py: lecturas_previas por tipo (clear=4, compact=0, n/a contado)"
+ck "$(grep '^9 ' <<<"$out" | grep -c '/tmp')" "0" "nucleo_audit.py: lecturas_previas no imprime rutas"
+ck "$(grep -c '^1 sessions 1 with_comp 1 compactions 1$' <<<"$out")" "1" "nucleo_audit.py: columnas previas intactas con reinyecciones"
 
 # --- make bateria: make test + shellcheck + scan-secrets + gitleaks, cada uno con su .rc y su .log ---
 # Dobles por variable (BATERIA_*): la suite no se relanza a si misma ni toca la red. Un oraculo que falla

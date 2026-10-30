@@ -7,6 +7,39 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-29
+
+### Added
+
+- **`metrics.py` mide la adopción real del oráculo** (M2a): `oraculo_adopcion_pct` (sesiones con al menos un `oraculo -- <cmd>`) y `oraculo_antes_de_editar_pct` (ediciones precedidas por un oráculo en la misma sesión); `sessions_with_oracle_pct` se conserva y, por literal, sigue contando `make test | tail`. Salida redirigible con `METRICS_OUT_DIR`. Tests: `test_metrics.sh`.
+- **`nucleo_audit.py` gana la columna `lecturas_previas`** (M15): cuántas lecturas hace la sesión antes de su primera edición tras un arranque, `/clear` o compactación; es el coste de reconstruir contexto que el nucleo reinyectado debería ahorrar. Tests: `test_scripts_audit.sh`.
+- **`test_doc_claims` vigila también las rutas citadas en `CLAUDE.md`** (M14): una ruta inventada en el CLAUDE.md del kit falla el oráculo (resuelve en raíz y en `knowledge/`; excluye `PreToolUse/Bash`). Tests: `test_doc_claims.sh`.
+- **Tres evals de resultado** (M7): tareas 21 (bug con test oculto), 22 (feature en dos ficheros) y 23 (test antes que fix), con `tipo: resultado`; `report.py` las lista en línea propia y quedan fuera del veredicto SIRVE/PERJUDICA (miden si el harness termina la tarea, no cómo). De 20 a 23 tareas; la tirada completa pasa de 40 a 46 llamadas (`make evals-dryrun`: 3,86 USD por brazo con la media de los runs del store). Tests: `test_evals.sh` (bloque 11b).
+- **`ESTADO.md` vale como estado de proyecto** (ADR 025): sin `.claude/estado/nucleo.md`, el gate exime solo `<raíz>/ESTADO.md`, los avisos de nudge y post-compact dictan `handoff --desde --sesion`, y `handoff` fusiona en `<raíz>/ESTADO.md` sin crear nucleo.md: conserva Objetivo e Invariantes de la persona, nunca omite secciones suyas y, con `--json`, lleva el aviso de tope en `avisos`; si existen los dos, manda nucleo.md. Tests: `test_nucleo_integridad.sh`, `test_nucleo_gate.sh`, `test_nucleo_nudge.sh`.
+
+### Changed
+
+- **`report.py` deja de declarar SIRVE con intervalos solapados** (M1): cuando los IC95 de Wilson de los dos brazos se cruzan, el veredicto es `SIRVE (no concluyente)` (o `PERJUDICA (no concluyente)`), y emite `OBSOLETO` si el último run medido está a más de `OBSOLETO_COMMITS=50` commits de HEAD. `knowledge/EVAL-CRITERIA.md` y `kit/evals/README.md` citan la salida nueva. Tests: `test_evals.sh` (+4).
+- **`oracle-log` solo cuenta oráculos limpios** (M2b): el marcador de sesión y el TSV registran el rc en la cuarta columna y solo marcan verde un comando sin tubería, `||`, `;`, `&` ni sustitución y con rc 0; `make test | tail`, `make test || true` o `true; make test` ya no cuentan. `auto-spec` recomienda `oraculo -- <cmd>` (M2c). Tests: `test_auto_spec.sh`.
+- **`security-reviewer` pasa a solo lectura** (M6): sin `Write`/`Edit`; reporta hallazgos y no los corrige. Tests: `test_agentes.sh`.
+- **La skill `harness` arma y para el modo autónomo** (M5, M12): invoca `scripts/autonomy.sh start|stop` y deja de citar `superpowers:*`; el `allow` de `settings.json` se acota a `Bash(scripts/autonomy.sh *)`. Tests: `test_harness_structure.sh` (+4).
+- **`handoff --desde` acepta `--ranura DIR` y el aviso de contexto lo dicta desde sesiones abiertas en `~`** (B5a): la ranura debe ser la de la propia sesión (`nucleo_sesion_dir`) o sale rc 5 sin escribir; en un proyecto ajeno el rc 5 nombra la ranura propia y el comando exacto. Tests: `test_nucleo_integridad.sh`, `test_nucleo_nudge.sh`.
+- **`handoff` avisa de los `[x]` sin comando de verificación** (M10): un paso cerrado sin comando entre comillas invertidas se archiva en `diario.md` con la marca `(sin comando)` y sale en `AVISOS`; no bloquea. ADR 022 registra por qué el veto de compactación no se implementa desde shell. Tests: `test_nucleo_integridad.sh`.
+- **El Stop del modo normal avisa de las ediciones posteriores al último oráculo verde** (M9): deja rastro en `gate-avisos.log`, `metrics.py` publica `avisos_atendidos_pct` (un rc vacío en el TSV cuenta como atendido) y `oracle-log` sanea el `sid` del marcador. Tests: `test_autonomy.sh` (+9), `test_metrics.sh` (+3), `test_auto_spec.sh` (+2).
+- **`COST-LOG.md` registra la segunda medición de adopción del oráculo** (M8): del 27,7 % de sesiones con oráculo (2026-10-20) al 44,8 % recalculado el 2026-10-29 (73/163, `metrics.py` sin filtro de fecha; definición por literal de comando, no comparable con M2a); las cifras históricas quedan marcadas como instantáneas y el ADR 020 la enlaza como evidencia, sin atribuirla a la compuerta (no hay A/B). Tests: `test_doc_claims.sh` (+2).
+- **El gate autónomo no cierra en verde con el sensor alterado** (M4): `autonomy.sh start` guarda el sha1 de los ficheros sensor rastreados (`Makefile`, `conftest.py`, `pytest.ini`, workflows, `tests/`, `test/`, `kit/test/`) y el Stop verde los recompara; si cambiaron o desaparecieron bloquea con la lista y, agotado el presupuesto, libera con «SENSOR ALTERADO». Los ficheros nuevos no cuentan; tocar el sensor antes de `start` tampoco. Tests: `test_autonomy.sh` (+11).
+- **El run autónomo caduca y deja historial** (M11): `start --max-minutes N` (240 por defecto); pasado el plazo el gate no bloquea, borra el estado y sale 0; cada `start`, intento y `stop` añade una fila a `.claude/estado/autonomia.tsv` (sin copiar el oráculo ni el goal). `start` solo admite oráculos del repo (`make <target>`, `bash kit/test/<x>.sh`, `oraculo -- …`, rutas relativas sin `..`, sin encadenados ni sustituciones; `rtk proxy` deja de aceptarse como prefijo) y `--session` sin `/` ni `..`: cierra la escalada por la que el Stop hook ejecutaba cualquier ruta absoluta. El hook lee el estado sin ejecutarlo y revalida el oráculo al arrancar: con un estado manipulado, ilegible o de una versión anterior cae a modo normal avisando por stderr; un `STARTED` vacío o futuro cuenta como caducado. ADR 010, `/verify`, `/spec`, `/work` y la skill `harness` citan la regla nueva. Tests: `test_autonomy.sh` (+42, 79 en total).
+- **Cockpit 0.6.2 lee `ESTADO.md` en el handoff automático**: lo inyecta como `<nucleo-actual>`, muestra el aviso de tope sin dejar de limpiar, cierra la etiqueta con espacios o mayúsculas y no toma una viñeta dentro de una cerca como «Siguiente acción». Tests: `handoff.test.tsx`, `test_mod_cockpit.sh` (check de coherencia de versión).
+
+### Removed
+
+- **Agente `orchestrator` retirado** (M13): 0 invocaciones medidas en 141 sesiones; el kit pasa a 6 agentes y `strategist` recomienda `deep-worker`. `install.sh --apply` no borra el `~/.claude/agents/orchestrator.md` ya instalado: se retira a mano. ADR 024. Tests: `test_agentes.sh` (+3).
+
+### Fixed
+
+- **`record.py` ya no pierde la fila cuando el clasificador de auto mode deniega una acción**: el stream-json trae un evento `system/permission_denied` cuyo `message` es texto, `record.py` moría al leerlo y, como `run.sh` sigue sin `set -e`, la tarea quedaba fuera del almacén sin aviso (2 de 23 filas del brazo `off` en la tirada M7). Tests: `test_evals.sh` (evento `system` de texto).
+- **`test_doc_claims` cuenta el n por brazo como `report.py`**: el lift se define sin las filas `tipo: resultado` y el sensor las contaba, así que con la tirada M7 en el almacén `EVAL-CRITERIA.md` no podía cuadrar con los dos. `EVAL-CRITERIA.md` publica la tirada de v1.7.0 y deja la de agosto como registro fechado. Tests: `test_doc_claims.sh` §4.
+
 ## [1.6.1] - 2026-10-28
 
 ### Changed
@@ -2130,7 +2163,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.0...v1.5.1

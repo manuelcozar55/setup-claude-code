@@ -76,4 +76,46 @@ out3="$(run_metrics)"
 ck "$(echo "$out3" | jq -r '.sessions_with_oracle')" "2" "falsabilidad: 2 sesiones corren el oraculo cuando las 2 lo hacen"
 ck "$(echo "$out3" | jq -r '.sessions_with_oracle_pct')" "100.0" "falsabilidad: sessions_with_oracle_pct sube a 100.0"
 
+# --- M2a: oraculo por CLI y orden respecto al primer edit --------------------
+# write_seq ruta cmd1 cmd2 ...: un assistant con un tool_use por argumento;
+# "EDIT" produce un Edit, cualquier otra cosa un Bash con ese comando.
+write_seq() {
+  local path="$1"; shift
+  local blocks="" b
+  for c in "$@"; do
+    if [ "$c" = "EDIT" ]; then b='{"type":"tool_use","name":"Edit","input":{"file_path":"x.py"}}'
+    else b="$(jq -cn --arg s "$c" '{type:"tool_use",name:"Bash",input:{command:$s}}')"; fi
+    blocks="${blocks:+$blocks,}$b"
+  done
+  mkdir -p "$(dirname "$path")"
+  {
+    printf '{"type":"user","timestamp":"2026-01-01T10:00:00Z","message":{"role":"user","content":"haz el cambio"}}\n'
+    printf '{"type":"assistant","timestamp":"2026-01-01T10:01:00Z","message":{"model":"claude-sonnet-4-5","usage":{"input_tokens":1,"output_tokens":1},"content":[%s]}}\n' "$blocks"
+  } > "$path"
+}
+PROJECTS="$tmp/projects2"; mkdir -p "$PROJECTS"
+# sin sesiones: sin division por cero
+out4="$(run_metrics)"
+ck "$(echo "$out4" | jq -r '.oraculo_adopcion_pct')" "0.0" "M2a: 0 sesiones -> oraculo_adopcion_pct 0.0"
+ck "$(echo "$out4" | jq -r '.oraculo_antes_de_editar_pct')" "0.0" "M2a: 0 sesiones -> oraculo_antes_de_editar_pct 0.0"
+# C: oraculo con pipe (no es adopcion) y luego edit; D: CLI oraculo y luego edit;
+# E: edit y despues oraculo; F: sin ningun edit (fuera del denominador)
+write_seq "$PROJECTS/p/c.jsonl" "make test | tail -n 5" EDIT
+write_seq "$PROJECTS/p/d.jsonl" "oraculo -- make test" EDIT
+write_seq "$PROJECTS/p/e.jsonl" EDIT "make test"
+write_seq "$PROJECTS/p/f.jsonl" "ls"
+out5="$(run_metrics)"
+ck "$(echo "$out5" | jq -r '.oraculo_adopcion_pct')" "25.0" "M2a: solo 1 de 4 sesiones usa el CLI oraculo (el pipe no cuenta)"
+ck "$(echo "$out5" | jq -r '.oraculo_antes_de_editar_pct')" "66.7" "M2a: oraculo previo al primer edit en 2 de 3 sesiones con edit"
+ck "$(echo "$out5" | jq -r '.sessions_with_oracle_pct')" "75.0" "M2a: sessions_with_oracle_pct (por literal) intacta"
+
+# --- M9: avisos_atendidos_pct desde gate-avisos.log + oracle-runs.tsv --------
+SD="$tmp/state"; mkdir -p "$SD"
+run_state() { MCHARNESS_STATE="$SD" run_metrics; }
+printf '2026-01-01T10:00:00Z\ts1\t1\n2026-01-01T10:00:00Z\ts2\t1\n2026-01-01T10:00:00Z\ts3\t2\n2026-01-01T10:00:00Z\ts4\t1\n2026-01-01T10:00:00Z\ts5\t1\n' > "$SD/gate-avisos.log"
+printf '2026-01-01T10:05:00Z\ts1\tmake test\t0\n2026-01-01T10:05:00Z\ts2\tmake test\t1\n2025-12-31T10:05:00Z\ts4\tmake test\t0\n2026-01-01T10:05:00Z\ts5\tmake test\t\n' > "$SD/oracle-runs.tsv"
+out7="$(run_state)"
+ck "$(echo "$out7" | jq -r '.avisos_atendidos_pct')" "40.0" "M9: 2 de 5 avisos atendidos (rc 0 o vacio, misma sid, fecha >=; rc 1 y fecha previa no)"
+ck "$(echo "$out7" | jq -r '.avisos_total')" "5" "M9: avisos_total = 5"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

@@ -41,7 +41,13 @@ VAGUE  = re.compile(r"^(sigue|continua|continúa|ok|dale|vale|adelante|hazlo|si|
 # fragmentos se cuenta como "corrio el oraculo". Falso negativo conocido: un
 # oraculo con otro nombre (p.ej. un test runner propio, `tox`, `go test`) no
 # se detecta porque no esta en esta lista.
+# sessions_with_oracle_pct usa esta lista por literal: cuenta tambien
+# `make test | tail`, donde el rc visto es el de tail.
 ORACLE_CMDS = ("make test", "pytest", "shellcheck", "gitleaks")
+# CLI `oraculo` como primer token de un comando o de un segmento tras ; && ||
+# (no tras un pipe simple: ahi el rc seria el de otro proceso).
+ORACLE_CLI = re.compile(r"(?:^|;|&&|\|\|)\s*oraculo(?:\s|$)")
+EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 
 def is_subagent_path(path):
     return "/subagents/" in path.replace(os.sep, "/")
@@ -65,6 +71,7 @@ def analyze():
         "slash_commands": Counter(), "task_notifications": 0,
         "sub_transcripts": 0, "sub_tok": Counter(), "sub_cost": 0.0, "sub_tools": Counter(),
         "sessions_with_rework": 0, "sessions_with_oracle": 0,
+        "sessions_with_oraculo_cli": 0, "sessions_with_edit": 0, "sessions_oracle_before_edit": 0,
         "tool_calls_per_session": [],
     }
     STOP = set("de la el en y a los las un una que con por para del al se es su lo como mas más este esta esto o si no me te lo le nos ya pero sin sobre tambien también hay ser son fue muy cuando donde todo todos cada e u i the to and of in for it is you my me a an on".split())
@@ -77,6 +84,7 @@ def analyze():
         if proj.startswith("."): continue
         n_user = 0; has_skill = has_agent = has_plan = False
         has_rework = has_oracle = False; n_tool_calls = 0
+        has_cli = False; seen_edit = False; oracle_before_edit = None
         ts_first = ts_last = None
         s["sessions"] += 1; s["projects"][proj] += 1
         try:
@@ -160,8 +168,12 @@ def analyze():
                                 s["mcp_used"][name.split("__")[1]] += 1
                             elif name in ("ExitPlanMode", "EnterPlanMode"):
                                 has_plan = True
-                            if name == "Bash" and any(oc in str(inp.get("command", "")) for oc in ORACLE_CMDS):
-                                has_oracle = True
+                            cmd = str(inp.get("command", "")) if name == "Bash" else ""
+                            is_oracle = bool(cmd) and (any(oc in cmd for oc in ORACLE_CMDS) or bool(ORACLE_CLI.search(cmd)))
+                            if is_oracle and any(oc in cmd for oc in ORACLE_CMDS): has_oracle = True
+                            if cmd and ORACLE_CLI.search(cmd): has_cli = True
+                            if name in EDIT_TOOLS and oracle_before_edit is None:
+                                oracle_before_edit = has_oracle or has_cli
                 elif t == "system" and "compact" in str(r.get("subtype", "")).lower():
                     s["compactions"] += 1
         s["turns_per_session"].append(n_user)
@@ -173,6 +185,10 @@ def analyze():
         if has_plan: s["sessions_with_plan"] += 1
         if has_rework: s["sessions_with_rework"] += 1
         if has_oracle: s["sessions_with_oracle"] += 1
+        if has_cli: s["sessions_with_oraculo_cli"] += 1
+        if oracle_before_edit is not None:
+            s["sessions_with_edit"] += 1
+            if oracle_before_edit: s["sessions_oracle_before_edit"] += 1
         if ts_first and ts_last:
             s["session_len_min"].append(round((ts_last - ts_first).total_seconds() / 60, 1))
 
@@ -247,6 +263,8 @@ def analyze():
         "permission_denied": s["permission_denied"],
         "sessions_with_oracle": s["sessions_with_oracle"],
         "sessions_with_oracle_pct": pct(s["sessions_with_oracle"], s["sessions"]),
+        "oraculo_adopcion_pct": pct(s["sessions_with_oraculo_cli"], s["sessions"]),
+        "oraculo_antes_de_editar_pct": pct(s["sessions_oracle_before_edit"], s["sessions_with_edit"]),
         "thinking_tokens": s["thinking_tokens"],
         "thinking_share_of_output_pct": pct(s["thinking_tokens"], s["tok"]["out"]),
         "web_search": s["web_search"], "web_fetch": s["web_fetch"],
@@ -277,6 +295,25 @@ def analyze():
             "subagent_transcripts": "*.jsonl cuya ruta contiene '/subagents/'",
         },
     }
+    # M9: un aviso del gate cuenta como atendido si hay un oraculo rc 0 de la misma sid
+    # con fecha >= la del aviso. Sin gate-avisos.log, la clave no sale.
+    sd = os.environ.get("MCHARNESS_STATE") or os.path.join(
+        os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "mcharness")
+    try:
+        with open(os.path.join(sd, "gate-avisos.log")) as fh:
+            avisos = [l.split() for l in fh if len(l.split()) >= 2]
+        runs = []
+        try:
+            with open(os.path.join(sd, "oracle-runs.tsv")) as fh:
+                runs = [l.rstrip("\n").split("\t") for l in fh]
+        except OSError:
+            pass
+        ok = [(r[0], r[1]) for r in runs if len(r) >= 3 and (r[3:4] or [""])[0] in ("", "0")]
+        atend = sum(1 for a in avisos if any(sid == a[1] and ts >= a[0] for ts, sid in ok))
+        out["avisos_total"] = len(avisos)
+        out["avisos_atendidos_pct"] = pct(atend, len(avisos))
+    except OSError:
+        pass
     return out
 
 if __name__ == "__main__":

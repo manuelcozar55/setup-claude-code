@@ -69,7 +69,7 @@ enséñale la especificación para que la apruebe:
 2. …
 
 ## Y lo demuestra este comando:
-<oráculo, por ruta absoluta / rtk proxy / make>
+<oráculo: `make …`, `bash kit/test/X.sh` o ruta relativa del repo (sin rutas absolutas)>
 Estado HOY en frío: <verde|rojo>
 
 ## Supuestos que he tomado sin preguntar
