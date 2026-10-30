@@ -730,6 +730,102 @@ test('nextLine: el límite cuenta grafemas: no parte un emoji compuesto ni un ac
   expect(nextLine(siguiente('x '.repeat(99) + 'é fin'))).toBe('x '.repeat(99) + 'é …' + MORE)
 })
 
+// ── The line the person approves is never cut: one past the limit gets a short title written above it
+// The 30-oct line: a code span from the start to past the limit, so the cut kept «Ejecutar» and the fill said nothing.
+const LONG = 'Ejecutar `git -C ~/.claude status --short | wc -l; git -C ~/.claude ls-remote --heads origin respaldo/statusline-cuenta-2026-10-30 | wc -l; git -C ~/repos/setup-claude-code worktree list | grep -c statusline-cuenta` y marcar como hecha cada limpieza cuyo resultado sea 0.'
+const TITLE = 'Comprobar las tres limpiezas (pendientes, rama remota y worktree) y marcar como hecha cada una que dé 0'
+const answered = (text: string) => ({ value: { isAnswered: true, text, usage: {} } })
+const titles = (on: Parameters<TestBody>[1], answer: () => unknown) => {
+  const asked: { model: string; prompt: string }[] = []
+  on('model.complete', (_, e) => {
+    asked.push({ model: e.model, prompt: String(e.prompt) })
+    return answer() as never
+  })
+  return asked
+}
+
+test('handoff: una primera línea que no cabe recibe encima un título corto; la larga queda debajo y el prompt no se corta', async ($, on) => {
+  expect(fillFor(siguiente(LONG))).toBe(BARE)
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1000, forkText: siguiente(LONG) })
+  const asked = titles(on, () => answered(`${TITLE}\n`))
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(400)
+  expect(asked).toHaveLength(1)
+  expect(asked[0]?.model).toBe('haiku')
+  expect(asked[0]?.prompt).toContain(LONG)
+  expect(r.files[`${EST}/nucleo.md`]).toContain(`## Siguiente acción\n${TITLE}\n${LONG}\n`)
+  expect(seen.fills).toEqual([PREFIX + TITLE + MORE])
+})
+
+test('handoff: si la primera línea cabe no se llama al modelo', async ($, on) => {
+  const clock = mock.clock(on)
+  auto(on, { tokens: 1000, forkText: siguiente('x'.repeat(200)) })
+  const asked = titles(on, () => answered(TITLE))
+  repo(on, { [`${EST}/nucleo.md`]: PREV })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(400)
+  expect(asked).toHaveLength(0)
+})
+
+test('handoff: el título vale mientras el relleno lo muestre entero, aunque pase de lo pedido', async ($, on) => {
+  // Real haiku reply measured in Debian (30-oct): asked for 160, 1 of 9 came back longer.
+  const LONGER = 'Verificar con comandos de solo lectura que no quedan cambios, ramas de respaldo ni worktrees de statusline-cuenta, y marcar como hecha cada limpieza cuyo conteo sea 0.'
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1000, forkText: siguiente(LONG) })
+  titles(on, () => answered(LONGER))
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(400)
+  expect(r.files[`${EST}/nucleo.md`]).toContain(`## Siguiente acción\n${LONGER}\n${LONG}\n`)
+  expect(seen.fills).toEqual([PREFIX + LONGER + MORE])
+})
+
+for (const [why, answer] of [
+  ['dos líneas', () => answered(`${TITLE}\nmás`)],
+  ['pasa de 200', () => answered('t '.repeat(101).trimEnd())],
+  ['abre una sección', () => answered('## Pendientes')],
+  ['deja un code span abierto', () => answered('Corre `make test')],
+  ['vacía', () => answered('  ')],
+  ['sin respuesta', () => ({ value: { isAnswered: false, reason: 'empty-reply' } })],
+  ['el motor la rechaza', () => {
+    throw new Error('modelo bloqueado')
+  }],
+] as const) {
+  test(`handoff: un título inválido (${why}) deja el borrador intacto y el relleno de siempre`, async ($, on) => {
+    const clock = mock.clock(on)
+    const seen = auto(on, { tokens: 1000, forkText: siguiente(LONG) })
+    titles(on, answer)
+    const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+    await $.command.run({ ...RUN, command: 'handoff' })
+    await clock.advance(400)
+    expect(r.calls[0]?.draft).toBe(siguiente(LONG))
+    expect(seen.fills).toEqual([BARE])
+  })
+}
+
+test('handoff: un título que no cabe en el presupuesto no se añade', async ($, on) => {
+  const clock = mock.clock(on)
+  auto(on, { tokens: 1000, forkText: siguiente(LONG) })
+  titles(on, () => answered(TITLE))
+  const r = repo(on, {}, { tope: 768 + new TextEncoder().encode(siguiente(LONG)).length + 10 })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(400)
+  expect(r.calls[0]?.draft).toBe(siguiente(LONG))
+})
+
+test('handoff: el título no altera el resto del borrador, ni un $& o $\' de un comando', async ($, on) => {
+  const clock = mock.clock(on)
+  const body = `${LONG}\nluego \`printf '%s' $'a' $& $$\``
+  auto(on, { tokens: 1000, forkText: siguiente(body) })
+  titles(on, () => answered(TITLE))
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(400)
+  expect(r.calls[0]?.draft).toBe(siguiente(`${TITLE}\n${body}`))
+})
+
 test('handoff: si la relectura de nucleo.md falla tras guardar, limpia con el relleno genérico y no dice «fallido»', async ($, on) => {
   const clock = mock.clock(on)
   const seen = auto(on, { tokens: 1000, forkText: '## Siguiente acción\nT7\n' })

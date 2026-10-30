@@ -7,8 +7,11 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-10-30
+
 ### Fixed
 
+- **La línea que apruebas tras el handoff ya no sale cortada** (cockpit 0.6.3): el fork recibe la regla de una primera línea de «Siguiente acción» de 160 caracteres, pero 25 de 76 núcleos reales (30-oct) la pasaban de 200 y el relleno del prompt la cortaba; con un comando entre comillas desde el principio solo quedaba «sigue con la Siguiente acción de …» y se aprobaba sin ver qué. Ahora, si no cabe, `$.model.complete` (`haiku`, solo esa sección, sin la transcripción) escribe encima un título (se le piden 120 caracteres y se le exige lo que el relleno muestra entero, 200: en 19 llamadas reales en Debian `haiku` dio de 98 a 182 pidiera 160 o 120); la línea larga queda debajo y el núcleo sigue siendo la fuente completa. Una respuesta que no sea una sola línea válida, o que no quepa en el presupuesto, deja el borrador como llegó. Tests: `kit/mods/cockpit/tests/handoff.test.tsx` (rojo con la línea real: 0 llamadas al modelo y relleno genérico; verde: 154/154; en Debian con claude 2.1.312, `/handoff solo` real guardó el título de `haiku` encima de la línea larga).
 - **`doctor.sh` ya no se cuelga en un terminal real**: el check de la statusLine la lanzaba con `timeout 5`, que la pone en un grupo de procesos de fondo; la statusline del kit lee el ancho con `stty -F /dev/pts/N size`, recibe SIGTTOU y el grupo entero queda parado, `timeout` incluido. Fuera de un TTY (CI, `make test`) no se veía. Ahora `timeout --foreground 5`; el caso I3 de `test_doctor_base_url.sh` corre doctor dentro de un pty con `script(1)` (rojo: rc=124 a los 60 s; verde: 24/24).
 
 ## [1.7.0] - 2026-10-29
@@ -2167,7 +2170,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.5.1...v1.6.0
