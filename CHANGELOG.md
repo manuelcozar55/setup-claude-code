@@ -35,6 +35,11 @@ etiquetado.
 
 - **Agente `orchestrator` retirado** (M13): 0 invocaciones medidas en 141 sesiones; el kit pasa a 6 agentes y `strategist` recomienda `deep-worker`. `install.sh --apply` no borra el `~/.claude/agents/orchestrator.md` ya instalado: se retira a mano. ADR 024. Tests: `test_agentes.sh` (+3).
 
+### Fixed
+
+- **`record.py` ya no pierde la fila cuando el clasificador de auto mode deniega una acción**: el stream-json trae un evento `system/permission_denied` cuyo `message` es texto, `record.py` moría al leerlo y, como `run.sh` sigue sin `set -e`, la tarea quedaba fuera del almacén sin aviso (2 de 23 filas del brazo `off` en la tirada M7). Tests: `test_evals.sh` (evento `system` de texto).
+- **`test_doc_claims` cuenta el n por brazo como `report.py`**: el lift se define sin las filas `tipo: resultado` y el sensor las contaba, así que con la tirada M7 en el almacén `EVAL-CRITERIA.md` no podía cuadrar con los dos. `EVAL-CRITERIA.md` publica la tirada de v1.7.0 y deja la de agosto como registro fechado. Tests: `test_doc_claims.sh` §4.
+
 ## [1.6.1] - 2026-10-28
 
 ### Changed
