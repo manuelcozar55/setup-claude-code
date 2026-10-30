@@ -61,7 +61,9 @@ for line in open(transcript, errors="replace"):
         continue
     if d.get("type") == "result":
         usage = d
-    cont = ((d.get("message") or {}).get("content")) or []
+    # auto mode emite system/permission_denied con message de texto: sin esto la fila se perdia sin aviso
+    msg = d.get("message")
+    cont = ((msg if isinstance(msg, dict) else {}).get("content")) or []
     for blk in cont if isinstance(cont, list) else []:
         if not isinstance(blk, dict) or blk.get("type") != "tool_use":
             continue
