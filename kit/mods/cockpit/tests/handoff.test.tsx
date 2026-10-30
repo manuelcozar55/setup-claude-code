@@ -769,9 +769,22 @@ test('handoff: si la primera línea cabe no se llama al modelo', async ($, on) =
   expect(asked).toHaveLength(0)
 })
 
+test('handoff: el título vale mientras el relleno lo muestre entero, aunque pase de lo pedido', async ($, on) => {
+  // Real haiku reply measured in Debian (30-oct): asked for 160, 1 of 9 came back longer.
+  const LONGER = 'Verificar con comandos de solo lectura que no quedan cambios, ramas de respaldo ni worktrees de statusline-cuenta, y marcar como hecha cada limpieza cuyo conteo sea 0.'
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1000, forkText: siguiente(LONG) })
+  titles(on, () => answered(LONGER))
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(400)
+  expect(r.files[`${EST}/nucleo.md`]).toContain(`## Siguiente acción\n${LONGER}\n${LONG}\n`)
+  expect(seen.fills).toEqual([PREFIX + LONGER + MORE])
+})
+
 for (const [why, answer] of [
   ['dos líneas', () => answered(`${TITLE}\nmás`)],
-  ['pasa de 160', () => answered('t '.repeat(81).trimEnd())],
+  ['pasa de 200', () => answered('t '.repeat(101).trimEnd())],
   ['abre una sección', () => answered('## Pendientes')],
   ['deja un code span abierto', () => answered('Corre `make test')],
   ['vacía', () => answered('  ')],
