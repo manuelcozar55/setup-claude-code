@@ -221,6 +221,23 @@ if echo "$out_i" | grep -qE '^PASS .*statusLine'; then ok; else
   ko "la statusLine que instala el kit no responde en una instalacion limpia (salida: $(echo "$out_i" | grep -i statusline | tr '\n' ' '))"
 fi
 
+# --- caso I3: la statusLine del kit con doctor en un terminal real -> no se cuelga ---
+# `timeout` sin --foreground lanza la statusline en un grupo de procesos de fondo, y la del
+# kit sube por los padres hasta el TTY para hacer `stty -F /dev/pts/N size`: desde el fondo
+# eso es SIGTTOU y se para el grupo entero, timeout incluido, para siempre. Sin TTY (CI,
+# make test) no se ve; por eso doctor corre aqui dentro de un pty con script(1).
+if command -v script >/dev/null 2>&1; then
+  CH_I3="$(install_clean)"; H_I3="$(dirname "$CH_I3")"; mkdir -p "$H_I3/.headroom/logs" "$H_I3/.config"
+  cmd_i3="$(printf 'env -u ANTHROPIC_BASE_URL HOME=%q XDG_CONFIG_HOME=%q CLAUDE_HOME=%q bash %q' \
+            "$H_I3" "$H_I3/.config" "$CH_I3" "$KIT/doctor.sh")"
+  timeout 60 script -qec "$cmd_i3" /dev/null </dev/null >"$H_I3/pty.out" 2>&1; rc_i3=$?
+  if [ "$rc_i3" -ne 124 ] && grep -qE '^PASS .*statusLine' "$H_I3/pty.out"; then ok; else
+    ko "doctor en un terminal real se cuelga en el check de statusLine (rc=$rc_i3; 124 = agoto los 60 s)"
+  fi
+else
+  echo "SKIP: caso I3 (doctor dentro de un pty) sin script(1)"
+fi
+
 # --- caso I2: sin statusLine -> ni FAIL ni WARN ------------------------------
 # Quitarla es una eleccion valida: convertir su ausencia en hallazgo seria ruido.
 jq 'del(.statusLine)' "$CH_I/settings.json" > "$CH_I/s.tmp" && mv "$CH_I/s.tmp" "$CH_I/settings.json"
