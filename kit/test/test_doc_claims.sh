@@ -424,6 +424,9 @@ for l in filas:
         continue
     if not isinstance(r, dict) or str(r.get("excluded") or "").strip():
         continue
+    # El lift se define sobre positiva/negativa (report.py): las de resultado no cuentan en n.
+    if r.get("tipo") == "resultado":
+        continue
     n[r.get("arm")] = n.get(r.get("arm"), 0) + 1
 m = re.search(r"con harness [0-9.]+ \(n=(\d+)\).*?sin harness [0-9.]+ \(n=(\d+)\)", tramo)
 if not m:
@@ -746,6 +749,10 @@ if [ -f "$STORE" ]; then
   # pudiera borrar en silencio, publicarla no costaria nada ni garantizaria nada.
   # (Sin '^excluidas ': su informe no la emite, porque ahi la fila esta contada.)
   for pat in "${LINEAS[@]:1}"; do
+    # Una linea que su informe no emite (SATURADO con 3 mudas de 23) no esta en el
+    # bloque: borrarla tocaria la tirada fechada de mas arriba, no la vigente.
+    awk '/^### La lectura alternativa/ && !on {on=1; next} on && /^##/ {exit} on' "$EVALDOC" \
+      | /usr/bin/grep -Eq "$pat" || continue
     sin_linea "$pat" '^### La lectura alternativa' > "$TMPD/borrada.md"
     n_borradas=$((n_borradas+1))
     if [ -z "$(cifras_eval "$TMPD/borrada.md" "$STORE")" ]; then
