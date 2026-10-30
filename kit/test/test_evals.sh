@@ -174,6 +174,26 @@ print(r['cost_usd'], r['model'], r['input_tokens'], r['harness_sha'], r['result'
 " "$S" 2>/dev/null)
 ck "$got" "0.1234 modelo-x 111 deadbee pass" "record.py extrae coste, modelo y tokens del evento result"
 
+# El clasificador de auto mode emite system/permission_denied con 'message' de
+# texto; record.py moria con AttributeError y la fila se perdia sin aviso.
+"$PY" - "$T" <<'PYEOF'
+import json, os, sys
+T = sys.argv[1]
+res = json.loads(open(os.path.join(T, "conresult.jsonl")).readline())
+sysev = {"type": "system", "subtype": "permission_denied", "message": "Permission denied by auto mode classifier."}
+open(os.path.join(T, "consystem.jsonl"), "w").write(json.dumps(sysev) + "\n" + json.dumps(res) + "\n")
+PYEOF
+S2="$T/store-system.jsonl"; : > "$S2"
+EVAL_TS=2026-01-01T00:00:00Z EVAL_SHA=deadbee \
+  "$PY" "$E/record.py" t1 on 1 pass "$T/consystem.jsonl" "$S2" 2>/dev/null
+rc=$?
+got=$("$PY" -c "
+import json,sys
+r=json.loads(open(sys.argv[1]).readline())
+print(r['cost_usd'], r['model'])
+" "$S2" 2>/dev/null)
+ck "$rc $got" "0 0.1234 modelo-x" "record.py graba la fila aunque un evento system traiga message de texto"
+
 # Un pass, un fail y DOS error: la tasa honesta es 0.50 sobre n=2, no 0.25 sobre 4.
 for spec in "t1 on 2 fail" "t1 on 3 error" "t1 on 4 error"; do
   # shellcheck disable=SC2086
