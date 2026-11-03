@@ -203,7 +203,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 6 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 46 suites falsables | v1.7.1, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 6 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 46 suites falsables | v1.8.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -344,7 +344,7 @@ desatendido que verifica con el comando equivocado es peor que uno que no verifi
 | `/implement` | Ejecuta la spec de principio a fin, sin parar a preguntar. |
 | `/verify` | Ejecuta el oráculo y exige evidencia real. |
 | `/review` | Revisor adversario en contexto limpio, con hallazgos **verificados** antes de aceptarse. |
-| `/retro` | Convierte lo aprendido en conocimiento versionado. |
+| `/retro-repo` | Convierte lo aprendido en conocimiento versionado. |
 
 `/spec` es el que más trabajo ahorra, y existe por una medición concreta: los encargos de
 este repo son bimodales —o una frase o un documento— y **falta el término medio**, una

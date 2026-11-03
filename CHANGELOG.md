@@ -7,6 +7,32 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-03
+
+### Changed
+
+- **El aviso de contexto al 70 % es una orden, no un consejo** (ADR 026, sustituye a la 022): recoge los agentes en vuelo sin lanzar más, cierra la fase con `/handoff` y termina el turno; con `/autonomo on` la sesión sigue sola tras el `/clear`. Medido el 03-nov en 6 sesiones: 16 compactaciones automáticas, todas a mitad de turno, 0 handoffs automáticos del cockpit y 0 vetos. El turno no terminaba nunca, así que el cockpit no llegaba a actuar. `kit/claude/AGENTS.md` declara esa parada válida frente a Never-Stop. Tests: `test_nucleo_nudge.sh`.
+- **`uninstall.sh` restaura y no desinstala**: elige solo entre los backups internos; un ZIP de `scripts/backup.sh` se restaura con `--from`, y su ZIP de seguridad (`~/backups/claude-safety-*.zip`) no cuenta como «el más reciente». Antes, repetir `--apply` devolvía el `settings.json` estropeado con un ok verde. Tests: `test_uninstall.sh`.
+- **El `/retro` de este repo pasa a `/retro-repo`**: chocaba con la skill manual `retro` del kit.
+- `handoff --estado` desde el cockpit tiene 5 s en lugar de 2 (en `/mnt/c` tarda 1,6-1,9 s), con un aviso por sesión si falla.
+
+### Fixed
+
+- **Un aviso de `/handoff` ya no deja la sesión sin handoff automático** (cockpit 0.7.0): el cockpit tomaba cualquier stderr de un guardado correcto como fase `error`, que solo se quitaba a mano. Ahora, con `--json`, los avisos van a `avisos[]` del recibo y stderr queda vacío. El cockpit los muestra y el `/clear` sigue. La fase `error` vuelve a reposo una vez por sesión en el siguiente cierre de turno. Cada cierre de turno sobre el umbral sin handoff deja su motivo y el cwd en el log. Tests: `handoff.test.tsx`, `dock.test.tsx`, `test_nucleo_integridad.sh`.
+- **El instalador recuerda lo que escribió en `CLAUDE.md` y `AGENTS.md`**: guarda su sha256 en `~/.claude/.kit-docs.sha256` y actualiza con backup lo que sigue igual. Al venir de 1.7.x, desde un clon de Git, compara lo instalado con las versiones de la historia del kit. Antes, quien no los había tocado recibía un `*.kit.md` y un `cp` manual en cada versión. Tests: `test_install.sh`.
+- **`doctor.sh` exige los hooks del kit**: daba OK con un `settings.json` vacío. Ahora falla si falta alguno y avisa de los `*.kit.md` pendientes. Tests: `test_doctor.sh`.
+- **`scripts/backup.sh` incluye la memoria de `projects/*/memory`**, y los hooks se copian con fichero temporal y `mv`, sin dejar uno a medias. Las suites que se saltan sin `jq` o `git` lo dicen en el resumen. Tests: `test_uninstall.sh`, `test_install.sh`.
+- **Guards**: un push forzado escrito `$'-f'` ya se lee como `-f` (pasaba sin decisión hacia `main`). `make` cuenta como intérprete de «descarga y ejecuta», y esa regla admite una tubería entre medias. Un borrado recursivo de `~` dentro de `ssh "…"` o `sh -c "…"` ya no pasa `destructive-guard`. Sentinel resuelve los enlaces simbólicos antes de comparar la ruta. `destructive-guard` ya no bloquea la prosa de un heredoc que solo se escribe a un fichero. Tests: `test_guards.sh`.
+- **Estado por sesión**: la ranura de `~` se crea en un paso (`mktemp -d` + `mv -T`); los `SubagentStart` en paralelo perdían eventos. PreCompact desde `~` sin ranura propia ya no copia pendientes del núcleo de otra tarea. `nucleo_indice` no comprueba dos veces cada raíz (1,2 s → 0,75 s con 25). Se limpian ranuras, fotos y raíces de `/tmp` o inexistentes. `nucleo.prev-*` no rota si el contenido no cambia. Tests: `test_sesiones_home.sh`, `test_nucleo_integridad.sh`.
+- **`verify-gate` se da 540 s y declara 600**: con el mismo plazo, un oráculo colgado mataba el hook sin contar el intento. Un check exige el margen. Tests: `test_harness_structure.sh`.
+- **`ENTREGA.md` y `BUILD_ID` citaban 1.6.1** y remitían a un fichero inexistente. Ahora son la guía de esta versión, y `test_doc_claims` falla si citan otra que `VERSION`. `auto-spec` ya no avisa de un hook `rtk` retirado en 1.1.0. Tests: `test_doc_claims.sh`, `test_auto_spec.sh`.
+
+### Removed
+
+- **El veto de `session.compact` del cockpit** (`isVetoed` y sus tres fallos): en máquinas con ajustes gestionados, `cc-plugin-sec-default` despacha el evento por encima de los plugins de usuario y el veto no se ejecutaba nunca.
+- **La columna `rc` de `oracle-log`**: leía `tool_response.exit_code`, que Claude Code no manda (682 filas con rc vacío).
+- **El hook `SessionEnd` `stop-session-summary.sh`**, cuyo log no leía nadie, y `scripts/guards-cpu.sh`.
+
 ## [1.7.1] - 2026-10-30
 
 ### Fixed

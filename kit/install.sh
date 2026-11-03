@@ -629,6 +629,7 @@ echo "==> Capa 2 de secretos (gitleaks pre-commit) es opt-in, por repositorio. A
 echo "       bash $KIT/install.sh --enable-secrets-layer2   # ejecútalo dentro del repo a proteger"
 echo "    o el one-liner manual:  git config core.hooksPath \"$CLAUDE_HOME/hooks/git\""
 echo "==> Verifica:            bash $KIT/doctor.sh"
+echo "==> Reinicia las sesiones abiertas de Claude Code: no recargan el cockpit ni los hooks del kit."
 aviso_claude_md
 avisos_settings "$CLAUDE_HOME/settings.json"
 aviso_path
