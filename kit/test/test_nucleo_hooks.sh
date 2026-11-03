@@ -505,6 +505,13 @@ ok "correcciones: INV-1 sigue intacto debajo" "$(command grep -c 'INV-1 no tocar
 ho --desde "$T/bc4.md" >/dev/null 2>&1
 ok "correcciones: repetir la misma no la duplica" "$(command grep -c 'COR-4' "$HNUC")" 1
 ok "rotación: como mucho 3 nucleo.prev-*" "$(nent "$HR/.claude/estado" -name 'nucleo.prev-*.md')" 3
+# Un borrador que devuelve la sección completa (copias literales, con otra sangría) y una corrección nueva: nada se pierde ni
+# se duplica. La cuenta del presupuesto del cockpit descuenta esas copias porque el CLI no las añade.
+HI=$T/hoi; mkrepo "$HI"; mkdir -p "$HI/.claude/estado"
+printf '# Estado\n## Objetivo\nOBJ-I\n## Invariantes\n- INV-A no tocar A\n- INV-B no tocar B\n## Paso actual\nviejo\n' >"$HI/.claude/estado/nucleo.md"
+printf '## Invariantes\n- INV-A no tocar A  \n  - INV-B no tocar B\n- Corrección 2026-11-03: «COR-NUEVA»\n## Paso actual\nnuevo\n' >"$T/b-completa.md"
+(cd "$HI" && bash "$BIN/handoff" --desde "$T/b-completa.md" >/dev/null 2>&1); RC=$?
+ok "invariantes: la sección completa devuelta no duplica copias literales y añade la corrección nueva" "$RC,$(command grep -c 'INV-A' "$HI/.claude/estado/nucleo.md"),$(command grep -c 'INV-B' "$HI/.claude/estado/nucleo.md"),$(command grep -c 'COR-NUEVA' "$HI/.claude/estado/nucleo.md"),$(awk '/^## Invariantes/{d=1;next} /^## /{d=0} d && NF' "$HI/.claude/estado/nucleo.md" | tail -n 1 | command grep -c COR-NUEVA)" "0,1,1,1,1"
 
 # -- --desde: rc de oraculo plegado en «Comandos de verificación» --
 printf '2026-10-19T10:00:00Z\t1\tmake test\n2026-10-19T10:01:00Z\t5\tzzz-nuevo\n' >"$HR/.claude/estado/verificaciones.log"
