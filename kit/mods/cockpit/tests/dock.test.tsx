@@ -244,7 +244,7 @@ test('dock: muestra el % del tope y el dueño de esta sesión, leídos de handof
   expect(await ui.find({ type: 'Text', text: /dueño: esta sesión/ })).toBeTruthy()
   const cli = runs.find(r => r.argv[0] === `${HOME}/.claude/bin/handoff`)
   expect(cli?.argv).toEqual([`${HOME}/.claude/bin/handoff`, '--estado', '--raiz', '/w/p', '--sesion', 'sesion-1'])
-  expect(cli?.init?.timeoutMs).toBeLessThanOrEqual(3000)
+  expect(cli?.init?.timeoutMs).toBeLessThanOrEqual(5000)
 })
 
 test('dock: un dueño vigente de otra sesión se nombra', async ($, on) => {

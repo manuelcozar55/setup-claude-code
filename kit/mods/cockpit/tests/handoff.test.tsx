@@ -349,7 +349,7 @@ function auto(
   on: Parameters<TestBody>[1],
   o: { tokens: number; window?: number; agents?: { id: string; status: string }[]; usageFailsAfter?: number; forkText?: string | ((prompt: string) => string); fill?: { isFilled: boolean; refusal?: 'dialog' } | 'throws'; clearFails?: boolean; draft?: string | (() => string); beforeFork?: () => Promise<void>; afterClear?: () => Promise<void> },
 ) {
-  const seen = { forks: 0, cleared: 0, fills: [] as string[], toasts: [] as string[], usageCalls: 0 }
+  const seen = { forks: 0, cleared: 0, fills: [] as string[], toasts: [] as string[], logs: [] as string[], usageCalls: 0 }
   on('session.usage', () => {
     if (o.usageFailsAfter !== undefined && ++seen.usageCalls > o.usageFailsAfter) throw new Error('usage caído')
     return {
@@ -386,9 +386,12 @@ function auto(
   })
   on('turn.complete', (_, e) => ({ text: e.answer }) as never)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
-  on('session.compact', () => ({ messages: [SUMMARY] }) as never)
   on('ui.toast', (_, e) => {
     seen.toasts.push(e.text)
+    return { value: undefined } as never
+  })
+  on('ui.log', (_, e) => {
+    seen.logs.push(e.text)
     return { value: undefined } as never
   })
   return seen
@@ -486,73 +489,119 @@ test('handoff automático: si empieza otro turno entre el handoff y el clear, no
   expect(await ui.find({ text: /actividad o texto nuevo/ })).toBeTruthy()
 })
 
-const SUMMARY = { role: 'user' as const, text: 'resumen', toolUses: [] }
-const COMPACT = { trigger: 'auto' as const, messages: [SUMMARY] }
+const COMPACT = { trigger: 'auto' as const, messages: [{ role: 'user' as const, text: 'resumen', toolUses: [] }] }
 
-test('veto: la compactación auto bajo el techo se salta, y el handoff dispara aunque el % sea bajo', async ($, on) => {
+test('sin veto: la compactación auto sigue su curso aunque el contexto esté bajo el techo, y no hay handoff por ella', async ($, on) => {
   const clock = mock.clock(on, { now: 10_000 })
   const seen = auto(on, { tokens: 130_000 })
+  on('session.compact', () => ({ messages: COMPACT.messages }) as never)
   repo(on, { [`${EST}/nucleo.md`]: PREV })
-  const res = await $.session.compact(COMPACT as never)
-  expect(res.skip).toMatch(/130K.*270K/)
+  expect((await $.session.compact(COMPACT as never)).skip).toBeUndefined()
+  await clock.advance(800)
   expect(seen.forks).toBe(0)
-  await $.turn.complete(DONE_TURN)
-  await clock.advance(800)
-  expect(seen.forks).toBe(1)
 })
 
-test('veto: sobre el techo (1,5 × el umbral) la compactación sigue su curso', async ($, on) => {
-  mock.clock(on, { now: 10_000 })
-  auto(on, { tokens: 280_000 })
-  repo(on, { [`${EST}/nucleo.md`]: PREV })
-  expect((await $.session.compact(COMPACT as never)).skip).toBeUndefined()
-})
-
-test('veto: el techo no pasa de la mitad de la ventana real del modelo', async ($, on) => {
-  mock.clock(on, { now: 10_000 })
-  auto(on, { tokens: 110_000, window: 200_000 })
-  repo(on, { [`${EST}/nucleo.md`]: PREV })
-  expect((await $.session.compact(COMPACT as never)).skip).toBeUndefined()
-})
-
-test('veto: no se veta a un subagente, ni con off, ni en $HOME', async ($, on) => {
-  mock.clock(on, { now: 10_000 })
-  auto(on, { tokens: 130_000 })
-  repo(on, { [`${EST}/nucleo.md`]: PREV })
-  expect((await $.session.compact({ ...COMPACT, agentId: 'a1' } as never)).skip).toBeUndefined()
-})
-
-test('veto: no se veta con off', async ($, on) => {
-  mock.clock(on, { now: 10_000 })
-  auto(on, { tokens: 130_000 })
-  repo(on, { [`${EST}/nucleo.md`]: PREV }, { env: 'off' })
-  expect((await $.session.compact(COMPACT as never)).skip).toBeUndefined()
-})
-
-test('veto: no se veta en $HOME', async ($, on) => {
-  mock.clock(on, { now: 10_000 })
-  auto(on, { tokens: 130_000 })
-  repo(on, {}, { isRepo: false, cwd: '/h', home: '/h' })
-  expect((await $.session.compact(COMPACT as never)).skip).toBeUndefined()
-})
-
-test('veto: si la lectura del contexto falla, compacta en vez de vetar con el dato del turno anterior', async ($, on) => {
-  const clock = mock.clock(on, { now: 10_000 })
-  auto(on, { tokens: 100_000, usageFailsAfter: 1 })
-  repo(on, { [`${EST}/nucleo.md`]: PREV })
-  await $.turn.complete(DONE_TURN)
-  await clock.advance(800)
-  expect((await $.session.compact(COMPACT as never)).skip).toBeUndefined()
-})
-
-test('veto: con el handoff en error no se veta, porque el handoff ya no llegaría', async ($, on) => {
-  const clock = mock.clock(on, { now: 10_000 })
+test('handoff automático: la fase error no se pega una vez; tras el segundo fallo se queda (cada intento es un fork)', async ($, on) => {
+  const clock = mock.clock(on)
   const seen = auto(on, { tokens: 130_000, forkText: 'No puedo.' })
   repo(on, { [`${EST}/nucleo.md`]: PREV })
   await $.turn.complete(DONE_TURN)
   await clock.advance(800)
   expect(seen.forks).toBe(1)
-  expect((await $.session.compact(COMPACT as never)).skip).toBeUndefined()
+  await clock.advance(800)
+  expect(seen.forks).toBe(1)
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.forks).toBe(2)
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.forks).toBe(2)
+})
+
+test('handoff automático: un aviso en el recibo (modo nucleo) no es error: limpia y lo muestra', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000 })
+  repo(on, { [`${EST}/nucleo.md`]: PREV }, { avisos: ['3 omitidas por tope', '2 cierre(s) sin comando de verificación'] })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(400)
+  await clock.advance(400)
+  expect(seen.cleared).toBe(1)
+  expect(seen.toasts.some(t => t.includes('omitidas por tope') && t.includes('sin comando'))).toBe(true)
+})
+
+test('handoff automático: un CLI viejo con el aviso por stderr y rc 0 tampoco es error', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000 })
+  repo(on, { [`${EST}/nucleo.md`]: PREV }, { stderr: 'handoff: 3 omitidas por tope' })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(400)
+  await clock.advance(400)
+  expect(seen.cleared).toBe(1)
+  expect(seen.toasts.some(t => t.includes('omitidas por tope'))).toBe(true)
+})
+
+test('handoff --estado: plazo de 5 s', async ($, on) => {
+  auto(on, { tokens: 1 })
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  const estado = r.runs.filter(x => x.argv[1] === '--estado') as { init?: { timeoutMs?: number } }[]
+  expect(estado.length).toBeGreaterThan(0)
+  expect(estado.every(x => x.init?.timeoutMs === 5000)).toBe(true)
+})
+
+test('handoff --estado: si falla, un solo toast por sesión', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  repo(on, { [`${EST}/nucleo.md`]: PREV }, { stateFails: true })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(50)
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(50)
+  expect(seen.toasts.filter(t => t.includes('Continuidad degradada'))).toHaveLength(1)
+})
+
+test('handoff --estado: «no hay proyecto» no lanza toast', async ($, on) => {
+  const seen = auto(on, { tokens: 1 })
+  repo(on, {}, { isRepo: false, cwd: '/h', home: '/h' })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  expect(seen.toasts.filter(t => t.includes('Continuidad degradada'))).toHaveLength(0)
+})
+
+test('log: cada cierre de turno sobre el umbral sin handoff deja su motivo', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000, agents: [{ id: 'a1', status: 'running' }] })
+  repo(on, { [`${EST}/nucleo.md`]: PREV })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.logs).toHaveLength(1)
+  expect(seen.logs[0]).toContain('agentes vivos')
+})
+
+test('log: sin proyecto', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000 })
+  repo(on, {}, { isRepo: false, cwd: '/h', home: '/h' })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.logs.map(l => l.includes('sin proyecto'))).toEqual([true])
+})
+
+test('log: con el estado ilegible lo dice', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000 })
+  repo(on, { [`${EST}/nucleo.md`]: PREV }, { stateFails: true })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.logs.some(l => l.includes('handoff --estado'))).toBe(true)
+})
+
+test('log: bajo el umbral calla', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1000 })
+  repo(on, { [`${EST}/nucleo.md`]: PREV }, { stateFails: true })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.logs).toHaveLength(0)
 })
 
 test('/nueva: con un turno en marcha no archiva ni limpia, y lo dice', async ($, on) => {
@@ -962,14 +1011,15 @@ test('UI: si /clear falla dice que lo escribas y luego el texto', async ($, on) 
 })
 
 
-test('rc0 con aviso conserva el contexto y muestra el recorte', async ($, on) => {
+test('rc0 con aviso por stderr (CLI viejo) guarda, limpia y muestra el recorte', async ($, on) => {
   const clock = mock.clock(on)
   const seen = auto(on, { tokens: 1 })
   repo(on, {}, { stderr: 'Aviso: contenido recortado' })
   const res = await $.command.run({ ...RUN, command: 'handoff' })
   await clock.advance(800)
-  expect(res.text).toContain('contenido recortado')
-  expect(seen.cleared).toBe(0)
+  expect(res.text).toContain('en marcha')
+  expect(seen.toasts.some(x => x.includes('contenido recortado'))).toBe(true)
+  expect(seen.cleared).toBe(1)
 })
 
 test('dueño ajeno rc5 no reintenta ni limpia', async ($, on) => {

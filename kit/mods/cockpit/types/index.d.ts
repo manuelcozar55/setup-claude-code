@@ -51,7 +51,6 @@ declare module 'claude-code' {
       continuity: string
       isMissionOpen: boolean
       isAutoQueued: boolean
-      isVetoed: boolean
     }
   }
 }

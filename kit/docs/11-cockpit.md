@@ -13,7 +13,7 @@
 
 ## Cómo se carga
 
-La versión 1.7.1 del kit incluye cockpit 0.6.3.
+La versión 1.8.0 del kit incluye cockpit 0.7.0.
 `scripts/scc.sh` carga la copia de tu checkout mediante `--plugin-dir`, sin instalar
 nada; las órdenes de marketplace de abajo instalan esa misma versión desde el tag
 publicado, para todas tus sesiones. En un paquete transferido, `VERSION` identifica
@@ -117,11 +117,11 @@ Por defecto rellena el prompt (`$.prompt.fill`) y tú pulsas Enter. Con `/autono
 
 - En un subagente: solo cuenta el bucle principal.
 - Con subagentes o teammates sin terminar.
-- Con un handoff en curso o en error.
+- Con un handoff en curso. Un handoff en error se muestra y vuelve a reposo al siguiente cierre de turno, que ya puede intentarlo otra vez.
 - Sin proyecto ni ranura HOME confirmada por el CLI. En HOME la ranura del proceso permite los mismos controles que un proyecto.
 - Si empieza otro turno entre el guardado y el `/clear`: no limpia, deja el documento guardado y avisa.
 
-**Veto de compactación.** Si la autocompactación salta a mitad de turno (`session.compact` con `trigger` auto), el mod la pospone para que el handoff llegue al cerrar el turno, que entonces lo dispara aunque no se haya llegado al umbral. El techo es `min(1,5 × límite, 0,5 × ventana real del modelo)`. Pasado el techo, compacta como siempre. En ventanas de 200k el techo queda por debajo del límite y el veto no actúa. Cede también en subagentes, con `off`, sin proyecto ni ranura, con el handoff en error y si la lectura del contexto falla.
+**Sin veto de compactación** (desde 0.7.0, ADR 026). En máquinas con ajustes gestionados el plugin integrado `cc-plugin-sec-default` pasa `session.compact` por encima de los plugins de usuario, así que el veto nunca corría. Si el contexto llega al límite a mitad de turno, compacta y actúa la red de `pre-compact.sh` y `session-start-compact`; el aviso del 70 % pide cerrar la fase y terminar el turno para que el handoff llegue antes. Cada cierre de turno por encima del umbral sin handoff deja su motivo en el log de depuración del runtime.
 
 ## `/nueva`
 
@@ -203,7 +203,7 @@ muchos adjuntos tras el último `assistant`, no lo veía; ahora amplía a 600 si
   Una compactación manual completó `PreCompact`, y el modelo conservó Objetivo e
   Invariantes sin leer archivos después. Esto no prueba todas las versiones o políticas
   de empresa: un plugin gestionado puede decidir el orden de los interceptores.
-- **Sin verificar en una sesión interactiva** (solo con el arnés de tests): el `/clear` lanzado desde el temporizador tras un turno, el relleno del prompt después de él, el comportamiento del motor tras varios vetos de compactación seguidos y el coste del fork del handoff al 70 % de contexto.
+- **Sin verificar en una sesión interactiva** (solo con el arnés de tests): el `/clear` lanzado desde el temporizador tras un turno, el relleno del prompt después de él y el coste del fork del handoff al 70 % de contexto.
 - **El clic sobre el dock solo llega en pantalla completa**: es donde el terminal reporta clics (y donde existe el dock lateral). Con el pane encajado sobre el prompt, enfócalo (`ctrl+x tab`) y usa la tecla `m` o Tab + Enter. En terminales estrechos el Dock pasa a ese panel; dale suficiente altura o ciérralo para dejar espacio a la conversación y a las líneas de la barra.
 - El redactor de secretos es un último recurso parcial; revisa el documento antes de compartirlo.
 - **Permisos del borrador temporal**: la API `$.fs.write(path, text)` no admite modo; el borrador se crea con `mktemp` (600) y se vuelve a fijar con `chmod 600` antes de escribirlo. El permiso del `nucleo.md` final es cosa del CLI.
