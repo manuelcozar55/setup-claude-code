@@ -74,8 +74,18 @@ ck "$apply_rc" "0" "--apply sale con exit 0"
 after_restore="$(cat "$CLAUDE_HOME/.gitleaks.toml")"
 ck "$([ "$expected_restore" = "$after_restore" ] && echo mismo || echo distinto)" "mismo" \
   "--apply restaura el .gitleaks.toml del backup interno mas reciente (contenido MODIFICADO)"
-ck "$(find "$BACKUP_DIR" -maxdepth 1 -name 'claude-state-*.zip' 2>/dev/null | wc -l | tr -d ' ')" "1" \
+ck "$(find "$BACKUP_DIR" -maxdepth 1 -name 'claude-safety-*.zip' 2>/dev/null | wc -l | tr -d ' ')" "1" \
   "--apply hizo primero su propio backup de seguridad (ZIP en BACKUP_DIR)"
+ck "$(find "$BACKUP_DIR" -maxdepth 1 -name 'claude-state-*.zip' 2>/dev/null | wc -l | tr -d ' ')" "0" \
+  "el ZIP de seguridad no usa el nombre de los backups periodicos (no compite con ellos)"
+
+# Doble --apply: la 2a ejecucion no debe restaurar el ZIP de seguridad de la 1a (estado ANTERIOR a la restauracion).
+echo "ESTROPEADO" > "$CLAUDE_HOME/.gitleaks.toml"
+bash "$UNINSTALL" --apply >/dev/null 2>&1
+ck "$([ "$(cat "$CLAUDE_HOME/.gitleaks.toml")" = "$expected_restore" ] && echo mismo || echo distinto)" "mismo" \
+  "un segundo --apply restaura otra vez el backup interno, no el ZIP de seguridad del primero"
+ck "$(bash "$UNINSTALL" --dry-run 2>&1 | grep -c 'backup interno de install.sh')" "1" \
+  "--dry-run sin --from elige un backup interno aunque haya ZIP mas recientes"
 rm -f "/tmp/uninstall_apply_out.$$.log"
 
 # ============================================ Caso 4: ZIP de scripts/backup.sh
@@ -96,20 +106,28 @@ date() {
 export -f date
 ck "$(date -u +%Y%m%dT%H%M%SZ)" "20000101T000000Z" "el caso ZIP fija ambos backups al mismo segundo"
 bash "$REPO/scripts/backup.sh" >/dev/null 2>&1
+ZIP1="$(find "$BACKUP_DIR" -maxdepth 1 -name 'claude-state-*.zip' | head -1)"
 echo "SERA_SOBREESCRITO" >> "$CLAUDE_HOME/CLAUDE.md"
 
-out_dry_zip="$(bash "$UNINSTALL" --dry-run 2>&1)"
+set +e
+out_nofrom="$(bash "$UNINSTALL" --apply 2>&1)"; rc_nofrom=$?
+set -e
+ck "$rc_nofrom" "1" "sin backup interno, --apply NO restaura un ZIP por ser el mas reciente"
+ck "$(echo "$out_nofrom" | grep -c -- '--from')" "1" "el error indica --from FICHERO"
+ck "$(grep -c SERA_SOBREESCRITO "$CLAUDE_HOME/CLAUDE.md" || true)" "1" "esa negativa no toco nada"
+
+out_dry_zip="$(bash "$UNINSTALL" --dry-run --from "$ZIP1" 2>&1)"
 ck "$(echo "$out_dry_zip" | grep -qc '^zip$\|zip de scripts/backup.sh\|snapshot ZIP' && echo y || echo n)" "y" \
   "--dry-run identifica el origen ZIP cuando es el backup mas reciente"
 ck "$(grep -qc SERA_SOBREESCRITO "$CLAUDE_HOME/CLAUDE.md" && echo y || echo n)" "y" "--dry-run (con ZIP) no toco el fichero real"
 
 set +e
-bash "$UNINSTALL" --apply >/dev/null 2>&1
+bash "$UNINSTALL" --apply --from "$ZIP1" >/dev/null 2>&1
 apply_zip_rc=$?
 set -e
 unset -f date
 ck "$apply_zip_rc" "0" "--apply (ZIP) sale con exit 0 aunque ambos backups comparten reloj"
-ck "$(find "$BACKUP_DIR" -maxdepth 1 -name 'claude-state-20000101T000000Z-*.zip' | wc -l | tr -d ' ')" "2" \
+ck "$(find "$BACKUP_DIR" -maxdepth 1 -name 'claude-s*-20000101T000000Z-*.zip' | wc -l | tr -d ' ')" "2" \
   "--apply conserva dos backups distintos creados en el mismo segundo"
 ck "$(grep -qc SERA_SOBREESCRITO "$CLAUDE_HOME/CLAUDE.md" 2>/dev/null; echo $?)" "1" \
   "--apply (ZIP) restauro sobre el cambio no respaldado"
@@ -129,7 +147,7 @@ echo "0000000000000000000000000000000000000000000000000000000000000  claude/CLAU
 ( cd "$stage" && zip -qr "$BACKUP_DIR/claude-state-bad.zip" claude-state-bad )
 
 set +e
-out_bad="$(bash "$UNINSTALL" --dry-run 2>&1)"; rc_bad=$?
+out_bad="$(bash "$UNINSTALL" --dry-run --from "$BACKUP_DIR/claude-state-bad.zip" 2>&1)"; rc_bad=$?
 set -e
 ck "$rc_bad" "1" "ZIP con checksum invalido: uninstall.sh NO restaura, sale con exit distinto de 0"
 ck "$(echo "$out_bad" | grep -qic 'checksum' && echo y || echo n)" "y" "el motivo del rechazo se explica (checksum)"
@@ -155,10 +173,31 @@ printf '{"proyectos":"los del backup"}\n' > "$stage_json/claude.json"
 mv "$tmp/manifest-json" "$stage_json/MANIFEST.sha256"
 ( cd "$tmp/stage-json" && zip -qr "$BACKUP_DIR/claude-state-json.zip" claude-state-json )
 
-bash "$UNINSTALL" --apply >/dev/null 2>&1
+bash "$UNINSTALL" --apply --from "$BACKUP_DIR/claude-state-json.zip" >/dev/null 2>&1
 ck "$(sha256sum "$H4/.claude.json" | cut -d' ' -f1)" "$json_before" \
   "--apply con un CLAUDE_HOME temporal NO toca el .claude.json de \$HOME"
 ck "$(cat "$tmp/.claude.json" 2>/dev/null || echo ausente)" '{"proyectos":"los del backup"}' \
   "--apply restaura el claude.json del backup al lado de \$CLAUDE_HOME"
+
+
+# H8: la memoria (projects/*/memory/) viaja en el ZIP aunque projects/ se excluya; los transcripts no.
+H5="$(setup_home home5)"
+export HOME="$H5" CLAUDE_HOME="$H5/.claude" BACKUP_DIR="$H5/backups"
+mkdir -p "$CLAUDE_HOME/projects/-x/memory" "$CLAUDE_HOME/projects/-x/sesion"
+echo "recuerdo" > "$CLAUDE_HOME/projects/-x/memory/a.md"
+echo "{}" > "$CLAUDE_HOME/projects/-x/abc.jsonl"
+echo "x" > "$CLAUDE_HOME/projects/-x/sesion/t.txt"
+echo "cfg" > "$CLAUDE_HOME/settings.json"
+bash "$REPO/scripts/backup.sh" >/dev/null 2>&1
+Z5="$(find "$BACKUP_DIR" -maxdepth 1 -name 'claude-state-*.zip' | head -1)"
+ck "$(unzip -Z1 "$Z5" | grep -c 'claude/projects/-x/memory/a.md$')" "1" "H8: backup.sh incluye projects/*/memory/"
+ck "$(unzip -Z1 "$Z5" | grep -c 'abc.jsonl$\|sesion/t.txt$')" "0" "H8: los transcripts siguen fuera"
+
+# H19c: un enlace simbolico a directorio (skill proyectada) se guarda como enlace, no como copia del repo ajeno.
+mkdir -p "$tmp/repo-ajeno" "$CLAUDE_HOME/skills"; echo s > "$tmp/repo-ajeno/SKILL.md"
+ln -s "$tmp/repo-ajeno" "$CLAUDE_HOME/skills/proyectada"
+bash "$REPO/scripts/backup.sh" >/dev/null 2>&1
+Z6="$(find "$BACKUP_DIR" -maxdepth 1 -name 'claude-state-*.zip' -newer "$Z5" | head -1)"
+ck "$(unzip -Z1 "$Z6" | grep -c 'skills/proyectada/SKILL.md$')" "0" "H19c: zip -y guarda el enlace, no el contenido del directorio apuntado"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

@@ -64,6 +64,7 @@ if command -v git >/dev/null 2>&1; then
   check "$rc" "1" "el mismo hallazgo en un fichero TRACKEADO si falla (la exclusion no es un agujero)"
 else
   echo "skip - git ausente: no se prueba la enumeracion consciente de git"
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: enumeracion consciente de git (test_scan_secrets.sh): git ausente" >> "$SCC_SKIP_LOG"
 fi
 
 echo "== $pass passed, $fail failed =="

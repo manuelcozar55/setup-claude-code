@@ -9,6 +9,7 @@
 #   CLAUDE_HOME  (def. $HOME/.claude)   BACKUP_DIR  (def. $HOME/backups)
 #   BUCLE_DIR    (def. $HOME/ai-mastery/bucle)
 #   CLAUDE_JSON  (def. $HOME/.claude.json)
+#   BACKUP_PREFIX (def. claude-state)  prefijo del ZIP; uninstall.sh usa otro para su copia de seguridad
 set -euo pipefail
 
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
@@ -95,7 +96,7 @@ command -v unzip >/dev/null 2>&1 || die "falta 'unzip'"
 [ -d "$CLAUDE_HOME" ] || die "no existe CLAUDE_HOME: $CLAUDE_HOME"
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo backup)-$$-${RANDOM:-0}"
-NAME="claude-state-${STAMP}"
+NAME="${BACKUP_PREFIX:-claude-state}-${STAMP}"
 mkdir -p "$BACKUP_DIR"
 ZIP="$BACKUP_DIR/${NAME}.zip"
 [ -e "$ZIP" ] && die "ya existe $ZIP"
@@ -109,6 +110,13 @@ echo "== recopilando"
 TAR_EX=()
 for e in "${EXCLUDES[@]}"; do TAR_EX+=( --exclude="./$e" ); done
 tar -C "$CLAUDE_HOME" -cf - "${TAR_EX[@]}" . | tar -C "$ROOT/claude" -xf -
+# projects/ se excluye entero (transcripts), pero projects/*/memory/ es la memoria de la persona y no se regenera.
+for m in "$CLAUDE_HOME"/projects/*/memory; do
+  [ -d "$m" ] || continue
+  rel="${m#"$CLAUDE_HOME"/}"
+  mkdir -p "$ROOT/claude/$rel"
+  tar -C "$m" -cf - . | tar -C "$ROOT/claude/$rel" -xf -
+done
 inf "CLAUDE_HOME      -> claude/            ($(du -sm "$ROOT/claude" | cut -f1) MB)"
 
 if [ -d "$BUCLE_DIR" ]; then
@@ -132,7 +140,7 @@ FILES=$(grep -c . < "$ROOT/MANIFEST.sha256")
 ok "manifiesto: $FILES ficheros"
 
 echo "== empaquetando"
-( cd "$STAGE" && zip -qr "$ZIP" "$NAME" )
+( cd "$STAGE" && zip -qry "$ZIP" "$NAME" )
 ok "$ZIP ($(du -sm "$ZIP" | cut -f1) MB)"
 
 echo "== verificando"
@@ -141,4 +149,4 @@ verify_zip "$ZIP"
 echo
 echo "BACKUP OK: $ZIP"
 echo "  ficheros: $FILES"
-echo "  excluido (regenerable o sensible): ${EXCLUDES[*]}"
+echo "  excluido (regenerable o sensible): ${EXCLUDES[*]} (projects/*/memory/ SI se incluye)"

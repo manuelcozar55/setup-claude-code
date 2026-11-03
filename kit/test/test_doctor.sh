@@ -371,4 +371,30 @@ ck "$(echo "$out" | grep -c '^WARN · .*nucleo.md pesa 7000 B (> NUCLEO_TOPE 650
 ck "$rc" "0" "v1.6: el WARN de nucleo.md no es FAIL"
 rm -r "$CLAUDE_HOME/projects"
 
+# H7: con settings.json sin los hooks del kit, doctor no puede salir verde (antes: "OK (0 FAIL)" con {}).
+CH_SAVE="$CLAUDE_HOME"; export CLAUDE_HOME="$tmp/home7/.claude"; mkdir -p "$tmp/home7"
+HOME="$tmp/home7" bash "$KIT/install.sh" >/dev/null 2>&1
+cp "$CLAUDE_HOME/settings.json" "$tmp/settings7.bak"
+printf '{}\n' > "$CLAUDE_HOME/settings.json"
+set +e; out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home7" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; rc=$?; set -e
+ck "$rc" "1" "H7: doctor FAIL con settings.json = {}"
+ck "$(echo "$out" | grep -c '^FAIL · settings.json no cablea hook.*block-dangerous-commands.sh')" "1" "H7: el FAIL nombra el guard que falta"
+jq '(.hooks.PreToolUse) |= map(.hooks |= map(select(.command | test("block-dangerous") | not)))' "$tmp/settings7.bak" > "$CLAUDE_HOME/settings.json"
+set +e; out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home7" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; rc=$?; set -e
+ck "$rc" "1" "H7: doctor FAIL si solo falta un guard de Bash"
+cp "$tmp/settings7.bak" "$CLAUDE_HOME/settings.json"
+set +e; out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home7" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; rc=$?; set -e
+ck "$rc" "0" "H7: con el settings.json del kit doctor vuelve a pasar"
+
+# H3: un *.kit.md pendiente es WARN (no FAIL); si ya es identico a tu fichero, no avisa.
+printf '# mio\n%s\n' '@AGENTS.md' > "$CLAUDE_HOME/CLAUDE.md"
+cp "$KIT/claude/CLAUDE.md" "$CLAUDE_HOME/CLAUDE.kit.md"
+set +e; out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home7" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; rc=$?; set -e
+ck "$(echo "$out" | grep -c '^WARN · CLAUDE.kit.md pendiente')" "1" "H3: *.kit.md pendiente -> WARN"
+ck "$rc" "0" "H3: el WARN de *.kit.md no es FAIL"
+cp "$CLAUDE_HOME/CLAUDE.kit.md" "$CLAUDE_HOME/CLAUDE.md"
+set +e; out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home7" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; set -e
+ck "$(echo "$out" | grep -c 'kit.md pendiente')" "0" "H3: tras aceptar la version del kit ya no avisa"
+export CLAUDE_HOME="$CH_SAVE"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

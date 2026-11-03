@@ -77,6 +77,17 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
     fi
   done <<< "$refs"
   [ "$miss" -eq 0 ] && pass "hooks referenciados presentes y ejecutables  (fuente: jq .hooks + test -e/-x)"
+  # Lo anterior solo mira lo que settings.json YA cita: con {} no hay nada que fallar y salia verde sin un solo guard.
+  # Se compara al reves: todo script que cablea la plantilla del kit debe estar cableado en el settings.json vivo.
+  # shellcheck disable=SC2016 # filtro jq: el $k es de jq
+  faltan="$(jq -r --slurpfile k "$KIT/claude/settings.json" '
+      def scripts: [.hooks // {} | .. | .command? | strings | scan("\\.claude/(?:hooks|sentinel)/[^ \"\u0027]+") | sub(".*/"; "")] | unique;
+      ($k[0] | scripts) - scripts | join(" ")' "$CLAUDE_HOME/settings.json" 2>/dev/null)"
+  if [ -n "$faltan" ]; then
+    fail "settings.json no cablea hook(s) del kit: $faltan. Sin ellos no hay guard. Reinstala (install.sh) o restaura tu settings.json"
+  else
+    pass "settings.json cablea todos los hooks del kit  (fuente: jq .hooks contra kit/claude/settings.json)"
+  fi
   # install.sh conserva los hooks que no son del kit (fusion por propietario). Se listan para que uno
   # tuyo muerto o duplicado se vea: el 21-oct la reinstalacion se llevo un sensor y nada lo dijo.
   ajenos="$(jq -r --slurpfile k "$KIT/claude/settings.json" '
@@ -110,6 +121,13 @@ if [ -f "$CLAUDE_HOME/CLAUDE.md" ] && command grep -qE '@[^[:space:]]*AGENTS\.md
 else
   warn "tu CLAUDE.md no contiene @AGENTS.md: añadelo (la plantilla del kit esta en CLAUDE.kit.md)"
 fi
+
+# Un *.kit.md pendiente: el kit ha cambiado y tu CLAUDE.md/AGENTS.md no lo recibio (install.sh no pisa lo que no sabe que es suyo).
+for n in CLAUDE AGENTS; do
+  if [ -f "$CLAUDE_HOME/$n.kit.md" ] && ! cmp -s "$CLAUDE_HOME/$n.kit.md" "$CLAUDE_HOME/$n.md"; then
+    warn "$n.kit.md pendiente: tu $n.md difiere de la version del kit. Compara (diff \"$CLAUDE_HOME/$n.md\" \"$CLAUDE_HOME/$n.kit.md\"); si no lo has editado: cp \"$CLAUDE_HOME/$n.kit.md\" \"$CLAUDE_HOME/$n.md\""
+  fi
+done
 
 # 2c. Deriva entre lo que el kit trae y lo desplegado. Es WARN y no FAIL: personalizar un
 # hook es legitimo. Pero si divergen y no lo sabes, el kit deja de reproducir tu maquina, y

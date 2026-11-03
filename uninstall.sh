@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# uninstall.sh — restaura el backup mas reciente de Claude Code, soportando
-# los dos origenes que este repo produce: los backups internos incrementales
-# de kit/install.sh ($CLAUDE_HOME/backups/<STAMP>/, solo los ficheros que una
-# reinstalacion sobreescribio) y los snapshots completos en ZIP de
-# scripts/backup.sh ($BACKUP_DIR/claude-state-*.zip, con MANIFEST.sha256 y
-# una raiz claude-state-<ts>/claude/...).
+# uninstall.sh — RESTAURA un backup de Claude Code (no desinstala el kit: sus
+# ficheros se quedan en $CLAUDE_HOME; solo se devuelve lo que la instalacion
+# sobreescribio). Soporta los dos origenes que este repo produce: los backups
+# internos incrementales de kit/install.sh ($CLAUDE_HOME/backups/<STAMP>/, solo
+# los ficheros que una reinstalacion sobreescribio) y los snapshots completos en
+# ZIP de scripts/backup.sh (con MANIFEST.sha256 y una raiz claude-state-<ts>/claude/...).
+# Sin --from solo se elige entre los backups internos: un ZIP es un snapshot
+# completo, y restaurarlo por ser "el mas reciente" pisaria todo con un estado posterior.
 #
 # Por defecto NO TOCA NADA (--dry-run): solo muestra que se restauraria.
 # Restaurar de verdad exige --apply, y antes de escribir nada hace su propio
@@ -15,6 +17,8 @@
 #   uninstall.sh --list       enumera los backups disponibles, sin restaurar
 #   uninstall.sh --dry-run    idem que sin argumentos, explicito
 #   uninstall.sh --apply      restaura de verdad (con backup previo de seguridad)
+#   uninstall.sh [--dry-run|--apply] --from FICHERO   restaura ese ZIP (o ese directorio de backup)
+#   uninstall.sh --help       esta ayuda
 #
 # Overrides (igual que scripts/backup.sh):
 #   CLAUDE_HOME  (def. $HOME/.claude)   BACKUP_DIR  (def. $HOME/backups)
@@ -52,14 +56,19 @@ fmt_date() {
   date -d "@$epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r "$epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "epoch:$epoch"
 }
 
-MODE="dry-run"
-case "${1:-}" in
-  --list)    MODE="list" ;;
-  --dry-run) MODE="dry-run" ;;
-  --apply)   MODE="apply" ;;
-  "")        : ;;
-  *) die "uso: $0 [--list|--dry-run|--apply]" ;;
-esac
+usage() { echo "uso: $0 [--list|--dry-run|--apply] [--from FICHERO]   (restaura un backup; no desinstala el kit)"; }
+MODE="dry-run"; FROM=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --list)    MODE="list" ;;
+    --dry-run) MODE="dry-run" ;;
+    --apply)   MODE="apply" ;;
+    --from)    [ -n "${2:-}" ] || die "--from exige un fichero ZIP o un directorio de backup"; FROM="$2"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; die "argumento no reconocido: $1" ;;
+  esac
+  shift
+done
 
 # ------------------------------------------------------------ descubrimiento
 # Cada linea: tipo|epoch|tamano-bytes|ruta. 'internal' son los directorios
@@ -97,8 +106,15 @@ all_backups() {  # mas reciente primero
 
 resolve_latest() {
   local latest
-  latest="$(all_backups | head -1)"
-  [ -n "$latest" ] || die "no hay ningun backup en \$CLAUDE_HOME/backups ($CLAUDE_HOME/backups) ni en \$BACKUP_DIR ($BACKUP_DIR)"
+  if [ -n "$FROM" ]; then
+    if [ -d "$FROM" ]; then printf 'internal|%s|0|%s\n' "$(epoch_of "$FROM")" "${FROM%/}"
+    elif [ -f "$FROM" ]; then printf 'zip|%s|0|%s\n' "$(epoch_of "$FROM")" "$FROM"
+    else die "no existe: $FROM"
+    fi
+    return
+  fi
+  latest="$(list_internal_backups | sort -t'|' -k2 -rg | head -1)"
+  [ -n "$latest" ] || die "no hay ningun backup interno en $CLAUDE_HOME/backups (los ZIP de $BACKUP_DIR solo se restauran con --from FICHERO)"
   printf '%s\n' "$latest"
 }
 
@@ -192,7 +208,8 @@ safety_backup() {
     return 0
   fi
   echo "== backup de seguridad del estado actual antes de restaurar =="
-  CLAUDE_HOME="$CLAUDE_HOME" BACKUP_DIR="$BACKUP_DIR" CLAUDE_JSON="$CLAUDE_JSON" bash "$HERE/scripts/backup.sh" \
+  # Prefijo propio: el ZIP de seguridad no debe parecerse a un backup periodico ni competir con el.
+  BACKUP_PREFIX="claude-safety" CLAUDE_HOME="$CLAUDE_HOME" BACKUP_DIR="$BACKUP_DIR" CLAUDE_JSON="$CLAUDE_JSON" bash "$HERE/scripts/backup.sh" \
     || die "fallo el backup de seguridad previo; abortando la restauracion (nada se ha tocado)"
 }
 

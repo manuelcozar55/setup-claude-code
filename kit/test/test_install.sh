@@ -139,6 +139,7 @@ if command -v jq >/dev/null 2>&1; then
   ck "$([ -f "$CLAUDE_HOME/CLAUDE.kit.md" ] && echo y)" "y" "la version del kit queda al lado en CLAUDE.kit.md"
 else
   echo "skip - jq ausente: no se prueba la fusion de settings.json"
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: fusion de settings.json (test_install.sh): jq ausente" >> "$SCC_SKIP_LOG"
 fi
 
 # El aviso de credenciales solo recomienda copiar la plantilla si existe.
@@ -267,4 +268,41 @@ ck "$cupo_rc" "64" "K2: umbral no numerico es error de uso (64)"
 ck "$(grep -rlE '\.credentials|\.env|/\.ssh' "$KIT/claude/bin/cupo" || true)" "" "K2: cupo no nombra ficheros de credenciales"
 HOME="$HC/h" CLAUDE_HOME="$HC/h/.claude" bash "$KIT/install.sh" >/dev/null 2>&1
 ck "$([ -x "$HC/h/.claude/bin/cupo" ] && echo y)" "y" "K2: install.sh instala bin/cupo ejecutable"
+
+# H3: CLAUDE.md/AGENTS.md. Con el sha256 de lo que escribio el kit, quien no los toco recibe la version nueva
+# (con backup); quien los edito, o viene de 1.7.x sin registro, conserva lo suyo y recibe *.kit.md + el comando.
+D3="$tmp/h3"; mkdir -p "$D3/h" "$D3/kit"
+cp -a "$KIT/." "$D3/kit/"
+inst3() { HOME="$D3/h" CLAUDE_HOME="$D3/h/.claude" bash "$D3/kit/install.sh" > "$D3/out.log" 2>&1; }
+inst3
+ck "$(grep -c 'AGENTS.md$' "$D3/h/.claude/.kit-docs.sha256")" "1" "H3: se guarda el sha256 de lo que escribio el kit"
+printf '\nregla nueva del kit\n' >> "$D3/kit/claude/AGENTS.md"
+inst3
+ck "$(grep -c 'regla nueva del kit' "$D3/h/.claude/AGENTS.md")" "1" "H3: AGENTS.md sin editar se actualiza al reinstalar"
+ck "$(find "$D3/h/.claude/backups" -name AGENTS.md | wc -l | tr -d ' ')" "1" "H3: la version anterior queda en backups/"
+ck "$([ -f "$D3/h/.claude/AGENTS.kit.md" ] && echo y || echo n)" "n" "H3: sin conflicto no queda AGENTS.kit.md"
+printf 'mi linea\n' >> "$D3/h/.claude/AGENTS.md"
+printf '\notra regla del kit\n' >> "$D3/kit/claude/AGENTS.md"
+inst3
+ck "$(grep -c 'mi linea' "$D3/h/.claude/AGENTS.md")" "1" "H3: AGENTS.md editado NO se pisa"
+ck "$(grep -c 'otra regla del kit' "$D3/h/.claude/AGENTS.kit.md")" "1" "H3: la version nueva queda en AGENTS.kit.md"
+# Migracion desde 1.7.x: sin registro, aunque no se haya editado nada, se conserva y se explica como aceptar.
+rm -f "$D3/h/.claude/.kit-docs.sha256" "$D3/h/.claude/AGENTS.kit.md"
+printf '\nregla 3\n' >> "$D3/kit/claude/AGENTS.md"
+cp "$D3/kit/claude/CLAUDE.md" "$D3/h/.claude/CLAUDE.md"; printf '\n' >> "$D3/h/.claude/CLAUDE.md"
+inst3
+ck "$(grep -c 'regla 3' "$D3/h/.claude/AGENTS.md")" "0" "H3: sin registro previo no se pisa (puede ser tuyo)"
+ck "$(grep -c 'cp ".*AGENTS.kit.md" ".*AGENTS.md"' "$D3/out.log")" "1" "H3: el mensaje da el comando para aceptar la version del kit"
+cp "$D3/h/.claude/AGENTS.kit.md" "$D3/h/.claude/AGENTS.md"
+printf '\nregla 4\n' >> "$D3/kit/claude/AGENTS.md"
+inst3
+ck "$(grep -c 'regla 4' "$D3/h/.claude/AGENTS.md")" "1" "H3: tras aceptar una vez, el kit vuelve a mantenerlo al dia"
+
+# H10: los scripts se copian por rename atomico: el inodo del hook cambia y no queda ningun .tmp.
+ino_antes="$(stat -c %i "$D3/h/.claude/hooks/branch-guard.sh")"
+printf '\n# cambio\n' >> "$D3/kit/claude/hooks/branch-guard.sh"
+inst3
+ck "$([ "$(stat -c %i "$D3/h/.claude/hooks/branch-guard.sh")" != "$ino_antes" ] && echo y || echo n)" "y" "H10: el hook se sustituye por rename (otro inodo), no se trunca en sitio"
+ck "$(find "$D3/h/.claude" -name '*.tmp.*' | wc -l | tr -d ' ')" "0" "H10: no quedan temporales tras instalar"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

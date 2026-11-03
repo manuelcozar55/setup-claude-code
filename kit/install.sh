@@ -139,7 +139,8 @@ install_file() {  # src dst
     cp -p "$dst" "$BK/${dst#"$CLAUDE_HOME"/}"
     echo "   backup: ${dst#"$CLAUDE_HOME"/}"
   fi
-  cp -p "$src" "$dst"
+  # Atomico (tmp en el mismo directorio + mv): un hook que arranca durante la copia no lee un guard truncado.
+  cp -p "$src" "$dst.tmp.$$" && mv -f "$dst.tmp.$$" "$dst"
 }
 
 # settings.json NO se reemplaza si ya existe: se fusiona. Regla, y es deliberada:
@@ -246,20 +247,55 @@ avisos_settings() {  # settings.json
 # CLAUDE.md y AGENTS.md son instrucciones que escribes tu: no se pisan si ya las has tocado. Se
 # deja la del kit al lado, como CLAUDE.kit.md o AGENTS.kit.md, y se avisa. Reemplazarla borraba
 # trabajo irrecuperable por fusion automatica -- una prosa no se puede fusionar como un JSON.
+# "Tocado" se decide con el sha256 de lo que escribio el kit la ultima vez ($DOCS_STATE, en $CLAUDE_HOME):
+# si lo instalado coincide con el, no hay nada tuyo que perder y se actualiza (con backup). Sin ese
+# registro (instalaciones de 1.7.x o anteriores) cualquier diferencia cuenta como tuya.
+DOCS_STATE=".kit-docs.sha256"
 CLAUDE_MD_PREVIO=0
+DOCS_NO_ACTUALIZADOS=""
+docs_sha_get() {  # base nombre -> sha registrado, o vacio
+  { [ -f "$1/$DOCS_STATE" ] && awk -v n="$2" '$2 == n {print $1}' "$1/$DOCS_STATE"; } || true
+}
+docs_sha_set() {  # base nombre sha
+  local t; t="$(mktemp "$1/$DOCS_STATE.XXXXXX")"
+  { { [ -f "$1/$DOCS_STATE" ] && awk -v n="$2" '$2 != n' "$1/$DOCS_STATE"; } || true; printf '%s  %s\n' "$3" "$2"; } > "$t"
+  mv -f "$t" "$1/$DOCS_STATE"
+}
 install_claude_md() {  # src dst
-  local src="$1" dst="$2"
-  if [ ! -f "$dst" ]; then cp -p "$src" "$dst"; return; fi
-  if cmp -s "$src" "$dst"; then return; fi
-  local n; n="$(basename "$dst" .md)"
+  local src="$1" dst="$2" base n sha_src sha_dst
+  base="$(dirname "$dst")"; n="$(basename "$dst" .md)"
+  sha_src="$(sha256sum "$src" | cut -d' ' -f1)"
+  if [ ! -f "$dst" ]; then
+    cp -p "$src" "$dst"; docs_sha_set "$base" "$n.md" "$sha_src"; return
+  fi
+  if cmp -s "$src" "$dst"; then
+    docs_sha_set "$base" "$n.md" "$sha_src"; rm -f "$base/$n.kit.md"; return
+  fi
+  sha_dst="$(sha256sum "$dst" | cut -d' ' -f1)"
+  # Idem si lo instalado es el $n.kit.md que dejamos la vez anterior: la persona lo acepto copiandolo (cp), sin editarlo.
+  if [ "$sha_dst" = "$(docs_sha_get "$base" "$n.md")" ] || { [ -f "$base/$n.kit.md" ] && cmp -s "$base/$n.kit.md" "$dst"; }; then
+    install_file "$src" "$dst"
+    docs_sha_set "$base" "$n.md" "$sha_src"; rm -f "$base/$n.kit.md"
+    echo "   $n.md actualizado a la version del kit (no lo habias modificado)."
+    return
+  fi
   # Un CLAUDE.md propio sin el import deja AGENTS.md instalado pero sin que nadie lo lea.
   if [ "$n" = "CLAUDE" ] && ! command grep -qE '^[[:space:]]*@[^[:space:]]*AGENTS\.md' "$dst"; then CLAUDE_MD_PREVIO=1; fi
-  cp -p "$src" "$(dirname "$dst")/$n.kit.md"
-  echo "   $n.md ya existe y la has modificado: NO se toca."
+  cp -p "$src" "$base/$n.kit.md"
+  DOCS_NO_ACTUALIZADOS="$DOCS_NO_ACTUALIZADOS $n"
+  echo "   $n.md ya existe y difiere del kit: NO se toca."
   echo "   La version del kit queda en $n.kit.md para que compares y copies lo que quieras."
 }
 
 aviso_claude_md() {
+  local n
+  if [ -n "$DOCS_NO_ACTUALIZADOS" ]; then
+    echo
+    echo "==> AVISO:$DOCS_NO_ACTUALIZADOS no se han actualizado: difieren del kit y no hay registro de que el kit las escribiera"
+    echo "    (normal al actualizar desde 1.7.x: aun no se guardaba). Si NO las has editado y quieres la version nueva:"
+    for n in $DOCS_NO_ACTUALIZADOS; do echo "      cp \"$CLAUDE_HOME/$n.kit.md\" \"$CLAUDE_HOME/$n.md\""; done
+    echo "    A partir de ahi el kit las mantendra al dia mientras no las modifiques. Si las editaste, compara y copia a mano."
+  fi
   [ "$CLAUDE_MD_PREVIO" -eq 1 ] || return 0
   echo
   echo "==> AVISO: ya tenias un CLAUDE.md y no se ha tocado. Añade @AGENTS.md a tu CLAUDE.md;"
@@ -389,12 +425,12 @@ run_diff_first() {
   # arbol vacio daba por borrados tu env, tus permisos, tus hooks y tu CLAUDE.md. Copia y no enlace:
   # install_settings escribe a traves de un enlace. Sus backups y sus mensajes no son del plan; los
   # backups, dentro de su arbol, para que un fallo a mitad no deje nada fuera.
-  for f in settings.json CLAUDE.md AGENTS.md; do
+  for f in settings.json CLAUDE.md AGENTS.md "$DOCS_STATE"; do
     if [ -f "$CLAUDE_HOME/$f" ]; then cp -L -- "$CLAUDE_HOME/$f" "$out/$f"; fi
   done
   BK="$out/.mcharness-plan-bk"
   install_kit_files "$out" >/dev/null
-  rm -rf -- "$BK"
+  rm -rf -- "$BK"; rm -f -- "$out/$DOCS_STATE"
 
   if is_git_repo_with_remote; then
     echo "==> $CLAUDE_HOME es un repositorio git con remoto configurado: no se escribe nada ahi."
