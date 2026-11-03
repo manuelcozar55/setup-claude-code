@@ -261,6 +261,16 @@ docs_sha_set() {  # base nombre sha
   { { [ -f "$1/$DOCS_STATE" ] && awk -v n="$2" '$2 != n' "$1/$DOCS_STATE"; } || true; printf '%s  %s\n' "$3" "$2"; } > "$t"
   mv -f "$t" "$1/$DOCS_STATE"
 }
+# Sin registro (1.7.x o antes): si lo instalado es una version versionada del kit en la historia git de este
+# clon, tampoco es tuyo. Sin historia (ZIP, clon superficial) se queda la conducta de siempre.
+docs_sha_historico() {  # nombre sha
+  local c
+  git -C "$KIT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+  for c in $(git -C "$KIT" rev-list HEAD -- "claude/$1" 2>/dev/null); do
+    [ "$(git -C "$KIT" show "$c:./claude/$1" 2>/dev/null | sha256sum | cut -d' ' -f1)" = "$2" ] && return 0
+  done
+  return 1
+}
 install_claude_md() {  # src dst
   local src="$1" dst="$2" base n sha_src sha_dst
   base="$(dirname "$dst")"; n="$(basename "$dst" .md)"
@@ -273,7 +283,8 @@ install_claude_md() {  # src dst
   fi
   sha_dst="$(sha256sum "$dst" | cut -d' ' -f1)"
   # Idem si lo instalado es el $n.kit.md que dejamos la vez anterior: la persona lo acepto copiandolo (cp), sin editarlo.
-  if [ "$sha_dst" = "$(docs_sha_get "$base" "$n.md")" ] || { [ -f "$base/$n.kit.md" ] && cmp -s "$base/$n.kit.md" "$dst"; }; then
+  if [ "$sha_dst" = "$(docs_sha_get "$base" "$n.md")" ] || { [ -f "$base/$n.kit.md" ] && cmp -s "$base/$n.kit.md" "$dst"; } \
+     || { [ -z "$(docs_sha_get "$base" "$n.md")" ] && docs_sha_historico "$n.md" "$sha_dst"; }; then
     install_file "$src" "$dst"
     docs_sha_set "$base" "$n.md" "$sha_src"; rm -f "$base/$n.kit.md"
     echo "   $n.md actualizado a la version del kit (no lo habias modificado)."
@@ -292,7 +303,7 @@ aviso_claude_md() {
   if [ -n "$DOCS_NO_ACTUALIZADOS" ]; then
     echo
     echo "==> AVISO:$DOCS_NO_ACTUALIZADOS no se han actualizado: difieren del kit y no hay registro de que el kit las escribiera"
-    echo "    (normal al actualizar desde 1.7.x: aun no se guardaba). Si NO las has editado y quieres la version nueva:"
+    echo "    ni coinciden con una version anterior del kit. Si NO las has editado y quieres la version nueva:"
     for n in $DOCS_NO_ACTUALIZADOS; do echo "      cp \"$CLAUDE_HOME/$n.kit.md\" \"$CLAUDE_HOME/$n.md\""; done
     echo "    A partir de ahi el kit las mantendra al dia mientras no las modifiques. Si las editaste, compara y copia a mano."
   fi

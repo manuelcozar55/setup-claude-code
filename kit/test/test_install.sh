@@ -298,6 +298,27 @@ printf '\nregla 4\n' >> "$D3/kit/claude/AGENTS.md"
 inst3
 ck "$(grep -c 'regla 4' "$D3/h/.claude/AGENTS.md")" "1" "H3: tras aceptar una vez, el kit vuelve a mantenerlo al dia"
 
+# Migracion desde 1.7.x con el kit en un clon git: lo instalado es una version versionada del kit -> se actualiza.
+if command -v git >/dev/null 2>&1; then
+  D4="$tmp/h3git"; mkdir -p "$D4/h/.claude" "$D4/kit"
+  cp -a "$KIT/." "$D4/kit/"
+  git -C "$D4/kit" init -q && git -C "$D4/kit" add -A \
+    && git -C "$D4/kit" -c user.name=t -c user.email=t@e commit -qm v1 >/dev/null
+  cp "$D4/kit/claude/AGENTS.md" "$D4/h/.claude/AGENTS.md"
+  printf '\nregla de la version siguiente\n' >> "$D4/kit/claude/AGENTS.md"
+  git -C "$D4/kit" -c user.name=t -c user.email=t@e commit -qam v2 >/dev/null
+  printf '\nregla 5\n' >> "$D4/kit/claude/AGENTS.md"
+  HOME="$D4/h" CLAUDE_HOME="$D4/h/.claude" bash "$D4/kit/install.sh" > "$D4/out.log" 2>&1
+  ck "$(grep -c 'regla 5' "$D4/h/.claude/AGENTS.md")" "1" "H3: sin registro, una version anterior del kit (historia git) se actualiza"
+  ck "$([ -f "$D4/h/.claude/AGENTS.kit.md" ] && echo y || echo n)" "n" "H3: y no deja AGENTS.kit.md"
+  printf 'mia\n' >> "$D4/h/.claude/AGENTS.md"; rm -f "$D4/h/.claude/.kit-docs.sha256"
+  printf '\nregla 6\n' >> "$D4/kit/claude/AGENTS.md"
+  HOME="$D4/h" CLAUDE_HOME="$D4/h/.claude" bash "$D4/kit/install.sh" > "$D4/out.log" 2>&1
+  ck "$(grep -c 'regla 6' "$D4/h/.claude/AGENTS.md")" "0" "H3: sin registro y editada (no esta en la historia) no se pisa"
+else
+  echo "skip: H3 historia git (sin git)"; [ -n "${SCC_SKIP_LOG:-}" ] && echo "SKIP: test_install H3 historia git (sin git)" >> "$SCC_SKIP_LOG"
+fi
+
 # H10: los scripts se copian por rename atomico: el inodo del hook cambia y no queda ningun .tmp.
 ino_antes="$(stat -c %i "$D3/h/.claude/hooks/branch-guard.sh")"
 printf '\n# cambio\n' >> "$D3/kit/claude/hooks/branch-guard.sh"
