@@ -31,7 +31,7 @@ etiquetado.
 
 - **El veto de `session.compact` del cockpit** (`isVetoed` y sus tres fallos): en máquinas con ajustes gestionados, `cc-plugin-sec-default` despacha el evento por encima de los plugins de usuario y el veto no se ejecutaba nunca.
 - **La columna `rc` de `oracle-log`**: leía `tool_response.exit_code`, que Claude Code no manda (682 filas con rc vacío).
-- **El hook `SessionEnd` `stop-session-summary.sh`**, cuyo log no leía nadie, y `scripts/guards-cpu.sh`.
+- **El hook `SessionEnd` `stop-session-summary.sh`**, cuyo log no leía nadie, y `scripts/guards-cpu.sh`. Al actualizar, el instalador lo descablea de tu `settings.json` (en Debian, la fusión lo conservaba como hook tuyo). Tests: `test_install_settings_merge.sh`.
 
 ## [1.7.1] - 2026-10-30
 

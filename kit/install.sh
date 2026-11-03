@@ -188,7 +188,7 @@ install_settings() {  # src dst
   if jq -s '
       .[0] as $kit | .[1] as $old |
       ([$kit.hooks // {} | .. | .command? // empty | splits(" +") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")]
-        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh"] | unique) as $suyos |
+        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh"] | unique) as $suyos |
       def propio: ("/" + .) as $t | any($suyos[]; . as $s | $t | endswith("/.claude/hooks/" + $s) or endswith("/.claude/sentinel/" + $s));
       def del_kit: [(.command | strings // "") | splits(" +") | gsub("[\"\u0027]"; "") | select(length > 0)]
         | any(.[]; propio) and all(.[]; propio or startswith("-") or (sub(".*/"; "") | test("^(optional-hook\\.sh|python[0-9.]*|bash|sh)$")));
