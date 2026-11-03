@@ -27,7 +27,7 @@ ok "nudge ≤ 400 chars" "$([ "$(largo "$C")" -le 400 ] && echo si)" si
 ok "nucleo dentro del tope: sin aviso de tamaño" "$(command grep -c 'Ocupa .* B (tope' <<<"$C")" 0
 ok "misma banda dos veces → una sola" "$(run s1 p60)" ""
 ok "banda siguiente (70 %) sí avisa" "$(run s1 p72 | ctx | command grep -c '72 % del airbag')" 1
-ok "70 %: fin de fase es parada válida" "$(run s6 p72 | ctx | command grep -c 'Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno\.')" 1
+ok "70 %: fin de fase es parada válida y orden: agentes, handoff, fin de turno, /autonomo" "$(run s6 p72 | ctx | command grep -c 'Fin de fase = parada válida: si hay agentes en vuelo, no lances más: espera y recoge sus resultados; después cierra la fase, escribe el handoff con .* y termina el turno\. Con /autonomo on el trabajo sigue solo tras el /clear\.')" 1
 C90=$(run s1 p90 | ctx)
 ok "85 %: cierra ya; handoff y /clear automáticos con cockpit" "$(command grep -c 'Cierra el turno ya: con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff\.' <<<"$C90")" 1
 ok "85 % ≤ 400 chars" "$([ "$(largo "$C90")" -le 400 ] && echo si)" si

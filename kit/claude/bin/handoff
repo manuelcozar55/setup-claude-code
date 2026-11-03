@@ -69,6 +69,14 @@ TOPE=$((NUCLEO_TOPE - NUCLEO_RESERVA_AGENTES))
 [ "$TOPE" -gt 0 ] || { echo "uso: handoff: NUCLEO_TOPE=$NUCLEO_TOPE no deja sitio tras la reserva de agentes ($NUCLEO_RESERVA_AGENTES B)" >&2; exit 64; }
 
 die() { local rc=$1; shift; echo "handoff: $*" >&2; exit "$rc"; }
+# Avisos de un guardado correcto: uno por elemento. Con --json van al recibo y stderr queda vacío; sin --json, una línea.
+AV=()
+avisar() { AV+=("$*"); }
+avisos_stderr() {
+  local j
+  { [ "$JSON" != 1 ] && [ "${#AV[@]}" -gt 0 ]; } || return 0
+  printf -v j '%s; ' "${AV[@]}"; echo "handoff: ${j%; }" >&2
+}
 iso_de() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 
 MODO="" DESDE="" MIGRAR="" TEMA="" RAIZ_ARG="" RANURA_ARG="" SESION="" ESPERADO="" JSON=0 SOLO=0 COMMIT=0
@@ -525,8 +533,7 @@ if [ "$ESTMD" -eq 1 ]; then
     printf '## %s omitido por tope: %s\n%s\n' "$HOY" "$t" "${RT[i]#*$'\n'}" >>"$W/omitido"
     OMITIDAS+=" $t"; RT[i]=""; armar_e
   done
-  AVISOS=""
-  [ -z "$OMITIDAS" ] || AVISOS="omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
+  [ -z "$OMITIDAS" ] || avisar "omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
   AVTOPE=""
   [ "$(bytes "$TEXTO")" -le "$TOPE" ] || AVTOPE="ESTADO.md ocupa $(bytes "$TEXTO") B y supera el tope (${TOPE} B): recórtalo a mano; la inyección de SessionStart ya lo recorta"
   TEXTOW=$TEXTO; [ "$CRLF" -eq 0 ] || TEXTOW=${TEXTO//$'\n'/$'\r\n'}
@@ -571,15 +578,15 @@ if [ "$ESTMD" -eq 1 ]; then
   fi
   if D=$(nucleo_dueno "$RAIZ"); then
     if [ -z "$SESION" ] || [ "${D% *}" = "$SESION" ] || ! nucleo_dueno_vigente "$RAIZ" >/dev/null; then rm -f -- "$E/.dueno"
-    else AVISOS+="${AVISOS:+; }la sesión dueña es otra (${D% *}): no se libera"
+    else avisar "la sesión dueña es otra (${D% *}): no se libera"
     fi
   fi
-  # El aviso de tope es permanente mientras ESTADO.md pase del tope: con --json va al recibo (el cockpit trata todo stderr como «no limpio»).
-  [ -z "$AVTOPE" ] || [ "$JSON" = 1 ] || AVISOS+="${AVISOS:+; }$AVTOPE"
-  [ -z "$AVISOS" ] || echo "handoff: $AVISOS" >&2
+  # El aviso de tope es permanente mientras ESTADO.md pase del tope.
+  [ -z "$AVTOPE" ] || avisar "$AVTOPE"
+  avisos_stderr
   if [ "$JSON" = 1 ]; then
     SHA=$(sha256sum <"$EST" | cut -d' ' -f1)
-    jq -cn --arg n "$EST" --arg s "$SHA" --arg x "${EXTRAS#|}" --arg v "$AVTOPE" '{nucleo:$n,sha256:$s,modo:"estado-md",extras:($x | split("|") | map(select(. != "")))} + (if $v == "" then {} else {avisos:[$v]} end)'
+    jq -cn --arg n "$EST" --arg s "$SHA" --arg x "${EXTRAS#|}" '{nucleo:$n,sha256:$s,modo:"estado-md",extras:($x | split("|") | map(select(. != "")))} + (if ($ARGS.positional | length) == 0 then {} else {avisos:$ARGS.positional} end)' --args ${AV[@]+"${AV[@]}"}
   else
     echo "handoff: $EST escrito ($(wc -c <"$EST" | tr -d ' ') B de $TOPE)"
     [ -z "$EXTRAS" ] || echo "handoff: sin equivalente en ESTADO.md, añadidas como secciones propias: ${EXTRAS#|}"
@@ -753,7 +760,6 @@ armar() {
 }
 bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
 armar
-AVISOS=""
 # Se omiten secciones enteras: primero las ajenas a la plantilla (desde el final), luego las de plantilla desde el
 # final del orden D5 hasta Comandos (Objetivo, Invariantes y Siguiente acción no se tocan); lo omitido va al diario.
 omitir() {
@@ -786,10 +792,10 @@ for k in pendientes plan "ficheros tocados" "comandos de verificacion" "paso act
     if [ "$k" = "paso actual" ]; then recortar "$i"; else omitir "$i"; fi
   done
 done
-[ -z "$OMITIDAS" ] || AVISOS="omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
-[ -z "$RECORTADA" ] || AVISOS+="${AVISOS:+; }$RECORTADA recortado al tope (${TOPE} B), entero en diario.md"
+[ -z "$OMITIDAS" ] || avisar "omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
+[ -z "$RECORTADA" ] || avisar "$RECORTADA recortado al tope (${TOPE} B), entero en diario.md"
 if [ "$(bytes "$TEXTO")" -gt "$TOPE" ]; then
-  AVISOS+="${AVISOS:+; }Objetivo, Invariantes y Siguiente acción solos pasan del tope: no se tocan; acórtalos o mueve lo cerrado a diario.md a mano"
+  avisar "Objetivo, Invariantes y Siguiente acción solos pasan del tope: no se tocan; acórtalos o mueve lo cerrado a diario.md a mano"
 fi
 
 # --- escritura ---
@@ -798,11 +804,14 @@ NEW_CK=ausente; [ ! -f "$NUC" ] || NEW_CK=$(cksum <"$NUC")
 [ "$NEW_CK" = "$OLD_CK" ] || die 4 "nucleo.md cambió mientras se fusionaba (otra sesión): no lo piso; reintenta"
 mkdir -p "$E"
 if [ "$HAYVIEJO" -eq 1 ]; then
-  P=$E/nucleo.prev-$(date -u +%Y%m%dT%H%M%SZ).md
-  [ ! -e "$P" ] || P=${P%.md}-$$.md
-  cp -- "$W/viejo.md" "$P"
-  mapfile -t COPIAS < <(printf '%s\n' "$E"/nucleo.prev-*.md | sort)
-  for ((i = 0; i < ${#COPIAS[@]} - 3; i++)); do rm -f -- "${COPIAS[i]}"; done
+  # Un handoff que no cambia el nucleo no desplaza la última versión distinta de las 3 copias (como en modo ESTADO.md).
+  if [ "$(printf '%s' "$TEXTO" | cksum)" != "$OLD_CK" ]; then
+    P=$E/nucleo.prev-$(date -u +%Y%m%dT%H%M%SZ).md
+    [ ! -e "$P" ] || P=${P%.md}-$$.md
+    cp -- "$W/viejo.md" "$P"
+    mapfile -t COPIAS < <(printf '%s\n' "$E"/nucleo.prev-*.md | sort)
+    for ((i = 0; i < ${#COPIAS[@]} - 3; i++)); do rm -f -- "${COPIAS[i]}"; done
+  fi
 fi
 TMP=$(mktemp "$E/.nucleo.XXXXXX")
 printf '%s' "$TEXTO" >"$TMP"
@@ -850,14 +859,14 @@ fi
 # El dueño: solo lo libera quien lo es (o nadie lo es ya).
 if [ -z "$SES" ] && D=$(nucleo_dueno "$RAIZ"); then
   if [ -z "$SESION" ] || [ "${D% *}" = "$SESION" ] || ! nucleo_dueno_vigente "$RAIZ" >/dev/null; then rm -f -- "$E/.dueno"
-  else AVISOS+="${AVISOS:+; }la sesión dueña es otra (${D% *}): no se libera"
+  else avisar "la sesión dueña es otra (${D% *}): no se libera"
   fi
 fi
-[ "$SINCMD" -eq 0 ] || AVISOS+="${AVISOS:+; }$SINCMD cierre(s) sin comando de verificación"
-[ -z "$AVISOS" ] || echo "handoff: $AVISOS" >&2
+[ "$SINCMD" -eq 0 ] || avisar "$SINCMD cierre(s) sin comando de verificación"
+avisos_stderr
 if [ "$JSON" = 1 ]; then
   SHA=$(printf '%s' "$TEXTO" | sha256sum | cut -d' ' -f1)
-  jq -cn --arg n "$NUC" --arg s "$SHA" '{nucleo:$n,sha256:$s}'
+  jq -cn --arg n "$NUC" --arg s "$SHA" '{nucleo:$n,sha256:$s} + (if ($ARGS.positional | length) == 0 then {} else {avisos:$ARGS.positional} end)' --args ${AV[@]+"${AV[@]}"}
 else echo "handoff: $NUC escrito ($(bytes "$TEXTO") B de $TOPE)"
 fi
 [ -z "$ERRC" ] || die 1 "$ERRC"

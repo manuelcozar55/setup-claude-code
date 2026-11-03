@@ -346,6 +346,25 @@ OUT=$(bash "$HO" --desde "$T/dn4.md" --raiz "$X" --json 2>"$T/en4"); RC=$?
 ok "N4: --json: aviso de tope en el recibo y stderr vacío (rc 0)" "$RC,$(wc -c <"$T/en4" | tr -d ' '),$(jq -r '.avisos | map(select(contains("supera el tope"))) | length' <<<"$OUT")" 0,0,1
 bash "$HO" --desde "$T/dn4.md" --raiz "$X" >/dev/null 2>"$T/en4b"
 ok "N4: sin --json el aviso de tope sigue en stderr" "$(command grep -c 'supera el tope' "$T/en4b")" 1
+# H4 (modo nucleo): con --json los avisos de un guardado correcto van al recibo, uno por string, y stderr queda vacío.
+Y=$T/h4n; mkdir -p "$Y/.claude/estado"; git -C "$Y" init -q
+# shellcheck disable=SC2016  # Backticks literales.
+printf '## Paso actual\nx\n\n## Plan\n- [x] a\n- [x] b\n- [x] c \xe2\x80\x94 `cmd`\n' >"$T/dh4.md"
+OUT=$(bash "$BIN" --raiz "$Y" --desde "$T/dh4.md" --json 2>"$T/eh4"); RC=$?
+ok "H4 nucleo: --json: aviso en el recibo y stderr vacío (rc 0)" "$RC,$(wc -c <"$T/eh4" | tr -d ' '),$(jq -r '.avisos | length' <<<"$OUT"),$(jq -r '.avisos[0]' <<<"$OUT")" "0,0,1,2 cierre(s) sin comando de verificación"
+OUT=$(bash "$BIN" --raiz "$Y" --desde "$T/dh4.md" 2>"$T/eh4b"); RC=$?
+ok "H4 nucleo: sin --json el aviso sigue en stderr" "$RC,$(command grep -c '^handoff: .*2 cierre(s) sin comando' "$T/eh4b")" 0,1
+printf '## Paso actual\ny\n' >"$T/dh4ok.md"
+OUT=$(bash "$BIN" --raiz "$Y" --desde "$T/dh4ok.md" --json 2>"$T/eh4c")
+ok "H4 nucleo: sin avisos el recibo no trae la clave" "$(jq -r 'has("avisos")' <<<"$OUT"),$(wc -c <"$T/eh4c" | tr -d ' ')" false,0
+# H19b: un handoff que no cambia el nucleo no rota nucleo.prev-*.
+Z=$T/h19b; mkdir -p "$Z/.claude/estado"; git -C "$Z" init -q
+printf '## Paso actual\nuno\n' >"$T/d19a.md"; printf '## Paso actual\ndos\n' >"$T/d19b.md"
+bash "$BIN" --raiz "$Z" --desde "$T/d19a.md" >/dev/null 2>&1
+bash "$BIN" --raiz "$Z" --desde "$T/d19b.md" >/dev/null 2>&1; sleep 1
+bash "$BIN" --raiz "$Z" --desde "$T/d19b.md" >/dev/null 2>&1; sleep 1
+bash "$BIN" --raiz "$Z" --desde "$T/d19b.md" >/dev/null 2>&1
+ok "H19b: tres handoffs iguales dejan una sola copia previa y es la del 'uno'" "$(find "$Z/.claude/estado" -name 'nucleo.prev-*.md' | wc -l | tr -d ' '),$(command grep -lc 'uno' "$Z"/.claude/estado/nucleo.prev-*.md | wc -l | tr -d ' ')" 1,1
 # N6: una viñeta «- Paso actual:» dentro de una cerca no se sustituye.
 X=$(nuevo n6)
 # shellcheck disable=SC2016

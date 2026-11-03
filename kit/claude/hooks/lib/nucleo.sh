@@ -231,25 +231,29 @@ _nucleo_proceso_id() {
 # identidad en el mismo minuto no se adopta: rc 1. La ranura propia con un enlace dentro tampoco: rc 1 (leer o escribir
 # su nucleo.md iría a otro sitio).
 nucleo_sesion_dir() {
-  local pid id base=$HOME/.claude/estado/sesiones d f
+  local pid id base=$HOME/.claude/estado/sesiones d f t n
   nucleo_estado_seguro "$base" || return 1
   pid=$(nucleo_sesion_pid) || return 1
   id=$(_nucleo_proceso_id "$pid") || return 1
-  for d in "$base"/*-"$pid"; do
-    [ -d "$d" ] && [ ! -L "$d" ] && [ ! -L "$d/.proceso" ] && [ "$(cat "$d/.proceso" 2>/dev/null)" = "$id" ] || continue
-    for f in "$d"/* "$d"/.[!.]*; do [ ! -L "$f" ] || return 1; done
-    printf '%s\n' "$d"; return 0
+  # Varias sesiones de hooks (6 SubagentStart a la vez) pueden crear la ranura a la vez: se arma en un directorio
+  # temporal y se publica con `mv -T`, que falla si otro ya la publicó; entonces se vuelve a buscar (ya es la nuestra).
+  for n in 1 2 3 4 5; do
+    for d in "$base"/*-"$pid"; do
+      [ -d "$d" ] && [ ! -L "$d" ] && [ ! -L "$d/.proceso" ] && [ "$(cat "$d/.proceso" 2>/dev/null)" = "$id" ] || continue
+      for f in "$d"/* "$d"/.[!.]*; do [ ! -L "$f" ] || return 1; done
+      printf '%s\n' "$d"; return 0
+    done
+    d=$base/$(date +%Y%m%d-%H%M)-$pid
+    [ ! -e "$d" ] || return 1
+    [ "${1:-}" = crear ] || { printf '%s\n' "$d"; return 0; }
+    t=$(umask 077; mkdir -p "$base" && mktemp -d "$base/.nueva.XXXXXX") 2>/dev/null || return 1
+    if ( umask 077; printf '%s\n' "$id" >"$t/.proceso" && { [ -e "$base/.gitignore" ] || printf '*\n' >"$base/.gitignore"; } ) 2>/dev/null \
+      && mv -T -- "$t" "$d" 2>/dev/null; then
+      printf '%s\n' "$d"; return 0
+    fi
+    rm -f -- "$t/.proceso"; rmdir -- "$t" 2>/dev/null
   done
-  d=$base/$(date +%Y%m%d-%H%M)-$pid
-  [ ! -e "$d" ] || return 1
-  if [ "${1:-}" = crear ]; then
-    (
-      umask 077
-      mkdir -p "$d" && printf '%s\n' "$id" >"$d/.proceso" || exit 1
-      [ -e "$base/.gitignore" ] || printf '*\n' >"$base/.gitignore"
-    ) 2>/dev/null || return 1
-  fi
-  printf '%s\n' "$d"
+  return 1
 }
 
 # nucleo_ruta <raíz> [crear]: el nucleo.md de ESTA sesión, la única fuente para quien lo lea (nudge, PreCompact...): desde
@@ -301,6 +305,48 @@ nucleo_git_hechos() {
   printf '<git-hechos calculado="%s">\n%s\n</git-hechos>' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$b"
 }
 
+# _nucleo_raiz_efimera <ruta>: rc 0 si cuelga de /tmp o de $TMPDIR (scratchpads de sesiones, repos de prueba): no son tareas
+# que retomar y llenaban el registro. Una base bajo la que vive el propio $HOME no cuenta (HOME de prueba en un mktemp).
+_nucleo_raiz_efimera() {
+  local b
+  for b in /tmp "${TMPDIR:-}"; do
+    b=${b%/}; [ -n "$b" ] || continue
+    case $HOME/ in "$b"/*) continue ;; esac
+    case $1 in "$b"/*) return 0 ;; esac
+  done
+  return 1
+}
+
+# nucleo_registro_depurar: quita del registro las raíces que ya no existen o son efímeras (lo barato: sin leer su estado).
+# Reescribe solo si cambia algo (temporal + mv, modo 600).
+nucleo_registro_depurar() {
+  local reg=${NUCLEO_REGISTRO:-$HOME/.claude/estado/raices} tmp r cambia=0
+  [ -f "$reg" ] && [ ! -L "$reg" ] || return 0
+  tmp=$(umask 077; mktemp "$reg.XXXXXX" 2>/dev/null) || return 0
+  while IFS= read -r r || [ -n "$r" ]; do
+    if [ -d "$r" ] && ! _nucleo_raiz_efimera "$r"; then printf '%s\n' "$r"; else cambia=1; fi
+  done <"$reg" >"$tmp"
+  if [ "$cambia" = 1 ] && mv -f -- "$tmp" "$reg" 2>/dev/null; then return 0; fi
+  rm -f -- "$tmp"
+}
+
+# nucleo_sesiones_limpiar: borra las ranuras de sesiones/ sin nucleo.md, sin proceso vivo con su identidad y sin
+# ficheros tocados en 14 días. Solo las que son directorio real; sin seguir enlaces.
+nucleo_sesiones_limpiar() {
+  local base=$HOME/.claude/estado/sesiones d pid id
+  [ -d "$base" ] && [ ! -L "$base" ] || return 0
+  for d in "$base"/*/; do
+    d=${d%/}
+    [ -d "$d" ] && [ ! -L "$d" ] && [ ! -e "$d/nucleo.md" ] || continue
+    [ -z "$(find "$d" -mtime -14 -print -quit 2>/dev/null)" ] || continue
+    pid=${d##*-}
+    case $pid in '' | *[!0-9]*) continue ;; esac
+    id=$(_nucleo_proceso_id "$pid" 2>/dev/null) && [ "$id" = "$(cat "$d/.proceso" 2>/dev/null)" ] && continue
+    find "$d" -depth -delete 2>/dev/null
+  done
+  return 0
+}
+
 # nucleo_registrar <raíz>: añade la raíz a ${NUCLEO_REGISTRO:-$HOME/.claude/estado/raices} (una por línea) si
 # no está, para que las sesiones abiertas en $HOME listen las tareas sin heredar el nucleo de ninguna. Solo se
 # registra una raíz con <raíz>/.claude/estado/nucleo.md propio y no enlazado: sin esa condición cualquier
@@ -312,6 +358,7 @@ nucleo_registrar() {
   [ "$1" != "$HOME" ] || return 0
   case $1 in /*) ;; *) return 0 ;; esac
   case $1 in *[[:cntrl:]]*) return 0 ;; esac
+  _nucleo_raiz_efimera "$1" && return 0
   e=$(nucleo_estado_leer "$1") || return 0
   [ -f "$e/nucleo.md" ] || return 0
   command grep -Fxq -- "$1" "$reg" 2>/dev/null && return 0
@@ -382,7 +429,6 @@ nucleo_indice() {
     [ -d "$r" ] || continue
     nuc=$(nucleo_estado_leer "$r")/nucleo.md || continue
     [ -f "$nuc" ] || continue
-    nucleo_enlazado "$r" && continue
     case $'\n'"$seen" in *$'\n'"$r"$'\n'*) continue ;; esac
     seen="${seen:-}$r"$'\n'
     mt=$(nucleo_mtime "$nuc"); obj="(sin objetivo)"; paso="(sin paso)"

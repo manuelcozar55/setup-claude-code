@@ -145,7 +145,6 @@ sequenceDiagram
     else verde
         H-->>CC: deja terminar
     end
-    CC->>H: SessionEnd · stop-session-summary.sh
 ```
 
 > **Lo que muestra:** los eventos y scripts son los de `kit/claude/settings.json` (instalación) y `.claude/settings.json` (harness del repo: `auto-spec`, `oracle-log`, `verify-gate`). El `Stop` es el único que puede impedir que el turno termine.

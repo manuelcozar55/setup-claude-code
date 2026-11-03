@@ -35,6 +35,7 @@ RAIZ=$(nucleo_raiz "$CWD")
 # Excepción: con /clear o resume, el estado de ESTA sesión (su ranura, por proceso: lib/nucleo.sh) vuelve entero y
 # ANTES del índice, porque nucleo_tope recorta por el final. Con startup no hay estado propio que retomar.
 if [ "$RAIZ" = "$HOME" ]; then
+  [ "${SRC:-}" != startup ] || { nucleo_sesiones_limpiar; nucleo_registro_depurar; }
   AGENTES=$(nucleo_agentes_ctx "$RAIZ")
   SD=""
   case ${SRC:-} in clear | resume) SD=$(nucleo_sesion_dir) && [ -f "$SD/nucleo.md" ] && [ ! -L "$SD/nucleo.md" ] || SD="" ;; esac

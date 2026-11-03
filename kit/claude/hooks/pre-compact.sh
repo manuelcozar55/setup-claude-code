@@ -18,6 +18,8 @@ CWD=$(jq -r '.cwd // empty' <<<"$IN" 2>/dev/null); CWD=${CWD:-$PWD}
 RAIZ=$(nucleo_raiz "$CWD" 2)
 nucleo_enlazado "$RAIZ" && exit 0
 if nucleo_modo_estado_md "$RAIZ"; then NUC=$RAIZ/ESTADO.md; else NUC=$(nucleo_ruta "$RAIZ") || exit 0; fi
+# Desde ~ sin ranura propia nucleo_ruta cae al nucleo compartido (de otra tarea): ni sus pendientes ni su edad son de esta sesión.
+{ [ "$RAIZ" != "$HOME" ] || [[ $NUC == */sesiones/*/nucleo.md ]]; } || NUC=
 
 # KPI: ts sesión ctx% edad_nucleo_s (-1 si no existe). Se mide con nucleo_audit o con awk.
 MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
