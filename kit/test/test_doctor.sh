@@ -385,6 +385,16 @@ ck "$rc" "1" "H7: doctor FAIL si solo falta un guard de Bash"
 cp "$tmp/settings7.bak" "$CLAUDE_HOME/settings.json"
 set +e; out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home7" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; rc=$?; set -e
 ck "$rc" "0" "H7: con el settings.json del kit doctor vuelve a pasar"
+# Con las rutas de los hooks escritas como $CLAUDE_HOME absoluto (lo que hace scripts/aceptacion-local.sh),
+# los hooks siguen cableados: antes solo se reconocia ".claude/hooks/".
+# shellcheck disable=SC2016 # $HOME/.claude literal: es el texto que sustituye el filtro jq
+# Un CLAUDE_HOME sin «.claude» en la ruta, como el de la aceptacion ($D/install).
+ln -s "$CLAUDE_HOME" "$tmp/kh7"
+jq --arg d "$tmp/kh7" 'walk(if type == "string" then gsub("\\$HOME/\\.claude"; $d) else . end)' \
+  "$tmp/settings7.bak" > "$CLAUDE_HOME/settings.json"
+set +e; out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home7" XDG_CONFIG_HOME="$tmp/home/.config" CLAUDE_HOME="$tmp/kh7" bash "$KIT/doctor.sh" 2>&1)"; rc=$?; set -e
+ck "$(echo "$out" | grep -c 'no cablea hook')" "0" "H7: hooks cableados con la ruta absoluta de CLAUDE_HOME no son FAIL"
+cp "$tmp/settings7.bak" "$CLAUDE_HOME/settings.json"
 
 # H3: un *.kit.md pendiente es WARN (no FAIL); si ya es identico a tu fichero, no avisa.
 printf '# mio\n%s\n' '@AGENTS.md' > "$CLAUDE_HOME/CLAUDE.md"

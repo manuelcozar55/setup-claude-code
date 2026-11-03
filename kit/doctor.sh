@@ -80,8 +80,10 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   # Lo anterior solo mira lo que settings.json YA cita: con {} no hay nada que fallar y salia verde sin un solo guard.
   # Se compara al reves: todo script que cablea la plantilla del kit debe estar cableado en el settings.json vivo.
   # shellcheck disable=SC2016 # filtro jq: el $k es de jq
-  faltan="$(jq -r --slurpfile k "$KIT/claude/settings.json" '
-      def scripts: [.hooks // {} | .. | .command? | strings | scan("\\.claude/(?:hooks|sentinel)/[^ \"\u0027]+") | sub(".*/"; "")] | unique;
+  # Un comando puede citar el CLAUDE_HOME absoluto (fuera de ~/.claude): se lee como .claude/ antes de buscar.
+  faltan="$(jq -r --slurpfile k "$KIT/claude/settings.json" --arg ch "$CLAUDE_HOME" '
+      def scripts: [.hooks // {} | .. | .command? | strings | split($ch + "/") | join(".claude/")
+                    | scan("\\.claude/(?:hooks|sentinel)/[^ \"\u0027]+") | sub(".*/"; "")] | unique;
       ($k[0] | scripts) - scripts | join(" ")' "$CLAUDE_HOME/settings.json" 2>/dev/null)"
   if [ -n "$faltan" ]; then
     fail "settings.json no cablea hook(s) del kit: $faltan. Sin ellos no hay guard. Reinstala (install.sh) o restaura tu settings.json"
