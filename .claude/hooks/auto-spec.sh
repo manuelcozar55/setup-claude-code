@@ -61,23 +61,13 @@ case "$lower" in
   *lint*|*"exit 0"*|*"en verde"*) trae_criterio=1 ;;
 esac
 
-# ── 3. Gotchas del entorno, solo si el prompt los va a tocar ─────────────────
-# M-001: el hook PreToolUse/Bash sustituye el ejecutable en posicion de comando.
-case "$lower" in
-  *pytest*|*" rg "*|*ripgrep*|*"python -m"*|*"python3 -m"*|*npm\ test*|*jest*|*vitest*)
-    add "· Gotcha de este entorno (MISTAKES.md M-001): el hook PreToolUse/Bash sustituye el"
-    add "  ejecutable en posicion de comando -- 'rg' ejecuta grep, 'python3 -m pytest' ejecuta"
-    add "  'python3 -m rtk'. Invoca por RUTA ABSOLUTA, con 'rtk proxy ...' o dentro de un script."
-    ;;
-esac
-
-# ── 4. El oraculo del proyecto, averiguado y no preguntado ───────────────────
+# ── 3. El oraculo del proyecto, averiguado y no preguntado ───────────────────
 DET="$cwd/scripts/detect-oracle.sh"
 [ -x "$DET" ] || DET="${CLAUDE_PROJECT_DIR:-}/scripts/detect-oracle.sh"
 oracle=""
 [ -x "$DET" ] && oracle=$("$DET" "$cwd" 2>/dev/null | head -1)
 
-# ── 5. Brief de sesion: primer ENCARGO de la sesion, no primer prompt ────────
+# ── 4. Brief de sesion: primer ENCARGO de la sesion, no primer prompt ────────
 # Atado al encargo a proposito: en una sesion de preguntas el brief no aporta, y el
 # ruido de hoy es la razon por la que manana se ignora el aviso que si importaba.
 # La marca solo se escribe cuando el brief se emite de verdad, para que un primer
@@ -93,7 +83,7 @@ if [ "$es_encargo" -eq 1 ] && [ ! -f "$STATE/session-$sid.briefed" ]; then
   fi
 fi
 
-# ── 6. El nucleo: encargo sin criterio -> se le pone criterio ────────────────
+# ── 5. El nucleo: encargo sin criterio -> se le pone criterio ────────────────
 if [ "$es_encargo" -eq 1 ] && [ "$trae_criterio" -eq 0 ]; then
   add "· Esto es un encargo de trabajo y no trae criterio de verificacion. Antes de escribir"
   add "  codigo, declara en una linea: que sera cierto cuando este hecho, y QUE COMANDO lo"
@@ -113,7 +103,7 @@ elif [ "$es_encargo" -eq 1 ] && [ -n "$oracle" ]; then
   add "· Oraculo de este proyecto: $oracle -- cierra con su salida delante."
 fi
 
-# ── 7. La medicion envejece: avisar antes de que el harness deje de ser evaluable ──
+# ── 6. La medicion envejece: avisar antes de que el harness deje de ser evaluable ──
 # Causa nº2 del PRE-MORTEM: "la medicion nunca tuvo un segundo punto". Sin dos snapshots
 # no hay tendencia, y sin tendencia nadie puede decir si esto sirve. Cuesta un stat.
 # Nada de procesos de fondo ni cron: solo se avisa, en el momento en que hay alguien leyendo.

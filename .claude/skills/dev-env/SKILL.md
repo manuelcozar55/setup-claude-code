@@ -55,8 +55,8 @@ después no se puede gestionar con nada que no sea `uv`.
 
 ## 3 · Node
 
-`node` v24.19.0 y `npm` 12.0.2 vía nvm. **`pnpm` NO está en `$PATH`**: existe solo como
-shim de corepack (`~/.nvm/versions/node/v24.19.0/bin/pnpm`, versión 11.18.0). El directorio
+`node` y `npm` vía nvm (`node --version`, `npm --version`). **`pnpm` NO está en `$PATH`**: existe solo como
+shim de corepack (`~/.nvm/versions/node/<versión>/bin/pnpm`). El directorio
 `~/.local/share/pnpm/bin` está en `$PATH` pero vacío. Invócalo por ruta o vía `corepack`.
 
 ## 4 · Sistemas de ficheros

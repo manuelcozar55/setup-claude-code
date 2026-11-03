@@ -46,7 +46,7 @@ cuándo estará hecho. En preguntas calla.
 | `/implement` | Ejecuta la spec sin parar a preguntar. |
 | `/verify` | Ejecuta el oráculo y exige evidencia. |
 | `/review` | Revisor adversario en contexto limpio, con hallazgos verificados. |
-| `/retro` | Convierte lo aprendido en conocimiento versionado. |
+| `/retro-repo` | Convierte lo aprendido en conocimiento versionado. |
 
 ## Conocimiento vivo
 

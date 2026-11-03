@@ -1501,6 +1501,31 @@ else
   echo "NOT ok - el ADR 020 no enlaza COST-LOG.md#segunda-medicion-2026-10"; fail=$((fail+1))
 fi
 
+# ENTREGA.md y BUILD_ID son lo que lee quien recibe el paquete: toda version que citen debe ser
+# la de VERSION (llegaron a decir 1.6.1 con VERSION en 1.7.1).
+versiones_ajenas() {  # version fichero... -> versiones citadas distintas de <version>
+  local v="$1" f; shift
+  for f in "$@"; do
+    grep -oE '[0-9]+\.[0-9]+\.[0-9]+' "$f" 2>/dev/null | grep -vxF "$v" | sed "s|^|$f: |" || true
+  done
+}
+VERSION_REAL=$(tr -d '[:space:]' < VERSION)
+ent_ajenas=$(versiones_ajenas "$VERSION_REAL" ENTREGA.md BUILD_ID)
+ent_citan=$(grep -ohE '[0-9]+\.[0-9]+\.[0-9]+' ENTREGA.md BUILD_ID | grep -cxF "$VERSION_REAL" || true)
+if [ -z "$ent_ajenas" ] && [ "$ent_citan" -ge 2 ]; then
+  echo "ok - ENTREGA.md y BUILD_ID citan solo la version de VERSION ($VERSION_REAL)"; pass=$((pass+1))
+else
+  echo "NOT ok - ENTREGA.md/BUILD_ID no coinciden con VERSION=$VERSION_REAL: ${ent_ajenas:-no la citan}"; fail=$((fail+1))
+fi
+# Falsabilidad: con una version distinta fabricada, el detector tiene que saltar.
+FALSO_V=$(mktemp -d); printf 'scc-v0.0.1\n' > "$FALSO_V/BUILD_ID"
+if [ -n "$(versiones_ajenas "$VERSION_REAL" "$FALSO_V/BUILD_ID")" ]; then
+  echo "ok - el check de versiones SI detecta un BUILD_ID con otra version"; pass=$((pass+1))
+else
+  echo "NOT ok - el check de versiones no detecta un BUILD_ID con otra version"; fail=$((fail+1))
+fi
+rm -r "$FALSO_V"
+
 if [ "$skipped" -gt 0 ]; then
   echo "== $pass passed, $fail failed, $skipped skipped =="
   [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: comprobaciones de cifras (test_doc_claims.sh): faltan kit/evals/runs.jsonl u otra condicion; esas cifras NO se han comprobado" >> "$SCC_SKIP_LOG"
