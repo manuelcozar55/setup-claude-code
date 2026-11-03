@@ -17,7 +17,8 @@ RESTRICTED="$tmp/restrictedbin"; mkdir -p "$RESTRICTED"
 # `jq` va en la lista por la misma razon que en test_install_gitleaks.sh: install.sh lo exige en
 # una puerta de dependencia y sin el aborta a proposito. Lo que aqui se mide es un checksum de
 # gitleaks que no coincide, no la ausencia de jq.
-for b in bash uname date cp mkdir ln readlink chmod cmp dirname basename sed sha256sum tar install mktemp cat rm jq; do
+# cut, awk y mv, como en test_install_gitleaks.sh: el registro de lo instalado y la copia atomica de los hooks.
+for b in bash uname date cp mkdir mv ln readlink chmod cmp cut awk dirname basename sed sha256sum tar install mktemp cat rm jq; do
   p="$(command -v "$b" 2>/dev/null || true)"
   [ -n "$p" ] && ln -sf "$p" "$RESTRICTED/$b"
 done
