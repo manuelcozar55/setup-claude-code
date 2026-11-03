@@ -583,7 +583,7 @@ test('log: sin proyecto', async ($, on) => {
   repo(on, {}, { isRepo: false, cwd: '/h', home: '/h' })
   await $.turn.complete(DONE_TURN)
   await clock.advance(800)
-  expect(seen.logs.map(l => l.includes('sin proyecto'))).toEqual([true])
+  expect(seen.logs.map(l => l.includes('sin proyecto') && l.includes('(cwd /h)'))).toEqual([true])
 })
 
 test('log: con el estado ilegible lo dice', async ($, on) => {

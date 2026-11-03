@@ -637,7 +637,8 @@ async function maybeAutoHandoff($: $) {
   if (limit === null || !c) return
   const pct = pctOf(c)
   if (pct < limit) return
-  const skip = (why: string) => $.ui.log(`cockpit: handoff automático omitido al ${pct}%: ${why}`, { to: 'debug' })
+  // The cwd goes with it: hooks resolve the root from the session's start (a ~ slot), the mod from the live cwd.
+  const skip = async (why: string) => $.ui.log(`cockpit: handoff automático omitido al ${pct}%: ${why} (cwd ${await $.session.cwd().catch(() => '?')})`, { to: 'debug' })
   if (await read($, isAutoQueued)) return skip('ya en curso')
   const phase = (await read($, handoff)).phase
   if (!['idle', 'done'].includes(phase)) return skip(phase === 'error' ? 'error previo' : 'ya en curso')
