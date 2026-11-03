@@ -722,6 +722,16 @@ expect "destructive: heredoc con pipe a un shell denegado"              "$(run_d
 expect "destructive: heredoc a stdout (sin fichero) denegado"           "$(run_destructive_jq "cat <<'EOF'${NL}rm -rf ~${NL}EOF")" BLOCK
 expect "destructive: heredoc sin cierre denegado"                       "$(run_destructive_jq "cat > a.md <<'EOF'${NL}rm -rf ~${NL}")" BLOCK
 expect "destructive: heredoc a fichero con && bash denegado"            "$(run_destructive_jq "cat > a.sh <<'EOF' && bash a.sh${NL}rm -rf ~${NL}EOF")" BLOCK
+# Hueco `~` entre comillas: `~` o `..` pegados a la comilla de cierre (o a `;`, `)`...) no contaban como objetivo de rm.
+expect "destructive: ssh \"rm -rf ~\" denegado"                         "$(run_destructive_jq 'ssh h "rm -rf ~"')" BLOCK
+expect "destructive: ssh 'rm -rf ~' denegado"                           "$(run_destructive_jq "ssh h 'rm -rf ~'")" BLOCK
+expect "destructive: bash -c \"rm -rf ~\" denegado"                     "$(run_destructive_jq 'bash -c "rm -rf ~"')" BLOCK
+expect "destructive: sh -c 'rm -rf ~' denegado"                         "$(run_destructive_jq "sh -c 'rm -rf ~'")" BLOCK
+expect "destructive: sh -c \"rm -rf ..\" denegado"                      "$(run_destructive_jq 'sh -c "rm -rf .."')" BLOCK
+expect "destructive: rm -rf ~; ls denegado"                             "$(run_destructive_jq 'rm -rf ~; ls')" BLOCK
+expect "destructive: prosa con ~ entre comillas que no es objetivo NO denegada" "$(run_destructive_jq 'echo "el home es ~"')" ALLOW
+expect "destructive: mensaje de commit con ~ NO denegado"               "$(run_destructive_jq 'git commit -m "limpia ~ y .. del path"')" ALLOW
+expect "destructive: rm de un fichero llamado ~x en prosa NO denegado"  "$(run_destructive_jq 'echo "rm -f ~backup.txt"')" ALLOW
 # El comando remoto de `ssh host '...'` SIGUE valorandose: es destructivo en la maquina remota y `~` o un dir de /home no se
 # distinguen aqui de una credencial remota. Fijado en los dos sentidos.
 expect "destructive: ssh con find -delete en ~ denegado"                "$(run_destructive_jq "ssh spark 'find ~/prueba -maxdepth 1 -name x -delete'")" BLOCK

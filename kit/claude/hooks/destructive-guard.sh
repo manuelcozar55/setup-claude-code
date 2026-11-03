@@ -52,7 +52,7 @@ COMMAND_SCAN=$CMDN_TEXT
 # Las formas largas (--recursive/--force) van en la clase de opciones: solo se aceptaban
 # grupos de flags cortos, asi que `rm --recursive --force /home/usuario/docs` no
 # emparejaba la ruta sensible y salia limpio de los cinco guards.
-if echo "$COMMAND_SCAN" | grep -qE 'rm\s+((-[rf]+|--recursive|--force)\s+)*(\/$|\/\s|\/[^a-z]|\/home|\/etc|\/usr|\/var|\/root|\/boot|~($|[/[:space:]])|\.\.($|[/[:space:]]))'; then
+if echo "$COMMAND_SCAN" | grep -qE 'rm\s+((-[rf]+|--recursive|--force)\s+)*(\/$|\/\s|\/[^a-z]|\/home|\/etc|\/usr|\/var|\/root|\/boot|~($|[^[:alnum:]_.+-])|\.\.($|[^[:alnum:]_.-]))'; then
   SAFE=0
   IFS=':' read -ra DIRS <<< "$SAFE_DIRS"
   for dir in "${DIRS[@]}"; do
