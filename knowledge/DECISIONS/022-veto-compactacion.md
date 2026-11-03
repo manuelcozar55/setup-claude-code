@@ -1,6 +1,7 @@
 # ADR 022 — El veto de la compactación automática se queda en el cockpit
 
-**Fecha:** 2026-10-29 · **Estado:** aceptada
+**Fecha:** 2026-10-29 · **Estado:** sustituida por el ADR 026 (2026-11-03): el salto del veto no es ocasional sino
+permanente en máquinas con ajustes gestionados, y el veto se retira.
 
 ## Contexto
 
