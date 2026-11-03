@@ -38,6 +38,9 @@ SAFE_DIRS="${CC_SAFE_DELETE_DIRS:-node_modules:dist:build:.cache:__pycache__:cov
 # shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit." >&2; exit 2; }
 cmdn_oversize "$COMMAND" && exit 0
+# El cuerpo de un `cat > fichero <<'FIN'` (delimitador entrecomillado, sin pipe) es texto, no una orden: la prosa de un
+# informe que cita `rm -rf` o `find -delete` no se evalua. Solo este guard lo salta (los demas ven el cuerpo entero).
+CMDN_SKIP_HEREDOC=1
 if ! cmdn_parse "$COMMAND"; then
   echo "BLOCKED (fail-closed): awk no pudo normalizar el comando; destructive-guard no puede evaluarlo." >&2
   exit 2
