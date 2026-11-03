@@ -595,15 +595,24 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
     const prompt = HANDOFF_PROMPT + (prev ? prevNote(prev) : firstNote) + (focus ? focusNote(focus) : '')
       + `\nPresupuesto: respuesta completa como máximo ${budget} bytes UTF-8, objetivo ${Math.min(3000, budget)} bytes. El CLI conserva Objetivo e Invariantes existentes: no los repitas salvo corrección nueva. Referencia SPEC/artefactos por ruta; no copies sus contratos ni repitas rutas largas en cada sección. Plan compacto, siguiente fase y resultados verificables. Nunca acortes ni reformules las palabras literales de la persona para hacerlas caber.`
     let draft = ''
+    let size = 0
     for (let attempt = 0; attempt < 2; attempt++) {
-      const reply = await $.model.fork({ prompt: prompt + (attempt ? `\nLa respuesta anterior excedió ${budget} bytes UTF-8. Regenera una versión más compacta; conserva riesgos abiertos y referencias, sin duplicar la especificación ni secciones fijas. Es el último intento antes de conservar el contexto sin guardar.` : '') })
-      if (!reply.isAnswered) throw new Error(`el modelo no respondió (${reply.reason})`)
+      // A model counts bytes badly: the retry says how many it wrote and how many to cut.
+      const retry = attempt ? `\nLa respuesta anterior midió ${size} bytes UTF-8: sobran ${size - budget} sobre el máximo de ${budget}. Regenera una versión que quite al menos esos ${size - budget} bytes; conserva riesgos abiertos y referencias, sin duplicar la especificación ni secciones fijas. Es el último intento: si aún se pasa, el CLI omitirá secciones enteras (primero Pendientes y Plan) y solo quedarán en diario.md.` : ''
+      const reply = await $.model.fork({ prompt: prompt + retry })
+      // A failed retry still leaves the first draft.
+      if (!reply.isAnswered) { if (draft) break; throw new Error(`el modelo no respondió (${reply.reason})`) }
       const start = reply.text.search(/^## /m)
-      if (start < 0) throw new Error('la respuesta no trae secciones ## ')
-      draft = redact(reply.text.slice(start))
-      if (encoder.encode(draft).length <= budget) break
-      if (attempt === 1) throw new Error(`el borrador supera el presupuesto de ${budget} bytes UTF-8 tras dos intentos; no guardo ni limpio`)
+      if (start < 0) { if (draft) break; throw new Error('la respuesta no trae secciones ## ') }
+      const text = redact(reply.text.slice(start))
+      const bytes = encoder.encode(text).length
+      if (!draft || bytes < size) [draft, size] = [text, bytes]
+      if (size <= budget) break
     }
+    // Still over budget: the shorter draft is saved anyway. The CLI is the authority on the tope: it omits whole sections
+    // in its order (never Objetivo, Invariantes nor Siguiente acción), copies them to diario.md and says so in avisos.
+    // Until 1.8.0 this aborted, and the session went on to the compaction the handoff exists to avoid.
+    const oversize = size > budget ? `borrador de ${size} B tras dos intentos (presupuesto ${budget} B): el CLI lo ajusta al tope y lo que omita queda en diario.md` : ''
     // The title only feeds the fill that /clear leaves in the prompt: a save without /clear would pay the call for nothing.
     if (andClear) draft = await titled($, draft, budget)
     // The draft holds the session's state: a private file (mktemp makes it 600), removed in `finally`.
@@ -631,7 +640,7 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
       throw new Error('el CLI no confirmó la ruta y el hash guardados; no limpio')
     const saved = { path: receipt.nucleo, hash: receipt.sha256 }
     // Notices travel in the receipt; an older CLI writes them to stderr with rc 0. Shown, never a reason to skip /clear.
-    const notice = [...('avisos' in receipt && Array.isArray(receipt.avisos) ? receipt.avisos.filter((a): a is string => typeof a === 'string') : []), res.stderr.trim()].filter(Boolean).join('; ')
+    const notice = [oversize, ...('avisos' in receipt && Array.isArray(receipt.avisos) ? receipt.avisos.filter((a): a is string => typeof a === 'string') : []), res.stderr.trim()].filter(Boolean).join('; ')
     if (!andClear) {
       await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${saved.path}${notice ? `; aviso: ${redact(notice)}` : ''}` }))
       return saved

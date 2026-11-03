@@ -92,27 +92,44 @@ const fork = (on: Parameters<TestBody>[1], text: string, seen: { prompt: string;
 }
 
 for (const compact of [true, false]) {
-  test(`presupuesto UTF-8: segundo borrador ${compact ? 'compacto guarda' : 'grande conserva contexto sin guardar'}`, async ($, on) => {
+  test(`presupuesto UTF-8: segundo borrador ${compact ? 'compacto se guarda' : 'grande: se guarda el más corto, el CLI lo ajusta y se avisa'}`, async ($, on) => {
     const timer = mock.clock(on)
     const prompts: string[] = []
+    const bytes = (s: string) => new TextEncoder().encode(s).length
+    const FIRST = '## Plan\n' + 'á'.repeat(2200)
     const seen = auto(on, { tokens: 1, forkText: prompt => {
       prompts.push(prompt)
-      return compact && prompts.length === 2 ? PLAN : '## Plan\n' + 'á'.repeat(2500)
+      return prompts.length === 1 ? FIRST : compact ? PLAN : '## Plan\n' + 'á'.repeat(2500)
     } })
     const previous = '# Estado\n## Encargo original (literal)\n' + 'a'.repeat(900) + '\n## Invariantes vigentes\n' + 'b'.repeat(1000) + '\n'
-    const r = repo(on, { [`${EST}/nucleo.md`]: previous })
-    const result = await $.command.run({ ...RUN, command: 'handoff' })
+    const budget = 5700 - bytes(previous.slice('# Estado\n'.length)) - 768
+    const omitted = 'omitidas por tope (5700 B), copia en diario.md: Plan'
+    const r = repo(on, { [`${EST}/nucleo.md`]: previous }, compact ? {} : { avisos: [omitted] })
+    await $.command.run({ ...RUN, command: 'handoff' })
     await timer.advance(400)
     expect(prompts).toHaveLength(2)
-    expect(prompts[0]).toContain('bytes UTF-8')
+    expect(prompts[0]).toContain(`como máximo ${budget} bytes UTF-8`)
+    expect(prompts[1]).toContain(`midió ${bytes(FIRST)} bytes UTF-8: sobran ${bytes(FIRST) - budget}`)
     expect(prompts[1]).toContain('último intento')
-    expect(r.calls).toHaveLength(compact ? 1 : 0)
-    expect(seen.cleared).toBe(compact ? 1 : 0)
-    if (!compact) {
-      expect(result.text).toContain('no guardo ni limpio')
-      expect(r.files[`${EST}/nucleo.md`]).toBe(previous)
-      expect(r.writes).toEqual([])
-    }
+    expect(r.calls).toHaveLength(1)
+    expect(r.calls[0]?.draft).toBe(compact ? PLAN : FIRST)
+    expect(seen.cleared).toBe(1)
+    if (compact) expect(seen.toasts.join('\n')).not.toContain('tras dos intentos')
+    else expect(seen.toasts).toContain(`Handoff: borrador de ${bytes(FIRST)} B tras dos intentos (presupuesto ${budget} B): el CLI lo ajusta al tope y lo que omita queda en diario.md; ${omitted}`)
+  })
+}
+
+for (const why of ['no responde', 'no trae secciones'] as const) {
+  test(`presupuesto: si el reintento ${why}, se guarda el primer borrador con aviso`, async ($, on) => {
+    const FIRST = '## Siguiente acción\nT1\n## Plan\n' + 'á'.repeat(3000)
+    let n = 0
+    on('model.fork', () => ({ value: ++n === 1 ? { isAnswered: true, text: FIRST, usage: {} } : why === 'no responde' ? { isAnswered: false, reason: 'error' } : { isAnswered: true, text: 'sin cabeceras', usage: {} } }) as never)
+    const r = repo(on, {})
+    const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+    expect(n).toBe(2)
+    expect(r.calls).toHaveLength(1)
+    expect(r.calls[0]?.draft).toBe(FIRST)
+    expect(res.text).toContain(`Guardado en ${EST}/nucleo.md; aviso: borrador de ${new TextEncoder().encode(FIRST).length} B tras dos intentos`)
   })
 }
 
