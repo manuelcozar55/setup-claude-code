@@ -251,6 +251,14 @@ bash "$HO" --desde "$T/b.md" --raiz "$E" >/dev/null 2>&1
 ok "handoff --desde repetido: mismo ESTADO.md, sin duplicar secciones" "$([ "$(sha256sum <"$E/ESTADO.md")" = "$HASH1" ] && echo igual || echo distinto),$(command grep -c '^## ' "$E/ESTADO.md")" igual,4
 ok "handoff --desde: la copia previa va a .claude/estado (fuera del árbol versionado) y un repetido sin cambios no la duplica" "$(find "$E/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" 1
 ok "handoff --estado: nombra ESTADO.md y su modo" "$(bash "$HO" --estado --raiz "$E" | jq -r '(.estado | endswith("/ESTADO.md")), .modo' | paste -sd,)" true,estado-md
+# 1.8.0 (M1): ESTADO.md es de la persona y va a git: la línea «> sesión anterior» no se escribe ahí, pero el recibo sí trae transcript y bytes.
+mkdir -p "$T/cfg-e/projects/-x"; : >"$T/cfg-e/projects/-x/sesE.jsonl"
+OUT=$(CLAUDE_CONFIG_DIR=$T/cfg-e bash "$HO" --desde "$T/b.md" --raiz "$E" --sesion sesE --json 2>/dev/null)
+ok "handoff --desde en modo ESTADO.md: sin línea de transcript en ESTADO.md; el recibo trae transcript y bytes" "$(command grep -c 'sesión anterior' "$E/ESTADO.md"),$(jq -r '.transcript' <<<"$OUT"),$([ "$(jq -r '.bytes' <<<"$OUT")" = "$(wc -c <"$E/ESTADO.md" | tr -d ' ')" ] && echo igual)" "0,$T/cfg-e/projects/-x/sesE.jsonl,igual"
+# 1.8.0 (M3): el borrador que repite un [x] ya cerrado no lo duplica en diario.md (modo ESTADO.md).
+# shellcheck disable=SC2016  # los acentos graves son markdown, no sustituciones
+for i in 1 2 3; do printf '## Paso actual\nP%s\n## Plan\n- [x] cerrado-E — `make test`\n' "$i" >"$T/bx.md"; bash "$HO" --desde "$T/bx.md" --raiz "$E" >/dev/null 2>&1; done
+ok "handoff --desde en modo ESTADO.md: el mismo [x] tres veces queda una vez en diario.md" "$(command grep -c 'cerrado-E' "$E/.claude/estado/diario.md")" 1
 # El comando que dictan stop-context-gauge.sh y session-start-compact.sh: --desde con --sesion y sin --ranura, desde un cwd dentro del repo.
 estado "$E/ESTADO.md"
 ok "handoff --desde --sesion sin --ranura (el que dictan los hooks) funciona en modo ESTADO.md" "$(cd "$E" && bash "$HO" --desde "$T/b.md" --sesion s-h5 >/dev/null 2>&1; echo $?),$(command grep -c 'PASO-NUEVO' "$E/ESTADO.md"),$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" 0,1,no

@@ -9,6 +9,11 @@ etiquetado.
 
 ## [1.8.0] - 2026-11-03
 
+### Added
+
+- **La sesión nueva sabe dónde quedó la anterior**: con `--sesion <id>`, `handoff --desde` busca el transcript (`${CLAUDE_CONFIG_DIR:-~/.claude}/projects/*/<id>.jsonl`) y deja bajo el título del nucleo una sola línea `> sesión anterior: <ruta> · volver: claude --resume <id> · buscar en él con rg, nunca leerlo entero`. Cada handoff la sustituye, entra en el tope y la inyección de `SessionStart` (clear y compact) la pasa. El recibo `--json` añade `transcript` y `bytes`. En modo `ESTADO.md` no se escribe. Tests: `test_nucleo_hooks.sh`, `test_nucleo_integridad.sh`.
+- **Recibo del handoff que sobrevive al `/clear`** (cockpit): el toast con el resultado lo borraba el `/clear`. Ahora una línea sobre el prompt de la sesión nueva dice cuántos bytes se guardaron, qué secciones fueron a `diario.md` y cómo volver (`claude --resume <id>`), hasta que cierra su primer turno. `/handoff solo` usa el mismo formato. Tests: `handoff.test.tsx`.
+
 ### Changed
 
 - **El aviso de contexto al 70 % es una orden, no un consejo** (ADR 026, sustituye a la 022): recoge los agentes en vuelo sin lanzar más, cierra la fase con `/handoff` y termina el turno; con `/autonomo on` la sesión sigue sola tras el `/clear`. Medido el 03-nov en 6 sesiones: 16 compactaciones automáticas, todas a mitad de turno, 0 handoffs automáticos del cockpit y 0 vetos. El turno no terminaba nunca, así que el cockpit no llegaba a actuar. `kit/claude/AGENTS.md` declara esa parada válida frente a Never-Stop. Tests: `test_nucleo_nudge.sh`.
@@ -18,6 +23,7 @@ etiquetado.
 
 ### Fixed
 
+- **`diario.md` ya no repite los cierres**: el borrador de cada handoff suele traer otra vez los `[x]` ya cerrados, y el CLI los volvía a apuntar (en una ranura real, cada línea aparecía 4 veces). Ahora omite un `[x]` cuyo texto y comando ya estén en el diario, sin mirar fecha ni hash; el `[x]` sigue saliendo del nucleo. Tests: `test_nucleo_hooks.sh`.
 - **Un handoff que se pasa del presupuesto ya se guarda**: el fork del cockpit escribe el borrador con un presupuesto en bytes (el tope menos Objetivo e Invariantes menos 768 B). Si se pasaba dos veces, el cockpit abortaba sin guardar («el borrador supera el presupuesto de N bytes UTF-8 tras dos intentos») y la sesión acababa en la compactación automática con el nucleo.md viejo. Ahora el reintento dice cuántos bytes midió y cuántos sobran. Si vuelve a pasarse o no responde, se guarda el borrador más corto: el CLI lo ajusta al tope omitiendo secciones enteras (nunca Objetivo, Invariantes ni Siguiente acción), las copia a diario.md y el aviso lo cuenta. Tests: `handoff.test.tsx`.
 - **El título del handoff y la lectura de secciones** (code-review del 03-nov): un `## ` dentro de una valla ya no es cabecera, con la misma regla que el CLI. El título va a la sección real y no a un ejemplo citado, y su texto no cierra antes de tiempo el bloque de datos. `/handoff solo` y `/nueva` no piden título, y un fallo de `$.model.complete` no aborta el guardado. Tests: `handoff.test.tsx`.
 - **Un aviso de `/handoff` ya no deja la sesión sin handoff automático** (cockpit 0.7.0): el cockpit tomaba cualquier stderr de un guardado correcto como fase `error`, que solo se quitaba a mano. Ahora, con `--json`, los avisos van a `avisos[]` del recibo y stderr queda vacío. El cockpit los muestra y el `/clear` sigue. La fase `error` vuelve a reposo una vez por sesión en el siguiente cierre de turno. Cada cierre de turno sobre el umbral sin handoff deja su motivo y el cwd en el log. Tests: `handoff.test.tsx`, `dock.test.tsx`, `test_nucleo_integridad.sh`.

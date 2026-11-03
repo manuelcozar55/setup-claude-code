@@ -89,6 +89,9 @@ El detalle está en `CHANGELOG.md`. En resumen, para quien usa el kit:
   gestionados no se ejecutaba nunca.
 - El instalador distingue tu `CLAUDE.md` del suyo, `doctor` falla si falta algún hook del
   kit y restaurar ya no deshace lo restaurado.
+- Tras el `/clear` de un handoff, el nucleo apunta al transcript de la sesión anterior
+  (`claude --resume <id>` para volver) y el panel deja una línea con lo guardado hasta la
+  primera respuesta; `diario.md` ya no repite los pasos cerrados.
 - Los guards cubren más formas de push forzado, de «descarga y ejecuta» y de borrado
   recursivo de `~` dentro de `ssh` o `sh -c`; Sentinel sigue los enlaces simbólicos.
 

@@ -28,7 +28,10 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
             a .git/info/exclude.
   --sesion  ID real de la sesión que escribe. Con dueño vigente es obligatorio y debe coincidir;
             sin ID o con otro devuelve 5 sin escribir. En --desde, sin --sesion vale $CLAUDE_CODE_SESSION_ID si existe. No copies el ID de otra sesión desde --estado.
-            Al guardar libera ese dueño (o el dueño caducado).
+            Al guardar libera ese dueño (o el dueño caducado). Con --desde busca además el transcript de esa sesión
+            (${CLAUDE_CONFIG_DIR:-~/.claude}/projects/*/ID.jsonl; el ID solo admite letras, cifras y «-») y deja en el nucleo, bajo el título, la línea
+            «> sesión anterior: RUTA · volver: claude --resume ID …» (una sola: cada handoff sustituye la anterior; entra en el tope y no se omite).
+            Sin transcript o sin ID no hay línea y no es un error. En modo ESTADO.md no se escribe (es de la persona y va a git).
 --ranura  solo con --desde: escribe en esa ranura de sesión (~/.claude/estado/sesiones/<id>/) sea cual sea el cwd; es lo que
           dicta el aviso de contexto en una sesión abierta desde ~. Se acepta solo si, resuelta con realpath, es un hijo directo de
           $CLAUDE_HOME/estado/sesiones/ y no contiene enlaces; si no, sale 1 sin escribir. Excluye --raiz y --commit.
@@ -40,7 +43,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
 --migrar  archiva el núcleo de DIR en archivo/ del estado real y lo anota en diario; nunca borra.
           Sin DIR archiva únicamente la ranura HOME del proceso actual.
 --esperado exige ese SHA256 al archivar, bajo lock; si cambió o no existe devuelve 4.
---json    --desde devuelve {nucleo,sha256} del documento guardado; --migrar añade archivo.
+--json    --desde devuelve {nucleo,sha256,transcript,bytes} del documento guardado (transcript: la ruta o null; bytes: lo escrito); --migrar añade archivo.
 --liberar ID libera solamente al dueño cuyo ID coincida; conserva el núcleo.
 --agentes tabla del registro persistente; no crea estado ni archiva agentes.
 --estado  una línea JSON: raíz, nucleo, bytes, tope, pct, dueño, sha256 y agentes_vivos de --sesion (sin proyecto: {"raiz":null}).
@@ -296,6 +299,14 @@ if [ -z "$SES" ] && D=$(nucleo_dueno_ajeno "$RAIZ" "$SESION"); then
 fi
 NUC=$E/nucleo.md; DIARIO=$E/diario.md; VLOG=$E/verificaciones.log
 HOY=$(date -u +%F)
+# La sesión nueva tras /clear no sabe dónde quedó el transcript de esta: se lo deja el nucleo. El ID entra en un glob: solo [A-Za-z0-9-].
+TRANSCRIPT=""
+case $SESION in
+  '' | *[!A-Za-z0-9-]*) ;;
+  *) for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/"$SESION".jsonl; do [ ! -f "$f" ] || TRANSCRIPT=$f; break; done ;;
+esac
+# YA: los cierres que diario.md ya tiene, sin fecha ni hash. El borrador de cada handoff suele traer otra vez los [x] ya cerrados.
+YA=$'\n'; [ ! -f "$DIARIO" ] || YA+=$(sed -n 's/^- [0-9-]* · \(.*\) · [^ ]*$/\1/p' "$DIARIO")$'\n'
 
 W=$(mktemp -d "${TMPDIR:-/tmp}/handoff.XXXXXX")
 TMP=""
@@ -559,7 +570,9 @@ if [ "$ESTMD" -eq 1 ]; then
       [ -s "$DIARIO" ] || printf '# Diario\n'
       while IFS= read -r l; do
         l=${l#"${l%%[![:space:]]*}"}; l=${l#[-*] }; l=${l#[0-9]*. }; l=${l#\[[xX]\]}; l=${l# }
-        [ -z "$l" ] || printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
+        [ -n "$l" ] && [[ $YA != *$'\n'"$l"$'\n'* ]] || continue
+        YA+=$l$'\n'
+        printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
       done <"$W/hechos"
       [ ! -s "$W/omitido" ] || cat "$W/omitido"
     } >>"$DIARIO"
@@ -586,7 +599,7 @@ if [ "$ESTMD" -eq 1 ]; then
   avisos_stderr
   if [ "$JSON" = 1 ]; then
     SHA=$(sha256sum <"$EST" | cut -d' ' -f1)
-    jq -cn --arg n "$EST" --arg s "$SHA" --arg x "${EXTRAS#|}" '{nucleo:$n,sha256:$s,modo:"estado-md",extras:($x | split("|") | map(select(. != "")))} + (if ($ARGS.positional | length) == 0 then {} else {avisos:$ARGS.positional} end)' --args ${AV[@]+"${AV[@]}"}
+    jq -cn --arg n "$EST" --arg s "$SHA" --arg x "${EXTRAS#|}" --arg tr "$TRANSCRIPT" --argjson b "$(wc -c <"$EST" | tr -d ' ')" '{nucleo:$n,sha256:$s,transcript:(if $tr == "" then null else $tr end),bytes:$b,modo:"estado-md",extras:($x | split("|") | map(select(. != "")))} + (if ($ARGS.positional | length) == 0 then {} else {avisos:$ARGS.positional} end)' --args ${AV[@]+"${AV[@]}"}
   else
     echo "handoff: $EST escrito ($(wc -c <"$EST" | tr -d ' ') B de $TOPE)"
     [ -z "$EXTRAS" ] || echo "handoff: sin equivalente en ESTADO.md, añadidas como secciones propias: ${EXTRAS#|}"
@@ -752,8 +765,9 @@ fi
 OMITIDAS=""
 armar() {
   local h="" l t i
-  while IFS= read -r l; do case $l in '> handoff '*) ;; *) h+=$l$'\n' ;; esac; done <<<"${HEAD%$'\n'}"
+  while IFS= read -r l; do case $l in '> handoff '* | '> sesión anterior: '*) ;; *) h+=$l$'\n' ;; esac; done <<<"${HEAD%$'\n'}"
   [ -z "$OMITIDAS" ] || h+="> handoff $HOY: omitidas por tope (copia en diario.md):$OMITIDAS"$'\n'
+  [ -z "$TRANSCRIPT" ] || h+="> sesión anterior: $TRANSCRIPT · volver: claude --resume $SESION · buscar en él con rg, nunca leerlo entero"$'\n'
   t=$h
   for ((i = 0; i < ${#RK[@]}; i++)); do [ -z "${RT[i]}" ] || { fin_nl "RT[$i]"; t+=${RT[i]}; }; done
   TEXTO=$t
@@ -828,7 +842,10 @@ SINCMD=0
     [ -n "$l" ] || continue
     # Forma, no contenido: «` `» cuenta como comando. Marca el cierre sin comando por descuido, no al que lo esquiva.
     # shellcheck disable=SC2016  # Backticks literales: el comando va entre ellos.
-    if [[ $l != *\`?*\`* ]]; then l+=" (sin comando)"; SINCMD=$((SINCMD + 1)); fi
+    sc=""; [[ $l == *\`?*\`* ]] || { sc=" (sin comando)"; SINCMD=$((SINCMD + 1)); }
+    [[ $YA != *$'\n'"$l$sc"$'\n'* ]] || continue
+    YA+=$l$sc$'\n'
+    l+=$sc
     printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
   done <"$W/hechos"
   [ ! -s "$W/omitido" ] || cat "$W/omitido"
@@ -866,7 +883,7 @@ fi
 avisos_stderr
 if [ "$JSON" = 1 ]; then
   SHA=$(printf '%s' "$TEXTO" | sha256sum | cut -d' ' -f1)
-  jq -cn --arg n "$NUC" --arg s "$SHA" '{nucleo:$n,sha256:$s} + (if ($ARGS.positional | length) == 0 then {} else {avisos:$ARGS.positional} end)' --args ${AV[@]+"${AV[@]}"}
+  jq -cn --arg n "$NUC" --arg s "$SHA" --arg tr "$TRANSCRIPT" --argjson b "$(bytes "$TEXTO")" '{nucleo:$n,sha256:$s,transcript:(if $tr == "" then null else $tr end),bytes:$b} + (if ($ARGS.positional | length) == 0 then {} else {avisos:$ARGS.positional} end)' --args ${AV[@]+"${AV[@]}"}
 else echo "handoff: $NUC escrito ($(bytes "$TEXTO") B de $TOPE)"
 fi
 [ -z "$ERRC" ] || die 1 "$ERRC"

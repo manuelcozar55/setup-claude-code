@@ -24,7 +24,7 @@ const no = () => ({ value: { exitCode: 1, stdout: '', stderr: '' } }) as never
 function repo(
   on: Parameters<TestBody>[1],
   files: Record<string, string>,
-  opts: { links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[] } = {},
+  opts: { links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
 ) {
   let stateReads = 0
   const runs: Run[] = []
@@ -68,7 +68,7 @@ function repo(
       const seq = opts.cli ?? [0]
       const code = seq[Math.min(calls.length - 1, seq.length - 1)] ?? 0
       if (code === 0) files[opts.estadoMd ?? opts.statePath ?? `${e.argv[e.argv.indexOf('--raiz') + 1]}/.claude/estado/nucleo.md`] = draft
-      return { value: { exitCode: code, stdout: JSON.stringify({ nucleo: opts.estadoMd ?? opts.statePath ?? `${EST}/nucleo.md`, sha256: HASH, ...(opts.avisos ? { avisos: opts.avisos } : {}) }), stderr: opts.stderr ?? '' } } as never
+      return { value: { exitCode: code, stdout: JSON.stringify({ nucleo: opts.estadoMd ?? opts.statePath ?? `${EST}/nucleo.md`, sha256: HASH, ...(opts.avisos ? { avisos: opts.avisos } : {}), ...opts.recibo }), stderr: opts.stderr ?? '' } } as never
     }
     return ok()
   })
@@ -89,6 +89,12 @@ const fork = (on: Parameters<TestBody>[1], text: string, seen: { prompt: string;
     return { value: { isAnswered: true, text, usage: {} } } as never
   })
   return seen
+}
+
+// The receipt line of the band: a toast dies with the /clear, this is what the person still reads in the new session.
+async function receiptRow($: any) {
+  const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  return ((await ui.find({ text: /^Handoff: / }))?.text ?? '') as string
 }
 
 for (const compact of [true, false]) {
@@ -114,8 +120,10 @@ for (const compact of [true, false]) {
     expect(r.calls).toHaveLength(1)
     expect(r.calls[0]?.draft).toBe(compact ? PLAN : FIRST)
     expect(seen.cleared).toBe(1)
-    if (compact) expect(seen.toasts.join('\n')).not.toContain('tras dos intentos')
-    else expect(seen.toasts).toContain(`Handoff: borrador de ${bytes(FIRST)} B tras dos intentos (presupuesto ${budget} B): el CLI lo ajusta al tope y lo que omita queda en diario.md; ${omitted}`)
+    const row = await receiptRow($)
+    if (compact) expect(row).toBe('')
+    else expect(row).toBe(`Handoff: a diario.md: Plan · aviso: borrador de ${bytes(FIRST)} B tras dos intentos (presupuesto ${budget} B): el CLI lo ajusta al tope y lo que omita queda en diario.md`)
+    expect(seen.toasts.some(t => t.startsWith('Handoff:'))).toBe(false)
   })
 }
 
@@ -543,7 +551,9 @@ test('handoff automático: un aviso en el recibo (modo nucleo) no es error: limp
   await clock.advance(400)
   await clock.advance(400)
   expect(seen.cleared).toBe(1)
-  expect(seen.toasts.some(t => t.includes('omitidas por tope') && t.includes('sin comando'))).toBe(true)
+  const row = await receiptRow($)
+  expect(row).toContain('omitidas por tope')
+  expect(row).toContain('sin comando')
 })
 
 test('handoff automático: un CLI viejo con el aviso por stderr y rc 0 tampoco es error', async ($, on) => {
@@ -554,7 +564,7 @@ test('handoff automático: un CLI viejo con el aviso por stderr y rc 0 tampoco e
   await clock.advance(400)
   await clock.advance(400)
   expect(seen.cleared).toBe(1)
-  expect(seen.toasts.some(t => t.includes('omitidas por tope'))).toBe(true)
+  expect(await receiptRow($)).toContain('omitidas por tope')
 })
 
 test('handoff --estado: plazo de 5 s', async ($, on) => {
@@ -1109,6 +1119,53 @@ for (const [name, fill] of [['rechazado por un diálogo', { isFilled: false, ref
   })
 }
 
+// The engine resets the atoms on /clear (the same emulation as the autonomy tests): only what the mod writes afterwards survives.
+const SID = 'abcdef12-3456-7890-abcd-ef1234567890'
+function resetOnClear(on: Parameters<TestBody>[1]) {
+  const reset = new Set<string>()
+  on('state.get', { plugin: 'cockpit' }, async (_, e, next) => {
+    const result = await next(e)
+    return reset.has(e.key) && result.value ? { value: { ...result.value, value: undefined } } : result
+  })
+  on('state.set', { plugin: 'cockpit' }, (_, e, next) => { reset.delete(e.key); return next(e) })
+  return () => { for (const atomKey of ['handoff', 'receipt', 'turn']) reset.add(atomKey) }
+}
+
+test('recibo: tras el /clear el panel lo muestra (bytes, secciones a diario.md, cómo volver) hasta que cierra el primer turno', async ($, on) => {
+  const clock = mock.clock(on)
+  const clear = resetOnClear(on)
+  const seen = auto(on, { tokens: 1, forkText: '## Siguiente acción\nT2\n', afterClear: async () => clear() })
+  repo(on, { [`${EST}/nucleo.md`]: PREV }, {
+    session: () => (seen.cleared ? 'sesion-nueva' : SID),
+    avisos: ['omitidas por tope (5700 B), copia en diario.md: Pendientes Plan', 'Paso actual recortado al tope (5700 B), entero en diario.md'],
+    recibo: { bytes: 4321, transcript: `/usr/u/.claude/projects/-work-proyecto/${SID}.jsonl` },
+  })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(400)
+  expect(seen.cleared).toBe(1)
+  expect(await receiptRow($)).toBe(`Handoff: 4321 B guardados · a diario.md: Pendientes Plan, Paso actual · volver: claude --resume ${SID}`)
+  expect(seen.toasts.some(t => t.startsWith('Handoff:'))).toBe(false)
+  await $.turn.complete(DONE_TURN)
+  expect(await receiptRow($)).toBe('')
+})
+
+test('recibo: un CLI viejo (sin bytes ni transcript) deja la línea sin ellos', async ($, on) => {
+  const clock = mock.clock(on)
+  const clear = resetOnClear(on)
+  const seen = auto(on, { tokens: 1, forkText: '## Siguiente acción\nT2\n', afterClear: async () => clear() })
+  repo(on, { [`${EST}/nucleo.md`]: PREV }, { session: () => (seen.cleared ? 'sesion-nueva' : SID), avisos: ['omitidas por tope (5700 B), copia en diario.md: Pendientes'] })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await clock.advance(400)
+  expect(await receiptRow($)).toBe('Handoff: a diario.md: Pendientes')
+})
+
+test('recibo: sin /clear (/handoff solo) el mismo formato va al msg de la fase done', async ($, on) => {
+  fork(on, NEW)
+  repo(on, {}, { session: () => SID, recibo: { bytes: 4321, transcript: `/usr/u/.claude/projects/-work-proyecto/${SID}.jsonl` } })
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(res.text).toBe(`Guardado en ${EST}/nucleo.md · 4321 B guardados · volver: claude --resume ${SID}`)
+})
+
 test('UI: si /clear falla dice que lo escribas y luego el texto', async ($, on) => {
   const { msg, seen } = await dockText($, on, { isFilled: true }, true)
   expect(msg).toContain(`/clear falló: escribe /clear y luego ${PREFIX}T2`)
@@ -1124,7 +1181,7 @@ test('rc0 con aviso por stderr (CLI viejo) guarda, limpia y muestra el recorte',
   const res = await $.command.run({ ...RUN, command: 'handoff' })
   await clock.advance(800)
   expect(res.text).toContain('en marcha')
-  expect(seen.toasts.some(x => x.includes('contenido recortado'))).toBe(true)
+  expect(await receiptRow($)).toContain('contenido recortado')
   expect(seen.cleared).toBe(1)
 })
 

@@ -13,6 +13,8 @@ const agents = atom({ plugin: 'cockpit', key: 'agents' } as const, [] as AgentRo
 const tasks = atom({ plugin: 'cockpit', key: 'tasks' } as const, [] as TaskRow[])
 const summary = atom({ plugin: 'cockpit', key: 'summary' } as const, '')
 const handoff = atom({ plugin: 'cockpit', key: 'handoff' } as const, { phase: 'idle' } as Handoff)
+// The handoff's receipt: a toast dies with the /clear, so this line is written again after it and stays until the first turn ends.
+const receiptLine = atom({ plugin: 'cockpit', key: 'receipt' } as const, '')
 const turn = atom({ plugin: 'cockpit', key: 'turn' } as const, { isRunning: false, startedAt: 0, activity: '', mission: '' } as Turn)
 const now = atom({ plugin: 'cockpit', key: 'now' } as const, 0)
 const estado = atom({ plugin: 'cockpit', key: 'estado' } as const, null as Estado | null)
@@ -367,6 +369,24 @@ let autonomousEnabled = false
 // Errors cleared by a turn end since the last /clear: one automatic retry, then the error stays (each try forks).
 let errorResets = 0
 
+// What the CLI saved, in one line. «a diario.md» comes from its notices (the sections it moved there); an older CLI has no
+// bytes or transcript and the line leaves them out. «volver» only if there is a transcript to go back to.
+function receiptFacts(res: object, sid: string, items: string[]) {
+  const toDiario: string[] = []
+  const rest: string[] = []
+  for (const item of items) {
+    const m = /copia en diario\.md:\s*(.+)$/.exec(item) ?? /^(.+?) recortado al tope .*diario\.md/.exec(item)
+    if (m?.[1]) toDiario.push(m[1].trim())
+    else rest.push(item)
+  }
+  const facts = [
+    'bytes' in res && typeof res.bytes === 'number' ? `${res.bytes} B guardados` : '',
+    toDiario.length ? `a diario.md: ${toDiario.join(', ')}` : '',
+    'transcript' in res && typeof res.transcript === 'string' && sid ? `volver: claude --resume ${sid}` : '',
+  ].filter(Boolean)
+  return { facts: facts.join(' · '), rest: rest.join('; ') }
+}
+
 async function fillContinuation($: $, fill: string) {
   const filled = (await $.prompt.read()).text.trim() ? null : await $.prompt.fill({ text: fill }).catch(() => null)
   await update($, handoff, (): Handoff => ({
@@ -375,7 +395,7 @@ async function fillContinuation($: $, fill: string) {
   }))
 }
 
-async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefined, revision = promptRevision) {
+async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefined, revision = promptRevision, line = '') {
   if (clearPending) return
   clearPending = true
   let isScheduled = false
@@ -400,6 +420,7 @@ async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefine
           return
         }
         await $.command.run({ command: 'clear' })
+        if (line) await update($, receiptLine, () => line)
         if (!path) {
           autonomousEnabled = false
           await update($, autonomous, () => false)
@@ -640,14 +661,19 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
       throw new Error('el CLI no confirmó la ruta y el hash guardados; no limpio')
     const saved = { path: receipt.nucleo, hash: receipt.sha256 }
     // Notices travel in the receipt; an older CLI writes them to stderr with rc 0. Shown, never a reason to skip /clear.
-    const notice = [oversize, ...('avisos' in receipt && Array.isArray(receipt.avisos) ? receipt.avisos.filter((a): a is string => typeof a === 'string') : []), res.stderr.trim()].filter(Boolean).join('; ')
+    const items = [oversize, ...('avisos' in receipt && Array.isArray(receipt.avisos) ? receipt.avisos.filter((a): a is string => typeof a === 'string') : []), res.stderr.trim()].filter(Boolean)
+    const notice = items.join('; ')
+    const { facts, rest } = receiptFacts(receipt, sesion, items)
     if (!andClear) {
-      await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${saved.path}${notice ? `; aviso: ${redact(notice)}` : ''}` }))
+      await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${saved.path}${notice ? `; aviso: ${redact(notice)}` : ''}${facts ? ` · ${redact(facts)}` : ''}` }))
       return saved
     }
-    if (notice) $.ui.toast(`Handoff: ${redact(notice)}`)
+    // Not a toast: /clear erases it. The line is written now (a refused /clear leaves this session) and again after the clear.
+    const line = [facts, rest && `aviso: ${rest}`].filter(Boolean).join(' · ')
+    const shown = line ? redact(`Handoff: ${line}`) : ''
+    if (shown) await update($, receiptLine, () => shown)
     // Saved and confirmed by the receipt: a failed re-read only loses the line, and the generic fill goes on.
-    await clearAfter($, saved.path, fillFor(await readState($, saved.path).catch(() => ''), saved.path.endsWith('/.claude/estado/nucleo.md') ? '.claude/estado/nucleo.md' : saved.path), revision)
+    await clearAfter($, saved.path, fillFor(await readState($, saved.path).catch(() => ''), saved.path.endsWith('/.claude/estado/nucleo.md') ? '.claude/estado/nucleo.md' : saved.path), revision, shown)
     return saved
   } catch (err) {
     await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}` }))
@@ -816,6 +842,7 @@ export const register: Register = on => {
     if (e.agentId === undefined) {
       const t = await $.clock.now()
       await update($, turn, x => ({ ...x, isRunning: false }))
+      if (await read($, receiptLine)) await update($, receiptLine, () => '')
       // An error is not sticky once: the next turn end clears it and the automatic handoff may try again.
       if ((await read($, handoff)).phase === 'error' && errorResets < 1) {
         errorResets++
@@ -905,8 +932,8 @@ export const register: Register = on => {
     if (e.props.hasSurvey) return next(e)
     const { Box, Text, Button } = $.ui.resolve(e)
     const cols = Math.max(30, e.props.bodyColumns)
-    const [simple, c, ca, ts, sum, ho, tn, t] = await Promise.all([
-      read($, isSimple), read($, ctx), read($, cache), read($, tasks), read($, summary), read($, handoff), read($, turn), read($, now),
+    const [simple, c, ca, ts, sum, ho, tn, t, rc] = await Promise.all([
+      read($, isSimple), read($, ctx), read($, cache), read($, tasks), read($, summary), read($, handoff), read($, turn), read($, now), read($, receiptLine),
     ])
     const tick = Math.max(t, tn.startedAt)
     const label = (s: string) => <Text bold dimColor>{s.padEnd(9)}</Text>
@@ -1004,6 +1031,7 @@ export const register: Register = on => {
         {eatingRow}
         {cacheRow}
         {handoffRow}
+        {rc ? <Text key="receipt" dimColor wrap="truncate-end">{rc}</Text> : null}
         {(await read($, autonomous)) && <Text dimColor>Continuación automática activa · /autonomo off para detenerla</Text>}
       </Box>
     )

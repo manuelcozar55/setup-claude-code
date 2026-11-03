@@ -11,7 +11,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; H="$HERE/../claude/hooks"; KIT="$HERE/.."
 T=$(mktemp -d -t scc-sA.XXXXXX); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PID CLAUDE_PROJECT_DIR NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR CLAUDE_CODE_SESSION_ID NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
 mkdir -p "$HOME"
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
@@ -672,6 +672,52 @@ ok "migrar: un segundo nucleo no pisa al archivado antes" "$(nent "$MG/.claude/e
 ok "migrar: directorio inexistente → exit 1" "$(bash "$BIN/handoff" --migrar "$T/no-existe" >/dev/null 2>&1; echo $?)" 1
 MS=$T/migs; mkdir -p "$MS/.claude/estado" "$T/fuera-mig"; printf 'F\n' >"$T/fuera-mig/n.md"; ln -s "$T/fuera-mig/n.md" "$MS/.claude/estado/nucleo.md"
 ok "migrar: un nucleo enlazado no se toca (exit 3)" "$(bash "$BIN/handoff" --migrar "$MS" >/dev/null 2>&1; echo "$?,$(nent "$T/fuera-mig")")" "3,1"
+
+# --- 1.8.0 lote M: el /clear no deja a nadie a ciegas ---
+# M1: la ruta del transcript de la sesión que guarda viaja en el nucleo y llega a la sesión nueva. CLAUDE_CONFIG_DIR manda sobre ~/.claude.
+CFG=$T/cfg-m; mkdir -p "$CFG/projects/-x-proy" "$CFG/projects/-x-otro"; : >"$CFG/projects/-x-proy/sesM1.jsonl"; : >"$CFG/projects/-x-otro/sesM2.jsonl"
+HM=$T/hom; mkrepo "$HM"; MNUC=$HM/.claude/estado/nucleo.md
+printf '## Objetivo\nO\n## Paso actual\nPM\n## Siguiente acción\nSM\n' >"$T/bm.md"
+hm() { (cd "$HM" && CLAUDE_CONFIG_DIR=$CFG bash "$BIN/handoff" "$@"); }
+LM1="> sesión anterior: $CFG/projects/-x-proy/sesM1.jsonl · volver: claude --resume sesM1 · buscar en él con rg, nunca leerlo entero"
+OUT=$(hm --desde "$T/bm.md" --sesion sesM1 --json 2>&1); RC=$?
+ok "M1: con --sesion y transcript, el nucleo trae la línea (una vez, bajo el título)" "$RC,$(command grep -cFx "$LM1" "$MNUC"),$(command grep -c '^> sesión anterior' "$MNUC"),$(sed -n 3p "$MNUC" | command grep -cFx "$LM1")" "0,1,1,1"
+ok "M1: el recibo trae transcript y bytes (los del nucleo escrito)" "$(jq -r '.transcript' <<<"$OUT"),$([ "$(jq -r '.bytes' <<<"$OUT")" = "$(wc -c <"$MNUC" | tr -d ' ')" ] && echo igual)" "$CFG/projects/-x-proy/sesM1.jsonl,igual"
+hm --desde "$T/bm.md" --sesion sesM2 >/dev/null 2>&1
+ok "M1: otro handoff sustituye la línea, nunca hay dos" "$(command grep -c '^> sesión anterior' "$MNUC"),$(command grep -c 'sesM2.jsonl' "$MNUC"),$(command grep -c 'sesM1' "$MNUC")" "1,1,0"
+OUT=$(hm --desde "$T/bm.md" --sesion no-hay --json 2>&1); RC=$?
+ok "M1: sin transcript no hay línea, no es error y el recibo trae transcript null" "$RC,$(command grep -c '^> sesión anterior' "$MNUC"),$(jq -r '.transcript' <<<"$OUT")" "0,0,null"
+for sid in '../sesM1' 'sesM*' 'sesM1/../sesM1'; do
+  OUT=$(hm --desde "$T/bm.md" --sesion "$sid" --json 2>&1); RC=$?
+  ok "M1: un ID fuera de [A-Za-z0-9-] ($sid) no entra en el glob" "$RC,$(command grep -c '^> sesión anterior' "$MNUC"),$(jq -r '.transcript' <<<"$OUT")" "0,0,null"
+done
+OUT=$(hm --desde "$T/bm.md" --json 2>&1); RC=$?
+ok "M1: sin --sesion no hay línea y no es error" "$RC,$(command grep -c '^> sesión anterior' "$MNUC"),$(jq -r '.transcript' <<<"$OUT")" "0,0,null"
+{ printf '## Objetivo\nO\n## Paso actual\nPA\n## Siguiente acción\nSA\n## Pendientes\n'; head -c 4000 /dev/zero | tr '\0' p; printf '\n## Ficheros tocados\n'; head -c 4000 /dev/zero | tr '\0' f; printf '\n'; } >"$T/bm-grande.md"
+hm --desde "$T/bm-grande.md" --sesion sesM1 >/dev/null 2>&1
+ok "M1: la línea cuenta dentro del tope y no se omite: nucleo ≤ 5700, con la línea y la nota de omitidas" "$([ "$(wc -c <"$MNUC")" -le 5700 ] && echo si),$(command grep -cFx "$LM1" "$MNUC"),$(command grep -c '^> handoff .*omitidas por tope' "$MNUC")" "si,1,1"
+hm --desde "$T/bm.md" --sesion sesM1 >/dev/null 2>&1
+EM=$(ev "$HM" snueva "" clear | bash "$H/session-start-clear.sh" | ctx)
+ok "M1: la sesión nueva (SessionStart clear) recibe la línea tal cual, dentro de los datos" "$(command grep -cFx "$LM1" <<<"$EM"),$(awk '/^<nucleo-datos /{d=1} d && /^> sesión anterior/{n++} END{print n+0}' <<<"$EM")" "1,1"
+EM=$(ev "$HM" snueva | bash "$H/session-start-compact.sh" | ctx)
+ok "M1: tras compactar también llega" "$(command grep -cFx "$LM1" <<<"$EM")" 1
+
+# M3: diario.md no repite un [x] que ya tiene (el borrador de cada handoff suele traerlos otra vez).
+HD=$T/hod; mkrepo "$HD"; DDIA=$HD/.claude/estado/diario.md
+# shellcheck disable=SC2016  # los acentos graves son markdown, no sustituciones
+printf '## Objetivo\nO\n## Plan\n- [x] uno — `make test`\n- [x] dos sin comando\n- [ ] tres\n## Paso actual\nPD\n' >"$T/bd.md"
+(cd "$HD" && bash "$BIN/handoff" --desde "$T/bd.md" >/dev/null 2>&1)
+git -C "$HD" commit -q --allow-empty -m otro
+OUT=$(cd "$HD" && bash "$BIN/handoff" --desde "$T/bd.md" --json 2>&1); RC=$?
+(cd "$HD" && bash "$BIN/handoff" --desde "$T/bd.md" >/dev/null 2>&1)
+# shellcheck disable=SC2016  # los acentos graves son markdown, no sustituciones
+ok "M3: el mismo [x] en tres handoffs (con otro hash) queda una vez en diario.md" "$RC,$(command grep -c 'uno — `make test`' "$DDIA"),$(command grep -c 'dos sin comando' "$DDIA"),$(command grep -c '^- ' "$DDIA")" "0,1,1,2"
+ok "M3: el [x] sigue saliendo del nucleo y el aviso de «sin comando» no cambia" "$(command grep -c '\[x\]' "$HD/.claude/estado/nucleo.md"),$(jq -r '.avisos[0]' <<<"$OUT")" "0,1 cierre(s) sin comando de verificación"
+# shellcheck disable=SC2016  # los acentos graves son markdown, no sustituciones
+printf '## Plan\n- [x] uno — `make test`\n- [x] cuatro — `bash t.sh`\n' >"$T/bd2.md"
+(cd "$HD" && bash "$BIN/handoff" --desde "$T/bd2.md" >/dev/null 2>&1)
+# shellcheck disable=SC2016  # los acentos graves son markdown, no sustituciones
+ok "M3: un [x] nuevo sí se añade; el repetido no" "$(command grep -c 'cuatro — `bash t.sh`' "$DDIA"),$(command grep -c 'uno — `make test`' "$DDIA")" "1,1"
 
 # --- ronda 1 de la revisión de v3 (CR-1…CR-5) ---
 # CR-1: una sección vacía del borrador conserva la del nucleo (como Objetivo); `- (nada)` es la forma de vaciarla.

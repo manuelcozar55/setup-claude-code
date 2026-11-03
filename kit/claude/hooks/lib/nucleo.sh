@@ -641,6 +641,9 @@ _nucleo_emitir_awk() {
       if (!rsv && usado + length($0) > tope) { omitidas = omitidas " «" corta(t, 80) "»"; next }
       viva = 1; cur = c; sale($0); next
     }
+    # De la cabecera solo pasa la línea «> sesión anterior: …» que deja handoff bajo el título (dónde quedó el transcript de la
+    # sesión cerrada): sin ella, tras /clear nadie sabe dónde buscar lo que el nucleo no recoge. La primera; el resto es texto.
+    cur == "#" && !cerca && !sesant && /^> sesión anterior: / { sesant = 1; sale(corta($0, 600)); next }
     # Del Plan solo se emiten los pasos abiertos: los [x] ya están en diario.md (y fuera de una cerca).
     viva && actual == "Plan" && !cerca && $0 ~ /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { next }
     viva {

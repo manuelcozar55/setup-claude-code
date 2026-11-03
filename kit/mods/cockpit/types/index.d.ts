@@ -44,6 +44,7 @@ declare module 'claude-code' {
       tasks: TaskRow[]
       summary: string
       handoff: Handoff
+      receipt: string
       turn: Turn
       now: number
       estado: Estado | null
