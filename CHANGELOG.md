@@ -7,6 +7,22 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-11-04
+
+### Fixed
+
+- **Resultados de verificación exactos:** `handoff` compara el campo completo del comando; `make test` no convierte en verde un `make test-integration` fallido ni anota menciones en prosa. Si una línea incluye notas tras el comando, delimítalo con backticks para separar su identidad de la anotación. `oraculo` serializa el registro y la rotación, conserva el rc del comando ante un fallo de registro y lo avisa.
+- **Fusión de estado sin perder ediciones:** el checksum de `ESTADO.md` pertenece al snapshot usado en la fusión. Un Plan completamente terminado deja sus cierres en el diario, también cuando el documento activo no cambia. La copia del núcleo conserva el mtime usado por la compatibilidad sin marcador Git.
+- **Cabeceras coherentes al retomar:** emisión, mínimo de contexto e índice comparten la clasificación de aliases, mayúsculas, acentos y espacios admitidos por el escritor. Se conservan los límites, las secciones antiguas y la protección del Objetivo vacío.
+- **Restauración y rollback:** las entradas del snapshot sustituyen enlaces de destino sin seguirlos; el respaldo conserva su topología. La raíz explícita y sus ancestros pueden ser enlaces, que se conservan. El JSON global permanece junto a la ruta elegida y se respalda incluso sin directorio local. Los conflictos con directorios internos se rechazan antes de escribir y la orden del plan conserva el origen `--from` con su escapado. Si falta `scripts/backup.sh`, se rechaza restaurar sobre estado existente: un kit incompleto no permite omitir el respaldo.
+- **Cupo:** los valores fuera de 0-100 se rechazan antes de consultar Claude, tanto por argumento como por entorno.
+- **Cockpit 0.7.1:** un propietario incompleto degrada la continuidad en vez de romper el dock. Las pruebas comprueban el propietario vencido y el relleno efectivo tras el handoff.
+
+### Changed
+
+- Se consolidan los cuatro escenarios del umbral automático sin perder casos; se retiran campos sin consumidor y la definición duplicada del contador de bytes.
+- README y guía de entrega incluyen instalación local, verificación, rollback y transferencia mediante fuente y bundle Git. La procedencia de `block-dangerous-commands.sh` cita la declaración explícita del README original, omitida por la anotación anterior basada solo en la API de GitHub.
+
 ## [1.8.0] - 2026-11-03
 
 ### Added
@@ -2210,7 +2226,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.6.1...v1.7.0

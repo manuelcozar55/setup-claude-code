@@ -88,31 +88,23 @@ sustituidas por su paso equivalente, y en `brainstorming`, `writing-plans` y
 `SKILL.md` lo declara en su última línea; el detalle está en
 `kit/plugins/esenciales/README.md`. No se incluye el hook `SessionStart` del original.
 
-### randomdreft/claude-code-security-hook — situación de licencia SIN RESOLVER
+### randomdreft/claude-code-security-hook — declaración de dominio público
 
 Fichero afectado: `kit/claude/hooks/block-dangerous-commands.sh`, cuya cabecera
 dice `# Source: randomdreft/claude-code-security-hook (public domain), extended`.
 
-**Ese "public domain" no está respaldado por el repositorio de origen.**
-Comprobado contra la API de GitHub: el repositorio existe, no está archivado y
-**no contiene ningún fichero de licencia** (`license: null`). Sin una declaración
-explícita del autor, el derecho de autor por defecto reserva todos los derechos, y
-"dominio público" no se presume.
+La sección **License** del README original declara literalmente:
 
-No se corrige la cabecera inventando otra afirmación: se documenta el hecho
-verificable y queda como asunto abierto para el propietario de este repositorio.
-Las vías para cerrarlo, en orden de menor a mayor coste:
+> Public domain — use freely.
 
-1. Pedir al autor original que añada una licencia explícita (o una renuncia tipo
-   CC0/Unlicense) y citarla aquí.
-2. Comprobar si lo que queda en el fichero tras haberlo extendido es material
-   propio: si las partes derivadas ya no están, la atribución sobra y la cabecera
-   debe reflejarlo.
-3. Reescribir el fichero desde cero a partir de su especificación de
-   comportamiento, que ya está fijada por `kit/test/test_guards.sh` y por la suite
-   de falsabilidad.
+Fuente verificada el 2026-11-04: [README en el commit
+`a2254903020ebec4196946fce8fd0a559b5e8118`](https://github.com/randomdreft/claude-code-security-hook/blob/a2254903020ebec4196946fce8fd0a559b5e8118/README.md#license).
+Se conserva aquí esa declaración y la atribución del fichero.
 
-Mientras no se cierre, esta entrada es la constancia honesta del estado real.
+La anotación anterior se basaba en `license: null` de la API de GitHub y omitía
+la declaración del README. La API no detecta una licencia separada; eso no
+significa que el autor no haya publicado un permiso. No se atribuye al proyecto
+una licencia SPDX que no declara.
 
 ---
 
@@ -138,6 +130,6 @@ la documentación de cada proyecto.
 
 ## Nota
 
-Esto es un registro de atribución, no asesoramiento legal. Si el repositorio va a
-usarse en un contexto donde la procedencia importe formalmente, conviene una
-revisión por alguien cualificado — en particular el punto sin resolver de arriba.
+Al actualizar material de terceros, conserva sus avisos y comprueba la declaración
+de permiso en la versión concreta que se incorpora, además de los metadatos de
+la plataforma.

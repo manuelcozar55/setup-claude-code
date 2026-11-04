@@ -13,13 +13,18 @@
 
 ## Cómo se carga
 
-La versión 1.8.0 del kit incluye cockpit 0.7.0.
+La versión 1.8.1 del kit incluye cockpit 0.7.1.
 `scripts/scc.sh` carga la copia de tu checkout mediante `--plugin-dir`, sin instalar
 nada; las órdenes de marketplace de abajo instalan esa misma versión desde el tag
 publicado, para todas tus sesiones. En un paquete transferido, `VERSION` identifica
 la publicación, y `BUILD_ID` con el manifiesto SHA-256 identifican el contenido.
 
-**Versión de Claude Code.** El mod se probó con Claude Code 2.1.292 (`claude --version`). No se ha comprobado una versión mínima: los mods son de acceso temprano y pueden cambiar entre versiones. Comprueba la tuya antes de instalar y, si algo no carga, `claude plugin validate kit/mods/cockpit` dice qué falla.
+**Versión de Claude Code.** Las versiones de referencia de esta entrega son
+2.1.311 en Ubuntu y 2.1.317 en Debian (`claude --version`); el paquete conserva
+los resultados y las versiones efectivamente verificadas. No se ha comprobado
+una versión mínima: los mods son de acceso temprano y pueden cambiar entre
+versiones. Comprueba la tuya antes de instalar y, si algo no carga,
+`claude plugin validate kit/mods/cockpit` dice qué falla.
 
 **El `ref` es una etiqueta, no un sha.** La fuente `github` de un marketplace admite `ref` pero no `sha` (solo las fuentes de cada plugin lo admiten), y una etiqueta de git se puede mover. Protege las etiquetas `v*` en el remoto si quieres un pin real.
 

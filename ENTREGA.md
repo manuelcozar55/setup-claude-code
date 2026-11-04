@@ -1,6 +1,6 @@
-# SCC 1.8.0 — guía de entrega
+# SCC 1.8.1 — guía de entrega
 
-Para quien recibe el paquete. La versión es la de `VERSION` (1.8.0); `BUILD_ID` identifica
+Para quien recibe el paquete. La versión es la de `VERSION` (1.8.1); `BUILD_ID` identifica
 esta entrega. No se distribuyen credenciales ni configuración personal.
 
 ## Requisitos
@@ -14,30 +14,30 @@ no instala hooks, cockpit ni continuidad automática para Codex u opencode.
 
 ## Obtener la entrega
 
-Recibe del responsable el paquete de **1.8.0**, su manifiesto `SHA256SUMS` y la
+Recibe del responsable el paquete de **1.8.1**, su manifiesto `SHA256SUMS` y la
 identificación del origen (commit y suma del archivo transferido). Conserva esa
 identificación para soporte: `BUILD_ID` es una etiqueta de entrega, no un hash.
 Si prefieres Git y el tag ya está publicado, puedes obtener la versión así:
 
 ```bash
-git clone --branch v1.8.0 --single-branch https://github.com/manuelcozar55/setup-claude-code.git ~/scc
+git clone --branch v1.8.1 --single-branch https://github.com/manuelcozar55/setup-claude-code.git ~/scc
 git -C ~/scc rev-parse HEAD
 ```
 
 Contrasta ese commit con el facilitado por el responsable. Si el tag todavía no
 existe, usa el paquete transferido; no sustituyas esta versión por `main`.
 En ambos casos comprueba `cat VERSION BUILD_ID` desde `~/scc`: deben indicar
-`1.8.0` y `scc-v1.8.0`. No ejecutes una entrega con sumas incorrectas.
+`1.8.1` y `scc-v1.8.1`. No ejecutes una entrega con sumas incorrectas.
 
 ### Copia de Git sin acceso a la red
 
-La entrega puede incluir `scc-v1.8.0.bundle`, con la rama verificada y su historial,
+La entrega incluye `scc-v1.8.1.bundle`, con la rama verificada y su historial,
 y un manifiesto exterior que cubre tanto el bundle como el paquete. Comprueba
 ese manifiesto en la carpeta recibida antes de abrir ninguno:
 
 ```bash
 sha256sum -c SHA256SUMS
-git clone --branch release/scc-v1.8.0-debian scc-v1.8.0.bundle ~/scc
+git clone --branch release/scc-v1.8.1-debian scc-v1.8.1.bundle ~/scc
 git -C ~/scc rev-parse HEAD
 ```
 
@@ -45,6 +45,9 @@ El commit debe coincidir con el origen indicado en la entrega. El bundle permite
 clonar y consultar el historial sin GitHub; no implica que exista un tag publicado.
 Los resultados de Debian deben identificar ese mismo commit, las versiones del
 sistema y de Claude Code, los comandos ejecutados y sus códigos de salida.
+El paquete incluye `PROCEDENCIA.json` y `VALIDACION-DEBIAN.md` junto al bundle
+y al archivo fuente. La suma del ZIP exterior se entrega por separado para
+comprobar primero la transferencia; el manifiesto interior verifica sus contenidos.
 
 ## Instalar
 
@@ -153,15 +156,15 @@ copia de seguridad. Si no coinciden, o el paquete no trae historia (ZIP, clon su
 los trata como tuyos y deja la versión nueva al lado como `~/.claude/CLAUDE.kit.md` y
 `~/.claude/AGENTS.kit.md`; `doctor` lo marca como `WARN` hasta que lo resuelvas.
 Compáralas con las tuyas; para aceptar la del kit tal cual, cópiala sobre la tuya
-(`cp ~/.claude/CLAUDE.kit.md ~/.claude/CLAUDE.md`) y borra el `.kit.md`. Desde 1.8.0 el
-instalador recuerda lo que escribió y actualiza solo lo que no hayas cambiado.
+(`cp ~/.claude/CLAUDE.kit.md ~/.claude/CLAUDE.md`) y borra el `.kit.md`.
+El instalador recuerda lo que escribió y actualiza solo lo que no hayas cambiado.
 
 Se conservan tu tema, statusline, modelo y variables propios.
 
 ## Restaurar
 
 ```
-bash uninstall.sh --list                  # backups internos disponibles
+bash uninstall.sh --list                  # backups internos y ZIP disponibles
 bash uninstall.sh                         # dry-run: muestra qué se restauraría
 bash uninstall.sh --apply                 # restaura el backup interno más reciente
 bash uninstall.sh --apply --from FICHERO  # restaura un ZIP de scripts/backup.sh o un backup concreto
@@ -171,27 +174,41 @@ Esto restaura archivos de un respaldo; no desinstala el kit. Cierra las sesiones
 Antes de restaurar guarda el estado actual en `~/backups/claude-safety-*.zip`; ese ZIP
 no entra en la elección del «más reciente», así que repetir `--apply` no deshace lo
 restaurado. Para volver a él, `--from`.
+La orden que muestra `--dry-run --from FICHERO` conserva ese origen, aunque haya
+otro backup interno más reciente, y escapa espacios y comillas para Bash.
+
+Se restauran entradas del snapshot. Si un fichero elegido ocupa una ruta que
+ahora es un enlace, se sustituye el enlace y su destino externo queda intacto;
+el ZIP de seguridad conserva el enlace anterior para recuperarlo. También se
+respalda el JSON global aunque el directorio `.claude/` esté vacío o no exista.
+La raíz `CLAUDE_HOME` y sus ancestros pueden ser enlaces: se conserva el alias
+y se restaura su contenido. El JSON global permanece junto a la ruta elegida.
+Un recorrido por un directorio interno enlazado o un conflicto entre directorio
+y fichero se rechaza antes de escribir: resuelve esa topología y vuelve a revisar
+el plan. Si hay estado previo y falta `scripts/backup.sh`, se rechaza la operación;
+conserva el repo completo. El snapshot es filtrado y aditivo; no es una imagen de toda la máquina
+ni elimina entradas nuevas al restaurarlo.
 Reinstalar un tag antiguo no devuelve su árbol exacto: conserva archivos de versiones
 posteriores. No borres el directorio `.claude/estado/` de tus proyectos: contiene la
 continuidad.
 
-## Qué cambia en 1.8.0
+## Qué cambia en 1.8.1
 
 El detalle está en `CHANGELOG.md`. En resumen, para quien usa el kit:
 
-- El aviso de contexto al 70 % pasa de consejo a orden: recoge los agentes en vuelo,
-  cierra la fase con `/handoff` y termina el turno. Así el cambio de sesión llega antes
-  que la compactación automática.
-- En el cockpit, un aviso de `/handoff` ya no se toma por error ni deja la sesión sin
-  handoff automático; se retira el veto de compactación, que en máquinas con ajustes
-  gestionados no se ejecutaba nunca.
-- El instalador distingue tu `CLAUDE.md` del suyo, `doctor` falla si falta algún hook del
-  kit y restaurar ya no deshace lo restaurado.
-- Tras el `/clear` de un handoff, el nucleo apunta al transcript de la sesión anterior
-  (`claude --resume <id>` para volver) y el panel deja una línea con lo guardado hasta la
-  primera respuesta; `diario.md` ya no repite los pasos cerrados.
-- Los guards cubren más formas de push forzado, de «descarga y ejecuta» y de borrado
-  recursivo de `~` dentro de `ssh` o `sh -c`; Sentinel sigue los enlaces simbólicos.
+- Un comando exitoso no cambia el resultado de otro cuyo nombre lo contiene.
+  La rotación concurrente de `oraculo` conserva los registros y el rc del comando;
+  si no puede registrar, lo avisa.
+- El conflicto de `ESTADO.md` se compara con el snapshot realmente fusionado.
+  Cerrar todo el Plan registra sus hechos aunque el documento activo no cambie.
+- Los lectores reconocen las variantes de cabecera admitidas por el escritor.
+  El núcleo sin marcador Git conserva su fecha original para calcular los cambios.
+- Restauración con enlaces, JSON global y origen explícito corregidos, con pruebas
+  de rollback y rechazo previo a escrituras parciales por conflictos de topología.
+- El cockpit incluido degrada visiblemente ante un propietario malformado; sus pruebas
+  distinguen propietario vencido y relleno real de continuación.
+- Simplificación de montajes de prueba y datos redundantes, sin dependencias nuevas
+  ni retirada de controles de sesión, propiedad, formato o presupuesto.
 
 ## Continuidad entre sesiones
 

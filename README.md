@@ -1,10 +1,12 @@
-<div align="center">
+# SCC · setup-claude-code
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,20,24&height=200&section=header&text=setup-claude-code&fontSize=48&fontColor=ffffff&animation=fadeIn&desc=El%20m%C3%A9todo%20detr%C3%A1s%20de%20mi%20trabajo%20con%20Claude%20Code&descAlignY=62&descSize=18" alt="setup-claude-code" />
+Configuración y continuidad para Claude Code en Linux y WSL2: controles antes de
+ejecutar herramientas, estado recuperable entre sesiones y pruebas reproducibles.
 
-[![CI](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml/badge.svg)](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml)
+[![CI de main](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml)
 
-</div>
+**Entrega: 1.8.1 · cockpit: 0.7.1.** El badge muestra la CI de `main`; la evidencia
+de un paquete concreto se identifica por su commit y sus SHA-256, no por ese badge.
 
 ---
 
@@ -31,16 +33,24 @@ casos conocidos.
 configuración esté verificada en vez de supuesta.
 
 **Para quién no es.** No es un tutorial de Claude Code, no funciona desde Windows nativo ni
-macOS (no hay CI que lo demuestre), y no es un framework del que dependas: se instala en tu
-`~/.claude` y se desinstala.
+macOS (no hay CI que lo demuestre). Se instala en tu `~/.claude`; incluye respaldo
+y restauración de archivos, no un desinstalador que borre toda la configuración.
 
 **Instalar.** Clona y ejecuta `bash kit/install.sh` (instala en `~/.claude` con backup) y
-`bash kit/doctor.sh` (comprueba la instalación); se deshace con `bash uninstall.sh`. `make bootstrap`
-es para quien desarrolla este repo. Ver [Quick start](#quick-start).
+`bash kit/doctor.sh` (comprueba la instalación). `bash uninstall.sh` muestra un plan
+de restauración; escribir requiere `--apply`. `make bootstrap` es para quien
+desarrolla este repo. Ver [Quick start](#quick-start).
 
 **Consolidación local.** Si recibiste el paquete identificado por `BUILD_ID`, sigue
 [`ENTREGA.md`](ENTREGA.md) y arranca con `scripts/scc.sh`: carga el cockpit y las skills
 esenciales incluidos, sin depender de una publicación nueva en el marketplace.
+
+| Necesitas | Empieza aquí |
+|---|---|
+| Instalar y usar una entrega transferida | [`ENTREGA.md`](ENTREGA.md): sumas, bundle Git, instalación y primer relevo |
+| Entender el uso diario | [`kit/docs/10-onboarding.md`](kit/docs/10-onboarding.md) |
+| Comprobar o modificar el repositorio | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| Revisar cambios y procedencia | [`CHANGELOG.md`](CHANGELOG.md), [`THIRD-PARTY.md`](THIRD-PARTY.md) |
 
 **Aspecto.** Una instalación limpia trae pantalla completa (`"tui": "fullscreen"`), tema oscuro (`"theme": "dark"`) y una barra de estado
 en dos líneas (`~/.claude/statusline-command.sh`, bash + `jq`): modelo, ruta completa, repo, rama
@@ -203,7 +213,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 6 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 46 suites falsables | v1.8.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 6 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 46 suites falsables | v1.8.1, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -386,7 +396,7 @@ mismo. La promoción de un hallazgo a regla siempre pasa por una puerta humana.
 
 ### Adaptarlo a otra persona
 
-Con el repo ya clonado (el `git clone` está en el [Quick start](#quick-start)), desde su raíz:
+Con el repo ya clonado (obtención en [`ENTREGA.md`](ENTREGA.md)), desde su raíz:
 
 ```bash
 cp config/profile.example.yaml config/profile.yaml   # tu nombre, tu nivel de coach, tu oráculo
@@ -409,11 +419,70 @@ No son garantías absolutas: son defensa en profundidad, con sus límites docume
 
 ## Quick start
 
-Linux o WSL2, con `bash`, `git`, `make`, `python3` ≥ 3.10 y `jq`. Para usar el kit: `bash kit/install.sh`
-y `bash kit/doctor.sh` desde un clon (diff-first si tu `~/.claude` es un repo con remoto); primer día
-guiado en [`kit/docs/10-onboarding.md`](kit/docs/10-onboarding.md). `make bootstrap` es para quien
-trabaja en este repo: además crea el perfil del harness y corre la suite. `bash uninstall.sh` lo revierte. El procedimiento completo, paso a paso y con lo opcional
-(`.env`, venv de tools, plugins, Capa 2 de secretos), vive solo en [`kit/docs/02-install.md`](kit/docs/02-install.md).
+Necesitas Linux o WSL2, Bash, Git, Python 3 ≥ 3.10, jq y Claude Code autenticado.
+Para respaldar o restaurar, también `zip` y `unzip`. Para desarrollar el repo,
+añade Make, ShellCheck y Gitleaks. Trabaja dentro del sistema de ficheros de Linux.
+
+Obtén la versión exacta siguiendo [`ENTREGA.md`](ENTREGA.md). El paquete contiene
+fuente y un bundle Git; este último permite clonar el historial sin GitHub.
+Comprueba el manifiesto recibido antes de instalar. Desde la copia permanente
+del kit, por ejemplo `~/scc`:
+
+```bash
+bash kit/install.sh --plan
+bash kit/install.sh --apply
+bash kit/doctor.sh
+```
+
+El primer comando muestra los cambios. El segundo instala con respaldo y fusiona
+`settings.json`, conservando tu configuración personal. Resuelve cualquier `FAIL`
+de doctor antes de continuar. Después, desde **tu proyecto**, abre Claude con:
+
+```bash
+bash ~/scc/scripts/scc.sh
+```
+
+Ese lanzador carga el cockpit y las skills esenciales de la copia local.
+`/handoff solo` guarda sin limpiar; `/handoff` guarda y hace `/clear`, dejando el
+prompt de continuación. `/autonomo` está apagado por defecto. El primer relevo,
+con datos sintéticos, está descrito en [`ENTREGA.md`](ENTREGA.md).
+
+Esta entrega incluye la corrección del handoff que se abortaba por un borrador
+demasiado largo en 1.7.x (ver [`CHANGELOG.md`](CHANGELOG.md)). Cierra y abre una
+sesión al actualizar. El marketplace solo ofrece la versión nueva cuando esté
+publicado su tag; el lanzador local carga la copia recibida sin esperar a esa publicación.
+
+Para revisar una restauración usa `bash uninstall.sh --dry-run --from FICHERO`;
+ejecuta después la orden que muestra. El respaldo previo queda en
+`~/backups/claude-safety-*.zip`. Se restauran las entradas del snapshot: un fichero
+puede sustituir un enlace, dejando intacto su destino externo. Los conflictos con
+directorios internos se rechazan antes de escribir. La raíz explícita puede ser un
+enlace: se conserva y se restaura su contenido. Hace falta el repo completo,
+incluido `scripts/backup.sh`, para respaldar el estado previo. Restaurar no elimina todos los archivos
+del kit ni borra el estado de tus proyectos.
+
+El procedimiento completo y lo opcional viven en
+[`kit/docs/02-install.md`](kit/docs/02-install.md). `make bootstrap` prepara el
+entorno de quien desarrolla **este repositorio**, no el primer proyecto de un usuario.
+
+## Verificar una entrega
+
+Con historial Git y las herramientas de desarrollo disponibles:
+
+```bash
+make bateria       # suites Bash, ShellCheck, scanner y Gitleaks; guarda logs y rc
+make test-cockpit  # pruebas funcionales con el SDK de Claude Code instalado
+```
+
+`make test` ejecuta solo las suites Bash. El tipado del cockpit se explica en
+[`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md). Para una instalación aislada:
+`bash scripts/aceptacion-local.sh /ruta/nueva`; esa ruta no debe existir.
+
+El paquete transferible acompaña los hashes y el commit con las versiones del
+sistema y de Claude Code, los comandos y sus resultados en Debian. Las pruebas
+sintéticas, el tipado y un relevo real comprueban cosas distintas; conserva esa
+evidencia junto al paquete. Los evals que llaman al modelo son opt-in y no forman
+parte de `make test`.
 
 ## Qué incluye
 
@@ -505,14 +574,6 @@ Nada del mapa es opinión. Combina un modelo mental y un cuerpo de ingeniería q
 la detecte: en cuanto el fichero lleva prosa añadida, la API la anuncia como `Other`. El
 alcance de la licencia vive en [`NOTICE`](NOTICE).
 
-Parte del software deriva de proyectos de terceros. Sus avisos de copyright, y un
-punto de procedencia que sigue sin resolver, están en
+Parte del software deriva de proyectos de terceros. Sus avisos de copyright y
+las declaraciones de permiso verificadas están en
 [`THIRD-PARTY.md`](THIRD-PARTY.md).
-
-<div align="center">
-
-*El mapa antes del territorio. Y cada número, reproducible con un comando.*
-
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,20,24&height=120&section=footer" alt="" />
-
-</div>
