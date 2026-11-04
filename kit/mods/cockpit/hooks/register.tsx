@@ -422,7 +422,10 @@ let autonomousEnabled = false
 // Errors cleared by a turn end since the last /clear: one automatic retry, then the error stays (each try forks).
 let errorResets = 0
 // A handoff asked for before this process's first reply (after a resume or a /clear): the fork has nothing to read
-// yet, so it runs at the next main turn end. × and the end of the session drop it.
+// yet, so it runs at the next main turn end. Armed only while the band says «waiting», and every way out of that state
+// (×, the band's handoff button, another run, the end of the session) drops it: a queue the band no longer shows would
+// save and /clear on a turn the person does not expect. The timer after a turn end holds the object it saw: it fires only
+// if that same object is still the queue.
 let queuedHandoff: { andClear: boolean; focus: string } | null = null
 const NOT_YET = 'esta sesión aún no tiene respuesta del modelo en este proceso (reanudada o recién limpiada)'
 // What the prompt carries when it was empty: a cheap turn, so the fork has a reply to read.
@@ -662,6 +665,8 @@ const NO_PROJECT = 'aquí no hay proyecto (~, ~/.claude o fuera de un repo git):
 async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
   if (handoffBusy || clearPending) return
   handoffBusy = true
+  // This run supersedes any wait: it either saves now or arms a new one, with its own banner.
+  queuedHandoff = null
   const revision = promptRevision
   let tmp = ''
   try {
@@ -845,6 +850,9 @@ export const register: Register = on => {
   on('command.run', { command: 'nueva' }, async ($, e) => {
     const task = e.args.trim()
     if (!task) return { text: 'Uso: /nueva <la tarea nueva>. Archiva el estado de la tarea actual, limpia el contexto y deja la tarea nueva escrita en el prompt.' }
+    // A waiting handoff clears the session at the next turn end: /nueva would archive and clear under it, or leave it armed.
+    if (queuedHandoff || (await read($, handoff)).phase === 'waiting')
+      return { text: 'Hay un handoff esperando al próximo turno: no archivo ni limpio. Cancélalo con × en la banda o deja que termine, y repite /nueva.' }
     // Archiving under a running turn or handoff would pull the state from under it, and the /clear would be refused anyway.
     if (handoffBusy || clearPending || (await read($, turn)).isRunning || (await read($, handoff)).phase === 'working' || (await read($, isAutoQueued)))
       return { text: 'Hay un turno o un handoff en marcha: repite /nueva cuando termine.' }
@@ -877,6 +885,7 @@ export const register: Register = on => {
   on('session.end', async ($, e, next) => {
     // The request was about the conversation that ends (a /clear, a /resume to another one).
     queuedHandoff = null
+    await update($, handoff, (h): Handoff => (h.phase === 'waiting' ? { phase: 'idle' } : h))
     if (e.reason === 'clear') {
       errorResets = 0
       const keepMission = clearPending
@@ -928,10 +937,11 @@ export const register: Register = on => {
       // The fork has a reply to read from now on. Out of the hook, like the automatic one: /clear is refused inside it.
       const q = queuedHandoff
       if (q && e.reason === 'answer') {
-        queuedHandoff = null
         $.clock.after(300, async () => {
-          if ((await read($, turn)).isRunning) queuedHandoff ??= q
-          else await runHandoff($, q.andClear, q.focus)
+          const isRunning = (await read($, turn)).isRunning
+          // Gone (×, the band's button, another run, the end of the session) or replaced: nothing to fire. A turn or a handoff
+          // in the way leaves it armed, with its banner, for the next answered turn.
+          if (queuedHandoff === q && !isRunning && !handoffBusy && !clearPending) await runHandoff($, q.andClear, q.focus)
         })
       }
       if (e.answer) await update($, summary, () => condense(e.answer))
@@ -1048,7 +1058,11 @@ export const register: Register = on => {
           hotkey="h"
           variant="primary"
           label="handoff"
-          onPress={() => update($, handoff, (h): Handoff => handoffBusy || clearPending ? h : ({ phase: h.phase === 'confirm' ? 'idle' : 'confirm' }))}
+          onPress={() => {
+            // Leaving «waiting» for the confirmation drops the wait: it would stay armed with no banner.
+            if (!handoffBusy && !clearPending) queuedHandoff = null
+            return update($, handoff, (h): Handoff => handoffBusy || clearPending ? h : ({ phase: h.phase === 'confirm' ? 'idle' : 'confirm' }))
+          }}
         />
       </Box>
     )
