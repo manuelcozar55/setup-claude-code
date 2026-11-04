@@ -589,7 +589,7 @@ if [ "$ESTMD" -eq 1 ]; then
   # Un cierre nuevo también se conserva cuando el documento activo ya tiene los mismos bytes.
   if [ "$CAMBIADO" -eq 1 ] || [ -s "$W/hechos" ] || [ -s "$W/omitido" ]; then
     HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
-    # shellcheck disable=SC2094  # diario.md solo se añade; lo que se lee es $W/hechos
+    # shellcheck disable=SC2094  # La omision se compara antes de anexarla; nunca se trunca el diario.
     {
       [ -s "$DIARIO" ] || printf '# Diario\n'
       while IFS= read -r l; do
@@ -598,7 +598,9 @@ if [ "$ESTMD" -eq 1 ]; then
         YA+=$l$'\n'
         printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
       done <"$W/hechos"
-      [ ! -s "$W/omitido" ] || cat "$W/omitido"
+      if [ -s "$W/omitido" ] && [[ $(<"$DIARIO") != *"$(<"$W/omitido")"* ]]; then
+        cat "$W/omitido"
+      fi
     } >>"$DIARIO"
   fi
   ERRC=""
@@ -715,9 +717,14 @@ if [ "${#LCMD[@]}" -gt 0 ]; then
       if [ "$prim" -eq 1 ]; then prim=0; out+=$l$'\n'; continue; fi
       if [[ $l != '<!--'* ]]; then
         campo=${l#"${l%%[![:space:]]*}"}
-        case $campo in '- '* | '* '*) campo=${campo:2} ;; esac
+        if [[ $campo =~ ^([-*+]|[0-9]+[.\)])[[:space:]]+ ]]; then
+          campo=${campo:${#BASH_REMATCH[0]}}
+        fi
+        case $campo in \*\*\`*\`\*\** | __\`*\`__*) campo=${campo:2} ;; esac
         if [[ $campo == \`* ]]; then campo=${campo#\`}; campo=${campo%%\`*}
-        else campo=${campo%% → rc=*}
+        else
+          campo=${campo%% → rc=*}
+          case $campo in \*\**\*\* | __*__) campo=${campo:2:${#campo}-4} ;; esac
         fi
         for ((j = ${#LCMD[@]} - 1; j >= 0; j--)); do
           [ "$campo" = "${LCMD[j]}" ] || continue

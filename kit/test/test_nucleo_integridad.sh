@@ -412,6 +412,23 @@ printf '%s\n' '## Plan' "- [x] OTRO-CIERRE — \`true\`" >"$T/d-plan-terminado.m
 bash "$HO" --desde "$T/d-plan-terminado.md" --raiz "$X" >/dev/null 2>&1
 ok "Plan terminado: un evento nuevo se guarda aunque ESTADO.md no cambie" \
   "$(command grep -c OTRO-CIERRE "$X/.claude/estado/diario.md" 2>/dev/null),$(find "$X/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" "1,1"
+
+# Una omision nueva se conserva aunque no cambie ESTADO; repetirla no la duplica.
+X=$(nuevo omision-repetida)
+{ printf '## Pendientes\nOMISION-PRIMERA\n'; relleno 300; } >"$T/d-omision.md"
+EST_ANTES=$(sha256sum <"$X/ESTADO.md")
+bash "$HO" --desde "$T/d-omision.md" --raiz "$X" >/dev/null 2>&1; RC=$?
+ok "omision: guarda el bloque completo sin cambiar el estado activo" \
+  "$RC,$(command grep -c OMISION-PRIMERA "$X/.claude/estado/diario.md"),$(command grep -c '^300 linea de relleno' "$X/.claude/estado/diario.md"),$([ "$(sha256sum <"$X/ESTADO.md")" = "$EST_ANTES" ] && echo igual)" "0,1,1,igual"
+DIARIO_ANTES=$(sha256sum <"$X/.claude/estado/diario.md")
+bash "$HO" --desde "$T/d-omision.md" --raiz "$X" >/dev/null 2>&1
+bash "$HO" --desde "$T/d-omision.md" --raiz "$X" >/dev/null 2>&1
+ok "omision: dos repeticiones dejan el diario identico" \
+  "$([ "$(sha256sum <"$X/.claude/estado/diario.md")" = "$DIARIO_ANTES" ] && echo igual)" igual
+{ printf '## Pendientes\nOMISION-SEGUNDA\n'; relleno 300; } >"$T/d-omision.md"
+bash "$HO" --desde "$T/d-omision.md" --raiz "$X" >/dev/null 2>&1
+ok "omision: un bloque distinto con el mismo titulo y fecha no se pierde" \
+  "$(command grep -c OMISION-PRIMERA "$X/.claude/estado/diario.md"),$(command grep -c OMISION-SEGUNDA "$X/.claude/estado/diario.md"),$([ "$(sha256sum <"$X/ESTADO.md")" = "$EST_ANTES" ] && echo igual)" "1,1,igual"
 exit $FAIL
 ) || FAIL=1
 exit "$FAIL"

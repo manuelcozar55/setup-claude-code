@@ -582,6 +582,27 @@ printf '%s\n' '## Comandos de verificación' "- \`make test-integration\` → rc
 ok "rc exacto: conserva el fallo de integración y no atribuye resultados a menciones" \
   "$RC,$(command grep -Fxc -- "- \`make test-integration\` → rc=2" "$HRC/.claude/estado/nucleo.md"),$(command grep -Fxc -- "- Después de \`make test\`, ejecutar la integración." "$HRC/.claude/estado/nucleo.md"),$(command grep -Fxc -- "- \`make test\` → rc=0" "$HRC/.claude/estado/nucleo.md")" "0,1,1,1"
 
+# El formato Markdown de la lista no cambia la identidad del comando.
+HRC=$T/ho-rc-markdown; mkrepo "$HRC"; mkdir -p "$HRC/.claude/estado"
+printf '2026-11-04T10:00:00Z\t0\tmake test-integration\n2026-11-04T10:01:00Z\t2\tmake test\n' >"$HRC/.claude/estado/verificaciones.log"
+# shellcheck disable=SC2016  # Delimitadores Markdown, no sustituciones de Bash.
+FORMATOS=('- `make test`' '* `make test`' '+ `make test`' '1. `make test`' '2) `make test`'
+  '- **make test**' '**make test**' '- __make test__' '**`make test`** (rapido)' '__`make test`__' 'make test')
+{
+  printf '## Comandos de verificación\n'
+  printf '%s → rc=0\n' "${FORMATOS[@]}"
+  printf '%s\n' "- \`make test-integration\` → rc=0" "1. Después de \`make test\`, revisar."
+} >"$T/b-rc-markdown.md"
+(cd "$HRC" && bash "$BIN/handoff" --desde "$T/b-rc-markdown.md" >/dev/null 2>&1); RC=$?
+ok "rc Markdown: la fusion termina sin duplicar el comando" \
+  "$RC,$(command grep -c ' → rc=2$' "$HRC/.claude/estado/nucleo.md")" "0,${#FORMATOS[@]}"
+for formato in "${FORMATOS[@]}"; do
+  ok "rc Markdown: $formato conserva su formato y recibe el fallo real" \
+    "$(command grep -Fxc -- "$formato → rc=2" "$HRC/.claude/estado/nucleo.md")" 1
+done
+ok "rc Markdown: conserva otro comando y la mencion numerada en prosa" \
+  "$(command grep -Fxc -- "- \`make test-integration\` → rc=0" "$HRC/.claude/estado/nucleo.md"),$(command grep -Fxc -- "1. Después de \`make test\`, revisar." "$HRC/.claude/estado/nucleo.md")" "1,1"
+
 # -- --desde: tope --
 HT=$T/hot; mkrepo "$HT"
 { printf '## Objetivo\nO\n## Paso actual\nPA\n## Pendientes\n'; head -c 4000 /dev/zero | tr '\0' p; printf '\n## Ficheros tocados\n'; head -c 4000 /dev/zero | tr '\0' f; printf '\n'; } >"$T/b-grande.md"
