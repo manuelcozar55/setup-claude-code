@@ -7,6 +7,11 @@ etiquetado.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tras `/handoff` + `/clear` la sesión conserva su carpeta y su estado** (ADR 027): el mod resolvía la raíz con el cwd vivo y los hooks con el de arranque; una sesión abierta en `~` que había hecho `cd` a un repo guardaba su handoff en el repo y el `/clear` (que la devuelve a `~`) inyectaba su ranura antigua. El cockpit toma ahora la raíz de `$.session.root()` y lanza el CLI con `CLAUDE_PROJECT_DIR` igual a ella. `handoff` anota `> carpeta de trabajo: <ruta>` bajo el título cuando el cwd difiere del de arranque, y `session-start-clear.sh` lleva a la sesión nueva a esa carpeta.
+- **La sesión nueva siempre recibe un mínimo**: si el reparto por tope deja fuera Objetivo o Siguiente acción, se copian delante dentro del tope; un nucleo sin secciones de la plantilla (antes: nada) emite sus primeras líneas y dónde está el resto, y uno ilegible lo dice.
+
 ## [1.8.0] - 2026-11-03
 
 ### Added
