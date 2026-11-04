@@ -29,6 +29,23 @@ existe, usa el paquete transferido; no sustituyas esta versión por `main`.
 En ambos casos comprueba `cat VERSION BUILD_ID` desde `~/scc`: deben indicar
 `1.8.0` y `scc-v1.8.0`. No ejecutes una entrega con sumas incorrectas.
 
+### Copia de Git sin acceso a la red
+
+La entrega puede incluir `scc-v1.8.0.bundle`, con la rama verificada y su historial,
+y un manifiesto exterior que cubre tanto el bundle como el paquete. Comprueba
+ese manifiesto en la carpeta recibida antes de abrir ninguno:
+
+```bash
+sha256sum -c SHA256SUMS
+git clone --branch release/scc-v1.8.0-debian scc-v1.8.0.bundle ~/scc
+git -C ~/scc rev-parse HEAD
+```
+
+El commit debe coincidir con el origen indicado en la entrega. El bundle permite
+clonar y consultar el historial sin GitHub; no implica que exista un tag publicado.
+Los resultados de Debian deben identificar ese mismo commit, las versiones del
+sistema y de Claude Code, los comandos ejecutados y sus códigos de salida.
+
 ## Instalar
 
 Extrae el paquete en una carpeta permanente (por ejemplo `~/scc`) y, desde ella:
