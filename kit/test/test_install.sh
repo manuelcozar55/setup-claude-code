@@ -231,6 +231,7 @@ ck "$(sed -n '/^enlazar_clis()/,/^}/p' "$KIT/install.sh" | grep -cE 'ln -[a-z]*f
 HC="$tmp/home-cupo"; mkdir -p "$HC/fake"
 cat > "$HC/fake/claude" <<'FAKE'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CUPO_FAKE_EVENTOS.calls"
 if [ "$1" = auth ]; then printf '{"loggedIn":true,"email":"ana@example.com","subscriptionType":"max"}\n'; exit 0; fi
 printf '%s\n' '{"type":"system","subtype":"init"}'
 cat "$CUPO_FAKE_EVENTOS"
@@ -240,6 +241,7 @@ chmod +x "$HC/fake/claude"
 cupo_caso() { # nombre eventos [args…]: deja salida en $HC/out-nombre y el rc en $cupo_rc
   local n=$1 ev=$2; shift 2
   printf '%s\n' "$ev" > "$HC/ev-$n"
+  : > "$HC/ev-$n.calls"
   set +e; CUPO_FAKE_EVENTOS="$HC/ev-$n" PATH="$HC/fake:$PATH" bash "$KIT/claude/bin/cupo" "$@" > "$HC/out-$n" 2>&1; cupo_rc=$?; set -e
 }
 EV_ALTO='{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1792760400,"rateLimitType":"five_hour","utilization":0.98,"overageStatus":"rejected","isUsingOverage":false,"surpassedThreshold":0.9,"unifiedWindows":{"five_hour":{"utilization":0.98,"resetsAt":1792760400},"seven_day":{"utilization":0.11,"resetsAt":1793347200}}}}'
@@ -265,6 +267,18 @@ cupo_caso sinevento ""
 ck "$cupo_rc" "2" "K2: sin rate_limit_event no hay veredicto (2), no un falso verde"
 cupo_caso uso "$EV_BAJO" --umbral abc
 ck "$cupo_rc" "64" "K2: umbral no numerico es error de uso (64)"
+for umbral in 101 -1 abc 999999999999999999999999; do
+  cupo_caso "rango-$umbral" "$EV_BAJO" --umbral "$umbral"
+  ck "$cupo_rc,$(wc -l < "$HC/ev-rango-$umbral.calls")" "64,0" "K2: --umbral $umbral se rechaza antes de consultar Claude"
+  CUPO_UMBRAL=$umbral cupo_caso "env-$umbral" "$EV_BAJO"
+  ck "$cupo_rc,$(wc -l < "$HC/ev-env-$umbral.calls")" "64,0" "K2: CUPO_UMBRAL=$umbral se rechaza antes de consultar Claude"
+done
+cupo_caso cero "$EV_BAJO" --umbral 0
+ck "$cupo_rc" "1" "K2: umbral 0 es válido y bloquea utilización positiva"
+cupo_caso cien "$EV_ALTO" --umbral 100
+ck "$cupo_rc" "0" "K2: umbral 100 es válido"
+cupo_caso ceros "$EV_BAJO" --umbral 0080
+ck "$cupo_rc" "0" "K2: los ceros iniciales mantienen el valor decimal"
 ck "$(grep -rlE '\.credentials|\.env|/\.ssh' "$KIT/claude/bin/cupo" || true)" "" "K2: cupo no nombra ficheros de credenciales"
 HOME="$HC/h" CLAUDE_HOME="$HC/h/.claude" bash "$KIT/install.sh" >/dev/null 2>&1
 ck "$([ -x "$HC/h/.claude/bin/cupo" ] && echo y)" "y" "K2: install.sh instala bin/cupo ejecutable"
