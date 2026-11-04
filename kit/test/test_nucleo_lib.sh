@@ -450,6 +450,15 @@ ok "piso: un nucleo en forma no lleva mínimo" "$(nucleo_emitir "$P" | command g
 printf '# Estado\n## Plan\n- [ ] solo plan\n' >"$T/piso/sin-oyp.md"
 ok "piso: con otras secciones y sin Objetivo ni Siguiente acción en el fichero no inventa nada" "$(nucleo_emitir "$T/piso/sin-oyp.md" | command grep -c '^\[mínimo\|primeras líneas')" 0
 ok "piso: lo que inyecta no cierra el envoltorio" "$(nucleo_emitir "$T/piso/libre.md" | command grep -c '^</nucleo-datos')" 0
+# Con el tope menor de la segunda pasada reaparece lo que la primera omitió: sale en el piso Y en el cuerpo (fuzz, semillas 45 y 115).
+# La forma de la semilla 115: Objetivo (una línea) y una «### Siguiente acción» vacía tras 300 líneas de «No repetir».
+relleno() { awk -v n="$1" 'BEGIN { for (i = 0; i < n; i++) { l = ""; for (j = 0; j < 60; j++) l = l "a"; print l " " i } }'; }
+{ printf '# Título\n### Ficheros tocados\n## Plan\n'; relleno 20; printf '## Invariantes\n'; relleno 80; printf '## No repetir\n'; relleno 300
+  printf '## Objetivo\nOBJ-UNICO\n### Siguiente acción\n'; } >"$T/piso/dup.md"
+S=$(nucleo_emitir "$T/piso/dup.md")
+ok "piso: lo que el cuerpo ya trae no se repite en el mínimo (Objetivo y Siguiente acción, una vez cada una)" "$(command grep -c '^#\{2,3\} Objetivo' <<<"$S"),$(command grep -c '^#\{2,3\} Siguiente acción' <<<"$S")" "1,1"
+ok "piso: sin duplicar sigue dentro del tope (≤ 7 000 B)" "$([ "$(printf '%s\n' "$S" | LC_ALL=C wc -c)" -le 7000 ] && echo si)" si
+
 # carpeta de trabajo: la línea de handoff bajo el título, solo si es una ruta válida que existe.
 printf '# Estado\n> carpeta de trabajo: %s\n## Objetivo\nO\n' "$T/piso/trabajo" >"$T/piso/c1.md"
 ok "carpeta: nucleo_carpeta lee la ruta anotada" "$(nucleo_carpeta "$T/piso/c1.md" "$T/piso")" "$T/piso/trabajo"

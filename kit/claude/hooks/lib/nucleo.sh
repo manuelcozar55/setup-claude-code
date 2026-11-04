@@ -550,7 +550,9 @@ nucleo_emitir() {
   piso=$(_nucleo_piso "$src" "$out" "$1")
   if [ -n "$piso" ]; then
     out=$(_nucleo_emitir_cuerpo "$1" "$src" "$(( NUCLEO_TOPE - $(printf '%s\n' "$piso" | LC_ALL=C wc -c) ))")
-    out=$piso$'\n'$out
+    # Con el tope menor la emisión no es monótona: puede traer ya lo que la primera pasada omitió. Se recalcula contra esta.
+    piso=$(_nucleo_piso "$src" "$out" "$1")
+    [ -z "$piso" ] || out=$piso$'\n'$out
   fi
   [ "$src" = "$1" ] || rm -f "$src"
   out=$(printf '%s\n' "$out" | sed 's|</|<\\/|g')
