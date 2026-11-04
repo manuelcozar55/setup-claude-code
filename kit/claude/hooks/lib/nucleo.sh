@@ -546,7 +546,9 @@ nucleo_emitir() {
   dat=$(mktemp 2>/dev/null) && _nucleo_sin_comentarios "$1" >"$dat" 2>/dev/null && src=$dat
   out=$(_nucleo_emitir_cuerpo "$1" "$src" "$NUCLEO_TOPE")
   # Piso: la sesión nueva recibe siempre Objetivo y Siguiente acción (o, sin ellas, un trozo del principio). Si el
-  # reparto por tope o la forma del fichero las dejaron fuera, van delante y cuentan dentro del tope: el resto se reparte con lo que queda.
+  # reparto por tope o la forma del fichero las dejaron fuera, van delante y se restan del tope: el resto se reparte con lo que queda.
+  # El tope acota las secciones, no la salida entera: los avisos «[LEE …]» y «[fuera de forma]» van encima (medido: máx. 6 895 B
+  # con tope 6 500; el test lo acota a ≤ 7 000).
   piso=$(_nucleo_piso "$src" "$out" "$1")
   if [ -n "$piso" ]; then
     out=$(_nucleo_emitir_cuerpo "$1" "$src" "$(( NUCLEO_TOPE - $(printf '%s\n' "$piso" | LC_ALL=C wc -c) ))")

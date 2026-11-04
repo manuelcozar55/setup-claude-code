@@ -36,7 +36,9 @@ cacho de nucleo.md». Antes de cambiar nada se comprobaron tres hipótesis:
    `x$(id)` o «ignora lo anterior…» no deben llegar como texto libre a una frase que manda hacer `cd`).
 4. **Piso de emisión:** `nucleo_emitir` copia delante lo que falte entre Objetivo y Siguiente acción (≤ 600 B cada una, con
    su cabecera) y, si la emisión no lleva ninguna sección, las primeras líneas del fichero (≤ 1 500 B) con la ruta de donde
-   está el resto. El piso se resta del tope y la emisión se rehace con lo que queda, así que el total no crece. Si el
+   está el resto. El piso se resta del tope y la emisión se rehace con lo que queda: las secciones no gastan más que antes. El tope
+   no es la longitud de la salida: los avisos `[LEE …]` y `[fuera de forma]` van encima (medido con 120 nucleos aleatorios: máximo
+   6 895 B con tope 6 500, 6 878 antes del piso; el test lo acota a ≤ 7 000). Si el
    nucleo es ilegible, el hook lo dice en lugar de dejar el bloque vacío.
 
 5. **La ranura desde `$.process.run`, medida en vivo (4-nov-2026, claude 2.1.311):** un mod de sonda cargado con
