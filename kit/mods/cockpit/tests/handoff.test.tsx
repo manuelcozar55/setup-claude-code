@@ -564,41 +564,29 @@ test('handoff automático: con un subagente vivo no dispara', async ($, on) => {
   expect(seen.forks).toBe(0)
 })
 
-test('handoff automático: sin disparo con COCKPIT_AUTO_HANDOFF=off', async ($, on) => {
-  const clock = mock.clock(on)
-  const seen = auto(on, { tokens: 130_000 })
-  repo(on, { [`${EST}/nucleo.md`]: PREV }, { env: 'off' })
-  await $.turn.complete(DONE_TURN)
-  await clock.advance(800)
-  expect(seen.forks).toBe(0)
-})
+type AutoThresholdCase = {
+  readonly name: string
+  readonly tokens: number
+  readonly env?: string
+  readonly forks: number
+}
+const AUTO_THRESHOLD_CASES = [
+  { name: 'handoff automático: sin disparo con COCKPIT_AUTO_HANDOFF=off', tokens: 130_000, env: 'off', forks: 0 },
+  { name: 'handoff automático: un umbral más alto (90) no dispara al 72 %', tokens: 130_000, env: '90', forks: 0 },
+  { name: 'handoff automático: un valor inválido vale 70', tokens: 130_000, env: 'mucho', forks: 1 },
+  { name: 'handoff automático: bajo el umbral no dispara', tokens: 100_000, forks: 0 },
+] satisfies readonly AutoThresholdCase[]
 
-test('handoff automático: un umbral más alto (90) no dispara al 72 %', async ($, on) => {
-  const clock = mock.clock(on)
-  const seen = auto(on, { tokens: 130_000 })
-  repo(on, { [`${EST}/nucleo.md`]: PREV }, { env: '90' })
-  await $.turn.complete(DONE_TURN)
-  await clock.advance(800)
-  expect(seen.forks).toBe(0)
-})
-
-test('handoff automático: un valor inválido vale 70', async ($, on) => {
-  const clock = mock.clock(on)
-  const seen = auto(on, { tokens: 130_000 })
-  repo(on, { [`${EST}/nucleo.md`]: PREV }, { env: 'mucho' })
-  await $.turn.complete(DONE_TURN)
-  await clock.advance(800)
-  expect(seen.forks).toBe(1)
-})
-
-test('handoff automático: bajo el umbral no dispara', async ($, on) => {
-  const clock = mock.clock(on)
-  const seen = auto(on, { tokens: 100_000 })
-  repo(on, { [`${EST}/nucleo.md`]: PREV })
-  await $.turn.complete(DONE_TURN)
-  await clock.advance(800)
-  expect(seen.forks).toBe(0)
-})
+for (const { name, tokens, env, forks } of AUTO_THRESHOLD_CASES) {
+  test(name, async ($, on) => {
+    const clock = mock.clock(on)
+    const seen = auto(on, { tokens })
+    repo(on, { [`${EST}/nucleo.md`]: PREV }, env === undefined ? {} : { env })
+    await $.turn.complete(DONE_TURN)
+    await clock.advance(800)
+    expect(seen.forks).toBe(forks)
+  })
+}
 
 test('handoff automático: un subagente no lo dispara', async ($, on) => {
   const clock = mock.clock(on)
@@ -646,7 +634,7 @@ test('handoff automático: en ~ con la ranura propia resuelta dispara, guarda si
   const argv = r.calls[0]?.argv ?? []
   expect(argv).toContain('--sesion')
   expect(argv).not.toContain('--raiz')
-  for (const text of seen.fills) expect(text).toContain(slot)
+  expect(seen.fills).toEqual([`adelante con la Siguiente acción de ${slot}: T2`])
 })
 
 test('handoff automático: si empieza otro turno entre el handoff y el clear, no limpia y lo dice', async ($, on) => {

@@ -558,8 +558,7 @@ async function resolveRoot($: $) {
   const root = isProject ? found : null
   const configured = (await $.process.run(['printenv', 'CLAUDE_HOME']).catch(() => null))?.stdout.trim() ?? ''
   const claudeHome = configured.startsWith('/') ? configured.replace(/\/+$/, '') : `${home}/.claude`
-  const dir = `${root}/.claude/estado`
-  return { home, start, root, dir, path: `${dir}/nucleo.md`, bin: `${claudeHome}/bin/handoff`, active: 0 }
+  return { home, start, root, bin: `${claudeHome}/bin/handoff` }
 }
 
 // The CLI runs from the live cwd (the folder it notes in the nucleo) but resolves root and slot from the session's start,
@@ -619,9 +618,24 @@ async function refreshEstado($: $, force: boolean) {
     const mine = await $.session.id()
     const out = await $.process.run([bin, '--estado', ...(root === null ? [] : ['--raiz', root]), '--sesion', mine], viaStart(start, { timeoutMs: ESTADO_TIMEOUT_MS }))
     if (out?.exitCode !== 0 && out?.exitCode !== 3) warnEstado($, mine)
-    const j = out?.exitCode === 0 ? (JSON.parse(out.stdout) as Partial<Estado> & { dueno?: { sesion: string; vigente: boolean } | null; sesion?: string | null }) : null
+    const j: unknown = out?.exitCode === 0 ? JSON.parse(out.stdout) : null
+    const rawOwner = typeof j === 'object' && j !== null && 'dueno' in j ? j.dueno : null
+    const owner: Estado['dueno'] | undefined =
+      rawOwner === null
+        ? null
+        : typeof rawOwner === 'object' && rawOwner !== null && 'sesion' in rawOwner && typeof rawOwner.sesion === 'string' && 'vigente' in rawOwner && typeof rawOwner.vigente === 'boolean'
+          ? { sesion: rawOwner.sesion, vigente: rawOwner.vigente, isMine: rawOwner.sesion === mine }
+          : undefined
     const next: Estado | null =
-      j && typeof j.pct === 'number' ? { pct: j.pct, bytes: j.bytes ?? 0, tope: j.tope ?? 0, dueno: j.dueno ? { sesion: j.dueno.sesion, vigente: j.dueno.vigente, isMine: j.dueno.sesion === mine } : null, isSlot: root === null && !!j.sesion } : null
+      typeof j === 'object' && j !== null && 'pct' in j && typeof j.pct === 'number' && owner !== undefined
+        ? {
+            pct: j.pct,
+            bytes: 'bytes' in j && typeof j.bytes === 'number' ? j.bytes : 0,
+            tope: 'tope' in j && typeof j.tope === 'number' ? j.tope : 0,
+            dueno: owner,
+            isSlot: root === null && 'sesion' in j && typeof j.sesion === 'string' && j.sesion !== '',
+          }
+        : null
     await update($, estado, () => next)
     await update($, continuity, () => next ? '' : 'Continuidad degradada: no se pudo consultar handoff --estado')
   } catch {
