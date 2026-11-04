@@ -702,9 +702,9 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
         }
         throw new Error(`el modelo no respondió (${reply.reason})`)
       }
-      const start = reply.text.search(/^## /m)
-      if (start < 0) { if (draft) break; throw new Error('la respuesta no trae secciones ## ') }
-      const text = redact(reply.text.slice(start))
+      const at = reply.text.search(/^## /m)
+      if (at < 0) { if (draft) break; throw new Error('la respuesta no trae secciones ## ') }
+      const text = redact(reply.text.slice(at))
       const bytes = encoder.encode(text).length - repeated(text, prev, encoder)
       if (!draft || bytes < size) [draft, size] = [text, bytes]
       if (size <= budget) break
