@@ -449,7 +449,7 @@ const PLAN = '## Plan\n- [ ] T2\n## Siguiente acción\nT2\n'
 // The engine beneath the mod: usage (limit 180k = 200k - 20k buffer), agents, fork, clear and fill.
 function auto(
   on: Parameters<TestBody>[1],
-  o: { tokens: number; window?: number; agents?: { id: string; status: string }[]; usageFailsAfter?: number; forkText?: string | ((prompt: string) => string); fill?: { isFilled: boolean; refusal?: 'dialog' } | 'throws'; clearFails?: boolean; draft?: string | (() => string); beforeFork?: () => Promise<void>; afterClear?: () => Promise<void> },
+  o: { tokens: number; window?: number; agents?: { id: string; status: string }[]; usageFailsAfter?: number; forkText?: string | ((prompt: string) => string); nothingToFork?: number; fill?: { isFilled: boolean; refusal?: 'dialog' } | 'throws'; clearFails?: boolean; draft?: string | (() => string); beforeFork?: () => Promise<void>; afterClear?: () => Promise<void> },
 ) {
   const seen = { forks: 0, cleared: 0, fills: [] as string[], toasts: [] as string[], logs: [] as string[], usageCalls: 0 }
   on('session.usage', () => {
@@ -470,6 +470,7 @@ function auto(
   on('model.fork', async (_, e) => {
     await o.beforeFork?.()
     seen.forks++
+    if (seen.forks <= (o.nothingToFork ?? 0)) return ({ value: { isAnswered: false, reason: 'nothing-to-fork' } }) as never
     return answered(typeof o.forkText === 'function' ? o.forkText(e.prompt) : o.forkText ?? PLAN)
   })
   on('command.run', async (_, e) => {
@@ -706,6 +707,65 @@ test('log: bajo el umbral calla', async ($, on) => {
   await $.turn.complete(DONE_TURN)
   await clock.advance(800)
   expect(seen.logs).toHaveLength(0)
+})
+
+// After a resume or a /clear the fork has no reply to read yet (nothing-to-fork, no request made): the handoff waits
+// for the next answered turn instead of failing, with a cheap turn in the prompt when it was empty.
+test('nothing-to-fork: el handoff espera al próximo turno respondido, deja un turno barato en el prompt y entonces guarda y limpia', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1000, nothingToFork: 1 })
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  const res = await $.command.run({ ...RUN, command: 'handoff' })
+  expect(res.text).toContain('reanudada o recién limpiada')
+  expect(res.text).toContain('se guardará al terminar el próximo turno; pulsa Enter')
+  expect(res.text).not.toContain('fallido')
+  expect(seen.fills).toEqual(['Responde solo «listo»: el panel guarda el handoff al terminar este turno.'])
+  const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  expect(await ui.find({ text: /próximo turno/ })).toBeTruthy()
+  await $.turn.complete({ ...DONE_TURN, reason: 'aborted' })
+  await clock.advance(400)
+  expect(seen.forks).toBe(1)
+  await $.prompt.submit({ text: seen.fills[0] ?? '', wait: false, origin: { kind: 'composer' } })
+  const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Agent Dock', isFocused: true, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} } })
+  expect(await pane.find({ text: /Responde solo/ })).toBeFalsy()
+  await $.turn.complete(DONE_TURN)
+  for (let i = 0; i < 3; i++) await clock.advance(400)
+  expect(seen.forks).toBe(2)
+  expect(r.calls).toHaveLength(1)
+  expect(r.files[`${EST}/nucleo.md`]).toContain('T2')
+  expect(seen.cleared).toBe(1)
+})
+
+test('nothing-to-fork en /nueva: no deja nada en espera ni archiva, y pide repetir tras un mensaje', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1000, nothingToFork: 1 })
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  const res = await $.command.run({ ...RUN, command: 'nueva', args: 'arreglar el login' })
+  expect(res.text).toContain('envía un mensaje y repite /nueva')
+  expect(seen.fills).toHaveLength(0)
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(400)
+  expect(seen.forks).toBe(1)
+  expect(r.calls).toHaveLength(0)
+  expect(seen.cleared).toBe(0)
+  expect(r.runs.some(x => x.argv.includes('--migrar'))).toBe(false)
+})
+
+test('nothing-to-fork: × cancela la espera y el próximo turno no guarda', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1000, nothingToFork: 1, draft: 'lo que escribía' })
+  const r = repo(on, {})
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(res.text).toContain('envía cualquier mensaje')
+  expect(seen.fills).toHaveLength(0)
+  const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  await ui.press({ key: 'ho-ok' })
+  expect(await ui.find({ text: /próximo turno/ })).toBeFalsy()
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(400)
+  expect(seen.forks).toBe(1)
+  expect(r.calls).toHaveLength(0)
 })
 
 test('/nueva: con un turno en marcha no archiva ni limpia, y lo dice', async ($, on) => {

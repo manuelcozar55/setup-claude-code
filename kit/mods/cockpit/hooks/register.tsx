@@ -421,6 +421,12 @@ let promptRevision = 0
 let autonomousEnabled = false
 // Errors cleared by a turn end since the last /clear: one automatic retry, then the error stays (each try forks).
 let errorResets = 0
+// A handoff asked for before this process's first reply (after a resume or a /clear): the fork has nothing to read
+// yet, so it runs at the next main turn end. × and the end of the session drop it.
+let queuedHandoff: { andClear: boolean; focus: string } | null = null
+const NOT_YET = 'esta sesión aún no tiene respuesta del modelo en este proceso (reanudada o recién limpiada)'
+// What the prompt carries when it was empty: a cheap turn, so the fork has a reply to read.
+const HANDOFF_PING = 'Responde solo «listo»: el panel guarda el handoff al terminar este turno.'
 
 // What the CLI saved, in one line. «a diario.md» comes from its notices (the sections it moved there); an older CLI has no
 // bytes or transcript and the line leaves them out. «volver» only if there is a transcript to go back to.
@@ -649,7 +655,7 @@ async function refuseLinks($: $, dir: string) {
 const NO_PROJECT = 'aquí no hay proyecto (~, ~/.claude o fuera de un repo git): no hay estado que guardar'
 
 // CLI: 0 saved (notices in the receipt; old CLIs: stderr) · 2 invalid · 3 no project · 4 busy/conflict (retry once) · 5 foreign owner.
-async function runHandoff($: $, andClear: boolean, focus = '') {
+async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
   if (handoffBusy || clearPending) return
   handoffBusy = true
   const revision = promptRevision
@@ -675,7 +681,18 @@ async function runHandoff($: $, andClear: boolean, focus = '') {
       const retry = attempt ? `\nLa respuesta anterior midió ${size} bytes UTF-8: sobran ${size - budget} sobre el máximo de ${budget}. Regenera una versión que quite al menos esos ${size - budget} bytes; conserva riesgos abiertos y referencias, sin duplicar la especificación ni secciones fijas. Es el último intento: si aún se pasa, el CLI omitirá secciones enteras (primero Pendientes y Plan) y solo quedarán en diario.md.` : ''
       const reply = await $.model.fork({ prompt: prompt + retry })
       // A failed retry still leaves the first draft.
-      if (!reply.isAnswered) { if (draft) break; throw new Error(`el modelo no respondió (${reply.reason})`) }
+      if (!reply.isAnswered) {
+        if (draft) break
+        // No request was made: wait for a reply instead of failing. /nueva cannot wait, its archive and /clear follow.
+        if (reply.reason === 'nothing-to-fork') {
+          if (!canWait) throw new Error(`${NOT_YET}: envía un mensaje y repite /nueva`)
+          queuedHandoff = { andClear, focus }
+          const filled = (await $.prompt.read()).text.trim() ? null : await $.prompt.fill({ text: HANDOFF_PING }).catch(() => null)
+          await update($, handoff, (): Handoff => ({ phase: 'waiting', msg: `${NOT_YET}: se guardará al terminar el próximo turno; ${filled?.isFilled ? 'pulsa Enter' : 'envía cualquier mensaje'}` }))
+          return
+        }
+        throw new Error(`el modelo no respondió (${reply.reason})`)
+      }
       const start = reply.text.search(/^## /m)
       if (start < 0) { if (draft) break; throw new Error('la respuesta no trae secciones ## ') }
       const text = redact(reply.text.slice(start))
@@ -834,7 +851,7 @@ export const register: Register = on => {
     const { path, root } = location
     let note = ''
     if (await $.fs.exists(path)) {
-      const saved = await runHandoff($, false)
+      const saved = await runHandoff($, false, '', false)
       const h = await read($, handoff)
       if (!saved || h.phase !== 'done') return { text: h.msg ?? 'Handoff en marcha; no archivo ni limpio.' }
       const sessionId = await $.session.id()
@@ -854,6 +871,8 @@ export const register: Register = on => {
   })
 
   on('session.end', async ($, e, next) => {
+    // The request was about the conversation that ends (a /clear, a /resume to another one).
+    queuedHandoff = null
     if (e.reason === 'clear') {
       errorResets = 0
       const keepMission = clearPending
@@ -874,8 +893,8 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     if (e.isMeta || e.command) return next(e)
     promptRevision++
-    // Only the person's own prompts set the mission; a task notification is not one.
-    if (e.turnId === undefined && ['composer', 'bridge', 'sdk'].includes(e.origin.kind)) {
+    // Only the person's own prompts set the mission; a task notification is not one, nor the turn a waiting handoff left.
+    if (e.turnId === undefined && ['composer', 'bridge', 'sdk'].includes(e.origin.kind) && e.text.trim() !== HANDOFF_PING) {
       const mission = e.text.split('\n').find(l => l.trim())?.trim() ?? ''
       await update($, turn, t => ({ ...t, mission: t.mission || mission }))
       await update($, isMissionOpen, () => false)
@@ -901,6 +920,15 @@ export const register: Register = on => {
       if ((await read($, handoff)).phase === 'error' && errorResets < 1) {
         errorResets++
         await update($, handoff, (): Handoff => ({ phase: 'idle' }))
+      }
+      // The fork has a reply to read from now on. Out of the hook, like the automatic one: /clear is refused inside it.
+      const q = queuedHandoff
+      if (q && e.reason === 'answer') {
+        queuedHandoff = null
+        $.clock.after(300, async () => {
+          if ((await read($, turn)).isRunning) queuedHandoff ??= q
+          else await runHandoff($, q.andClear, q.focus)
+        })
       }
       if (e.answer) await update($, summary, () => condense(e.answer))
       const u = e.usage
@@ -1070,12 +1098,12 @@ export const register: Register = on => {
         </Box>
       ) : ho.phase === 'working' ? (
         <Text key="ho" color="claude">⟳ Generando handoff…</Text>
-      ) : ho.phase === 'done' || ho.phase === 'error' ? (
+      ) : ho.phase === 'done' || ho.phase === 'error' || ho.phase === 'waiting' ? (
         <Box key="ho" gap={1}>
-          <Text color={ho.phase === 'done' ? 'success' : 'error'} wrap="truncate-end">
-            {ho.phase === 'done' ? '✓' : '✗'} {ho.msg}
+          <Text color={ho.phase === 'done' ? 'success' : ho.phase === 'waiting' ? 'warning' : 'error'} wrap="truncate-end">
+            {ho.phase === 'done' ? '✓' : ho.phase === 'waiting' ? '…' : '✗'} {ho.msg}
           </Text>
-          <Button key="ho-ok" plain label="×" onPress={() => update($, handoff, (): Handoff => ({ phase: 'idle' }))} />
+          <Button key="ho-ok" plain label="×" onPress={() => { queuedHandoff = null; return update($, handoff, (): Handoff => ({ phase: 'idle' })) }} />
         </Box>
       ) : null
 
