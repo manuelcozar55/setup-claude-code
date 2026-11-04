@@ -417,6 +417,9 @@ export async function titled($: $, draft: string, budget: number, say: (note: st
 let handoffBusy = false
 let clearPending = false
 let promptRevision = 0
+// Bumped by every session.end: work scheduled or awaiting a model in one conversation must not write or /clear in the next.
+let sessionEpoch = 0
+const SESSION_CHANGED = 'la sesión cambió durante el guardado: no guardo ni limpio'
 // Engine atoms reset on /clear; authorization lives only in this loaded module.
 let autonomousEnabled = false
 // Errors cleared by a turn end since the last /clear: one automatic retry, then the error stays (each try forks).
@@ -457,7 +460,7 @@ async function fillContinuation($: $, fill: string) {
   }))
 }
 
-async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefined, revision = promptRevision, line = '') {
+async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefined, revision = promptRevision, line = '', epoch = sessionEpoch) {
   if (clearPending) return
   clearPending = true
   let isScheduled = false
@@ -467,7 +470,7 @@ async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefine
     $.clock.after(300, async () => {
       let continuing = false
       try {
-        if ((await read($, turn)).isRunning || revision !== promptRevision || (await $.prompt.read()).text.trim()) {
+        if ((await read($, turn)).isRunning || revision !== promptRevision || epoch !== sessionEpoch || (await $.prompt.read()).text.trim()) {
           await update($, handoff, (): Handoff => ({ phase: 'done', msg: `${path ? `Guardado en ${path}` : 'Listo'}, pero hay actividad o texto nuevo: no limpio; escribe /clear cuando quieras` }))
           return
         }
@@ -477,7 +480,7 @@ async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefine
         }
         const before = await $.session.id()
         if (!before) throw new Error('sesión desconocida; no limpio')
-        if (revision !== promptRevision || (await read($, turn)).isRunning || (await $.prompt.read()).text.trim()) {
+        if (revision !== promptRevision || epoch !== sessionEpoch || (await read($, turn)).isRunning || (await $.prompt.read()).text.trim()) {
           await update($, handoff, (): Handoff => ({ phase: 'done', msg: 'Llegó actividad nueva durante la consulta: no limpio; revisa el estado antes de /clear' }))
           return
         }
@@ -671,6 +674,8 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
   // This run supersedes any wait: it either saves now or arms a new one, with its own banner.
   queuedHandoff = null
   const revision = promptRevision
+  const epoch = sessionEpoch
+  const sameSession = () => { if (epoch !== sessionEpoch) throw new Error(SESSION_CHANGED) }
   let tmp = ''
   try {
     await update($, handoff, (): Handoff => ({ phase: 'working' }))
@@ -692,6 +697,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
       // A model counts bytes badly: the retry says how many it wrote and how many to cut.
       const retry = attempt ? `\nLa respuesta anterior midió ${size} bytes UTF-8: sobran ${size - budget} sobre el máximo de ${budget}. Regenera una versión que quite al menos esos ${size - budget} bytes; conserva riesgos abiertos y referencias, sin duplicar la especificación ni secciones fijas. Es el último intento: si aún se pasa, el CLI omitirá secciones enteras (primero Pendientes y Plan) y solo quedarán en diario.md.` : ''
       const reply = await $.model.fork({ prompt: prompt + retry })
+      sameSession()
       // A failed retry still leaves the first draft.
       if (!reply.isAnswered) {
         if (draft) break
@@ -719,6 +725,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
     // The title only feeds the fill that /clear leaves in the prompt: a save without /clear would pay the call for nothing.
     const notes: string[] = []
     if (andClear) draft = await titled($, draft, budget + repeated(draft, prev, encoder), note => notes.push(note))
+    sameSession()
     // The draft holds the session's state: a private file (mktemp makes it 600), removed in `finally`.
     const made = await $.process.run(['mktemp', '-t', 'cockpit-handoff.XXXXXX'])
     tmp = made.exitCode === 0 ? made.stdout.trim() : ''
@@ -726,6 +733,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
     await $.process.run(['chmod', '600', '--', tmp])
     await $.fs.write(tmp, draft)
     const sesion = await $.session.id().catch(() => '')
+    sameSession()
     const argv = [bin, '--desde', tmp, ...(root === null ? [] : ['--raiz', root]), ...(sesion ? ['--sesion', sesion] : []), '--json']
     let res = await $.process.run(argv, viaStart(start))
     if (res.exitCode === 4) res = await $.process.run(argv, viaStart(start))
@@ -756,10 +764,14 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
     const shown = line ? redact(`Handoff: ${line}`) : ''
     if (shown) await update($, receiptLine, () => shown)
     // Saved and confirmed by the receipt: a failed re-read only loses the line, and the generic fill goes on.
-    await clearAfter($, saved.path, fillFor(await readState($, saved.path).catch(() => ''), saved.path.endsWith('/.claude/estado/nucleo.md') ? '.claude/estado/nucleo.md' : saved.path), revision, shown)
+    const fill = fillFor(await readState($, saved.path).catch(() => ''), saved.path.endsWith('/.claude/estado/nucleo.md') ? '.claude/estado/nucleo.md' : saved.path)
+    sameSession()
+    await clearAfter($, saved.path, fill, revision, shown, epoch)
     return saved
   } catch (err) {
-    await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}` }))
+    // The conversation that asked is gone: the new one gets no error banner, only a clean band.
+    if (epoch !== sessionEpoch) await update($, handoff, (): Handoff => ({ phase: 'idle' }))
+    else await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}` }))
   } finally {
     if (tmp) await $.process.run(['rm', '-f', '--', tmp]).catch(() => undefined)
     handoffBusy = false
@@ -771,6 +783,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
 // else is running. Scheduled out of the hook the turn awaits, because /clear is refused inside it.
 // Every turn end over the threshold that does not hand off leaves one debug line with the reason.
 async function maybeAutoHandoff($: $) {
+  const epoch = sessionEpoch
   const limit = await autoThreshold($)
   const c = await read($, ctx)
   if (limit === null || !c) return
@@ -784,12 +797,15 @@ async function maybeAutoHandoff($: $) {
   if ((await $.agent.list()).some(a => !DONE.has(a.status))) return skip('agentes vivos')
   const blocker = await autoBlocker($)
   if (blocker) return skip(blocker)
+  if (epoch !== sessionEpoch) return skip('la sesión cambió')
   await update($, isAutoQueued, () => true)
   try {
     $.ui.toast(`Contexto al ${pct}%: handoff automático y sesión nueva`)
     $.clock.after(300, async () => {
       try {
+        if (epoch !== sessionEpoch) return
         if ((await read($, turn)).isRunning) return skip('turno en marcha')
+        if (epoch !== sessionEpoch) return
         await runHandoff($, true)
       } finally {
         await update($, isAutoQueued, () => false)
@@ -887,6 +903,7 @@ export const register: Register = on => {
 
   on('session.end', async ($, e, next) => {
     // The request was about the conversation that ends (a /clear, a /resume to another one).
+    sessionEpoch++
     queuedHandoff = null
     await update($, handoff, (h): Handoff => (h.phase === 'waiting' ? { phase: 'idle' } : h))
     if (e.reason === 'clear') {

@@ -1994,6 +1994,37 @@ test('un mensaje durante la consulta lenta previa al clear impide limpiar', asyn
 })
 
 
+test('cerrar la sesión cancela el handoff automático ya programado: ni escribe ni limpia', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000 })
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(1)
+  expect(seen.toasts.some(t => t.startsWith('Contexto al '))).toBe(true)
+  await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
+  await settle(clock)
+  expect(r.calls).toHaveLength(0)
+  expect(seen.forks).toBe(0)
+  expect(seen.cleared).toBe(0)
+})
+
+test('cambiar de sesión durante el fork impide guardar y limpiar desde el handoff viejo', async ($, on) => {
+  const clock = mock.clock(on)
+  let sid = 's1'
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  const seen = auto(on, { tokens: 1, beforeFork: async () => {
+    await $.session.end({ reason: 'clear', sessionId: sid, resume: { id: sid } })
+    sid = 's2'
+  } })
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV }, { session: () => sid })
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await settle(clock)
+  expect(r.calls).toHaveLength(0)
+  expect(seen.cleared).toBe(0)
+})
+
+
 for (const code of [4, 5]) {
   test(`/nueva: rechazo transaccional ${code} conserva contexto y no mueve por su cuenta`, async ($, on) => {
     const timer = mock.clock(on)
