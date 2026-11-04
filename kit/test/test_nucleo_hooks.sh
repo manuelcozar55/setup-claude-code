@@ -411,6 +411,54 @@ ok "oraculo: --help sale 0" "$(orc --help 2>&1 | head -n 1 | command grep -c '^u
 mkdir -p "$T/ro-enl/.claude"; git -C "$T/ro-enl" init -q; ln -s "$T/destino" "$T/ro-enl/.claude/estado"
 ok "oraculo: .claude/estado enlazado → no escribe en el destino" "$(cd "$T/ro-enl" && bash "$BIN/oraculo" -- true >/dev/null; nent "$T/destino" -name 'verificaciones*')" 0
 
+# Intercalado determinista: A ya leyó su rotación; B termina o espera el lock antes de publicar A.
+RR=$T/ro-rotacion; mkdir -p "$RR/.claude/estado" "$T/rot-bin"; GIT_MASTER=1 git -C "$RR" init -q
+export ORACLE_ROT_LOG=$RR/.claude/estado/verificaciones.log ORACLE_EVENTS=$T/rot-eventos ORACLE_RELEASE=$T/rot-liberar
+REAL_TAIL=$(command -v tail); REAL_MV=$(command -v mv); REAL_FLOCK=$(command -v flock)
+export REAL_TAIL REAL_MV REAL_FLOCK
+cat >"$T/rot-bin/syscall" <<'ROTACION'
+#!/usr/bin/env bash
+case ${0##*/} in
+  tail)
+    "$REAL_TAIL" "$@" || exit
+    if [ "${ORACLE_WRITER:-}" = A ] && [ "$*" = "-n 200 $ORACLE_ROT_LOG" ]; then
+      printf 'snapshot\n' >"$ORACLE_EVENTS"
+      read -r -t 5 _ <"$ORACLE_RELEASE" || exit 1
+    fi ;;
+  flock)
+    if [ "${ORACLE_WRITER:-}" = B ]; then printf 'espera\n' >"$ORACLE_EVENTS"; fi
+    exec "$REAL_FLOCK" "$@" ;;
+  mv)
+    if [ "${ORACLE_FAIL_MV:-}" = 1 ] && [ "${!#}" = "$ORACLE_ROT_LOG" ]; then exit 23; fi
+    "$REAL_MV" "$@" || exit
+    if [ "${ORACLE_WRITER:-}" = B ] && [ "${!#}" = "$ORACLE_ROT_LOG" ]; then printf 'publicado\n' >"$ORACLE_EVENTS"; fi ;;
+esac
+ROTACION
+chmod +x "$T/rot-bin/syscall"
+for util in tail mv flock; do ln -s syscall "$T/rot-bin/$util"; done
+mkfifo "$ORACLE_EVENTS" "$ORACLE_RELEASE"
+exec {ROT_EVENTS}<>"$ORACLE_EVENTS"; exec {ROT_RELEASE}<>"$ORACLE_RELEASE"
+for i in {1..400}; do printf '2026-11-04T10:00:00Z\t0\tbase-%s\n' "$i"; done >"$ORACLE_ROT_LOG"
+PATH="$T/rot-bin:$PATH" ORACLE_WRITER=A bash "$BIN/oraculo" --raiz "$RR" -- 'exit 7' >"$T/rot-a.out" 2>"$T/rot-a.err" & ROT_A=$!
+ROT_READY=0; ROT_B=""; ROT_RC_B=255
+if read -r -t 5 -u "$ROT_EVENTS" evento && [ "$evento" = snapshot ]; then
+  PATH="$T/rot-bin:$PATH" ORACLE_WRITER=B bash "$BIN/oraculo" --raiz "$RR" -- 'exit 3' >"$T/rot-b.out" 2>"$T/rot-b.err" & ROT_B=$!
+  if read -r -t 5 -u "$ROT_EVENTS" evento; then
+    case $evento in espera | publicado) ROT_READY=1 ;; esac
+  fi
+fi
+printf 'seguir\n' >&"$ROT_RELEASE"
+wait "$ROT_A"; ROT_RC_A=$?
+if [ -n "$ROT_B" ]; then wait "$ROT_B"; ROT_RC_B=$?; fi
+exec {ROT_EVENTS}>&-; exec {ROT_RELEASE}>&-
+ok "oraculo rotación: dos escritores conservan ambos rc y registros" \
+  "$ROT_READY,$ROT_RC_A,$ROT_RC_B,$(tail -n 1 "$T/rot-a.out"),$(tail -n 1 "$T/rot-b.out" 2>/dev/null),$(awk -F'\t' '$3 == "exit 7" {print $2}' "$ORACLE_ROT_LOG"),$(awk -F'\t' '$3 == "exit 3" {print $2}' "$ORACLE_ROT_LOG")" "1,7,3,rc=7,rc=3,7,3"
+ok "oraculo rotación: retiene 200 y añade el resultado posterior" "$(wc -l <"$ORACLE_ROT_LOG")" 201
+for i in {1..400}; do printf '2026-11-04T10:00:00Z\t0\tbase-%s\n' "$i"; done >"$ORACLE_ROT_LOG"
+PATH="$T/rot-bin:$PATH" ORACLE_FAIL_MV=1 bash "$BIN/oraculo" --raiz "$RR" -- 'exit 9' >"$T/rot-fallo.out" 2>"$T/rot-fallo.err"; RC=$?
+ok "oraculo rotación: un fallo del registro no sustituye el rc y se avisa" \
+  "$RC,$(tail -n 1 "$T/rot-fallo.out"),$([ -s "$T/rot-fallo.err" ] && echo aviso)" "9,rc=9,aviso"
+
 # shellcheck disable=SC2016  # los acentos graves de los literales son markdown, no sustituciones
 # --- v3: handoff --estado / --desde / --migrar (el modelo redacta el borrador; el CLI valida, fusiona y recorta) ---
 mkrepo() { mkdir -p "$1"; git -C "$1" init -q; git -C "$1" config user.email t@t; git -C "$1" config user.name t
@@ -525,6 +573,15 @@ ok "rc: el último comando del log, si no estaba, se añade" "$(command grep -c 
 ho --desde "$T/b1.md" >/dev/null 2>&1
 ok "rc: repetir el handoff no duplica la anotación" "$(command grep -c 'rc=1' "$HNUC"),$(command grep -c 'zzz-nuevo' "$HNUC")" "1,1"
 
+# Un comando corto no acredita otro distinto ni una mención en prosa.
+HRC=$T/ho-rc-exacto; mkrepo "$HRC"; mkdir -p "$HRC/.claude/estado"
+printf '2026-11-04T10:00:00Z\t2\tmake test-integration\n2026-11-04T10:01:00Z\t0\tmake test\n' >"$HRC/.claude/estado/verificaciones.log"
+printf '%s\n' '## Comandos de verificación' "- \`make test-integration\` → rc=2" \
+  "- Después de \`make test\`, ejecutar la integración." >"$T/b-rc-exacto.md"
+(cd "$HRC" && bash "$BIN/handoff" --desde "$T/b-rc-exacto.md" >/dev/null 2>&1); RC=$?
+ok "rc exacto: conserva el fallo de integración y no atribuye resultados a menciones" \
+  "$RC,$(command grep -Fxc -- "- \`make test-integration\` → rc=2" "$HRC/.claude/estado/nucleo.md"),$(command grep -Fxc -- "- Después de \`make test\`, ejecutar la integración." "$HRC/.claude/estado/nucleo.md"),$(command grep -Fxc -- "- \`make test\` → rc=0" "$HRC/.claude/estado/nucleo.md")" "0,1,1,1"
+
 # -- --desde: tope --
 HT=$T/hot; mkrepo "$HT"
 { printf '## Objetivo\nO\n## Paso actual\nPA\n## Pendientes\n'; head -c 4000 /dev/zero | tr '\0' p; printf '\n## Ficheros tocados\n'; head -c 4000 /dev/zero | tr '\0' f; printf '\n'; } >"$T/b-grande.md"
@@ -546,6 +603,25 @@ HC=$T/hot-contrato; mkrepo "$HC"
 # shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
 E=$(. "$H/lib/nucleo.sh"; nucleo_emitir "$HC/.claude/estado/nucleo.md")
 ok "contrato: lo que escribe handoff se inyecta entero" "$(command grep -c 'PASO-FIN\|CMD-FIN' <<<"$E"),$(command grep -c '^\[recortado\|^\[LEE' <<<"$E")" "2,0"
+# Las variantes admitidas por el escritor conservan todos sus campos en ambos lectores.
+marcas_alias() { command grep -oE '(OBJ|INV|PASO|SIG|CMD|PLAN|PEND|FIC)-ALIAS' <<<"$1" | LC_ALL=C sort | paste -sd, -; }
+for forma in minusculas mayusculas espacios; do
+  case $forma in
+    minusculas) titulos=(objetivo invariantes 'paso actual' 'siguiente accion' 'comandos de verificacion' plan pendientes 'ficheros tocados') ;;
+    mayusculas) titulos=('ENCARGO ORIGINAL (literal)' INVARIANTES 'PASO ACTUAL' 'SIGUIENTE ACCIÓN' 'COMANDOS DE VERIFICACIÓN' PLAN 'PENDIENTES Y RIESGOS' 'FICHEROS TOCADOS') ;;
+    espacios) titulos=(' Objetivo (literal) ' ' Invariantes ' ' Paso  actual ' ' Siguiente  acción ' ' Comandos  de  verificación ' ' Plan ' ' Pendientes  y  riesgos ' ' Ficheros  tocados ') ;;
+  esac
+  cuerpos=(OBJ-ALIAS INV-ALIAS PASO-ALIAS SIG-ALIAS CMD-ALIAS '- [ ] PLAN-ALIAS' '- (persona) PEND-ALIAS' FIC-ALIAS)
+  { for i in "${!titulos[@]}"; do printf '## %s\n%s\n' "${titulos[i]}" "${cuerpos[i]}"; done; } >"$T/alias-$forma.md"
+  HAL=$T/alias-$forma; mkrepo "$HAL"
+  (cd "$HAL" && bash "$BIN/handoff" --desde "$T/alias-$forma.md" >/dev/null 2>&1); RC=$?
+  ok "alias ($forma): el escritor acepta las cabeceras" "$RC" 0
+  ESPERADAS="CMD-ALIAS,FIC-ALIAS,INV-ALIAS,OBJ-ALIAS,PASO-ALIAS,PEND-ALIAS,PLAN-ALIAS,SIG-ALIAS"
+  for hook in session-start-clear.sh session-start-compact.sh; do
+    E=$(ev "$HAL" "alias-$forma" "" clear | bash "$H/$hook" | ctx)
+    ok "alias ($forma): $hook conserva cada campo una sola vez" "$(marcas_alias "$E")" "$ESPERADAS"
+  done
+done
 # El mismo contrato por el hook real, con el bloque de agentes en su peor caso (200 en vuelo): el clear le
 # descuenta su largo al tope, y un nucleo de 6,4 KB escrito entero se cortaba en Paso actual (21-oct).
 bg() { head -c "$1" /dev/zero | tr '\0' "$2" | fold -w 99; echo; }

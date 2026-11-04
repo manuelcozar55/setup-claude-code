@@ -354,6 +354,7 @@ admitida() {
 titulo_de() { norm "$1"; if [ "$NORM" = "pendientes y riesgos" ]; then TITULO=Pendientes; else TITULO=$1; fi; }
 # fin_nl <variable>: asegura el salto de línea final (no vale $(…), que se los come).
 fin_nl() { local -n r=$1; case $r in *$'\n') ;; *) r+=$'\n' ;; esac; }
+bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
 
 # parsear <fichero>: PHEAD (lo anterior a la primera «## »), PK[] claves, PTIT[] títulos, PT[] texto con su
 # cabecera y salto final. Una «## » dentro de una cerca ``` o ~~~ es contenido.
@@ -401,6 +402,15 @@ for ((i = 0; i < ${#DK[@]}; i++)); do
 done
 dindice() { local j; DI=-1; for ((j = 0; j < ${#DK[@]}; j++)); do [ "${DK[j]}" != "$1" ] || { DI=$j; return 0; }; done; }
 
+# La misma extracción en ambos modos; decidir si el borrador está vacío va antes.
+plan_abierto() {
+  printf '%s' "$1" | awk -v d="$W/hechos" '
+    /^[ \t]*(```|~~~)/ { c = !c }
+    !c && /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { print >> d; next }
+    { print }'
+}
+: >"$W/hechos"
+
 # ---------------------------------------------------------------- --desde con ESTADO.md como estado
 # Mapeo borrador (secciones de nucleo.md) → ESTADO.md. Viñetas de la cabecera, que sustituyen a la suya (o se añaden si falta):
 #   Objetivo → «- Objetivo (una línea):» (todo el cuerpo en una línea; solo si la existente está vacía o es RELLENAR) · Paso actual → «- Paso actual:» · Siguiente acción → «- Siguiente acción:»
@@ -412,7 +422,7 @@ dindice() { local j; DI=-1; for ((j = 0; j < ${#DK[@]}; j++)); do [ "${DK[j]}" !
 if [ "$ESTMD" -eq 1 ]; then
   EST=$RAIZ/ESTADO.md
   cp -- "$EST" "$W/viejo.md"
-  OLD_CK=$(cksum <"$EST")
+  OLD_CK=$(cksum <"$W/viejo.md")
   parsear "$W/viejo.md"
   OK=("${PK[@]}"); OTIT=("${PTIT[@]}"); OT=("${PT[@]}"); HEADX=$PHEAD
   # cuerpo <clave>: BODY = cuerpo del borrador sin comentarios ni líneas en blanco extremas; rc 1 si no hay borrador o está vacío.
@@ -480,15 +490,6 @@ if [ "$ESTMD" -eq 1 ]; then
     SEC="## $1"$'\n'$b
     for ((x = 0; x < n; x++)); do SEC+=$'\n'; done
   }
-  # Los [x] del Plan del borrador van a diario y salen del texto que se escribe.
-  : >"$W/hechos"
-  for ((j = 0; j < ${#DK[@]}; j++)); do
-    [ "${DK[j]}" = plan ] || continue
-    DT[j]=$(awk -v d="$W/hechos" '
-      /^[ \t]*(```|~~~)/ { c = !c }
-      !c && /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { print > d; next }
-      { print }' <<<"${DT[j]}")$'\n'
-  done
   # Solo se sustituye la PRIMERA sección de cada clave; las demás, y todo lo que el borrador no trae, salen tal cual.
   # RA[i]=1: sección añadida por el borrador (sin equivalente en ESTADO.md): la única que el tope puede omitir.
   RK=(); RT=(); RA=(); HECHA=" "
@@ -535,6 +536,15 @@ if [ "$ESTMD" -eq 1 ]; then
     sec_e "$T" "${DT[j]}" ""; [[ $ult == *$'\n\n' ]] || SEC=$'\n'$SEC
     HECHA+="$k "; RK+=("$k"); RT+=("$SEC"); RA+=(1)
   done
+  # Solo el Plan aportado sustituye al anterior; un Plan terminado puede quedar sin cuerpo.
+  if [[ $HECHA == *" plan "* ]]; then
+    for ((i = 0; i < ${#RK[@]}; i++)); do
+      [ "${RK[i]}" = plan ] || continue
+      RT[i]=$(plan_abierto "${RT[i]}" && printf x)
+      RT[i]=${RT[i]%x}
+      break
+    done
+  fi
   armar_e() {
     local i; TEXTO=$HEADX
     for ((i = 0; i < ${#RK[@]}; i++)); do TEXTO+=${RT[i]}; done
@@ -542,7 +552,6 @@ if [ "$ESTMD" -eq 1 ]; then
   }
   NOEOL=0; [ -z "$(tail -c1 "$EST")" ] || NOEOL=1
   CRLF=0; IFS= read -r l1 <"$EST" || true; [[ ${l1-} != *$'\r' ]] || CRLF=1
-  bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
   armar_e
   # ESTADO.md es de la persona: el tope solo omite (a diario.md) las secciones que el borrador añadió sin equivalente, desde el final.
   # Si aun así lo pasa se escribe igual y se avisa: la inyección de SessionStart ya recorta.
@@ -561,8 +570,10 @@ if [ "$ESTMD" -eq 1 ]; then
 
   [ -z "${NUCLEO_FUSION_PAUSA:-}" ] || sleep "$NUCLEO_FUSION_PAUSA"
   [ "$(cksum <"$EST")" = "$OLD_CK" ] || die 4 "ESTADO.md cambió mientras se fusionaba (otra sesión): no lo piso; reintenta"
-  # Solo si el texto cambia: copia previa, rotación (3, por mtime), escritura y diario. Un handoff repetido no toca nada.
+  # Solo si el texto cambia: copia previa, rotación (3, por mtime) y escritura.
+  CAMBIADO=0
   if [ "$(printf '%s' "$TEXTOW" | cksum)" != "$OLD_CK" ]; then
+    CAMBIADO=1
     mkdir -p "$E"
     P=$E/ESTADO.prev-$(date -u +%Y%m%dT%H%M%SZ).md
     [ ! -e "$P" ] || P=${P%.md}-$$.md
@@ -574,6 +585,9 @@ if [ "$ESTMD" -eq 1 ]; then
     printf '%s' "$TEXTOW" >"$TMP"
     chmod "$(stat -c %a "$EST" 2>/dev/null || stat -f %Lp "$EST")" "$TMP" 2>/dev/null || true
     mv -f -- "$TMP" "$EST"; TMP=""
+  fi
+  # Un cierre nuevo también se conserva cuando el documento activo ya tiene los mismos bytes.
+  if [ "$CAMBIADO" -eq 1 ] || [ -s "$W/hechos" ] || [ -s "$W/omitido" ]; then
     HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
     # shellcheck disable=SC2094  # diario.md solo se añade; lo que se lee es $W/hechos
     {
@@ -621,7 +635,7 @@ fi
 # --- el nucleo actual ---
 OLD_CK=ausente; [ ! -f "$NUC" ] || OLD_CK=$(cksum <"$NUC")
 HAYVIEJO=0; [ -f "$ORIGEN" ] && [ -s "$ORIGEN" ] && HAYVIEJO=1
-[ "$HAYVIEJO" -eq 0 ] || cp -- "$ORIGEN" "$W/viejo.md"
+[ "$HAYVIEJO" -eq 0 ] || cp --preserve=timestamps -- "$ORIGEN" "$W/viejo.md"
 
 RK=(); RT=(); HEAD="# Estado"$'\n'$'\n'
 if [ "$HAYVIEJO" -eq 1 ] && [ "$SOLO" -eq 0 ]; then
@@ -673,13 +687,9 @@ else
 fi
 
 # Los [x] del Plan (fuera de las cercas) salen del nucleo y van a diario con su comando y el hash de HEAD.
-: >"$W/hechos"
 for ((i = 0; i < ${#RK[@]}; i++)); do
   [ "${RK[i]}" = plan ] || continue
-  RT[i]=$(awk -v d="$W/hechos" '
-    /^[ \t]*(```|~~~)/ { c = !c }
-    !c && /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { print > d; next }
-    { print }' <<<"${RT[i]}")$'\n'
+  RT[i]=$(plan_abierto "${RT[i]}")$'\n'
 done
 
 # El último rc de cada comando de verificaciones.log, junto a su línea de «Comandos de verificación».
@@ -704,8 +714,13 @@ if [ "${#LCMD[@]}" -gt 0 ]; then
     while IFS= read -r l; do
       if [ "$prim" -eq 1 ]; then prim=0; out+=$l$'\n'; continue; fi
       if [[ $l != '<!--'* ]]; then
+        campo=${l#"${l%%[![:space:]]*}"}
+        case $campo in '- '* | '* '*) campo=${campo:2} ;; esac
+        if [[ $campo == \`* ]]; then campo=${campo#\`}; campo=${campo%%\`*}
+        else campo=${campo%% → rc=*}
+        fi
         for ((j = ${#LCMD[@]} - 1; j >= 0; j--)); do
-          [[ $l == *"${LCMD[j]}"* ]] || continue
+          [ "$campo" = "${LCMD[j]}" ] || continue
           l="${l%% → rc=[0-9]*} → rc=${LRC[j]}"
           [ "$j" -ne "$ult" ] || casada=1
           break
@@ -783,7 +798,6 @@ armar() {
   for ((i = 0; i < ${#RK[@]}; i++)); do [ -z "${RT[i]}" ] || { fin_nl "RT[$i]"; t+=${RT[i]}; }; done
   TEXTO=$t
 }
-bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
 armar
 # Se omiten secciones enteras: primero las ajenas a la plantilla (desde el final), luego las de plantilla desde el
 # final del orden D5 hasta Comandos (Objetivo, Invariantes y Siguiente acción no se tocan); lo omitido va al diario.

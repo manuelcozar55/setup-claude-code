@@ -385,20 +385,40 @@ nucleo_mtime() {
   printf '%s\n' "$m"
 }
 
+# Una identidad de sección para índice, emisión y mínimo, con las variantes que admite handoff.
+_NUCLEO_SECCIONES_AWK='
+  function normaliza_seccion(t) {
+    gsub(/á|Á/, "a", t); gsub(/é|É/, "e", t); gsub(/í|Í/, "i", t)
+    gsub(/ó|Ó/, "o", t); gsub(/ú|Ú|ü|Ü/, "u", t); gsub(/ñ|Ñ/, "n", t)
+    gsub(/[ \t\r]+/, " ", t); sub(/^ /, "", t); sub(/ $/, "", t)
+    return tolower(t)
+  }
+  BEGIN {
+    sc_n = split("Objetivo|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", sc_titulo, "|")
+    for (sc_i = 1; sc_i <= sc_n; sc_i++) sc_clave[sc_i] = normaliza_seccion(sc_titulo[sc_i])
+  }
+  function clave_seccion(t,   i) {
+    t = normaliza_seccion(t)
+    if (index(t, "encargo original") == 1) return "Objetivo"
+    for (i = 1; i <= sc_n; i++) if (index(t, sc_clave[i]) == 1) return sc_titulo[i]
+    return ""
+  }
+'
+
 # _nucleo_indice_campos <nucleo>: de un nucleo, líneas «O<TAB>objetivo», «P<TAB>paso» y hasta 8 «N<TAB>pendiente
 # (persona)», cada una ≤ 80 bytes sin partir un carácter. Lo comparten las raíces y las ranuras de sesión de nucleo_indice.
 _nucleo_indice_campos() {
-  LC_ALL=C awk '
+  LC_ALL=C awk "$_NUCLEO_SECCIONES_AWK"'
     function corta(l, n,   r) {
       r = substr(l, 1, n)
       if (substr(l, n + 1, 1) ~ /[\200-\277]/) sub(/[\300-\377][\200-\277]*$/, "", r)
       return r
     }
     /^#(#|##)? / {
-      t = $0; sub(/^#(#|##)? /, "", t); sec = ""; coment = 0
-      if (index(t, "Objetivo") == 1 || index(t, "Encargo original") == 1) sec = "O"
-      else if (index(t, "Paso actual") == 1) sec = "P"
-      else if (index(t, "Pendientes") == 1) sec = "N"
+      t = $0; sub(/^#(#|##)? /, "", t); t = clave_seccion(t); sec = ""; coment = 0
+      if (t == "Objetivo") sec = "O"
+      else if (t == "Paso actual") sec = "P"
+      else if (t == "Pendientes") sec = "N"
       next
     }
     sec == "" { next }
@@ -577,11 +597,11 @@ _nucleo_emitir_cuerpo() {
   printf '%s\n' "$out"
 }
 
-# _nucleo_con_contenido <emisión> <alternativas>: ¿hay una sección «##»/«###» con ese nombre y alguna línea con texto? Una cabecera
+# _nucleo_con_contenido <emisión> <clave>: ¿hay una sección «##»/«###» con esa identidad y alguna línea con texto? Una cabecera
 # vacía (la de la plantilla) no cuenta: daría por emitido lo que la sesión nueva no recibe.
 _nucleo_con_contenido() {
-  printf '%s\n' "$1" | LC_ALL=C awk -v re="^#{2,3} $2" '
-    $0 ~ re { dentro = 1; next }
+  printf '%s\n' "$1" | LC_ALL=C awk -v clave="$2" "$_NUCLEO_SECCIONES_AWK"'
+    /^#{2,3} / { t = $0; sub(/^#+ /, "", t); if (clave_seccion(t) == clave) { dentro = 1; next } }
     /^## / { dentro = 0 }
     dentro && /[^ \t]/ { ok = 1; exit }
     END { exit !ok }'
@@ -593,11 +613,11 @@ _nucleo_con_contenido() {
 # fichero libre): las primeras líneas, ≤ 1 500 B, y dónde está el resto. Nada si la emisión ya las lleva.
 _nucleo_piso() {
   local obj=1 sig=1 sec=1
-  _nucleo_con_contenido "$2" '(Objetivo|Encargo original)' && obj=0
+  _nucleo_con_contenido "$2" 'Objetivo' && obj=0
   _nucleo_con_contenido "$2" 'Siguiente acción' && sig=0
   printf '%s\n' "$2" | command grep -Eq '^#{2,3} ' && sec=0
   [ $(( obj + sig + sec )) -gt 0 ] || return 0
-  LC_ALL=C awk -v f="$3" -v obj="$obj" -v sig="$sig" -v sec="$sec" '
+  LC_ALL=C awk -v f="$3" -v obj="$obj" -v sig="$sig" -v sec="$sec" "$_NUCLEO_SECCIONES_AWK"'
     function corta(l, n,   r) {
       r = substr(l, 1, n)
       if (substr(l, n + 1, 1) ~ /[\200-\277]/) sub(/[\300-\377][\200-\277]*$/, "", r)
@@ -610,13 +630,13 @@ _nucleo_piso() {
     }
     /^[ \t]*```+[^`]*$/ { vallado = !vallado }
     !vallado && /^#(#|##)? / {
+      t = $0; sub(/^#+ /, "", t); t = clave_seccion(t)
       if (cur && len[cur] == cab[cur] && $0 !~ /^### /) hecho[cur] = 0
-      if (cur && $0 ~ /^### /) { t = $0; sub(/^#+ /, "", t); if (!((obj && !hecho[1] && (index(t, "Objetivo") == 1 || index(t, "Encargo original") == 1)) || (sig && !hecho[2] && index(t, "Siguiente acción") == 1))) { suma(cur, $0); next } }
+      if (cur && $0 ~ /^### /) { if (!((obj && !hecho[1] && t == "Objetivo") || (sig && !hecho[2] && t == "Siguiente acción"))) { suma(cur, $0); next } }
       cur = 0
       if ($0 ~ /^##/) {
-        t = $0; sub(/^#+ /, "", t)
-        if (obj && !hecho[1] && (index(t, "Objetivo") == 1 || index(t, "Encargo original") == 1)) cur = 1
-        else if (sig && !hecho[2] && index(t, "Siguiente acción") == 1) cur = 2
+        if (obj && !hecho[1] && t == "Objetivo") cur = 1
+        else if (sig && !hecho[2] && t == "Siguiente acción") cur = 2
         if (cur) { hecho[cur] = 1; pieza[cur] = $0 "\n"; len[cur] = length($0) + 1; cab[cur] = length($0) + 1 }
       }
       next
@@ -697,9 +717,8 @@ _nucleo_sin_comentarios() {
 # _nucleo_emitir_awk <fichero> <kb> <tope> [medir|entero] [datos]: la emisión; con «medir», solo los bytes de las
 # reservadas; con «entero», sin topes por sección y rc 3 si ni quitando Pendientes, Plan y Ficheros tocados cabe.
 _nucleo_emitir_awk() {
-  LC_ALL=C awk -v f="$1" -v kb="$2" -v sec=3000 -v tope="$3" -v res=700 -v medir="${4:-}" '
-    BEGIN { n = split("Objetivo|Encargo original|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", k, "|")
-      if (medir == "entero") { lim = tope; tope = sec = res = 1e9 } }
+  LC_ALL=C awk -v f="$1" -v kb="$2" -v sec=3000 -v tope="$3" -v res=700 -v medir="${4:-}" "$_NUCLEO_SECCIONES_AWK"'
+    BEGIN { if (medir == "entero") { lim = tope; tope = sec = res = 1e9 } }
     # «Paso actual», «Siguiente acción» y «Comandos de verificación» tienen reserva propia (res bytes cada
     # una): con un nucleo de 20 KB el presupuesto se gastaba por orden y eran justo las que se perdían (la
     # tercera es lo que pide el paso 1 del protocolo de arranque). Cuentan DENTRO del tope único de 6 500:
@@ -735,8 +754,7 @@ _nucleo_emitir_awk() {
     NR == FNR { if ($0 ~ /^[ \t]*```+[^`]*$/) cercas++; next }
     /^[ \t]*```+[^`]*$/ && cercas % 2 == 0 { cerca = !cerca }
     /^#(#|##)? / && !cerca {
-      t = $0; sub(/^#(#|##)? /, "", t); c = ""
-      for (i = 1; i <= n; i++) if (index(t, k[i]) == 1) c = (k[i] == "Encargo original") ? "Objetivo" : k[i]
+      t = $0; sub(/^#(#|##)? /, "", t); c = clave_seccion(t)
     }
     /^#(#|##)? / && !cerca && ($0 !~ /^### / || (c != "" && !visto[c]) || !padre) {
       if ($0 ~ /^### / && viva && !padre && (c == "" || visto[c])) cerradas++

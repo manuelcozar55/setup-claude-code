@@ -395,6 +395,10 @@ printf '## Objetivo\n- obj a\n## Paso actual\n1. paso uno\n## Pendientes\n- [x] 
 echo "$T/h5/a" >"$NUCLEO_REGISTRO"; IX=$(nucleo_indice)
 ok "H5: sin marcador en objetivo y paso" "$(command grep -c ' · obj a · paso: paso uno · ' <<<"$IX")" 1
 ok "H5: (persona) sin [ ] ni marcador, y las [x] no salen" "$(command grep -c '^- a: (persona) abrir$\|^- a: (persona) abrir2$' <<<"$IX"),$(command grep -c 'hecho' <<<"$IX")" 2,0
+printf '##  ENCARGO ORIGINAL (literal) \nOBJ-INDICE\n## paso  actual\nPASO-INDICE\n## pendientes y riesgos\n- (persona) PEND-INDICE\n' >"$T/h5/a/.claude/estado/nucleo.md"
+IX=$(nucleo_indice)
+ok "índice: reconoce mayúsculas, espacios y aliases del escritor" \
+  "$(command grep -c ' · OBJ-INDICE · paso: PASO-INDICE · ' <<<"$IX"),$(command grep -c '^- a: (persona) PEND-INDICE$' <<<"$IX")" "1,1"
 
 # --- H6: sin caracteres bidi ni separadores Unicode en lo que inyectan <git-hechos> e <indice-tareas> ---
 RLO=$(printf '\342\200\256'); LS=$(printf '\342\200\250'); LRI=$(printf '\342\201\246')
@@ -462,10 +466,12 @@ ok "piso: sin duplicar sigue dentro del tope (≤ 7 000 B)" "$([ "$(printf '%s\n
 # Una cabecera «## Objetivo» vacía (la de la plantilla) no cuenta como Objetivo emitido ni lo oculta: el mínimo trae el
 # «## Encargo original» con contenido (sonda de omo, repro-minimo.sh).
 rep() { awk -v n="$1" -v c="$2" 'BEGIN { for (i = 0; i < n; i++) printf "%s", c; print "" }'; }
-for caso in normal vacio; do
+for caso in normal vacio alias; do
+  obj='Encargo original'; sig='Siguiente acción'
+  if [ "$caso" = alias ]; then obj=' encargo ORIGINAL '; sig='siguiente accion'; fi
   { printf '# Estado\n'; [ "$caso" = vacio ] && printf '## Objetivo\n<!-- pendiente -->\n'
     printf '## Invariantes\n'; rep 7000 i; printf '## Plan\n'; rep 3000 p; printf '## Pendientes\n'; rep 3000 q
-    printf '## Encargo original\nOBJETIVO-QUE-DEBE-LLEGAR\n## Paso actual\nPASO\n## Siguiente acción\nSIGUIENTE-QUE-DEBE-LLEGAR\n'; } >"$T/piso/v-$caso.md"
+    printf '## %s\nOBJETIVO-QUE-DEBE-LLEGAR\n## Paso actual\nPASO\n## %s\nSIGUIENTE-QUE-DEBE-LLEGAR\n' "$obj" "$sig"; } >"$T/piso/v-$caso.md"
   S=$(nucleo_emitir "$T/piso/v-$caso.md")
   ok "piso ($caso): conserva el objetivo y la siguiente acción, una vez cada uno" "$(command grep -c OBJETIVO-QUE-DEBE-LLEGAR <<<"$S"),$(command grep -c SIGUIENTE-QUE-DEBE-LLEGAR <<<"$S")" "1,1"
   ok "piso ($caso): dentro del tope (≤ 7 000 B)" "$([ "$(printf '%s\n' "$S" | LC_ALL=C wc -c)" -le 7000 ] && echo si)" si

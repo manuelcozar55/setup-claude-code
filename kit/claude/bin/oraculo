@@ -50,8 +50,20 @@ fi
 if [ -n "$RAIZ" ] && E=$(nucleo_estado_dir "$RAIZ"); then
   LOG=$E/verificaciones.log
   CMD=$(printf '%s' "${CMD:0:500}" | tr '\n\t' '  ')
-  if printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "$CMD" >>"$LOG" 2>/dev/null; then
-    if [ "$(wc -l <"$LOG")" -gt 400 ]; then tail -n 200 "$LOG" >"$LOG.tmp" && mv -f "$LOG.tmp" "$LOG"; fi
+  # Append y rotación comparten lock; registrar nunca sustituye el rc del comando.
+  if ! (
+    exec {LOCK}>>"$E/.verificaciones.lock" || exit 1
+    flock -w 1 "$LOCK" || exit 1
+    [ ! -L "$LOG" ] || exit 1
+    printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "$CMD" >>"$LOG" || exit 1
+    N=$(wc -l <"$LOG") || exit 1
+    if [ "$N" -gt 400 ]; then
+      TMP=$(mktemp "$E/.verificaciones.XXXXXX") || exit 1
+      trap 'rm -f -- "$TMP"' EXIT
+      tail -n 200 "$LOG" >"$TMP" && mv -f -- "$TMP" "$LOG" || exit 1
+    fi
+  ); then
+    printf 'oraculo: no se pudo registrar la verificación en %s; rc del comando=%s\n' "$LOG" "$RC" >&2
   fi
 fi
 # Se imprime al final: si quien lee cierra la tubería a medias (| head), el registro ya está escrito.

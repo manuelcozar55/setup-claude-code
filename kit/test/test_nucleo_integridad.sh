@@ -379,6 +379,39 @@ X=$(nuevo n6)
 printf '# Estado\n\n```\n- Paso actual: EN-LA-CERCA\n```\n\n- Paso actual: REAL\n- Siguiente acción: s\n' >"$X/ESTADO.md"
 printf '## Paso actual\nNUEVO-N6\n' >"$T/dn6.md"; bash "$HO" --desde "$T/dn6.md" --raiz "$X" >/dev/null 2>&1
 ok "N6: la viñeta dentro de una cerca no cuenta; se sustituye la real" "$(command grep -c 'EN-LA-CERCA' "$X/ESTADO.md"),$(command grep -c 'REAL' "$X/ESTADO.md"),$(command grep -c '^- Paso actual: NUEVO-N6$' "$X/ESTADO.md")" 1,0,1
+
+# La edición ocurre después del snapshot y antes de que el CLI capture su checksum.
+X=$(nuevo conflicto-snapshot)
+printf '## Paso actual\nCAMBIO-DEL-BORRADOR\n' >"$T/d-conflicto.md"
+(
+  export HANDOFF_EDICION=$X/ESTADO.md
+  cp() {
+    command cp "$@" || return
+    if [ "$#" -eq 3 ] && [ "$1" = -- ] && [ "$2" = "$HANDOFF_EDICION" ] && [ "${3##*/}" = viejo.md ]; then
+      printf '\n## Nota de la persona\nEDICION-INTERMEDIA\n' >>"$HANDOFF_EDICION"
+    fi
+  }
+  cp -- "$X/ESTADO.md" "$T/control-copia.md"
+  export -f cp
+  bash "$HO" --desde "$T/d-conflicto.md" --raiz "$X" --json >"$T/o-conflicto" 2>"$T/e-conflicto"
+); RC=$?
+ok "snapshot: una edición intermedia devuelve 4 y conserva sus bytes sin publicar ni rotar" \
+  "$RC,$(command grep -c EDICION-INTERMEDIA "$X/ESTADO.md"),$(command grep -c PASO-VIVO "$X/ESTADO.md"),$(command grep -c CAMBIO-DEL-BORRADOR "$X/ESTADO.md"),$(find "$X/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" "4,1,1,0,0"
+
+# Un Plan terminado no es una sección vacía que deba conservar el Plan abierto.
+X=$(nuevo plan-terminado)
+printf '\n## Plan\n- [ ] CIERRE-PLAN\n' >>"$X/ESTADO.md"
+printf '%s\n' '## Plan' "- [x] CIERRE-PLAN — \`true\`" >"$T/d-plan-terminado.md"
+bash "$HO" --desde "$T/d-plan-terminado.md" --raiz "$X" --json >"$T/o-plan"; RC=$?
+ok "Plan terminado: retira la tarea abierta y conserva el cierre en diario" \
+  "$RC,$(command grep -c CIERRE-PLAN "$X/ESTADO.md"),$(command grep -c CIERRE-PLAN "$X/.claude/estado/diario.md" 2>/dev/null)" "0,0,1"
+bash "$HO" --desde "$T/d-plan-terminado.md" --raiz "$X" >/dev/null 2>&1
+ok "Plan terminado: repetir el cierre no lo duplica ni rota una copia nueva" \
+  "$(command grep -c CIERRE-PLAN "$X/.claude/estado/diario.md" 2>/dev/null),$(find "$X/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" "1,1"
+printf '%s\n' '## Plan' "- [x] OTRO-CIERRE — \`true\`" >"$T/d-plan-terminado.md"
+bash "$HO" --desde "$T/d-plan-terminado.md" --raiz "$X" >/dev/null 2>&1
+ok "Plan terminado: un evento nuevo se guarda aunque ESTADO.md no cambie" \
+  "$(command grep -c OTRO-CIERRE "$X/.claude/estado/diario.md" 2>/dev/null),$(find "$X/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" "1,1"
 exit $FAIL
 ) || FAIL=1
 exit "$FAIL"
