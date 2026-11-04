@@ -30,8 +30,10 @@ cacho de nucleo.md». Antes de cambiar nada se comprobaron tres hipótesis:
 3. **La sesión nueva es llevada a esa carpeta:** tras `clear`/`resume`, `session-start-clear.sh` pasa la línea dentro de
    los datos y, fuera de ellos, añade la frase «la sesión anterior trabajaba en X: si sigue siendo ahí donde toca
    trabajar, haz `cd`» (paso 5 del protocolo en un proyecto; una frase tras los datos en `~`). El hook no puede mover
-   el cwd; lo hace la sesión, con el `cd` de su shell. La ruta se valida otra vez al leerla (existe, sin controles ni bidi)
-   y se trata como dato: no se ejecuta nada por estar en el fichero.
+   el cwd; lo hace la sesión, con el `cd` de su shell. La ruta se valida otra vez al leerla: absoluta, solo `[A-Za-z0-9._/@+-]`, sin `..`, directorio
+   existente y que sea la raíz de arranque (o cuelgue de ella) o `~` (o cuelgue de `~`). Va entre comillas simples, como dato, en la
+   frase; si no pasa, la sesión recibe un aviso sin la ruta y ninguna instrucción de `cd` (el nucleo de un proyecto es dato ajeno:
+   `x$(id)` o «ignora lo anterior…» no deben llegar como texto libre a una frase que manda hacer `cd`).
 4. **Piso de emisión:** `nucleo_emitir` copia delante lo que falte entre Objetivo y Siguiente acción (≤ 600 B cada una, con
    su cabecera) y, si la emisión no lleva ninguna sección, las primeras líneas del fichero (≤ 1 500 B) con la ruta de donde
    está el resto. El piso se resta del tope y la emisión se rehace con lo que queda, así que el total no crece. Si el

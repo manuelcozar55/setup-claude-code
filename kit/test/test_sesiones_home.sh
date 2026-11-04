@@ -198,17 +198,17 @@ ok '18 startup depura inexistentes y efímeras del registro' "$(tr '\n' ' ' <"$R
 # 19. Tras /handoff + /clear en ~ la sesión conserva su ranura y su carpeta, y siempre recibe un mínimo. El mod corre el CLI desde el cwd
 # vivo (una carpeta cualquiera) con CLAUDE_PROJECT_DIR = donde arrancó (~): la ranura es la de siempre y la carpeta queda anotada.
 sleep 300 & PF=$!; PIDS+=("$PF")
-mkdir -p "$T/trabajo/sub"
+mkdir -p "$HOME/trabajo/sub"
 hof() { (cd "$1" && shift && CLAUDE_PID=$PF CLAUDE_PROJECT_DIR=$HOME bash "$HO" "$@"); }
-hof "$T/trabajo/sub" --desde "$(borrador F)" >/dev/null 2>&1; R=$?
+hof "$HOME/trabajo/sub" --desde "$(borrador F)" >/dev/null 2>&1; R=$?
 SF=$(ls -d "$SES"/*-"$PF" 2>/dev/null)
 ok "19 handoff desde otra carpeta con CLAUDE_PROJECT_DIR=~ sale 0 y escribe en la ranura de ~" "$R,$(command grep -c obj-F "$SF/nucleo.md" 2>/dev/null)" "0,1"
 ok "19 anota la carpeta de trabajo una vez, bajo el título" "$(awk '/^## /{exit} /^> carpeta de trabajo: /{n++} END{print n+0}' "$SF/nucleo.md")" 1
-ok "19 y la carpeta anotada es el cwd del que guardó" "$(command grep -cFx "> carpeta de trabajo: $T/trabajo/sub" "$SF/nucleo.md")" 1
+ok "19 y la carpeta anotada es el cwd del que guardó" "$(command grep -cFx "> carpeta de trabajo: $HOME/trabajo/sub" "$SF/nucleo.md")" 1
 C=$(hook "$HC" "$PF" clear sF)
 ok "19 /clear: llega el nucleo de la ranura con la línea de carpeta dentro de los datos" "$(command grep -c "<nucleo-datos fuente=\"$SF/nucleo.md\">" <<<"$C"),$(awk '/^<nucleo-datos /{d=1} d && /^> carpeta de trabajo: /{n++} END{print n+0}' <<<"$C")" "1,1"
-ok "19 /clear: dice la carpeta y que se vaya a ella, tras los datos (no dentro)" "$(sed -n '/^<\/nucleo-datos>/,$p' <<<"$C" | command grep -cF "La sesión anterior trabajaba en $T/trabajo/sub (")" 1
-C=$(jq -cn --arg c "$T/trabajo/sub" '{cwd:$c,session_id:"sF",source:"clear"}' | CLAUDE_PID=$PF CLAUDE_PROJECT_DIR=$HOME bash "$HC" | ctx)
+ok "19 /clear: dice la carpeta y que se vaya a ella, tras los datos (no dentro)" "$(sed -n '/^<\/nucleo-datos>/,$p' <<<"$C" | command grep -cF "La sesión anterior trabajaba en la carpeta '$HOME/trabajo/sub' (")" 1
+C=$(jq -cn --arg c "$HOME/trabajo/sub" '{cwd:$c,session_id:"sF",source:"clear"}' | CLAUDE_PID=$PF CLAUDE_PROJECT_DIR=$HOME bash "$HC" | ctx)
 ok "19 /clear que ya cae en esa carpeta no manda ir a ella" "$(command grep -c 'La sesión anterior trabajaba' <<<"$C")" 0
 ok "19 startup no anuncia carpeta (sin estado propio que retomar)" "$(hook "$HC" "$PF" startup sF | command grep -c 'La sesión anterior trabajaba')" 0
 ho "$PF" --desde "$(borrador F)" >/dev/null 2>&1
