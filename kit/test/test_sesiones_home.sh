@@ -219,5 +219,23 @@ printf 'notas libres de la sesion F\nsin secciones\n' >"$SF/nucleo.md"
 C=$(hook "$HC" "$PF" clear sF)
 ok "19 nucleo sin secciones: /clear trae su ruta, un trozo del principio y dónde está el resto" "$(command grep -c "<nucleo-datos fuente=\"$SF/nucleo.md\">" <<<"$C"),$(command grep -c 'notas libres de la sesion F' <<<"$C"),$(command grep -c "el resto en ese fichero" <<<"$C")" "1,1,1"
 
+# 20. Sin CLAUDE_PID (lo que ve un hijo de $.process.run del cockpit: claude no lo exporta y el mod lo deja vacío) la ranura sale del
+# padre cuando su comm es «claude». Medido en vivo (ADR 027): el hijo de process.run cuelga directamente del claude de la sesión.
+# El «claude» es una copia de bash con ese nombre; -c con un `:` final impide que bash sustituya el proceso por el último comando.
+mkdir -p "$T/falso"; cp "$(command -v bash)" "$T/falso/claude"
+for v in unset vacio; do
+  rm -f "$T/fp" "$T/frc"
+  export T HO HOME; B20=$(borrador "G$v"); export B20
+  if [ "$v" = unset ]; then PRE="env -u CLAUDE_PID"; else PRE="env CLAUDE_PID="; fi
+  export PRE
+  # shellcheck disable=SC2016  # se expande en el bash hijo
+  (cd "$HOME" && "$T/falso/claude" -c 'echo $$ >"$T/fp"; $PRE bash "$HO" --desde "$B20" >/dev/null 2>&1; echo $? >"$T/frc"; :')
+  FP=$(cat "$T/fp" 2>/dev/null)
+  ok "20 CLAUDE_PID $v y padre claude: handoff --desde sale 0 y crea la ranura de ese pid" "$(cat "$T/frc" 2>/dev/null),$(find "$SES" -maxdepth 1 -name "*-$FP" | wc -l | tr -d ' ')" "0,1"
+done
+rm -f "$T/fp" "$T/frc"
+(cd "$HOME" && env -u CLAUDE_PID bash "$HO" --desde "$(borrador Hn)" >/dev/null 2>&1); R=$?
+ok "20 sin CLAUDE_PID y con un padre que no es claude no hay ranura (sale 3)" "$R" 3
+
 [ "$FAIL" -eq 0 ] && echo "PASS" || echo "FAIL"
 exit "$FAIL"

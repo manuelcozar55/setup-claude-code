@@ -39,6 +39,16 @@ cacho de nucleo.md». Antes de cambiar nada se comprobaron tres hipótesis:
    está el resto. El piso se resta del tope y la emisión se rehace con lo que queda, así que el total no crece. Si el
    nucleo es ilegible, el hook lo dice en lugar de dejar el bloque vacío.
 
+5. **La ranura desde `$.process.run`, medida en vivo (4-nov-2026, claude 2.1.311):** un mod de sonda cargado con
+   `claude -p --plugin-dir <sonda> --model haiku` lanzó por `$.process.run` un `sh -c`. Resultado: `PPID` = el pid del
+   `claude` (comm `claude`; cadena sh → claude → shell que lo lanzó), así que el hijo cuelga directamente de él y el
+   respaldo del CLI (`$PPID` con comm `claude`, `nucleo_sesion_pid`) vale. `CLAUDE_PID` no lo exporta claude: el hijo lo
+   veía **definido solo porque el claude de la sonda estaba lanzado desde la shell de otro claude** (valía el pid del
+   externo, `1471844`); lanzado con `env -u CLAUDE_PID` salía sin definir. Un valor heredado ganaría al `$PPID` y
+   escribiría en la ranura del claude exterior, así que `viaStart` pasa `CLAUDE_PID=''` (comprobado en la misma sonda:
+   `env: { CLAUDE_PID: '' }` llega vacío y el `PPID` sigue siendo claude). Los tests cubren el camino sin `CLAUDE_PID`
+   (`test_sesiones_home.sh` 20, con un proceso de comm `claude`) y que el mod lo deja vacío (`handoff.test.tsx`, «raíz»).
+
 ## Alternativas descartadas
 
 - **Un fichero puntero aparte** (`carpeta` junto al nucleo, o en la ranura): otro sitio donde puede quedar rancio, otra

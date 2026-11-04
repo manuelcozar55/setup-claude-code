@@ -449,6 +449,8 @@ test('raíz: el CLI recibe la raíz de arranque en CLAUDE_PROJECT_DIR y corre en
   const cli = r.runs.filter(x => x.argv[0] === BIN)
   expect(cli.length).toBeGreaterThan(1)
   expect(cli.map(x => x.init?.env?.CLAUDE_PROJECT_DIR)).toEqual(cli.map(() => HOME))
+  // Never the pid inherited from whoever launched claude: empty, so the CLI takes its parent (claude) for the slot.
+  expect(cli.map(x => x.init?.env?.CLAUDE_PID)).toEqual(cli.map(() => ''))
   expect(cli.every(x => x.init?.cwd === undefined)).toBe(true)
 })
 

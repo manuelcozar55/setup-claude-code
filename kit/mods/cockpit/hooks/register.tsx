@@ -561,7 +561,10 @@ async function resolveRoot($: $) {
 
 // The CLI runs from the live cwd (the folder it notes in the nucleo) but resolves root and slot from the session's start,
 // the same as the SessionStart hook: without it a `cd` to a repo would make `handoff` save there and /clear read ~.
-const viaStart = (start: string, init: { timeoutMs?: number } = {}) => ({ ...init, env: { CLAUDE_PROJECT_DIR: start } })
+// CLAUDE_PID is blanked: process.run children inherit the host's variables, and CLAUDE_PID is not set by claude itself, only by
+// whatever launched it (a claude started from another claude's shell carries the outer pid). Empty, the CLI falls back to its
+// parent, which is claude (measured: a child of process.run hangs directly from it).
+const viaStart = (start: string, init: { timeoutMs?: number } = {}) => ({ ...init, env: { CLAUDE_PROJECT_DIR: start, CLAUDE_PID: '' } })
 
 // COCKPIT_AUTO_HANDOFF: `off`, an integer 50-95 (the % of the compaction limit), or anything else = 70.
 async function autoThreshold($: $) {
