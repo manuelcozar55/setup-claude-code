@@ -709,6 +709,37 @@ ok "M1: la sesión nueva (SessionStart clear) recibe la línea tal cual, dentro 
 EM=$(ev "$HM" snueva | bash "$H/session-start-compact.sh" | ctx)
 ok "M1: tras compactar también llega" "$(command grep -cFx "$LM1" <<<"$EM")" 1
 
+# M1c: la carpeta donde trabajaba la sesión viaja igual. /clear la devuelve a donde arrancó y la sesión nueva no sabía dónde estaba.
+# Solo se anota si difiere del punto de arranque (CLAUDE_PROJECT_DIR si existe; si no, la raíz del proyecto).
+mkdir -p "$HM/sub/dir"; : >"$CFG/projects/-x-proy/snueva.jsonl"   # el SessionStart de M1 reclamó el dueño con snueva
+LC="> carpeta de trabajo: $HM/sub/dir"
+hs() { (cd "$HM/sub/dir" && CLAUDE_CONFIG_DIR=$CFG "$@" bash "$BIN/handoff" --desde "$T/bm.md" --sesion snueva --json); }
+OUT=$(hs env 2>&1); RC=$?
+ok "carpeta: handoff desde un subdirectorio la anota, una vez, bajo el título y tras la línea del transcript" "$RC,$(command grep -cFx "$LC" "$MNUC"),$(sed -n 4p "$MNUC" | command grep -cFx "$LC"),$(awk '/^## /{exit} /^> carpeta de trabajo: /{n++} END{print n+0}' "$MNUC")" "0,1,1,1"
+hs env >/dev/null 2>&1
+ok "carpeta: otro handoff sustituye la línea, nunca hay dos" "$(command grep -c '^> carpeta de trabajo: ' "$MNUC")" 1
+hm --desde "$T/bm.md" --sesion snueva >/dev/null 2>&1
+ok "carpeta: un handoff desde la raíz la quita (no hay carpeta que mantener)" "$(command grep -c '^> carpeta de trabajo: ' "$MNUC")" 0
+hs env CLAUDE_PROJECT_DIR="$HM/sub/dir" >/dev/null 2>&1
+ok "carpeta: con CLAUDE_PROJECT_DIR igual al cwd (la sesión arrancó ahí) tampoco" "$(command grep -c '^> carpeta de trabajo: ' "$MNUC")" 0
+hs env CLAUDE_PROJECT_DIR="$HM" >/dev/null 2>&1
+ok "carpeta: con CLAUDE_PROJECT_DIR en la raíz y el cwd en un subdirectorio sí" "$(command grep -cFx "$LC" "$MNUC")" 1
+OUT=$(cd "$HM/sub/dir" && CLAUDE_CONFIG_DIR=$CFG bash "$BIN/handoff" --desde "$T/bm-grande.md" --sesion snueva --json 2>&1); RC=$?
+ok "carpeta: cuenta dentro del tope y no se omite: nucleo ≤ 5700 con la línea" "$RC,$([ "$(wc -c <"$MNUC")" -le 5700 ] && echo si),$(command grep -cFx "$LC" "$MNUC")" "0,si,1"
+hs env >/dev/null 2>&1
+EC=$(ev "$HM" snueva "" clear | bash "$H/session-start-clear.sh" | ctx)
+ok "carpeta: /clear en la raíz recibe la línea dentro de los datos y el paso 5 con la carpeta" "$(awk '/^<nucleo-datos /{d=1} d && /^> carpeta de trabajo: /{n++} END{print n+0}' <<<"$EC"),$(command grep -c "^5\. La sesión anterior trabajaba en $HM/sub/dir " <<<"$EC")" "1,1"
+ok "carpeta: el paso 5 va antes de los datos, fuera de ellos" "$(awk '/^<nucleo-datos /{exit} /^5\. La sesión anterior/{n++} END{print n+0}' <<<"$EC")" 1
+EC=$(ev "$HM" snueva "" startup | bash "$H/session-start-clear.sh" | ctx)
+ok "carpeta: en startup no hay paso 5 (no es un /clear)" "$(command grep -c '^5\. La sesión anterior' <<<"$EC")" 0
+EC=$(ev "$HM/sub/dir" snueva "" clear | bash "$H/session-start-clear.sh" | ctx)
+ok "carpeta: si el /clear ya cae en esa carpeta no hace falta paso 5" "$(command grep -c '^5\. La sesión anterior' <<<"$EC")" 0
+for mala in 'relativa/x' "$T/no-existe-nunca" "$HM/sub/dir/../dir/$(printf 'a\tb')"; do
+  sed -i "s|^> carpeta de trabajo: .*|> carpeta de trabajo: $mala|" "$MNUC"
+  EC=$(ev "$HM" snueva "" clear | bash "$H/session-start-clear.sh" | ctx)
+  ok "carpeta: una ruta mala ($mala) no genera paso 5" "$(command grep -c '^5\. La sesión anterior' <<<"$EC")" 0
+done
+
 # M3: diario.md no repite un [x] que ya tiene (el borrador de cada handoff suele traerlos otra vez).
 HD=$T/hod; mkrepo "$HD"; DDIA=$HD/.claude/estado/diario.md
 # shellcheck disable=SC2016  # los acentos graves son markdown, no sustituciones

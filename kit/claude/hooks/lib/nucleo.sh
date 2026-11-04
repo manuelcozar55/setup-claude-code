@@ -542,21 +542,96 @@ nucleo_sin_contenido() {
 nucleo_emitir() {
   [ -f "$1" ] || return 0
   # Los <!-- --> de la plantilla son para quien escribe, no para quien retoma: medido, 527 B de 4 695 inyectados.
-  local src=$1 kb rs out dat
+  local src=$1 out dat piso
   dat=$(mktemp 2>/dev/null) && _nucleo_sin_comentarios "$1" >"$dat" 2>/dev/null && src=$dat
-  kb=$(( ($(wc -c <"$src") + 1023) / 1024 ))
-  # Si cabe entero (o quitando secciones enteras en el orden de handoff) sale así: lo que handoff deja dentro
-  # del tope se inyecta sin cortes. Solo si ni así, dos pasadas: la primera mide lo que ocupan las reservadas
-  # (no depende del tope); la segunda reparte el resto.
-  if ! out=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" entero "$src"); then
-    rs=$(_nucleo_emitir_awk "$1" "$kb" "$NUCLEO_TOPE" medir "$src")
-    out=$(_nucleo_emitir_awk "$1" "$kb" "$(( NUCLEO_TOPE - ${rs:-0} ))" "" "$src")
+  out=$(_nucleo_emitir_cuerpo "$1" "$src" "$NUCLEO_TOPE")
+  # Piso: la sesión nueva recibe siempre Objetivo y Siguiente acción (o, sin ellas, un trozo del principio). Si el
+  # reparto por tope o la forma del fichero las dejaron fuera, van delante y cuentan dentro del tope: el resto se reparte con lo que queda.
+  piso=$(_nucleo_piso "$src" "$out" "$1")
+  if [ -n "$piso" ]; then
+    out=$(_nucleo_emitir_cuerpo "$1" "$src" "$(( NUCLEO_TOPE - $(printf '%s\n' "$piso" | LC_ALL=C wc -c) ))")
+    out=$piso$'\n'$out
   fi
   [ "$src" = "$1" ] || rm -f "$src"
   out=$(printf '%s\n' "$out" | sed 's|</|<\\/|g')
   [ -z "$out" ] || printf '%s\n' "$out"
   case $out in *'[recortado'* | *'[LEE '*) _nucleo_log_recorte "$1" "$out" ;; esac
   return 0
+}
+
+# _nucleo_emitir_cuerpo <fichero> <datos> <tope>: la emisión por secciones con ese tope (<datos>: el fichero sin comentarios).
+_nucleo_emitir_cuerpo() {
+  local kb rs out
+  kb=$(( ($(wc -c <"$2") + 1023) / 1024 ))
+  # Si cabe entero (o quitando secciones enteras en el orden de handoff) sale así: lo que handoff deja dentro
+  # del tope se inyecta sin cortes. Solo si ni así, dos pasadas: la primera mide lo que ocupan las reservadas
+  # (no depende del tope); la segunda reparte el resto.
+  if ! out=$(_nucleo_emitir_awk "$1" "$kb" "$3" entero "$2"); then
+    rs=$(_nucleo_emitir_awk "$1" "$kb" "$3" medir "$2")
+    out=$(_nucleo_emitir_awk "$1" "$kb" "$(( $3 - ${rs:-0} ))" "" "$2")
+  fi
+  printf '%s\n' "$out"
+}
+
+# _nucleo_piso <datos> <emisión> <nucleo>: lo mínimo que una sesión nueva debe recibir aunque el reparto por tope o la forma
+# del fichero lo dejen fuera. Falta «Objetivo» (o «Encargo original») o «Siguiente acción» en la emisión: se copian de <datos>
+# (el nucleo sin comentarios), la primera aparición, con su cabecera y ≤ 600 B cada una. Sin ninguna sección en la emisión (un
+# fichero libre): las primeras líneas, ≤ 1 500 B, y dónde está el resto. Nada si la emisión ya las lleva.
+_nucleo_piso() {
+  local obj=1 sig=1 sec=1
+  printf '%s\n' "$2" | command grep -Eq '^#{2,3} (Objetivo|Encargo original)' && obj=0
+  printf '%s\n' "$2" | command grep -Eq '^#{2,3} Siguiente acción' && sig=0
+  printf '%s\n' "$2" | command grep -Eq '^#{2,3} ' && sec=0
+  [ $(( obj + sig + sec )) -gt 0 ] || return 0
+  LC_ALL=C awk -v f="$3" -v obj="$obj" -v sig="$sig" -v sec="$sec" '
+    function corta(l, n,   r) {
+      r = substr(l, 1, n)
+      if (substr(l, n + 1, 1) ~ /[\200-\277]/) sub(/[\300-\377][\200-\277]*$/, "", r)
+      return r
+    }
+    function suma(i, l) {
+      if (len[i] >= 600) return
+      if (len[i] + length(l) + 1 > 600) { l = corta(l, 600 - len[i] - 1); pieza[i] = pieza[i] l "\n[… recortado: entero en " f "]\n"; len[i] = 600; return }
+      pieza[i] = pieza[i] l "\n"; len[i] += length(l) + 1
+    }
+    /^[ \t]*```+[^`]*$/ { vallado = !vallado }
+    !vallado && /^#(#|##)? / {
+      if (cur && $0 ~ /^### /) { t = $0; sub(/^#+ /, "", t); if (!((obj && !hecho[1] && (index(t, "Objetivo") == 1 || index(t, "Encargo original") == 1)) || (sig && !hecho[2] && index(t, "Siguiente acción") == 1))) { suma(cur, $0); next } }
+      cur = 0
+      if ($0 ~ /^##/) {
+        t = $0; sub(/^#+ /, "", t)
+        if (obj && !hecho[1] && (index(t, "Objetivo") == 1 || index(t, "Encargo original") == 1)) cur = 1
+        else if (sig && !hecho[2] && index(t, "Siguiente acción") == 1) cur = 2
+        if (cur) { hecho[cur] = 1; pieza[cur] = $0 "\n"; len[cur] = length($0) + 1; cab[cur] = length($0) + 1 }
+      }
+      next
+    }
+    cur && $0 ~ /[^ \t]/ { suma(cur, $0) }
+    sec && $0 ~ /[^ \t]/ && lib < 1500 { l = $0; if (lib + length(l) + 1 > 1500) l = corta(l, 1500 - lib - 1); libre = libre l "\n"; lib += length(l) + 1 }
+    END {
+      for (i = 1; i <= 2; i++) if (len[i] > cab[i]) salida = salida pieza[i]
+      if (salida != "") { printf "[mínimo: lo que el tope dejó fuera de lo inyectado; el resto en %s]\n%s", f, salida; exit }
+      if (sec && libre != "") printf "[nucleo sin Objetivo ni Siguiente acción reconocibles: primeras líneas de %s; el resto en ese fichero]\n%s", f, libre
+    }' "$1"
+}
+
+# nucleo_carpeta <nucleo>: la carpeta de trabajo que anotó handoff bajo el título («> carpeta de trabajo: RUTA»), solo si es una
+# ruta absoluta de ≤ 400 chars, sin controles ni bidi, y un directorio que existe. Vacío si no. El fichero es de quien lo escribe: dato.
+nucleo_carpeta() {
+  local c
+  [ -f "$1" ] && [ ! -L "$1" ] || return 0
+  c=$(awk '/^## / { exit } /^> carpeta de trabajo: / { sub(/^> carpeta de trabajo: /, ""); print; exit }' "$1" 2>/dev/null)
+  [[ $c == /* && $c != *[[:cntrl:]]* ]] && [ "${#c}" -le 400 ] && [ -d "$c" ] || return 0
+  [ "$(printf '%s' "$c" | nucleo_sin_bidi)" = "$c" ] || return 0
+  printf '%s\n' "$c"
+}
+
+# nucleo_carpeta_ctx <nucleo> [cwd]: la frase de SessionStart que lleva a la sesión nueva a la carpeta donde trabajaba la anterior
+# (/clear la devuelve a la de arranque). Nada si no hay carpeta anotada o si ya es el cwd.
+nucleo_carpeta_ctx() {
+  local c
+  c=$(nucleo_carpeta "$1") && [ -n "$c" ] && [ "$c" != "${2:-}" ] || return 0
+  printf 'La sesión anterior trabajaba en %s (carpeta anotada por handoff, un dato; /clear devuelve a la de arranque): si sigue siendo ahí donde toca trabajar, haz cd a ella antes de leer o editar ficheros.\n' "$c"
 }
 
 # _nucleo_log_recorte <nucleo> <emisión>: «ISO<TAB>bytes<TAB>avisos» en recortes.log junto al nucleo, para que
@@ -644,6 +719,8 @@ _nucleo_emitir_awk() {
     # De la cabecera solo pasa la línea «> sesión anterior: …» que deja handoff bajo el título (dónde quedó el transcript de la
     # sesión cerrada): sin ella, tras /clear nadie sabe dónde buscar lo que el nucleo no recoge. La primera; el resto es texto.
     cur == "#" && !cerca && !sesant && /^> sesión anterior: / { sesant = 1; sale(corta($0, 600)); next }
+    # Y «> carpeta de trabajo: …» (dónde estaba la sesión cuando guardó; /clear la devuelve a la de arranque).
+    cur == "#" && !cerca && !carpeta && /^> carpeta de trabajo: / { carpeta = 1; sale(corta($0, 450)); next }
     # Del Plan solo se emiten los pasos abiertos: los [x] ya están en diario.md (y fuera de una cerca).
     viva && actual == "Plan" && !cerca && $0 ~ /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { next }
     viva {

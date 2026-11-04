@@ -435,6 +435,36 @@ fi
 # shellcheck disable=SC2016  # $1 se expande en el bash hijo, no aquí
 ok "estado_seguro: ruta relativa → rc 1 sin colgarse" "$(timeout 2 bash -c '. "$1"; nucleo_estado_seguro rel/estado' _ "$L" >/dev/null 2>&1; echo $?)" 1
 
+# Piso: la sesión nueva recibe siempre Objetivo y Siguiente acción, o un trozo del principio y dónde está el resto; nunca nada.
+mkdir -p "$T/piso/trabajo"
+printf 'notas libres de la sesión\nsin secciones ni nada\n' >"$T/piso/libre.md"
+S=$(nucleo_emitir "$T/piso/libre.md")
+ok "piso: un nucleo sin secciones emite sus primeras líneas y dónde está el resto" "$(command grep -c 'notas libres de la sesión' <<<"$S"),$(command grep -c "el resto en ese fichero" <<<"$S")" "1,1"
+{ printf '# Estado\n## Invariantes\n'; head -c 7000 /dev/zero | tr '\0' i; printf '\n## Plan\n'; head -c 3000 /dev/zero | tr '\0' p; printf '\n## Pendientes\n'; head -c 3000 /dev/zero | tr '\0' q
+  printf '\n## Objetivo\nOBJ-FINAL objetivo\n## Paso actual\nPASO\n## Siguiente acción\nSIG-FINAL siguiente\n'; } >"$T/piso/grande.md"
+S=$(nucleo_emitir "$T/piso/grande.md")
+ok "piso: si el reparto por tope deja fuera Objetivo, sale igual (con Siguiente acción)" "$(command grep -c 'OBJ-FINAL\|SIG-FINAL' <<<"$S")" 2
+ok "piso: cuenta dentro del tope: la emisión no pasa de lo que ya pasaba (≤ 7 000 B)" "$([ "$(printf '%s\n' "$S" | LC_ALL=C wc -c)" -le 7000 ] && echo si)" si
+ok "piso: lo recortado sigue avisando (LEE el fichero)" "$(command grep -c '^\[LEE ' <<<"$S")" 1
+ok "piso: un nucleo en forma no lleva mínimo" "$(nucleo_emitir "$P" | command grep -c '^\[mínimo')" 0
+printf '# Estado\n## Plan\n- [ ] solo plan\n' >"$T/piso/sin-oyp.md"
+ok "piso: con otras secciones y sin Objetivo ni Siguiente acción en el fichero no inventa nada" "$(nucleo_emitir "$T/piso/sin-oyp.md" | command grep -c '^\[mínimo\|primeras líneas')" 0
+ok "piso: lo que inyecta no cierra el envoltorio" "$(nucleo_emitir "$T/piso/libre.md" | command grep -c '^</nucleo-datos')" 0
+# carpeta de trabajo: la línea de handoff bajo el título, solo si es una ruta válida que existe.
+printf '# Estado\n> carpeta de trabajo: %s\n## Objetivo\nO\n' "$T/piso/trabajo" >"$T/piso/c1.md"
+ok "carpeta: nucleo_carpeta lee la ruta anotada" "$(nucleo_carpeta "$T/piso/c1.md")" "$T/piso/trabajo"
+ok "carpeta: nucleo_emitir deja pasar la línea" "$(nucleo_emitir "$T/piso/c1.md" | command grep -c '^> carpeta de trabajo: ')" 1
+ok "carpeta: la frase de SessionStart nombra la carpeta" "$(nucleo_carpeta_ctx "$T/piso/c1.md" /otro | command grep -cF "trabajaba en $T/piso/trabajo (")" 1
+ok "carpeta: y calla si el cwd ya es esa carpeta" "$(nucleo_carpeta_ctx "$T/piso/c1.md" "$T/piso/trabajo")" ""
+for mala in 'relativa/x' "$T/piso/no-existe" "$T/piso/trab$(printf '\001')ajo" "$(printf '/tmp/\342\200\256x')"; do
+  printf '# Estado\n> carpeta de trabajo: %s\n## Objetivo\nO\n' "$mala" >"$T/piso/c2.md"
+  ok "carpeta: una ruta mala no se acepta ($(printf '%s' "$mala" | LC_ALL=C tr -c '[:print:]' '?'))" "$(nucleo_carpeta "$T/piso/c2.md")" ""
+done
+printf '# Estado\n## Objetivo\nO\n> carpeta de trabajo: %s\n' "$T/piso/trabajo" >"$T/piso/c3.md"
+ok "carpeta: una línea bajo una sección no es la cabecera: no se lee" "$(nucleo_carpeta "$T/piso/c3.md")" ""
+ln -s "$T/piso/c1.md" "$T/piso/c4.md"
+ok "carpeta: un nucleo enlazado no se lee" "$(nucleo_carpeta "$T/piso/c4.md")" ""
+
 unset NUCLEO_REGISTRO
 
 exit $FAIL

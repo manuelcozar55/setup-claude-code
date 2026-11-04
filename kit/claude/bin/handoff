@@ -32,6 +32,8 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
             (${CLAUDE_CONFIG_DIR:-~/.claude}/projects/*/ID.jsonl; el ID solo admite letras, cifras y «-») y deja en el nucleo, bajo el título, la línea
             «> sesión anterior: RUTA · volver: claude --resume ID …» (una sola: cada handoff sustituye la anterior; entra en el tope y no se omite).
             Sin transcript o sin ID no hay línea y no es un error. En modo ESTADO.md no se escribe (es de la persona y va a git).
+            Con --desde anota también, justo debajo, «> carpeta de trabajo: RUTA» si el cwd de quien guarda no es donde arranca la sesión
+            nueva tras /clear ($CLAUDE_PROJECT_DIR; sin él, ~ en una ranura y la raíz del proyecto): así se retoma en la misma carpeta.
 --ranura  solo con --desde: escribe en esa ranura de sesión (~/.claude/estado/sesiones/<id>/) sea cual sea el cwd; es lo que
           dicta el aviso de contexto en una sesión abierta desde ~. Se acepta solo si, resuelta con realpath, es un hijo directo de
           $CLAUDE_HOME/estado/sesiones/ y no contiene enlaces; si no, sale 1 sin escribir. Excluye --raiz y --commit.
@@ -305,6 +307,14 @@ case $SESION in
   '' | *[!A-Za-z0-9-]*) ;;
   *) for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/"$SESION".jsonl; do [ ! -f "$f" ] || TRANSCRIPT=$f; break; done ;;
 esac
+# La carpeta donde trabajaba la sesión (su cwd vivo) viaja igual: /clear la devuelve a donde arrancó y la sesión nueva no sabe dónde estaba.
+# Solo si difiere de ese punto de arranque (CLAUDE_PROJECT_DIR si existe; si no, ~ en una ranura y la raíz del proyecto). Ruta absoluta, de un
+# directorio, sin controles y de ≤ 400 chars: va dentro de una línea que el hook de SessionStart lee como dato.
+CARPETA=""
+if [[ $PWD == /* && $PWD != *[[:cntrl:]]* ]] && [ "${#PWD}" -le 400 ] && [ -d "$PWD" ]; then
+  INICIO=${CLAUDE_PROJECT_DIR:-${SES:+$HOME}}; INICIO=${INICIO:-$RAIZ}
+  [ "${PWD%/}" = "${INICIO%/}" ] || CARPETA=$PWD
+fi
 # YA: los cierres que diario.md ya tiene, sin fecha ni hash. El borrador de cada handoff suele traer otra vez los [x] ya cerrados.
 YA=$'\n'; [ ! -f "$DIARIO" ] || YA+=$(sed -n 's/^- [0-9-]* · \(.*\) · [^ ]*$/\1/p' "$DIARIO")$'\n'
 
@@ -765,9 +775,10 @@ fi
 OMITIDAS=""
 armar() {
   local h="" l t i
-  while IFS= read -r l; do case $l in '> handoff '* | '> sesión anterior: '*) ;; *) h+=$l$'\n' ;; esac; done <<<"${HEAD%$'\n'}"
+  while IFS= read -r l; do case $l in '> handoff '* | '> sesión anterior: '* | '> carpeta de trabajo: '*) ;; *) h+=$l$'\n' ;; esac; done <<<"${HEAD%$'\n'}"
   [ -z "$OMITIDAS" ] || h+="> handoff $HOY: omitidas por tope (copia en diario.md):$OMITIDAS"$'\n'
   [ -z "$TRANSCRIPT" ] || h+="> sesión anterior: $TRANSCRIPT · volver: claude --resume $SESION · buscar en él con rg, nunca leerlo entero"$'\n'
+  [ -z "$CARPETA" ] || h+="> carpeta de trabajo: $CARPETA"$'\n'
   t=$h
   for ((i = 0; i < ${#RK[@]}; i++)); do [ -z "${RT[i]}" ] || { fin_nl "RT[$i]"; t+=${RT[i]}; }; done
   TEXTO=$t
