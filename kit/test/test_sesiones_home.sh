@@ -219,6 +219,11 @@ printf 'notas libres de la sesion F\nsin secciones\n' >"$SF/nucleo.md"
 C=$(hook "$HC" "$PF" clear sF)
 ok "19 nucleo sin secciones: /clear trae su ruta, un trozo del principio y dónde está el resto" "$(command grep -c "<nucleo-datos fuente=\"$SF/nucleo.md\">" <<<"$C"),$(command grep -c 'notas libres de la sesion F' <<<"$C"),$(command grep -c "el resto en ese fichero" <<<"$C")" "1,1,1"
 
+# 19b. Un nucleo de la ranura vacío (solo comentarios) no deja el bloque de datos vacío: dice que no hay nada legible, como en un proyecto.
+printf '<!-- solo plantilla -->\n' >"$SF/nucleo.md"
+C=$(hook "$HC" "$PF" clear sF)
+ok "19 nucleo de ranura vacío: /clear dice «no hay nada legible» en vez de un bloque vacío" "$(command grep -c 'no hay nada legible en nucleo.md' <<<"$C")" 1
+
 # 20. Sin CLAUDE_PID (lo que ve un hijo de $.process.run del cockpit: claude no lo exporta y el mod lo deja vacío) la ranura sale del
 # padre cuando su comm es «claude». Medido en vivo (ADR 027): el hijo de process.run cuelga directamente del claude de la sesión.
 # El «claude» es una copia de bash con ese nombre; -c con un `:` final impide que bash sustituya el proceso por el último comando.
