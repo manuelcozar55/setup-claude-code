@@ -459,6 +459,18 @@ S=$(nucleo_emitir "$T/piso/dup.md")
 ok "piso: lo que el cuerpo ya trae no se repite en el mínimo (Objetivo y Siguiente acción, una vez cada una)" "$(command grep -c '^#\{2,3\} Objetivo' <<<"$S"),$(command grep -c '^#\{2,3\} Siguiente acción' <<<"$S")" "1,1"
 ok "piso: sin duplicar sigue dentro del tope (≤ 7 000 B)" "$([ "$(printf '%s\n' "$S" | LC_ALL=C wc -c)" -le 7000 ] && echo si)" si
 
+# Una cabecera «## Objetivo» vacía (la de la plantilla) no cuenta como Objetivo emitido ni lo oculta: el mínimo trae el
+# «## Encargo original» con contenido (sonda de omo, repro-minimo.sh).
+rep() { awk -v n="$1" -v c="$2" 'BEGIN { for (i = 0; i < n; i++) printf "%s", c; print "" }'; }
+for caso in normal vacio; do
+  { printf '# Estado\n'; [ "$caso" = vacio ] && printf '## Objetivo\n<!-- pendiente -->\n'
+    printf '## Invariantes\n'; rep 7000 i; printf '## Plan\n'; rep 3000 p; printf '## Pendientes\n'; rep 3000 q
+    printf '## Encargo original\nOBJETIVO-QUE-DEBE-LLEGAR\n## Paso actual\nPASO\n## Siguiente acción\nSIGUIENTE-QUE-DEBE-LLEGAR\n'; } >"$T/piso/v-$caso.md"
+  S=$(nucleo_emitir "$T/piso/v-$caso.md")
+  ok "piso ($caso): conserva el objetivo y la siguiente acción, una vez cada uno" "$(command grep -c OBJETIVO-QUE-DEBE-LLEGAR <<<"$S"),$(command grep -c SIGUIENTE-QUE-DEBE-LLEGAR <<<"$S")" "1,1"
+  ok "piso ($caso): dentro del tope (≤ 7 000 B)" "$([ "$(printf '%s\n' "$S" | LC_ALL=C wc -c)" -le 7000 ] && echo si)" si
+done
+
 # carpeta de trabajo: la línea de handoff bajo el título, solo si es una ruta válida que existe.
 printf '# Estado\n> carpeta de trabajo: %s\n## Objetivo\nO\n' "$T/piso/trabajo" >"$T/piso/c1.md"
 ok "carpeta: nucleo_carpeta lee la ruta anotada" "$(nucleo_carpeta "$T/piso/c1.md" "$T/piso")" "$T/piso/trabajo"

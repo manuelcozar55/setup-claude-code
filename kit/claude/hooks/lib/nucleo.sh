@@ -577,14 +577,24 @@ _nucleo_emitir_cuerpo() {
   printf '%s\n' "$out"
 }
 
+# _nucleo_con_contenido <emisión> <alternativas>: ¿hay una sección «##»/«###» con ese nombre y alguna línea con texto? Una cabecera
+# vacía (la de la plantilla) no cuenta: daría por emitido lo que la sesión nueva no recibe.
+_nucleo_con_contenido() {
+  printf '%s\n' "$1" | LC_ALL=C awk -v re="^#{2,3} $2" '
+    $0 ~ re { dentro = 1; next }
+    /^## / { dentro = 0 }
+    dentro && /[^ \t]/ { ok = 1; exit }
+    END { exit !ok }'
+}
+
 # _nucleo_piso <datos> <emisión> <nucleo>: lo mínimo que una sesión nueva debe recibir aunque el reparto por tope o la forma
 # del fichero lo dejen fuera. Falta «Objetivo» (o «Encargo original») o «Siguiente acción» en la emisión: se copian de <datos>
 # (el nucleo sin comentarios), la primera aparición, con su cabecera y ≤ 600 B cada una. Sin ninguna sección en la emisión (un
 # fichero libre): las primeras líneas, ≤ 1 500 B, y dónde está el resto. Nada si la emisión ya las lleva.
 _nucleo_piso() {
   local obj=1 sig=1 sec=1
-  printf '%s\n' "$2" | command grep -Eq '^#{2,3} (Objetivo|Encargo original)' && obj=0
-  printf '%s\n' "$2" | command grep -Eq '^#{2,3} Siguiente acción' && sig=0
+  _nucleo_con_contenido "$2" '(Objetivo|Encargo original)' && obj=0
+  _nucleo_con_contenido "$2" 'Siguiente acción' && sig=0
   printf '%s\n' "$2" | command grep -Eq '^#{2,3} ' && sec=0
   [ $(( obj + sig + sec )) -gt 0 ] || return 0
   LC_ALL=C awk -v f="$3" -v obj="$obj" -v sig="$sig" -v sec="$sec" '
@@ -600,6 +610,7 @@ _nucleo_piso() {
     }
     /^[ \t]*```+[^`]*$/ { vallado = !vallado }
     !vallado && /^#(#|##)? / {
+      if (cur && len[cur] == cab[cur] && $0 !~ /^### /) hecho[cur] = 0
       if (cur && $0 ~ /^### /) { t = $0; sub(/^#+ /, "", t); if (!((obj && !hecho[1] && (index(t, "Objetivo") == 1 || index(t, "Encargo original") == 1)) || (sig && !hecho[2] && index(t, "Siguiente acción") == 1))) { suma(cur, $0); next } }
       cur = 0
       if ($0 ~ /^##/) {
