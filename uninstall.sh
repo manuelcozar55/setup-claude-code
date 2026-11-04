@@ -27,6 +27,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
+CLAUDE_HOME="${CLAUDE_HOME%/}"
+CLAUDE_HOME="${CLAUDE_HOME:-/}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
 # Destino del claude.json, derivado de $CLAUDE_HOME y no de $HOME: con el valor por
 # defecto sale el mismo $HOME/.claude.json de siempre, pero con un CLAUDE_HOME temporal
@@ -143,12 +145,34 @@ restore_internal_plan() {
 
 restore_internal_apply() {
   local dir="$1" f rel
-  while IFS= read -r f; do
+  while IFS= read -r -d '' f; do
     rel="${f#"$dir"/}"
     mkdir -p "$CLAUDE_HOME/$(dirname "$rel")"
-    cp -p "$f" "$CLAUDE_HOME/$rel"
+    cp -pT --remove-destination "$f" "$CLAUDE_HOME/$rel"
     inf "restaurado: $rel"
-  done < <(find "$dir" -type f)
+  done < <(find "$dir" -type f -print0)
+}
+
+# El snapshot guarda enlaces, no sus arboles ajenos. Resolver conflictos antes
+# del backup y de cualquier copia evita restauraciones parciales por topologia.
+restore_preflight() {
+  local dir="$1" parent="$CLAUDE_HOME" f dst
+  [ -d "$dir" ] && [ ! -L "$dir" ] || die "el origen debe ser un directorio real: $dir"
+  while :; do
+    [ ! -L "$parent" ] || die "directorio de destino enlazado: $parent"
+    [ ! -e "$parent" ] || [ -d "$parent" ] || die "destino no es directorio: $parent"
+    [ "$parent" != / ] && [ "$parent" != . ] || break
+    parent="$(dirname "$parent")"
+  done
+  while IFS= read -r -d '' f; do
+    dst="$CLAUDE_HOME${f#"$dir"}"
+    if [ -d "$f" ] && [ ! -L "$f" ]; then
+      [ ! -L "$dst" ] || die "directorio de destino enlazado: $dst"
+      [ ! -e "$dst" ] || [ -d "$dst" ] || die "destino no es directorio: $dst"
+    else
+      [ ! -d "$dst" ] || [ -L "$dst" ] || die "no se reemplaza un directorio por un fichero o enlace: $dst"
+    fi
+  done < <(find "$dir" -mindepth 1 -print0)
 }
 
 # ------------------------------------------------------------- restauracion: zip
@@ -161,7 +185,8 @@ extract_and_verify_zip() {
   root="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -1)"
   [ -n "$root" ] || { rm -rf "$tmp"; die "el ZIP no tiene un directorio raiz: $zip"; }
   if [ -f "$root/MANIFEST.sha256" ]; then
-    if ! ( cd "$root" && sha_chk MANIFEST.sha256 >/dev/null 2>&1 ); then
+    if { [ -s "$root/MANIFEST.sha256" ] || [ -n "$(find "$root" -type f ! -name MANIFEST.sha256 -print -quit)" ]; } \
+      && ! ( cd "$root" && sha_chk MANIFEST.sha256 >/dev/null 2>&1 ); then
       rm -rf "$tmp"
       die "los checksums del ZIP NO coinciden ($zip): corrupto o manipulado, no se restaura"
     fi
@@ -175,21 +200,21 @@ restore_zip_plan() {
   echo "  origen: snapshot ZIP de scripts/backup.sh ($zip)"
   root="$(extract_and_verify_zip "$zip")"
   echo "  restauraria: $root/claude/  ->  $CLAUDE_HOME/"
-  [ -f "$root/claude.json" ] && echo "  restauraria: $root/claude.json  ->  $CLAUDE_JSON"
+  if [ -f "$root/claude.json" ] || [ -L "$root/claude.json" ]; then
+    echo "  restauraria: $root/claude.json  ->  $CLAUDE_JSON"
+  fi
   rm -rf "${root%/*}"
 }
 
 restore_zip_apply() {
-  local zip="$1" root
-  root="$(extract_and_verify_zip "$zip")"
+  local root="$1"
   mkdir -p "$CLAUDE_HOME"
-  cp -a "$root/claude/." "$CLAUDE_HOME/"
+  cp -aT --remove-destination "$root/claude" "$CLAUDE_HOME"
   ok "restaurado $CLAUDE_HOME desde $root/claude/"
-  if [ -f "$root/claude.json" ]; then
-    cp -p "$root/claude.json" "$CLAUDE_JSON"
+  if [ -f "$root/claude.json" ] || [ -L "$root/claude.json" ]; then
+    cp -aT --remove-destination "$root/claude.json" "$CLAUDE_JSON"
     ok "restaurado $CLAUDE_JSON"
   fi
-  rm -rf "${root%/*}"
 }
 
 # ------------------------------------------------------- backup de seguridad
@@ -199,13 +224,13 @@ restore_zip_apply() {
 # CLAUDE_JSON viaja tambien: sin el, backup.sh respaldaria su propio default
 # ($HOME/.claude.json) y no el fichero que --apply esta a punto de sobreescribir.
 safety_backup() {
-  if [ ! -d "$CLAUDE_HOME" ] || [ -z "$(find "$CLAUDE_HOME" -mindepth 1 -maxdepth 1 2>/dev/null)" ]; then
+  if [ ! -e "$CLAUDE_JSON" ] && [ ! -L "$CLAUDE_JSON" ] \
+    && { [ ! -d "$CLAUDE_HOME" ] || [ -z "$(find "$CLAUDE_HOME" -mindepth 1 -maxdepth 1 2>/dev/null)" ]; }; then
     echo "== \$CLAUDE_HOME vacio o inexistente: nada que respaldar antes de restaurar =="
     return 0
   fi
   if [ ! -f "$HERE/scripts/backup.sh" ]; then
-    echo "==> aviso: no se encontro scripts/backup.sh; se omite el backup de seguridad previo" >&2
-    return 0
+    die "no se encontro scripts/backup.sh; no se restaura sin backup de seguridad"
   fi
   echo "== backup de seguridad del estado actual antes de restaurar =="
   # Prefijo propio: el ZIP de seguridad no debe parecerse a un backup periodico ni competir con el.
@@ -228,17 +253,32 @@ case "$MODE" in
       zip)      restore_zip_plan "$path" ;;
     esac
     echo
-    echo "Para restaurar de verdad:  $0 --apply"
+    printf 'Para restaurar de verdad:  bash %q --apply --from %q\n' "$HERE/uninstall.sh" "$path"
     exit 0
     ;;
   apply)
     entry="$(resolve_latest)"
     IFS='|' read -r type epoch size path <<< "$entry"
+    # La raiz es una eleccion explicita; sus alias se conservan. CLAUDE_JSON
+    # ya quedo ligado a la ruta elegida, antes de resolver el destino fisico.
+    CLAUDE_HOME="$(realpath -m -- "$CLAUDE_HOME")"
     echo "== restaurando desde ($(fmt_date "$epoch")): $path =="
+    case "$type" in
+      internal) restore_preflight "$path" ;;
+      zip)
+        root="$(extract_and_verify_zip "$path")"
+        trap 'rm -rf "${root%/*}"' EXIT
+        restore_preflight "$root/claude"
+        if [ -f "$root/claude.json" ] || [ -L "$root/claude.json" ]; then
+          [ ! -d "$CLAUDE_JSON" ] || [ -L "$CLAUDE_JSON" ] \
+            || die "no se reemplaza un directorio por claude.json: $CLAUDE_JSON"
+        fi
+        ;;
+    esac
     safety_backup
     case "$type" in
       internal) restore_internal_apply "$path" ;;
-      zip)      restore_zip_apply "$path" ;;
+      zip)      restore_zip_apply "$root" ;;
     esac
     ok "restauracion completada desde $path"
     ;;

@@ -200,4 +200,208 @@ bash "$REPO/scripts/backup.sh" >/dev/null 2>&1
 Z6="$(find "$BACKUP_DIR" -maxdepth 1 -name 'claude-state-*.zip' -newer "$Z5" | head -1)"
 ck "$(unzip -Z1 "$Z6" | grep -c 'skills/proyectada/SKILL.md$')" "0" "H19c: zip -y guarda el enlace, no el contenido del directorio apuntado"
 
+# Restauracion: las entradas regulares sustituyen enlaces, sin escribir fuera.
+# Ambos origenes recorren rutas de copia distintas. El rollback usa el ZIP real.
+for route in internal zip; do
+  for target in file dangling directory; do
+    H="$(setup_home "link-$route-$target")"
+    export HOME="$H" CLAUDE_HOME="$H/.claude" BACKUP_DIR="$H/backups"
+    source_dir="$H/seleccion ' con espacios"; mkdir -p "$source_dir" "$CLAUDE_HOME" "$BACKUP_DIR"
+    echo elegido > "$source_dir/settings.json"
+    source="$source_dir"
+    if [ "$route" = zip ]; then
+      CLAUDE_HOME="$source_dir" bash "$REPO/scripts/backup.sh" >"$H/snapshot.log" 2>&1
+      source="$(find "$BACKUP_DIR" -name 'claude-state-*.zip' -print -quit)"
+      mv "$source" "$H/seleccion ' con espacios.zip"; source="$H/seleccion ' con espacios.zip"
+    fi
+    external="$H/ajeno"
+    case "$target" in
+      file) echo anterior > "$external" ;;
+      directory)
+        mkdir -p "$external"; echo anterior > "$external/testigo"
+        external_before="$(tree_checksum "$external")" ;;
+    esac
+    ln -s "$external" "$CLAUDE_HOME/settings.json"
+    # Un fichero independiente exige que el rollback recupere tambien bytes.
+    echo anterior > "$CLAUDE_HOME/CLAUDE.md"
+    outside_before="$(tree_checksum "$H")"
+    out="$(bash "$UNINSTALL" --dry-run --from "$source" 2>&1)"
+    ck "$(tree_checksum "$H")" "$outside_before" "$route/$target: dry-run no cambia bytes"
+    rc=0; bash "$UNINSTALL" --apply --from "$source" >"$H/apply.log" 2>&1 || rc=$?
+    ck "$rc" "0" "$route/$target: restaura el origen explicito"
+    ck "$(cat "$CLAUDE_HOME/settings.json" 2>/dev/null || true)" "elegido" "$route/$target: restaura exactamente el origen elegido"
+    ck "$([ -L "$CLAUDE_HOME/settings.json" ] && echo enlace || echo regular)" "regular" "$route/$target: sustituye el enlace de destino"
+    case "$target" in
+      file) ck "$(cat "$external")" "anterior" "$route/$target: bytes ajenos intactos" ;;
+      directory) ck "$(tree_checksum "$external")" "$external_before" "$route/$target: directorio ajeno intacto" ;;
+      dangling) ck "$([ -e "$external" ] && echo existe || echo ausente)" "ausente" "$route/$target: no crea el destino del enlace roto" ;;
+    esac
+    safety="$(find "$BACKUP_DIR" -name 'claude-safety-*.zip' -print -quit)"
+    echo posterior > "$CLAUDE_HOME/CLAUDE.md"
+    rc=0; bash "$UNINSTALL" --apply --from "$safety" >"$H/rollback.log" 2>&1 || rc=$?
+    ck "$rc" "0" "$route/$target: rollback desde el ZIP de seguridad"
+    ck "$(readlink "$CLAUDE_HOME/settings.json" || true)" "$external" "$route/$target: rollback recupera la topologia anterior"
+    ck "$(cat "$CLAUDE_HOME/CLAUDE.md")" "anterior" "$route/$target: rollback recupera los bytes anteriores"
+  done
+done
+
+# La orden de dry-run fija la seleccion aunque exista otro backup por defecto.
+for route in internal zip; do
+  H="$(setup_home "suggested-$route")"
+  export HOME="$H" CLAUDE_HOME="$H/.claude" BACKUP_DIR="$H/backups"
+  source_dir="$H/seleccion ' con espacios"
+  mkdir -p "$source_dir" "$CLAUDE_HOME/backups/otro" "$BACKUP_DIR"
+  echo elegido > "$source_dir/settings.json"
+  echo otro > "$CLAUDE_HOME/backups/otro/settings.json"
+  source="$source_dir"
+  if [ "$route" = zip ]; then
+    CLAUDE_HOME="$source_dir" bash "$REPO/scripts/backup.sh" >"$H/snapshot.log" 2>&1
+    source="$(find "$BACKUP_DIR" -name 'claude-state-*.zip' -print -quit)"
+    mv "$source" "$H/seleccion ' con espacios.zip"; source="$H/seleccion ' con espacios.zip"
+  fi
+  out="$(bash "$UNINSTALL" --dry-run --from "$source" 2>&1)"
+  suggested="$(printf '%s\n' "$out" | awk '/^Para restaurar de verdad:/ {sub(/^Para restaurar de verdad: */, ""); print}')"
+  rc=0; bash -c "$suggested" >"$H/suggested.log" 2>&1 || rc=$?
+  ck "$rc" "0" "$route: orden sugerida valida para Bash"
+  ck "$(cat "$CLAUDE_HOME/settings.json" 2>/dev/null || true)" "elegido" "$route: orden sugerida conserva --from con comillas y espacios"
+done
+
+# El JSON global es estado previo incluso sin ficheros en CLAUDE_HOME.
+for home_state in empty missing; do
+  for json_state in regular link dangling absent; do
+    H="$(setup_home "json-$home_state-$json_state")"
+    export HOME="$H" CLAUDE_HOME="$H/.claude" BACKUP_DIR="$H/backups"
+    source_dir="$H/source"; mkdir -p "$source_dir" "$BACKUP_DIR"
+    echo nuevo > "$H/nuevo.json"
+    # Snapshot sin ningun fichero en claude/: el unico contenido es global.
+    CLAUDE_HOME="$source_dir" CLAUDE_JSON="$H/nuevo.json" bash "$REPO/scripts/backup.sh" >"$H/snapshot.log" 2>&1
+    source="$(find "$BACKUP_DIR" -name 'claude-state-*.zip' -print -quit)"
+    if [ "$home_state" = empty ]; then mkdir -p "$CLAUDE_HOME"; fi
+    case "$json_state" in
+      regular) echo anterior > "$H/.claude.json" ;;
+      link) echo anterior > "$H/externo.json"; ln -s externo.json "$H/.claude.json" ;;
+      dangling) ln -s inexistente.json "$H/.claude.json" ;;
+    esac
+    rc=0; bash "$UNINSTALL" --apply --from "$source" >"$H/apply.log" 2>&1 || rc=$?
+    ck "$rc" "0" "$home_state/$json_state: restaura JSON global"
+    ck "$(cat "$H/.claude.json" 2>/dev/null || true)" "nuevo" "$home_state/$json_state: JSON elegido restaurado"
+    ck "$([ -L "$H/.claude.json" ] && echo enlace || echo regular)" "regular" "$home_state/$json_state: JSON restaurado como entrada regular"
+    safety="$(find "$BACKUP_DIR" -name 'claude-safety-*.zip' -print -quit)"
+    if [ "$json_state" = absent ]; then
+      ck "$safety" "" "$home_state/$json_state: no crea backup de una instalacion realmente vacia"
+    else
+      ck "$([ -n "$safety" ] && echo existe || echo ausente)" "existe" "$home_state/$json_state: el JSON anterior tiene backup"
+      rc=0; bash "$UNINSTALL" --apply --from "$safety" >"$H/rollback.log" 2>&1 || rc=$?
+      ck "$rc" "0" "$home_state/$json_state: rollback del JSON global"
+      case "$json_state" in
+        regular) ck "$(cat "$H/.claude.json" 2>/dev/null || true)" "anterior" "$home_state/$json_state: recupera JSON anterior" ;;
+        link)
+          ck "$(readlink "$H/.claude.json" || true)" "externo.json" "$home_state/$json_state: recupera enlace relativo global"
+          ck "$(cat "$H/externo.json")" "anterior" "$home_state/$json_state: JSON externo intacto" ;;
+        dangling)
+          ck "$(readlink "$H/.claude.json" || true)" "inexistente.json" "$home_state/$json_state: recupera enlace global roto"
+          ck "$([ -e "$H/inexistente.json" ] && echo existe || echo ausente)" "ausente" "$home_state/$json_state: destino roto sigue ausente" ;;
+      esac
+    fi
+  done
+done
+
+# La raiz elegida explicitamente puede estar enlazada: se restaura su contenido
+# conservando el alias y el JSON junto a la ruta elegida, no junto a su destino.
+for route in internal zip; do
+  for topology in root ancestor; do
+    for json_state in present absent; do
+      H="$(setup_home "alias-$route-$topology-$json_state")"
+      physical="$H/dotfiles/config"; mkdir -p "$physical" "$H/source" "$H/backups"
+      if [ "$topology" = root ]; then
+        alias="$H/.claude"; ln -s "$physical" "$alias"
+        export HOME="$H" CLAUDE_HOME="$alias"
+      else
+        alias="$H/alias"; ln -s "$H/dotfiles" "$alias"
+        export HOME="$alias" CLAUDE_HOME="$alias/config"
+      fi
+      export BACKUP_DIR="$H/backups"
+      alias_before="$(readlink "$alias")"
+      global_json="$(dirname "$CLAUDE_HOME")/.claude.json"
+      echo anterior > "$physical/settings.json"
+      echo conservar > "$physical/CLAUDE.md"
+      if [ "$topology" = root ]; then echo ajeno > "$H/dotfiles/.claude.json"; fi
+      if [ "$json_state" = present ]; then echo anterior > "$global_json"; fi
+      echo elegido > "$H/source/settings.json"; echo elegido > "$H/nuevo.json"
+      source="$H/source"
+      if [ "$route" = zip ]; then
+        CLAUDE_HOME="$source" CLAUDE_JSON="$H/nuevo.json" bash "$REPO/scripts/backup.sh" >"$H/snapshot.log" 2>&1
+        source="$(find "$BACKUP_DIR" -name 'claude-state-*.zip' -print -quit)"
+      fi
+      rc=0; bash "$UNINSTALL" --apply --from "$source" >"$H/apply.log" 2>&1 || rc=$?
+      ck "$rc" "0" "$route/$topology/$json_state: restaura una raiz explicitamente enlazada"
+      ck "$(cat "$physical/settings.json")" "elegido" "$route/$topology/$json_state: escribe en la raiz fisica elegida"
+      ck "$(readlink "$alias" || true)" "$alias_before" "$route/$topology/$json_state: conserva el alias"
+      ck "$(cat "$physical/CLAUDE.md")" "conservar" "$route/$topology/$json_state: conserva entradas fuera del snapshot"
+      if [ "$route" = zip ]; then
+        ck "$(cat "$global_json" 2>/dev/null || true)" "elegido" "$route/$topology/$json_state: JSON junto a la ruta elegida"
+      fi
+      if [ "$topology" = root ]; then
+        ck "$(cat "$H/dotfiles/.claude.json")" "ajeno" "$route/$topology/$json_state: no confunde el JSON de la raiz fisica"
+      fi
+      safety="$(find "$BACKUP_DIR" -name 'claude-safety-*.zip' -print -quit)"
+      ck "$([ -n "$safety" ] && echo existe || echo ausente)" "existe" "$route/$topology/$json_state: respalda el contenido real"
+      rc=0; bash "$UNINSTALL" --apply --from "$safety" >"$H/rollback.log" 2>&1 || rc=$?
+      ck "$rc" "0" "$route/$topology/$json_state: rollback disponible"
+      ck "$(cat "$physical/settings.json")" "anterior" "$route/$topology/$json_state: rollback recupera bytes"
+      ck "$(readlink "$alias" || true)" "$alias_before" "$route/$topology/$json_state: rollback conserva el alias"
+      if [ "$json_state" = present ]; then
+        ck "$(cat "$global_json")" "anterior" "$route/$topology/$json_state: rollback recupera JSON"
+      fi
+    done
+  done
+done
+
+# Un directorio INTERNO enlazado no esta respaldado recursivamente.
+# Rechazar TODO antes de escribir, tambien una entrada independiente y el JSON.
+# La antigua negativa para la raiz se sustituye arriba por restauracion y
+# rollback comprobados: la raiz es una eleccion explicita, no una entrada.
+for route in internal zip; do
+  for conflict in parent type; do
+    H="$(setup_home "preflight-$route-$conflict")"
+    export HOME="$H" CLAUDE_HOME="$H/.claude" BACKUP_DIR="$H/backups"
+    source_dir="$H/source"; mkdir -p "$source_dir/hooks" "$BACKUP_DIR" "$H/externo"
+    echo nuevo > "$source_dir/CLAUDE.md"; echo nuevo > "$source_dir/hooks/a.sh"
+    echo nuevo > "$H/nuevo.json"
+    source="$source_dir"
+    if [ "$route" = zip ]; then
+      CLAUDE_HOME="$source_dir" CLAUDE_JSON="$H/nuevo.json" bash "$REPO/scripts/backup.sh" >"$H/snapshot.log" 2>&1
+      source="$(find "$BACKUP_DIR" -name 'claude-state-*.zip' -print -quit)"
+    fi
+    mkdir -p "$CLAUDE_HOME"
+    echo anterior > "$CLAUDE_HOME/CLAUDE.md"; echo anterior > "$H/.claude.json"
+    if [ "$conflict" = type ]; then
+      mkdir -p "$CLAUDE_HOME/hooks/a.sh"; echo anterior > "$CLAUDE_HOME/hooks/a.sh/keep"
+    elif [ "$conflict" = parent ]; then
+      ln -s "$H/externo" "$CLAUDE_HOME/hooks"; echo anterior > "$H/externo/a.sh"
+    fi
+    before="$(tree_checksum "$CLAUDE_HOME")"; outside_before="$(tree_checksum "$H/externo")"
+    rc=0; bash "$UNINSTALL" --apply --from "$source" >"$H/apply.log" 2>&1 || rc=$?
+    ck "$rc" "1" "$route/$conflict: preflight rechaza topologia incompatible"
+    ck "$(tree_checksum "$CLAUDE_HOME")" "$before" "$route/$conflict: rechazo antes de cualquier escritura en el arbol"
+    ck "$(tree_checksum "$H/externo")" "$outside_before" "$route/$conflict: rechazo deja el arbol ajeno intacto"
+    ck "$(cat "$H/.claude.json")" "anterior" "$route/$conflict: rechazo deja JSON intacto"
+    ck "$(find "$BACKUP_DIR" -name 'claude-safety-*.zip' | wc -l | tr -d ' ')" "0" "$route/$conflict: preflight antes del backup"
+  done
+done
+
+# Un kit incompleto no puede restaurar sobre datos previos sin respaldo.
+H="$(setup_home incomplete)"
+export HOME="$H" CLAUDE_HOME="$H/.claude" BACKUP_DIR="$H/backups"
+mkdir -p "$H/kit" "$H/source" "$CLAUDE_HOME"
+cp "$UNINSTALL" "$H/kit/uninstall.sh"
+echo elegido > "$H/source/settings.json"
+echo anterior > "$CLAUDE_HOME/settings.json"; echo anterior > "$H/.claude.json"
+before="$(tree_checksum "$CLAUDE_HOME")"
+rc=0; bash "$H/kit/uninstall.sh" --apply --from "$H/source" >"$H/apply.log" 2>&1 || rc=$?
+ck "$rc" "1" "sin backup.sh: rechaza restaurar sobre estado previo"
+ck "$(tree_checksum "$CLAUDE_HOME")" "$before" "sin backup.sh: conserva todos los bytes locales"
+ck "$(cat "$H/.claude.json")" "anterior" "sin backup.sh: conserva el JSON global"
+ck "$(grep -Fc 'scripts/backup.sh' "$H/apply.log" || true)" "1" "sin backup.sh: identifica el componente necesario"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

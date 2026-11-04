@@ -224,11 +224,27 @@ bash uninstall.sh --apply  # restaura el backup más reciente (antes hace backup
 bash uninstall.sh --list   # enumera los backups disponibles
 ```
 
-Qué hace y qué no. `uninstall.sh` **restaura** el backup más reciente: los ficheros que una instalación o reinstalación sobrescribió (en `$CLAUDE_HOME/backups/`) o un snapshot completo de `scripts/backup.sh` (en `$HOME/backups/`). **No borra** lo que el instalador creó en limpio. Si no hay ningún backup (una máquina nueva con una sola instalación), termina con error: no hay nada que restaurar.
+`uninstall.sh` **restaura** por defecto el backup interno más reciente de
+`$CLAUDE_HOME/backups/`: los ficheros que una reinstalación sobrescribió.
+Para elegir otro directorio o un ZIP de `scripts/backup.sh`, usa
+`--dry-run --from FICHERO` y revisa la orden `--apply --from` que muestra.
+Antes de aplicar crea un ZIP de seguridad, incluido el JSON global aunque
+`CLAUDE_HOME` esté vacío. Si hay estado previo y falta `scripts/backup.sh`,
+la restauración se rechaza: conserva el repo completo.
+
+Un fichero del snapshot sustituye el enlace que ocupe su destino sin escribir
+en el árbol ajeno; el backup permite recuperar el enlace. Los conflictos con
+directorios internos o recorridos por enlaces internos se rechazan antes de escribir.
+La raíz `CLAUDE_HOME` y sus ancestros sí pueden ser enlaces: se resuelven a la
+ruta física para restaurar y respaldar su contenido, conservando los enlaces.
+El JSON global sigue junto a la ruta elegida, no junto al destino físico del enlace.
+**No borra** lo que el instalador creó en limpio ni elimina entradas nuevas
+al restaurar un snapshot. Sin backup interno, la operación por defecto falla;
+no elige un ZIP automáticamente. Detalle y rollback en [`ENTREGA.md`](../../ENTREGA.md#restaurar).
 
 Para quitar el kit del todo, a mano:
 
-- Los enlaces `~/.local/bin/handoff` y `~/.local/bin/oraculo`.
+- Los enlaces `~/.local/bin/handoff`, `~/.local/bin/oraculo` y `~/.local/bin/cupo`.
 - Los ficheros del kit en `~/.claude` que no quieras conservar (`bin/`, `hooks/`, `agents/`, las skills del método, `templates/nucleo.md`, `AGENTS.md`) y las entradas de `hooks` del `settings.json`. Si ya tenías una config tuya, `bash uninstall.sh --apply` te devuelve su versión anterior.
 - El cockpit, si lo instalaste: `claude plugin uninstall cockpit@setup-claude-code`.
 - La política gestionada de `/etc/claude-code/`, si tu organización la instaló: la quita quien tenga permisos de administrador, no el kit.
