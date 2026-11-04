@@ -15,7 +15,7 @@ const HASH = 'a'.repeat(64)
 const NEW = `## Objetivo\nhaz X\n## Invariantes\n- no tocar Y\n## Plan\n- [ ] T1\n## Siguiente acción\nT1\nclave: ${FAKE_SK}\n`
 const PREV = '# Estado\n\n## Objetivo\nhaz X  \ntal cual\n\n## Invariantes\n- no tocar Y\n## Plan\n- [ ] T1\n## Skills sugeridas\n- grilling\n'
 
-type Run = { argv: readonly string[] }
+type Run = { argv: readonly string[]; init?: { cwd?: string; env?: Record<string, string> } }
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '' } }) as never
 const no = () => ({ value: { exitCode: 1, stdout: '', stderr: '' } }) as never
 const answered = (text: string) => ({ value: { isAnswered: true, text, usage: {} } }) as never
@@ -25,7 +25,7 @@ const answered = (text: string) => ({ value: { isAnswered: true, text, usage: {}
 function repo(
   on: Parameters<TestBody>[1],
   files: Record<string, string>,
-  opts: { links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
+  opts: { root?: string; tops?: Record<string, string>; links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
 ) {
   let stateReads = 0
   const runs: Run[] = []
@@ -35,6 +35,7 @@ function repo(
   const bin = `${opts.claudeHome ?? `${home}/.claude`}/bin/handoff`
   if (!opts.noBin) files[bin] = '#!/usr/bin/env bash\n'
   on('session.cwd', () => ({ value: opts.cwd ?? '/work/proyecto/sub' }))
+  on('session.root', () => ({ value: opts.root ?? opts.cwd ?? '/work/proyecto/sub' }))
   on('session.id', () => ({ value: opts.session?.() ?? 'sesion-1' }) as never)
   on('process.run', async (_, e) => {
     runs.push(e)
@@ -42,7 +43,10 @@ function repo(
     if (a === 'printenv HOME') return ok(home)
     if (a === 'printenv CLAUDE_HOME') return ok(opts.claudeHome ?? '')
     if (a === 'printenv COCKPIT_AUTO_HANDOFF') return opts.env ? ok(opts.env) : no()
-    if (a.includes('--show-toplevel')) return opts.isRepo === false ? no() : ok(`${opts.top ?? '/work/proyecto'}\n`)
+    if (a.includes('--show-toplevel')) {
+      const found = opts.tops ? opts.tops[e.argv[2] ?? ''] : opts.isRepo === false ? undefined : opts.top ?? '/work/proyecto'
+      return found === undefined ? no() : ok(`${found}\n`)
+    }
     if (e.argv[0] === 'find') return ok((opts.links ?? []).join('\n'))
     if (e.argv[0] === 'mktemp') return ok(`${TMP}\n`)
     if (e.argv[0] === 'rm') {
@@ -421,6 +425,40 @@ test('raíz: git desde el cwd de la sesión', async ($, on) => {
   const r = repo(on, {}, { cwd: '/work/proyecto/sub/dir' })
   await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
   expect(r.runs.find(x => x.argv.includes('--show-toplevel'))?.argv.slice(0, 3)).toEqual(['git', '-C', '/work/proyecto/sub/dir'])
+})
+
+// Los hooks de SessionStart resuelven la raíz desde donde arrancó la sesión; si el mod usara el cwd vivo (tras un `cd`),
+// el handoff guardaría en un sitio y el /clear inyectaría otro.
+test('raíz: una sesión abierta en ~ que hizo cd a un repo guarda en su ranura, no en el repo', async ($, on) => {
+  fork(on, NEW)
+  const slot = `${HOME}/.claude/estado/sesiones/20261104-0921-42/nucleo.md`
+  const r = repo(on, {}, { root: HOME, cwd: '/work/proyecto/sub', tops: { '/work/proyecto/sub': '/work/proyecto' }, statePath: slot })
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(res.text).toContain('Guardado')
+  expect(r.calls.every(call => !call.argv.includes('--raiz'))).toBe(true)
+  expect(r.files[slot]).toBeTruthy()
+  expect(r.files['/work/proyecto/.claude/estado/nucleo.md']).toBeUndefined()
+  expect(r.runs.find(x => x.argv.includes('--show-toplevel'))?.argv.slice(0, 3)).toEqual(['git', '-C', HOME])
+})
+
+test('raíz: el CLI recibe la raíz de arranque en CLAUDE_PROJECT_DIR y corre en el cwd vivo (la carpeta que anota)', async ($, on) => {
+  fork(on, NEW)
+  const slot = `${HOME}/.claude/estado/sesiones/20261104-0921-42/nucleo.md`
+  const r = repo(on, {}, { root: HOME, cwd: '/work/proyecto/sub', tops: { '/work/proyecto/sub': '/work/proyecto' }, statePath: slot })
+  await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  const cli = r.runs.filter(x => x.argv[0] === BIN)
+  expect(cli.length).toBeGreaterThan(1)
+  expect(cli.map(x => x.init?.env?.CLAUDE_PROJECT_DIR)).toEqual(cli.map(() => HOME))
+  expect(cli.every(x => x.init?.cwd === undefined)).toBe(true)
+})
+
+test('raíz: la sesión de un proyecto que hizo cd a otro repo guarda en el suyo', async ($, on) => {
+  fork(on, NEW)
+  const r = repo(on, {}, { root: '/work/proyecto', cwd: '/work/otro/sub', tops: { '/work/proyecto': '/work/proyecto', '/work/otro/sub': '/work/otro' } })
+  await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(r.calls[0]?.argv[r.calls[0].argv.indexOf('--raiz') + 1]).toBe('/work/proyecto')
+  expect(r.files['/work/proyecto/.claude/estado/nucleo.md']).toBeTruthy()
+  expect(r.files['/work/otro/.claude/estado/nucleo.md']).toBeUndefined()
 })
 
 test('redact tapa claves conocidas y asignaciones, y deja el resto', () => {

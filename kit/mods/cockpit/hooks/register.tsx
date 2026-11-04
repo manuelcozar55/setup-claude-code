@@ -538,14 +538,14 @@ async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefine
   }
 }
 
-// Same root as nucleo_raiz (hooks/lib/nucleo.sh), decision 6: git from the session's cwd (not the mod process's);
+// Same root as nucleo_raiz (hooks/lib/nucleo.sh), decision 6: git from where the session started (`$.session.root()`,
+// what the hooks see as CLAUDE_PROJECT_DIR), never from the live cwd: after a shell `cd` the live cwd is another
+// repo, and /clear sends the session back to its start, so a handoff saved there would be left behind.
 // $HOME and $HOME/.claude/** are no project, and neither is a directory outside git. `root` is null then.
-// Limits: nucleo_raiz starts from ${CLAUDE_PROJECT_DIR:-$cwd} and that variable is not visible here (the API
-// does not expose the environment, only $.process.run); they agree while the session's cwd is the project's,
-// and diverge if the session changed repo with `cd`. Without HOME there is no way to tell: no project.
+// Without HOME there is no way to tell: no project. `start` goes to the CLI as CLAUDE_PROJECT_DIR (see viaStart).
 async function resolveRoot($: $) {
-  const cwd = (await $.session.cwd()).replace(/[\\/]+$/, '')
-  const top = await $.process.run(['git', '-C', cwd, 'rev-parse', '--show-toplevel']).catch(() => null)
+  const start = (await $.session.root()).replace(/[\\/]+$/, '')
+  const top = await $.process.run(['git', '-C', start, 'rev-parse', '--show-toplevel']).catch(() => null)
   const found = top?.exitCode === 0 ? top.stdout.trim() : ''
   const home = (await $.process.run(['printenv', 'HOME']).catch(() => null))?.stdout.trim().replace(/[\\/]+$/, '') ?? ''
   const isProject = !!found && !!home && found !== home && found !== `${home}/.claude` && !found.startsWith(`${home}/.claude/`)
@@ -553,8 +553,12 @@ async function resolveRoot($: $) {
   const configured = (await $.process.run(['printenv', 'CLAUDE_HOME']).catch(() => null))?.stdout.trim() ?? ''
   const claudeHome = configured.startsWith('/') ? configured.replace(/\/+$/, '') : `${home}/.claude`
   const dir = `${root}/.claude/estado`
-  return { home, root, dir, path: `${dir}/nucleo.md`, bin: `${claudeHome}/bin/handoff`, active: 0 }
+  return { home, start, root, dir, path: `${dir}/nucleo.md`, bin: `${claudeHome}/bin/handoff`, active: 0 }
 }
+
+// The CLI runs from the live cwd (the folder it notes in the nucleo) but resolves root and slot from the session's start,
+// the same as the SessionStart hook: without it a `cd` to a repo would make `handoff` save there and /clear read ~.
+const viaStart = (start: string, init: { timeoutMs?: number } = {}) => ({ ...init, env: { CLAUDE_PROJECT_DIR: start } })
 
 // COCKPIT_AUTO_HANDOFF: `off`, an integer 50-95 (the % of the compaction limit), or anything else = 70.
 async function autoThreshold($: $) {
@@ -597,14 +601,14 @@ async function refreshEstado($: $, force: boolean) {
   isEstadoBusy = true
   lastEstadoAt = t
   try {
-    const { root, bin } = await resolveRoot($)
+    const { root, bin, start } = await resolveRoot($)
     if (!(await $.fs.exists(bin))) {
       await update($, continuity, () => `Continuidad no disponible: falta ${bin}; ejecuta kit/install.sh`)
       await update($, estado, () => null)
       return
     }
     const mine = await $.session.id()
-    const out = await $.process.run([bin, '--estado', ...(root === null ? [] : ['--raiz', root]), '--sesion', mine], { timeoutMs: ESTADO_TIMEOUT_MS })
+    const out = await $.process.run([bin, '--estado', ...(root === null ? [] : ['--raiz', root]), '--sesion', mine], viaStart(start, { timeoutMs: ESTADO_TIMEOUT_MS }))
     if (out?.exitCode !== 0 && out?.exitCode !== 3) warnEstado($, mine)
     const j = out?.exitCode === 0 ? (JSON.parse(out.stdout) as Partial<Estado> & { dueno?: { sesion: string; vigente: boolean } | null; sesion?: string | null }) : null
     const next: Estado | null =
@@ -624,7 +628,7 @@ const softEstado = ($: $, force = false) => void refreshEstado($, force).catch((
 async function resolveState($: $) {
   const location = await resolveRoot($)
   if (!(await $.fs.exists(location.bin))) throw new Error(`falta ${location.bin}: ejecuta kit/install.sh`)
-  const result = await $.process.run([location.bin, '--estado', ...(location.root === null ? [] : ['--raiz', location.root]), '--sesion', await $.session.id()], { timeoutMs: ESTADO_TIMEOUT_MS })
+  const result = await $.process.run([location.bin, '--estado', ...(location.root === null ? [] : ['--raiz', location.root]), '--sesion', await $.session.id()], viaStart(location.start, { timeoutMs: ESTADO_TIMEOUT_MS }))
   if (result.exitCode === 3) throw new Error(NO_PROJECT)
   if (result.exitCode !== 0) throw new Error('no se pudo consultar handoff --estado; no limpio')
   const state: unknown = JSON.parse(result.stdout)
@@ -662,7 +666,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
   let tmp = ''
   try {
     await update($, handoff, (): Handoff => ({ phase: 'working' }))
-    const { root, dir, path, estadoMd, bin, active, tope } = await resolveState($)
+    const { root, start, dir, path, estadoMd, bin, active, tope } = await resolveState($)
     if (andClear && (active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) throw new Error('hay agentes o shells vivos: no limpio; espera o usa /handoff solo')
     if (!(await $.fs.exists(bin))) throw new Error(`falta ${bin}: ejecuta kit/install.sh, que copia handoff y oraculo a ~/.claude/bin (si ~/.claude es tu repo git, genera un plan diff-first: cópialos desde él)`)
     await refuseLinks($, dir)
@@ -715,8 +719,8 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
     await $.fs.write(tmp, draft)
     const sesion = await $.session.id().catch(() => '')
     const argv = [bin, '--desde', tmp, ...(root === null ? [] : ['--raiz', root]), ...(sesion ? ['--sesion', sesion] : []), '--json']
-    let res = await $.process.run(argv)
-    if (res.exitCode === 4) res = await $.process.run(argv)
+    let res = await $.process.run(argv, viaStart(start))
+    if (res.exitCode === 4) res = await $.process.run(argv, viaStart(start))
     if (res.exitCode !== 0) {
       const why = res.stderr.trim()
       throw new Error(
@@ -764,7 +768,7 @@ async function maybeAutoHandoff($: $) {
   if (limit === null || !c) return
   const pct = pctOf(c)
   if (pct < limit) return
-  // The cwd goes with it: hooks resolve the root from the session's start (a ~ slot), the mod from the live cwd.
+  // The cwd goes with it: the handoff notes the live folder in the nucleo (the root is the session's start).
   const skip = async (why: string) => $.ui.log(`cockpit: handoff automático omitido al ${pct}%: ${why} (cwd ${await $.session.cwd().catch(() => '?')})`, { to: 'debug' })
   if (await read($, isAutoQueued)) return skip('ya en curso')
   const phase = (await read($, handoff)).phase
@@ -856,7 +860,7 @@ export const register: Register = on => {
       if (!saved || h.phase !== 'done') return { text: h.msg ?? 'Handoff en marcha; no archivo ni limpio.' }
       const sessionId = await $.session.id()
       if (revision !== promptRevision) return { text: 'Llegó un mensaje nuevo durante el guardado: no archivo ni limpio.' }
-      const moved = await $.process.run([location.bin, '--migrar', ...(root === null ? [] : [root]), '--sesion', sessionId, '--esperado', saved.hash, '--json']).catch(() => null)
+      const moved = await $.process.run([location.bin, '--migrar', ...(root === null ? [] : [root]), '--sesion', sessionId, '--esperado', saved.hash, '--json'], viaStart(location.start)).catch(() => null)
       if (!moved || moved.exitCode !== 0 || moved.stderr.trim()) return { text: `Guardado en ${saved.path}, pero no pude archivarlo: no limpio. ${redact(moved?.stderr.trim() ?? 'CLI no disponible')}` }
       let archived: unknown
       try { archived = JSON.parse(moved.stdout) } catch { return { text: 'El CLI no confirmó el archivo: no limpio; consulta handoff --estado.' } }

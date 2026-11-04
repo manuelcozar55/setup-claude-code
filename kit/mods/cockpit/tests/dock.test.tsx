@@ -224,6 +224,7 @@ function estadoCli(on: never, estado: unknown, opts: { hangs?: boolean; exitCode
   const runs: { argv: readonly string[]; init?: { timeoutMs?: number } }[] = []
   o('fs.exists', () => ({ value: !opts.noBin }))
   o('session.cwd', () => ({ value: '/w/p' }))
+  o('session.root', () => ({ value: '/w/p' }))
   o('session.id', () => ({ value: 'sesion-1' }))
   o('process.run', (_: unknown, e: { argv: readonly string[]; init?: { timeoutMs?: number } }) => {
     runs.push(e)
