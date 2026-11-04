@@ -70,3 +70,4 @@ cacho de nucleo.md». Antes de cambiar nada se comprobaron tres hipótesis:
   pasa nada nuevo por argv), pero no anota la carpeta: actualizar `~/.claude/bin/handoff` y los hooks va con `install.sh`.
 - El relleno del prompt tras `/clear` sigue usando `.claude/estado/nucleo.md` relativo en un proyecto: es correcto mientras
   la sesión arranque en la raíz git; arrancando en un subdirectorio, la ruta absoluta que da el hook manda.
+- Handoff automático en `~` (04-nov): el mod solo acepta como estado, sin raíz, `~/.claude/estado/sesiones/<x>/nucleo.md` (nunca el `estado/nucleo.md` compartido) y distingue «sin ranura» de «sin proyecto» en el texto y en el log; sonda en vivo: el hijo de `$.process.run` cuelga de claude (rama A), no hace falta pasar el pid.

@@ -586,7 +586,7 @@ async function autoBlocker($: $) {
     return (await $.fs.exists(location.bin)) ? '' : 'falta el CLI handoff'
   } catch (err) {
     const why = err instanceof Error ? err.message : ''
-    return why === NO_PROJECT ? 'sin proyecto' : `fallo de handoff --estado: ${why}`
+    return why === NO_PROJECT ? 'sin proyecto' : why === NO_SLOT ? 'sin ranura' : `fallo de handoff --estado: ${why}`
   }
 }
 
@@ -634,15 +634,19 @@ async function refreshEstado($: $, force: boolean) {
 }
 const softEstado = ($: $, force = false) => void refreshEstado($, force).catch(() => undefined)
 
+const isOwnSlot = (nucleo: string, home: string) => home !== '' && new RegExp(`^${home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\.claude/estado/sesiones/[^/]+/nucleo\\.md$`).test(nucleo) && !nucleo.includes('/../')
+
 async function resolveState($: $) {
   const location = await resolveRoot($)
   if (!(await $.fs.exists(location.bin))) throw new Error(`falta ${location.bin}: ejecuta kit/install.sh`)
   const result = await $.process.run([location.bin, '--estado', ...(location.root === null ? [] : ['--raiz', location.root]), '--sesion', await $.session.id()], viaStart(location.start, { timeoutMs: ESTADO_TIMEOUT_MS }))
-  if (result.exitCode === 3) throw new Error(NO_PROJECT)
+  if (result.exitCode === 3) throw new Error(location.root === null ? NO_SLOT : NO_PROJECT)
   if (result.exitCode !== 0) throw new Error('no se pudo consultar handoff --estado; no limpio')
   const state: unknown = JSON.parse(result.stdout)
   if (typeof state !== 'object' || state === null || !('nucleo' in state) || typeof state.nucleo !== 'string' || !state.nucleo.startsWith('/') || !state.nucleo.endsWith('/nucleo.md'))
     throw new Error('handoff --estado no devuelve una ruta nucleo válida; no limpio')
+  // Without a root the only state this session may write is its own slot, never the shared estado/nucleo.md (another task's).
+  if (location.root === null && !isOwnSlot(state.nucleo, location.home)) throw new Error(NO_SLOT)
   if (!('agentes_vivos' in state) || typeof state.agentes_vivos !== 'number' || !Number.isSafeInteger(state.agentes_vivos) || state.agentes_vivos < 0)
     throw new Error('handoff --estado no confirma los agentes vivos; no limpio')
   const active = state.agentes_vivos
@@ -666,6 +670,8 @@ async function refuseLinks($: $, dir: string) {
 }
 
 const NO_PROJECT = 'aquí no hay proyecto (~, ~/.claude o fuera de un repo git): no hay estado que guardar'
+// Distinct from NO_PROJECT: with no root the state lives in a per-session slot, and without it (pid of claude unknown) there is nowhere safe to write.
+const NO_SLOT = 'sin ranura de sesión propia (fuera de un proyecto el estado va a ~/.claude/estado/sesiones/<fecha>-<pid>/ y no se pudo resolver): no hay estado que guardar'
 
 // CLI: 0 saved (notices in the receipt; old CLIs: stderr) · 2 invalid · 3 no project · 4 busy/conflict (retry once) · 5 foreign owner.
 async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {

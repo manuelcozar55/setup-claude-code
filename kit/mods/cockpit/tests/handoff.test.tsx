@@ -362,7 +362,7 @@ for (const [name, o] of [
   ['con la raíz en $HOME/.claude', { top: `${HOME}/.claude` }],
   ['bajo $HOME/.claude/**', { top: `${HOME}/.claude/worktrees/x` }],
 ] as const) {
-  test(`sin proyecto (${name}): no hay fork, ni borrador, ni CLI`, async ($, on) => {
+  test(`sin proyecto ni ranura (${name}): no hay fork, ni borrador, ni CLI`, async ($, on) => {
     const seen = fork(on, NEW)
     const r = repo(on, {}, o)
     const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
@@ -370,7 +370,7 @@ for (const [name, o] of [
     expect(r.writes).toEqual([])
     expect(r.calls).toEqual([])
     expect(res.text).toContain('Handoff fallido')
-    expect(res.text).toContain('proyecto')
+    expect(res.text).toContain('sin ranura')
   })
 }
 
@@ -609,13 +609,44 @@ test('handoff automático: un subagente no lo dispara', async ($, on) => {
   expect(seen.forks).toBe(0)
 })
 
-test('handoff automático: en $HOME (nucleo compartido) queda desactivado', async ($, on) => {
+test('handoff automático: en ~ sin ranura resuelta (--estado sale con 3) no dispara y el log dice «sin ranura»', async ($, on) => {
   const clock = mock.clock(on)
   const seen = auto(on, { tokens: 130_000 })
   repo(on, {}, { isRepo: false, cwd: '/h', home: '/h' })
   await $.turn.complete(DONE_TURN)
   await clock.advance(800)
   expect(seen.forks).toBe(0)
+  expect(seen.logs.some(l => l.includes('sin ranura'))).toBe(true)
+  expect(seen.logs.some(l => l.includes('sin proyecto'))).toBe(false)
+})
+
+test('handoff automático: en ~ el nucleo compartido, aunque el CLI lo devuelva, no se usa: nada guardado y log «sin ranura»', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000 })
+  const shared = `${HOME}/.claude/estado/nucleo.md`
+  const r = repo(on, { [shared]: PREV }, { isRepo: false, cwd: HOME, statePath: shared })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.forks).toBe(0)
+  expect(seen.cleared).toBe(0)
+  expect(r.calls).toHaveLength(0)
+  expect(seen.logs.some(l => l.includes('sin ranura'))).toBe(true)
+})
+
+test('handoff automático: en ~ con la ranura propia resuelta dispara, guarda sin --raiz y limpia con la ruta de la ranura', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000 })
+  const slot = `${HOME}/.claude/estado/sesiones/20261104-1330-42/nucleo.md`
+  const r = repo(on, { [slot]: PREV }, { isRepo: false, cwd: HOME, statePath: slot })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  await clock.advance(800)
+  expect(seen.forks).toBe(1)
+  expect(seen.cleared).toBe(1)
+  const argv = r.calls[0]?.argv ?? []
+  expect(argv).toContain('--sesion')
+  expect(argv).not.toContain('--raiz')
+  for (const text of seen.fills) expect(text).toContain(slot)
 })
 
 test('handoff automático: si empieza otro turno entre el handoff y el clear, no limpia y lo dice', async ($, on) => {
@@ -722,13 +753,13 @@ test('log: cada cierre de turno sobre el umbral sin handoff deja su motivo', asy
   expect(seen.logs[0]).toContain('agentes vivos')
 })
 
-test('log: sin proyecto', async ($, on) => {
+test('log: sin ranura', async ($, on) => {
   const clock = mock.clock(on)
   const seen = auto(on, { tokens: 130_000 })
   repo(on, {}, { isRepo: false, cwd: '/h', home: '/h' })
   await $.turn.complete(DONE_TURN)
   await clock.advance(800)
-  expect(seen.logs.map(l => l.includes('sin proyecto') && l.includes('(cwd /h)'))).toEqual([true])
+  expect(seen.logs.map(l => l.includes('sin ranura') && l.includes('(cwd /h)'))).toEqual([true])
 })
 
 test('log: con el estado ilegible lo dice', async ($, on) => {

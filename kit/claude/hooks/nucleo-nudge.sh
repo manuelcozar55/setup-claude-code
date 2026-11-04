@@ -35,7 +35,7 @@ fi
 # un proyecto y la compuerta también actúa.
 RANURA=""; [ "$RAIZ" = "$HOME" ] && case $NUC in "$HOME"/.claude/estado/sesiones/*/nucleo.md) RANURA=${NUC%/nucleo.md};; esac
 # D1: desde ~ sin ranura el nucleo compartido puede ser de otra tarea: el aviso no lo nombra, no se calla por su edad
-# y no promete handoff (el automático está desactivado en ~).
+# y no promete handoff (sin ranura el cockpit tampoco lo hace por su cuenta: «sin ranura» en su log).
 if [ "$RAIZ" = "$HOME" ] && [ -z "$RANURA" ]; then
   mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
   M="CONTEXTO $PCT % del airbag. Sesión abierta desde ~: no tiene nucleo propio. Si trabajas en una tarea, deja su estado en el nucleo de su proyecto; el de ~ actualízalo solo si su Objetivo es tu tarea."
