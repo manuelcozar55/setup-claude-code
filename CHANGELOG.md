@@ -17,6 +17,7 @@ etiquetado.
 - **Restauración y rollback:** las entradas dentro de `CLAUDE_HOME` sustituyen enlaces de destino sin seguirlos; el respaldo conserva su topología. La raíz explícita y sus ancestros pueden ser enlaces, que se conservan. El JSON global se respalda por sus bytes aunque sea un alias válido o falte el directorio local: una restauración de contenido fija y respalda su destino físico antes de escribir, conservando el alias. Si se sustituye la entrada global, un registro cubierto por el manifiesto conserva su tipo y el destino del enlace para el rollback. Los conflictos con directorios internos se rechazan antes de escribir y la orden del plan conserva el origen `--from` con su escapado. Si falta `scripts/backup.sh`, se rechaza restaurar sobre estado existente.
 - **Cupo:** los valores fuera de 0-100 se rechazan antes de consultar Claude, tanto por argumento como por entorno.
 - **Cockpit 0.7.1:** un propietario incompleto degrada la continuidad en vez de romper el dock. Las pruebas comprueban el propietario vencido y el relleno efectivo tras el handoff.
+- **Ranura de sesión sin carrera entre hermanos:** cuando varios hooks (seis `SubagentStart` a la vez) crean la ranura de `~/.claude/estado/sesiones/` y uno la publica entre la búsqueda y la comprobación de otro, ese otro la vuelve a buscar en lugar de devolver rc 1 y perder su línea de `agentes.jsonl`. En el runner de CI fallaba en 1 de cada 4 rondas; en local, bajo carga, en 1 de cada 8. Test: `test_sesiones_home.sh` (grupo 15).
 
 ### Changed
 

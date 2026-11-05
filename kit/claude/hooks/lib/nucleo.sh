@@ -237,6 +237,8 @@ nucleo_sesion_dir() {
   id=$(_nucleo_proceso_id "$pid") || return 1
   # Varias sesiones de hooks (6 SubagentStart a la vez) pueden crear la ranura a la vez: se arma en un directorio
   # temporal y se publica con `mv -T`, que falla si otro ya la publicó; entonces se vuelve a buscar (ya es la nuestra).
+  # Lo mismo si la ruta ya existe al mirarla: la acaba de publicar un hermano (con la máquina cargada pasa en 1 de cada
+  # 8 rondas) o es de otra identidad, y solo la búsqueda del siguiente intento lo distingue.
   for n in 1 2 3 4 5; do
     for d in "$base"/*-"$pid"; do
       [ -d "$d" ] && [ ! -L "$d" ] && [ ! -L "$d/.proceso" ] && [ "$(cat "$d/.proceso" 2>/dev/null)" = "$id" ] || continue
@@ -244,7 +246,7 @@ nucleo_sesion_dir() {
       printf '%s\n' "$d"; return 0
     done
     d=$base/$(date +%Y%m%d-%H%M)-$pid
-    [ ! -e "$d" ] || return 1
+    [ ! -e "$d" ] || continue
     [ "${1:-}" = crear ] || { printf '%s\n' "$d"; return 0; }
     t=$(umask 077; mkdir -p "$base" && mktemp -d "$base/.nueva.XXXXXX") 2>/dev/null || return 1
     if ( umask 077; printf '%s\n' "$id" >"$t/.proceso" && { [ -e "$base/.gitignore" ] || printf '*\n' >"$base/.gitignore"; } ) 2>/dev/null \
