@@ -251,6 +251,14 @@ bash "$HO" --desde "$T/b.md" --raiz "$E" >/dev/null 2>&1
 ok "handoff --desde repetido: mismo ESTADO.md, sin duplicar secciones" "$([ "$(sha256sum <"$E/ESTADO.md")" = "$HASH1" ] && echo igual || echo distinto),$(command grep -c '^## ' "$E/ESTADO.md")" igual,4
 ok "handoff --desde: la copia previa va a .claude/estado (fuera del árbol versionado) y un repetido sin cambios no la duplica" "$(find "$E/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" 1
 ok "handoff --estado: nombra ESTADO.md y su modo" "$(bash "$HO" --estado --raiz "$E" | jq -r '(.estado | endswith("/ESTADO.md")), .modo' | paste -sd,)" true,estado-md
+# 1.8.0 (M1): ESTADO.md es de la persona y va a git: la línea «> sesión anterior» no se escribe ahí, pero el recibo sí trae transcript y bytes.
+mkdir -p "$T/cfg-e/projects/-x"; : >"$T/cfg-e/projects/-x/sesE.jsonl"
+OUT=$(CLAUDE_CONFIG_DIR=$T/cfg-e bash "$HO" --desde "$T/b.md" --raiz "$E" --sesion sesE --json 2>/dev/null)
+ok "handoff --desde en modo ESTADO.md: sin línea de transcript en ESTADO.md; el recibo trae transcript y bytes" "$(command grep -c 'sesión anterior' "$E/ESTADO.md"),$(jq -r '.transcript' <<<"$OUT"),$([ "$(jq -r '.bytes' <<<"$OUT")" = "$(wc -c <"$E/ESTADO.md" | tr -d ' ')" ] && echo igual)" "0,$T/cfg-e/projects/-x/sesE.jsonl,igual"
+# 1.8.0 (M3): el borrador que repite un [x] ya cerrado no lo duplica en diario.md (modo ESTADO.md).
+# shellcheck disable=SC2016  # los acentos graves son markdown, no sustituciones
+for i in 1 2 3; do printf '## Paso actual\nP%s\n## Plan\n- [x] cerrado-E — `make test`\n' "$i" >"$T/bx.md"; bash "$HO" --desde "$T/bx.md" --raiz "$E" >/dev/null 2>&1; done
+ok "handoff --desde en modo ESTADO.md: el mismo [x] tres veces queda una vez en diario.md" "$(command grep -c 'cerrado-E' "$E/.claude/estado/diario.md")" 1
 # El comando que dictan stop-context-gauge.sh y session-start-compact.sh: --desde con --sesion y sin --ranura, desde un cwd dentro del repo.
 estado "$E/ESTADO.md"
 ok "handoff --desde --sesion sin --ranura (el que dictan los hooks) funciona en modo ESTADO.md" "$(cd "$E" && bash "$HO" --desde "$T/b.md" --sesion s-h5 >/dev/null 2>&1; echo $?),$(command grep -c 'PASO-NUEVO' "$E/ESTADO.md"),$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" 0,1,no
@@ -346,12 +354,81 @@ OUT=$(bash "$HO" --desde "$T/dn4.md" --raiz "$X" --json 2>"$T/en4"); RC=$?
 ok "N4: --json: aviso de tope en el recibo y stderr vacío (rc 0)" "$RC,$(wc -c <"$T/en4" | tr -d ' '),$(jq -r '.avisos | map(select(contains("supera el tope"))) | length' <<<"$OUT")" 0,0,1
 bash "$HO" --desde "$T/dn4.md" --raiz "$X" >/dev/null 2>"$T/en4b"
 ok "N4: sin --json el aviso de tope sigue en stderr" "$(command grep -c 'supera el tope' "$T/en4b")" 1
+# H4 (modo nucleo): con --json los avisos de un guardado correcto van al recibo, uno por string, y stderr queda vacío.
+Y=$T/h4n; mkdir -p "$Y/.claude/estado"; git -C "$Y" init -q
+# shellcheck disable=SC2016  # Backticks literales.
+printf '## Paso actual\nx\n\n## Plan\n- [x] a\n- [x] b\n- [x] c \xe2\x80\x94 `cmd`\n' >"$T/dh4.md"
+OUT=$(bash "$BIN" --raiz "$Y" --desde "$T/dh4.md" --json 2>"$T/eh4"); RC=$?
+ok "H4 nucleo: --json: aviso en el recibo y stderr vacío (rc 0)" "$RC,$(wc -c <"$T/eh4" | tr -d ' '),$(jq -r '.avisos | length' <<<"$OUT"),$(jq -r '.avisos[0]' <<<"$OUT")" "0,0,1,2 cierre(s) sin comando de verificación"
+OUT=$(bash "$BIN" --raiz "$Y" --desde "$T/dh4.md" 2>"$T/eh4b"); RC=$?
+ok "H4 nucleo: sin --json el aviso sigue en stderr" "$RC,$(command grep -c '^handoff: .*2 cierre(s) sin comando' "$T/eh4b")" 0,1
+printf '## Paso actual\ny\n' >"$T/dh4ok.md"
+OUT=$(bash "$BIN" --raiz "$Y" --desde "$T/dh4ok.md" --json 2>"$T/eh4c")
+ok "H4 nucleo: sin avisos el recibo no trae la clave" "$(jq -r 'has("avisos")' <<<"$OUT"),$(wc -c <"$T/eh4c" | tr -d ' ')" false,0
+# H19b: un handoff que no cambia el nucleo no rota nucleo.prev-*.
+Z=$T/h19b; mkdir -p "$Z/.claude/estado"; git -C "$Z" init -q
+printf '## Paso actual\nuno\n' >"$T/d19a.md"; printf '## Paso actual\ndos\n' >"$T/d19b.md"
+bash "$BIN" --raiz "$Z" --desde "$T/d19a.md" >/dev/null 2>&1
+bash "$BIN" --raiz "$Z" --desde "$T/d19b.md" >/dev/null 2>&1; sleep 1
+bash "$BIN" --raiz "$Z" --desde "$T/d19b.md" >/dev/null 2>&1; sleep 1
+bash "$BIN" --raiz "$Z" --desde "$T/d19b.md" >/dev/null 2>&1
+ok "H19b: tres handoffs iguales dejan una sola copia previa y es la del 'uno'" "$(find "$Z/.claude/estado" -name 'nucleo.prev-*.md' | wc -l | tr -d ' '),$(command grep -lc 'uno' "$Z"/.claude/estado/nucleo.prev-*.md | wc -l | tr -d ' ')" 1,1
 # N6: una viñeta «- Paso actual:» dentro de una cerca no se sustituye.
 X=$(nuevo n6)
 # shellcheck disable=SC2016
 printf '# Estado\n\n```\n- Paso actual: EN-LA-CERCA\n```\n\n- Paso actual: REAL\n- Siguiente acción: s\n' >"$X/ESTADO.md"
 printf '## Paso actual\nNUEVO-N6\n' >"$T/dn6.md"; bash "$HO" --desde "$T/dn6.md" --raiz "$X" >/dev/null 2>&1
 ok "N6: la viñeta dentro de una cerca no cuenta; se sustituye la real" "$(command grep -c 'EN-LA-CERCA' "$X/ESTADO.md"),$(command grep -c 'REAL' "$X/ESTADO.md"),$(command grep -c '^- Paso actual: NUEVO-N6$' "$X/ESTADO.md")" 1,0,1
+
+# La edición ocurre después del snapshot y antes de que el CLI capture su checksum.
+X=$(nuevo conflicto-snapshot)
+printf '## Paso actual\nCAMBIO-DEL-BORRADOR\n' >"$T/d-conflicto.md"
+(
+  export HANDOFF_EDICION=$X/ESTADO.md
+  cp() {
+    command cp "$@" || return
+    if [ "$#" -eq 3 ] && [ "$1" = -- ] && [ "$2" = "$HANDOFF_EDICION" ] && [ "${3##*/}" = viejo.md ]; then
+      printf '\n## Nota de la persona\nEDICION-INTERMEDIA\n' >>"$HANDOFF_EDICION"
+    fi
+  }
+  cp -- "$X/ESTADO.md" "$T/control-copia.md"
+  export -f cp
+  bash "$HO" --desde "$T/d-conflicto.md" --raiz "$X" --json >"$T/o-conflicto" 2>"$T/e-conflicto"
+); RC=$?
+ok "snapshot: una edición intermedia devuelve 4 y conserva sus bytes sin publicar ni rotar" \
+  "$RC,$(command grep -c EDICION-INTERMEDIA "$X/ESTADO.md"),$(command grep -c PASO-VIVO "$X/ESTADO.md"),$(command grep -c CAMBIO-DEL-BORRADOR "$X/ESTADO.md"),$(find "$X/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" "4,1,1,0,0"
+
+# Un Plan terminado no es una sección vacía que deba conservar el Plan abierto.
+X=$(nuevo plan-terminado)
+printf '\n## Plan\n- [ ] CIERRE-PLAN\n' >>"$X/ESTADO.md"
+printf '%s\n' '## Plan' "- [x] CIERRE-PLAN — \`true\`" >"$T/d-plan-terminado.md"
+bash "$HO" --desde "$T/d-plan-terminado.md" --raiz "$X" --json >"$T/o-plan"; RC=$?
+ok "Plan terminado: retira la tarea abierta y conserva el cierre en diario" \
+  "$RC,$(command grep -c CIERRE-PLAN "$X/ESTADO.md"),$(command grep -c CIERRE-PLAN "$X/.claude/estado/diario.md" 2>/dev/null)" "0,0,1"
+bash "$HO" --desde "$T/d-plan-terminado.md" --raiz "$X" >/dev/null 2>&1
+ok "Plan terminado: repetir el cierre no lo duplica ni rota una copia nueva" \
+  "$(command grep -c CIERRE-PLAN "$X/.claude/estado/diario.md" 2>/dev/null),$(find "$X/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" "1,1"
+printf '%s\n' '## Plan' "- [x] OTRO-CIERRE — \`true\`" >"$T/d-plan-terminado.md"
+bash "$HO" --desde "$T/d-plan-terminado.md" --raiz "$X" >/dev/null 2>&1
+ok "Plan terminado: un evento nuevo se guarda aunque ESTADO.md no cambie" \
+  "$(command grep -c OTRO-CIERRE "$X/.claude/estado/diario.md" 2>/dev/null),$(find "$X/.claude/estado" -name 'ESTADO.prev-*.md' | wc -l | tr -d ' ')" "1,1"
+
+# Una omision nueva se conserva aunque no cambie ESTADO; repetirla no la duplica.
+X=$(nuevo omision-repetida)
+{ printf '## Pendientes\nOMISION-PRIMERA\n'; relleno 300; } >"$T/d-omision.md"
+EST_ANTES=$(sha256sum <"$X/ESTADO.md")
+bash "$HO" --desde "$T/d-omision.md" --raiz "$X" >/dev/null 2>&1; RC=$?
+ok "omision: guarda el bloque completo sin cambiar el estado activo" \
+  "$RC,$(command grep -c OMISION-PRIMERA "$X/.claude/estado/diario.md"),$(command grep -c '^300 linea de relleno' "$X/.claude/estado/diario.md"),$([ "$(sha256sum <"$X/ESTADO.md")" = "$EST_ANTES" ] && echo igual)" "0,1,1,igual"
+DIARIO_ANTES=$(sha256sum <"$X/.claude/estado/diario.md")
+bash "$HO" --desde "$T/d-omision.md" --raiz "$X" >/dev/null 2>&1
+bash "$HO" --desde "$T/d-omision.md" --raiz "$X" >/dev/null 2>&1
+ok "omision: dos repeticiones dejan el diario identico" \
+  "$([ "$(sha256sum <"$X/.claude/estado/diario.md")" = "$DIARIO_ANTES" ] && echo igual)" igual
+{ printf '## Pendientes\nOMISION-SEGUNDA\n'; relleno 300; } >"$T/d-omision.md"
+bash "$HO" --desde "$T/d-omision.md" --raiz "$X" >/dev/null 2>&1
+ok "omision: un bloque distinto con el mismo titulo y fecha no se pierde" \
+  "$(command grep -c OMISION-PRIMERA "$X/.claude/estado/diario.md"),$(command grep -c OMISION-SEGUNDA "$X/.claude/estado/diario.md"),$([ "$(sha256sum <"$X/ESTADO.md")" = "$EST_ANTES" ] && echo igual)" "1,1,igual"
 exit $FAIL
 ) || FAIL=1
 exit "$FAIL"

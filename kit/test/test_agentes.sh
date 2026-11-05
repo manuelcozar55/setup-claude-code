@@ -208,6 +208,18 @@ ok 'K9 handoff no lista lo anterior a su base ni lo propio del estado' "$(grep -
 (cd "$R" && bash "$BIN" --desde "$T/k9-b.md" >/dev/null 2>&1)
 ok 'K9 repetir no duplica el bloque generado' "$(grep -c 'sucio.txt' "$NU"),$(grep -c '<!-- git:' "$NU")" '1,1'
 ok 'K9 el texto manual del borrador sobrevive' "$(grep -c 'viejo.txt' "$NU")" 1
+
+# Sin marcador Git, la frontera es la fecha del núcleo original, no la de su copia temporal.
+R=$T/k9-fecha; mkdir -p "$R/.claude/estado"; GIT_MASTER=1 git -C "$R" init -q
+printf base >"$R/base.txt"; g add base.txt
+GIT_AUTHOR_DATE=2020-01-01T00:00:00Z GIT_COMMITTER_DATE=2020-01-01T00:00:00Z g commit -qm base
+printf '## Objetivo\nOBJETIVO-MANUAL\n' >"$R/.claude/estado/nucleo.md"
+touch -d 2020-01-02T00:00:00Z "$R/.claude/estado/nucleo.md"
+printf cambio >"$R/posterior.txt"; g add posterior.txt
+GIT_AUTHOR_DATE=2020-01-03T00:00:00Z GIT_COMMITTER_DATE=2020-01-03T00:00:00Z g commit -qm posterior
+(cd "$R" && bash "$BIN" --desde "$T/k9-b.md" >/dev/null 2>&1); RC=$?
+ok 'K9 fecha original: un núcleo sin marcador incluye el commit posterior a su mtime' \
+  "$RC,$(grep -c posterior.txt "$R/.claude/estado/nucleo.md"),$(grep -c OBJETIVO-MANUAL "$R/.claude/estado/nucleo.md"),$(grep -c base.txt "$R/.claude/estado/nucleo.md")" "0,1,1,0"
 SR=$HERE/../claude/agents/security-reviewer.md
 ok 'M6 security-reviewer es de solo lectura (tools sin Write ni Edit)' "$(grep '^tools:' "$SR" | grep -c 'Write\|Edit')" 0
 ok 'M6 security-reviewer no promete remediación' "$(grep -ci 'remediat' "$SR")" 0

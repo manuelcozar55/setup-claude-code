@@ -56,6 +56,7 @@ nucleo_agentes_anotar() (
     if jq -Rc --arg c "${cut:-0}" 'fromjson? | select((.t // "") >= $c)' "$f" 2>/dev/null | tail -n 200 >"$tmp"; then mv -f -- "$tmp" "$f"
     else rm -f -- "$tmp"; fi
   fi
+  find "$1" -maxdepth 1 -type f -name 'agentes-vivos-*.json' -mtime +14 -delete 2>/dev/null
   return 0
 )
 
@@ -85,13 +86,12 @@ handback_de() {
 # De un RESULTADO.md solo se lee la primera línea, y solo si el fichero se llama así y es regular; de ella, solo
 # uno de los tres valores: lo demás es texto de un tercero.
 nucleo_agentes_estado() {
-  local f=$1/agentes.jsonl foto='[]' id tipo base res arch t msg tp est l fp m
+  local f=$1/agentes.jsonl foto='[]' id tipo base res arch t msg tp est l fp m fotos
   [ -f "$f" ] && [ ! -L "$f" ] || return 0
   nucleo_estado_seguro "$1" || return 0
-  foto=$(for fp in "$1"/agentes-vivos-*.json; do
-    [ -f "$fp" ] && [ ! -L "$fp" ] || continue
-    jq -c 'select(type == "object")' "$fp" 2>/dev/null
-  done | jq -s '.')
+  fotos=()
+  for fp in "$1"/agentes-vivos-*.json; do [ -f "$fp" ] && [ ! -L "$fp" ] && fotos+=("$fp"); done
+  [ "${#fotos[@]}" -eq 0 ] || foto=$(jq -c 'select(type == "object")' "${fotos[@]}" 2>/dev/null | jq -s '.')
   while IFS=$'\t' read -r id tipo base res arch t msg tp; do
     [ -n "$id" ] || continue
     est=""

@@ -224,11 +224,43 @@ bash uninstall.sh --apply  # restaura el backup más reciente (antes hace backup
 bash uninstall.sh --list   # enumera los backups disponibles
 ```
 
-Qué hace y qué no. `uninstall.sh` **restaura** el backup más reciente: los ficheros que una instalación o reinstalación sobrescribió (en `$CLAUDE_HOME/backups/`) o un snapshot completo de `scripts/backup.sh` (en `$HOME/backups/`). **No borra** lo que el instalador creó en limpio. Si no hay ningún backup (una máquina nueva con una sola instalación), termina con error: no hay nada que restaurar.
+`uninstall.sh` **restaura** por defecto el backup interno más reciente de
+`$CLAUDE_HOME/backups/`: los ficheros que una reinstalación sobrescribió.
+Para elegir otro directorio o un ZIP de `scripts/backup.sh`, usa
+`--dry-run --from FICHERO` y revisa la orden `--apply --from` que muestra.
+Antes de aplicar crea un ZIP de seguridad, incluido el JSON global aunque
+`CLAUDE_HOME` esté vacío. Si hay estado previo y falta `scripts/backup.sh`,
+la restauración se rechaza: conserva el repo completo.
+
+Dentro de `CLAUDE_HOME`, un fichero del snapshot sustituye el enlace que ocupe su destino sin escribir
+en el árbol ajeno; el backup permite recuperar el enlace. Los conflictos con
+directorios internos o recorridos por enlaces internos se rechazan antes de escribir.
+La raíz `CLAUDE_HOME` y sus ancestros sí pueden ser enlaces: se resuelven a la
+ruta física para restaurar y respaldar su contenido, conservando los enlaces.
+La ubicación del JSON global se deriva de la ruta elegida, antes de resolver la raíz.
+
+El backup de un JSON global regular o enlazado a un fichero contiene un
+`claude.json` regular, con sus bytes y checksum. Si el destino de restauración
+es un alias global válido, se fija su ruta física antes del respaldo y se
+escribe en ella sin retirar el alias. Un enlace global roto se sustituye por
+el contenido; no se crea su destino ausente.
+
+Un enlace archivado se restaura como entrada, sin seguirlo. Antes de una
+sustitución de entrada, el ZIP de seguridad incluye
+`.claude-json-entry.json`: tipo `file`, o tipo `link` con el destino en base64
+para conservar sus bytes. Ese registro regular y el payload que corresponda
+deben estar cubiertos por el manifiesto. Tiene precedencia en el rollback;
+un registro inválido se rechaza antes de escribir. No se necesita una opción
+adicional. Los snapshots anteriores sin ese registro siguen admitidos.
+Usa el restaurador de esta entrega para deshacer una sustitución de entrada;
+las versiones anteriores no interpretan ese registro.
+**No borra** lo que el instalador creó en limpio ni elimina entradas nuevas
+al restaurar un snapshot. Sin backup interno, la operación por defecto falla;
+no elige un ZIP automáticamente. Detalle y rollback en [`ENTREGA.md`](../../ENTREGA.md#restaurar).
 
 Para quitar el kit del todo, a mano:
 
-- Los enlaces `~/.local/bin/handoff` y `~/.local/bin/oraculo`.
+- Los enlaces `~/.local/bin/handoff`, `~/.local/bin/oraculo` y `~/.local/bin/cupo`.
 - Los ficheros del kit en `~/.claude` que no quieras conservar (`bin/`, `hooks/`, `agents/`, las skills del método, `templates/nucleo.md`, `AGENTS.md`) y las entradas de `hooks` del `settings.json`. Si ya tenías una config tuya, `bash uninstall.sh --apply` te devuelve su versión anterior.
 - El cockpit, si lo instalaste: `claude plugin uninstall cockpit@setup-claude-code`.
 - La política gestionada de `/etc/claude-code/`, si tu organización la instaló: la quita quien tenga permisos de administrador, no el kit.

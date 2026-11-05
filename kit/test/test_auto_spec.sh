@@ -46,11 +46,9 @@ ck "$(printf '%s' "$o" | grep -c . || true)" "0" "otra pregunta -> silencio tota
 o=$(run "anade paginacion y verifica que make test siga en verde" s4)
 ckhas "$o" "no trae criterio" n "encargo CON criterio -> NO repite la peticion de criterio"
 
-# --- 4. Gotcha M-001 solo cuando el prompt lo va a tocar --------------------
+# --- 4. El aviso del hook rtk (retirado en 1.1.0) ya no se inyecta ---------
 o=$(run "escribe un test con pytest para el modulo" s5)
-ckhas "$o" "M-001" y "prompt que menciona pytest -> avisa de la reescritura de comandos"
-o=$(run "arregla el bug del login" s6)
-ckhas "$o" "M-001" n "prompt sin comandos susceptibles -> NO mete el aviso de M-001"
+ckhas "$o" "rtk" n "prompt que menciona pytest -> NO avisa de un hook rtk que ya no existe"
 
 # --- 5. El brief de errores sale una vez por sesion, no en cada prompt ------
 o1=$(run "arregla el login" ses-brief); o2=$(run "arregla el logout" ses-brief)
@@ -81,39 +79,28 @@ else
   echo "NOT ok - el hook no discrimina: produce lo mismo ante entradas opuestas"; fail=$((fail+1))
 fi
 
-# --- 9. oracle-log: el marcador de sesion solo con un oraculo cuyo rc es fiable ----
+# --- 9. oracle-log: el marcador de sesion solo con un oraculo "plano" (sin rc: Claude Code no lo manda) ----
 OLOG="$PWD/.claude/hooks/oracle-log.sh"
-olog() { # olog <session_id> <comando> [exit_code]
-  if [ $# -ge 3 ]; then
-    jq -n --arg s "$1" --arg c "$2" --argjson r "$3" \
-      '{session_id:$s,tool_input:{command:$c},tool_response:{exit_code:$r}}' | "$OLOG" >/dev/null 2>&1
-  else
-    jq -n --arg s "$1" --arg c "$2" '{session_id:$s,tool_input:{command:$c}}' | "$OLOG" >/dev/null 2>&1
-  fi
+olog() { # olog <session_id> <comando>
+  jq -n --arg s "$1" --arg c "$2" '{session_id:$s,tool_input:{command:$c}}' | "$OLOG" >/dev/null 2>&1
 }
 marca() { if [ -f "$MCHARNESS_STATE/session-$1.oracle" ]; then echo y; else echo n; fi; }
-olog ol1 "make test | tail -n 5" 1
-ck "$(marca ol1)" "n" "oracle-log: tuberia con rc != 0 -> no marca verde"
 olog ol1b "make test | tail -n 5"
 ck "$(marca ol1b)" "n" "oracle-log: tuberia sin rc -> no marca verde (el rc seria el de tail)"
 olog ol2 "$(printf 'make test\n&& echo hecho')"
 ck "$(grep -c "ol2.*make test.*hecho" "$MCHARNESS_STATE/oracle-runs.tsv")" "1" "oracle-log: comando multilinea -> una sola linea en el TSV"
 olog ol3 "make test"
 ck "$(marca ol3)" "y" "oracle-log: make test plano marca session-<sid>.oracle"
-olog ol4 "make test" 2
-ck "$(marca ol4)" "n" "oracle-log: rc != 0 declarado en el payload -> no marca verde"
-olog ol5 "make test | tail -n 5" 0
-ck "$(marca ol5)" "n" "oracle-log: rc=0 con tuberia (el de tail) -> no marca verde"
-olog ol6 "make test || true" 0
-ck "$(marca ol6)" "n" "oracle-log: 'make test || true' rc=0 -> no marca verde"
-olog ol7 "true; make test" 0
-ck "$(marca ol7)" "n" "oracle-log: 'true; make test' rc=0 -> no marca verde"
-olog ol8 "oraculo -- make test" 0
-ck "$(marca ol8)" "y" "oracle-log: 'oraculo -- make test' rc=0 -> marca verde"
-olog ol9 "make test" 0
-ck "$(marca ol9)" "y" "oracle-log: 'make test' solo, rc=0 -> marca verde"
+olog ol6 "make test || true"
+ck "$(marca ol6)" "n" "oracle-log: 'make test || true' -> no marca verde"
+olog ol7 "true; make test"
+ck "$(marca ol7)" "n" "oracle-log: 'true; make test' -> no marca verde"
+olog ol8 "oraculo -- make test"
+ck "$(marca ol8)" "y" "oracle-log: 'oraculo -- make test' -> marca verde"
+olog ol9 "make test"
+ck "$(marca ol9)" "y" "oracle-log: 'make test' solo -> marca verde"
 mkdir -p "$MCHARNESS_STATE/session-../esc"
-olog "../esc/ol10" "make test" 0
+olog "../esc/ol10" "make test"
 ck "$([ -f "$MCHARNESS_STATE/session-___esc_ol10.oracle" ] && echo y || echo n)" "y" "oracle-log: sid con ../ se sanea y no escapa del directorio"
 ck "$([ -e "$MCHARNESS_STATE/session-../esc/ol10.oracle" ] && echo y || echo n)" "n" "oracle-log: sid con ../ no crea rutas fuera del estado"
 o=$(run "arregla el bug del login" s9)

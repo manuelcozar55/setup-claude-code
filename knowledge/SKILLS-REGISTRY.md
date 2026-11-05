@@ -1,5 +1,7 @@
 # SKILLS-REGISTRY
 
+> **[HISTÓRICO]** Foto de v0.1.0, no el estado de hoy (hoy: 6 agentes y 6 skills de kit). No la leas buscando cómo está el harness ahora.
+
 Origen, vetado y versión fijada de todo lo que se carga en el harness.
 
 > **v0.1.0 adopta CERO skills externas.** Las skills son un vector de ataque real: se cargan

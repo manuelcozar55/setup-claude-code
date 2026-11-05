@@ -251,11 +251,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/stop-session-summary.sh",
-            "timeout": 10
-          },
-          {
-            "type": "command",
             "command": "$HOME/.claude/hooks/agentes.sh",
             "timeout": 3
           }
@@ -273,7 +268,7 @@
       "source": {
         "source": "github",
         "repo": "manuelcozar55/setup-claude-code",
-        "ref": "v1.7.1"
+        "ref": "v1.8.1"
       }
     }
   },

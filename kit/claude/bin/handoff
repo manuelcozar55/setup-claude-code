@@ -28,7 +28,12 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
             a .git/info/exclude.
   --sesion  ID real de la sesión que escribe. Con dueño vigente es obligatorio y debe coincidir;
             sin ID o con otro devuelve 5 sin escribir. En --desde, sin --sesion vale $CLAUDE_CODE_SESSION_ID si existe. No copies el ID de otra sesión desde --estado.
-            Al guardar libera ese dueño (o el dueño caducado).
+            Al guardar libera ese dueño (o el dueño caducado). Con --desde busca además el transcript de esa sesión
+            (${CLAUDE_CONFIG_DIR:-~/.claude}/projects/*/ID.jsonl; el ID solo admite letras, cifras y «-») y deja en el nucleo, bajo el título, la línea
+            «> sesión anterior: RUTA · volver: claude --resume ID …» (una sola: cada handoff sustituye la anterior; entra en el tope y no se omite).
+            Sin transcript o sin ID no hay línea y no es un error. En modo ESTADO.md no se escribe (es de la persona y va a git).
+            Con --desde anota también, justo debajo, «> carpeta de trabajo: RUTA» si el cwd de quien guarda no es donde arranca la sesión
+            nueva tras /clear ($CLAUDE_PROJECT_DIR; sin él, ~ en una ranura y la raíz del proyecto): así se retoma en la misma carpeta.
 --ranura  solo con --desde: escribe en esa ranura de sesión (~/.claude/estado/sesiones/<id>/) sea cual sea el cwd; es lo que
           dicta el aviso de contexto en una sesión abierta desde ~. Se acepta solo si, resuelta con realpath, es un hijo directo de
           $CLAUDE_HOME/estado/sesiones/ y no contiene enlaces; si no, sale 1 sin escribir. Excluye --raiz y --commit.
@@ -40,7 +45,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
 --migrar  archiva el núcleo de DIR en archivo/ del estado real y lo anota en diario; nunca borra.
           Sin DIR archiva únicamente la ranura HOME del proceso actual.
 --esperado exige ese SHA256 al archivar, bajo lock; si cambió o no existe devuelve 4.
---json    --desde devuelve {nucleo,sha256} del documento guardado; --migrar añade archivo.
+--json    --desde devuelve {nucleo,sha256,transcript,bytes} del documento guardado (transcript: la ruta o null; bytes: lo escrito); --migrar añade archivo.
 --liberar ID libera solamente al dueño cuyo ID coincida; conserva el núcleo.
 --agentes tabla del registro persistente; no crea estado ni archiva agentes.
 --estado  una línea JSON: raíz, nucleo, bytes, tope, pct, dueño, sha256 y agentes_vivos de --sesion (sin proyecto: {"raiz":null}).
@@ -69,6 +74,14 @@ TOPE=$((NUCLEO_TOPE - NUCLEO_RESERVA_AGENTES))
 [ "$TOPE" -gt 0 ] || { echo "uso: handoff: NUCLEO_TOPE=$NUCLEO_TOPE no deja sitio tras la reserva de agentes ($NUCLEO_RESERVA_AGENTES B)" >&2; exit 64; }
 
 die() { local rc=$1; shift; echo "handoff: $*" >&2; exit "$rc"; }
+# Avisos de un guardado correcto: uno por elemento. Con --json van al recibo y stderr queda vacío; sin --json, una línea.
+AV=()
+avisar() { AV+=("$*"); }
+avisos_stderr() {
+  local j
+  { [ "$JSON" != 1 ] && [ "${#AV[@]}" -gt 0 ]; } || return 0
+  printf -v j '%s; ' "${AV[@]}"; echo "handoff: ${j%; }" >&2
+}
 iso_de() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 
 MODO="" DESDE="" MIGRAR="" TEMA="" RAIZ_ARG="" RANURA_ARG="" SESION="" ESPERADO="" JSON=0 SOLO=0 COMMIT=0
@@ -288,6 +301,22 @@ if [ -z "$SES" ] && D=$(nucleo_dueno_ajeno "$RAIZ" "$SESION"); then
 fi
 NUC=$E/nucleo.md; DIARIO=$E/diario.md; VLOG=$E/verificaciones.log
 HOY=$(date -u +%F)
+# La sesión nueva tras /clear no sabe dónde quedó el transcript de esta: se lo deja el nucleo. El ID entra en un glob: solo [A-Za-z0-9-].
+TRANSCRIPT=""
+case $SESION in
+  '' | *[!A-Za-z0-9-]*) ;;
+  *) for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/"$SESION".jsonl; do [ ! -f "$f" ] || TRANSCRIPT=$f; break; done ;;
+esac
+# La carpeta donde trabajaba la sesión (su cwd vivo) viaja igual: /clear la devuelve a donde arrancó y la sesión nueva no sabe dónde estaba.
+# Solo si difiere de ese punto de arranque (CLAUDE_PROJECT_DIR si existe; si no, ~ en una ranura y la raíz del proyecto). Ruta absoluta, de un
+# directorio, sin controles y de ≤ 400 chars: va dentro de una línea que el hook de SessionStart lee como dato.
+CARPETA=""
+if [[ $PWD == /* && $PWD != *[[:cntrl:]]* ]] && [ "${#PWD}" -le 400 ] && [ -d "$PWD" ]; then
+  INICIO=${CLAUDE_PROJECT_DIR:-${SES:+$HOME}}; INICIO=${INICIO:-$RAIZ}
+  [ "${PWD%/}" = "${INICIO%/}" ] || CARPETA=$PWD
+fi
+# YA: los cierres que diario.md ya tiene, sin fecha ni hash. El borrador de cada handoff suele traer otra vez los [x] ya cerrados.
+YA=$'\n'; [ ! -f "$DIARIO" ] || YA+=$(sed -n 's/^- [0-9-]* · \(.*\) · [^ ]*$/\1/p' "$DIARIO")$'\n'
 
 W=$(mktemp -d "${TMPDIR:-/tmp}/handoff.XXXXXX")
 TMP=""
@@ -325,6 +354,7 @@ admitida() {
 titulo_de() { norm "$1"; if [ "$NORM" = "pendientes y riesgos" ]; then TITULO=Pendientes; else TITULO=$1; fi; }
 # fin_nl <variable>: asegura el salto de línea final (no vale $(…), que se los come).
 fin_nl() { local -n r=$1; case $r in *$'\n') ;; *) r+=$'\n' ;; esac; }
+bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
 
 # parsear <fichero>: PHEAD (lo anterior a la primera «## »), PK[] claves, PTIT[] títulos, PT[] texto con su
 # cabecera y salto final. Una «## » dentro de una cerca ``` o ~~~ es contenido.
@@ -372,6 +402,15 @@ for ((i = 0; i < ${#DK[@]}; i++)); do
 done
 dindice() { local j; DI=-1; for ((j = 0; j < ${#DK[@]}; j++)); do [ "${DK[j]}" != "$1" ] || { DI=$j; return 0; }; done; }
 
+# La misma extracción en ambos modos; decidir si el borrador está vacío va antes.
+plan_abierto() {
+  printf '%s' "$1" | awk -v d="$W/hechos" '
+    /^[ \t]*(```|~~~)/ { c = !c }
+    !c && /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { print >> d; next }
+    { print }'
+}
+: >"$W/hechos"
+
 # ---------------------------------------------------------------- --desde con ESTADO.md como estado
 # Mapeo borrador (secciones de nucleo.md) → ESTADO.md. Viñetas de la cabecera, que sustituyen a la suya (o se añaden si falta):
 #   Objetivo → «- Objetivo (una línea):» (todo el cuerpo en una línea; solo si la existente está vacía o es RELLENAR) · Paso actual → «- Paso actual:» · Siguiente acción → «- Siguiente acción:»
@@ -383,7 +422,7 @@ dindice() { local j; DI=-1; for ((j = 0; j < ${#DK[@]}; j++)); do [ "${DK[j]}" !
 if [ "$ESTMD" -eq 1 ]; then
   EST=$RAIZ/ESTADO.md
   cp -- "$EST" "$W/viejo.md"
-  OLD_CK=$(cksum <"$EST")
+  OLD_CK=$(cksum <"$W/viejo.md")
   parsear "$W/viejo.md"
   OK=("${PK[@]}"); OTIT=("${PTIT[@]}"); OT=("${PT[@]}"); HEADX=$PHEAD
   # cuerpo <clave>: BODY = cuerpo del borrador sin comentarios ni líneas en blanco extremas; rc 1 si no hay borrador o está vacío.
@@ -451,15 +490,6 @@ if [ "$ESTMD" -eq 1 ]; then
     SEC="## $1"$'\n'$b
     for ((x = 0; x < n; x++)); do SEC+=$'\n'; done
   }
-  # Los [x] del Plan del borrador van a diario y salen del texto que se escribe.
-  : >"$W/hechos"
-  for ((j = 0; j < ${#DK[@]}; j++)); do
-    [ "${DK[j]}" = plan ] || continue
-    DT[j]=$(awk -v d="$W/hechos" '
-      /^[ \t]*(```|~~~)/ { c = !c }
-      !c && /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { print > d; next }
-      { print }' <<<"${DT[j]}")$'\n'
-  done
   # Solo se sustituye la PRIMERA sección de cada clave; las demás, y todo lo que el borrador no trae, salen tal cual.
   # RA[i]=1: sección añadida por el borrador (sin equivalente en ESTADO.md): la única que el tope puede omitir.
   RK=(); RT=(); RA=(); HECHA=" "
@@ -506,6 +536,15 @@ if [ "$ESTMD" -eq 1 ]; then
     sec_e "$T" "${DT[j]}" ""; [[ $ult == *$'\n\n' ]] || SEC=$'\n'$SEC
     HECHA+="$k "; RK+=("$k"); RT+=("$SEC"); RA+=(1)
   done
+  # Solo el Plan aportado sustituye al anterior; un Plan terminado puede quedar sin cuerpo.
+  if [[ $HECHA == *" plan "* ]]; then
+    for ((i = 0; i < ${#RK[@]}; i++)); do
+      [ "${RK[i]}" = plan ] || continue
+      RT[i]=$(plan_abierto "${RT[i]}" && printf x)
+      RT[i]=${RT[i]%x}
+      break
+    done
+  fi
   armar_e() {
     local i; TEXTO=$HEADX
     for ((i = 0; i < ${#RK[@]}; i++)); do TEXTO+=${RT[i]}; done
@@ -513,7 +552,6 @@ if [ "$ESTMD" -eq 1 ]; then
   }
   NOEOL=0; [ -z "$(tail -c1 "$EST")" ] || NOEOL=1
   CRLF=0; IFS= read -r l1 <"$EST" || true; [[ ${l1-} != *$'\r' ]] || CRLF=1
-  bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
   armar_e
   # ESTADO.md es de la persona: el tope solo omite (a diario.md) las secciones que el borrador añadió sin equivalente, desde el final.
   # Si aun así lo pasa se escribe igual y se avisa: la inyección de SessionStart ya recorta.
@@ -525,16 +563,17 @@ if [ "$ESTMD" -eq 1 ]; then
     printf '## %s omitido por tope: %s\n%s\n' "$HOY" "$t" "${RT[i]#*$'\n'}" >>"$W/omitido"
     OMITIDAS+=" $t"; RT[i]=""; armar_e
   done
-  AVISOS=""
-  [ -z "$OMITIDAS" ] || AVISOS="omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
+  [ -z "$OMITIDAS" ] || avisar "omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
   AVTOPE=""
   [ "$(bytes "$TEXTO")" -le "$TOPE" ] || AVTOPE="ESTADO.md ocupa $(bytes "$TEXTO") B y supera el tope (${TOPE} B): recórtalo a mano; la inyección de SessionStart ya lo recorta"
   TEXTOW=$TEXTO; [ "$CRLF" -eq 0 ] || TEXTOW=${TEXTO//$'\n'/$'\r\n'}
 
   [ -z "${NUCLEO_FUSION_PAUSA:-}" ] || sleep "$NUCLEO_FUSION_PAUSA"
   [ "$(cksum <"$EST")" = "$OLD_CK" ] || die 4 "ESTADO.md cambió mientras se fusionaba (otra sesión): no lo piso; reintenta"
-  # Solo si el texto cambia: copia previa, rotación (3, por mtime), escritura y diario. Un handoff repetido no toca nada.
+  # Solo si el texto cambia: copia previa, rotación (3, por mtime) y escritura.
+  CAMBIADO=0
   if [ "$(printf '%s' "$TEXTOW" | cksum)" != "$OLD_CK" ]; then
+    CAMBIADO=1
     mkdir -p "$E"
     P=$E/ESTADO.prev-$(date -u +%Y%m%dT%H%M%SZ).md
     [ ! -e "$P" ] || P=${P%.md}-$$.md
@@ -546,15 +585,22 @@ if [ "$ESTMD" -eq 1 ]; then
     printf '%s' "$TEXTOW" >"$TMP"
     chmod "$(stat -c %a "$EST" 2>/dev/null || stat -f %Lp "$EST")" "$TMP" 2>/dev/null || true
     mv -f -- "$TMP" "$EST"; TMP=""
+  fi
+  # Un cierre nuevo también se conserva cuando el documento activo ya tiene los mismos bytes.
+  if [ "$CAMBIADO" -eq 1 ] || [ -s "$W/hechos" ] || [ -s "$W/omitido" ]; then
     HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)
-    # shellcheck disable=SC2094  # diario.md solo se añade; lo que se lee es $W/hechos
+    # shellcheck disable=SC2094  # La omision se compara antes de anexarla; nunca se trunca el diario.
     {
       [ -s "$DIARIO" ] || printf '# Diario\n'
       while IFS= read -r l; do
         l=${l#"${l%%[![:space:]]*}"}; l=${l#[-*] }; l=${l#[0-9]*. }; l=${l#\[[xX]\]}; l=${l# }
-        [ -z "$l" ] || printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
+        [ -n "$l" ] && [[ $YA != *$'\n'"$l"$'\n'* ]] || continue
+        YA+=$l$'\n'
+        printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
       done <"$W/hechos"
-      [ ! -s "$W/omitido" ] || cat "$W/omitido"
+      if [ -s "$W/omitido" ] && [[ $(<"$DIARIO") != *"$(<"$W/omitido")"* ]]; then
+        cat "$W/omitido"
+      fi
     } >>"$DIARIO"
   fi
   ERRC=""
@@ -571,15 +617,15 @@ if [ "$ESTMD" -eq 1 ]; then
   fi
   if D=$(nucleo_dueno "$RAIZ"); then
     if [ -z "$SESION" ] || [ "${D% *}" = "$SESION" ] || ! nucleo_dueno_vigente "$RAIZ" >/dev/null; then rm -f -- "$E/.dueno"
-    else AVISOS+="${AVISOS:+; }la sesión dueña es otra (${D% *}): no se libera"
+    else avisar "la sesión dueña es otra (${D% *}): no se libera"
     fi
   fi
-  # El aviso de tope es permanente mientras ESTADO.md pase del tope: con --json va al recibo (el cockpit trata todo stderr como «no limpio»).
-  [ -z "$AVTOPE" ] || [ "$JSON" = 1 ] || AVISOS+="${AVISOS:+; }$AVTOPE"
-  [ -z "$AVISOS" ] || echo "handoff: $AVISOS" >&2
+  # El aviso de tope es permanente mientras ESTADO.md pase del tope.
+  [ -z "$AVTOPE" ] || avisar "$AVTOPE"
+  avisos_stderr
   if [ "$JSON" = 1 ]; then
     SHA=$(sha256sum <"$EST" | cut -d' ' -f1)
-    jq -cn --arg n "$EST" --arg s "$SHA" --arg x "${EXTRAS#|}" --arg v "$AVTOPE" '{nucleo:$n,sha256:$s,modo:"estado-md",extras:($x | split("|") | map(select(. != "")))} + (if $v == "" then {} else {avisos:[$v]} end)'
+    jq -cn --arg n "$EST" --arg s "$SHA" --arg x "${EXTRAS#|}" --arg tr "$TRANSCRIPT" --argjson b "$(wc -c <"$EST" | tr -d ' ')" '{nucleo:$n,sha256:$s,transcript:(if $tr == "" then null else $tr end),bytes:$b,modo:"estado-md",extras:($x | split("|") | map(select(. != "")))} + (if ($ARGS.positional | length) == 0 then {} else {avisos:$ARGS.positional} end)' --args ${AV[@]+"${AV[@]}"}
   else
     echo "handoff: $EST escrito ($(wc -c <"$EST" | tr -d ' ') B de $TOPE)"
     [ -z "$EXTRAS" ] || echo "handoff: sin equivalente en ESTADO.md, añadidas como secciones propias: ${EXTRAS#|}"
@@ -591,7 +637,7 @@ fi
 # --- el nucleo actual ---
 OLD_CK=ausente; [ ! -f "$NUC" ] || OLD_CK=$(cksum <"$NUC")
 HAYVIEJO=0; [ -f "$ORIGEN" ] && [ -s "$ORIGEN" ] && HAYVIEJO=1
-[ "$HAYVIEJO" -eq 0 ] || cp -- "$ORIGEN" "$W/viejo.md"
+[ "$HAYVIEJO" -eq 0 ] || cp --preserve=timestamps -- "$ORIGEN" "$W/viejo.md"
 
 RK=(); RT=(); HEAD="# Estado"$'\n'$'\n'
 if [ "$HAYVIEJO" -eq 1 ] && [ "$SOLO" -eq 0 ]; then
@@ -643,13 +689,9 @@ else
 fi
 
 # Los [x] del Plan (fuera de las cercas) salen del nucleo y van a diario con su comando y el hash de HEAD.
-: >"$W/hechos"
 for ((i = 0; i < ${#RK[@]}; i++)); do
   [ "${RK[i]}" = plan ] || continue
-  RT[i]=$(awk -v d="$W/hechos" '
-    /^[ \t]*(```|~~~)/ { c = !c }
-    !c && /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { print > d; next }
-    { print }' <<<"${RT[i]}")$'\n'
+  RT[i]=$(plan_abierto "${RT[i]}")$'\n'
 done
 
 # El último rc de cada comando de verificaciones.log, junto a su línea de «Comandos de verificación».
@@ -674,8 +716,18 @@ if [ "${#LCMD[@]}" -gt 0 ]; then
     while IFS= read -r l; do
       if [ "$prim" -eq 1 ]; then prim=0; out+=$l$'\n'; continue; fi
       if [[ $l != '<!--'* ]]; then
+        campo=${l#"${l%%[![:space:]]*}"}
+        if [[ $campo =~ ^([-*+]|[0-9]+[.\)])[[:space:]]+ ]]; then
+          campo=${campo:${#BASH_REMATCH[0]}}
+        fi
+        case $campo in \*\*\`*\`\*\** | __\`*\`__*) campo=${campo:2} ;; esac
+        if [[ $campo == \`* ]]; then campo=${campo#\`}; campo=${campo%%\`*}
+        else
+          campo=${campo%% → rc=*}
+          case $campo in \*\**\*\* | __*__) campo=${campo:2:${#campo}-4} ;; esac
+        fi
         for ((j = ${#LCMD[@]} - 1; j >= 0; j--)); do
-          [[ $l == *"${LCMD[j]}"* ]] || continue
+          [ "$campo" = "${LCMD[j]}" ] || continue
           l="${l%% → rc=[0-9]*} → rc=${LRC[j]}"
           [ "$j" -ne "$ult" ] || casada=1
           break
@@ -745,15 +797,15 @@ fi
 OMITIDAS=""
 armar() {
   local h="" l t i
-  while IFS= read -r l; do case $l in '> handoff '*) ;; *) h+=$l$'\n' ;; esac; done <<<"${HEAD%$'\n'}"
+  while IFS= read -r l; do case $l in '> handoff '* | '> sesión anterior: '* | '> carpeta de trabajo: '*) ;; *) h+=$l$'\n' ;; esac; done <<<"${HEAD%$'\n'}"
   [ -z "$OMITIDAS" ] || h+="> handoff $HOY: omitidas por tope (copia en diario.md):$OMITIDAS"$'\n'
+  [ -z "$TRANSCRIPT" ] || h+="> sesión anterior: $TRANSCRIPT · volver: claude --resume $SESION · buscar en él con rg, nunca leerlo entero"$'\n'
+  [ -z "$CARPETA" ] || h+="> carpeta de trabajo: $CARPETA"$'\n'
   t=$h
   for ((i = 0; i < ${#RK[@]}; i++)); do [ -z "${RT[i]}" ] || { fin_nl "RT[$i]"; t+=${RT[i]}; }; done
   TEXTO=$t
 }
-bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
 armar
-AVISOS=""
 # Se omiten secciones enteras: primero las ajenas a la plantilla (desde el final), luego las de plantilla desde el
 # final del orden D5 hasta Comandos (Objetivo, Invariantes y Siguiente acción no se tocan); lo omitido va al diario.
 omitir() {
@@ -786,10 +838,10 @@ for k in pendientes plan "ficheros tocados" "comandos de verificacion" "paso act
     if [ "$k" = "paso actual" ]; then recortar "$i"; else omitir "$i"; fi
   done
 done
-[ -z "$OMITIDAS" ] || AVISOS="omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
-[ -z "$RECORTADA" ] || AVISOS+="${AVISOS:+; }$RECORTADA recortado al tope (${TOPE} B), entero en diario.md"
+[ -z "$OMITIDAS" ] || avisar "omitidas por tope (${TOPE} B), copia en diario.md:$OMITIDAS"
+[ -z "$RECORTADA" ] || avisar "$RECORTADA recortado al tope (${TOPE} B), entero en diario.md"
 if [ "$(bytes "$TEXTO")" -gt "$TOPE" ]; then
-  AVISOS+="${AVISOS:+; }Objetivo, Invariantes y Siguiente acción solos pasan del tope: no se tocan; acórtalos o mueve lo cerrado a diario.md a mano"
+  avisar "Objetivo, Invariantes y Siguiente acción solos pasan del tope: no se tocan; acórtalos o mueve lo cerrado a diario.md a mano"
 fi
 
 # --- escritura ---
@@ -798,11 +850,14 @@ NEW_CK=ausente; [ ! -f "$NUC" ] || NEW_CK=$(cksum <"$NUC")
 [ "$NEW_CK" = "$OLD_CK" ] || die 4 "nucleo.md cambió mientras se fusionaba (otra sesión): no lo piso; reintenta"
 mkdir -p "$E"
 if [ "$HAYVIEJO" -eq 1 ]; then
-  P=$E/nucleo.prev-$(date -u +%Y%m%dT%H%M%SZ).md
-  [ ! -e "$P" ] || P=${P%.md}-$$.md
-  cp -- "$W/viejo.md" "$P"
-  mapfile -t COPIAS < <(printf '%s\n' "$E"/nucleo.prev-*.md | sort)
-  for ((i = 0; i < ${#COPIAS[@]} - 3; i++)); do rm -f -- "${COPIAS[i]}"; done
+  # Un handoff que no cambia el nucleo no desplaza la última versión distinta de las 3 copias (como en modo ESTADO.md).
+  if [ "$(printf '%s' "$TEXTO" | cksum)" != "$OLD_CK" ]; then
+    P=$E/nucleo.prev-$(date -u +%Y%m%dT%H%M%SZ).md
+    [ ! -e "$P" ] || P=${P%.md}-$$.md
+    cp -- "$W/viejo.md" "$P"
+    mapfile -t COPIAS < <(printf '%s\n' "$E"/nucleo.prev-*.md | sort)
+    for ((i = 0; i < ${#COPIAS[@]} - 3; i++)); do rm -f -- "${COPIAS[i]}"; done
+  fi
 fi
 TMP=$(mktemp "$E/.nucleo.XXXXXX")
 printf '%s' "$TEXTO" >"$TMP"
@@ -819,7 +874,10 @@ SINCMD=0
     [ -n "$l" ] || continue
     # Forma, no contenido: «` `» cuenta como comando. Marca el cierre sin comando por descuido, no al que lo esquiva.
     # shellcheck disable=SC2016  # Backticks literales: el comando va entre ellos.
-    if [[ $l != *\`?*\`* ]]; then l+=" (sin comando)"; SINCMD=$((SINCMD + 1)); fi
+    sc=""; [[ $l == *\`?*\`* ]] || { sc=" (sin comando)"; SINCMD=$((SINCMD + 1)); }
+    [[ $YA != *$'\n'"$l$sc"$'\n'* ]] || continue
+    YA+=$l$sc$'\n'
+    l+=$sc
     printf -- '- %s · %s · %s\n' "$HOY" "$l" "$HASH"
   done <"$W/hechos"
   [ ! -s "$W/omitido" ] || cat "$W/omitido"
@@ -850,14 +908,14 @@ fi
 # El dueño: solo lo libera quien lo es (o nadie lo es ya).
 if [ -z "$SES" ] && D=$(nucleo_dueno "$RAIZ"); then
   if [ -z "$SESION" ] || [ "${D% *}" = "$SESION" ] || ! nucleo_dueno_vigente "$RAIZ" >/dev/null; then rm -f -- "$E/.dueno"
-  else AVISOS+="${AVISOS:+; }la sesión dueña es otra (${D% *}): no se libera"
+  else avisar "la sesión dueña es otra (${D% *}): no se libera"
   fi
 fi
-[ "$SINCMD" -eq 0 ] || AVISOS+="${AVISOS:+; }$SINCMD cierre(s) sin comando de verificación"
-[ -z "$AVISOS" ] || echo "handoff: $AVISOS" >&2
+[ "$SINCMD" -eq 0 ] || avisar "$SINCMD cierre(s) sin comando de verificación"
+avisos_stderr
 if [ "$JSON" = 1 ]; then
   SHA=$(printf '%s' "$TEXTO" | sha256sum | cut -d' ' -f1)
-  jq -cn --arg n "$NUC" --arg s "$SHA" '{nucleo:$n,sha256:$s}'
+  jq -cn --arg n "$NUC" --arg s "$SHA" --arg tr "$TRANSCRIPT" --argjson b "$(bytes "$TEXTO")" '{nucleo:$n,sha256:$s,transcript:(if $tr == "" then null else $tr end),bytes:$b} + (if ($ARGS.positional | length) == 0 then {} else {avisos:$ARGS.positional} end)' --args ${AV[@]+"${AV[@]}"}
 else echo "handoff: $NUC escrito ($(bytes "$TEXTO") B de $TOPE)"
 fi
 [ -z "$ERRC" ] || die 1 "$ERRC"

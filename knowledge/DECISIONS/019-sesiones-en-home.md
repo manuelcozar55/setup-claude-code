@@ -33,9 +33,10 @@ mismo nucleo, no puede volver.
 ## Consecuencias
 
 - `claude --resume` en otro proceso arranca una ranura nueva; la vieja sigue en el índice y se retoma a mano.
-- El handoff automático del cockpit sigue limitado a proyecto (la ranura es de la sesión, pero no hay
-  validación en vivo de ese camino todavía).
-- Sin validar en vivo: que los hijos de `$.process.run` (el cockpit) y un `claude -p` anidado hereden el
-  `CLAUDE_PID` del claude de la sesión. Los tests fijan `CLAUDE_PID` a mano.
+- El handoff automático del cockpit también actúa en `~`, pero solo si `handoff --estado` devuelve la ranura de la
+  sesión (`~/.claude/estado/sesiones/<x>/nucleo.md`); sin ranura (exit 3 o el nucleo compartido) no hace nada y el log dice
+  «sin ranura» (ADR 027). Enmienda de la nota del 21-oct («limitado a proyecto»), que nunca fue una regla del código.
+- Medido en vivo (ADR 027): los hijos de `$.process.run` no reciben `CLAUDE_PID` del claude de la sesión (solo el que
+  heredó de quien lo lanzó); cuelgan directamente de él y la ranura sale de `$PPID`.
 - No hay purga: las ranuras de procesos muertos se quedan en `sesiones/` y en el índice hasta borrarlas a mano.
 - En clear y resume la ranura propia sale dos veces: inyectada como `<nucleo-datos>` y como línea del índice.

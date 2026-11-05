@@ -1,5 +1,7 @@
 # Pre-mortem — 2026-11-21, tres meses después
 
+> **[HISTÓRICO]** Ejercicio fechado, no el estado de hoy.
+
 *Ejercicio: es noviembre de 2026 y mcharness ha fracasado. Nadie lo usa, o se usa como
 decoración. ¿Qué pasó?*
 
@@ -43,7 +45,7 @@ harness sirve, y algo cuyo valor no se puede demostrar acaba abandonado sin disc
 instrumento original decía *"Primera vuelta: no hay snapshot anterior"*.
 
 **Qué hace el diseño.** `cost-report.sh` calcula tendencias en cuanto haya dos snapshots, y
-`/retro` incluye actualizar `COST-LOG.md`.
+`/retro-repo` incluye actualizar `COST-LOG.md`.
 
 **Qué NO hace.** Nadie ejecuta `metrics.py` periódicamente. **Mitigación concreta y barata**:
 un `/loop` semanal o una entrada de cron que corra `cost-report.sh`. No está hecho; es la

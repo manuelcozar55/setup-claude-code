@@ -130,5 +130,117 @@ done
 ok '14 HOME registra fin real sin confundir hermano con hijo pendiente' "$(ho "$PA" --agentes | grep -c 'terminado sin informe')" 1
 ok '14 registro HOME no contamina otra ranura' "$(ho "$PC" --agentes | grep -c home-agent)" 0
 
+# 15 (H9). Seis SubagentStart a la vez desde ~ en una sesión sin ranura: los seis llegan a agentes.jsonl, ronda tras ronda.
+TOT=0
+for _ in 1 2 3 4 5 6 7 8; do
+  sleep 300 & PR=$!; PIDS+=("$PR")
+  JP=()
+  for i in 1 2 3 4 5 6; do
+    jq -cn --arg r "$HOME" --arg i "ag$i" '{cwd:$r,hook_event_name:"SubagentStart",session_id:"race",agent_id:$i,agent_type:"worker"}' | CLAUDE_PID=$PR bash "$K/hooks/agentes.sh" &
+    JP+=($!)
+  done
+  wait "${JP[@]}"
+  RR=$(find "$SES" -maxdepth 1 -name "*-$PR" | head -1)
+  TOT=$((TOT + $(command grep -c '"ev":"start"' "$RR/agentes.jsonl" 2>/dev/null)))
+done
+# Los hooks pueden perder una línea por el plazo de 1 s del lock con la máquina cargada (ajeno a la ranura): margen de 4.
+# El contrato estricto de la ranura va aparte, sin lock de por medio.
+ok '15 6 SubagentStart paralelos desde ~: 8 rondas x 6, a lo sumo 4 perdidas' "$([ "$TOT" -ge 44 ] && echo si || echo "solo $TOT de 48")" si
+SD6=0
+for _ in 1 2 3 4 5 6 7 8; do
+  sleep 300 & PR=$!; PIDS+=("$PR"); JP=()
+  for i in 1 2 3 4 5 6; do ( CLAUDE_PID=$PR nucleo_sesion_dir crear >"$T/sd-$i" 2>/dev/null ) & JP+=($!); done
+  wait "${JP[@]}"
+  [ "$(cat "$T"/sd-? | sort -u | wc -l | tr -d ' ')" = 1 ] && [ "$(cat "$T"/sd-? | wc -l | tr -d ' ')" = 6 ] && SD6=$((SD6 + 1))
+done
+ok '15 nucleo_sesion_dir crear en paralelo: los 6 reciben la misma ranura (8 rondas)' "$SD6" 8
+ok '15 la carrera no deja .nueva.* sueltos' "$(find "$SES" -maxdepth 1 -name '.nueva.*' | wc -l | tr -d ' ')" 0
+
+# 16 (H11). PreCompact desde ~ sin ranura propia no copia los pendientes del nucleo compartido (de otra tarea).
+sleep 300 & PS=$!; PIDS+=("$PS")
+mkdir -p "$HOME/.claude/estado"; printf '# Estado\n## Pendientes\n- [ ] PENDIENTE-DE-OTRA-TAREA\n' >"$HOME/.claude/estado/nucleo.md"
+jq -cn --arg c "$HOME" '{cwd:$c,session_id:"sinranura",trigger:"auto"}' | CLAUDE_PID=$PS bash "$K/hooks/pre-compact.sh" 2>/dev/null
+CPS=$(find "$HOME/.claude/estado" -maxdepth 1 -name 'checkpoint-compact-*.md' | head -1)
+ok '16 PreCompact desde ~ sin ranura: checkpoint hecho' "$([ -n "$CPS" ] && echo si)" si
+ok '16 PreCompact desde ~ sin ranura: sin pendientes ajenos' "$(command grep -rc 'PENDIENTE-DE-OTRA-TAREA' "$HOME"/.claude/estado/checkpoint-compact-*.md | awk -F: '{s+=$NF} END{print s+0}')" 0
+ok '16 PreCompact desde ~ sin ranura: edad del KPI -1' "$(tail -1 "$HOME/.claude/session-logs/nucleo-freshness.log" | awk '{print $4}')" -1
+
+# 17 (H13). startup desde ~ borra ranuras sin nucleo.md, de proceso muerto y de más de 14 días; la rotación de agentes
+# borra fotos de más de 14 días. Nada de lo demás (con nucleo, vivas, recientes) se toca.
+# shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
+. "$K/hooks/lib/nucleo.sh"
+mkslot() { local d=$SES/$1; mkdir -p "$d"; printf '%s\n' "$2" >"$d/.proceso"; [ -z "${3:-}" ] || echo x >"$d/nucleo.md"; touch -d "${4:--20 days}" "$d/.proceso" "$d${3:+/nucleo.md}" "$d"; }
+mkslot 20260101-0000-999991 ticks:1 "" "-20 days"
+mkslot 20260101-0001-999992 ticks:1 "" "now"
+mkslot 20260101-0002-999993 ticks:1 si "-20 days"
+mkslot "20260101-0003-$PC" "$(_nucleo_proceso_id "$PC")" "" "-20 days"
+hook "$HC" "$PA" startup limpieza >/dev/null
+ok '17 ranura muerta, vieja y sin nucleo: borrada' "$([ -e "$SES/20260101-0000-999991" ] && echo existe || echo borrada)" borrada
+ok '17 ranura muerta pero reciente: se queda' "$([ -e "$SES/20260101-0001-999992" ] && echo existe || echo borrada)" existe
+ok '17 ranura vieja con nucleo.md: se queda' "$([ -e "$SES/20260101-0002-999993" ] && echo existe || echo borrada)" existe
+ok '17 ranura vieja de proceso vivo: se queda' "$([ -e "$SES/20260101-0003-$PC" ] && echo existe || echo borrada)" existe
+jq -cn '{sid:"vieja",t:"2020-01-01T00:00:00Z",vivos:[]}' >"$SA/agentes-vivos-vieja.json"; touch -d '-20 days' "$SA/agentes-vivos-vieja.json"
+jq -cn '{sid:"reciente",t:"2020-01-01T00:00:00Z",vivos:[]}' >"$SA/agentes-vivos-reciente.json"
+jq -cn --arg r "$HOME" '{cwd:$r,hook_event_name:"SubagentStart",session_id:"limp",agent_id:"agL",agent_type:"worker"}' | CLAUDE_PID=$PA bash "$K/hooks/agentes.sh"
+ok '17 la rotación borra la foto de más de 14 días y conserva la reciente' "$([ -e "$SA/agentes-vivos-vieja.json" ] && echo vieja),$([ -e "$SA/agentes-vivos-reciente.json" ] && echo reciente)" ,reciente
+
+# 18 (N4). El registro de raíces no admite rutas bajo /tmp ni $TMPDIR, y startup descarta las inexistentes.
+# El HOME de prueba vive en /tmp: esa base no cuenta (HOME dentro de ella); TMPDIR apunta a otra carpeta, y esa sí.
+mkdir -p "$T/tmpx/efimera/.claude/estado" "$T/real/.claude/estado"
+echo '# Estado' >"$T/tmpx/efimera/.claude/estado/nucleo.md"; echo '# Estado' >"$T/real/.claude/estado/nucleo.md"
+REG=$HOME/.claude/estado/raices; : >"$REG"
+( export TMPDIR=$T/tmpx; nucleo_registrar "$T/tmpx/efimera"; nucleo_registrar "$T/real" )
+ok '18 registrar rechaza la raíz bajo TMPDIR y admite la otra' "$(tr '\n' ' ' <"$REG")" "$T/real "
+printf '%s\n' "$T/real" "$T/borrada-ya" "$T/tmpx/efimera" >"$REG"
+TMPDIR=$T/tmpx hook "$HC" "$PA" startup depura >/dev/null
+ok '18 startup depura inexistentes y efímeras del registro' "$(tr '\n' ' ' <"$REG")" "$T/real "
+
+# 19. Tras /handoff + /clear en ~ la sesión conserva su ranura y su carpeta, y siempre recibe un mínimo. El mod corre el CLI desde el cwd
+# vivo (una carpeta cualquiera) con CLAUDE_PROJECT_DIR = donde arrancó (~): la ranura es la de siempre y la carpeta queda anotada.
+sleep 300 & PF=$!; PIDS+=("$PF")
+mkdir -p "$HOME/trabajo/sub"
+hof() { (cd "$1" && shift && CLAUDE_PID=$PF CLAUDE_PROJECT_DIR=$HOME bash "$HO" "$@"); }
+hof "$HOME/trabajo/sub" --desde "$(borrador F)" >/dev/null 2>&1; R=$?
+SF=$(ls -d "$SES"/*-"$PF" 2>/dev/null)
+ok "19 handoff desde otra carpeta con CLAUDE_PROJECT_DIR=~ sale 0 y escribe en la ranura de ~" "$R,$(command grep -c obj-F "$SF/nucleo.md" 2>/dev/null)" "0,1"
+ok "19 anota la carpeta de trabajo una vez, bajo el título" "$(awk '/^## /{exit} /^> carpeta de trabajo: /{n++} END{print n+0}' "$SF/nucleo.md")" 1
+ok "19 y la carpeta anotada es el cwd del que guardó" "$(command grep -cFx "> carpeta de trabajo: $HOME/trabajo/sub" "$SF/nucleo.md")" 1
+C=$(hook "$HC" "$PF" clear sF)
+ok "19 /clear: llega el nucleo de la ranura con la línea de carpeta dentro de los datos" "$(command grep -c "<nucleo-datos fuente=\"$SF/nucleo.md\">" <<<"$C"),$(awk '/^<nucleo-datos /{d=1} d && /^> carpeta de trabajo: /{n++} END{print n+0}' <<<"$C")" "1,1"
+ok "19 /clear: dice la carpeta y que se vaya a ella, tras los datos (no dentro)" "$(sed -n '/^<\/nucleo-datos>/,$p' <<<"$C" | command grep -cF "La sesión anterior trabajaba en la carpeta '$HOME/trabajo/sub' (")" 1
+C=$(jq -cn --arg c "$HOME/trabajo/sub" '{cwd:$c,session_id:"sF",source:"clear"}' | CLAUDE_PID=$PF CLAUDE_PROJECT_DIR=$HOME bash "$HC" | ctx)
+ok "19 /clear que ya cae en esa carpeta no manda ir a ella" "$(command grep -c 'La sesión anterior trabajaba' <<<"$C")" 0
+ok "19 startup no anuncia carpeta (sin estado propio que retomar)" "$(hook "$HC" "$PF" startup sF | command grep -c 'La sesión anterior trabajaba')" 0
+ho "$PF" --desde "$(borrador F)" >/dev/null 2>&1
+ok "19 un handoff desde ~ borra la línea de carpeta anterior" "$(command grep -c '^> carpeta de trabajo: ' "$SF/nucleo.md")" 0
+ok "19 y /clear ya no manda a ninguna carpeta" "$(hook "$HC" "$PF" clear sF | command grep -c 'La sesión anterior trabajaba')" 0
+# El nucleo de la ranura es de texto libre (sin secciones de plantilla): la sesión nueva recibe un trozo y dónde está el resto, no un bloque vacío.
+printf 'notas libres de la sesion F\nsin secciones\n' >"$SF/nucleo.md"
+C=$(hook "$HC" "$PF" clear sF)
+ok "19 nucleo sin secciones: /clear trae su ruta, un trozo del principio y dónde está el resto" "$(command grep -c "<nucleo-datos fuente=\"$SF/nucleo.md\">" <<<"$C"),$(command grep -c 'notas libres de la sesion F' <<<"$C"),$(command grep -c "el resto en ese fichero" <<<"$C")" "1,1,1"
+
+# 19b. Un nucleo de la ranura vacío (solo comentarios) no deja el bloque de datos vacío: dice que no hay nada legible, como en un proyecto.
+printf '<!-- solo plantilla -->\n' >"$SF/nucleo.md"
+C=$(hook "$HC" "$PF" clear sF)
+ok "19 nucleo de ranura vacío: /clear dice «no hay nada legible» en vez de un bloque vacío" "$(command grep -c 'no hay nada legible en nucleo.md' <<<"$C")" 1
+
+# 20. Sin CLAUDE_PID (lo que ve un hijo de $.process.run del cockpit: claude no lo exporta y el mod lo deja vacío) la ranura sale del
+# padre cuando su comm es «claude». Medido en vivo (ADR 027): el hijo de process.run cuelga directamente del claude de la sesión.
+# El «claude» es una copia de bash con ese nombre; -c con un `:` final impide que bash sustituya el proceso por el último comando.
+mkdir -p "$T/falso"; cp "$(command -v bash)" "$T/falso/claude"
+for v in unset vacio; do
+  rm -f "$T/fp" "$T/frc"
+  export T HO HOME; B20=$(borrador "G$v"); export B20
+  if [ "$v" = unset ]; then PRE="env -u CLAUDE_PID"; else PRE="env CLAUDE_PID="; fi
+  export PRE
+  # shellcheck disable=SC2016  # se expande en el bash hijo
+  (cd "$HOME" && "$T/falso/claude" -c 'echo $$ >"$T/fp"; $PRE bash "$HO" --desde "$B20" >/dev/null 2>&1; echo $? >"$T/frc"; :')
+  FP=$(cat "$T/fp" 2>/dev/null)
+  ok "20 CLAUDE_PID $v y padre claude: handoff --desde sale 0 y crea la ranura de ese pid" "$(cat "$T/frc" 2>/dev/null),$(find "$SES" -maxdepth 1 -name "*-$FP" | wc -l | tr -d ' ')" "0,1"
+done
+rm -f "$T/fp" "$T/frc"
+(cd "$HOME" && env -u CLAUDE_PID bash "$HO" --desde "$(borrador Hn)" >/dev/null 2>&1); R=$?
+ok "20 sin CLAUDE_PID y con un padre que no es claude no hay ranura (sale 3)" "$R" 3
+
 [ "$FAIL" -eq 0 ] && echo "PASS" || echo "FAIL"
 exit "$FAIL"

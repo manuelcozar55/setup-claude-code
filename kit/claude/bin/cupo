@@ -25,7 +25,9 @@ while [ $# -gt 0 ]; do
     *) echo "uso: cupo [--umbral N] («$1» no es una opción)" >&2; exit 64 ;;
   esac
 done
-case $UMBRAL in '' | *[!0-9]*) echo "uso: cupo [--umbral N] (N es un entero 0-100, no «$UMBRAL»)" >&2; exit 64 ;; esac
+if [[ ! $UMBRAL =~ ^0*([0-9]{1,2}|100)$ ]]; then
+  echo "uso: cupo [--umbral N] (N es un entero 0-100, no «$UMBRAL»)" >&2; exit 64
+fi
 
 command -v claude >/dev/null 2>&1 || { echo "cupo: no hay claude en el PATH" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "cupo: falta jq" >&2; exit 2; }

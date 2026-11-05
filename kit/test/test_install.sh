@@ -139,6 +139,7 @@ if command -v jq >/dev/null 2>&1; then
   ck "$([ -f "$CLAUDE_HOME/CLAUDE.kit.md" ] && echo y)" "y" "la version del kit queda al lado en CLAUDE.kit.md"
 else
   echo "skip - jq ausente: no se prueba la fusion de settings.json"
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: fusion de settings.json (test_install.sh): jq ausente" >> "$SCC_SKIP_LOG"
 fi
 
 # El aviso de credenciales solo recomienda copiar la plantilla si existe.
@@ -230,6 +231,7 @@ ck "$(sed -n '/^enlazar_clis()/,/^}/p' "$KIT/install.sh" | grep -cE 'ln -[a-z]*f
 HC="$tmp/home-cupo"; mkdir -p "$HC/fake"
 cat > "$HC/fake/claude" <<'FAKE'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CUPO_FAKE_EVENTOS.calls"
 if [ "$1" = auth ]; then printf '{"loggedIn":true,"email":"ana@example.com","subscriptionType":"max"}\n'; exit 0; fi
 printf '%s\n' '{"type":"system","subtype":"init"}'
 cat "$CUPO_FAKE_EVENTOS"
@@ -239,6 +241,7 @@ chmod +x "$HC/fake/claude"
 cupo_caso() { # nombre eventos [args…]: deja salida en $HC/out-nombre y el rc en $cupo_rc
   local n=$1 ev=$2; shift 2
   printf '%s\n' "$ev" > "$HC/ev-$n"
+  : > "$HC/ev-$n.calls"
   set +e; CUPO_FAKE_EVENTOS="$HC/ev-$n" PATH="$HC/fake:$PATH" bash "$KIT/claude/bin/cupo" "$@" > "$HC/out-$n" 2>&1; cupo_rc=$?; set -e
 }
 EV_ALTO='{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1792760400,"rateLimitType":"five_hour","utilization":0.98,"overageStatus":"rejected","isUsingOverage":false,"surpassedThreshold":0.9,"unifiedWindows":{"five_hour":{"utilization":0.98,"resetsAt":1792760400},"seven_day":{"utilization":0.11,"resetsAt":1793347200}}}}'
@@ -264,7 +267,77 @@ cupo_caso sinevento ""
 ck "$cupo_rc" "2" "K2: sin rate_limit_event no hay veredicto (2), no un falso verde"
 cupo_caso uso "$EV_BAJO" --umbral abc
 ck "$cupo_rc" "64" "K2: umbral no numerico es error de uso (64)"
+for umbral in 101 -1 abc 999999999999999999999999; do
+  cupo_caso "rango-$umbral" "$EV_BAJO" --umbral "$umbral"
+  ck "$cupo_rc,$(wc -l < "$HC/ev-rango-$umbral.calls")" "64,0" "K2: --umbral $umbral se rechaza antes de consultar Claude"
+  CUPO_UMBRAL=$umbral cupo_caso "env-$umbral" "$EV_BAJO"
+  ck "$cupo_rc,$(wc -l < "$HC/ev-env-$umbral.calls")" "64,0" "K2: CUPO_UMBRAL=$umbral se rechaza antes de consultar Claude"
+done
+cupo_caso cero "$EV_BAJO" --umbral 0
+ck "$cupo_rc" "1" "K2: umbral 0 es válido y bloquea utilización positiva"
+cupo_caso cien "$EV_ALTO" --umbral 100
+ck "$cupo_rc" "0" "K2: umbral 100 es válido"
+cupo_caso ceros "$EV_BAJO" --umbral 0080
+ck "$cupo_rc" "0" "K2: los ceros iniciales mantienen el valor decimal"
 ck "$(grep -rlE '\.credentials|\.env|/\.ssh' "$KIT/claude/bin/cupo" || true)" "" "K2: cupo no nombra ficheros de credenciales"
 HOME="$HC/h" CLAUDE_HOME="$HC/h/.claude" bash "$KIT/install.sh" >/dev/null 2>&1
 ck "$([ -x "$HC/h/.claude/bin/cupo" ] && echo y)" "y" "K2: install.sh instala bin/cupo ejecutable"
+
+# H3: CLAUDE.md/AGENTS.md. Con el sha256 de lo que escribio el kit, quien no los toco recibe la version nueva
+# (con backup); quien los edito, o viene de 1.7.x sin registro, conserva lo suyo y recibe *.kit.md + el comando.
+D3="$tmp/h3"; mkdir -p "$D3/h" "$D3/kit"
+cp -a "$KIT/." "$D3/kit/"
+inst3() { HOME="$D3/h" CLAUDE_HOME="$D3/h/.claude" bash "$D3/kit/install.sh" > "$D3/out.log" 2>&1; }
+inst3
+ck "$(grep -c 'AGENTS.md$' "$D3/h/.claude/.kit-docs.sha256")" "1" "H3: se guarda el sha256 de lo que escribio el kit"
+printf '\nregla nueva del kit\n' >> "$D3/kit/claude/AGENTS.md"
+inst3
+ck "$(grep -c 'regla nueva del kit' "$D3/h/.claude/AGENTS.md")" "1" "H3: AGENTS.md sin editar se actualiza al reinstalar"
+ck "$(find "$D3/h/.claude/backups" -name AGENTS.md | wc -l | tr -d ' ')" "1" "H3: la version anterior queda en backups/"
+ck "$([ -f "$D3/h/.claude/AGENTS.kit.md" ] && echo y || echo n)" "n" "H3: sin conflicto no queda AGENTS.kit.md"
+printf 'mi linea\n' >> "$D3/h/.claude/AGENTS.md"
+printf '\notra regla del kit\n' >> "$D3/kit/claude/AGENTS.md"
+inst3
+ck "$(grep -c 'mi linea' "$D3/h/.claude/AGENTS.md")" "1" "H3: AGENTS.md editado NO se pisa"
+ck "$(grep -c 'otra regla del kit' "$D3/h/.claude/AGENTS.kit.md")" "1" "H3: la version nueva queda en AGENTS.kit.md"
+# Migracion desde 1.7.x: sin registro, aunque no se haya editado nada, se conserva y se explica como aceptar.
+rm -f "$D3/h/.claude/.kit-docs.sha256" "$D3/h/.claude/AGENTS.kit.md"
+printf '\nregla 3\n' >> "$D3/kit/claude/AGENTS.md"
+cp "$D3/kit/claude/CLAUDE.md" "$D3/h/.claude/CLAUDE.md"; printf '\n' >> "$D3/h/.claude/CLAUDE.md"
+inst3
+ck "$(grep -c 'regla 3' "$D3/h/.claude/AGENTS.md")" "0" "H3: sin registro previo no se pisa (puede ser tuyo)"
+ck "$(grep -c 'cp ".*AGENTS.kit.md" ".*AGENTS.md"' "$D3/out.log")" "1" "H3: el mensaje da el comando para aceptar la version del kit"
+cp "$D3/h/.claude/AGENTS.kit.md" "$D3/h/.claude/AGENTS.md"
+printf '\nregla 4\n' >> "$D3/kit/claude/AGENTS.md"
+inst3
+ck "$(grep -c 'regla 4' "$D3/h/.claude/AGENTS.md")" "1" "H3: tras aceptar una vez, el kit vuelve a mantenerlo al dia"
+
+# Migracion desde 1.7.x con el kit en un clon git: lo instalado es una version versionada del kit -> se actualiza.
+if command -v git >/dev/null 2>&1; then
+  D4="$tmp/h3git"; mkdir -p "$D4/h/.claude" "$D4/kit"
+  cp -a "$KIT/." "$D4/kit/"
+  git -C "$D4/kit" init -q && git -C "$D4/kit" add -A \
+    && git -C "$D4/kit" -c user.name=t -c user.email=t@e commit -qm v1 >/dev/null
+  cp "$D4/kit/claude/AGENTS.md" "$D4/h/.claude/AGENTS.md"
+  printf '\nregla de la version siguiente\n' >> "$D4/kit/claude/AGENTS.md"
+  git -C "$D4/kit" -c user.name=t -c user.email=t@e commit -qam v2 >/dev/null
+  printf '\nregla 5\n' >> "$D4/kit/claude/AGENTS.md"
+  HOME="$D4/h" CLAUDE_HOME="$D4/h/.claude" bash "$D4/kit/install.sh" > "$D4/out.log" 2>&1
+  ck "$(grep -c 'regla 5' "$D4/h/.claude/AGENTS.md")" "1" "H3: sin registro, una version anterior del kit (historia git) se actualiza"
+  ck "$([ -f "$D4/h/.claude/AGENTS.kit.md" ] && echo y || echo n)" "n" "H3: y no deja AGENTS.kit.md"
+  printf 'mia\n' >> "$D4/h/.claude/AGENTS.md"; rm -f "$D4/h/.claude/.kit-docs.sha256"
+  printf '\nregla 6\n' >> "$D4/kit/claude/AGENTS.md"
+  HOME="$D4/h" CLAUDE_HOME="$D4/h/.claude" bash "$D4/kit/install.sh" > "$D4/out.log" 2>&1
+  ck "$(grep -c 'regla 6' "$D4/h/.claude/AGENTS.md")" "0" "H3: sin registro y editada (no esta en la historia) no se pisa"
+else
+  echo "skip: H3 historia git (sin git)"; [ -n "${SCC_SKIP_LOG:-}" ] && echo "SKIP: test_install H3 historia git (sin git)" >> "$SCC_SKIP_LOG"
+fi
+
+# H10: los scripts se copian por rename atomico: el inodo del hook cambia y no queda ningun .tmp.
+ino_antes="$(stat -c %i "$D3/h/.claude/hooks/branch-guard.sh")"
+printf '\n# cambio\n' >> "$D3/kit/claude/hooks/branch-guard.sh"
+inst3
+ck "$([ "$(stat -c %i "$D3/h/.claude/hooks/branch-guard.sh")" != "$ino_antes" ] && echo y || echo n)" "y" "H10: el hook se sustituye por rename (otro inodo), no se trunca en sitio"
+ck "$(find "$D3/h/.claude" -name '*.tmp.*' | wc -l | tr -d ' ')" "0" "H10: no quedan temporales tras instalar"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

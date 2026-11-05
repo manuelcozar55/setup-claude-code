@@ -41,7 +41,7 @@ No supongas ni escondas la duda. Ante una tarea ambigua o de varios pasos, di en
 ```
 
 ## Never-Stop
-Se aclara *antes* de empezar. Una vez en marcha, nada de «¿sigo?»: ejecuta hasta el final y reporta. Si surge ambigüedad a mitad, toma la opción más conservadora y reversible y anótala en el informe. Solo se para ante un bloqueo que haga imposible terminar sin la persona. Una aprobación explícita vale para todo su alcance: no la repitas porque otra skill vuelva a pedirla.
+Se aclara *antes* de empezar. Una vez en marcha, nada de «¿sigo?»: ejecuta hasta el final y reporta. Si surge ambigüedad a mitad, toma la opción más conservadora y reversible y anótala en el informe. Solo se para ante un bloqueo que haga imposible terminar sin la persona; cerrar fase por contexto (aviso del 70 %) también es una parada válida: handoff y fin de turno. Una aprobación explícita vale para todo su alcance: no la repitas porque otra skill vuelva a pedirla.
 
 ## Dónde se escribe cada cosa
 - Temporal de proceso (scratchpad, `mktemp`): se puede perder. Estado de la tarea, informes y checkpoints: `<raíz>/.claude/estado/`, siempre ignorado por git y creado si falta. Lo privado de la máquina: `~/.claude`.

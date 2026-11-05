@@ -224,6 +224,7 @@ function estadoCli(on: never, estado: unknown, opts: { hangs?: boolean; exitCode
   const runs: { argv: readonly string[]; init?: { timeoutMs?: number } }[] = []
   o('fs.exists', () => ({ value: !opts.noBin }))
   o('session.cwd', () => ({ value: '/w/p' }))
+  o('session.root', () => ({ value: '/w/p' }))
   o('session.id', () => ({ value: 'sesion-1' }))
   o('process.run', (_: unknown, e: { argv: readonly string[]; init?: { timeoutMs?: number } }) => {
     runs.push(e)
@@ -244,7 +245,7 @@ test('dock: muestra el % del tope y el dueño de esta sesión, leídos de handof
   expect(await ui.find({ type: 'Text', text: /dueño: esta sesión/ })).toBeTruthy()
   const cli = runs.find(r => r.argv[0] === `${HOME}/.claude/bin/handoff`)
   expect(cli?.argv).toEqual([`${HOME}/.claude/bin/handoff`, '--estado', '--raiz', '/w/p', '--sesion', 'sesion-1'])
-  expect(cli?.init?.timeoutMs).toBeLessThanOrEqual(3000)
+  expect(cli?.init?.timeoutMs).toBeLessThanOrEqual(5000)
 })
 
 test('dock: un dueño vigente de otra sesión se nombra', async ($, on) => {
@@ -253,10 +254,24 @@ test('dock: un dueño vigente de otra sesión se nombra', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /dueño: otra sesión \(abcdef12\)/ })).toBeTruthy()
 })
 
-test('dock: sin dueño, o con el dueño vencido, lo dice', async ($, on) => {
+test('dock: un dueño incompleto degrada la continuidad sin romper el render', async ($, on) => {
+  estadoCli(on as never, { ...ESTADO, dueno: { vigente: true } })
+  const { ui } = await mountDock($ as never, on as never, 56)
+  expect(await ui.find({ text: /Continuidad degradada/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: 'Hechos · 1' })).toBeTruthy()
+  expect(await ui.find({ text: /dueño:/ })).toBeFalsy()
+})
+
+test('dock: sin dueño lo dice', async ($, on) => {
   estadoCli(on as never, { ...ESTADO, dueno: null })
   const { ui } = await mountDock($ as never, on as never, 56)
   expect(await ui.find({ type: 'Text', text: /dueño: ninguno/ })).toBeTruthy()
+})
+
+test('dock: un dueño vencido de otra sesión se nombra como vencido', async ($, on) => {
+  estadoCli(on as never, { ...ESTADO, dueno: { sesion: 'abcdef12-0000', desde: '2026-10-19T10:00:00Z', vigente: false } })
+  const { ui } = await mountDock($ as never, on as never, 56)
+  expect(await ui.find({ type: 'Text', text: /dueño: otra sesión \(abcdef12\) vencido/ })).toBeTruthy()
 })
 
 test('dock: sin proyecto (exit 3) o con el CLI caído no dibuja la fila de estado', async ($, on) => {

@@ -40,7 +40,6 @@ REQUIRED_EXEC=(
   kit/claude/hooks/pre-compact.sh
   kit/claude/hooks/secret-guard.sh
   kit/claude/hooks/session-start.sh
-  kit/claude/hooks/stop-session-summary.sh
   kit/doctor.sh
   kit/install.sh
   kit/scan-secrets.sh

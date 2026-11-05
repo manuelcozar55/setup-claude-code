@@ -9,6 +9,7 @@
 #   CLAUDE_HOME  (def. $HOME/.claude)   BACKUP_DIR  (def. $HOME/backups)
 #   BUCLE_DIR    (def. $HOME/ai-mastery/bucle)
 #   CLAUDE_JSON  (def. $HOME/.claude.json)
+#   BACKUP_PREFIX (def. claude-state)  prefijo del ZIP; uninstall.sh usa otro para su copia de seguridad
 set -euo pipefail
 
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
@@ -69,13 +70,16 @@ verify_zip() {
   root=$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -1)
   [ -n "$root" ] || { rm -rf "$tmp"; die "el ZIP no tiene directorio raiz"; }
 
-  ( cd "$root" && sha_chk MANIFEST.sha256 >/dev/null 2>&1 ) || rc=1
+  # Un snapshot solo de enlaces tiene cero checksums, pero no puede ocultar bytes.
+  if [ -s "$root/MANIFEST.sha256" ] || [ -n "$(find "$root" -type f ! -name MANIFEST.sha256 -print -quit)" ]; then
+    ( cd "$root" && sha_chk MANIFEST.sha256 >/dev/null 2>&1 ) || rc=1
+  fi
   if [ "$rc" -ne 0 ]; then
     rm -rf "$tmp"
     die "los checksums NO coinciden tras restaurar"
   fi
 
-  n=$(grep -c . < "$root/MANIFEST.sha256")
+  n=$(grep -c . < "$root/MANIFEST.sha256" || true)
   rm -rf "$tmp"
   ok "restauracion verificada: $n/$n checksums coinciden"
   inf "temporal de prueba eliminado"
@@ -92,10 +96,11 @@ fi
 # ------------------------------------------------------------------ construir
 command -v zip   >/dev/null 2>&1 || die "falta 'zip'"
 command -v unzip >/dev/null 2>&1 || die "falta 'unzip'"
-[ -d "$CLAUDE_HOME" ] || die "no existe CLAUDE_HOME: $CLAUDE_HOME"
+[ -d "$CLAUDE_HOME" ] || [ -f "$CLAUDE_JSON" ] || [ -L "$CLAUDE_JSON" ] \
+  || die "no existe CLAUDE_HOME ni CLAUDE_JSON: $CLAUDE_HOME"
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo backup)-$$-${RANDOM:-0}"
-NAME="claude-state-${STAMP}"
+NAME="${BACKUP_PREFIX:-claude-state}-${STAMP}"
 mkdir -p "$BACKUP_DIR"
 ZIP="$BACKUP_DIR/${NAME}.zip"
 [ -e "$ZIP" ] && die "ya existe $ZIP"
@@ -108,7 +113,16 @@ mkdir -p "$ROOT/claude"
 echo "== recopilando"
 TAR_EX=()
 for e in "${EXCLUDES[@]}"; do TAR_EX+=( --exclude="./$e" ); done
-tar -C "$CLAUDE_HOME" -cf - "${TAR_EX[@]}" . | tar -C "$ROOT/claude" -xf -
+if [ -d "$CLAUDE_HOME" ]; then
+  tar -C "$CLAUDE_HOME" -cf - "${TAR_EX[@]}" . | tar -C "$ROOT/claude" -xf -
+fi
+# projects/ se excluye entero (transcripts), pero projects/*/memory/ es la memoria de la persona y no se regenera.
+for m in "$CLAUDE_HOME"/projects/*/memory; do
+  [ -d "$m" ] || continue
+  rel="${m#"$CLAUDE_HOME"/}"
+  mkdir -p "$ROOT/claude/$rel"
+  tar -C "$m" -cf - . | tar -C "$ROOT/claude/$rel" -xf -
+done
 inf "CLAUDE_HOME      -> claude/            ($(du -sm "$ROOT/claude" | cut -f1) MB)"
 
 if [ -d "$BUCLE_DIR" ]; then
@@ -116,8 +130,28 @@ if [ -d "$BUCLE_DIR" ]; then
   tar -C "$BUCLE_DIR" -cf - . | tar -C "$ROOT/ai-mastery-bucle" -xf -
   inf "ai-mastery/bucle -> ai-mastery-bucle/"
 fi
-if [ -f "$CLAUDE_JSON" ]; then
-  cp "$CLAUDE_JSON" "$ROOT/claude.json"
+if [ -f "$CLAUDE_JSON" ] || [ -L "$CLAUDE_JSON" ]; then
+  if [ -f "$CLAUDE_JSON" ]; then cp -pL "$CLAUDE_JSON" "$ROOT/claude.json"
+  else cp -a "$CLAUDE_JSON" "$ROOT/claude.json"
+  fi
+  # Solo el respaldo previo a sustituir la entrada necesita su identidad.
+  # El registro es regular para que el manifiesto cubra tambien el enlace.
+  if [ "${SCC_BACKUP_JSON_ENTRY:-0}" = 1 ]; then
+    python3 - "$CLAUDE_JSON" "$ROOT/.claude-json-entry.json" <<'PY'
+import base64
+import json
+import os
+import sys
+
+source = os.fsencode(sys.argv[1])
+entry = {"type": "file"}
+if os.path.islink(source):
+    entry = {"type": "link", "target_b64": base64.b64encode(os.readlink(source)).decode("ascii")}
+with open(sys.argv[2], "w", encoding="ascii") as output:
+    json.dump(entry, output)
+    output.write("\n")
+PY
+  fi
   inf "$(basename "$CLAUDE_JSON")     -> claude.json"
 fi
 
@@ -128,11 +162,11 @@ echo "== generando manifiesto"
   && find . -type f ! -name MANIFEST.sha256 | LC_ALL=C sort > "$STAGE/filelist" \
   && : > MANIFEST.sha256 \
   && while IFS= read -r f; do sha_gen "$f" >> MANIFEST.sha256; done < "$STAGE/filelist" )
-FILES=$(grep -c . < "$ROOT/MANIFEST.sha256")
+FILES=$(grep -c . < "$ROOT/MANIFEST.sha256" || true)
 ok "manifiesto: $FILES ficheros"
 
 echo "== empaquetando"
-( cd "$STAGE" && zip -qr "$ZIP" "$NAME" )
+( cd "$STAGE" && zip -qry "$ZIP" "$NAME" )
 ok "$ZIP ($(du -sm "$ZIP" | cut -f1) MB)"
 
 echo "== verificando"
@@ -141,4 +175,4 @@ verify_zip "$ZIP"
 echo
 echo "BACKUP OK: $ZIP"
 echo "  ficheros: $FILES"
-echo "  excluido (regenerable o sensible): ${EXCLUDES[*]}"
+echo "  excluido (regenerable o sensible): ${EXCLUDES[*]} (projects/*/memory/ SI se incluye)"

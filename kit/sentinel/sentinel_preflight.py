@@ -101,6 +101,14 @@ def _norm_path(p: str) -> str:
     return os.path.normpath(expand(p))
 
 
+def _real_path(p: str) -> str:
+    """Where the path really points once symlinks are followed: `notes.txt -> dummy.cred` reads the credential."""
+    try:
+        return os.path.realpath(expand(p))
+    except (OSError, ValueError):
+        return os.path.normpath(expand(p))
+
+
 def is_allowed_path(text: str, allowed: list[str]) -> bool:
     """Strict, component-aware allowlist match.
 
@@ -122,7 +130,10 @@ def is_allowed_path(text: str, allowed: list[str]) -> bool:
         if not pn or pn == ".":
             continue
         if norm_text == pn or norm_text.startswith(pn + os.sep):
-            return True
+            # Un enlace dentro de una ruta permitida no exime lo que hay al otro lado.
+            rt, rp = _real_path(norm_text), _real_path(pn).rstrip("/")
+            if rt == rp or rt.startswith(rp + os.sep):
+                return True
     return False
 
 
@@ -182,12 +193,18 @@ PATH_FIELDS = ["file_path", "path", "paths", "notebook_path", "file", "filename"
 EXEMPTABLE_FIELDS = {"file_path", "path", "paths", "notebook_path", "file", "filename", "glob", "pattern"}
 
 
+def _deny_candidates(text: str) -> list[str]:
+    """The text plus where its words really point (symlinks followed): a link to a private key is that key."""
+    return [text, *(f for f in _path_forms(text, True) if f != text)]
+
+
 def always_deny_hit(tool_input: dict) -> str | None:
     """Text of the first field naming never-exempt credential material."""
     for text in collect_fields(tool_input, PATH_FIELDS):
-        for rx in ALWAYS_DENY_PATHS:
-            if re.search(rx, text):
-                return text
+        for cand in _deny_candidates(text):
+            for rx in ALWAYS_DENY_PATHS:
+                if re.search(rx, cand):
+                    return text
     return None
 
 
@@ -1048,6 +1065,9 @@ def _path_forms(text: str, is_path: bool) -> dict[str, bool]:
         if w:
             f = os.path.normpath(expand(w))
             out[f] = out.get(f, False) or whole
+            r = _real_path(w)
+            if r != f:
+                out[r] = out.get(r, False) or whole
     return out
 
 
@@ -1114,10 +1134,11 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
     key_note = "" if exts else " (default extensions: iocs.json has no valid key_file_extensions)"
 
     for key, text in collect_pairs(tool_input, PATH_FIELDS):
-        for rx in ALWAYS_DENY_PATHS:
-            m = re.search(rx, text)
-            if m:
-                return (f"never-exempt credential material: {m.group(0)}", "critical")
+        for cand in _deny_candidates(text):
+            for rx in ALWAYS_DENY_PATHS:
+                m = re.search(rx, cand)
+                if m:
+                    return (f"never-exempt credential material: {m.group(0)}", "critical")
         # The allowlist may not exempt the guards or their config, and only a field that is a
         # path can be exempted: never a command, whatever its first word is.
         if key in EXEMPTABLE_FIELDS and not protected_config_hit({"path": text}) and is_allowed_path(text, allowed):

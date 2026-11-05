@@ -277,16 +277,17 @@ if [ -f config/settings.template.json ]; then
     if [ "$ev" = "Stop" ]; then
       script=".claude/hooks/$(basename "$cmd")"
       interno=$(grep -oE '\btimeout [0-9]+' "$script" 2>/dev/null | grep -oE '[0-9]+' | sort -rn | head -1)
-      if [ -n "$interno" ] && [ "$to" -lt "$interno" ]; then
+      # Margen de 30 s: con interno == declarado, un oraculo colgado mata al hook sin contar el intento.
+      if [ -n "$interno" ] && [ "$to" -lt $((interno + 30)) ]; then
         bad=$((bad + 1))
-        echo "  NOT ok - el Stop hook se mata antes de acabar su propio trabajo: $cmd declara timeout=$to pero ejecuta con 'timeout $interno'"
+        echo "  NOT ok - el Stop hook no deja margen (>= 30 s) sobre su propio trabajo: $cmd declara timeout=$to pero ejecuta con 'timeout $interno'"
       fi
     elif [ "$to" -gt 5 ]; then
       bad=$((bad + 1)); echo "  NOT ok - hook de camino caliente con timeout > 5s: $ev $cmd (timeout=$to)"
     fi
   done
   ck "$([ "${#hook_lines[@]}" -ge 1 ] && echo y || echo n)" "y" "hay hooks declarados en config/settings.template.json (${#hook_lines[@]})"
-  ck "$([ "$bad" -eq 0 ] && echo y || echo n)" "y" "timeouts coherentes: camino caliente <= 5s, Stop >= su timeout interno (invalidos: $bad)"
+  ck "$([ "$bad" -eq 0 ] && echo y || echo n)" "y" "timeouts coherentes: camino caliente <= 5s, Stop >= su timeout interno + 30 s (invalidos: $bad)"
 
   # Falsabilidad: con el timeout=5 que traia originalmente el Stop hook, el check tiene que
   # saltar. Sin esto, todo lo anterior podria estar pasando por no mirar donde debe.

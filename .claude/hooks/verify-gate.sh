@@ -50,7 +50,7 @@ if [ -x "$AUT" ] && oracle=$(aut oracle 2>/dev/null) && [ -n "$oracle" ]; then
     echo "── mcharness: run caducado (superó --max-minutes), run autonomo cerrado ──" >&2
     exit 0
   fi
-  out=$(cd "$cwd" && timeout 600 sh -c "$oracle" 2>&1)
+  out=$(cd "$cwd" && timeout 540 sh -c "$oracle" 2>&1)
   rc=$?
   h=$(printf '%s\n' "$out" | tail -25 | sha1sum 2>/dev/null | cut -d' ' -f1)
   if [ "$rc" -eq 0 ]; then

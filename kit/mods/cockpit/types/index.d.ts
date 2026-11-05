@@ -25,7 +25,7 @@ export type AgentRow = {
 
 export type TaskRow = { id: string; subject: string; status: 'pending' | 'in_progress' | 'completed'; activeForm?: string }
 
-export type Handoff = { phase: 'idle' | 'confirm' | 'working' | 'done' | 'error'; msg?: string }
+export type Handoff = { phase: 'idle' | 'confirm' | 'working' | 'waiting' | 'done' | 'error'; msg?: string }
 
 // `handoff --estado`: the share of the cap and who owns the state (null: nobody, or no project).
 export type Estado = { pct: number; bytes: number; tope: number; dueno: { sesion: string; vigente: boolean; isMine: boolean } | null; isSlot?: boolean }
@@ -44,6 +44,7 @@ declare module 'claude-code' {
       tasks: TaskRow[]
       summary: string
       handoff: Handoff
+      receipt: string
       turn: Turn
       now: number
       estado: Estado | null
@@ -51,7 +52,6 @@ declare module 'claude-code' {
       continuity: string
       isMissionOpen: boolean
       isAutoQueued: boolean
-      isVetoed: boolean
     }
   }
 }

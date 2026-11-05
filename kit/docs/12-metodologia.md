@@ -148,8 +148,8 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
   en Markdown para otra persona. Entrevista solo por el *envío* (a quién, qué necesitas de
   vuelta); las preguntas del documento apuntan a la brecha de conocimiento.
 
-> **No confundir dos `/retro`.** El comando de proyecto
-> [`.claude/commands/retro.md`](../../.claude/commands/retro.md) es para trabajar *en este repo*
+> **No confundir dos retros.** El comando de proyecto `/retro-repo`
+> ([`.claude/commands/retro-repo.md`](../../.claude/commands/retro-repo.md)) es para trabajar *en este repo*
 > (convierte lo aprendido en `knowledge/` versionado); la skill `retro` del kit se instala en el
 > `~/.claude` de quien use el kit y analiza el entorno del agente en cualquier proyecto.
 

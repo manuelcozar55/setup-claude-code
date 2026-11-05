@@ -75,8 +75,8 @@ function emit(   k, w, b, o, g, line, j) {
   segs = segs line "\n"
 }
 function endseg() { endtok(); if (nt > 0) emit(); nt = 0 }
-function parse(s,   n, i, c, d, nx, q, start, closed, pv) {
-  txt = ""; segs = ""; nt = 0; tok = ""; have = 0; openq = 0
+function parse(s,   n, i, j, k, p, rest, skiphd, c, d, nx, q, start, closed, pv) {
+  txt = ""; segs = ""; nt = 0; tok = ""; have = 0; openq = 0; hdw = ""; hdn = 0; hdbad = 0
   n = length(s); i = 1
   while (i <= n) {
     c = substr(s, i, 1)
@@ -85,6 +85,17 @@ function parse(s,   n, i, c, d, nx, q, start, closed, pv) {
       if (nx == "\n") { i += 2; continue }
       if (i == n) { tok = tok c; txt = txt c; have = 1; i++; continue }
       tok = tok nx; have = 1; txt = txt c nx; i += 2; continue
+    }
+    if (c == "$") {
+      nx = substr(s, i + 1, 1)
+      if ((nx == "\047" || nx == "\"") && !((i + 1) in skip)) {
+        # Formas $-comilla (ANSI-C y locale): bash quita el `$` y las comillas. Si lleva una barra invertida dentro, el valor
+        # real no se puede calcular aqui: el `$` se queda en el token y el guard de git push lo trata como sospechoso.
+        pv = 0
+        if (nx == "\047") for (j = i + 2; j <= n && substr(s, j, 1) != nx; j++) if (substr(s, j, 1) == "\\") { pv = 1; break }
+        if (pv) tok = tok c
+        txt = txt c; i++; continue
+      }
     }
     if ((c == "\047" || c == "\"") && !(i in skip)) {
       start = i; q = c; txt = txt c; i++; have = 1; closed = 0
@@ -106,12 +117,34 @@ function parse(s,   n, i, c, d, nx, q, start, closed, pv) {
       continue
     }
     if (c == " " || c == "\t") { endtok(); txt = txt c; i++; continue }
-    if (c == "\n") { endseg(); txt = txt c; i++; continue }
-    if (c == ";" || c == "|" || c == "(" || c == ")" || c == "`") { endseg(); txt = txt c; i++; continue }
+    if (NOHD && c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<" && substr(s, i + 2, 1) != "-" && substr(s, i - 1, 1) != "<") {
+      # Heredoc con delimitador ENTRECOMILLADO (sin expansion): se anota para saltar su cuerpo al llegar al salto de linea.
+      hdn++; hdw = ""
+      for (j = i + 2; substr(s, j, 1) == " "; j++) ;
+      nx = substr(s, j, 1)
+      if (nx == "\047" || nx == "\"") { for (k = j + 1; k <= n && substr(s, k, 1) != nx; k++) hdw = hdw substr(s, k, 1) }
+      if (hdw !~ /^[A-Za-z_][A-Za-z0-9_]*$/) hdw = ""
+    }
+    if (c == "\n") {
+      endtok(); skiphd = 0
+      if (hdw != "" && hdn == 1 && !hdbad) {
+        for (k = 1; k <= nt; k++) if (toks[k] ~ /^[0-9]*>>?[^&]/ || (toks[k] ~ /^[0-9]*>>?$/ && k < nt)) skiphd = 1
+        if (skiphd && base(toks[1]) != "cat") skiphd = 0
+      }
+      endseg(); txt = txt c; i++
+      if (skiphd) {
+        rest = substr(s, i - 1); p = index(rest, "\n" hdw "\n")
+        if (p) i = i - 1 + p + length(hdw)
+        else if (substr(rest, length(rest) - length(hdw)) == "\n" hdw) i = n + 1
+      }
+      hdw = ""; hdn = 0; hdbad = 0
+      continue
+    }
+    if (c == ";" || c == "|" || c == "(" || c == ")" || c == "`") { hdbad = 1; endseg(); txt = txt c; i++; continue }
     if (c == "&") {
       pv = substr(s, i - 1, 1); nx = substr(s, i + 1, 1)
       if (pv == ">" || pv == "<" || nx == ">") { tok = tok c; have = 1 }
-      else endseg()
+      else { hdbad = 1; endseg() }
       txt = txt c; i++; continue
     }
     tok = tok c; have = 1; txt = txt c; i++
@@ -154,7 +187,7 @@ cmdn_oversize() {
 cmdn_parse() {
   local out rest
   CMDN_SEGS=(); CMDN_CWD=""
-  if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]]; then
+  if ! out=$(awk -v NOHD="${CMDN_SKIP_HEREDOC:-0}" "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]]; then
     CMDN_TEXT=$1; return 1
   fi
   # `${out%%…*}` y `${out#*…}` prueban cada longitud de prefijo: cuadráticos (64 KB ≈ 1,5 s de CPU,

@@ -68,7 +68,7 @@ ask() {
 # el mismo patron. RCE_TAIL es lo que sigue al pipe: agrupadores `( {`, prefijos (sudo, env...),
 # envoltorios con sus opciones (`time`, `nice -n 5`, `timeout 9`, `stdbuf -o0`, `busybox`), ruta
 # opcional e interprete (sh, ash, dash, ksh93, fish, node/nodejs, lua, php...).
-RCE_INTERP='((a|ba|z|da|k|mk)?sh|ksh[0-9]+|fish|python[0-9.]*|perl|ruby|node(js)?|php|lua[0-9.]*|tclsh|pwsh|Rscript|deno|bun)'
+RCE_INTERP='((a|ba|z|da|k|mk)?sh|ksh[0-9]+|fish|python[0-9.]*|perl|ruby|node(js)?|php|lua[0-9.]*|tclsh|pwsh|Rscript|deno|bun|make)'
 RCE_TAIL='\|&?\s*([({]\s*)*(\w+=\S*\s+)*((\S*/)?(sudo|env|exec|command|xargs|nohup)\b[^|]*\s)?((\S*/)?(time|nice|timeout|stdbuf|setsid|ionice|busybox|doas|unbuffer|chrt|taskset)\s+(-\S+\s+|[0-9.]+[smhd]?\s+|[A-Z]{3,7}\s+|\w+=\S*\s+)*)*(\S*/)?'$RCE_INTERP'\b'
 RCE_CURL='\bcurl\b.*'$RCE_TAIL
 RCE_WGET='\bwget\b.*'$RCE_TAIL
@@ -371,7 +371,7 @@ ASK_RULES=(
   '\bdocker\s+volume\s+rm'     "Confirm: docker volume rm — permanent volume data loss"
 
   # ── DOWNLOAD AND EXECUTE (ASK — HITL) ──────────────────────────────────────
-  '\b(curl|wget)\b[^|]*(&&|;)\s*(sudo\s+)?((a|ba|z|da|k)?sh\b|(\.|source)\s+\S)'  "Confirm: download then run a script — review it before executing"
+  '\b(curl|wget)\b.*(&&|;)\s*(sudo\s+)?((a|ba|z|da|k)?sh\b|(\.|source)\s+\S)'  "Confirm: download then run a script — review it before executing"
 
   # ── PACKAGE PUBLISH / INSTALL FROM URL (ASK — HITL) ────────────────────────
   '\bnpm\s+publish'             "Confirm: npm publish — will publish to public npm registry"
@@ -476,6 +476,8 @@ push_refspec() {
         case $a in --repo|-o|--push-option|--receive-pack|--exec|--message|--file|--reuse-message|--reedit-message|--author|--date|--template) skip=1 ;; esac
         continue
       fi
+      # `$\...` es un `$'\x2df'` que cmdnorm no pudo resolver: no se sabe que es, se trata como el peor caso.
+      [[ ( $kind == force || $kind == delete ) && $a == '$'\\* ]] && return 0
       if [[ $kind == force ]]; then
         [[ $a == +* || $a == '$'+* ]] && return 0
       elif [[ $kind == delete ]]; then

@@ -19,7 +19,7 @@ harness es reescribible y ya hubo un hook que sustituía el ejecutable en posici
 
 1. **Hay dos `CLAUDE.md` con propósitos opuestos.** El de la raíz son las reglas para
    trabajar *en* este repo. `kit/claude/CLAUDE.md` es una **plantilla que se instala** en el
-   `~/.claude` de quien use el kit, está en inglés y no habla de este repo. Editar uno
+   `~/.claude` de quien use el kit, no habla de este repo. Editar uno
    creyendo que es el otro es el error fácil de esta base de código.
 2. **La referencia es `kit/docs/`.** Documenta el kit instalado y se mantiene al día. Lo
    fechado (ADRs, mediciones, versiones) vive en `knowledge/` y `CHANGELOG.md`: no lo leas

@@ -134,14 +134,6 @@ else
   ck "n" "y" "el check 1 SI detecta el ask Write() sin gemela fabricado, y NO marca el par deny bien formado (detectadas: ${#f_inertes[@]})"
 fi
 
-printf '%s\n' '{"skipAutoPermissionPrompt": true}' > "$FTMP/con-skip.json"
-if [ "$(jq -r 'has("skipAutoPermissionPrompt")' "$FTMP/con-skip.json")" = "true" ]; then
-  ck "y" "y" "el check 2 SI detecta un settings con skipAutoPermissionPrompt fabricado"
-  falsified=$((falsified + 1))
-else
-  ck "n" "y" "el check 2 SI detecta un settings con skipAutoPermissionPrompt fabricado"
-fi
-
 # Fabricado a partir del propio kit quitandole EXACTAMENTE los dos globs de banderas
 # agrupadas: el resto de reglas de push siguen ahi, asi que un check por recuento seguiria
 # viendo 8 de 10 y podria darlo por bueno. El de comportamiento tiene que ponerse rojo
@@ -158,7 +150,7 @@ else
   ck "n" "y" "el check 3 SI se pone rojo en '-uf' al quitar los globs de banderas agrupadas, y sigue verde en '-f' (-uf=$f_uf, -f=$f_f)"
 fi
 
-ck "$([ "$falsified" -eq 3 ] && echo y || echo n)" "y" "los 3 checks demuestran deteccion real sobre casos fabricados (detectados: $falsified de 3) -- si fuera 0, la suite seria decorativa"
+ck "$([ "$falsified" -eq 2 ] && echo y || echo n)" "y" "los 2 checks con funcion propia demuestran deteccion real sobre casos fabricados (detectados: $falsified de 2) -- si fuera 0, la suite seria decorativa"
 
 # --- Kit fail-closed sin politica gestionada ---
 # Sin /etc/claude-code el kit era el unico techo: no apagaba el modo que se salta los

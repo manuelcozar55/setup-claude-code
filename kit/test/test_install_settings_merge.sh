@@ -29,6 +29,7 @@ ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT 
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "skip - jq ausente: esta suite mide la fusion, que solo existe con jq"
+  [ -z "${SCC_SKIP_LOG:-}" ] || echo "SKIP: fusion de settings.json (test_install_settings_merge.sh): jq ausente, ninguna comprobacion hecha" >> "$SCC_SKIP_LOG"
   echo "== 0 passed, 0 failed =="; exit 0
 fi
 
@@ -102,6 +103,7 @@ seed e <<'EOF'
       { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/mi-guard.py" } ] } ],
     "PreCompact": [ { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/circe-pre-compact.sh" },
                                  { "type": "command", "command": "$HOME/.claude/hooks/preflight.sh" } ] } ],
+    "SessionEnd": [ { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/stop-session-summary.sh" } ] } ],
     "Notification": [ { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/mi-aviso.sh", "timeout": 5 } ] } ],
     "Stop": [ { "hooks": [ { "type": "prompt", "prompt": "mi revision" } ] } ] } }
 EOF
@@ -114,7 +116,7 @@ ck "$(cmds PreToolUse | tr '|' '\n' | grep -c -e 'mi-linter --hook' -e 'mi-guard
 ck "$(jq -c '[.hooks.PreToolUse[] | select(any(.hooks[]; .command // "" | test("mi-linter")))] | map(.matcher, (.hooks | length))' "$S")" '["Bash",1]' \
    "hooks: en un grupo mixto queda solo lo tuyo, con su matcher"
 ck "$(cmds PreToolUse | tr '|' '\n' | grep -c -e 'block-dangerous' -e 'write-guard.py')" "2" "hooks: los guards del kit no se duplican (ni con su forma antigua)"
-ck "$(jq '[.hooks | .. | strings | select(test("smart_approve|preflight\\.sh"))] | length' "$S")" "0" "hooks: los que el kit retiro se van"
+ck "$(jq '[.hooks | .. | strings | select(test("smart_approve|preflight\\.sh|stop-session-summary"))] | length' "$S")" "0" "hooks: los que el kit retiro se van (stop-session-summary en 1.8.0)"
 # shellcheck disable=SC2016 # $HOME literal del settings, no del shell
 ck "$(cmds PreCompact)" '$HOME/.claude/hooks/pre-compact.sh|$HOME/.claude/hooks/circe-pre-compact.sh' "hooks: en un evento compartido van los del kit y detras los tuyos"
 ck "$(cmds Stop | tr '|' '\n' | grep -c 'mi revision')" "1" "hooks: uno sin command (type prompt) es tuyo"

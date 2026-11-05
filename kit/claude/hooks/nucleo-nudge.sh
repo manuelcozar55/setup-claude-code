@@ -35,14 +35,14 @@ fi
 # un proyecto y la compuerta también actúa.
 RANURA=""; [ "$RAIZ" = "$HOME" ] && case $NUC in "$HOME"/.claude/estado/sesiones/*/nucleo.md) RANURA=${NUC%/nucleo.md};; esac
 # D1: desde ~ sin ranura el nucleo compartido puede ser de otra tarea: el aviso no lo nombra, no se calla por su edad
-# y no promete handoff (el automático está desactivado en ~).
+# y no promete handoff (sin ranura el cockpit tampoco lo hace por su cuenta: «sin ranura» en su log).
 if [ "$RAIZ" = "$HOME" ] && [ -z "$RANURA" ]; then
   mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
   M="CONTEXTO $PCT % del airbag. Sesión abierta desde ~: no tiene nucleo propio. Si trabajas en una tarea, deja su estado en el nucleo de su proyecto; el de ~ actualízalo solo si su Objetivo es tu tarea."
   if nucleo_desatendido; then
     [ "$B" = 50 ] || M="$M Sesión no interactiva: deja el estado donde corresponda y sigue con la tarea; nadie cerrará ni limpiará la sesión."
   else
-  [ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, deja su estado donde corresponda y cierra el turno."
+  [ "$B" = 70 ] && M="$M Fin de fase = parada válida: si hay agentes en vuelo, no lances más: espera y recoge sus resultados; después termina la fase, deja su estado donde corresponda y cierra el turno."
   [ "$B" = 85 ] && M="$M Cierra el turno ya."
   fi
 else
@@ -66,14 +66,14 @@ else
 fi
 HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
 if [ "$NOM" = ESTADO.md ]; then
-  [ "$B" != 70 ] || M="$M Cierra la fase con \`$HO --desde <borrador> --sesion $SID${RANURA:+ --ranura $RANURA}\`."
+  [ "$B" != 70 ] || M="$M Si hay agentes en vuelo, no lances más: espera y recoge sus resultados; después cierra la fase con \`$HO --desde <borrador> --sesion $SID${RANURA:+ --ranura $RANURA}\`."
   [ "$B" != 85 ] || M="$M Cierra el turno ya."
 elif nucleo_desatendido; then
   # -p/SDK: nadie pulsa /handoff ni cierra el turno, y cerrarlo termina la sesión. Con acceptEdits, Write/Edit bajo
   # .claude/ se deniegan, pero handoff (un script por Bash) sí escribe: el borrador va fuera de .claude/.
   [ "$B" = 50 ] || M="$M Sesión no interactiva: deja el estado con \`$HO --desde <borrador> --sesion $SID${RANURA:+ --ranura $RANURA}\` (borrador fuera de .claude/) o editando nucleo.md, y sigue con la tarea; nadie cerrará ni limpiará la sesión."
 else
-[ "$B" = 70 ] && M="$M Fin de fase = parada válida: termina la fase, actualiza nucleo.md y cierra el turno. Cierra la fase con \`$HO --desde <borrador> --sesion $SID${RANURA:+ --ranura $RANURA}\`."
+[ "$B" = 70 ] && M="$M Fin de fase = parada válida: si hay agentes en vuelo, no lances más: espera y recoge sus resultados; después cierra la fase, escribe el handoff con \`$HO --desde <borrador> --sesion $SID${RANURA:+ --ranura $RANURA}\` y termina el turno. Con /autonomo on el trabajo sigue solo tras el /clear."
 A="con cockpit en un proyecto, el handoff y /clear son automáticos al cerrar el turno; si no, la persona hará /handoff."
 [ "${COCKPIT_AUTO_HANDOFF:-}" = off ] && A="el handoff automático está desactivado; la persona hará /handoff."
 [ "$B" = 85 ] && M="$M Cierra el turno ya: $A"

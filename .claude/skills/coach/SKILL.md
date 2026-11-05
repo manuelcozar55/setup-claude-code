@@ -55,7 +55,7 @@ Esta sección es la que evita que esta skill se convierta en relleno.
 > **Señal de fallo:** una explicación que no cambia ninguna decisión del usuario es ruido,
 > por bien escrita que esté.
 
-Comprobación, en `/retro`: de las explicaciones de la sesión, ¿cuántas provocaron una
+Comprobación, en `/retro-repo`: de las explicaciones de la sesión, ¿cuántas provocaron una
 pregunta, una corrección o un cambio de rumbo? Si la respuesta es cero durante dos
 sesiones seguidas:
 
