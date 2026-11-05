@@ -432,11 +432,13 @@ done
 # La raiz elegida explicitamente puede estar enlazada: se restaura su contenido
 # conservando el alias y el JSON junto a la ruta elegida, no junto a su destino.
 for route in internal zip; do
-  for topology in root ancestor; do
+  for topology in root root-opaque ancestor; do
     for json_state in present absent; do
       H="$(setup_home "alias-$route-$topology-$json_state")"
-      physical="$H/dotfiles/config"; mkdir -p "$physical" "$H/source" "$H/backups"
-      if [ "$topology" = root ]; then
+      physical="$H/dotfiles/config"
+      [ "$topology" != root-opaque ] || physical+=$'\xff\n'
+      mkdir -p "$physical" "$H/source" "$H/backups"
+      if [ "$topology" != ancestor ]; then
         alias="$H/.claude"; ln -s "$physical" "$alias"
         export HOME="$H" CLAUDE_HOME="$alias"
       else
@@ -444,11 +446,11 @@ for route in internal zip; do
         export HOME="$alias" CLAUDE_HOME="$alias/config"
       fi
       export BACKUP_DIR="$H/backups"
-      alias_before="$(readlink "$alias")"
+      alias_before="$(readlink -n "$alias" | base64 -w0)"
       global_json="$(dirname "$CLAUDE_HOME")/.claude.json"
       echo anterior > "$physical/settings.json"
       echo conservar > "$physical/CLAUDE.md"
-      if [ "$topology" = root ]; then echo ajeno > "$H/dotfiles/.claude.json"; fi
+      if [ "$topology" != ancestor ]; then echo ajeno > "$H/dotfiles/.claude.json"; fi
       if [ "$json_state" = present ]; then echo anterior > "$global_json"; fi
       echo elegido > "$H/source/settings.json"; echo elegido > "$H/nuevo.json"
       source="$H/source"
@@ -459,12 +461,12 @@ for route in internal zip; do
       rc=0; bash "$UNINSTALL" --apply --from "$source" >"$H/apply.log" 2>&1 || rc=$?
       ck "$rc" "0" "$route/$topology/$json_state: restaura una raiz explicitamente enlazada"
       ck "$(cat "$physical/settings.json")" "elegido" "$route/$topology/$json_state: escribe en la raiz fisica elegida"
-      ck "$(readlink "$alias" || true)" "$alias_before" "$route/$topology/$json_state: conserva el alias"
+      ck "$(readlink -n "$alias" | base64 -w0)" "$alias_before" "$route/$topology/$json_state: conserva el alias"
       ck "$(cat "$physical/CLAUDE.md")" "conservar" "$route/$topology/$json_state: conserva entradas fuera del snapshot"
       if [ "$route" = zip ]; then
         ck "$(cat "$global_json" 2>/dev/null || true)" "elegido" "$route/$topology/$json_state: JSON junto a la ruta elegida"
       fi
-      if [ "$topology" = root ]; then
+      if [ "$topology" != ancestor ]; then
         ck "$(cat "$H/dotfiles/.claude.json")" "ajeno" "$route/$topology/$json_state: no confunde el JSON de la raiz fisica"
       fi
       safety="$(find "$BACKUP_DIR" -name 'claude-safety-*.zip' -print -quit)"
@@ -472,7 +474,7 @@ for route in internal zip; do
       rc=0; bash "$UNINSTALL" --apply --from "$safety" >"$H/rollback.log" 2>&1 || rc=$?
       ck "$rc" "0" "$route/$topology/$json_state: rollback disponible"
       ck "$(cat "$physical/settings.json")" "anterior" "$route/$topology/$json_state: rollback recupera bytes"
-      ck "$(readlink "$alias" || true)" "$alias_before" "$route/$topology/$json_state: rollback conserva el alias"
+      ck "$(readlink -n "$alias" | base64 -w0)" "$alias_before" "$route/$topology/$json_state: rollback conserva el alias"
       if [ "$json_state" = present ]; then
         ck "$(cat "$global_json")" "anterior" "$route/$topology/$json_state: rollback recupera JSON"
       fi

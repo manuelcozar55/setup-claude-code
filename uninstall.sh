@@ -323,7 +323,7 @@ case "$MODE" in
     IFS='|' read -r type epoch size path <<< "$entry"
     # La raiz es una eleccion explicita; sus alias se conservan. CLAUDE_JSON
     # ya quedo ligado a la ruta elegida, antes de resolver el destino fisico.
-    CLAUDE_HOME="$(realpath -m -- "$CLAUDE_HOME")"
+    IFS= read -r -d '' CLAUDE_HOME < <(realpath -mz -- "$CLAUDE_HOME")
     echo "== restaurando desde ($(fmt_date "$epoch")): $path =="
     case "$type" in
       internal) restore_preflight "$path" ;;
