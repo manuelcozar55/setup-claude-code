@@ -168,11 +168,20 @@ Se abre solo al iniciar sesión (columna de 66 de ancho) y con `/dock`.
 cd kit/mods/cockpit
 claude plugin validate .                          # Validation passed
 claude plugin test .                              # debe terminar con 0 fail
-pnpm dlx --package=typescript@5 tsc -p .          # rc=0
+test -f .claude-plugin/types/tsconfig.json && \
+  pnpm dlx --package=typescript@5 tsc --noEmit -p . # rc=0, con los tipos del SDK presentes
 bash ../../test/test_mod_cockpit.sh                # estructura y saneado; sin red ni claude
 ```
 
-`tsconfig.json` extiende `.claude-plugin/types/tsconfig.json`, que **no se versiona**: lo escribe Claude Code junto al mod cuando lo carga desde una carpeta propia (versión TypeScript 5.4 o superior) y su contenido es de Claude Code, no nuestro. Si falta, `tsc` falla con `Cannot find module 'claude-code/testing'`. Para regenerarlo, carga el mod una vez, por ejemplo `claude -p --plugin-dir "$PWD" "ok"`; si en tu versión no aparece, copia la carpeta `.claude-plugin/types/` de otro mod ya cargado. Está en `.gitignore`. `validate` y `test` no lo necesitan. Sin esos tipos `tsc` pierde el `noEmit` heredado y escribe `.js` junto a las fuentes: bórralos si pasa.
+`tsconfig.json` extiende `.claude-plugin/types/tsconfig.json`, que **no se versiona**:
+lo escribe Claude Code junto al mod cuando lo carga desde una carpeta propia
+(TypeScript 5.4 o superior). Antes del tipado, abre una sesión interactiva con
+`claude --plugin-dir "$PWD"` y sal tras cargar el mod. Comprueba que existe ese
+archivo; si tu cliente no lo genera, usa los tipos de otro mod cargado por la
+misma versión de Claude Code. Un checkout limpio no los incluye, y un resultado
+de tipado solo es válido indicando esa precondición. `validate` y `test` no los
+necesitan. El `--noEmit` explícito evita crear `.js` incluso si falta la configuración
+heredada.
 
 `claude plugin test` funciona desde cualquier carpeta, no solo desde dev-mods.
 
