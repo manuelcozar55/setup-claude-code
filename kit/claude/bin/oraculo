@@ -65,6 +65,8 @@ if [ -n "$RAIZ" ] && E=$(nucleo_estado_dir "$RAIZ"); then
   ); then
     printf 'oraculo: no se pudo registrar la verificación en %s; rc del comando=%s\n' "$LOG" "$RC" >&2
   fi
+elif [ -n "$RAIZ" ]; then
+  printf 'oraculo: no se pudo obtener un directorio de estado seguro en %s; rc del comando=%s\n' "$RAIZ" "$RC" >&2
 fi
 # Se imprime al final: si quien lee cierra la tubería a medias (| head), el registro ya está escrito.
 tail -n 40 "$OUT" || true

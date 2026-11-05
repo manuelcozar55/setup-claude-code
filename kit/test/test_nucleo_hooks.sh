@@ -411,6 +411,12 @@ ok "oraculo: --help sale 0" "$(orc --help 2>&1 | head -n 1 | command grep -c '^u
 mkdir -p "$T/ro-enl/.claude"; git -C "$T/ro-enl" init -q; ln -s "$T/destino" "$T/ro-enl/.claude/estado"
 ok "oraculo: .claude/estado enlazado → no escribe en el destino" "$(cd "$T/ro-enl" && bash "$BIN/oraculo" -- true >/dev/null; nent "$T/destino" -name 'verificaciones*')" 0
 
+RL=$T/ro-lock-enlazado; mkdir -p "$RL/.claude/estado"; git -C "$RL" init -q
+ln -s "$T/lock-ajeno" "$RL/.claude/estado/.verificaciones.lock"
+bash "$BIN/oraculo" --raiz "$RL" -- 'exit 7' >"$T/lock.out" 2>"$T/lock.err"; RC=$?
+ok "oraculo: estado con lock enlazado no escribe fuera y avisa sin cambiar el rc" \
+  "$RC,$([ -e "$T/lock-ajeno" ] && echo creado || echo ausente),$([ -e "$RL/.claude/estado/verificaciones.log" ] && echo registrado || echo ausente),$([ -s "$T/lock.err" ] && echo aviso)" "7,ausente,ausente,aviso"
+
 # Intercalado determinista: A ya leyó su rotación; B termina o espera el lock antes de publicar A.
 RR=$T/ro-rotacion; mkdir -p "$RR/.claude/estado" "$T/rot-bin"; GIT_MASTER=1 git -C "$RR" init -q
 export ORACLE_ROT_LOG=$RR/.claude/estado/verificaciones.log ORACLE_EVENTS=$T/rot-eventos ORACLE_RELEASE=$T/rot-liberar
