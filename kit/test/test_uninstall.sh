@@ -268,7 +268,7 @@ done
 
 # El JSON global es estado previo incluso sin ficheros en CLAUDE_HOME.
 for home_state in empty missing; do
-  for json_state in regular link dangling absent; do
+  for json_state in regular link opaque dangling absent; do
     H="$(setup_home "json-$home_state-$json_state")"
     export HOME="$H" CLAUDE_HOME="$H/.claude" BACKUP_DIR="$H/backups"
     source_dir="$H/source"; mkdir -p "$source_dir" "$BACKUP_DIR"
@@ -279,13 +279,24 @@ for home_state in empty missing; do
     if [ "$home_state" = empty ]; then mkdir -p "$CLAUDE_HOME"; fi
     case "$json_state" in
       regular) echo anterior > "$H/.claude.json" ;;
-      link) echo anterior > "$H/externo.json"; ln -s externo.json "$H/.claude.json" ;;
+      link|opaque)
+        target=externo.json
+        [ "$json_state" != opaque ] || target=$'opaco-\xff\n'
+        echo anterior > "$H/$target"; ln -s "$target" "$H/.claude.json"
+        link_before="$(readlink -n "$H/.claude.json" | base64 -w0)" ;;
       dangling) ln -s inexistente.json "$H/.claude.json" ;;
     esac
     rc=0; bash "$UNINSTALL" --apply --from "$source" >"$H/apply.log" 2>&1 || rc=$?
     ck "$rc" "0" "$home_state/$json_state: restaura JSON global"
     ck "$(cat "$H/.claude.json" 2>/dev/null || true)" "nuevo" "$home_state/$json_state: JSON elegido restaurado"
-    ck "$([ -L "$H/.claude.json" ] && echo enlace || echo regular)" "regular" "$home_state/$json_state: JSON restaurado como entrada regular"
+    expected_type=regular
+    case "$json_state" in link|opaque) expected_type=enlace ;; esac
+    ck "$([ -L "$H/.claude.json" ] && echo enlace || echo regular)" "$expected_type" "$home_state/$json_state: conserva un alias global valido"
+    case "$json_state" in
+      link|opaque)
+        ck "$(readlink -n "$H/.claude.json" | base64 -w0)" "$link_before" "$home_state/$json_state: conserva los bytes del destino del alias"
+        ck "$(cat "$H/$target")" "nuevo" "$home_state/$json_state: restaura el destino global respaldado" ;;
+    esac
     safety="$(find "$BACKUP_DIR" -name 'claude-safety-*.zip' -print -quit)"
     if [ "$json_state" = absent ]; then
       ck "$safety" "" "$home_state/$json_state: no crea backup de una instalacion realmente vacia"
@@ -295,15 +306,127 @@ for home_state in empty missing; do
       ck "$rc" "0" "$home_state/$json_state: rollback del JSON global"
       case "$json_state" in
         regular) ck "$(cat "$H/.claude.json" 2>/dev/null || true)" "anterior" "$home_state/$json_state: recupera JSON anterior" ;;
-        link)
-          ck "$(readlink "$H/.claude.json" || true)" "externo.json" "$home_state/$json_state: recupera enlace relativo global"
-          ck "$(cat "$H/externo.json")" "anterior" "$home_state/$json_state: JSON externo intacto" ;;
+        link|opaque)
+          ck "$(readlink -n "$H/.claude.json" | base64 -w0)" "$link_before" "$home_state/$json_state: recupera enlace relativo global"
+          ck "$(cat "$H/$target")" "anterior" "$home_state/$json_state: JSON externo recuperado" ;;
         dangling)
           ck "$(readlink "$H/.claude.json" || true)" "inexistente.json" "$home_state/$json_state: recupera enlace global roto"
           ck "$([ -e "$H/inexistente.json" ] && echo existe || echo ausente)" "ausente" "$home_state/$json_state: destino roto sigue ausente" ;;
       esac
     fi
   done
+done
+
+# Un backup periodico de un JSON enlazado incluye sus bytes, portables a otro HOME.
+H="$(setup_home portable-json)"
+export HOME="$H" CLAUDE_HOME="$H/.claude" BACKUP_DIR="$H/backups"
+mkdir -p "$CLAUDE_HOME" "$H/dot"
+echo JSON-PORTABLE > "$H/dot/config.json"; ln -s dot/config.json "$H/.claude.json"
+bash "$REPO/scripts/backup.sh" >"$H/backup.log" 2>&1
+source="$(find "$BACKUP_DIR" -name 'claude-state-*.zip' -print -quit)"
+mkdir "$H/extraido"; unzip -q "$source" -d "$H/extraido"
+snapshot="$(find "$H/extraido" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+ck "$([ -f "$snapshot/claude.json" ] && [ ! -L "$snapshot/claude.json" ] && echo regular || echo no)" "regular" "portable: el ZIP contiene un JSON regular"
+ck "$(cat "$snapshot/claude.json" 2>/dev/null || true)" "JSON-PORTABLE" "portable: el ZIP contiene los bytes del JSON enlazado"
+ck "$(grep -Fc './claude.json' "$snapshot/MANIFEST.sha256" || true)" "1" "portable: el manifiesto cubre esos bytes"
+rc=0; HOME="$H/otro" CLAUDE_HOME="$H/otro/.claude" BACKUP_DIR="$H/otro/backups" \
+  bash "$UNINSTALL" --apply --from "$source" >"$H/otro.log" 2>&1 || rc=$?
+ck "$rc" "0" "portable: restaura en otro HOME sin el directorio de dotfiles"
+ck "$(cat "$H/otro/.claude.json" 2>/dev/null || true)" "JSON-PORTABLE" "portable: el receptor recupera el contenido global"
+
+# Las operaciones sobre una entrada conservan su tipo al deshacerse, incluso
+# si el enlace del snapshot pasa a resolver en la maquina que lo restaura.
+for transition in link-to-dangling opaque-link-to-dangling file-to-live-link; do
+  H="$(setup_home "entry-$transition")"
+  export HOME="$H" CLAUDE_HOME="$H/.claude" BACKUP_DIR="$H/backups"
+  mkdir -p "$CLAUDE_HOME" "$H/source-home/.claude"
+  ln -s destino.json "$H/source-home/.claude.json"
+  CLAUDE_HOME="$H/source-home/.claude" CLAUDE_JSON="$H/source-home/.claude.json" \
+    bash "$REPO/scripts/backup.sh" >"$H/snapshot.log" 2>&1
+  source="$(find "$BACKUP_DIR" -name 'claude-state-*.zip' -print -quit)"
+  echo AJENO > "$H/externo.json"
+  if [ "$transition" != file-to-live-link ]; then
+    entry_target=externo.json
+    [ "$transition" != opaque-link-to-dangling ] || entry_target=$'opaco-\xff\n'
+    echo AJENO > "$H/$entry_target"; ln -s "$entry_target" "$H/.claude.json"
+    entry_link_before="$(readlink -n "$H/.claude.json" | base64 -w0)"
+  else
+    echo ANTERIOR > "$H/.claude.json"; echo AJENO > "$H/destino.json"
+  fi
+  rc=0; bash "$UNINSTALL" --apply --from "$source" >"$H/apply.log" 2>&1 || rc=$?
+  ck "$rc" "0" "$transition: aplica el enlace como entrada"
+  ck "$(readlink "$H/.claude.json" || true)" "destino.json" "$transition: conserva el enlace del snapshot"
+  safety="$(find "$BACKUP_DIR" -name 'claude-safety-*.zip' -print -quit)"
+  rc=0; bash "$UNINSTALL" --apply --from "$safety" >"$H/rollback.log" 2>&1 || rc=$?
+  ck "$rc" "0" "$transition: rollback de la sustitucion de entrada"
+  if [ "$transition" != file-to-live-link ]; then
+    ck "$(readlink -n "$H/.claude.json" | base64 -w0)" "$entry_link_before" "$transition: recupera los bytes del alias anterior"
+    ck "$(cat "$H/$entry_target")" "AJENO" "$transition: conserva los bytes del destino del alias"
+  else
+    ck "$([ -L "$H/.claude.json" ] && echo enlace || echo regular)" "regular" "$transition: recupera la entrada regular anterior"
+    ck "$(cat "$H/.claude.json")" "ANTERIOR" "$transition: recupera los bytes anteriores"
+    ck "$(cat "$H/destino.json")" "AJENO" "$transition: no escribe a traves del enlace sobrevenido"
+  fi
+  ck "$(cat "$H/externo.json")" "AJENO" "$transition: no toca el destino ajeno de la entrada"
+  second_safety="$(find "$BACKUP_DIR" -name 'claude-safety-*.zip' ! -path "$safety" -print -quit)"
+  rc=0; bash "$UNINSTALL" --apply --from "$second_safety" >"$H/rollback-segundo.log" 2>&1 || rc=$?
+  ck "$rc" "0" "$transition: el rollback tambien tiene respaldo util"
+  ck "$(readlink "$H/.claude.json" || true)" "destino.json" "$transition: segunda vuelta recupera el tipo y enlace intermedios"
+done
+
+# Un registro de entrada invalido no puede convertirse en una restauracion
+# ordinaria por omision. Se rechaza antes de tocar el arbol o el JSON global.
+for invalid in uncovered unicode-coverage unknown bad64 empty-target nul-target multiple symlink-record file-with-link-payload uncovered-payload; do
+  H="$(setup_home "invalid-entry-$invalid")"
+  export HOME="$H" CLAUDE_HOME="$H/.claude" BACKUP_DIR="$H/backups"
+  snapshot="$H/snapshot/estado"
+  mkdir -p "$snapshot/claude" "$CLAUDE_HOME"
+  echo NUEVO > "$snapshot/claude/settings.json"; echo NUEVO > "$snapshot/claude.json"
+  record='{"type":"file"}'
+  case "$invalid" in
+    unknown) record='{"type":"desconocido"}' ;;
+    bad64) record='{"type":"link","target_b64":"%%%"}' ;;
+    empty-target) record='{"type":"link","target_b64":""}' ;;
+    nul-target) record='{"type":"link","target_b64":"YQBi"}' ;;
+    multiple) record=$'{"type":"file"}\n{"type":"file"}' ;;
+  esac
+  if [ "$invalid" = symlink-record ]; then
+    printf '%s\n' "$record" >"$H/record.json"
+    ln -s "$H/record.json" "$snapshot/.claude-json-entry.json"
+  else
+    printf '%s\n' "$record" >"$snapshot/.claude-json-entry.json"
+  fi
+  if [ "$invalid" = file-with-link-payload ]; then
+    mv "$snapshot/claude.json" "$snapshot/payload.json"
+    ln -s payload.json "$snapshot/claude.json"
+  fi
+  if [ "$invalid" = unicode-coverage ]; then
+    fake_dir=$'nombre\xc2\x85'"$(printf '%064d' 0)  ."
+    mkdir "$snapshot/$fake_dir"
+    echo OTRO >"$snapshot/$fake_dir/.claude-json-entry.json"
+  fi
+  (
+    cd "$snapshot"
+    find . -type f -print0 | LC_ALL=C sort -z |
+      while IFS= read -r -d '' f; do
+        [ "$invalid:$f" != uncovered:./.claude-json-entry.json ] || continue
+        [ "$invalid:$f" != unicode-coverage:./.claude-json-entry.json ] || continue
+        [ "$invalid:$f" != uncovered-payload:./claude.json ] || continue
+        sha256sum "$f"
+      done >"$H/manifest"
+    mv "$H/manifest" MANIFEST.sha256
+    cd ..; zip -qry "$H/source.zip" estado
+  )
+  echo ANTERIOR > "$CLAUDE_HOME/settings.json"; echo ANTERIOR > "$H/.claude.json"
+  before="$(tree_checksum "$CLAUDE_HOME")"
+  mkdir "$H/tmp"
+  rc=0; TMPDIR="$H/tmp" bash "$UNINSTALL" --dry-run --from "$H/source.zip" >"$H/plan.log" 2>&1 || rc=$?
+  ck "$rc" "1" "$invalid: el plan tambien rechaza el registro invalido"
+  ck "$([ -d "$H/tmp" ] && find "$H/tmp" -mindepth 1 | wc -l || echo ausente)" "0" "$invalid: el plan elimina su extraccion temporal"
+  rc=0; bash "$UNINSTALL" --apply --from "$H/source.zip" >"$H/apply.log" 2>&1 || rc=$?
+  ck "$rc" "1" "$invalid: rechaza el registro de entrada invalido"
+  ck "$(tree_checksum "$CLAUDE_HOME")" "$before" "$invalid: rechazo antes de escribir el arbol"
+  ck "$(cat "$H/.claude.json")" "ANTERIOR" "$invalid: rechazo antes de escribir el JSON"
 done
 
 # La raiz elegida explicitamente puede estar enlazada: se restaura su contenido

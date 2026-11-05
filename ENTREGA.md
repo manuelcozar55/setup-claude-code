@@ -5,7 +5,7 @@ esta entrega. No se distribuyen credenciales ni configuración personal.
 
 ## Requisitos
 
-Linux o WSL2, Bash, Git, jq, Python 3 y Claude Code autenticado. Para respaldos y
+Linux o WSL2, Bash, Git, jq, Python 3, coreutils, util-linux (`flock`) y Claude Code autenticado. Para respaldos y
 restauraciones, también `zip` y `unzip` (`sudo apt install zip unzip` en Debian).
 La instalación admite Linux/WSL2; Windows nativo y macOS no están soportados.
 La versión de Claude Code probada figura en [Cockpit](kit/docs/11-cockpit.md): registra
@@ -48,6 +48,8 @@ sistema y de Claude Code, los comandos ejecutados y sus códigos de salida.
 El paquete incluye `PROCEDENCIA.json` y `VALIDACION-DEBIAN.md` junto al bundle
 y al archivo fuente. La suma del ZIP exterior se entrega por separado para
 comprobar primero la transferencia; el manifiesto interior verifica sus contenidos.
+Esos recibos se generan al preparar la entrega y no forman parte del árbol Git.
+En un clon, identifica el origen con `git rev-parse HEAD`.
 
 ## Instalar
 
@@ -177,10 +179,15 @@ restaurado. Para volver a él, `--from`.
 La orden que muestra `--dry-run --from FICHERO` conserva ese origen, aunque haya
 otro backup interno más reciente, y escapa espacios y comillas para Bash.
 
-Se restauran entradas del snapshot. Si un fichero elegido ocupa una ruta que
+Dentro de `CLAUDE_HOME` se restauran entradas del snapshot. Si un fichero elegido ocupa una ruta que
 ahora es un enlace, se sustituye el enlace y su destino externo queda intacto;
 el ZIP de seguridad conserva el enlace anterior para recuperarlo. También se
 respalda el JSON global aunque el directorio `.claude/` esté vacío o no exista.
+Un JSON global enlazado a un fichero se guarda por sus bytes, para poder
+recuperarlo en otra máquina. Al restaurar contenido, su alias válido se conserva
+y se respalda el destino físico antes de escribir. Al restaurar un enlace
+archivado se sustituye la entrada global sin escribir a través de él; el respaldo
+de seguridad registra el tipo y el enlace anteriores para poder deshacerlo.
 La raíz `CLAUDE_HOME` y sus ancestros pueden ser enlaces: se conserva el alias
 y se restaura su contenido. El JSON global permanece junto a la ruta elegida.
 Un recorrido por un directorio interno enlazado o un conflicto entre directorio

@@ -419,7 +419,8 @@ No son garantías absolutas: son defensa en profundidad, con sus límites docume
 
 ## Quick start
 
-Necesitas Linux o WSL2, Bash, Git, Python 3 ≥ 3.10, jq y Claude Code autenticado.
+Necesitas Linux o WSL2, Bash, Git, Python 3 ≥ 3.10, jq, coreutils,
+util-linux (`flock`) y Claude Code autenticado.
 Para respaldar o restaurar, también `zip` y `unzip`. Para desarrollar el repo,
 añade Make, ShellCheck y Gitleaks. Trabaja dentro del sistema de ficheros de Linux.
 
@@ -454,12 +455,18 @@ publicado su tag; el lanzador local carga la copia recibida sin esperar a esa pu
 
 Para revisar una restauración usa `bash uninstall.sh --dry-run --from FICHERO`;
 ejecuta después la orden que muestra. El respaldo previo queda en
-`~/backups/claude-safety-*.zip`. Se restauran las entradas del snapshot: un fichero
+`~/backups/claude-safety-*.zip`. Dentro de `CLAUDE_HOME` se restauran las entradas del snapshot: un fichero
 puede sustituir un enlace, dejando intacto su destino externo. Los conflictos con
 directorios internos se rechazan antes de escribir. La raíz explícita puede ser un
 enlace: se conserva y se restaura su contenido. Hace falta el repo completo,
 incluido `scripts/backup.sh`, para respaldar el estado previo. Restaurar no elimina todos los archivos
 del kit ni borra el estado de tus proyectos.
+
+El JSON global se exporta por su contenido, también si es un enlace válido.
+Al restaurar ese contenido se conserva un alias global válido y se escribe
+en su destino físico, respaldado previamente. Los enlaces archivados se
+restauran como entradas; el respaldo de seguridad conserva el tipo necesario
+para deshacer esa sustitución.
 
 El procedimiento completo y lo opcional viven en
 [`kit/docs/02-install.md`](kit/docs/02-install.md). `make bootstrap` prepara el

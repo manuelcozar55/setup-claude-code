@@ -131,7 +131,27 @@ if [ -d "$BUCLE_DIR" ]; then
   inf "ai-mastery/bucle -> ai-mastery-bucle/"
 fi
 if [ -f "$CLAUDE_JSON" ] || [ -L "$CLAUDE_JSON" ]; then
-  cp -a "$CLAUDE_JSON" "$ROOT/claude.json"
+  if [ -f "$CLAUDE_JSON" ]; then cp -pL "$CLAUDE_JSON" "$ROOT/claude.json"
+  else cp -a "$CLAUDE_JSON" "$ROOT/claude.json"
+  fi
+  # Solo el respaldo previo a sustituir la entrada necesita su identidad.
+  # El registro es regular para que el manifiesto cubra tambien el enlace.
+  if [ "${SCC_BACKUP_JSON_ENTRY:-0}" = 1 ]; then
+    python3 - "$CLAUDE_JSON" "$ROOT/.claude-json-entry.json" <<'PY'
+import base64
+import json
+import os
+import sys
+
+source = os.fsencode(sys.argv[1])
+entry = {"type": "file"}
+if os.path.islink(source):
+    entry = {"type": "link", "target_b64": base64.b64encode(os.readlink(source)).decode("ascii")}
+with open(sys.argv[2], "w", encoding="ascii") as output:
+    json.dump(entry, output)
+    output.write("\n")
+PY
+  fi
   inf "$(basename "$CLAUDE_JSON")     -> claude.json"
 fi
 

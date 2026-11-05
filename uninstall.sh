@@ -35,6 +35,7 @@ BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
 # deja de pisar el fichero REAL de quien ejecuta el script (25 proyectos y el historial
 # de sesiones dentro). No se hace sobreescribible: el derivarlo ES la proteccion.
 CLAUDE_JSON="$(dirname "$CLAUDE_HOME")/.claude.json"
+JSON_ENTRY=0
 
 die() { printf '\033[31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 ok()  { printf '\033[32m ok \033[0m %s\n' "$*"; }
@@ -195,15 +196,76 @@ extract_and_verify_zip() {
   printf '%s\n' "$root"
 }
 
+# Un rollback de entrada tiene precedencia sobre el payload portable. Se
+# valida antes de respaldar o escribir; los enlaces archivados nunca se leen.
+restore_global_source() {
+  local root="$1"
+  JSON_SOURCE="$root/claude.json"; JSON_ENTRY=0
+  if [ -e "$root/.claude-json-entry.json" ] || [ -L "$root/.claude-json-entry.json" ]; then
+    if ! JSON_SOURCE=$(python3 - "$root" <<'PY'
+import base64
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import tempfile
+
+try:
+    root = Path(sys.argv[1])
+    record = root / ".claude-json-entry.json"
+    manifest = root / "MANIFEST.sha256"
+    if record.is_symlink() or not record.is_file() or manifest.is_symlink() or not manifest.is_file():
+        raise ValueError("registro y manifiesto deben ser ficheros regulares")
+    # sha256sum separa por LF; otros separadores pueden ser bytes del nombre.
+    covered = {
+        match.group(1)
+        for line in manifest.read_bytes().split(b"\n")
+        if (match := re.fullmatch(rb"[0-9a-fA-F]{64} [ *](?:\./)?(.+)", line))
+    }
+    if record.name.encode("ascii") not in covered:
+        raise ValueError("registro sin checksum")
+    entry = json.loads(record.read_text(encoding="utf-8"))
+    if not isinstance(entry, dict):
+        raise ValueError("el registro debe ser un objeto")
+    if entry == {"type": "file"}:
+        payload = root / "claude.json"
+        if payload.is_symlink() or not payload.is_file() or payload.name.encode("ascii") not in covered:
+            raise ValueError("payload regular sin checksum")
+        print(payload)
+    elif set(entry) == {"type", "target_b64"} and entry["type"] == "link" and isinstance(entry["target_b64"], str):
+        target = base64.b64decode(entry["target_b64"], validate=True)
+        if not target or b"\0" in target:
+            raise ValueError("destino de enlace invalido")
+        temporary = os.fsencode(tempfile.mkdtemp(prefix=".json-entry-", dir=root)) + b"/entry"
+        os.symlink(target, temporary)
+        print(os.fsdecode(temporary))
+    else:
+        raise ValueError("tipo o campos del registro invalidos")
+except (OSError, ValueError) as error:
+    sys.exit(f"registro global invalido: {error}")
+PY
+    ); then
+      die "registro de entrada global invalido; no se restaura"
+    fi
+    JSON_ENTRY=1
+  elif [ -L "$JSON_SOURCE" ]; then
+    JSON_ENTRY=1
+  fi
+}
+
 restore_zip_plan() {
   local zip="$1" root
   echo "  origen: snapshot ZIP de scripts/backup.sh ($zip)"
   root="$(extract_and_verify_zip "$zip")"
+  trap 'rm -rf "${root%/*}"' EXIT
+  restore_global_source "$root"
   echo "  restauraria: $root/claude/  ->  $CLAUDE_HOME/"
-  if [ -f "$root/claude.json" ] || [ -L "$root/claude.json" ]; then
-    echo "  restauraria: $root/claude.json  ->  $CLAUDE_JSON"
+  if [ -L "$JSON_SOURCE" ] || [ -f "$JSON_SOURCE" ]; then
+    echo "  restauraria: $JSON_SOURCE  ->  $CLAUDE_JSON"
   fi
   rm -rf "${root%/*}"
+  trap - EXIT
 }
 
 restore_zip_apply() {
@@ -211,8 +273,8 @@ restore_zip_apply() {
   mkdir -p "$CLAUDE_HOME"
   cp -aT --remove-destination "$root/claude" "$CLAUDE_HOME"
   ok "restaurado $CLAUDE_HOME desde $root/claude/"
-  if [ -f "$root/claude.json" ] || [ -L "$root/claude.json" ]; then
-    cp -aT --remove-destination "$root/claude.json" "$CLAUDE_JSON"
+  if [ -L "$JSON_SOURCE" ] || [ -f "$JSON_SOURCE" ]; then
+    cp -aT --remove-destination "$JSON_SOURCE" "$CLAUDE_JSON"
     ok "restaurado $CLAUDE_JSON"
   fi
 }
@@ -234,7 +296,7 @@ safety_backup() {
   fi
   echo "== backup de seguridad del estado actual antes de restaurar =="
   # Prefijo propio: el ZIP de seguridad no debe parecerse a un backup periodico ni competir con el.
-  BACKUP_PREFIX="claude-safety" CLAUDE_HOME="$CLAUDE_HOME" BACKUP_DIR="$BACKUP_DIR" CLAUDE_JSON="$CLAUDE_JSON" bash "$HERE/scripts/backup.sh" \
+  SCC_BACKUP_JSON_ENTRY="$JSON_ENTRY" BACKUP_PREFIX="claude-safety" CLAUDE_HOME="$CLAUDE_HOME" BACKUP_DIR="$BACKUP_DIR" CLAUDE_JSON="$CLAUDE_JSON" bash "$HERE/scripts/backup.sh" \
     || die "fallo el backup de seguridad previo; abortando la restauracion (nada se ha tocado)"
 }
 
@@ -268,8 +330,14 @@ case "$MODE" in
       zip)
         root="$(extract_and_verify_zip "$path")"
         trap 'rm -rf "${root%/*}"' EXIT
+        restore_global_source "$root"
         restore_preflight "$root/claude"
-        if [ -f "$root/claude.json" ] || [ -L "$root/claude.json" ]; then
+        if [ -L "$JSON_SOURCE" ] || [ -f "$JSON_SOURCE" ]; then
+          # El payload escribe en el fichero global elegido, respaldado por
+          # sus bytes. Una operacion de entrada conserva la ruta lexica.
+          if [ "$JSON_ENTRY" -eq 0 ] && [ -L "$CLAUDE_JSON" ] && [ -f "$CLAUDE_JSON" ]; then
+            IFS= read -r -d '' CLAUDE_JSON < <(realpath -ez -- "$CLAUDE_JSON")
+          fi
           [ ! -d "$CLAUDE_JSON" ] || [ -L "$CLAUDE_JSON" ] \
             || die "no se reemplaza un directorio por claude.json: $CLAUDE_JSON"
         fi
