@@ -7,6 +7,22 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-09
+
+Autosave del estado en dos capas (ADR 028): `nucleo.md` queda guardado sin que la persona haga nada.
+
+### Added
+
+- **Capa 1 (kit, sin modelo, siempre activa):** `handoff --auto` fusiona solo la sección `## Último turno (auto)` (hora, último mensaje de la persona y de la sesión, ficheros tocados según git y transcript, comandos con su rc, rama, HEAD y % de contexto). No toca Objetivo, Invariantes, Paso actual ni Siguiente acción, no rota `nucleo.prev-*` ni libera al dueño, conserva el mtime y es lo primero que recorta el tope. El hook `autosave.sh` lo lanza en `Stop` (asíncrono, 10 s), `PostCompact` (8 s) y `SessionEnd` (10 s; sin timeout declarado se cancela a 1,5 s). Deja `autosave.dirty` (`motivo=edit|compact`) para que el cockpit sepa cuándo sintetizar, y `~/.claude/session-logs/autosave.log`. Tests: `test_autosave.sh` (60 comprobaciones; 47 suites).
+- **`claude --resume` desde `~` recupera su ranura:** la ranura de sesión se localiza también por `session_id` y se adopta en `SessionStart` `resume` si su proceso ya no existe.
+- **`edad_auto`** (quinto campo del KPI de `pre-compact.sh`): segundos desde la última sección auto, `-1` si no hay.
+- **Cockpit 0.8.0, capa 2 (opt-in):** síntesis con modelo silenciosa, sin `/clear` ni toast, banda ni recibo (solo «guardado hh:mm» en el panel). Se dispara por hito (commit o PR, TodoWrite completado, oráculo que pasa a verde), por turnos (≥ 8 turnos o +15 puntos de contexto), tras una compactación y, como red, a los 10 min; con topes de 5 turnos y 10 min y solo con `autosave.dirty`. `/autosave on|off|status` lo controla. Mide cada síntesis en `~/.claude/session-logs/autosave-cockpit.log`.
+
+### Changed
+
+- **`/handoff` pasa a orden manual opcional:** el estado se guarda solo (capa 1 siempre, capa 2 con cockpit). Las instrucciones del kit y la guía ya no piden cerrar fase con `/handoff`; queda para fijar un foco o para antes de un `/clear` sin cockpit. `handoff --desde` borra `autosave.dirty` y deja la sección auto como última.
+- Versión del marketplace del kit fijada a `v1.9.0` y guía de entrega al día.
+
 ## [1.8.1] - 2026-11-04
 
 ### Fixed
@@ -2227,7 +2243,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.7.0...v1.7.1

@@ -224,6 +224,8 @@ _nucleo_proceso_id() {
   printf 'ps:%s\n' "$s"
 }
 
+# nucleo_sesion_dir por_sid <sid>: la ranura cuyo .sesion es ese session_id (la más reciente si hay varias), la tenga o no este
+# proceso: un `claude --resume` es otro proceso, con otro pid. Solo lee. rc 1 si no hay ninguna o el id no es válido.
 # nucleo_sesion_dir [crear]: imprime la ranura de este proceso: la de sesiones/*-<pid> cuyo .proceso coincide con la
 # identidad actual o, si no hay ninguna, la ruta nueva (con la fecha de ahora). rc 1 sin pid o con el proceso muerto.
 # Sin «crear» no escribe nada (los hooks solo leen). Con «crear»: umask 077, el directorio, .proceso y
@@ -233,6 +235,18 @@ _nucleo_proceso_id() {
 nucleo_sesion_dir() {
   local pid id base=$HOME/.claude/estado/sesiones d f t n
   nucleo_estado_seguro "$base" || return 1
+  if [ "${1:-}" = por_sid ]; then
+    case ${2:-} in '' | *[!A-Za-z0-9_-]*) return 1 ;; esac
+    t=""
+    for d in "$base"/*/; do
+      d=${d%/}
+      [ -d "$d" ] && [ ! -L "$d" ] && [ ! -L "$d/.sesion" ] && [ "$(cat "$d/.sesion" 2>/dev/null)" = "$2" ] || continue
+      for f in "$d"/* "$d"/.[!.]*; do [ ! -L "$f" ] || continue 2; done
+      t=$d
+    done
+    [ -n "$t" ] && printf '%s\n' "$t"
+    return
+  fi
   pid=$(nucleo_sesion_pid) || return 1
   id=$(_nucleo_proceso_id "$pid") || return 1
   # Varias sesiones de hooks (6 SubagentStart a la vez) pueden crear la ranura a la vez: se arma en un directorio
@@ -256,6 +270,20 @@ nucleo_sesion_dir() {
     rm -f -- "$t/.proceso"; rmdir -- "$t" 2>/dev/null
   done
   return 1
+}
+
+# nucleo_sesion_adoptar <sid>: la ranura por_sid de una sesión cuyo proceso ya no vive pasa a este proceso (se renombra con su
+# pid y se reescribe .proceso): así `claude --resume` desde ~ recupera su estado. No toca la de un proceso vivo. Imprime la ruta.
+nucleo_sesion_adoptar() {
+  local pid id d old oid n
+  pid=$(nucleo_sesion_pid) && id=$(_nucleo_proceso_id "$pid") || return 1
+  d=$(nucleo_sesion_dir por_sid "${1:-}") || return 1
+  old=${d##*-}
+  case $old in '' | *[!0-9]*) return 1 ;; esac
+  if oid=$(_nucleo_proceso_id "$old" 2>/dev/null) && [ "$oid" = "$(cat "$d/.proceso" 2>/dev/null)" ]; then return 1; fi
+  n=${d%-*}-$pid
+  [ ! -e "$n" ] && mv -T -- "$d" "$n" 2>/dev/null && printf '%s\n' "$id" >"$n/.proceso" 2>/dev/null || return 1
+  printf '%s\n' "$n"
 }
 
 # nucleo_ruta <raíz> [crear]: el nucleo.md de ESTA sesión, la única fuente para quien lo lea (nudge, PreCompact...): desde
@@ -396,7 +424,7 @@ _NUCLEO_SECCIONES_AWK='
     return tolower(t)
   }
   BEGIN {
-    sc_n = split("Objetivo|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir", sc_titulo, "|")
+    sc_n = split("Objetivo|Invariantes|Plan|Paso actual|Siguiente acción|Pendientes|Comandos de verificación|Ficheros tocados|No repetir|Último turno (auto)", sc_titulo, "|")
     for (sc_i = 1; sc_i <= sc_n; sc_i++) sc_clave[sc_i] = normaliza_seccion(sc_titulo[sc_i])
   }
   function clave_seccion(t,   i) {
@@ -795,7 +823,7 @@ _nucleo_emitir_awk() {
     END {
       if (medir == "medir") { print ocupado + 0; exit }
       # Orden de emisión (D5), no el del fichero: lo que más urge retomar va primero y lo que se recorta es la cola.
-      m = split("Objetivo|Invariantes|Paso actual|Siguiente acción|Comandos de verificación|Plan|Pendientes|Ficheros tocados|No repetir", ord, "|")
+      m = split("Objetivo|Invariantes|Paso actual|Siguiente acción|Comandos de verificación|Plan|Pendientes|Ficheros tocados|No repetir|Último turno (auto)", ord, "|")
       if (medir == "entero") {
         total = length(buf["#"]); for (i = 1; i <= m; i++) total += length(buf[ord[i]])
         q = split("Pendientes|Plan|Ficheros tocados", cola, "|")

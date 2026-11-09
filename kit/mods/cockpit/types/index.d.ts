@@ -30,6 +30,9 @@ export type Handoff = { phase: 'idle' | 'confirm' | 'working' | 'waiting' | 'don
 // `handoff --estado`: the share of the cap and who owns the state (null: nobody, or no project).
 export type Estado = { pct: number; bytes: number; tope: number; dueno: { sesion: string; vigente: boolean; isMine: boolean } | null; isSlot?: boolean }
 
+// The silent synthesis: when (ISO) and how many times it saved, and the dirty reason that asked for it.
+export type Autosave = { ultima: string; n: number; motivo: string }
+
 export type Turn = { isRunning: boolean; startedAt: number; activity: string; mission: string }
 
 declare module 'claude-code' {
@@ -52,6 +55,7 @@ declare module 'claude-code' {
       continuity: string
       isMissionOpen: boolean
       isAutoQueued: boolean
+      autosave: Autosave
     }
   }
 }

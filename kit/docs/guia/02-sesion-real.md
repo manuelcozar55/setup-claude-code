@@ -199,7 +199,7 @@ rama: fix/export-medianoche
 
 El checkpoint sale de git, de la transcripción y de los `- [ ]` de `nucleo.md`, sin modelo de por medio. Lo que no puede saber es el plan: «Paso actual» y «Siguiente acción» llegan como estuvieran escritas, y si nadie las actualizó en los últimos turnos (el 75 % de las veces medidas), llegan viejas. Para eso está el aviso.
 
-El otro camino es cerrar la fase uno mismo: `/handoff` (mod [`cockpit`](../11-cockpit.md)) actualiza «Plan», «Paso actual», «Siguiente acción», «Pendientes» y «Comandos de verificación», conserva «Encargo original» e «Invariantes» byte a byte, y hace `/clear`. La sesión nueva recibe el estado con el mismo hook de la sección 1. La persona pulsa Enter sobre el prompt relleno («adelante con la Siguiente acción…: <línea>»), y el modelo empieza por `git log --oneline -5` y `git status`.
+El estado ya se guarda solo tras cada turno (sección «Último turno (auto)»; con el mod, además una síntesis silenciosa). El otro camino, opcional, es cerrar la fase uno mismo para fijar el foco: `/handoff` (mod [`cockpit`](../11-cockpit.md)) actualiza «Plan», «Paso actual», «Siguiente acción», «Pendientes» y «Comandos de verificación», conserva «Encargo original» e «Invariantes» byte a byte, y hace `/clear`. La sesión nueva recibe el estado con el mismo hook de la sección 1. La persona pulsa Enter sobre el prompt relleno («adelante con la Siguiente acción…: <línea>»), y el modelo empieza por `git log --oneline -5` y `git status`.
 
 ## Lo que enseña la sesión
 

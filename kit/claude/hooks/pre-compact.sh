@@ -21,11 +21,15 @@ if nucleo_modo_estado_md "$RAIZ"; then NUC=$RAIZ/ESTADO.md; else NUC=$(nucleo_ru
 # Desde ~ sin ranura propia nucleo_ruta cae al nucleo compartido (de otra tarea): ni sus pendientes ni su edad son de esta sesión.
 { [ "$RAIZ" != "$HOME" ] || [[ $NUC == */sesiones/*/nucleo.md ]]; } || NUC=
 
-# KPI: ts sesión ctx% edad_nucleo_s (-1 si no existe). Se mide con nucleo_audit o con awk.
+# KPI: ts sesión ctx% edad_nucleo_s (-1 si no existe) edad_auto_s (-1 si no hay sección «Último turno (auto)»: la
+# escribe handoff --auto, y el mtime de nucleo.md no se mueve con ella). Se mide con nucleo_audit o con awk.
 MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
 PCT=$( { [ -n "$TP" ] && nucleo_ctx "$TP"; } | cut -d' ' -f2)
+EDAD_AUTO=-1
+if [ -n "$NUC" ] && TA=$(awk '/^## Último turno \(auto\)$/ { g = 1; next } g && /^- / { sub(/^- /, ""); sub(/ ·.*/, ""); print; exit }' "$NUC" 2>/dev/null) && [ -n "$TA" ] \
+  && TA=$(date -d "$TA" +%s 2>/dev/null); then EDAD_AUTO=$(( $(date +%s) - TA )); fi
 mkdir -p "${CLAUDE_HOME:-$HOME/.claude}/session-logs" 2>/dev/null \
-  && printf '%s %s %s %s\n' "$(date +%FT%T%z)" "${SID:--}" "${PCT:--}" "$([ -n "$MT" ] && echo $(( $(date +%s) - MT )) || echo -1)" \
+  && printf '%s %s %s %s %s\n' "$(date +%FT%T%z)" "${SID:--}" "${PCT:--}" "$([ -n "$MT" ] && echo $(( $(date +%s) - MT )) || echo -1)" "$EDAD_AUTO" \
      >>"${CLAUDE_HOME:-$HOME/.claude}/session-logs/nucleo-freshness.log"
 # Una línea por compactación y nadie la leía entera: se acota a las últimas 1000 al pasar de 2000.
 # Temporal único en el mismo directorio (mv atómico) con el modo del log, y borrado si algo falla

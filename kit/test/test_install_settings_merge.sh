@@ -142,7 +142,7 @@ run
 ck "$(dice 'fusion de settings.json fallo')" "n" "hooks: un evento malformado no aborta la fusion"
 ck "$(cmds PreToolUse | tr '|' '\n' | grep -c 'block-dangerous')" "1" "hooks: con un evento malformado los guards del kit llegan igual"
 ck "$(cmds Notification)" "mio.sh" "hooks: el grupo sin hooks se descarta y el resto del evento se queda"
-ck "$(jq -r '.hooks.Stop | "\(type) \(length)"' "$S")" "array 1" "hooks: un evento que no es lista se descarta y quedan los del kit"
+ck "$(jq -r '.hooks.Stop | "\(type) \(length)"' "$S")" "array 2" "hooks: un evento que no es lista se descarta y quedan los del kit"
 seed e3 <<'EOF'
 { "hooks": { "PreToolUse": [ { "hooks": [ { "type": "command", "command": "/opt/mio/log.sh && $HOME/.claude/hooks/branch-guard.sh" } ] } ] } }
 EOF

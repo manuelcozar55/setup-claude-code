@@ -8,7 +8,7 @@ The full guide is in Spanish; this is the one-screen version. Figures were measu
 |---|---|---|
 | 1 | Install ([`10-onboarding.md`](../10-onboarding.md)), then run `/context` in a fresh session | you have your fixed-cost baseline written down |
 | 2 | Keep `.claude/estado/nucleo.md` in a fixed shape: original request, invariants, plan, current step, next action, open items, touched files, verification commands. Finished work moves out. | a new session can tell you the next action without you pasting it |
-| 3 | Close each phase with `/handoff` ([`11-cockpit.md`](../11-cockpit.md)) or update the file and `/clear`. One task, one session. | the new session starts with `git log` and `git status`, as the startup hook asks |
+| 3 | The state saves itself after every turn (`autosave.sh`; with the cockpit, also a silent synthesis). `/handoff` ([`11-cockpit.md`](../11-cockpit.md)) is an optional manual order to pin a focus before `/clear`. One task, one session. | the new session starts with `git log` and `git status`, as the startup hook asks |
 | 4 | Learn which incident each hook prevents ([`05-security.md`](../05-security.md#hook--incidente-que-evita)) | you can justify every hook in your `settings.json` |
 | 5 | Delegate any search longer than three queries to a subagent; cap shell output (`tail -n 40`, `grep -c`) | `/context` barely grows in the main thread |
 | 6 | One short line per memory entry ([`13-memoria.md`](../13-memoria.md)); look facts up with [`recuerda <terms>`](../../../scripts/recuerda) | your memory index fits in 60 short lines |

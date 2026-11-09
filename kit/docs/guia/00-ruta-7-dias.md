@@ -58,7 +58,7 @@ Si el fichero ya existe, `handoff --iniciar` no lo toca.
 
 ## Día 3 · `/handoff` y `/clear` en vez de esperar a la compactación
 
-Instala el mod `cockpit` ([`11-cockpit.md`](../11-cockpit.md)). Al cerrar una fase, `/handoff`: el modelo devuelve las secciones que cambian, el código las fusiona en `nucleo.md` y hace `/clear`. La sesión nueva recibe el estado del hook de arranque; pulsas Enter sobre el prompt que el mod deja relleno con la siguiente acción. Sin el mod, lo mismo desde la terminal: pide al modelo un borrador de las secciones que cambian, ejecuta `handoff --desde borrador.md` y teclea `/clear`.
+El estado se guarda solo tras cada turno; con el mod `cockpit` ([`11-cockpit.md`](../11-cockpit.md)) además se sintetiza en silencio. `/handoff` queda como orden manual opcional para fijar un foco: el modelo devuelve las secciones que cambian, el código las fusiona en `nucleo.md` y hace `/clear`. La sesión nueva recibe el estado del hook de arranque; pulsas Enter sobre el prompt que el mod deja relleno con la siguiente acción. Sin el mod, lo mismo desde la terminal: pide al modelo un borrador de las secciones que cambian, ejecuta `handoff --desde borrador.md` y teclea `/clear`.
 
 Cambias de tarea: `/nueva <tarea>` (con el mod: archiva el estado actual, limpia el contexto y deja la tarea nueva en el prompt). Sin el mod, `handoff --desde` y `/clear`. Una sesión por tarea.
 

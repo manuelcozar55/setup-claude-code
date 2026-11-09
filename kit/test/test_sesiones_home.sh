@@ -189,7 +189,7 @@ ok '17 la rotación borra la foto de más de 14 días y conserva la reciente' "$
 mkdir -p "$T/tmpx/efimera/.claude/estado" "$T/real/.claude/estado"
 echo '# Estado' >"$T/tmpx/efimera/.claude/estado/nucleo.md"; echo '# Estado' >"$T/real/.claude/estado/nucleo.md"
 REG=$HOME/.claude/estado/raices; : >"$REG"
-( export TMPDIR=$T/tmpx; nucleo_registrar "$T/tmpx/efimera"; nucleo_registrar "$T/real" )
+TMPDIR=$T/tmpx nucleo_registrar "$T/tmpx/efimera"; TMPDIR=$T/tmpx nucleo_registrar "$T/real"
 ok '18 registrar rechaza la raíz bajo TMPDIR y admite la otra' "$(tr '\n' ' ' <"$REG")" "$T/real "
 printf '%s\n' "$T/real" "$T/borrada-ya" "$T/tmpx/efimera" >"$REG"
 TMPDIR=$T/tmpx hook "$HC" "$PA" startup depura >/dev/null
@@ -241,6 +241,23 @@ done
 rm -f "$T/fp" "$T/frc"
 (cd "$HOME" && env -u CLAUDE_PID bash "$HO" --desde "$(borrador Hn)" >/dev/null 2>&1); R=$?
 ok "20 sin CLAUDE_PID y con un padre que no es claude no hay ranura (sale 3)" "$R" 3
+
+# 21. por_sid (ADR 028): la ranura se encuentra por session_id aunque el pid sea otro; resume la adopta si su proceso murió
+sleep 300 & PX=$!; PIDS+=("$PX")
+ho "$PX" --desde "$(borrador X)" --sesion sid-x >/dev/null 2>&1
+SX=$(ls -d "$SES"/*-"$PX" 2>/dev/null)
+ok "21 --desde en una ranura deja .sesion con el session_id" "$(cat "$SX/.sesion" 2>/dev/null)" sid-x
+# shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
+. "$K/hooks/lib/nucleo.sh"
+ok "21 por_sid recupera la ranura con otro PID en el entorno" "$(CLAUDE_PID=$PB nucleo_sesion_dir por_sid sid-x)" "$SX"
+ok "21 por_sid con un id desconocido o inválido: rc 1 y nada" "$(nucleo_sesion_dir por_sid nadie; nucleo_sesion_dir por_sid '../x'; echo "rc=$?")" "rc=1"
+ok "21 un resume con el proceso dueño vivo no la adopta" "$(hook "$HC" "$PC" resume sid-x | command grep -c '<nucleo-datos .*sesiones/')" 0
+kill "$PX"; wait "$PX" 2>/dev/null
+sleep 300 & PY=$!; PIDS+=("$PY")
+ok "21 resume desde otro proceso (el dueño murió) adopta la ranura y la inyecta" "$(hook "$HC" "$PY" resume sid-x | command grep -c "<nucleo-datos .*sesiones/.*-$PY/")" 1
+ok "21 la ranura ahora lleva el pid nuevo y su .proceso" "$(find "$SES" -maxdepth 1 -name "*-$PY" | wc -l | tr -d ' '),$(find "$SES" -maxdepth 1 -name "*-$PX" | wc -l | tr -d ' ')" "1,0"
+sleep 300 & PZ=$!; PIDS+=("$PZ")
+ok "21 startup no adopta" "$(hook "$HC" "$PZ" startup sid-x >/dev/null; find "$SES" -maxdepth 1 -name "*-$PZ" | wc -l | tr -d ' ')" 0
 
 [ "$FAIL" -eq 0 ] && echo "PASS" || echo "FAIL"
 exit "$FAIL"

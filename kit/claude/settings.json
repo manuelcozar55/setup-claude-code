@@ -211,6 +211,15 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/autosave.sh",
+            "timeout": 8
+          }
+        ]
       }
     ],
     "Stop": [
@@ -220,6 +229,16 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/stop-context-gauge.sh",
             "timeout": 15
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/autosave.sh",
+            "async": true,
+            "timeout": 10
           }
         ]
       }
@@ -255,6 +274,15 @@
             "timeout": 3
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/autosave.sh",
+            "timeout": 10
+          }
+        ]
       }
     ]
   },
@@ -268,7 +296,7 @@
       "source": {
         "source": "github",
         "repo": "manuelcozar55/setup-claude-code",
-        "ref": "v1.8.1"
+        "ref": "v1.9.0"
       }
     }
   },
