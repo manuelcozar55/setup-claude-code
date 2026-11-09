@@ -1,6 +1,6 @@
 # ADR 028 — Autosave del estado en dos capas: hitos y turnos, reloj solo como red, el modelo fuera del camino caliente
 
-**Fecha:** 2026-11-09 · **Estado:** propuesta · **Complementa a:** ADR 015, 026, 027
+**Fecha:** 2026-11-09 · **Estado:** aceptada · implementada en 1.9.0 (2026-11-09) · **Complementa a:** ADR 015, 026, 027
 
 ## Contexto
 
@@ -213,3 +213,18 @@ Cada fase se cierra con `make test` en rc 0 (`CLAUDE.md`) y su verificación con
   cuenta de cswap con la que se reabra.
 - No afirma todavía: el coste de la capa 2 (sin medir), que el fork sea invisible en el transcript ([NV]), ni que la
   capa 2 funcione sin cockpit: requiere el mod y una TUI interactiva.
+
+## Implementación (2026-11-09)
+
+Kit 1.9.0 y cockpit 0.8.0. Desviaciones reales respecto a la Decisión:
+
+- **Hook propio, no ampliado:** `autosave.sh` (Stop, PostCompact, SessionEnd) en lugar de ampliar `stop-context-gauge.sh` y `agentes.sh`; cada evento es un grupo aparte en `settings.json` y los existentes no cambian.
+- **Timeouts medidos** (`probes-hooks.md`): el timeout declarado acota también al `Stop` async (10 s) y sin timeout `SessionEnd` se cancela a 1,5 s; PostCompact 8 s. El CLI se acota a 5 s por dentro.
+- **La cabecera auto vive en la lib** (`_NUCLEO_SECCIONES_AWK` y orden de emisión de `nucleo.sh`), no en la lista `admitida()` de `handoff`: así el borrador de `--desde` no la sustituye y es lo primero que se recorta, sin copia en `diario.md`.
+- **Ranura por `session_id`:** se adopta solo en `resume` (en `startup` no hay sid guardado), renombrando la ranura y reescribiendo `.proceso`, y solo si el proceso viejo ya no existe.
+- **`--auto` y el cockpit:** el lock evita el exit 4 de un `--desde` en curso, pero `--auto` cambia el sha256: un `--migrar --esperado` puede dar 4 y el cockpit lo trata como reintento.
+- **Sin `$.store`** (no existe en el SDK): `/autosave` vive en memoria del módulo (defecto on). Tampoco hay append: el log del cockpit se lee y reescribe con tope de 2000 líneas.
+- **Coste del fork medido en bytes y milisegundos**, no en tokens (el fork no devuelve uso); sin entrada en `COST-LOG.md` ni decisión todavía sobre pasar a Haiku.
+- **`nothing-to-fork` en silencio:** sin `HANDOFF_PING` (rellenaría el prompt) y con reintento en el siguiente turno; un fallo real espera 10 min.
+- **`goalSeen` pegajoso** hasta la siguiente síntesis, porque los topes (5 turnos, 10 min) perderían el hito; la primera lectura de `verificaciones.log` solo fija la referencia.
+- **Sin verificar en sesión interactiva real:** el fork silencioso, su coste y el ciclo completo con el `autosave.dirty` real; las métricas de éxito quedan por medir.
