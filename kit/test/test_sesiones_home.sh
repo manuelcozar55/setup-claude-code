@@ -189,7 +189,7 @@ ok '17 la rotación borra la foto de más de 14 días y conserva la reciente' "$
 mkdir -p "$T/tmpx/efimera/.claude/estado" "$T/real/.claude/estado"
 echo '# Estado' >"$T/tmpx/efimera/.claude/estado/nucleo.md"; echo '# Estado' >"$T/real/.claude/estado/nucleo.md"
 REG=$HOME/.claude/estado/raices; : >"$REG"
-( export TMPDIR=$T/tmpx; nucleo_registrar "$T/tmpx/efimera"; nucleo_registrar "$T/real" )
+TMPDIR=$T/tmpx nucleo_registrar "$T/tmpx/efimera"; TMPDIR=$T/tmpx nucleo_registrar "$T/real"
 ok '18 registrar rechaza la raíz bajo TMPDIR y admite la otra' "$(tr '\n' ' ' <"$REG")" "$T/real "
 printf '%s\n' "$T/real" "$T/borrada-ya" "$T/tmpx/efimera" >"$REG"
 TMPDIR=$T/tmpx hook "$HC" "$PA" startup depura >/dev/null
