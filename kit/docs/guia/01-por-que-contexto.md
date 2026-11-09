@@ -28,7 +28,7 @@ Al acercarse al límite, Claude Code compacta: sustituye la conversación por un
 Lo que se deduce:
 
 1. Lo que llena la ventana es lo que traen las herramientas. Por eso se delega la exploración a subagentes (vuelve la conclusión, no el volcado) y se acotan las salidas (`| tail -n 40`, `grep -c`, `--stat`).
-2. Esperar a la compactación automática es dejar que otro decida qué conservar, en el peor momento. Cerrar la fase con `/handoff` o `/clear` es decidirlo tú.
+2. Esperar a la compactación automática es dejar que otro decida qué conservar, en el peor momento. Que el estado se guarde solo tras cada turno, y cerrar la fase con `/clear` (o `/handoff` para fijar el foco), es decidirlo tú.
 
 ## 3 · Lo único que sobrevive es lo que está en disco
 

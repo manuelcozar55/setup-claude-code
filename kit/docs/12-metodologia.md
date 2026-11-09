@@ -115,7 +115,7 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
   (una tarea = un worktree = un nucleo = una sesión dueña; `$HOME`, `~/.claude` y un directorio sin git no son
   proyecto). Secciones, en el orden en que se inyectan: Objetivo, Invariantes, Paso actual, Siguiente acción,
   Comandos de verificación, Plan, Pendientes y Ficheros tocados (plantilla en `templates/nucleo.md`). Se
-  actualiza al abrir la tarea, antes de delegar y al cerrar cada fase; tras una compactación se lee antes de
+  actualiza al abrir la tarea, antes de delegar y al cerrar cada fase (el último turno se guarda solo); tras una compactación se lee antes de
   actuar. Lo cerrado va a `diario.md`, que nunca se inyecta. El índice de tareas que ve una sesión abierta
   desde `~` se **deriva** de los nucleos vivos: no hay nadie que lo escriba, así que no puede desviarse.
 - **`oraculo -- <cmd>`** ejecuta una verificación con `pipefail`, imprime las últimas 40 líneas y `rc=N`, sale
@@ -127,19 +127,34 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
   secciones enteras desde el final hasta Comandos, corta Paso actual por línea con un aviso y no toca Siguiente
   acción; lo quitado va entero a `diario.md`. `--solo`, `--commit`, `--migrar <dir>` y `--estado` (JSON de una
   línea) completan el contrato.
+- **`handoff --auto`** (ADR 028) es el guardado sin modelo, y lo lanza solo el hook `autosave.sh` en `Stop`
+  (asíncrono, `timeout` 10), `PostCompact` (8) y `SessionEnd` (10; sin timeout declarado se cancela a 1,5 s). Lee
+  el stdin del hook (`session_id`, `transcript_path`, `cwd`) y fusiona solo `## Último turno (auto)`: hora y evento,
+  rama, HEAD y % de contexto, el último mensaje de la persona y de la sesión, ficheros tocados (git más transcript) y
+  comandos con su rc. No toca las demás secciones, no rota `nucleo.prev-*`, no libera al dueño y conserva el mtime del
+  fichero; es lo primero que recorta el tope, sin copia en `diario.md`. Si `handoff --desde` o el cockpit tienen el
+  lock, sale 0 sin escribir. Cuando hubo trabajo (ficheros o comandos) deja `.claude/estado/autosave.dirty`
+  (`motivo=edit|compact`, `desde=`, `ultimo=`); `handoff --desde` lo borra. Cada guardado anota una línea en
+  `~/.claude/session-logs/autosave.log`. En `~`, sin proyecto, escribe en la ranura de la sesión; con `claude --resume`
+  `session-start-clear.sh` adopta por `session_id` la ranura de la sesión anterior si su proceso ya no existe.
+  El KPI de `pre-compact.sh` suma `edad_auto` (segundos desde esa sección, `-1` si no hay). Límite: `Stop` no corre
+  si la persona interrumpe el turno; lo cubren el siguiente `Stop`, `PostCompact` y `SessionEnd`.
 - Dueño: `.claude/estado/.dueno` (`sesion=`, `desde=`) lo reclama SessionStart; la sesión ajena recibe un aviso
   y su nudge de contexto calla; caduca a las 4 h (`NUCLEO_DUENO_TTL`).
 
 ## 6 · Cambiar de sesión y cerrar el ciclo
 
+- **El estado se guarda solo** (ADR 028): la capa 1 (`handoff --auto`, arriba) siempre; la capa 2, con el mod
+  [`cockpit`](11-cockpit.md), sintetiza con modelo y en silencio las secciones redactadas por hitos y turnos.
+  `/handoff` queda como orden manual opcional, p. ej. para fijar un foco o antes de un `/clear` sin cockpit.
 - **`/handoff`** (mod [`cockpit`](11-cockpit.md), o `handoff --desde` a mano en cualquier runtime; `install.sh` no instala el cockpit) escribe un documento de traspaso —objetivo,
   invariantes, plan, paso actual, pendientes, comandos de verificación—, limpia el contexto y
   retoma desde él. Con `solo` guarda el documento y no limpia nada.
-  El cockpit lo lanza solo al cerrar un turno con el contexto al 70 % del límite de autocompactación
+  El cockpit lo lanza también solo al cerrar un turno con el contexto al 70 % del límite de autocompactación
   (`COCKPIT_AUTO_HANDOFF=off` lo desactiva); `/nueva <tarea>` archiva el estado y cambia de tarea.
   Sin cockpit el defecto es checkpoint + reinyección + aviso: `pre-compact.sh` deja un checkpoint, tras compactar
   `session-start-compact.sh` reinyecta `nucleo.md` y, si lleva más de 10 min sin tocarse, pide al modelo
-  actualizarlo con `handoff --desde`; `/handoff` es manual y el cockpit es la opción automática.
+  actualizarlo con `handoff --desde`; `/handoff` es manual y opcional.
 - **`/retro`** cierra el ciclo: revisa una sesión y propone mejoras al **entorno** del agente
   (punteros de navegación, comprobaciones automáticas, estándares de revisión, tamaño de los
   ficheros de guía, acceso a información), ordenadas por gravedad. Aplicarlas es un cambio

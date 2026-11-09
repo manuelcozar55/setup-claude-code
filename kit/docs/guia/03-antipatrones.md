@@ -6,7 +6,7 @@ Cada uno de estos pasó de verdad, en un setup real en 2026, y casi todos parec�
 
 **Se ve:** una sesión que «va bien» y no se cierra nunca; cada vez más lenta y más olvidadiza.
 **Por qué:** una sesión permaneció abierta **42 días** y acumuló **66 compactaciones**. No era consumo desbocado: era no cerrar. Cada compactación tira ~88 % del contexto y tarda ~150 s, y la siguiente resume un resumen.
-**Qué hacer:** una tarea, una sesión. Al cerrar una fase, `/handoff`; al cambiar de tarea, `/clear`. Lo que deba sobrevivir, en `nucleo.md` ([día 3](00-ruta-7-dias.md#día-3--handoff-y-clear-en-vez-de-esperar-a-la-compactación)).
+**Qué hacer:** una tarea, una sesión. El estado se guarda solo; `/handoff` es opcional para fijar el foco al cerrar una fase; al cambiar de tarea, `/clear`. Lo que deba sobrevivir, en `nucleo.md` ([día 3](00-ruta-7-dias.md#día-3--handoff-y-clear-en-vez-de-esperar-a-la-compactación)).
 
 ## 2 · El diario en `nucleo.md`
 

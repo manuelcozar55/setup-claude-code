@@ -25,7 +25,8 @@ no garantiza más cuota y no forma parte del recorrido de instalación.
 
 ## `/compact` a mano frente al autocompact
 
-Guarda el estado con `/handoff` al cerrar una fase si usas cockpit, o con
+El estado se guarda solo (`autosave.sh`; con cockpit, también la síntesis). Para fijar
+un foco antes de `/compact` o `/clear`, usa `/handoff` con cockpit o
 `handoff --desde borrador.md` desde la terminal. Si ejecutas `/compact`, indica qué
 conservar. El kit fija `env.CLAUDE_CODE_AUTO_COMPACT_WINDOW` y conserva tu valor
 si ya tenías uno. Consulta `/context` para ver la ventana efectiva de esa sesión;

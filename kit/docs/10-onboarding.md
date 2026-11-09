@@ -132,8 +132,8 @@ Abre `nucleo.md` y rellena **Objetivo** (las palabras de quien pidió la tarea) 
    Claude Code te pedirá permiso en cada `oraculo --`. Apruébalo cada vez (solo esta vez) y no elijas «permitir siempre»: una regla permanente sobre `oraculo` dejaría pasar sin preguntar cualquier orden que se ejecute a través de él.
 
    Imprime las últimas 40 líneas y `rc=N`, sale con ese código y lo anota en `.claude/estado/verificaciones.log`. Así el estado guarda qué se verificó y con qué resultado.
-2. **Cierra la fase.** Con el mod: `/handoff`. Sin el mod (el defecto): checkpoint + reinyección + aviso; `/handoff` es manual, así que pide al modelo un borrador de las secciones que cambian y ejecuta `handoff --desde borrador.md`; el cockpit es la opción automática. `handoff --estado` te dice cuánto del tope ocupa el estado.
-3. **Retoma el trabajo.** `/handoff` ya hace el clear y prepara la continuación:
+2. **El estado se guarda solo.** Tras cada turno el hook `autosave.sh` anota el último turno en `nucleo.md` (sin modelo); con el mod, el cockpit sintetiza el resto en silencio por hitos y turnos (`/autosave on|off|status`). `/handoff` es opcional: úsalo para fijar un foco o antes de un `/clear`; sin el mod, pide al modelo un borrador de las secciones que cambian y ejecuta `handoff --desde borrador.md`. `handoff --estado` te dice cuánto del tope ocupa el estado.
+3. **Retoma el trabajo.** Un `/handoff` manual ya hace el clear y prepara la continuación:
    revísala y pulsa Enter; no hagas otro `/clear` detrás. Si guardaste con la CLI o
    con `/handoff solo`, puedes ejecutar `/clear` cuando quieras relevar el contexto.
    La sesión nueva recibe el estado escrito. Para cambiar de tarea, usa `/nueva <tarea>`
@@ -158,7 +158,7 @@ Una sesión por tarea. Esperar a la compactación automática pierde contexto; e
 Esto es solo para quien cambia el propio kit. Antes de tu primer commit:
 
 ```bash
-make test                  # 46 suites en bash puro, sin red, unos 7 min. exit 0 o no está hecho.
+make test                  # 47 suites en bash puro, sin red, unos 7 min. exit 0 o no está hecho.
 bash kit/scan-secrets.sh   # secretos y PII en el árbol
 shellcheck -x <tus .sh>
 ```

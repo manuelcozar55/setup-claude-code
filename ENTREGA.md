@@ -1,6 +1,6 @@
-# SCC 1.8.1 — guía de entrega
+# SCC 1.9.0 — guía de entrega
 
-Para quien recibe el paquete. La versión es la de `VERSION` (1.8.1); `BUILD_ID` identifica
+Para quien recibe el paquete. La versión es la de `VERSION` (1.9.0); `BUILD_ID` identifica
 esta entrega. No se distribuyen credenciales ni configuración personal.
 
 ## Requisitos
@@ -14,30 +14,30 @@ no instala hooks, cockpit ni continuidad automática para Codex u opencode.
 
 ## Obtener la entrega
 
-Recibe del responsable el paquete de **1.8.1**, su manifiesto `SHA256SUMS` y la
+Recibe del responsable el paquete de **1.9.0**, su manifiesto `SHA256SUMS` y la
 identificación del origen (commit y suma del archivo transferido). Conserva esa
 identificación para soporte: `BUILD_ID` es una etiqueta de entrega, no un hash.
 Si prefieres Git y el tag ya está publicado, puedes obtener la versión así:
 
 ```bash
-git clone --branch v1.8.1 --single-branch https://github.com/manuelcozar55/setup-claude-code.git ~/scc
+git clone --branch v1.9.0 --single-branch https://github.com/manuelcozar55/setup-claude-code.git ~/scc
 git -C ~/scc rev-parse HEAD
 ```
 
 Contrasta ese commit con el facilitado por el responsable. Si el tag todavía no
 existe, usa el paquete transferido; no sustituyas esta versión por `main`.
 En ambos casos comprueba `cat VERSION BUILD_ID` desde `~/scc`: deben indicar
-`1.8.1` y `scc-v1.8.1`. No ejecutes una entrega con sumas incorrectas.
+`1.9.0` y `scc-v1.9.0`. No ejecutes una entrega con sumas incorrectas.
 
 ### Copia de Git sin acceso a la red
 
-La entrega incluye `scc-v1.8.1.bundle`, con la rama verificada y su historial,
+La entrega incluye `scc-v1.9.0.bundle`, con la rama verificada y su historial,
 y un manifiesto exterior que cubre tanto el bundle como el paquete. Comprueba
 ese manifiesto en la carpeta recibida antes de abrir ninguno:
 
 ```bash
 sha256sum -c SHA256SUMS
-git clone --branch release/scc-v1.8.1-debian scc-v1.8.1.bundle ~/scc
+git clone --branch release/scc-v1.9.0-debian scc-v1.9.0.bundle ~/scc
 git -C ~/scc rev-parse HEAD
 ```
 
@@ -199,27 +199,22 @@ Reinstalar un tag antiguo no devuelve su árbol exacto: conserva archivos de ver
 posteriores. No borres el directorio `.claude/estado/` de tus proyectos: contiene la
 continuidad.
 
-## Qué cambia en 1.8.1
+## Qué cambia en 1.9.0
 
 El detalle está en `CHANGELOG.md`. En resumen, para quien usa el kit:
 
-- Un comando exitoso no cambia el resultado de otro cuyo nombre lo contiene.
-  La rotación concurrente de `oraculo` conserva los registros y el rc del comando;
-  si no puede registrar, lo avisa.
-- El conflicto de `ESTADO.md` se compara con el snapshot realmente fusionado.
-  Cerrar todo el Plan registra sus hechos aunque el documento activo no cambie.
-- Los lectores reconocen las variantes de cabecera admitidas por el escritor.
-  El núcleo sin marcador Git conserva su fecha original para calcular los cambios.
-- Restauración con enlaces, JSON global y origen explícito corregidos, con pruebas
-  de rollback y rechazo previo a escrituras parciales por conflictos de topología.
-- El cockpit incluido degrada visiblemente ante un propietario malformado; sus pruebas
-  distinguen propietario vencido y relleno real de continuación.
-- Simplificación de montajes de prueba y datos redundantes, sin dependencias nuevas
-  ni retirada de controles de sesión, propiedad, formato o presupuesto.
+- El estado se guarda solo tras cada turno, sin modelo y sin hacer nada: el hook `autosave.sh`
+  (`Stop`, `PostCompact`, `SessionEnd`) anota el último turno en `nucleo.md`
+  y registra cada guardado en `~/.claude/session-logs/autosave.log`.
+- `claude --resume` desde `~` recupera la ranura de estado de su sesión.
+- Con el cockpit incluido, una síntesis silenciosa completa las secciones redactadas por
+  hitos y turnos; `/autosave on|off|status` la controla y su coste queda en
+  `~/.claude/session-logs/autosave-cockpit.log`.
+- `/handoff` pasa a ser una orden manual opcional.
 
 ## Continuidad entre sesiones
 
-- `/handoff` guarda el estado y prepara el siguiente contexto; `/handoff solo` guarda sin
+- `/handoff` (opcional: el estado ya se guarda solo) guarda el estado y prepara el siguiente contexto; `/handoff solo` guarda sin
   limpiar; `/nueva` separa una tarea distinta.
 - `/autonomo on` deja que la sesión continúe sola tras un handoff válido; `/autonomo off`
   lo retira. Está apagado por defecto y `/nueva` lo desactiva. Antes de activarlo,
