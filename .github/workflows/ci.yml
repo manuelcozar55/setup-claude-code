@@ -208,6 +208,8 @@ jobs:
         run: bash kit/test/test_nucleo_lib.sh
       - name: test_nucleo_integridad
         run: bash kit/test/test_nucleo_integridad.sh
+      - name: test_autosave
+        run: bash kit/test/test_autosave.sh
       - name: test_agentes
         run: bash kit/test/test_agentes.sh
       - name: "test_nucleo_hooks.sh (inyectores ≤ 9 500 y como datos, checkpoint con .gitignore, KPI, gauge y gate, sin fsmonitor)"

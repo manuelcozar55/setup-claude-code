@@ -51,7 +51,7 @@ ok "pre-compact: el checkpoint trae mensaje humano y pendientes" "$(command grep
 ok "pre-compact: .gitignore interno con «*»" "$(cat "$R/.claude/estado/.gitignore" 2>/dev/null)" '*'
 ok "pre-compact: git ignora el checkpoint" "$(git -C "$R" check-ignore -q "$CP" && echo si)" si
 L=$(tail -1 "$HOME/.claude/session-logs/nucleo-freshness.log" 2>/dev/null)
-ok "pre-compact: KPI «ts sesión ctx% edad_s»" "$(awk '{print NF, $2, $3, ($4 ~ /^[0-9]+$/)}' <<<"$L")" "4 s1 71 1"
+ok "pre-compact: KPI «ts sesión ctx% edad_s edad_auto_s»" "$(awk '{print NF, $2, $3, ($4 ~ /^[0-9]+$/), $5}' <<<"$L")" "5 s1 71 1 -1"
 printf '%s\n' "$(head -c 4000 /dev/zero | tr '\0' c)" 'COLA-CHECKPOINT' >>"$CP"
 
 OUT=$(ev "$R/sub" s1 | bash "$H/session-start-compact.sh"); C=$(ctx <<<"$OUT")

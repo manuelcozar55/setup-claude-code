@@ -39,6 +39,8 @@ if [ "$RAIZ" = "$HOME" ]; then
   AGENTES=$(nucleo_agentes_ctx "$RAIZ")
   SD=""
   case ${SRC:-} in clear | resume) SD=$(nucleo_sesion_dir) && [ -f "$SD/nucleo.md" ] && [ ! -L "$SD/nucleo.md" ] || SD="" ;; esac
+  # Un `claude --resume` es otro proceso: su ranura se busca por session_id y, si su proceso murió, se adopta (lib/nucleo.sh).
+  [ -n "$SD" ] || [ "${SRC:-}" != resume ] || { SD=$(nucleo_sesion_adoptar "${SID:-}" 2>/dev/null) && [ -f "$SD/nucleo.md" ] && [ ! -L "$SD/nucleo.md" ] || SD=""; }
   if [ -n "$SD" ] && IDX=$(nucleo_indice) && [ -n "$IDX" ]; then
     CARP=$(nucleo_carpeta_ctx "$SD/nucleo.md" "${CWD%/}" "$RAIZ")
     T=$(NUCLEO_TOPE=$((NUCLEO_TOPE - ${#AGENTES})) nucleo_emitir "$SD/nucleo.md")

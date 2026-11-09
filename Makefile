@@ -61,6 +61,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_session_start_clear.sh
 	bash kit/test/test_nucleo_lib.sh
 	bash kit/test/test_nucleo_integridad.sh
+	bash kit/test/test_autosave.sh
 	bash kit/test/test_agentes.sh
 	bash kit/test/test_nucleo_hooks.sh
 	bash kit/test/test_nucleo_nudge.sh
