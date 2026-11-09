@@ -5,15 +5,16 @@
 ## Qué hace
 
 - **`/handoff`**: pide al modelo el borrador de las secciones del estado y se lo entrega al CLI `~/.claude/bin/handoff`, que lo valida y lo fusiona en `.claude/estado/nucleo.md`; después limpia el contexto (`/clear`) y la sesión nueva lo recibe del hook `SessionStart`.
-- **Sin cockpit**: `install.sh` no lo instala. El defecto del kit es checkpoint + reinyección + aviso: el checkpoint de `pre-compact.sh`, `nucleo.md` reinyectado tras compactar y un aviso al modelo si lleva más de 10 min sin actualizarse (`handoff --desde <borrador>`, con la ruta `~/.claude/bin/handoff` si no está en el `PATH`). `/handoff` es manual; el cockpit es la opción automática.
+- **Sin cockpit**: `install.sh` no lo instala. El kit guarda solo la sección `## Último turno (auto)` tras cada turno (hook `autosave.sh`, sin modelo) y, además, hace checkpoint + reinyección + aviso: el checkpoint de `pre-compact.sh`, `nucleo.md` reinyectado tras compactar y un aviso al modelo si lleva más de 10 min sin actualizarse (`handoff --desde <borrador>`, con la ruta `~/.claude/bin/handoff` si no está en el `PATH`). `/handoff` es manual y opcional; el cockpit añade la síntesis automática.
 - **Handoff automático**: al cerrar un turno con el contexto al 70 % del límite de autocompactación, el mod guarda el estado con el mismo handoff, hace `/clear` y deja escrito en el prompt «adelante con la Siguiente acción…: <su primera línea>».
+- **Autosave silencioso** (0.8.0, ADR 028): guarda el estado con el mismo handoff, sin `/clear` ni aviso, por hitos y turnos. `/autosave on|off|status` lo controla. Detalle en «Autosave silencioso».
 - **`/nueva <tarea>`**: cambia de tarea. Archiva el `nucleo.md` actual, limpia el contexto y deja la tarea nueva en el prompt.
 - **`/autonomo on|off`**: continuación automática del trabajo ya autorizado tras un handoff confirmado. Está apagada por defecto y `/nueva` la desactiva.
 - **Agent Dock**: un panel lateral con la misión en curso y los subagentes en cuatro secciones fijas (trabajando, en cola, parados, hechos). Muestra también el dueño del estado y el % del tope del `nucleo.md`. Lleva además el vigía de contexto con handoff sobre el prompt y `/simple` (modo de pasos con resumen corto).
 
 ## Cómo se carga
 
-La versión 1.8.1 del kit incluye cockpit 0.7.1.
+La versión 1.9.0 del kit incluye cockpit 0.8.0.
 `scripts/scc.sh` carga la copia de tu checkout mediante `--plugin-dir`, sin instalar
 nada; las órdenes de marketplace de abajo instalan esa misma versión desde el tag
 publicado, para todas tus sesiones. En un paquete transferido, `VERSION` identifica
@@ -137,6 +138,23 @@ Por defecto rellena el prompt (`$.prompt.fill`) y tú pulsas Enter. Con `/autono
 
 **Sin veto de compactación** (desde 0.7.0, ADR 026). En máquinas con ajustes gestionados el plugin integrado `cc-plugin-sec-default` pasa `session.compact` por encima de los plugins de usuario, así que el veto nunca corría. Si el contexto llega al límite a mitad de turno, compacta y actúa la red de `pre-compact.sh` y `session-start-compact`; el aviso del 70 % pide cerrar la fase y terminar el turno para que el handoff llegue antes. Cada cierre de turno por encima del umbral sin handoff deja su motivo en el log de depuración del runtime.
 
+## Autosave silencioso
+
+Desde 0.8.0 el mod completa la capa 1 del kit (ADR 028, [`12-metodologia.md`](12-metodologia.md)): el hook `autosave.sh` guarda cada turno la sección `## Último turno (auto)` sin modelo y deja `autosave.dirty` si hubo cambios; el cockpit usa ese fichero para decidir cuándo pedirle al modelo una síntesis de las secciones redactadas (Paso actual, Siguiente acción, Pendientes…). Es el mismo handoff que `/handoff solo`, pero **silencioso**: sin toast, sin banda, sin recibo en el chat, sin `/clear` y sin tocar el prompt. Lo único visible es «guardado hh:mm» en el panel. El `/clear` con relleno sigue siendo solo el handoff del 70 %.
+
+**Qué lo dispara** (se evalúa al cerrar un turno del bucle principal, y siempre con `autosave.dirty` presente):
+
+- **Hito:** un `git commit`, `git push` o `gh pr create` por Bash, un TodoWrite con todas las tareas completadas, o un comando de `verificaciones.log` que pasa de rc≠0 a 0. La primera lectura de la sesión fija la referencia y no cuenta.
+- **Turnos:** 8 turnos o +15 puntos de contexto desde la última síntesis.
+- **Tras compactar:** si `autosave.dirty` trae `motivo=compact`, en el primer cierre de turno con al menos 1 min de margen.
+- **Red temporal:** un temporizador de 10 min, solo con `autosave.dirty` y sin síntesis en los últimos 10 min.
+
+**Topes.** Como máximo una síntesis cada 5 turnos y cada 10 min (los hitos esperan a cumplir ambos); ninguna sin `autosave.dirty`; ninguna con otro handoff en curso (un `/handoff` manual durante un autosave contesta que hay uno en marcha). Si no hay respuesta previa del modelo que bifurcar (`nothing-to-fork`) calla y reintenta en el siguiente turno. Un fallo real se anota en el log de depuración del runtime y espera 10 min, para no lanzar un fork por turno.
+
+**`/autosave`.** `/autosave off` lo apaga (también el temporizador), `on` lo enciende y `status` dice si está encendido, la última síntesis (hora y número en la sesión), la marca `dirty` y las reglas. Vive solo en memoria del mod: por defecto está encendido y se reinicia con el proceso. `on` y `off` solo desde el prompt, como `/autonomo`.
+
+**Medir el coste.** Cada síntesis añade una línea a `~/.claude/session-logs/autosave-cockpit.log` (respeta `CLAUDE_HOME`; se recorta a 2000 líneas) con seis columnas separadas por tabulador: fecha ISO, id de sesión, motivo del disparo, bytes del prompt, bytes del borrador y milisegundos de pared. El fork no devuelve uso en tokens, así que el coste se estima con bytes y tiempo, no con tokens facturados. Con esa medida se decide si la síntesis pasa a un modelo pequeño.
+
 ## `/nueva`
 
 ```
@@ -227,6 +245,7 @@ muchos adjuntos tras el último `assistant`, no lo veía; ahora amplía a 600 si
   Invariantes sin leer archivos después. Esto no prueba todas las versiones o políticas
   de empresa: un plugin gestionado puede decidir el orden de los interceptores.
 - **Sin verificar en una sesión interactiva** (solo con el arnés de tests): el `/clear` lanzado desde el temporizador tras un turno, el relleno del prompt después de él y el coste del fork del handoff al 70 % de contexto.
+- **Autosave sin verificar en sesión interactiva real:** el fork silencioso desde `turn.complete` y desde el temporizador, su coste (el fork no devuelve tokens: solo hay bytes y milisegundos en `autosave-cockpit.log`) y el ciclo completo con el `autosave.dirty` que escribe la capa 1 (los tests lo crean a mano con el contrato). `/autosave` no persiste entre sesiones porque el SDK del mod no ofrece almacén.
 - **El clic sobre el dock solo llega en pantalla completa**: es donde el terminal reporta clics (y donde existe el dock lateral). Con el pane encajado sobre el prompt, enfócalo (`ctrl+x tab`) y usa la tecla `m` o Tab + Enter. En terminales estrechos el Dock pasa a ese panel; dale suficiente altura o ciérralo para dejar espacio a la conversación y a las líneas de la barra.
 - El redactor de secretos es un último recurso parcial; revisa el documento antes de compartirlo.
 - **Permisos del borrador temporal**: la API `$.fs.write(path, text)` no admite modo; el borrador se crea con `mktemp` (600) y se vuelve a fijar con `chmod 600` antes de escribirlo. El permiso del `nucleo.md` final es cosa del CLI.

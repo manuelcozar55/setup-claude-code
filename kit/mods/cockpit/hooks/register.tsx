@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelCompleteResult, Register } from 'claude-code'
 
-import type { AgentRow, Cache, Ctx, Estado, Handoff, TaskRow, Turn } from '../types'
+import type { AgentRow, Autosave, Cache, Ctx, Estado, Handoff, TaskRow, Turn } from '../types'
 
 const DOCK = 'cockpit'
 const isSimple = atom({ plugin: 'cockpit', key: 'isSimple' } as const, false)
@@ -23,6 +23,8 @@ const continuity = atom({ plugin: 'cockpit', key: 'continuity' } as const, '')
 const isMissionOpen = atom({ plugin: 'cockpit', key: 'isMissionOpen' } as const, false)
 // An automatic handoff is scheduled.
 const isAutoQueued = atom({ plugin: 'cockpit', key: 'isAutoQueued' } as const, false)
+// The silent synthesis (ADR 028): only the Dock's pane shows it.
+const autosave = atom({ plugin: 'cockpit', key: 'autosave' } as const, { ultima: '', n: 0, motivo: '' } as Autosave)
 
 const PINK = '#ff4f9a'
 const DONE = new Set(['completed', 'failed', 'killed', 'unknown'])
@@ -415,6 +417,9 @@ export async function titled($: $, draft: string, budget: number, say: (note: st
 
 // Keep the lock through the delayed clear and continuation, outside the command dispatch.
 let handoffBusy = false
+// The lock is held by an autosave: a visible request answers «en curso» instead of doing nothing.
+let isSilentBusy = false
+const AUTOSAVE_BUSY = 'Hay un guardado automático en curso; repite en unos segundos'
 let clearPending = false
 let promptRevision = 0
 // Bumped by every session.end: work scheduled or awaiting a model in one conversation must not write or /clear in the next.
@@ -688,17 +693,25 @@ const NO_PROJECT = 'aquí no hay proyecto (~, ~/.claude o fuera de un repo git):
 const NO_SLOT = 'sin ranura de sesión propia (fuera de un proyecto el estado va a ~/.claude/estado/sesiones/<fecha>-<pid>/ y no se pudo resolver): no hay estado que guardar'
 
 // CLI: 0 saved (notices in the receipt; old CLIs: stderr) · 2 invalid · 3 no project · 4 busy/conflict (retry once) · 5 foreign owner.
-async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
-  if (handoffBusy || clearPending) return
+// `silent` (the autosave): no toast, band, receipt or prompt fill, and errors go to the debug log. It keeps the lock and
+// reports what it measured: bytes of the prompt and of the draft, and why it failed ('' if it did not).
+type Silent = { prompt: number; reply: number; err: string }
+async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, silent?: Silent) {
+  if (handoffBusy || clearPending) {
+    // The person asked while a silent save holds the lock: say so, instead of a stale receipt or nothing.
+    if (!silent && isSilentBusy) $.ui.toast(AUTOSAVE_BUSY)
+    return
+  }
   handoffBusy = true
-  // This run supersedes any wait: it either saves now or arms a new one, with its own banner.
-  queuedHandoff = null
+  isSilentBusy = !!silent
+  // This run supersedes any wait: it either saves now or arms a new one, with its own banner. A silent one leaves the wait alone.
+  if (!silent) queuedHandoff = null
   const revision = promptRevision
   const epoch = sessionEpoch
   const sameSession = () => { if (epoch !== sessionEpoch) throw new Error(SESSION_CHANGED) }
   let tmp = ''
   try {
-    await update($, handoff, (): Handoff => ({ phase: 'working' }))
+    if (!silent) await update($, handoff, (): Handoff => ({ phase: 'working' }))
     const { root, start, dir, path, estadoMd, bin, active, tope } = await resolveState($)
     if (andClear && (active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) throw new Error('hay agentes o shells vivos: no limpio; espera o usa /handoff solo')
     if (!(await $.fs.exists(bin))) throw new Error(`falta ${bin}: ejecuta kit/install.sh, que copia handoff y oraculo a ~/.claude/bin (si ~/.claude es tu repo git, genera un plan diff-first: cópialos desde él)`)
@@ -711,6 +724,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
     if (budget <= 0) throw new Error(`Objetivo e Invariantes no dejan espacio seguro bajo el tope de ${tope} B; no guardo ni limpio`)
     const prompt = HANDOFF_PROMPT + (prev ? prevNote(prev) : firstNote) + (focus ? focusNote(focus) : '')
       + `\nPresupuesto: respuesta completa como máximo ${budget} bytes UTF-8, objetivo ${Math.min(3000, budget)} bytes. El CLI conserva Objetivo e Invariantes existentes y ya los descontó de ese máximo: no los repitas. Referencia SPEC/artefactos por ruta; no copies sus contratos ni repitas rutas largas en cada sección. Plan compacto, siguiente fase y resultados verificables. Nunca acortes ni reformules las palabras literales de la persona para hacerlas caber.`
+    if (silent) silent.prompt = encoder.encode(prompt).length
     let draft = ''
     let size = 0
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -722,6 +736,8 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
       if (!reply.isAnswered) {
         if (draft) break
         // No request was made: wait for a reply instead of failing. /nueva cannot wait, its archive and /clear follow.
+        // Silent: no ping and no band; the next answered turn end tries again on its own (the dirty mark is still there).
+        if (reply.reason === 'nothing-to-fork' && silent) return
         if (reply.reason === 'nothing-to-fork') {
           if (!canWait) throw new Error(`${NOT_YET}: envía un mensaje y repite /nueva`)
           queuedHandoff = { andClear, focus }
@@ -741,6 +757,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
     // Still over budget: the shorter draft is saved anyway. The CLI is the authority on the tope: it omits whole sections
     // in its order (never Objetivo, Invariantes nor Siguiente acción), copies them to diario.md and says so in avisos.
     // Until 1.8.0 this aborted, and the session went on to the compaction the handoff exists to avoid.
+    if (silent) silent.reply = encoder.encode(draft).length
     const oversize = size > budget ? `borrador de ${size} B tras dos intentos (presupuesto ${budget} B): el CLI lo ajusta al tope y lo que omita queda en diario.md` : ''
     // The title only feeds the fill that /clear leaves in the prompt: a save without /clear would pay the call for nothing.
     const notes: string[] = []
@@ -771,12 +788,13 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
     if (typeof receipt !== 'object' || receipt === null || !('nucleo' in receipt) || typeof receipt.nucleo !== 'string' || !receipt.nucleo.startsWith('/') || !('sha256' in receipt) || typeof receipt.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.sha256))
       throw new Error('el CLI no confirmó la ruta y el hash guardados; no limpio')
     const saved = { path: receipt.nucleo, hash: receipt.sha256 }
+    restartAutosave()
     // Notices travel in the receipt; an older CLI writes them to stderr with rc 0. Shown, never a reason to skip /clear.
     const items = [oversize, ...notes, ...('avisos' in receipt && Array.isArray(receipt.avisos) ? receipt.avisos.filter((a): a is string => typeof a === 'string') : []), res.stderr.trim()].filter(Boolean)
     const notice = items.join('; ')
     const { facts, rest } = receiptFacts(receipt, sesion, items)
     if (!andClear) {
-      await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${saved.path}${notice ? `; aviso: ${redact(notice)}` : ''}${facts ? ` · ${redact(facts)}` : ''}` }))
+      if (!silent) await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${saved.path}${notice ? `; aviso: ${redact(notice)}` : ''}${facts ? ` · ${redact(facts)}` : ''}` }))
       return saved
     }
     // Not a toast: /clear erases it. The line is written now (a refused /clear leaves this session) and again after the clear.
@@ -789,13 +807,20 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true) {
     await clearAfter($, saved.path, fill, revision, shown, epoch)
     return saved
   } catch (err) {
+    if (silent) {
+      silent.err = err instanceof Error ? err.message : String(err)
+      $.ui.log(`cockpit: autosave fallido: ${silent.err}`, { to: 'debug' })
+      return
+    }
     // The conversation that asked is gone: the new one gets no error banner, only a clean band.
     if (epoch !== sessionEpoch) await update($, handoff, (): Handoff => ({ phase: 'idle' }))
     else await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}` }))
   } finally {
     if (tmp) await $.process.run(['rm', '-f', '--', tmp]).catch(() => undefined)
     handoffBusy = false
-    softEstado($, true)
+    isSilentBusy = false
+    // The silent path shows nothing, not even the degraded-continuity toast; the periodic refresh covers it.
+    if (!silent) softEstado($, true)
   }
 }
 
@@ -811,7 +836,7 @@ async function maybeAutoHandoff($: $) {
   if (pct < limit) return
   // The cwd goes with it: the handoff notes the live folder in the nucleo (the root is the session's start).
   const skip = async (why: string) => $.ui.log(`cockpit: handoff automático omitido al ${pct}%: ${why} (cwd ${await $.session.cwd().catch(() => '?')})`, { to: 'debug' })
-  if (await read($, isAutoQueued)) return skip('ya en curso')
+  if (await read($, isAutoQueued) || handoffBusy) return skip(isSilentBusy ? 'guardado automático en curso' : 'ya en curso')
   const phase = (await read($, handoff)).phase
   if (!['idle', 'done'].includes(phase)) return skip(phase === 'error' ? 'error previo' : 'ya en curso')
   if ((await $.agent.list()).some(a => !DONE.has(a.status))) return skip('agentes vivos')
@@ -837,6 +862,147 @@ async function maybeAutoHandoff($: $) {
   }
 }
 
+// ── ADR 028, layer 2: a silent synthesis by the model between handoffs. Layer 1 (hooks) leaves `<estado>/autosave.dirty`
+// (`motivo=edit|compact`); the model's `handoff --desde` removes it. Nothing here is shown but «guardado hh:mm» in the Dock.
+const AUTOSAVE_TURNS = 8
+const AUTOSAVE_PCT = 15
+const AUTOSAVE_MIN_TURNS = 5
+const AUTOSAVE_MIN_MS = 10 * 60_000
+const AUTOSAVE_PROACTIVE_MS = 60_000
+const AUTOSAVE_LOG_LINES = 2000
+const GOAL_COMMAND = /\bgit\s+commit\b|\bgh\s+pr\s+create\b|\bgit\s+push\b/
+// Memory only: this SDK has no $.store. A new process starts on.
+let autosaveEnabled = true
+// Counters since the last synthesis (silent or not). lastAt null = not started: the first answered turn starts it.
+let sinceLast = { turns: 0, lastAt: null as number | null, lastPct: null as number | null }
+// A goal seen (commit, PR, push, all todos done) waits for a synthesis: the caps may hold it back a few turns.
+let goalSeen = false
+// The last verificaciones.log line judged; null = no baseline yet (an old log is not a transition).
+let seenVerification: string | null = null
+let autosaveFailedAt: number | null = null
+const isSafeAbs = (path: string) => path.startsWith('/') && !path.split('/').includes('..')
+
+// Any saved handoff restarts the caps; the next answered turn end starts the clock again.
+function restartAutosave() {
+  sinceLast = { turns: 0, lastAt: null, lastPct: null }
+  goalSeen = false
+}
+
+// The dirty mark of this session's state, or null (no mark, no project or slot, or an unsafe path).
+async function readDirty($: $) {
+  try {
+    const { dir } = await resolveState($)
+    if (!isSafeAbs(dir)) return null
+    const path = `${dir}/autosave.dirty`
+    if (!(await $.fs.exists(path))) return null
+    const text = await $.fs.read(path)
+    return { dir, motivo: /^motivo=compact\s*$/m.test(text) ? 'compact' : 'edit' }
+  } catch {
+    return null
+  }
+}
+
+// `ISO<TAB>rc<TAB>cmd` lines: the last one passes and the one before did not. Each last line counts once.
+async function verificationPassed($: $, dir: string) {
+  const path = `${dir}/verificaciones.log`
+  if (!(await $.fs.exists(path))) return false
+  const lines = (await $.fs.read(path)).split('\n').filter(Boolean)
+  const last = lines[lines.length - 1] ?? ''
+  if (last === seenVerification) return false
+  const isBaseline = seenVerification === null
+  seenVerification = last
+  const rc = (line: string) => line.split('\t')[1]
+  return !isBaseline && rc(last) === '0' && lines.length > 1 && rc(lines[lines.length - 2] ?? '') !== '0'
+}
+
+async function baselineVerification($: $) {
+  try {
+    const { dir } = await resolveState($)
+    const path = `${dir}/verificaciones.log`
+    if (!isSafeAbs(dir)) return
+    seenVerification = (await $.fs.exists(path)) ? ((await $.fs.read(path)).split('\n').filter(Boolean).pop() ?? '') : ''
+  } catch {
+    // No state yet: the next turn end tries again.
+  }
+}
+
+async function logAutosave($: $, trigger: string, silent: Silent, ms: number) {
+  const { bin } = await resolveRoot($)
+  const path = `${bin.slice(0, -'/bin/handoff'.length)}/session-logs/autosave-cockpit.log`
+  if (!isSafeAbs(path)) return
+  const line = [new Date(await $.clock.now()).toISOString(), await $.session.id().catch(() => ''), trigger, silent.prompt, silent.reply, ms].join('\t')
+  await $.process.run(['mkdir', '-p', '--', path.slice(0, path.lastIndexOf('/'))]).catch(() => undefined)
+  // fs.write replaces the file: read it back and keep the tail.
+  const old = (await $.fs.exists(path)) ? (await $.fs.read(path)).split('\n').filter(Boolean) : []
+  await $.fs.write(path, [...old, line].slice(-AUTOSAVE_LOG_LINES).join('\n') + '\n')
+}
+
+// Every guard lives here, so a trigger only says why.
+async function autosaveRun($: $, trigger: string, epoch: number) {
+  if (epoch !== sessionEpoch) return
+  if (!autosaveEnabled || handoffBusy || clearPending || queuedHandoff || (await read($, isAutoQueued))) return
+  if ((await read($, turn)).isRunning || !['idle', 'done'].includes((await read($, handoff)).phase)) return
+  const t0 = await $.clock.now()
+  const silent: Silent = { prompt: 0, reply: 0, err: '' }
+  const saved = await runHandoff($, false, '', false, silent)
+  if (epoch !== sessionEpoch) return
+  if (!saved) {
+    // A failure waits 10 min; «nothing-to-fork» (err '') is retried at the next answered turn end.
+    if (silent.err) autosaveFailedAt = await $.clock.now()
+    return
+  }
+  const ms = (await $.clock.now()) - t0
+  const motivo = trigger === 'proactive' ? 'compact' : 'edit'
+  await update($, autosave, a => ({ ultima: new Date(t0 + ms).toISOString(), n: a.n + 1, motivo }))
+  await logAutosave($, trigger, silent, ms).catch(err => $.ui.log(`cockpit: no pude escribir autosave-cockpit.log: ${err instanceof Error ? err.message : String(err)}`, { to: 'debug' }))
+}
+
+// At an answered main-loop turn end, after the visible 70 % handoff had its chance.
+async function maybeAutosave($: $) {
+  const epoch = sessionEpoch
+  if (!autosaveEnabled) return
+  const t = await $.clock.now()
+  sinceLast.lastAt ??= t
+  sinceLast.turns++
+  // Baselines at the first turn, before the caps: the +15 points and the verification transition count from here.
+  const c = await read($, ctx)
+  const pct = c ? pctOf(c) : null
+  sinceLast.lastPct ??= pct
+  if (seenVerification === null) await baselineVerification($)
+  if (epoch !== sessionEpoch) return
+  if (autosaveFailedAt !== null && t - autosaveFailedAt < AUTOSAVE_MIN_MS) return
+  const idle = t - sinceLast.lastAt
+  if (idle < AUTOSAVE_PROACTIVE_MS) return
+  const dirty = await readDirty($)
+  if (!dirty) return
+  if (dirty.motivo === 'compact') return autosaveRun($, 'proactive', epoch)
+  if (sinceLast.turns < AUTOSAVE_MIN_TURNS || idle < AUTOSAVE_MIN_MS) return
+  const goal = goalSeen || (await verificationPassed($, dirty.dir))
+  if (goal) return autosaveRun($, 'goal', epoch)
+  if (sinceLast.turns >= AUTOSAVE_TURNS || (pct !== null && sinceLast.lastPct !== null && pct - sinceLast.lastPct >= AUTOSAVE_PCT)) return autosaveRun($, 'turn', epoch)
+}
+
+// Safety net: a long turn-less stretch (the person reads, the agents work) still saves what is dirty.
+async function autosaveTimer($: $) {
+  const epoch = sessionEpoch
+  if (!autosaveEnabled) return
+  const t = await $.clock.now()
+  if (sinceLast.lastAt === null || t - sinceLast.lastAt < AUTOSAVE_MIN_MS || (autosaveFailedAt !== null && t - autosaveFailedAt < AUTOSAVE_MIN_MS)) return
+  if (await readDirty($)) await autosaveRun($, 'tiempo', epoch)
+}
+
+async function autosaveStatus($: $) {
+  const a = await read($, autosave)
+  const dirty = await readDirty($)
+  const hhmm = (iso: string) => `${String(new Date(iso).getHours()).padStart(2, '0')}:${String(new Date(iso).getMinutes()).padStart(2, '0')}`
+  return [
+    `Autosave ${autosaveEnabled ? 'on' : 'off'}.`,
+    `Última síntesis: ${a.ultima ? hhmm(a.ultima) : 'ninguna'} (${a.n} en la sesión).`,
+    `Marca dirty: ${dirty ? dirty.motivo : 'no'}.`,
+    `Guarda en silencio, sin /clear: tras una compactación (motivo compact, ≥1 min), o con cambios y ≥${AUTOSAVE_MIN_TURNS} turnos y ≥10 min desde la última síntesis si hubo un hito (commit, PR, push, todos hechos, verificación en verde), ≥${AUTOSAVE_TURNS} turnos o +${AUTOSAVE_PCT} puntos de contexto; y cada 10 min como red.`,
+  ].join(' ')
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'autonomo', description: 'Continuación tras handoff del trabajo autorizado: /autonomo on|off', argumentHint: 'on|off' })
@@ -852,7 +1018,9 @@ export const register: Register = on => {
       description: 'Archiva el estado de la tarea actual, hace /clear y deja la tarea nueva escrita en el prompt',
       argumentHint: '<la tarea nueva>',
     })
+    await $.command.register({ name: 'autosave', description: 'Síntesis silenciosa del estado entre handoffs: /autosave on|off|status', argumentHint: 'on|off|status' })
     $.clock.every(1500, () => void syncAgents($).catch(() => undefined))
+    $.clock.every(600_000, () => void autosaveTimer($).catch(() => undefined))
     softRefresh($, true)
     softEstado($, true)
     void $.ui.open({ id: DOCK, title: 'Agent Dock', columns: 66 })
@@ -873,6 +1041,13 @@ export const register: Register = on => {
     return { text: mode === 'on' ? 'Continuación automática activada para el trabajo ya autorizado: tras guardar y /clear, seguirá si la sesión está lista y no hay actividad nueva. /autonomo off la desactiva.' : 'Continuación automática desactivada: revisa el prompt y pulsa Enter para seguir.' }
   })
 
+  on('command.run', { command: 'autosave' }, async ($, e) => {
+    const mode = e.args.trim().toLowerCase()
+    if ((mode === 'on' || mode === 'off') && !['composer', 'bridge', 'sdk'].includes(e.origin.kind)) return { text: 'El autosave lo cambia la persona con /autosave on|off.' }
+    if (mode === 'on' || mode === 'off') autosaveEnabled = mode === 'on'
+    return { text: `${await autosaveStatus($)}${mode === 'on' || mode === 'off' ? '' : ' Uso: /autosave on|off|status'}` }
+  })
+
   on('command.run', { command: 'simple' }, async $ => {
     const isOn = await update($, isSimple, v => !v)
     return { text: isOn ? 'Modo simple activado: verás los pasos encima del prompt y respuestas cortas.' : 'Modo simple desactivado.' }
@@ -880,6 +1055,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'handoff' }, async ($, e) => {
     const args = e.args.trim()
+    if (isSilentBusy) return { text: AUTOSAVE_BUSY }
     const isSaveOnly = /^solo\b/i.test(args)
     await runHandoff($, !isSaveOnly, isSaveOnly ? args.replace(/^solo\b\s*/i, '') : args)
     const h = await read($, handoff)
@@ -928,6 +1104,10 @@ export const register: Register = on => {
     await update($, handoff, (h): Handoff => (h.phase === 'waiting' ? { phase: 'idle' } : h))
     if (e.reason === 'clear') {
       errorResets = 0
+      sinceLast = { turns: 0, lastAt: null, lastPct: null }
+      goalSeen = false
+      seenVerification = null
+      autosaveFailedAt = null
       const keepMission = clearPending
       if (!clearPending) autonomousEnabled = false
       await update($, turn, t => ({ ...t, mission: keepMission ? t.mission : '', isRunning: false }))
@@ -1004,6 +1184,7 @@ export const register: Register = on => {
       // Not awaited: the breakdown estimate must not delay the turn's end; the check rides behind it.
       void refreshCtx($, true)
         .then(() => (e.reason === 'answer' ? maybeAutoHandoff($) : undefined))
+        .then(() => (e.reason === 'answer' ? maybeAutosave($) : undefined))
         .catch(() => undefined)
     }
     return next(e)
@@ -1032,8 +1213,15 @@ export const register: Register = on => {
   on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
     const ran = await next(e)
     if (e.agentId === undefined && !ran.deny && !ran.isError) {
+      if (e.todos.length > 0 && e.todos.every(t => t.status === 'completed')) goalSeen = true
       await update($, tasks, () => e.todos.map((t, i) => ({ id: `todo-${i}`, subject: t.content, status: t.status, activeForm: t.activeForm })))
     }
+    return ran
+  })
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (e.agentId === undefined && !ran.deny && !ran.isError && GOAL_COMMAND.test(e.command)) goalSeen = true
     return ran
   })
 
@@ -1232,7 +1420,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: DOCK }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const cols = Math.max(24, e.props.bodyColumns)
-    const [ag, ts, tn, size, t, isOpen, es, continuityNote] = await Promise.all([read($, agents), read($, tasks), read($, turn), read($, team), read($, now), read($, isMissionOpen), read($, estado), read($, continuity)])
+    const [ag, ts, tn, size, t, isOpen, es, continuityNote, as] = await Promise.all([read($, agents), read($, tasks), read($, turn), read($, team), read($, now), read($, isMissionOpen), read($, estado), read($, continuity), read($, autosave)])
     const tick = Math.max(t, tn.startedAt)
     const isStuck = (a: AgentRow) => !DONE.has(a.status) && !HELD.has(a.status) && a.status !== 'pending' && tick - a.lastActiveAt > STUCK_MS
     // Working is the leftover, so a status this code does not know still shows somewhere.
@@ -1323,6 +1511,7 @@ export const register: Register = on => {
           {tn.isRunning && <Text dimColor wrap="truncate-end">principal · {tn.activity}</Text>}
         </Box>
         {continuityNote && <Text color="warning" wrap="wrap">{continuityNote}</Text>}
+        {as.ultima && <Text dimColor wrap="truncate-end">guardado {`${String(new Date(as.ultima).getHours()).padStart(2, '0')}:${String(new Date(as.ultima).getMinutes()).padStart(2, '0')}`}</Text>}
         {es && (
           <Box flexDirection="column">
             <Text color={tone(es.pct)} wrap="truncate-end">nucleo {es.pct}% del tope</Text>
