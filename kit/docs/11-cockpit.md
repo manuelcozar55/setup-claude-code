@@ -14,7 +14,7 @@
 
 ## Cómo se carga
 
-La versión 1.9.0 del kit incluye cockpit 0.8.0.
+La versión 1.10.0 del kit incluye cockpit 0.8.0.
 `scripts/scc.sh` carga la copia de tu checkout mediante `--plugin-dir`, sin instalar
 nada; las órdenes de marketplace de abajo instalan esa misma versión desde el tag
 publicado, para todas tus sesiones. En un paquete transferido, `VERSION` identifica

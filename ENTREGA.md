@@ -1,6 +1,6 @@
-# SCC 1.9.0 — guía de entrega
+# SCC 1.10.0 — guía de entrega
 
-Para quien recibe el paquete. La versión es la de `VERSION` (1.9.0); `BUILD_ID` identifica
+Para quien recibe el paquete. La versión es la de `VERSION` (1.10.0); `BUILD_ID` identifica
 esta entrega. No se distribuyen credenciales ni configuración personal.
 
 ## Requisitos
@@ -14,30 +14,30 @@ no instala hooks, cockpit ni continuidad automática para Codex u opencode.
 
 ## Obtener la entrega
 
-Recibe del responsable el paquete de **1.9.0**, su manifiesto `SHA256SUMS` y la
+Recibe del responsable el paquete de **1.10.0**, su manifiesto `SHA256SUMS` y la
 identificación del origen (commit y suma del archivo transferido). Conserva esa
 identificación para soporte: `BUILD_ID` es una etiqueta de entrega, no un hash.
 Si prefieres Git y el tag ya está publicado, puedes obtener la versión así:
 
 ```bash
-git clone --branch v1.9.0 --single-branch https://github.com/manuelcozar55/setup-claude-code.git ~/scc
+git clone --branch v1.10.0 --single-branch https://github.com/manuelcozar55/setup-claude-code.git ~/scc
 git -C ~/scc rev-parse HEAD
 ```
 
 Contrasta ese commit con el facilitado por el responsable. Si el tag todavía no
 existe, usa el paquete transferido; no sustituyas esta versión por `main`.
 En ambos casos comprueba `cat VERSION BUILD_ID` desde `~/scc`: deben indicar
-`1.9.0` y `scc-v1.9.0`. No ejecutes una entrega con sumas incorrectas.
+`1.10.0` y `scc-v1.10.0`. No ejecutes una entrega con sumas incorrectas.
 
 ### Copia de Git sin acceso a la red
 
-La entrega incluye `scc-v1.9.0.bundle`, con la rama verificada y su historial,
+La entrega incluye `scc-v1.10.0.bundle`, con la rama verificada y su historial,
 y un manifiesto exterior que cubre tanto el bundle como el paquete. Comprueba
 ese manifiesto en la carpeta recibida antes de abrir ninguno:
 
 ```bash
 sha256sum -c SHA256SUMS
-git clone --branch release/scc-v1.9.0-debian scc-v1.9.0.bundle ~/scc
+git clone --branch release/scc-v1.10.0-debian scc-v1.10.0.bundle ~/scc
 git -C ~/scc rev-parse HEAD
 ```
 
@@ -199,19 +199,19 @@ Reinstalar un tag antiguo no devuelve su árbol exacto: conserva archivos de ver
 posteriores. No borres el directorio `.claude/estado/` de tus proyectos: contiene la
 continuidad.
 
-## Qué cambia en 1.9.0
+## Qué cambia en 1.10.0
 
 El detalle está en `CHANGELOG.md`. En resumen, para quien usa el kit:
 
-- El estado se guarda solo tras cada turno, sin modelo y sin hacer nada: el hook `autosave.sh`
-  (`Stop`, `PostCompact`, `SessionEnd`) anota el último turno en `nucleo.md`
-  y registra cada guardado en `~/.claude/session-logs/autosave.log`.
-- `claude --resume` desde `~` recupera la ranura de estado de su sesión.
-- Con el cockpit incluido, una síntesis silenciosa completa las secciones redactadas por
-  hitos y turnos; `/autosave on|off|status` la controla y su coste queda en
-  `~/.claude/session-logs/autosave-cockpit.log`.
-- `/handoff` pasa a ser una orden manual opcional.
-
+- `efectividad` (nuevo CLI, python3, sin red ni modelo) calcula sobre tus transcripts las cuatro
+  cifras que dicen si el kit sirve: compactaciones por día activo, frescura de `nucleo.md` al
+  compactar, correcciones de la persona y falsos positivos de los guards (bloqueo seguido de
+  comando reformulado en <60 s). `efectividad --antes FECHA` compara antes y después;
+  `--registrar` conserva la serie en `~/.claude/session-logs/efectividad.tsv`.
+- Cada release del kit publica esas cifras en el `CHANGELOG.md` (`### Cifras`), y `doctor`
+  avisa cuando hay uso y no hay cifras registradas en 35 días.
+- Lo de la entrega anterior sigue igual: el estado se guarda solo tras cada turno (`autosave.sh`),
+  `claude --resume` desde `~` recupera su ranura y el cockpit sintetiza por hitos.
 ## Continuidad entre sesiones
 
 - `/handoff` (opcional: el estado ya se guarda solo) guarda el estado y prepara el siguiente contexto; `/handoff solo` guarda sin
