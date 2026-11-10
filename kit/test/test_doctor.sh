@@ -405,6 +405,20 @@ ck "$rc" "0" "H3: el WARN de *.kit.md no es FAIL"
 cp "$CLAUDE_HOME/CLAUDE.kit.md" "$CLAUDE_HOME/CLAUDE.md"
 set +e; out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home7" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; set -e
 ck "$(echo "$out" | grep -c 'kit.md pendiente')" "0" "H3: tras aceptar la version del kit ya no avisa"
+# efectividad (1.10.0): sin sesiones no avisa; con sesiones y sin tsv WARN; con fila de hoy PASS; con fila vieja WARN.
+d7() { env -u ANTHROPIC_BASE_URL HOME="$tmp/home7" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1; }
+set +e; out="$(d7)"; set -e
+ck "$(echo "$out" | grep -c '^PASS .*efectividad: aun sin sesiones')" "1" "efectividad: instalacion limpia -> PASS sin aviso"
+mkdir -p "$CLAUDE_HOME/projects/-p"; printf '{"timestamp":"2026-11-02T10:00:00.000Z","type":"user"}\n' > "$CLAUDE_HOME/projects/-p/s.jsonl"
+set +e; out="$(d7)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*efectividad: 1 sesiones y ninguna cifra')" "1" "efectividad: hay sesiones y no hay tsv -> WARN"
+mkdir -p "$CLAUDE_HOME/session-logs"
+printf 'ts_run\tdesde\n%sT10:00:00+01:00\t2026-10-01\n' "$(date +%F)" > "$CLAUDE_HOME/session-logs/efectividad.tsv"
+set +e; out="$(d7)"; set -e
+ck "$(echo "$out" | grep -c '^PASS .*efectividad: cifras de uso real registradas hace 0 dias')" "1" "efectividad: fila de hoy -> PASS"
+printf 'ts_run\tdesde\n2025-01-01T10:00:00+01:00\t2024-12-01\n' > "$CLAUDE_HOME/session-logs/efectividad.tsv"
+set +e; out="$(d7)"; set -e
+ck "$(echo "$out" | grep -c '^WARN .*efectividad: la ultima fila')" "1" "efectividad: fila vieja -> WARN"
 export CLAUDE_HOME="$CH_SAVE"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

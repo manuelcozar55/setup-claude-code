@@ -107,7 +107,7 @@ fijada en `SHELLCHECK_VERSION` con su checksum, como gitleaks: usa esa misma en 
 (`shellcheck --version`) o acepta que **el oraculo es CI**, no tu maquina.
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 47 suites de `kit/test/`).
+(las 49 suites de `kit/test/`).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -209,9 +209,14 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 47 suites y el escaner de secretos
+# 2. las 49 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
+
+# 2b. cifras de uso real (desde 1.10.0): la ventana «después» es la de la release anterior hasta hoy.
+#     Pega el bloque «### Cifras» bajo la version nueva del CHANGELOG: test_changelog_cifras.sh
+#     lo exige en toda release >= 1.10.0. exit 2 = sin sesiones: no se corta una release sin cifras.
+efectividad --antes AAAA-MM-DD --registrar --markdown
 
 # 3. la prueba que de verdad importa: instalacion limpia en un CLAUDE_HOME virgen
 T=$(mktemp -d)

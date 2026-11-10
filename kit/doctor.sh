@@ -525,6 +525,25 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fi
 fi
 
+# 5e. Oráculo de efectividad (1.10.0): ¿hay cifras de uso real recientes? WARN, no FAIL: medir es cosa de la
+# persona, pero sin fila reciente la próxima release saldría sin «### Cifras» (test_changelog_cifras.sh). En una
+# instalación limpia no hay sesiones que medir y no se avisa.
+ef_tsv="$CLAUDE_HOME/session-logs/efectividad.tsv"
+ef_n=$(find "$CLAUDE_HOME/projects" -mindepth 2 -maxdepth 2 -name '*.jsonl' 2>/dev/null | wc -l | tr -d ' ')
+if [ "$ef_n" -eq 0 ]; then
+  pass "efectividad: aun sin sesiones que medir  (fuente: projects/*/*.jsonl)"
+elif [ -s "$ef_tsv" ] && [ "$(wc -l < "$ef_tsv" | tr -d ' ')" -gt 1 ]; then
+  ef_ult="$(tail -n 1 "$ef_tsv" | cut -f1)"; ef_ult="${ef_ult%%T*}"
+  ef_dias=$(( ( $(date +%s) - $(date -d "$ef_ult" +%s 2>/dev/null || echo 0) ) / 86400 ))
+  if [ "$ef_dias" -le 35 ]; then
+    pass "efectividad: cifras de uso real registradas hace $ef_dias dias  (fuente: session-logs/efectividad.tsv)"
+  else
+    warn "efectividad: la ultima fila de efectividad.tsv tiene $ef_dias dias: ejecuta 'efectividad --registrar' antes de la proxima release"
+  fi
+else
+  warn "efectividad: $ef_n sesiones y ninguna cifra registrada: ejecuta 'efectividad --registrar' (las cifras van al CHANGELOG de cada release)"
+fi
+
 # 6. gate de secretos sobre el kit
 if bash "$KIT/scan-secrets.sh" "$KIT" >/dev/null 2>&1; then pass "kit sin secretos  (fuente: scan-secrets.sh)"; else fail "scan-secrets detectó material sensible en el kit"; fi
 

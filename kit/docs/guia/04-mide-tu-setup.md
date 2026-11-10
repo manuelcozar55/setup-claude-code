@@ -67,10 +67,35 @@ time bash ~/.claude/hooks/block-dangerous-commands.sh < "$entrada"
 
 Si añades un hook propio, mídelo igual antes de dejarlo: un hook en el camino caliente (todas las herramientas, todos los prompts) se paga cientos de veces por sesión. El kit lo dice de su propia cadena en [`05-security.md`](../05-security.md#los-guards-de-bash-y-git).
 
+## 5 · `efectividad`: las cuatro cifras del kit en un comando (1 minuto)
+
+Desde 1.10.0 el kit instala `efectividad` (python3, sin red ni modelo). Lee tus transcripts
+(`~/.claude/projects`) y `session-logs/nucleo-freshness.log` y responde a la única pregunta que
+importa: ¿el kit mueve algo?
+
+```bash
+efectividad                          # últimos 30 días: compactaciones/día, frescura, correcciones, falsos positivos
+efectividad --antes 2026-11-09       # antes/después de una fecha (la de una release, por ejemplo)
+efectividad --por-sesion             # una línea por sesión
+efectividad --registrar --markdown   # fila en session-logs/efectividad.tsv y bloque «### Cifras» para el CHANGELOG
+```
+
+| Cifra | Cómo se calcula | Qué dice |
+|---|---|---|
+| compactaciones por día activo | líneas `isCompactSummary` / días con alguna sesión | cuánto contexto se tira |
+| frescura de `nucleo.md` (≤30 min) | filas de `nucleo-freshness.log` con edad ≤1800 s | si el estado sobrevive a la compactación |
+| correcciones | mensajes de la persona con «no, mal, error, arregla…» / mensajes | heurística léxica: dirección, no nivel |
+| falsos positivos revelados | bloqueos de guard seguidos en <60 s de un comando parecido que pasa | el guard paró el texto, no la acción |
+
+Límites: la heurística de correcciones cuenta también los «no» que no corrigen; las sesiones de
+`claude -p` (cupo, rutinas) cuentan como sesiones de un mensaje; Claude Code borra los transcripts
+a los 30 días (`cleanupPeriodDays`), así que `--registrar` es lo que conserva la serie.
+
 ## Una ficha para repetir cada mes
 
 ```text
 Fecha:
+efectividad (compactaciones/día · frescura · correcciones · FP revelados):
 Fijo por turno (/context):              k
 % sesiones con retrabajo:               %
 % compactaciones manuales:              %

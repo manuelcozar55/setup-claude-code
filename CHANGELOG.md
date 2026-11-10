@@ -7,6 +7,12 @@ etiquetado.
 
 ## [Unreleased]
 
+### Added
+
+- **`efectividad`, oráculo de efectividad en uso real (mejora 1 de la valoración del 9-nov):** CLI python3 sin red ni modelo que calcula, sobre los transcripts de `~/.claude/projects` y `session-logs/nucleo-freshness.log`, las cuatro cifras que dicen si el kit sirve: compactaciones por día activo, frescura de `nucleo.md` al compactar, correcciones de la persona (heurística léxica) y falsos positivos revelados (bloqueo seguido de comando reformulado en <60 s). `--antes FECHA` compara antes/después de una release, `--markdown` genera el bloque del CHANGELOG, `--registrar` deja la fila en `session-logs/efectividad.tsv`, `--por-sesion` desglosa. Sin hook nuevo: los bloqueos ya están en el transcript como `tool_result` de error con el nombre del guard. Suite `test_efectividad.sh` con fixture sintético y mutaciones.
+- **Toda release ≥ 1.10.0 publica cifras:** `test_changelog_cifras.sh` exige un bloque `### Cifras` bajo cada versión del CHANGELOG desde 1.10.0; el paso está en «Cortar una release» de `CONTRIBUTING.md`.
+- **doctor:** comprobación `efectividad` (PASS con cifras registradas hace ≤35 días o sin sesiones que medir; WARN si hay uso y no hay fila reciente).
+
 ## [1.9.0] - 2026-11-09
 
 Autosave del estado en dos capas (ADR 028): `nucleo.md` queda guardado sin que la persona haga nada.

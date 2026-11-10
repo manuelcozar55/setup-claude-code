@@ -4,13 +4,13 @@ Harness personal para Claude Code: **guías** (antes de actuar) y **sensores** (
 después). Mapa para agentes: `AGENTS.md`. Dos capas:
 
 - `kit/` — **capa de instalación**, v1.9.0, estable. Guards, hooks, Sentinel, `install.sh`,
-  47 suites de test. No se toca sin ejecutar `make test`.
+  49 suites de test. No se toca sin ejecutar `make test`.
 - raíz — **capa de harness**: `.claude/`, `knowledge/`, `scripts/`. Lo nuevo va aquí.
 
 ## Oráculo de este repo
 
 ```
-make test  # 47 suites bash, sin red; 118-179 s (i9), ~410 s (WSL). exit 0 o el trabajo no está hecho.
+make test  # 49 suites bash, sin red; 118-179 s (i9), ~410 s (WSL). exit 0 o el trabajo no está hecho.
 ```
 
 No declares nada terminado sin esa salida delante. `/verify` lo hace bien.

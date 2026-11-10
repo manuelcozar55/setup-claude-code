@@ -119,7 +119,7 @@ Las claves y los archivos privados quedan fuera del paquete y de Git.
 - **`CLAUDE_CONFIG_DIR` vacía no es lo mismo que sin definir**: `CLAUDE_CONFIG_DIR="" claude auth status`
   da `loggedIn:false`. Quítala con `unset CLAUDE_CONFIG_DIR`; `doctor.sh` avisa (WARN) si la encuentra vacía.
 
-## Paso 3b · CLIs `handoff`, `oraculo` y `cupo`
+## Paso 3b · CLIs `handoff`, `oraculo`, `cupo` y `efectividad`
 
 `install.sh` copia `bin/handoff`, `bin/oraculo` y `bin/cupo` a `$CLAUDE_HOME/bin/` (ejecutables) y crea tres enlaces en `~/.local/bin/`:
 
@@ -131,7 +131,7 @@ Reglas del enlace: solo se crea si `CLAUDE_HOME` es `$HOME/.claude` y además no
 
 Si `~/.local/bin` no está en tu `PATH`, el instalador lo dice al final. En Debian y Ubuntu esa carpeta entra en el `PATH` al iniciar sesión **solo si ya existía**: si la acaba de crear el instalador, **abre una terminal nueva** antes de usar los comandos. Compruébalo con `command -v handoff oraculo cupo`.
 
-`handoff` y `oraculo` son bash + `jq`, sin red, y valen igual en Claude Code, Codex y opencode (`handoff --help`, `oraculo --help`). `cupo` hace un turno mínimo de `claude -p` (consume un turno, no es offline): ver [`06-routine.md`](06-routine.md#sesiones-autónomas-largas). El camino absoluto (`$CLAUDE_HOME/bin/handoff`) funciona siempre, aunque el `PATH` no esté listo.
+`handoff` y `oraculo` son bash + `jq`, sin red, y valen igual en Claude Code, Codex y opencode (`handoff --help`, `oraculo --help`). `cupo` hace un turno mínimo de `claude -p` (consume un turno, no es offline): ver [`06-routine.md`](06-routine.md#sesiones-autónomas-largas). El camino absoluto (`$CLAUDE_HOME/bin/handoff`) funciona siempre, aunque el `PATH` no esté listo. `efectividad` (python3, sin red) calcula las cuatro cifras de uso real del kit a partir de tus transcripts: ver la [guía · mide tu setup](guia/04-mide-tu-setup.md).
 
 ## Paso 4 · Venv de herramientas
 

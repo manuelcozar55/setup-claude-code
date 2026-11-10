@@ -67,7 +67,7 @@ bash kit/install.sh
 No uses `make bootstrap`: ejecuta además la suite de tests y crea un perfil que no necesitas. Lee la salida del instalador hasta el final. Te puede avisar de dos cosas:
 
 - **Ya tenías un `CLAUDE.md`.** No lo toca. Añade la línea `@AGENTS.md` a tu `CLAUDE.md`; la plantilla del kit quedó en `CLAUDE.kit.md`.
-- **`~/.local/bin` no está en tu `PATH`.** El instalador enlaza `handoff`, `oraculo` y `cupo` ahí. Abre una terminal nueva antes de seguir.
+- **`~/.local/bin` no está en tu `PATH`.** El instalador enlaza `handoff`, `oraculo`, `cupo` y `efectividad` ahí. Abre una terminal nueva antes de seguir.
 
 Al final el instalador imprime «Rellena tus claves: cp … .env.example …». Es **opcional**: solo hace falta si vas a usar servicios externos con clave; el kit funciona sin ese fichero.
 
@@ -158,7 +158,7 @@ Una sesión por tarea. Esperar a la compactación automática pierde contexto; e
 Esto es solo para quien cambia el propio kit. Antes de tu primer commit:
 
 ```bash
-make test                  # 47 suites en bash puro, sin red, unos 7 min. exit 0 o no está hecho.
+make test                  # 49 suites en bash puro, sin red, unos 7 min. exit 0 o no está hecho.
 bash kit/scan-secrets.sh   # secretos y PII en el árbol
 shellcheck -x <tus .sh>
 ```
