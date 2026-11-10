@@ -210,12 +210,9 @@ El detalle está en `CHANGELOG.md`. En resumen, para quien usa el kit:
   `--registrar` conserva la serie en `~/.claude/session-logs/efectividad.tsv`.
 - Cada release del kit publica esas cifras en el `CHANGELOG.md` (`### Cifras`), y `doctor`
   avisa cuando hay uso y no hay cifras registradas en 35 días.
-- `install.sh --apply` deja de pisar la configuración viva: la plantilla usa `DISABLE_TELEMETRY` y la
-  fusión de `settings.json` conserva `autoUpdate` y el resto de cada entrada de `extraKnownMarketplaces`.
-  Cockpit: `COCKPIT_AUTONOMO=on` en el `env` de `settings.json` deja `/autonomo` activo en cada
-  proceso nuevo.
-- Lo de la entrega anterior sigue igual: el estado se guarda solo tras cada turno (`autosave.sh`),
-  `claude --resume` desde `~` recupera su ranura y el cockpit sintetiza por hitos.
+- Lo de las entregas anteriores sigue igual: el estado se guarda solo tras cada turno (`autosave.sh`),
+  `claude --resume` desde `~` recupera su ranura, `install.sh --apply` respeta la configuración viva
+  y `COCKPIT_AUTONOMO=on` deja `/autonomo` activo en cada proceso nuevo.
 ## Continuidad entre sesiones
 
 - `/handoff` (opcional: el estado ya se guarda solo) guarda el estado y prepara el siguiente contexto; `/handoff solo` guarda sin

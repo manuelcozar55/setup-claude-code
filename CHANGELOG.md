@@ -17,18 +17,6 @@ Oráculo de efectividad en uso real: desde esta versión el kit publica sus cifr
 - **Toda release ≥ 1.10.0 publica cifras:** `test_changelog_cifras.sh` exige un bloque `### Cifras` bajo cada versión del CHANGELOG desde 1.10.0; el paso está en «Cortar una release» de `CONTRIBUTING.md`.
 - **doctor:** comprobación `efectividad` (PASS con cifras registradas hace ≤35 días o sin sesiones que medir; WARN si hay uso y no hay fila reciente).
 
-### Changed
-
-- **Statusline con id corto de sesión:** los 8 primeros caracteres de `session_id` (los de `claude --resume`), en gris al final de la segunda línea.
-- **Continuación automática con autorización permanente** (cockpit 0.8.1): `COCKPIT_AUTONOMO=on` en el `env` de `settings.json` deja `/autonomo` activo en cada proceso nuevo; antes vivía solo en memoria del proceso, cada `claude` arrancaba apagado y tras cada handoff había que pulsar Enter. `/nueva` y un `/clear` manual vuelven a ese valor por defecto, no a «apagado».
-
-### Fixed
-
-- **La plantilla y la fusión de `settings.json` dejan de pisar la configuración viva en cada `--apply`:** la plantilla usa `DISABLE_TELEMETRY` (la variable que lee Claude Code) en lugar de `ANTHROPIC_DISABLE_TELEMETRY`, y en `extraKnownMarketplaces` el kit solo impone el `source` de sus entradas: `autoUpdate` y el resto de la entrada se conservan (caso k2 de `test_install_settings_merge.sh`).
-- **Agentes con frontmatter YAML válido:** `deep-worker`, `quick-checker` y `strategist` llevaban una `description` sin comillas con «: » dentro; Claude Code la tolera, otros lectores YAML no. `test_agentes.sh` lo vigila (M14).
-- **El test de enlaces markdown solo mira lo que git ve:** `test_harness_structure.sh` recorría también `.claude/estado/**` (ignorado a propósito e invisible para CI) y un informe viejo ponía el oráculo local en rojo con 42 enlaces rotos ajenos al kit; ahora lista con `git ls-files --exclude-standard` y cae a `find` solo fuera del repo (caso de falsabilidad).
-- **`.sesion` de la ranura sigue al `session_id` real:** `handoff` y el autosave lo reescriben cuando cambia; un `/resume` dentro del mismo proceso lo dejaba con el id viejo y `por_sid` no encontraba la ranura (de ahí ranuras duplicadas al reanudar).
-
 ### Cifras (uso real, 2026-10-11 → 2026-11-11, 194 sesiones)
 | Cifra | antes 2026-11-09 | después |
 |---|---|---|
@@ -38,6 +26,20 @@ Oráculo de efectividad en uso real: desde esta versión el kit publica sus cifr
 | Falsos positivos revelados (reformulado <60 s) | 63.4 % (52/82 bloqueos) | 66.7 % (12/18 bloqueos) |
 
 Primera medida: la ventana «después» (desde la 1.9.0) tiene un día; es la línea base, no una comparación. Salida literal de `efectividad --antes 2026-11-09 --markdown` sobre `~/.claude` del autor el 2026-11-10.
+
+## [1.9.1] - 2026-11-10
+
+### Fixed
+
+- **La plantilla y la fusión de `settings.json` dejan de pisar la configuración viva en cada `--apply`:** la plantilla usa `DISABLE_TELEMETRY` (la variable que lee Claude Code) en lugar de `ANTHROPIC_DISABLE_TELEMETRY`, y en `extraKnownMarketplaces` el kit solo impone el `source` de sus entradas: `autoUpdate` y el resto de la entrada se conservan (caso k2 de `test_install_settings_merge.sh`).
+- **Agentes con frontmatter YAML válido:** `deep-worker`, `quick-checker` y `strategist` llevaban una `description` sin comillas con «: » dentro; Claude Code la tolera, otros lectores YAML no. `test_agentes.sh` lo vigila (M14).
+- **El test de enlaces markdown solo mira lo que git ve:** `test_harness_structure.sh` recorría también `.claude/estado/**` (ignorado a propósito e invisible para CI) y un informe viejo ponía el oráculo local en rojo con 42 enlaces rotos ajenos al kit; ahora lista con `git ls-files --exclude-standard` y cae a `find` solo fuera del repo (caso de falsabilidad).
+- **`.sesion` de la ranura sigue al `session_id` real:** `handoff` y el autosave lo reescriben cuando cambia; un `/resume` dentro del mismo proceso lo dejaba con el id viejo y `por_sid` no encontraba la ranura (de ahí ranuras duplicadas al reanudar).
+
+### Changed
+
+- **Statusline con id corto de sesión:** los 8 primeros caracteres de `session_id` (los de `claude --resume`), en gris al final de la segunda línea.
+- **Continuación automática con autorización permanente** (cockpit 0.8.1): `COCKPIT_AUTONOMO=on` en el `env` de `settings.json` deja `/autonomo` activo en cada proceso nuevo; antes vivía solo en memoria del proceso, cada `claude` arrancaba apagado y tras cada handoff había que pulsar Enter. `/nueva` y un `/clear` manual vuelven a ese valor por defecto, no a «apagado».
 
 ## [1.9.0] - 2026-11-09
 
@@ -2276,7 +2278,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   fuera de CI.
 
 [Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.0...HEAD
-[1.10.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.0...v1.10.0
+[1.10.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.1...v1.10.0
+[1.9.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.7.1...v1.8.0
