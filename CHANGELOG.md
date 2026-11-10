@@ -7,6 +7,8 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-11-10
+
 ### Fixed
 
 - **La plantilla y la fusión de `settings.json` dejan de pisar la configuración viva en cada `--apply`:** la plantilla usa `DISABLE_TELEMETRY` (la variable que lee Claude Code) en lugar de `ANTHROPIC_DISABLE_TELEMETRY`, y en `extraKnownMarketplaces` el kit solo impone el `source` de sus entradas: `autoUpdate` y el resto de la entrada se conservan (caso k2 de `test_install_settings_merge.sh`).
@@ -2255,7 +2257,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.7.1...v1.8.0
