@@ -89,7 +89,7 @@ L1=$(printf '%s\n' "$OUT" | sed -n 1p); L2=$(printf '%s\n' "$OUT" | sed -n 2p)
 [ "$(printf '%s\n' "$OUT" | wc -l)" -eq 2 ] && ok "dos lineas" || bad "dos lineas" "$OUT"
 case "$L1" in "Opus 5 | $DEEP | "*) ok "linea 1 empieza por el modelo, sin «Model:»";; *) bad "linea 1" "$L1";; esac
 assert_hasnt "contexto fuera de la linea 1" "Ctx" "$L1"
-[ "$L2" = "Ctx: 81.1k | 5h:37% (resets in R) | 7d:13% (resets in R)" ] \
+[ "$L2" = "Ctx: 81.1k | 5h:37% (resets in R) | 7d:13% (resets in R) | statusli" ] \
   && ok "linea 2 = contexto y limites" || bad "linea 2" "$L2"
 RAW="$(mkinput "$DEEP" | COLUMNS=100000 bash "$SL" 2>/dev/null)"
 assert_has "Ctx en gris"  $'\e[38;5;59mCtx: 81.1k' "$RAW"
@@ -114,7 +114,7 @@ done
 echo "== 6. primera peticion: sin uso de contexto ni rate limits =="
 OUT="$(mkinput "$DEEP" | jq '.context_window.current_usage = null | del(.rate_limits)' \
        | COLUMNS=100000 bash "$SL" 2>/dev/null | normalize | sed -n 2p)"
-[ "$OUT" = "Ctx: 0" ] && ok "linea 2 = «Ctx: 0» sin separadores sueltos" || bad "linea 2" "«$OUT»"
+[ "$OUT" = "Ctx: 0 | statusli" ] && ok "linea 2 = «Ctx: 0 | sid» sin separadores sueltos" || bad "linea 2" "«$OUT»"
 
 echo "== 7. /mnt/* (DrvFs): rama sin recuento; en ext4 si hay diff =="
 # Medido: en un repo bajo /mnt/c los dos diff --shortstat llevaban la barra a 2,7 s por refresco

@@ -25,7 +25,7 @@ const answered = (text: string) => ({ value: { isAnswered: true, text, usage: {}
 function repo(
   on: Parameters<TestBody>[1],
   files: Record<string, string>,
-  opts: { root?: string; tops?: Record<string, string>; links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
+  opts: { root?: string; tops?: Record<string, string>; links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; autonomo?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
 ) {
   let stateReads = 0
   const runs: Run[] = []
@@ -43,6 +43,7 @@ function repo(
     if (a === 'printenv HOME') return ok(home)
     if (a === 'printenv CLAUDE_HOME') return ok(opts.claudeHome ?? '')
     if (a === 'printenv COCKPIT_AUTO_HANDOFF') return opts.env ? ok(opts.env) : no()
+    if (a === 'printenv COCKPIT_AUTONOMO') return opts.autonomo ? ok(opts.autonomo) : no()
     if (a.includes('--show-toplevel')) {
       const found = opts.tops ? opts.tops[e.argv[2] ?? ''] : opts.isRepo === false ? undefined : opts.top ?? '/work/proyecto'
       return found === undefined ? no() : ok(`${found}\n`)
@@ -1661,6 +1662,27 @@ for (const mode of ['manual', 'autonomo'] as const) {
     for (const text of [...sent, ...seen.fills]) expect(text).toContain(path)
   })
 }
+
+test('HOME con COCKPIT_AUTONOMO=on: el handoff continúa solo sin /autonomo on; /autonomo off manda, y /nueva vuelve al valor por defecto', async ($, on) => {
+  const timer = mock.clock(on)
+  const seen = auto(on, { tokens: 1 })
+  const path = `${HOME}/.claude/estado/sesiones/20261021-1200-42/nucleo.md`
+  repo(on, { [path]: PREV }, { isRepo: false, cwd: HOME, statePath: path, autonomo: 'on', session: () => `home-${seen.cleared}` })
+  const sent: string[] = []
+  on('prompt.submit', (_, e) => { if (e.origin.kind === 'plugin') sent.push(e.text); return { text: e.text } })
+  await $.prompt.submit({ text: 'Validar entrega', wait: false, origin: { kind: 'composer' } })
+  expect((await $.command.run({ ...RUN, command: 'autonomo' })).text).toContain('activada (valor por defecto: COCKPIT_AUTONOMO)')
+  await $.command.run({ ...RUN, command: 'handoff' })
+  await timer.advance(400)
+  await timer.advance(400)
+  expect(sent).toHaveLength(1)
+  expect(seen.fills).toHaveLength(0)
+  await $.command.run({ ...RUN, command: 'autonomo', args: 'off' })
+  expect((await $.command.run({ ...RUN, command: 'autonomo' })).text).toContain('desactivada. Uso')
+  await $.command.run({ ...RUN, command: 'nueva', args: 'Otra misión' })
+  await timer.advance(400)
+  expect((await $.command.run({ ...RUN, command: 'autonomo' })).text).toContain('activada (valor por defecto: COCKPIT_AUTONOMO)')
+})
 
 test('/nueva HOME archiva mediante el CLI y desactiva la autonomía', async ($, on) => {
   const timer = mock.clock(on)

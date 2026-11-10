@@ -1,6 +1,6 @@
 {
   "env": {
-    "ANTHROPIC_DISABLE_TELEMETRY": "1",
+    "DISABLE_TELEMETRY": "1",
     "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "250000"
   },
   "permissions": {

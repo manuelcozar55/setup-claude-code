@@ -18,6 +18,9 @@
 #   hooks                                                   -> por propietario: los del kit los
 #                                                              pone el kit, los tuyos se quedan
 #   permissions.disableBypassPermissionsMode                -> del KIT, siempre "disable"
+#   extraKnownMarketplaces (entradas del kit)                -> el `source` del KIT; el resto de la
+#                                                              entrada (autoUpdate) y tus otros
+#                                                              marketplaces, tuyos
 # Hasta la 1.5.0 el kit poseia `hooks` en bloque y se llevaba los tuyos (caso e). El caso fija
 # las dos mitades para que un cambio de contrato salte en un sentido o en el otro: lo tuyo
 # sobrevive y lo del kit no se duplica.
@@ -71,7 +74,7 @@ seed c <<'EOF'
 EOF
 run
 ck "$(jq -r '.env.MAX_THINKING_TOKENS' "$S")" "64000" "env: tu valor gana sobre el del kit (32000)"
-ck "$(jq -r '.env.ANTHROPIC_DISABLE_TELEMETRY // "AUSENTE"' "$S")" "1" "env: una clave nueva del kit se anade"
+ck "$(jq -r '.env.DISABLE_TELEMETRY // "AUSENTE"' "$S")" "1" "env: una clave nueva del kit se anade"
 
 # --- Caso d: permissions.allow/.deny -> union sin duplicados --------------
 seed d <<'EOF'
@@ -257,6 +260,14 @@ caso="${previo:+con ref viejo}"; caso="${caso:-sin ref}"
 ck "$(jq -r '.extraKnownMarketplaces["setup-claude-code"].source.ref' "$S")" "$ref" "marketplace del kit $caso: queda en $ref"
 ck "$(jq -c '.extraKnownMarketplaces.otro' "$S")" '{"source":{"source":"github","repo":"alguien/otro","ref":"main"}}' "otro marketplace tuyo: intacto"
 done
+# Caso k2: la entrada del kit llevaba ademas `autoUpdate` (tuyo). Hasta la 1.9.0 la fusion sustituia la
+# entrada entera y lo perdia en cada --apply: solo el `source` es del kit.
+seed k2 <<'EOF'
+{ "extraKnownMarketplaces": {
+    "setup-claude-code": { "source": { "source": "github", "repo": "manuelcozar55/setup-claude-code", "ref": "v0.0.1" }, "autoUpdate": true } } }
+EOF
+run
+ck "$(jq -Sc '.extraKnownMarketplaces["setup-claude-code"]' "$S")" "{\"autoUpdate\":true,\"source\":{\"ref\":\"$ref\",\"repo\":\"manuelcozar55/setup-claude-code\",\"source\":\"github\"}}" "marketplace del kit con autoUpdate tuyo: el ref sigue a $ref y autoUpdate se conserva"
 # Por la misma razon, `plugin install cockpit --marketplace <repo>` sin ref falla con el marketplace ya fijado.
 ck "$(grep -rl -- '--marketplace manuelcozar55' "$KIT/docs" "$KIT/../README.md" | wc -l)" "0" "ninguna doc instala el cockpit con --marketplace <repo> sin ref"
 

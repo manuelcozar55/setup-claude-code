@@ -7,6 +7,18 @@ etiquetado.
 
 ## [Unreleased]
 
+### Fixed
+
+- **La plantilla y la fusión de `settings.json` dejan de pisar la configuración viva en cada `--apply`:** la plantilla usa `DISABLE_TELEMETRY` (la variable que lee Claude Code) en lugar de `ANTHROPIC_DISABLE_TELEMETRY`, y en `extraKnownMarketplaces` el kit solo impone el `source` de sus entradas: `autoUpdate` y el resto de la entrada se conservan (caso k2 de `test_install_settings_merge.sh`).
+- **Agentes con frontmatter YAML válido:** `deep-worker`, `quick-checker` y `strategist` llevaban una `description` sin comillas con «: » dentro; Claude Code la tolera, otros lectores YAML no. `test_agentes.sh` lo vigila (M14).
+- **El test de enlaces markdown solo mira lo que git ve:** `test_harness_structure.sh` recorría también `.claude/estado/**` (ignorado a propósito e invisible para CI) y un informe viejo ponía el oráculo local en rojo con 42 enlaces rotos ajenos al kit; ahora lista con `git ls-files --exclude-standard` y cae a `find` solo fuera del repo (caso de falsabilidad).
+- **`.sesion` de la ranura sigue al `session_id` real:** `handoff` y el autosave lo reescriben cuando cambia; un `/resume` dentro del mismo proceso lo dejaba con el id viejo y `por_sid` no encontraba la ranura (de ahí ranuras duplicadas al reanudar).
+
+### Changed
+
+- **Statusline con id corto de sesión:** los 8 primeros caracteres de `session_id` (los de `claude --resume`), en gris al final de la segunda línea.
+- **Continuación automática con autorización permanente** (cockpit 0.8.1): `COCKPIT_AUTONOMO=on` en el `env` de `settings.json` deja `/autonomo` activo en cada proceso nuevo; antes vivía solo en memoria del proceso, cada `claude` arrancaba apagado y tras cada handoff había que pulsar Enter. `/nueva` y un `/clear` manual vuelven a ese valor por defecto, no a «apagado».
+
 ## [1.9.0] - 2026-11-09
 
 Autosave del estado en dos capas (ADR 028): `nucleo.md` queda guardado sin que la persona haga nada.

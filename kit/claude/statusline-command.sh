@@ -1,7 +1,7 @@
 #!/bin/bash
 # Statusline en dos lineas, sin node:
 #   1: modelo | cwd completa | repo | rama | cambios
-#   2: contexto (gris) | limites 5h y 7d (azul)
+#   2: contexto (gris) | limites 5h y 7d (azul) | id corto de sesion (gris)
 # Sustituye a ccstatusline (~300 ms por refresco: arranca node con un bundle de
 # 3,3 MB y relee el transcript entero para sacar el contexto, que Claude Code ya
 # manda en context_window.current_usage con la misma formula).
@@ -25,9 +25,12 @@ mapfile -t f < <(jq -r '
   (.workspace.current_dir // .cwd // ""),
   "Ctx: \(($u.input_tokens // 0) + ($u.cache_creation_input_tokens // 0) + ($u.cache_read_input_tokens // 0) | tok)",
   lim("5h"; .rate_limits.five_hour // {}; "\(. / 3600 | floor)h\(. % 3600 / 60 | floor)m"),
-  lim("7d"; .rate_limits.seven_day // {}; "\(. / 86400 | floor)d\(. % 86400 / 3600 | floor)h")
+  lim("7d"; .rate_limits.seven_day // {}; "\(. / 86400 | floor)d\(. % 86400 / 3600 | floor)h"),
+  (.session_id // "" | tostring | gsub("[^0-9A-Za-z_-]"; "") | .[0:8])
 ')
-model=${f[0]} cwd=${f[1]} ctx=${f[2]} five=${f[3]} week=${f[4]}
+# sid: los 8 primeros de session_id, como en los transcripts y en `claude --resume`; sin id, vacio
+# y render lo omite. Se filtra a [0-9A-Za-z_-] para que el JSON no cuele escapes al terminal.
+model=${f[0]} cwd=${f[1]} ctx=${f[2]} five=${f[3]} week=${f[4]} sid=${f[5]}
 
 repo="" branch="" changes=""
 if top=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null); then
@@ -77,4 +80,4 @@ render() {
 }
 
 render "38;5;30" "$model" "38;5;188" "$cwd" "38;5;70" "$repo" "38;5;96" "$branch" "38;5;178" "$changes"
-render "38;5;59" "$ctx" "34" "$five" "34" "$week"
+render "38;5;59" "$ctx" "34" "$five" "34" "$week" "38;5;245" "$sid"

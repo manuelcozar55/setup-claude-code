@@ -250,6 +250,10 @@ ok "21 --desde en una ranura deja .sesion con el session_id" "$(cat "$SX/.sesion
 # shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
 . "$K/hooks/lib/nucleo.sh"
 ok "21 por_sid recupera la ranura con otro PID en el entorno" "$(CLAUDE_PID=$PB nucleo_sesion_dir por_sid sid-x)" "$SX"
+# Un /resume dentro del mismo proceso cambia el session_id: .sesion debe seguirlo o por_sid deja de encontrar la ranura.
+ho "$PX" --desde "$(borrador X2)" --sesion sid-x2 >/dev/null 2>&1
+ok "21 el mismo pid con otro session_id reescribe .sesion y por_sid sigue al nuevo" "$(cat "$SX/.sesion" 2>/dev/null),$(CLAUDE_PID=$PB nucleo_sesion_dir por_sid sid-x2)" "sid-x2,$SX"
+ho "$PX" --desde "$(borrador X)" --sesion sid-x >/dev/null 2>&1   # vuelve a sid-x: lo que sigue adopta por ese id
 ok "21 por_sid con un id desconocido o inválido: rc 1 y nada" "$(nucleo_sesion_dir por_sid nadie; nucleo_sesion_dir por_sid '../x'; echo "rc=$?")" "rc=1"
 ok "21 un resume con el proceso dueño vivo no la adopta" "$(hook "$HC" "$PC" resume sid-x | command grep -c '<nucleo-datos .*sesiones/')" 0
 kill "$PX"; wait "$PX" 2>/dev/null

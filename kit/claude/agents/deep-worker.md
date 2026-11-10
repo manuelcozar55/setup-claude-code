@@ -1,6 +1,6 @@
 ---
 name: deep-worker
-description: Use for autonomous end-to-end implementation when scope is already clear. Executes without interruption, explores existing patterns before writing code, delivers complete working implementation. Invoke after strategist has defined scope, or for self-contained tasks: implementing a defined feature, executing a migration, writing tests for existing code, refactoring a well-understood module.
+description: "Use for autonomous end-to-end implementation when scope is already clear. Executes without interruption, explores existing patterns before writing code, delivers complete working implementation. Invoke after strategist has defined scope, or for self-contained tasks: implementing a defined feature, executing a migration, writing tests for existing code, refactoring a well-understood module."
 model: sonnet
 tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
