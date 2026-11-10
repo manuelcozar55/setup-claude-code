@@ -41,7 +41,11 @@ find_broken_links() {
   local files=()
   for d in "${dirs[@]}"; do
     [ -d "$d" ] || continue
-    while IFS= read -r -d '' f; do files+=("$f"); done < <(find "$d" -type f -name '*.md' -print0)
+    # Solo lo que git ve (trackeado o sin ignorar): CI nunca tiene .claude/estado/**, que esta
+    # ignorado a proposito, y un informe viejo ahi ponia el oraculo local en rojo (42 rotos el
+    # 2026-11-10). Fuera del repo (el caso fabricado de falsabilidad) ls-files falla y manda find.
+    while IFS= read -r -d '' f; do case $f in *.md) files+=("$f") ;; esac; done \
+      < <(git ls-files -coz --exclude-standard -- "$d" 2>/dev/null || find "$d" -type f -name '*.md' -print0)
   done
   for f in "${files[@]}"; do
     dir="$(dirname "$f")"

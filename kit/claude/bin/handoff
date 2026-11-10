@@ -447,7 +447,8 @@ if [ "$MODO" = auto ]; then
   if [ -n "$AMOT" ]; then
     printf 'motivo=%s\ndesde=%s\nultimo=%s\n' "$AMOT" "$ADES" "$ANOW" >"$AW/dirty" && mv -f -- "$AW/dirty" "$ADIRTY" 2>/dev/null || true
   fi
-  if [ -n "$AES" ] && [ ! -e "$AES/.sesion" ] && [ -n "$SESION" ]; then printf '%s\n' "$SESION" >"$AES/.sesion" 2>/dev/null || true; fi
+  # Se reescribe si cambió: un /resume dentro del mismo proceso cambia el session_id y por_sid busca por igualdad.
+  if [ -n "$AES" ] && [ -n "$SESION" ] && [ "$(cat "$AES/.sesion" 2>/dev/null)" != "$SESION" ]; then printf '%s\n' "$SESION" >"$AES/.sesion" 2>/dev/null || true; fi
   if [ "$MOTIVO" = compact ] && [ -n "$SESION" ]; then
     a_json .compact_summary | head -c 4096 >"$AW/resumen"
     if [ -s "$AW/resumen" ]; then
@@ -1075,7 +1076,7 @@ TMP=$(mktemp "$E/.nucleo.XXXXXX")
 printf '%s' "$TEXTO" >"$TMP"
 mv -f -- "$TMP" "$NUC"
 rm -f -- "$E/autosave.dirty"
-[ -z "$SES" ] || [ -e "$SES/.sesion" ] || case $SESION in '' | *[!A-Za-z0-9_-]*) ;; *) printf '%s\n' "$SESION" >"$SES/.sesion" 2>/dev/null || true ;; esac
+[ -z "$SES" ] || case $SESION in '' | *[!A-Za-z0-9_-]*) ;; *) [ "$(cat "$SES/.sesion" 2>/dev/null)" = "$SESION" ] || printf '%s\n' "$SESION" >"$SES/.sesion" 2>/dev/null || true ;; esac
 [ -n "$SES" ] || [ "$E" = "$RAIZ/.claude/estado" ] || : >"$E/.nucleo-fallback"
 
 HASH=sin-commit; [ -n "$SES" ] || HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)

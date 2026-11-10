@@ -5,7 +5,7 @@ ejecutar herramientas, estado recuperable entre sesiones y pruebas reproducibles
 
 [![CI de main](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml)
 
-**Entrega: 1.10.0 · cockpit: 0.8.0.** El badge muestra la CI de `main`; la evidencia
+**Entrega: 1.10.0 · cockpit: 0.8.1.** El badge muestra la CI de `main`; la evidencia
 de un paquete concreto se identifica por su commit y sus SHA-256, no por ese badge.
 
 ---

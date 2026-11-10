@@ -210,6 +210,10 @@ El detalle está en `CHANGELOG.md`. En resumen, para quien usa el kit:
   `--registrar` conserva la serie en `~/.claude/session-logs/efectividad.tsv`.
 - Cada release del kit publica esas cifras en el `CHANGELOG.md` (`### Cifras`), y `doctor`
   avisa cuando hay uso y no hay cifras registradas en 35 días.
+- `install.sh --apply` deja de pisar la configuración viva: la plantilla usa `DISABLE_TELEMETRY` y la
+  fusión de `settings.json` conserva `autoUpdate` y el resto de cada entrada de `extraKnownMarketplaces`.
+  Cockpit: `COCKPIT_AUTONOMO=on` en el `env` de `settings.json` deja `/autonomo` activo en cada
+  proceso nuevo.
 - Lo de la entrega anterior sigue igual: el estado se guarda solo tras cada turno (`autosave.sh`),
   `claude --resume` desde `~` recupera su ranura y el cockpit sintetiza por hitos.
 ## Continuidad entre sesiones
@@ -217,7 +221,8 @@ El detalle está en `CHANGELOG.md`. En resumen, para quien usa el kit:
 - `/handoff` (opcional: el estado ya se guarda solo) guarda el estado y prepara el siguiente contexto; `/handoff solo` guarda sin
   limpiar; `/nueva` separa una tarea distinta.
 - `/autonomo on` deja que la sesión continúe sola tras un handoff válido; `/autonomo off`
-  lo retira. Está apagado por defecto y `/nueva` lo desactiva. Antes de activarlo,
+  lo retira. Por defecto sigue `COCKPIT_AUTONOMO` del `env` de `settings.json`; `/nueva` y un
+  `/clear` manual vuelven a ese valor. Antes de activarlo,
   acuerda alcance, prueba de salida y límite de tiempo o gasto; el interruptor del
   cockpit no impone esos presupuestos. No amplía permisos ni autoriza acciones externas.
 - Un mensaje nuevo, agentes vivos, un fallo de guardado o un dueño ajeno impiden la

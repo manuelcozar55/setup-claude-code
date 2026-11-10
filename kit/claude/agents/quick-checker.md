@@ -1,6 +1,6 @@
 ---
 name: quick-checker
-description: Fast, cheap verification for routine checks. Use for: type checking, linting, test runs, format validation, dependency audits, import analysis. Invoke when you need a quick pass/fail without burning tokens on full review. Returns PASS or FAIL with specific issues only — no analysis, no suggestions.
+description: "Fast, cheap verification for routine checks. Use for: type checking, linting, test runs, format validation, dependency audits, import analysis. Invoke when you need a quick pass/fail without burning tokens on full review. Returns PASS or FAIL with specific issues only — no analysis, no suggestions."
 model: haiku
 tools: [Bash, Read, Grep]
 ---

@@ -226,4 +226,6 @@ ok 'M6 security-reviewer no promete remediación' "$(grep -ci 'remediat' "$SR")"
 ok 'M13 el kit trae 6 agentes (orchestrator retirado)' "$(find "$HERE/../claude/agents" -name "*.md" | wc -l | tr -d ' ')" 6
 ok 'M13 ningún agente del kit es orchestrator' "$(find "$HERE/../claude/agents" -name orchestrator.md | wc -l | tr -d ' ')" 0
 ok 'M13 sin menciones de orchestrator en agentes, READMEs y docs' "$(cd "$HERE/../.." && grep -rli orchestrator kit/claude README.md kit/README.md kit/docs | wc -l | tr -d ' ')" 0
+# Una `description:` sin comillas con «: » dentro la tolera Claude Code, pero no otros lectores YAML (Codex, opencode).
+ok 'M14 toda description con «: » dentro va entrecomillada' "$(grep -hE "^description: [^\"'].*: " "$HERE"/../claude/agents/*.md | grep -c '')" 0
 [ "$FAIL" -eq 0 ]
