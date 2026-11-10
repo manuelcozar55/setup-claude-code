@@ -1,6 +1,6 @@
-# SCC 1.9.0 — guía de entrega
+# SCC 1.9.1 — guía de entrega
 
-Para quien recibe el paquete. La versión es la de `VERSION` (1.9.0); `BUILD_ID` identifica
+Para quien recibe el paquete. La versión es la de `VERSION` (1.9.1); `BUILD_ID` identifica
 esta entrega. No se distribuyen credenciales ni configuración personal.
 
 ## Requisitos
@@ -14,30 +14,30 @@ no instala hooks, cockpit ni continuidad automática para Codex u opencode.
 
 ## Obtener la entrega
 
-Recibe del responsable el paquete de **1.9.0**, su manifiesto `SHA256SUMS` y la
+Recibe del responsable el paquete de **1.9.1**, su manifiesto `SHA256SUMS` y la
 identificación del origen (commit y suma del archivo transferido). Conserva esa
 identificación para soporte: `BUILD_ID` es una etiqueta de entrega, no un hash.
 Si prefieres Git y el tag ya está publicado, puedes obtener la versión así:
 
 ```bash
-git clone --branch v1.9.0 --single-branch https://github.com/manuelcozar55/setup-claude-code.git ~/scc
+git clone --branch v1.9.1 --single-branch https://github.com/manuelcozar55/setup-claude-code.git ~/scc
 git -C ~/scc rev-parse HEAD
 ```
 
 Contrasta ese commit con el facilitado por el responsable. Si el tag todavía no
 existe, usa el paquete transferido; no sustituyas esta versión por `main`.
 En ambos casos comprueba `cat VERSION BUILD_ID` desde `~/scc`: deben indicar
-`1.9.0` y `scc-v1.9.0`. No ejecutes una entrega con sumas incorrectas.
+`1.9.1` y `scc-v1.9.1`. No ejecutes una entrega con sumas incorrectas.
 
 ### Copia de Git sin acceso a la red
 
-La entrega incluye `scc-v1.9.0.bundle`, con la rama verificada y su historial,
+La entrega incluye `scc-v1.9.1.bundle`, con la rama verificada y su historial,
 y un manifiesto exterior que cubre tanto el bundle como el paquete. Comprueba
 ese manifiesto en la carpeta recibida antes de abrir ninguno:
 
 ```bash
 sha256sum -c SHA256SUMS
-git clone --branch release/scc-v1.9.0-debian scc-v1.9.0.bundle ~/scc
+git clone --branch release/scc-v1.9.1-debian scc-v1.9.1.bundle ~/scc
 git -C ~/scc rev-parse HEAD
 ```
 
@@ -199,25 +199,27 @@ Reinstalar un tag antiguo no devuelve su árbol exacto: conserva archivos de ver
 posteriores. No borres el directorio `.claude/estado/` de tus proyectos: contiene la
 continuidad.
 
-## Qué cambia en 1.9.0
+## Qué cambia en 1.9.1
 
 El detalle está en `CHANGELOG.md`. En resumen, para quien usa el kit:
 
-- El estado se guarda solo tras cada turno, sin modelo y sin hacer nada: el hook `autosave.sh`
-  (`Stop`, `PostCompact`, `SessionEnd`) anota el último turno en `nucleo.md`
-  y registra cada guardado en `~/.claude/session-logs/autosave.log`.
-- `claude --resume` desde `~` recupera la ranura de estado de su sesión.
-- Con el cockpit incluido, una síntesis silenciosa completa las secciones redactadas por
-  hitos y turnos; `/autosave on|off|status` la controla y su coste queda en
-  `~/.claude/session-logs/autosave-cockpit.log`.
-- `/handoff` pasa a ser una orden manual opcional.
+- `install.sh --apply` deja de pisar la configuración viva: la plantilla usa
+  `DISABLE_TELEMETRY` y la fusión de `settings.json` conserva `autoUpdate` y el resto
+  de cada entrada de `extraKnownMarketplaces`.
+- Continuación automática con autorización permanente (con el cockpit incluido):
+  `COCKPIT_AUTONOMO=on` en el `env` de `settings.json` deja `/autonomo` activo en cada
+  proceso nuevo; tras un handoff ya no hay que pulsar Enter.
+- La statusline muestra el id corto de la sesión (el de `claude --resume`).
+- `.sesion` de la ranura sigue al `session_id` real: un `/resume` ya no duplica ranuras.
+- Agentes con frontmatter YAML válido; el test de enlaces markdown solo mira lo que git ve.
 
 ## Continuidad entre sesiones
 
 - `/handoff` (opcional: el estado ya se guarda solo) guarda el estado y prepara el siguiente contexto; `/handoff solo` guarda sin
   limpiar; `/nueva` separa una tarea distinta.
 - `/autonomo on` deja que la sesión continúe sola tras un handoff válido; `/autonomo off`
-  lo retira. Está apagado por defecto y `/nueva` lo desactiva. Antes de activarlo,
+  lo retira. Por defecto sigue `COCKPIT_AUTONOMO` del `env` de `settings.json`; `/nueva`
+  y un `/clear` manual vuelven a ese valor. Antes de activarlo,
   acuerda alcance, prueba de salida y límite de tiempo o gasto; el interruptor del
   cockpit no impone esos presupuestos. No amplía permisos ni autoriza acciones externas.
 - Un mensaje nuevo, agentes vivos, un fallo de guardado o un dueño ajeno impiden la
