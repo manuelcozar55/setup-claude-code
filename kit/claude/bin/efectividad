@@ -73,13 +73,19 @@ def analiza(path):
                         continue
                     if BLOQUEO.match(t) and "BLOCKED" in t:
                         g = GUARD.search(t)
-                        # Claude Code solo antepone «[ruta del hook]:» a veces; sin ruta quedan los prefijos propios de cada guard.
+                        # Claude Code antepone «[ruta del hook]:» a los guards que salen con exit 2. Sin ruta llegan Sentinel y
+                        # bash-write-guard, con prefijo propio, y block-dangerous-commands.sh, el único guard del kit que deniega
+                        # por JSON. Una ruta fuera de hooks/ es un hook ajeno al kit: «otro».
                         if "SENTINEL BLOCKED" in t:
                             nombre = "sentinel"
                         elif "BASH-WRITE-GUARD BLOCKED" in t:
                             nombre = "bash-write-guard.sh"
+                        elif g:
+                            nombre = g.group(1)
+                        elif "]:" in t.split("BLOCKED", 1)[0]:
+                            nombre = "otro"
                         else:
-                            nombre = g.group(1) if g else "otro"
+                            nombre = "block-dangerous-commands.sh"
                         s["bloqueos"] += 1
                         s["guards"][nombre] = s["guards"].get(nombre, 0) + 1
                         bloqueados.append((b.get("tool_use_id"), ts))

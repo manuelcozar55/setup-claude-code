@@ -73,4 +73,13 @@ ok "mutación: sin log de frescura, la tabla muestra s/d" "$(cli --home "$T/h" "
 
 ok "CLAUDE_HOME del entorno = --home" "$(CLAUDE_HOME=$FX cli "${V[@]}" --json | jq -S -c .)" "$(cli --home "$FX" "${V[@]}" --json | jq -S -c .)"
 
+
+# Atribución: con «[ruta/hooks/x]:» manda la ruta; sin ruta ni prefijo propio es block-dangerous-commands.sh (el único
+# guard del kit que deniega por JSON, y a esos Claude Code no les antepone la ruta); una ruta fuera de hooks/ es «otro».
+JG=$(cli --home "$(dirname "$FX")/home-guards" "${V[@]}" --json)
+ok "guards: sin ruta → block-dangerous-commands.sh 2" "$(j "$JG" "$W.bloqueos_por_guard[\"block-dangerous-commands.sh\"]")" 2
+ok "guards: con ruta manda la ruta → secret-guard.sh 1" "$(j "$JG" "$W.bloqueos_por_guard[\"secret-guard.sh\"]")" 1
+ok "guards: ruta ajena a hooks/ → otro 1" "$(j "$JG" "$W.bloqueos_por_guard.otro")" 1
+ok "guards: 4 bloqueos, 0 reformulados" "$(j "$JG" "$W.bloqueos")/$(j "$JG" "$W.reformulados")" "4/0"
+
 exit $FAIL
