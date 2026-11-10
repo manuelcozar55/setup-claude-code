@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+"""efectividad — cifras de uso real de scc leídas de los transcripts y del log de frescura de nucleo.md.
+
+Solo lectura salvo --registrar. Los transcripts reales suman cientos de MB: se leen línea a línea.
+"""
+import argparse
+import glob
+import json
+import os
+import re
+import sys
+from datetime import date, datetime, timedelta
+
+# Heurística léxica: mide dirección, no nivel. Unión de las listas usadas hasta ahora en el repo menos «para»,
+# que en castellano es casi siempre preposición y no orden de parar.
+CORRECCION = re.compile(r"\b(no|mal|error|incorrecto|equivocado|revierte|falso|arregla|revisa|otra vez)\b")
+BLOQUEO = re.compile(r"^PreToolUse:(\w+) hook error:")
+GUARD = re.compile(r"\[[^\]]*/hooks/([\w.-]+)\]")
+TOKENS = re.compile(r"[A-Za-z0-9_./-]+")
+
+
+def texto_de(r):
+    if not isinstance(r.get("content"), list):
+        return r.get("content")
+    return "".join(b.get("text", "") for b in r["content"] if isinstance(b, dict))
+
+
+def ts_de(s):
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def similar(c0, c1):
+    t0, t1 = TOKENS.findall(c0.lower()), TOKENS.findall(c1.lower())
+    if not t0 or not t1:
+        return False
+    return t0[0] == t1[0] or len(set(t0) & set(t1)) / len(set(t0) | set(t1)) >= 0.5
+
+
+def analiza(path):
+    inicio = None
+    s = dict(compactaciones=0, mensajes=0, correcciones=0, bloqueos=0, reformulados=0, hook_errores=0, guards={})
+    usos = {}
+    bashes = []
+    bloqueados = []
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for linea in f:
+            if '"timestamp"' not in linea:
+                continue
+            try:
+                o = json.loads(linea)
+            except ValueError:
+                continue
+            ts = o.get("timestamp")
+            if not isinstance(ts, str):
+                continue
+            if inicio is None:
+                inicio = ts
+            msg = o.get("message") if isinstance(o.get("message"), dict) else {}
+            cont = msg.get("content")
+            if o.get("isCompactSummary"):
+                s["compactaciones"] += 1
+                continue
+            bloques = [b for b in cont if isinstance(b, dict)] if isinstance(cont, list) else []
+            for b in bloques:
+                if b.get("type") == "tool_use":
+                    inp = b.get("input") if isinstance(b.get("input"), dict) else {}
+                    usos[b.get("id")] = (b.get("name"), inp.get("command"))
+                    if b.get("name") == "Bash" and isinstance(inp.get("command"), str):
+                        bashes.append([b.get("id"), ts, inp["command"]])
+                elif b.get("type") == "tool_result" and b.get("is_error"):
+                    t = texto_de(b) or ""
+                    if not isinstance(t, str):
+                        continue
+                    if BLOQUEO.match(t) and "BLOCKED" in t:
+                        g = GUARD.search(t)
+                        # Claude Code solo antepone «[ruta del hook]:» a veces; sin ruta quedan los prefijos propios de cada guard.
+                        if "SENTINEL BLOCKED" in t:
+                            nombre = "sentinel"
+                        elif "BASH-WRITE-GUARD BLOCKED" in t:
+                            nombre = "bash-write-guard.sh"
+                        else:
+                            nombre = g.group(1) if g else "otro"
+                        s["bloqueos"] += 1
+                        s["guards"][nombre] = s["guards"].get(nombre, 0) + 1
+                        bloqueados.append((b.get("tool_use_id"), ts))
+                    elif "hook error:" in t and "BLOCKED" not in t:
+                        s["hook_errores"] += 1
+            if o.get("type") != "user" or o.get("isMeta"):
+                continue
+            if isinstance(cont, str):
+                t = cont
+            elif any(b.get("type") == "tool_result" for b in bloques):
+                continue
+            else:
+                t = "".join(b.get("text", "") for b in bloques if b.get("type") == "text")
+            t = t.strip()
+            if not t or t.startswith("<"):
+                continue
+            s["mensajes"] += 1
+            if CORRECCION.search(t.lower()):
+                s["correcciones"] += 1
+    if inicio is None:
+        return None
+    ids_bloqueados = {i for i, _ in bloqueados}
+    # El guard paró el texto, no la acción: reformular el comando bloqueado en <60 s es el falso positivo revelado.
+    for i, t0 in bloqueados:
+        nombre, c0 = usos.get(i, (None, None))
+        if nombre != "Bash" or not isinstance(c0, str):
+            continue
+        t0 = ts_de(t0)
+        for i1, t1, c1 in bashes:
+            if i1 in ids_bloqueados or not 0 < (ts_de(t1) - t0).total_seconds() <= 60:
+                continue
+            if similar(c0, c1):
+                s["reformulados"] += 1
+                break
+    s["inicio"] = inicio
+    return s
+
+
+def frescura(home):
+    p = os.path.join(home, "session-logs", "nucleo-freshness.log")
+    if not os.path.isfile(p):
+        return None
+    filas = []
+    with open(p, encoding="utf-8", errors="replace") as f:
+        for linea in f:
+            c = linea.split()
+            if len(c) >= 4:
+                try:
+                    filas.append((c[0], int(c[3])))
+                except ValueError:
+                    pass
+    return filas
+
+
+def pct(a, b):
+    return round(100 * a / b, 1) if b else None
+
+
+def agrega(sesiones, filas, desde, hasta):
+    ss = [s for s in sesiones if desde <= s["inicio"][:10] < hasta]
+    dias = len({s["inicio"][:10] for s in ss})
+    suma = lambda k: sum(s[k] for s in ss)
+    guards = {}
+    for s in ss:
+        for g, n in s["guards"].items():
+            guards[g] = guards.get(g, 0) + n
+    r = dict(desde=desde, hasta=hasta, sesiones=len(ss), dias_activos=dias, compactaciones=suma("compactaciones"))
+    r["compactaciones_por_dia"] = round(r["compactaciones"] / dias, 1) if dias else None
+    r.update(mensajes=suma("mensajes"), correcciones=suma("correcciones"))
+    r["correcciones_pct"] = pct(r["correcciones"], r["mensajes"])
+    r.update(bloqueos=suma("bloqueos"), bloqueos_por_guard=guards, reformulados=suma("reformulados"))
+    r["fp_pct"] = pct(r["reformulados"], r["bloqueos"])
+    en = [e for t, e in filas if desde <= t[:10] < hasta] if filas is not None else []
+    r["frescura_n"] = len(en)
+    r["frescura_pct"] = pct(sum(1 for e in en if 0 <= e <= 1800), len(en)) if filas is not None else None
+    r["hook_errores"] = suma("hook_errores")
+    return r
+
+
+def fmt(v, suf=""):
+    return "s/d" if v is None else f"{v}{suf}"
+
+
+def celdas(r):
+    g = " · ".join(f"{k} {n}" for k, n in sorted(r["bloqueos_por_guard"].items())) or "-"
+    return [
+        ("compactaciones", f"{r['compactaciones']} ({fmt(r['compactaciones_por_dia'])} por día)"),
+        ("frescura nucleo ≤30 min", f"{fmt(r['frescura_pct'], ' %')} (n={r['frescura_n']})"),
+        ("correcciones", f"{fmt(r['correcciones_pct'], ' %')} ({r['correcciones']}/{r['mensajes']} mensajes)"),
+        ("bloqueos", f"{r['bloqueos']} ({g})"),
+        ("reformulados <60 s", f"{r['reformulados']} ({fmt(r['fp_pct'], ' %')} de los bloqueos)"),
+        ("errores de hook", str(r["hook_errores"])),
+    ]
+
+
+def tabla(rs, cab, antes):
+    out = [cab]
+    cols = [celdas(r) for r in rs]
+    if antes:
+        out.append(f"{'':26}  {'antes ' + antes:<42}  después")
+    for i, (k, v) in enumerate(cols[0]):
+        out.append(f"{k:26}  " + "  ".join(f"{c[i][1]:<42}" if j < len(cols) - 1 else c[i][1] for j, c in enumerate(cols)))
+    return out
+
+
+def markdown(rs, antes):
+    r = rs[-1]
+    out = [f"### Cifras (uso real, {rs[0]['desde']} → {r['hasta']}, {sum(x['sesiones'] for x in rs)} sesiones)"]
+    out.append(f"| Cifra | antes {antes} | después |" if antes else "| Cifra | Valor |")
+    out.append("|---|---|---|" if antes else "|---|---|")
+
+    def fila(r):
+        return [
+            f"{fmt(r['compactaciones_por_dia'])} ({r['compactaciones']} en {r['dias_activos']} días)",
+            f"{fmt(r['frescura_pct'], ' %')} (n={r['frescura_n']})",
+            f"{fmt(r['correcciones_pct'], ' %')} ({r['correcciones']}/{r['mensajes']} mensajes)",
+            f"{fmt(r['fp_pct'], ' %')} ({r['reformulados']}/{r['bloqueos']} bloqueos)",
+        ]
+
+    nombres = ["Compactaciones por día activo", "Frescura de nucleo.md al compactar (≤30 min)",
+               "Correcciones de la persona (heurística léxica)", "Falsos positivos revelados (reformulado <60 s)"]
+    cols = [fila(x) for x in rs]
+    for i, n in enumerate(nombres):
+        out.append(f"| {n} | " + " | ".join(c[i] for c in cols) + " |")
+    return out
+
+
+def fecha(s):
+    try:
+        return date.fromisoformat(s).isoformat() if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s) else None
+    except ValueError:
+        return None
+
+
+def main():
+    hoy = date.today()
+    ap = argparse.ArgumentParser(prog="efectividad")
+    ap.add_argument("--home")
+    ap.add_argument("--desde")
+    ap.add_argument("--hasta")
+    ap.add_argument("--antes")
+    for f in ("--json", "--markdown", "--por-sesion", "--registrar"):
+        ap.add_argument(f, action="store_true")
+    try:
+        a = ap.parse_args()
+    except SystemExit as e:
+        sys.exit(1 if e.code else 0)
+    desde = fecha(a.desde) if a.desde else (hoy - timedelta(days=30)).isoformat()
+    hasta = fecha(a.hasta) if a.hasta else (hoy + timedelta(days=1)).isoformat()
+    antes = fecha(a.antes) if a.antes else None
+    if not desde or not hasta or (a.antes and (not antes or not desde <= antes < hasta)):
+        print("efectividad: argumentos inválidos (fechas AAAA-MM-DD; --antes dentro de [desde, hasta))", file=sys.stderr)
+        sys.exit(1)
+
+    home = a.home or os.environ.get("CLAUDE_HOME") or os.path.expanduser("~/.claude")
+    sesiones = []
+    for p in sorted(glob.glob(os.path.join(glob.escape(home), "projects", "*", "*.jsonl"))):
+        s = analiza(p)
+        if s:
+            s["sid"] = os.path.basename(p)[:-6]
+            sesiones.append(s)
+    filas = frescura(home)
+    rangos = [(desde, antes), (antes, hasta)] if antes else [(desde, hasta)]
+    rs = [agrega(sesiones, filas, d, h) for d, h in rangos]
+    if rs[-1]["sesiones"] == 0:
+        print(f"efectividad: sin sesiones en la ventana {rs[-1]['desde']} → {rs[-1]['hasta']}", file=sys.stderr)
+        sys.exit(2)
+
+    en = [s for s in sesiones if desde <= s["inicio"][:10] < hasta]
+    if a.json:
+        out = dict(desde=desde, hasta=hasta, antes=antes, ventanas=rs)
+        if a.por_sesion:
+            out["sesiones"] = [{k: s[k] for k in ("sid", "inicio", "compactaciones", "mensajes", "correcciones",
+                                                  "bloqueos", "reformulados", "hook_errores")} for s in en]
+        print(json.dumps(out, ensure_ascii=False))
+    elif a.markdown:
+        print("\n".join(markdown(rs, antes)))
+    else:
+        cab = f"Efectividad scc · {desde} → {hasta} · {sum(r['sesiones'] for r in rs)} sesiones · " \
+              f"{len({s['inicio'][:10] for s in en})} días activos"
+        print("\n".join(tabla(rs, cab, antes)))
+        if a.por_sesion:
+            for s in en:
+                print("\t".join(str(x) for x in (s["sid"], s["inicio"], s["compactaciones"], s["mensajes"],
+                                                 s["correcciones"], s["bloqueos"], s["reformulados"])))
+    if a.registrar:
+        r = rs[-1]
+        d = os.path.join(home, "session-logs")
+        os.makedirs(d, exist_ok=True)
+        p = os.path.join(d, "efectividad.tsv")
+        nuevo = not os.path.exists(p)
+        with open(p, "a", encoding="utf-8") as f:
+            if nuevo:
+                f.write("ts_run\tdesde\thasta\tsesiones\tcompactaciones_por_dia\tfrescura_pct\tcorrecciones_pct\tfp_pct\tbloqueos\n")
+            f.write("\t".join([datetime.now().astimezone().isoformat(timespec="seconds"), r["desde"], r["hasta"],
+                               str(r["sesiones"]), fmt(r["compactaciones_por_dia"]), fmt(r["frescura_pct"]),
+                               fmt(r["correcciones_pct"]), fmt(r["fp_pct"]), str(r["bloqueos"])]) + "\n")
+
+
+if __name__ == "__main__":
+    main()

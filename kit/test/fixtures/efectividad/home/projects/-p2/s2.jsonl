@@ -1,0 +1,4 @@
+{"type": "user", "timestamp": "2026-11-06T08:00:00Z", "message": {"role": "user", "content": "hola, empezamos"}}
+{"type": "user", "timestamp": "2026-11-06T08:30:00Z", "message": {"role": "user", "content": "resumen previo"}, "isCompactSummary": true}
+{"type": "user", "timestamp": "2026-11-06T09:00:00Z", "message": {"role": "user", "content": "continua con la tarea"}}
+{"type": "user", "timestamp": "2026-11-06T09:30:00Z", "message": {"role": "user", "content": "resumen previo"}, "isCompactSummary": true}
