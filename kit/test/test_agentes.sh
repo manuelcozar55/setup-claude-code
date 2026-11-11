@@ -223,7 +223,7 @@ ok 'K9 fecha original: un núcleo sin marcador incluye el commit posterior a su 
 SR=$HERE/../claude/agents/security-reviewer.md
 ok 'M6 security-reviewer es de solo lectura (tools sin Write ni Edit)' "$(grep '^tools:' "$SR" | grep -c 'Write\|Edit')" 0
 ok 'M6 security-reviewer no promete remediación' "$(grep -ci 'remediat' "$SR")" 0
-ok 'M13 el kit trae 5 agentes' "$(find "$HERE/../claude/agents" -name "*.md" | wc -l | tr -d ' ')" 5
+ok 'M13 el kit trae 7 agentes' "$(find "$HERE/../claude/agents" -name "*.md" | wc -l | tr -d ' ')" 7
 ok 'M13 ningún agente del kit es orchestrator' "$(find "$HERE/../claude/agents" -name orchestrator.md | wc -l | tr -d ' ')" 0
 ok 'M13 sin menciones de orchestrator en agentes, READMEs y docs' "$(cd "$HERE/../.." && grep -rli orchestrator kit/claude README.md kit/README.md kit/docs | wc -l | tr -d ' ')" 0
 # Una `description:` sin comillas con «: » dentro la tolera Claude Code, pero no otros lectores YAML (Codex, opencode).

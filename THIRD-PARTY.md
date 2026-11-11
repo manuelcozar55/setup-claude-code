@@ -84,6 +84,30 @@ sustituidas por su paso equivalente, y en `brainstorming`, `writing-plans` y
 `SKILL.md` lo declara en su última línea; el detalle está en
 `kit/plugins/esenciales/README.md`. No se incluye el hook `SessionStart` del original.
 
+Además, una skill de `kit/claude/skills/` (commit `22f0b463e7a5e579904dd6211a520321035526f7`, mismo
+copyright y licencia que arriba). Fichero derivado, **modificado**: `kit/claude/skills/verification-before-completion/SKILL.md`
+(de `skills/verification-before-completion/SKILL.md`). Cambios: tono rebajado,
+comandos y oráculo del kit, sin referencias a skills que el kit no trae.
+
+### anthropics/claude-plugins-official — Apache-2.0
+
+Repositorio: <https://github.com/anthropics/claude-plugins-official>, commit
+`43fd1f9db0941b2b83cb62268e35970d4a67c202`, plugin `pr-review-toolkit` (su
+`LICENSE` es Apache License 2.0; el plugin y el repo no publican fichero `NOTICE`,
+comprobado con la API de GitHub el 2026-11-11).
+
+Ficheros de este repositorio que derivan de ese proyecto, **modificados**:
+
+- `kit/claude/agents/pr-test-analyzer.md` (de `agents/pr-test-analyzer.md`)
+- `kit/claude/agents/silent-failure-hunter.md` (de `agents/silent-failure-hunter.md`)
+
+Cambios: `description` recortada, bloque de ejemplos eliminado, herramientas
+limitadas a `Read`, `Grep`, `Glob` y `Bash`, modelo fijado, bloque «Prompt Defense
+Baseline» añadido y, en `silent-failure-hunter`, referencias a logging y telemetría
+de otro proyecto sustituidas por ejemplos en Python, bash y TypeScript. Cada
+fichero lleva su procedencia en un comentario tras el frontmatter. Licencia:
+<http://www.apache.org/licenses/LICENSE-2.0>.
+
 ### randomdreft/claude-code-security-hook — declaración de dominio público
 
 Fichero afectado: `kit/claude/hooks/block-dangerous-commands.sh`, cuya cabecera

@@ -7,6 +7,22 @@ etiquetado.
 
 ## [Unreleased]
 
+Se levanta la congelación (2026-11-11, decisión del dueño): entran tres piezas de terceros con su entrada B-007 en `knowledge/BACKLOG.md`.
+
+### Added
+
+- Agentes `pr-test-analyzer` (¿cubren los tests del PR el comportamiento nuevo?) y `silent-failure-hunter` (errores tragados, fallbacks que enmascaran, `|| true`), adaptados de `anthropics/claude-plugins-official` (Apache-2.0). El kit pasa de 5 a 7 agentes.
+- Skill `verification-before-completion`, adaptada de `obra/superpowers` (MIT): antes de decir «hecho», correr el comando que lo prueba y leer su rc. El kit pasa de 2 a 3 skills.
+- `CLAUDE.md` del kit: sección «Interfaces». `/impeccable` es la entrada para UI y `ui-ux-pro-max` su fuente de datos, nunca quien elige la dirección visual.
+
+### Changed
+
+- **`code-reviewer` solo da BLOCK con evidencia producida en la revisión:** un hallazgo CRITICAL con `fichero:línea`, o un comando ejecutado (tests o reproducción) que falla por el cambio. Una nota baja en la rúbrica, la falta de evidencia o el estilo dan WARNING y dicen qué falta. Motivo: en 30 días, 4 de ~17 veredictos fueron BLOCK, y 3 solo por «Verificación» 3 < 4. Validado con 7 revisiones: 5 cambios limpios dan APPROVE y 2 defectos plantados (un bypass del guard y una inyección de comandos) dan BLOCK con su reproducción. Además contrasta el cambio con el plan o spec y, si la suite completa es lenta, corre las suites que cubren lo cambiado.
+
+### Documentation
+
+- `graphify` sale de `docs/08-plugins-mcp-y-skills.md` y `docs/02-install.md`: 0 usos medidos.
+
 ### Retirado
 
 - Agente `strategist`: 0 invocaciones en 30 días y en todo el histórico; solapa con el agente nativo `Plan`. El kit pasa de 6 a 5 agentes.

@@ -7,10 +7,10 @@ apunta para que no entre por la puerta de atrás.
 
 ## Congelación
 
-**Hasta el 2026-12-09 no entra nada nuevo en el kit**: solo arreglos, documentación y
-retiradas. Ese día se revisa la regla.
+**Levantada el 2026-11-11** por decisión del dueño (iba hasta el 2026-12-09: solo arreglos,
+documentación y retiradas). Lo que entró al levantarla está en B-007.
 
-**Después, y hasta v2.0**, ningún hook, agente, skill ni mecanismo nuevo entra en el kit sin
+**Hasta v2.0**, ningún hook, agente, skill ni mecanismo nuevo entra en el kit sin
 una entrada en este fichero con evidencia medida. Una entrada no es una aprobación: la
 decisión se escribe en ella, con su fecha.
 
@@ -75,3 +75,18 @@ decisión se escribe en ella, con su fecha.
 **Problema que resuelve:** sin evidencia medida todavía.
 **Coste:** sin medir.
 **Decisión:** pospuesto hasta después del 2026-12-09 (2026-11-11).
+
+## B-007 · Dos revisores y una skill de verificación, de terceros
+
+**Fecha:** 2026-11-11
+**Propuesta:** agentes `pr-test-analyzer` y `silent-failure-hunter` (de
+`anthropics/claude-plugins-official`, Apache-2.0) y skill `verification-before-completion` (de
+`obra/superpowers`, MIT), adaptados y con su procedencia en `THIRD-PARTY.md`.
+**Problema que resuelve:** tres huecos que ningún agente del kit cubre: dar algo por hecho sin
+correr el comando que lo prueba, revisar si los tests de un PR cubren el comportamiento nuevo
+(`quick-checker` solo da pasa/falla) y encontrar errores tragados en scripts. Salieron de leer
+9 repos fijados por SHA; el uso real todavía no está medido.
+**Coste:** 3 ficheros, 237 líneas, 0 hooks; sus `description` suman 676 B (≈ 170 tokens) en
+el listado de cada sesión.
+**Decisión:** entra (2026-11-11), por decisión del dueño al levantar la congelación. Se mide su
+uso en la retro del 2026-12-09; sin usos, se retira.

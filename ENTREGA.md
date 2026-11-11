@@ -209,8 +209,8 @@ continuidad.
 
 El detalle está en `CHANGELOG.md`. En resumen, para quien usa el kit:
 
-- Es un parche: arreglos y documentación, nada nuevo. Hasta el 2026-12-09 el kit está
-  congelado (`knowledge/BACKLOG.md`).
+- Es un parche: arreglos y documentación, nada nuevo. La congelación hasta el
+  2026-12-09 se levantó el 2026-11-11 (`knowledge/BACKLOG.md`).
 - En cada proyecto nuevo, `handoff --iniciar` antes de la primera sesión (ver «Empezar»).
 - Con el cockpit desde el marketplace, tras `marketplace add …@tag` ejecuta
   `claude plugin update cockpit@setup-claude-code` y repón `autoUpdate` si lo usabas
