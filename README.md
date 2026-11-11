@@ -85,8 +85,8 @@ flowchart LR
             G["Guards de Bash/git<br/>+ Capa 1 de secretos"]
             HK["Hooks de sesión<br/>session-start · pre-compact"]
             SE["Sentinel<br/>IOCs"]
-            AG["6 agentes<br/>con tiering"]
-            SK["6 skills<br/>del método"]
+            AG["5 agentes<br/>con tiering"]
+            SK["2 skills<br/>del método"]
             MO["Mod cockpit<br/>/handoff · Agent Dock"]
             EV["evals/<br/>23 tareas"]
             TS["test/<br/>49 suites falsables"]
@@ -164,8 +164,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     A(["Encargo"]) --> B["IntentGate"]
-    B --> C["grilling<br/>+ domain-modeling"]
-    C --> D["Plan<br/>en fichero"]
+    B --> D["Plan<br/>en fichero"]
     D --> E["Subagentes<br/>en paralelo"]
     E --> F{"Verificar<br/>rojo → verde"}
     F -->|"rojo"| E
@@ -213,7 +212,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 6 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 49 suites falsables | v1.10.1, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 5 agentes, 2 skills del método, el mod `cockpit`, `install.sh`, 49 suites falsables | v1.10.1, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -411,7 +410,7 @@ en la configuración — todo cuelga de `$CLAUDE_PROJECT_DIR`.
 
 ## Qué hace esto
 
-Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 6 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y no se limita a afirmar que los guards funcionan: lo **demuestra** con una suite falsable. `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **exactamente 52 casos `BLOCK` conocidos** — si neutralizarlo no rompiera nada, la suite no estaría midiendo nada. Reprodúcelo tú mismo en 5 segundos: `bash kit/test/test_guards_falsifiability.sh`.
+Instala en tu `~/.claude` una config de Claude Code endurecida: guards deterministas que bloquean comandos destructivos y fugas de secretos, 5 agentes con tiering de modelo, y una capa de contenido (`gitleaks`) sobre cada commit. Y no se limita a afirmar que los guards funcionan: lo **demuestra** con una suite falsable. `test_guards_falsifiability.sh` neutraliza un guard real y comprueba que eso rompe **exactamente 52 casos `BLOCK` conocidos** — si neutralizarlo no rompiera nada, la suite no estaría midiendo nada. Reprodúcelo tú mismo en 5 segundos: `bash kit/test/test_guards_falsifiability.sh`.
 
 Y hay una segunda cosa que se demuestra en vez de prometerse: **que instalarlo en limpio no te rompe nada.** `test_clean_install_resilience.sh` monta el kit en una máquina simulada sin ninguno de los componentes de terceros opcionales (sin proxy, sin venv, sin `gitleaks`) y exige las dos mitades a la vez: que ningún hook falle, y que un comando destructivo siga bloqueado. Las dos mitades importan, porque la forma perezosa de arreglar la primera —envolver todo en `|| true`— rompe la segunda en silencio y te deja un kit de seguridad decorativo.
 
@@ -497,8 +496,8 @@ parte de `make test`.
 |---|---|---|
 | Guards de Bash/git | bloquean en duro `rm -rf`, `git push --force` a ramas protegidas, fugas de `.env`/claves por nombre de fichero, exfiltración por red, y más | [`kit/claude/hooks/`](kit/claude/hooks/) |
 | Sentinel | motor de políticas `PreToolUse` (IOCs), opcional, capa adicional sobre cualquier tool | [`kit/sentinel/`](kit/sentinel/) |
-| 6 agentes con tiering | `strategist`, `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker` | [`kit/claude/agents/`](kit/claude/agents/) |
-| 6 skills del método | `deep-change`, `grilling`, `domain-modeling`, `writing-for-agents` y las manuales `retro` y `to-questionnaire`; `install.sh` las copia a `~/.claude/skills/` por el camino diff-first | [`kit/claude/skills/`](kit/claude/skills/) · [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) |
+| 5 agentes con tiering | `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker` | [`kit/claude/agents/`](kit/claude/agents/) |
+| 2 skills del método | `deep-change` y la manual `retro`; `install.sh` las copia a `~/.claude/skills/` por el camino diff-first | [`kit/claude/skills/`](kit/claude/skills/) · [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) |
 | Plugins de terceros | `ponytail`, `ui-ux-pro-max` y, opcionales, `impeccable` y `find-skills`, instalados por referencia desde su marketplace con `kit/install-plugins.sh` (diff-first) | [`kit/docs/08-plugins-mcp-y-skills.md`](kit/docs/08-plugins-mcp-y-skills.md) |
 | Mod `cockpit` | `/handoff` (traspaso de sesión) y el panel Agent Dock; opt-in: `claude plugin install cockpit@setup-claude-code` con el marketplace registrado en el tag del kit (no lo instala `install.sh`) | [`kit/mods/cockpit/`](kit/mods/cockpit/) · [`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md) |
 | Dos capas de secretos | Capa 1 (`secret-guard.sh`, por nombre de fichero, activa desde el primer `install.sh`) + Capa 2 (`gitleaks` en `pre-commit`, por contenido real, opt-in por repo) | [`kit/docs/05-security.md`](kit/docs/05-security.md) |
@@ -520,7 +519,7 @@ para falsos positivos. Cómo se configura cada uno: [`kit/docs/02-install.md`](k
 
 - [`kit/README.md`](kit/README.md) — guía completa del kit.
 - [`kit/docs/`](kit/docs/) — overview, install, método (esenciales), seguridad, rutina, verificación, plugins/MCP/skills, onboarding, cockpit y metodología.
-- [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) — el método de trabajo de punta a punta: IntentGate, grilling, deep-change, subagentes, handoff y retro.
+- [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) — el método de trabajo de punta a punta: IntentGate, deep-change, subagentes, handoff y retro.
 - [`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md) — el mod `cockpit`: `/handoff` y el Agent Dock.
 - [`kit/docs/09-ssh-y-gitlab-privado.md`](kit/docs/09-ssh-y-gitlab-privado.md) — clave SSH desde WSL2 y alta en un GitLab autoalojado, paso a paso: útil por sí sola aunque no uses el kit, y necesaria si tu equipo tiene un marketplace de plugins privado.
 - [`kit/docs/10-onboarding.md`](kit/docs/10-onboarding.md) — la ruta de un companero nuevo: qué levantas, cómo verificarlo de verdad y qué hacer cuando algo va mal.

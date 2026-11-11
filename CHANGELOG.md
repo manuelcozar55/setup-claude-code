@@ -7,6 +7,14 @@ etiquetado.
 
 ## [Unreleased]
 
+### Retirado
+
+- Agente `strategist`: 0 invocaciones en 30 días y en todo el histórico; solapa con el agente nativo `Plan`. El kit pasa de 6 a 5 agentes.
+- Skill `domain-modeling`: 0 invocaciones de Skill en todo el histórico de transcripts. El kit pasa de 6 a 5 skills.
+- Skill `grilling`: 0 invocaciones de Skill en todo el histórico de transcripts. `deep-change` ya no la nombra. El kit pasa de 5 a 4 skills.
+- Skill `writing-for-agents`: 0 invocaciones de Skill en todo el histórico de transcripts. `retro` ya no la invoca como primer paso. El kit pasa de 4 a 3 skills.
+- Skill `to-questionnaire`: 0 invocaciones de Skill en todo el histórico de transcripts. El kit pasa de 3 a 2 skills (`deep-change` y `retro`).
+
 ## [1.10.1] - 2026-11-11
 
 Línea base y congelación: arreglos de la validación en Debian del 10-nov y de la auditoría del 11-nov. Hasta el 2026-12-09 el kit solo admite arreglos, documentación y retiradas.

@@ -10,11 +10,7 @@ flowchart TD
     E(["Encargo"]) --> R{"¿cuesta caro<br/>equivocarse?"}
     R -->|"no"| D(["Hazlo directo"])
     R -->|"sí"| IG["<b>IntentGate</b><br/>resultado · alcance · criterios · supuestos"]
-    IG --> GR{"¿decisiones<br/>encadenadas?"}
-    GR -->|"sí"| GL["<b>grilling</b><br/>rondas hasta frontera vacía"]
-    GL --> DM["<b>domain-modeling</b><br/>glosario + ADR"]
-    GR -->|"no"| PL
-    DM --> PL["<b>Plan</b> como artefacto<br/>tareas verificables"]
+    IG --> PL["<b>Plan</b> como artefacto<br/>tareas verificables"]
     PL --> AP{"¿aprobado?"}
     AP -->|"no"| IG
     AP -->|"sí"| SA["<b>Subagentes en paralelo</b><br/>contexto aislado · spec en fichero"]
@@ -30,7 +26,7 @@ flowchart TD
     classDef paso fill:#475569,stroke:#334155,color:#FFFFFF
     classDef evid fill:#1F7A38,stroke:#166534,color:#FFFFFF
     classDef fin fill:#A34A2C,stroke:#8F4026,color:#FFFFFF
-    class IG,GL,DM puerta
+    class IG puerta
     class PL,SA,CO,CL paso
     class VE evid
     class HO,RT,D fin
@@ -49,19 +45,6 @@ Si hay un camino más simple, se dice. Si algo no está claro, se pregunta **una
 Vive en la plantilla [`kit/claude/AGENTS.md`](../claude/AGENTS.md) (sección *IntentGate*), que
 `install.sh` deja en tu `~/.claude` junto al `CLAUDE.md` que la importa.
 
-## 2 · `grilling` y `domain-modeling`: cuando las decisiones cuelgan unas de otras
-
-- **`grilling`** entrevista hasta que no queda nada asumido. Dibuja un **árbol de decisiones**
-  y trabaja por **rondas**: la *frontera* es el conjunto de preguntas cuyos prerrequisitos ya
-  están resueltos, y se hacen todas juntas, numeradas y con la respuesta recomendada
-  redactada para que «sí» la acepte. Las **decisiones** son de la persona; los **hechos**
-  (ficheros, herramientas) los busca un subagente, nunca se le piden. Termina cuando la
-  frontera está vacía, y no se actúa hasta que la persona confirma el acuerdo.
-- **`domain-modeling`** es la disciplina activa de vocabulario: cuestiona un término que choca
-  con `GLOSSARY.md`, inventa escenarios límite y escribe el glosario y los **ADR** en el
-  momento en que cristalizan (formato en `ADR-FORMAT.md` y `GLOSSARY-FORMAT.md`, dentro de la
-  skill). Crea los ficheros solo cuando hay algo que escribir.
-
 ## 3 · `deep-change`: el bucle operativo
 
 Se invoca con `/deep-change` o entra solo cuando el cambio es sustancial, ambiguo, irreversible
@@ -69,7 +52,7 @@ o toca seguridad o producción. Sus fases:
 
 | Fase | Qué se hace |
 |---|---|
-| Resolver la incertidumbre | Solo lo que cambia el alcance, el riesgo o el resultado; `grilling` si hay decisiones encadenadas |
+| Resolver la incertidumbre | Solo lo que cambia el alcance, el riesgo o el resultado |
 | Investigar | Subagentes independientes con dueño explícito; vuelve evidencia, no volcados |
 | **Plan como artefacto** | `<tema>-plan.md`: tareas pequeñas y verificables, cada una con ficheros exactos, cambio y prueba. Es un documento duradero, no una conversación |
 | Ejecutar | Tarea a tarea; tras cada una, verificar y anotar. No se avanza en rojo |
@@ -159,40 +142,21 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
   (punteros de navegación, comprobaciones automáticas, estándares de revisión, tamaño de los
   ficheros de guía, acceso a información), ordenadas por gravedad. Aplicarlas es un cambio
   aparte, por `deep-change`. Es manual: nunca se invoca solo.
-- **`to-questionnaire`** convierte una decisión que no puedes resolver solo en un cuestionario
-  en Markdown para otra persona. Entrevista solo por el *envío* (a quién, qué necesitas de
-  vuelta); las preguntas del documento apuntan a la brecha de conocimiento.
 
 > **No confundir dos retros.** El comando de proyecto `/retro-repo`
 > ([`.claude/commands/retro-repo.md`](../../.claude/commands/retro-repo.md)) es para trabajar *en este repo*
 > (convierte lo aprendido en `knowledge/` versionado); la skill `retro` del kit se instala en el
 > `~/.claude` de quien use el kit y analiza el entorno del agente en cualquier proyecto.
 
-## 7 · `writing-for-agents`: cuánto cuesta cada línea
-
-Se usa al crear o editar skills, `AGENTS.md` o `CLAUDE.md`. Su idea central: todo lo que el
-agente tiene siempre cargado cuesta tokens y atención **en todos los turnos**, dispare o no.
-De ahí tres reglas:
-
-- Un fichero de guía se gasta en **punteros de contexto** (qué es el material y en qué casos
-  alcanzarlo), no en el material. Lo que solo necesitan algunas ramas se baja un escalón:
-  *divulgación progresiva*.
-- Cada paso acaba en un **criterio de finalización** que distinga hecho de no hecho; los
-  criterios medibles y exhaustivos son los que fuerzan trabajo a fondo.
-- Una línea que el cuerpo ya dice, o un sinónimo que renombra la misma rama, sobra.
-
-Por eso `CLAUDE.md` de este repo tiene un techo de tamaño que vigila
-`kit/test/test_harness_structure.sh`, y el mapa va en `AGENTS.md`.
-
 ## Qué instala el kit y qué no
 
 | Pieza | Cómo llega a tu entorno |
 |---|---|
-| Skills `deep-change`, `grilling`, `domain-modeling`, `writing-for-agents`, `retro`, `to-questionnaire` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
+| Skills `deep-change`, `retro` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
 | Agentes | `install.sh` los copia a `$CLAUDE_HOME/agents/` |
 | Mod `cockpit` (`/handoff`, Agent Dock) | **No** lo instala `install.sh`: se carga con `--plugin-dir` ([doc 11](11-cockpit.md)) |
 
-Las skills `grilling`, `writing-for-agents`, `domain-modeling`, `retro` y `to-questionnaire`
-derivan de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su licencia en
+La skill `retro`
+deriva de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su licencia en
 cada carpeta y la atribución en [`THIRD-PARTY.md`](../../THIRD-PARTY.md)). `deep-change` es
 propia.
