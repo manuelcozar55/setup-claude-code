@@ -193,10 +193,10 @@ de configuración y no una librería, la regla práctica es:
   un documento, un flag de `install.sh`.
 - **PATCH** — arreglos y documentación.
 
-**Congelación.** Hasta el 2026-12-09 no se corta ninguna MINOR: en el kit solo
-entran arreglos, documentación y retiradas. Ese día se revisa la regla. Después, y
-hasta v2.0, ningún hook, agente, skill ni mecanismo nuevo entra sin una entrada con
-evidencia medida en [`knowledge/BACKLOG.md`](knowledge/BACKLOG.md).
+**Congelación.** La que iba hasta el 2026-12-09 (solo arreglos, documentación y
+retiradas) se levantó el 2026-11-11. Hasta v2.0, ningún hook, agente, skill ni
+mecanismo nuevo entra sin una entrada con evidencia medida en
+[`knowledge/BACKLOG.md`](knowledge/BACKLOG.md).
 
 El orden importa: **verificar primero, etiquetar después.** Un tag es inmutable
 en la práctica (alguien puede haberlo clonado), así que no se corta una versión
