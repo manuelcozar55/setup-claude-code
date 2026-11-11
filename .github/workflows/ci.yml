@@ -245,6 +245,22 @@ jobs:
       - name: "test_changelog_cifras.sh (toda release >= 1.10.0 publica sus cifras en el CHANGELOG)"
         run: bash kit/test/test_changelog_cifras.sh
 
+  cockpit:
+    name: cockpit (tsc en clon limpio, contrato con el CLI real; claude plugin test solo si hay claude)
+    runs-on: ubuntu-latest
+    env:
+      COCKPIT_REQUIRE_TSC: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: pnpm (corepack)
+        run: corepack enable
+
+      # El runner no trae `claude`: validate y plugin test salen como SKIP anunciado, no como verde.
+      - name: test_cockpit.sh
+        run: bash kit/test/test_cockpit.sh
+
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
     runs-on: ubuntu-latest
