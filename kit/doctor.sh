@@ -235,6 +235,13 @@ fi
 # ancho con `stty -F /dev/pts/N`, recibe SIGTTOU en un terminal real y se para todo, timeout
 # incluido: doctor colgado para siempre (30-oct, v1.7.0; caso I3 de test_doctor_base_url).
 sl_cmd="$(jq -r '.statusLine.command // empty' "$CLAUDE_HOME/settings.json" 2>/dev/null)"
+# La del kit nombra $HOME/.claude. Con otro CLAUDE_HOME (instalacion de prueba, CI) el script que
+# puso install.sh vive en CLAUDE_HOME: sin esto, en una maquina sin ~/.claude, FAIL sobre una
+# instalacion correcta, y con ~/.claude se comprobaba (y ejecutaba) el script de otra instalacion.
+if [ "$(realpath -m -- "$CLAUDE_HOME")" != "$(realpath -m -- "$HOME/.claude")" ]; then
+  # shellcheck disable=SC2016,SC2088  # literales a proposito: se buscan tal cual en el comando
+  for p in '$HOME/.claude/' '${HOME}/.claude/' '~/.claude/'; do sl_cmd="${sl_cmd//"$p"/$CLAUDE_HOME/}"; done
+fi
 if [ -n "$sl_cmd" ]; then
   read -r -a sl_argv <<< "$sl_cmd"
   sl_bin="${sl_argv[0]}"; sl_directo=1

@@ -18,13 +18,13 @@ Run fast, targeted checks. No analysis. No suggestions. No explanations unless s
 
 ```bash
 # TypeScript
-npx tsc --noEmit
+pnpm exec tsc --noEmit
 
 # ESLint
-npx eslint . --max-warnings 0
+pnpm exec eslint . --max-warnings 0
 
 # Prettier
-npx prettier --check .
+pnpm exec prettier --check .
 
 # Python types
 mypy . --ignore-missing-imports
@@ -36,10 +36,10 @@ ruff check .
 cargo check && cargo clippy
 
 # Tests
-npm test / pytest -q / cargo test / go test ./...
+pnpm test / pytest -q / cargo test / go test ./...
 
 # Dependencies
-npm audit --audit-level=high
+pnpm audit --audit-level=high
 pip-audit
 cargo audit
 ```

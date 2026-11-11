@@ -419,6 +419,13 @@ ck "$(echo "$out" | grep -c '^PASS .*efectividad: cifras de uso real registradas
 printf 'ts_run\tdesde\n2025-01-01T10:00:00+01:00\t2024-12-01\n' > "$CLAUDE_HOME/session-logs/efectividad.tsv"
 set +e; out="$(d7)"; set -e
 ck "$(echo "$out" | grep -c '^WARN .*efectividad: la ultima fila')" "1" "efectividad: fila vieja -> WARN"
+# statusLine con CLAUDE_HOME fuera de $HOME/.claude (instalacion de prueba, CI) y un HOME sin
+# .claude: la del kit nombra $HOME/.claude y doctor daba FAIL sobre una instalacion correcta.
+export CLAUDE_HOME="$tmp/kh8"; mkdir -p "$tmp/home8"
+HOME="$tmp/home8" bash "$KIT/install.sh" >/dev/null 2>&1
+set +e; out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home8" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; set -e
+ck "$(echo "$out" | grep -c '^FAIL · statusLine')" "0" "statusLine: CLAUDE_HOME distinto de \$HOME/.claude no da FAIL"
+ck "$(echo "$out" | grep -c "^PASS · statusLine resuelve a $CLAUDE_HOME/")" "1" "statusLine: con otro CLAUDE_HOME resuelve al script instalado en CLAUDE_HOME"
 export CLAUDE_HOME="$CH_SAVE"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

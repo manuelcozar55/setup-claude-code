@@ -544,6 +544,7 @@ problemas=$(cifras_eval "$EVALDOC" "$STORE"); rc=$?
 # cualquier otro rc distinto de 0.
 if [ "$rc" -eq 2 ] && [ ! -f "$STORE" ]; then
   echo "skip - $EVALDOC: no hay $STORE (esta en .gitignore); sus cifras NO se han comprobado"
+  echo "SKIP: test_doc_claims.sh (cifras de $EVALDOC: no hay $STORE)" >&2
   skipped=$((skipped+1))
 elif veredicto "$rc" "$problemas" "las cifras de $EVALDOC cuadran con $STORE" \
                                   "$EVALDOC no cuadra con el almacen"; then
