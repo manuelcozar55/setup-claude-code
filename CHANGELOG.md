@@ -7,6 +7,30 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-11-11
+
+Línea base y congelación: arreglos de la validación en Debian del 10-nov y de la auditoría del 11-nov. Hasta el 2026-12-09 el kit solo admite arreglos, documentación y retiradas.
+
+### Fixed
+
+- **doctor: la statusLine ya no da FAIL con `CLAUDE_HOME` fuera de `$HOME/.claude`:** la del kit nombra `$HOME/.claude/statusline-command.sh` y, en una máquina sin `~/.claude` (CI, instalación de prueba), doctor suspendía una instalación correcta. Ahora resuelve al script instalado en `CLAUDE_HOME` (caso nuevo en `test_doctor.sh`).
+- **`make test` anuncia por stderr las capas que se salta:** `test_evals.sh` sin pyyaml y `test_doc_claims.sh` sin `kit/evals/runs.jsonl` imprimen `SKIP: <suite> (<motivo>)`. El rc no cambia.
+- **Agentes (decisión D8):** `pnpm` en lugar de `npx`/`npm` en `deep-worker`, `quick-checker` y `security-reviewer`; las descripciones de `strategist` y `security-reviewer` dicen cuándo usarlos, sin «always» ni «PROACTIVELY»; `code-reviewer` ejecuta la suite del proyecto antes de puntuar «Verificación», y un hallazgo de estilo es LOW y no fuerza BLOCK.
+
+### Documentation
+
+- **Congelación:** `knowledge/BACKLOG.md` (nuevo) con la regla, la plantilla de entrada y seis propuestas pospuestas hasta después del 2026-12-09; `CONTRIBUTING.md` la enuncia en «Cortar una release».
+- **`11-cockpit.md`:** `claude plugin update cockpit@setup-claude-code` tras `marketplace add …@tag` (sin él el cockpit instalado no se actualiza) y aviso de que esa orden quita `autoUpdate` de la entrada del marketplace.
+- **`ENTREGA.md`:** en una instalación nueva, `handoff --iniciar` en cada proyecto antes de la primera sesión; sin él el autosave no escribe nada.
+
+### Cifras (uso real, 2026-10-12 → 2026-11-12, 207 sesiones)
+| Cifra | antes 2026-11-10 | después |
+|---|---|---|
+| Compactaciones por día activo | 8.0 (96 en 12 días) | 0.5 (1 en 2 días) |
+| Frescura de nucleo.md al compactar (≤30 min) | 68.8 % (n=535) | 85.7 % (n=14) |
+| Correcciones de la persona (heurística léxica) | 33.5 % (133/397 mensajes) | 25.0 % (11/44 mensajes) |
+| Falsos positivos revelados (reformulado <60 s) | 63.6 % (63/99 bloqueos) | 57.1 % (8/14 bloqueos) |
+
 ## [1.10.0] - 2026-11-10
 
 Oráculo de efectividad en uso real: desde esta versión el kit publica sus cifras en cada release (mejora 1 de la valoración del 2026-11-09).
@@ -2277,7 +2301,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.1...HEAD
+[1.10.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.1...v1.9.0
