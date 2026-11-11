@@ -36,9 +36,12 @@ Este repo es un marketplace (`.claude-plugin/marketplace.json`). Para todas tus 
 ```bash
 claude plugin marketplace add "manuelcozar55/setup-claude-code@v$(cat VERSION)"
 claude plugin install cockpit@setup-claude-code
+claude plugin update cockpit@setup-claude-code
 ```
 
-(también lo hace `kit/install-plugins.sh --apply`). Sin el `@v…`, `marketplace add` falla en cuanto `install.sh` ha fijado el marketplace: «its source doesn't match its extraKnownMarketplaces entry». Se actualiza con `claude plugin update cockpit@setup-claude-code` y se quita con `claude plugin uninstall cockpit@setup-claude-code`.
+(las dos primeras también las hace `kit/install-plugins.sh --apply`; el `update`, no). Sin el `@v…`, `marketplace add` falla en cuanto `install.sh` ha fijado el marketplace: «its source doesn't match its extraKnownMarketplaces entry». El `update` no sobra: `marketplace add` mueve el ref pero **no actualiza un cockpit ya instalado**, e `install` tampoco lo toca; sin `update` sigues con la versión anterior (medido en Debian el 2026-11-10: 0.6.1 hasta el `update`, 0.8.1 después). Se quita con `claude plugin uninstall cockpit@setup-claude-code`.
+
+**`marketplace add …@tag` desactiva `autoUpdate`.** Reescribe la entrada `setup-claude-code` de `extraKnownMarketplaces` en tu `settings.json` y la deja sin `autoUpdate` (reproducido en Ubuntu y Debian). Si lo tenías activado, vuelve a poner `"autoUpdate": true` en esa entrada después de la orden.
 
 Para desarrollarlo desde una copia de trabajo, sin instalar:
 
