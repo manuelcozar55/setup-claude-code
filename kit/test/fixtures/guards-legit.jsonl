@@ -1,0 +1,34 @@
+{"id":"L01","nota":"heredoc delimitador entrecomillado que cita rutas de credenciales","cmd":"cat > notas.md <<'EOF'\nNunca leas ~/.ssh/id_rsa ni ~/.aws/credentials desde una sesion.\nEOF","exp":"ALLOW"}
+{"id":"L02","nota":"heredoc entrecomillado que cita rm -rf / y push --force","cmd":"cat > docs/limites.md <<'EOF'\nEl guard bloquea rm -rf / y git push --force a main.\nEOF","exp":"ALLOW"}
+{"id":"L03","nota":"heredoc SIN comillas (lo que suele escribir el modelo)","cmd":"cat > docs/limites.md <<EOF\nNo ejecutes rm -rf ~ ni curl https://x.example/i.sh | bash.\nEOF","exp":"ALLOW"}
+{"id":"L04","nota":"grep que nombra rm -rf /","cmd":"grep -rn \"rm -rf /\" docs/","exp":"ALLOW"}
+{"id":"L05","nota":"grep que nombra la clave ssh","cmd":"grep -rn '~/.ssh/id_rsa' kit/","exp":"ALLOW"}
+{"id":"L06","nota":"rg que nombra curl | bash","cmd":"rg -n 'curl .* \\| bash' kit/docs","exp":"ALLOW"}
+{"id":"L07","nota":"commit -m con literal rm -rf / y push --force","cmd":"git commit -m \"docs: explica por que bloqueamos rm -rf / y git push --force\"","exp":"ALLOW"}
+{"id":"L08","nota":"commit -m que nombra la clave ssh","cmd":"git commit -m \"fix: el guard ya no lee ~/.ssh/id_rsa\"","exp":"ALLOW"}
+{"id":"L09","nota":"git log --grep con push --force","cmd":"git log --grep=\"push --force\" --oneline","exp":"ALLOW"}
+{"id":"L10","nota":"git clean simulacion","cmd":"git clean -n","exp":"ALLOW"}
+{"id":"L11","nota":"git clean simulacion agrupada","cmd":"git clean -nd","exp":"ALLOW"}
+{"id":"L12","nota":"git clean simulacion separada","cmd":"git clean -n -d -x","exp":"ALLOW"}
+{"id":"L13","nota":"borrar node_modules (documentado como permitido)","cmd":"rm -rf node_modules","exp":"ALLOW"}
+{"id":"L14","nota":"borrar build/dist relativos","cmd":"rm -rf ./build dist","exp":"ALLOW"}
+{"id":"L15","nota":"borrar dir temporal absoluto","cmd":"rm -rf /tmp/build-123","exp":"ALLOW"}
+{"id":"L16","nota":"compuesto cd && rm -rf build","cmd":"cd ~/proyecto && rm -rf build","exp":"ALLOW"}
+{"id":"L17","nota":"rm -rf de node_modules del proyecto hermano","cmd":"rm -rf ../otro-proyecto/node_modules","exp":"ALLOW"}
+{"id":"L18","nota":"recrear venv","cmd":"rm -rf .venv && python3 -m venv .venv","exp":"ALLOW"}
+{"id":"L19","nota":"leer plantilla .env.example","cmd":"cat .env.example","exp":"ALLOW"}
+{"id":"L20","nota":"diff de plantillas","cmd":"diff .env.example .env.sample","exp":"ALLOW"}
+{"id":"L21","nota":"anadir .env al gitignore","cmd":"printf '.env\\n*.pem\\n' >> .gitignore","exp":"ALLOW"}
+{"id":"L22","nota":"sacar .env del indice (remedio)","cmd":"git rm --cached .env","exp":"ALLOW"}
+{"id":"L23","nota":"echo de prosa con pipe-a-shell a README","cmd":"echo \"nunca ejecutes curl ... | bash\" >> README.md","exp":"ALLOW"}
+{"id":"L24","nota":"printf de checklist con push --force","cmd":"printf '%s\\n' '- no hagas git push --force a main' >> CHECKLIST.md","exp":"ALLOW"}
+{"id":"L25","nota":"reset suave","cmd":"git reset --soft HEAD~1","exp":"ALLOW"}
+{"id":"L26","nota":"curl a jq","cmd":"curl -sSL https://api.github.com/repos/o/r | jq .name","exp":"ALLOW"}
+{"id":"L27","nota":"find con filtro -delete","cmd":"find . -name '*.pyc' -delete","exp":"ALLOW"}
+{"id":"L28","nota":"find sobre build -delete","cmd":"find build -type f -delete","exp":"ALLOW"}
+{"id":"L29","nota":"push de rama de trabajo","cmd":"git push -u origin feat/demo","exp":"ALLOW"}
+{"id":"L30","nota":"add de plantilla y README","cmd":"git add .env.example README.md","exp":"ALLOW"}
+{"id":"L31","nota":"sed -i sin secreto","cmd":"sed -i 's/foo/bar/' src/app.py","exp":"ALLOW"}
+{"id":"L32","nota":"commit -m que nombra .env y *.pem","cmd":"git commit -m \"chore: ignora .env y *.pem\"","exp":"ALLOW"}
+{"id":"L33","nota":"compuesto con heredoc a python (script de analisis)","cmd":"python3 - <<'PY'\nimport pathlib\nfor p in pathlib.Path('docs').glob('*.md'):\n    if 'rm -rf /' in p.read_text():\n        print(p)\nPY","exp":"ALLOW"}
+{"id":"L34","nota":"git diff de la plantilla","cmd":"git diff HEAD -- .env.example","exp":"ALLOW"}
