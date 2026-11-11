@@ -402,7 +402,7 @@ for (const [name, o] of [
     expect(r.writes).toEqual([])
     expect(r.calls).toEqual([])
     expect(res.text).toContain('Handoff fallido')
-    expect(res.text).toContain('sin ranura')
+    expect(res.text).toContain('sin estado propio')
   })
 }
 

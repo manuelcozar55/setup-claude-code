@@ -278,8 +278,8 @@ async function refreshCtx($: $, withBreakdown: boolean) {
   if (level > before) {
     $.ui.toast(
       level === 2
-        ? `Contexto al ${pct}% del umbral de autocompactación: haz handoff ya (h)`
-        : `Contexto al ${pct}%: buen momento para un handoff`,
+        ? `Contexto al ${pct}% del umbral de autocompactación: guarda ya el estado (botón handoff, tecla h, o /handoff)`
+        : `Contexto al ${pct}%: buen momento para guardar el estado (botón handoff, tecla h, o /handoff)`,
     )
   }
   if (level !== before) await update($, warned, () => level)
@@ -586,7 +586,7 @@ async function clearAfter($: $, path?: string, fill = path ? CONTINUE : undefine
         await fillContinuation($, fill, isNewSession)
       } catch {
         const saved = path ? `Guardado en ${path}, pero ` : ''
-        await update($, handoff, (): Handoff => ({ phase: 'error', msg: fill ? `${saved}/clear falló: escribe /clear y luego ${fill}` : `${saved}/clear falló: escríbelo tú` }))
+        await update($, handoff, (): Handoff => ({ phase: 'error', msg: fill ? `${saved}/clear falló: escribe /clear y luego ${fill}` : `${saved}/clear falló: escribe /clear tú` }))
       } finally {
         if (!continuing) clearPending = false
       }
@@ -636,7 +636,7 @@ async function autoBlocker($: $) {
   try {
     const location = await resolveState($)
     if (location.active > 0) return 'agentes vivos'
-    return (await $.fs.exists(location.bin)) ? '' : 'falta el CLI handoff'
+    return (await $.fs.exists(location.bin)) ? '' : 'falta el CLI handoff (bash kit/install.sh --apply)'
   } catch (err) {
     const why = err instanceof Error ? err.message : ''
     return why === NO_PROJECT ? 'sin proyecto' : why === NO_SLOT ? 'sin ranura' : `fallo de handoff --estado: ${why}`
@@ -645,6 +645,8 @@ async function autoBlocker($: $) {
 
 // Owner and share of the cap come from `handoff --estado` (one source, the CLI's). The read is never awaited by a
 // render: a timer and the turn ends refresh the atom; missing or failed CLI becomes a visible warning.
+// What the person reads when `handoff --estado` does not answer, with the next step.
+const DEGRADED = 'Continuidad degradada: no se pudo consultar handoff --estado. Pruébalo en una terminal (~/.claude/bin/handoff --estado) o ejecuta kit/doctor.sh.'
 const ESTADO_EVERY = 20_000
 // /mnt/c takes 1.6-1.9 s for a read; 2 s cut it off.
 const ESTADO_TIMEOUT_MS = 5000
@@ -653,7 +655,7 @@ let estadoToastedFor = ''
 function warnEstado($: $, session: string) {
   if (estadoToastedFor === session) return
   estadoToastedFor = session
-  $.ui.toast('Continuidad degradada: no se pudo consultar handoff --estado')
+  $.ui.toast(DEGRADED)
 }
 let lastEstadoAt = 0
 let isEstadoBusy = false
@@ -665,7 +667,7 @@ async function refreshEstado($: $, force: boolean) {
   try {
     const { root, bin, start } = await resolveRoot($)
     if (!(await $.fs.exists(bin))) {
-      await update($, continuity, () => `Continuidad no disponible: falta ${bin}; ejecuta kit/install.sh`)
+      await update($, continuity, () => `Continuidad no disponible: ${missingBin(bin)}. El resto del panel funciona.`)
       await update($, estado, () => null)
       return
     }
@@ -691,10 +693,10 @@ async function refreshEstado($: $, force: boolean) {
           }
         : null
     await update($, estado, () => next)
-    await update($, continuity, () => next ? '' : 'Continuidad degradada: no se pudo consultar handoff --estado')
+    await update($, continuity, () => next ? '' : DEGRADED)
   } catch {
     warnEstado($, await $.session.id().catch(() => ''))
-    await update($, continuity, () => 'Continuidad degradada: no se pudo consultar handoff --estado')
+    await update($, continuity, () => DEGRADED)
     await update($, estado, () => null)
   } finally {
     isEstadoBusy = false
@@ -706,7 +708,7 @@ const isOwnSlot = (nucleo: string, home: string) => home !== '' && new RegExp(`^
 
 async function resolveState($: $) {
   const location = await resolveRoot($)
-  if (!(await $.fs.exists(location.bin))) throw new Error(`falta ${location.bin}: ejecuta kit/install.sh`)
+  if (!(await $.fs.exists(location.bin))) throw new Error(missingBin(location.bin))
   const mine = await $.session.id()
   const result = await $.process.run([location.bin, '--estado', ...(location.root === null ? [] : ['--raiz', location.root]), '--sesion', mine], viaStart(location.start, { timeoutMs: ESTADO_TIMEOUT_MS }))
   if (result.exitCode === 3) throw new Error(location.root === null ? NO_SLOT : NO_PROJECT)
@@ -740,9 +742,11 @@ async function refuseLinks($: $, dir: string) {
   if (links.length) throw new Error(`enlaces simbólicos en ${links.join(', ')}: no leo ni escribo; sustitúyelos por ficheros normales`)
 }
 
+// One text for «the handoff command is not there», wherever it is found out.
+const missingBin = (bin: string) => `no encuentro ${bin} (el comando handoff del kit): instálalo con «bash kit/install.sh --apply» desde el repo setup-claude-code`
 const NO_PROJECT = 'aquí no hay proyecto (~, ~/.claude o fuera de un repo git): no hay estado que guardar'
 // Distinct from NO_PROJECT: with no root the state lives in a per-session slot, and without it (pid of claude unknown) there is nowhere safe to write.
-const NO_SLOT = 'sin ranura de sesión propia (fuera de un proyecto el estado va a ~/.claude/estado/sesiones/<fecha>-<pid>/ y no se pudo resolver): no hay estado que guardar'
+const NO_SLOT = 'sin estado propio de esta sesión (fuera de un proyecto git el estado va a ~/.claude/estado/sesiones/<fecha>-<pid>/ y no se pudo resolver): abre la sesión dentro de un repo git'
 
 // CLI: 0 saved (notices in the receipt; old CLIs: stderr) · 2 invalid · 3 no project · 4 busy/conflict (retry once) · 5 foreign owner.
 // `silent` (the autosave): no toast, band, receipt or prompt fill, and errors go to the debug log. It keeps the lock and
@@ -768,7 +772,6 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
     // The CLI would refuse with rc 5 after the fork has been paid: ask first (the state's owner is in `--estado`).
     if (foreignOwner !== null) throw new Error(`el estado de este proyecto lo tiene otra sesión (${foreignOwner.slice(0, 8)}): no guardo ni limpio; cierra esa sesión o trabaja con ella`)
     if (andClear && (active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) throw new Error('hay agentes o shells vivos: no limpio; espera o usa /handoff solo')
-    if (!(await $.fs.exists(bin))) throw new Error(`falta ${bin}: ejecuta kit/install.sh, que copia handoff y oraculo a ~/.claude/bin (si ~/.claude es tu repo git, genera un plan diff-first: cópialos desde él)`)
     await refuseLinks($, dir)
     // In ESTADO.md mode nucleo.md does not exist: the current state the fork must see is ESTADO.md.
     const prev = await readState($, estadoMd ?? path)
@@ -804,10 +807,14 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
           await update($, handoff, (): Handoff => ({ phase: 'waiting', msg: `${NOT_YET}: se guardará al terminar el próximo turno; ${filled?.isFilled ? 'pulsa Enter' : 'envía cualquier mensaje'}` }))
           return
         }
-        throw new Error(`el modelo no respondió (${reply.reason})`)
+        throw new Error(
+          reply.reason === 'api-error' ? `la API del modelo falló${reply.status ? ` (HTTP ${reply.status})` : ''}; no se guardó nada, repite /handoff en un rato`
+          : reply.reason === 'empty-reply' ? 'el modelo no devolvió texto; no se guardó nada, repite /handoff'
+          : 'cancelado; no se guardó nada',
+        )
       }
       const at = reply.text.search(/^## /m)
-      if (at < 0) { if (draft) break; throw new Error('la respuesta no trae secciones ## ') }
+      if (at < 0) { if (draft) break; throw new Error('el modelo no devolvió las secciones «## …» que se le piden; no se guardó nada, repite /handoff') }
       const clean = admitDraft(redact(reply.text.slice(at)), estadoMd !== null)
       if (!clean.text) { if (draft) break; throw new Error(`ninguna sección del borrador está en la plantilla del estado (${clean.dropped.join(', ')}); no se guardó nada`) }
       const text = clean.text
@@ -1090,12 +1097,17 @@ async function autosaveTimer($: $) {
 async function autosaveStatus($: $) {
   const a = await read($, autosave)
   const dirty = await readDirty($)
+  const where = await resolveState($).catch(() => null)
+  const hasState = where === null || (await $.fs.exists(where.path)) || (await $.fs.exists(where.dir))
   const hhmm = (iso: string) => `${String(new Date(iso).getHours()).padStart(2, '0')}:${String(new Date(iso).getMinutes()).padStart(2, '0')}`
   return [
     `Autosave ${autosaveEnabled ? 'on' : 'off'}.`,
     `Última síntesis: ${a.ultima ? hhmm(a.ultima) : 'ninguna'} (${a.n} en la sesión).`,
     `Marca dirty: ${dirty ? dirty.motivo : 'no'}.`,
-    `Guarda en silencio, sin /clear: tras una compactación (motivo compact, ≥1 min), o con cambios y ≥${AUTOSAVE_MIN_TURNS} turnos y ≥10 min desde la última síntesis si hubo un hito (commit, PR, push, todos hechos, verificación en verde), ≥${AUTOSAVE_TURNS} turnos o +${AUTOSAVE_PCT} puntos de contexto; y cada 10 min como red.`,
+    `Guarda en silencio, sin /clear, cuando el kit ha dejado cambios sin guardar: tras una compactación (motivo compact, ≥1 min), o con ≥${AUTOSAVE_MIN_TURNS} turnos y ≥10 min desde el último guardado si hubo un hito (commit, PR, push, todos hechos, tests en verde), ≥${AUTOSAVE_TURNS} turnos o +${AUTOSAVE_PCT} puntos de contexto; y cada 10 min como red.`,
+    'Cada guardado es una llamada al modelo principal con todo el contexto: gasta tokens (su usage queda en ~/.claude/session-logs/autosave-cockpit.log). Tras 3 fallos seguidos se para. Se activa con /autosave on o COCKPIT_AUTOSAVE=on.',
+    ...(a.halted ? [`Parado por fallos: ${a.halted}.`] : []),
+    ...(hasState ? [] : ['Este proyecto aún no tiene .claude/estado/: ejecuta «handoff --iniciar» en él, o el autosave no tendrá dónde escribir.']),
   ].join(' ')
 }
 
@@ -1116,20 +1128,20 @@ export const register: Register = on => {
       $.ui.toast(`Cockpit apagado: necesita Claude Code ${MIN_CLAUDE_CODE} o posterior y esta es la ${version}. Actualiza con «claude update» o quítalo con «claude plugin uninstall cockpit@setup-claude-code».`)
       return next(e)
     }
-    await $.command.register({ name: 'autonomo', description: 'Continuación tras handoff del trabajo autorizado: /autonomo on|off', argumentHint: 'on|off' })
-    await $.command.register({ name: 'dock', description: 'Abre el Agent Dock: agentes trabajando, misión y tamaño de equipo' })
-    await $.command.register({ name: 'simple', description: 'Activa o desactiva el modo simple: pasos con barra y resumen corto' })
+    await $.command.register({ name: 'autonomo', description: 'Tras un handoff sigue solo con el trabajo ya autorizado, sin esperar tu Enter: /autonomo on|off', argumentHint: 'on|off' })
+    await $.command.register({ name: 'dock', description: 'Abre el panel de agentes (Agent Dock): subagentes en marcha, misión y tamaño del equipo' })
+    await $.command.register({ name: 'simple', description: 'Activa o desactiva el modo simple: tu tarea como lista de pasos con barra y respuestas cortas' })
     await $.command.register({
       name: 'handoff',
-      description: 'Guarda el estado en .claude/estado/nucleo.md del proyecto, hace /clear y retoma (`/handoff solo` solo guarda; el resto es el foco de la próxima sesión)',
+      description: 'Guarda el estado de la tarea en .claude/estado/nucleo.md y limpia el contexto (/clear) para seguir en una sesión nueva. `/handoff solo` guarda sin limpiar; lo que añadas es el foco de la próxima sesión',
       argumentHint: '[solo] [foco de la próxima sesión]',
     })
     await $.command.register({
       name: 'nueva',
-      description: 'Archiva el estado de la tarea actual, hace /clear y deja la tarea nueva escrita en el prompt',
+      description: 'Cambia de tarea: archiva el estado de la actual, limpia el contexto y deja la tarea nueva escrita en el prompt',
       argumentHint: '<la tarea nueva>',
     })
-    await $.command.register({ name: 'autosave', description: 'Síntesis silenciosa del estado entre handoffs: /autosave on|off|status', argumentHint: 'on|off|status' })
+    await $.command.register({ name: 'autosave', description: 'Guardado automático del estado en segundo plano con el modelo (gasta tokens; apagado por defecto): /autosave on|off|status', argumentHint: 'on|off|status' })
     // The switch is opt-in and lives in memory: COCKPIT_AUTOSAVE=on (settings.json `env`) starts it on, /autosave on|off changes it.
     const wantsAutosave = ((await $.process.run(['printenv', 'COCKPIT_AUTOSAVE']).catch(() => null))?.stdout.trim().toLowerCase() ?? '') === 'on'
     if (wantsAutosave) await setAutosave($, true)
@@ -1187,7 +1199,7 @@ export const register: Register = on => {
       return { text: 'Hay un turno o un handoff en marcha: repite /nueva cuando termine.' }
     const revision = promptRevision
     const location = await resolveState($).catch(() => null)
-    if (!location) return { text: 'No pude consultar el estado; no archivo ni limpio. Revisa handoff --estado.' }
+    if (!location) return { text: 'No pude consultar el estado del proyecto con handoff --estado; no archivo ni limpio. Comprueba que ~/.claude/bin/handoff funciona (kit/doctor.sh).' }
     if (location.active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status))) return { text: 'Hay agentes o shells vivos: no archivo ni limpio; espera a que terminen.' }
     const { path, root } = location
     let note = ''
@@ -1641,9 +1653,9 @@ export const register: Register = on => {
         {as.ultima && <Text dimColor wrap="truncate-end">guardado {`${String(new Date(as.ultima).getHours()).padStart(2, '0')}:${String(new Date(as.ultima).getMinutes()).padStart(2, '0')}`}</Text>}
         {es && (
           <Box flexDirection="column">
-            <Text color={tone(es.pct)} wrap="truncate-end">nucleo {es.pct}% del tope</Text>
+            <Text color={tone(es.pct)} wrap="truncate-end">estado guardado al {es.pct}% de su tamaño máximo</Text>
             <Text dimColor wrap="truncate-end">
-              dueño: {es.isSlot ? 'sesión propia en ~' : es.dueno ? `${es.dueno.isMine ? 'esta sesión' : `otra sesión (${es.dueno.sesion.slice(0, 8)})`}${es.dueno.vigente ? '' : ' vencido'}` : 'ninguno'}
+              lo escribe: {es.isSlot ? 'esta sesión (estado propio, fuera de un proyecto)' : es.dueno ? `${es.dueno.isMine ? 'esta sesión' : `otra sesión (${es.dueno.sesion.slice(0, 8)})`}${es.dueno.vigente ? '' : ' vencido'}` : 'nadie aún'}
             </Text>
           </Box>
         )}

@@ -21,7 +21,7 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '' } }) as 
 type Opts = {
   dirty?: string
   tokens?: number
-  fork?: 'ok' | 'nothing' | 'error'
+  fork?: 'ok' | 'nothing' | 'error' | 'empty'
   cli?: number
   owner?: { sesion: string; vigente: boolean } | null
   env?: string
@@ -85,6 +85,7 @@ async function setup($: any, on: Parameters<TestBody>[1], o: Opts = {}) {
     seen.forks++
     seen.prompts.push(e.prompt)
     if (o.fork === 'nothing') return { value: { isAnswered: false, reason: 'nothing-to-fork' } } as never
+    if (o.fork === 'empty') return { value: { isAnswered: false, reason: 'empty-reply', usage: USAGE } } as never
     if (o.fork === 'error') return { value: { isAnswered: false, reason: 'api-error', status: 529, usage: USAGE } } as never
     return { value: { isAnswered: true, text: PLAN, usage: USAGE } } as never
   })
@@ -337,4 +338,48 @@ test('versión mínima: si session.version no existe el mod sigue y lo deja en e
   await start($)
   expect(seen.opens).toBe(1)
   expect(seen.logs.some(l => l.includes('versión'))).toBe(true)
+})
+
+// Fallos visibles para quien no es el autor: cada uno dice qué pasó y qué hacer después.
+async function bandMsg($: any) {
+  const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  return (await ui.find({ text: /^[✓✗] / }))?.text ?? ''
+}
+
+test('fallo visible: el fork con error de API dice que no se guardó nada y qué repetir', async ($, on) => {
+  const clock = mock.clock(on)
+  const { seen } = await setup($, on, { noOn: true, fork: 'error' })
+  await $.command.run({ ...RUN, command: 'handoff', args: '' })
+  await clock.advance(400)
+  const msg = await bandMsg($)
+  expect(msg).toContain('HTTP 529')
+  expect(msg).toContain('no se guardó nada')
+  expect(msg).toContain('repite /handoff')
+  expect(seen.clears).toBe(0)
+})
+
+test('fallo visible: el fork que vuelve vacío dice que el modelo no devolvió texto', async ($, on) => {
+  const clock = mock.clock(on)
+  const { seen } = await setup($, on, { noOn: true, fork: 'empty' })
+  await $.command.run({ ...RUN, command: 'handoff', args: '' })
+  await clock.advance(400)
+  expect(await bandMsg($)).toContain('no devolvió texto')
+  expect(seen.clears).toBe(0)
+})
+
+test('fallo visible: sin el comando handoff el mensaje dice cómo instalarlo y no forkea', async ($, on) => {
+  const clock = mock.clock(on)
+  const { files, seen } = await setup($, on, { noOn: true })
+  delete files[BIN]
+  await $.command.run({ ...RUN, command: 'handoff', args: '' })
+  await clock.advance(400)
+  expect(await bandMsg($)).toContain('install.sh --apply')
+  expect(seen.forks).toBe(0)
+})
+
+test('fallo visible: /autosave status sin .claude/estado/ manda a handoff --iniciar', async ($, on) => {
+  const { files } = await setup($, on, { noOn: true })
+  delete files[`${EST}/nucleo.md`]
+  const res = (await $.command.run({ ...RUN, command: 'autosave', args: 'status' })) as { text?: string }
+  expect(res.text ?? '').toContain('handoff --iniciar')
 })
