@@ -78,8 +78,14 @@ respuesta real de Claude Code. La comprobación de sesión siguiente cubre esa p
 
 ```
 cd /ruta/al/proyecto
+~/.claude/bin/handoff --iniciar   # una vez por proyecto
 bash ~/scc/scripts/scc.sh
 ```
+
+**En una instalación nueva, `handoff --iniciar` no es opcional.** Crea
+`.claude/estado/nucleo.md`; sin él, el autosave no escribe nada en ese proyecto
+(responde `{"omitido":"sin estado"}`, por contrato) y no hay estado que retomar.
+Hazlo una vez en cada proyecto, antes de la primera sesión.
 
 `scc.sh` carga el cockpit y las skills esenciales de esta carpeta, sin descargas. Con
 `claude` a secas no se cargan. Tras el primer arranque comprueba `/plugin`, `/status` y
