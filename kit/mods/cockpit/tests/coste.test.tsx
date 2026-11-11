@@ -305,3 +305,36 @@ test('«Contexto limpio» solo si el id de sesión cambió tras el /clear', asyn
   expect(msg).toContain('no cambió')
 })
 
+
+// La versión mínima: por debajo el mod se apaga con un aviso; sin session.version se sigue (la API no obliga a tenerlo).
+test('versión mínima: con Claude Code anterior a 2.1.311 el mod se apaga con un aviso y no abre dock ni temporizadores', async ($, on) => {
+  const clock = mock.clock(on)
+  const { files, seen } = await setup($, on, { dirty: 'motivo=compact\n', version: '2.1.300' })
+  await start($)
+  await $.turn.complete(DONE_TURN)
+  for (let i = 0; i < 3; i++) {
+    files[DIRTY] = 'motivo=compact\n'
+    await clock.advance(10 * MIN)
+  }
+  expect(seen.opens).toBe(0)
+  expect(seen.forks).toBe(0)
+  expect(seen.toasts).toHaveLength(1)
+  expect(seen.toasts[0]).toContain('2.1.311')
+  expect(seen.toasts[0]).toContain('2.1.300')
+})
+
+test('versión mínima: 2.1.311 o posterior funciona (dock abierto)', async ($, on) => {
+  mock.clock(on)
+  const { seen } = await setup($, on, { version: '2.2.0' })
+  await start($)
+  expect(seen.opens).toBe(1)
+  expect(seen.toasts).toEqual([])
+})
+
+test('versión mínima: si session.version no existe el mod sigue y lo deja en el log de debug', async ($, on) => {
+  mock.clock(on)
+  const { seen } = await setup($, on, { version: 'throws' })
+  await start($)
+  expect(seen.opens).toBe(1)
+  expect(seen.logs.some(l => l.includes('versión'))).toBe(true)
+})

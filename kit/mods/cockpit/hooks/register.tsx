@@ -127,6 +127,18 @@ const teamNote = (n: number) =>
 
 type $ = EngineInterface
 
+// The plugin API is early access. 2.1.311 is the release this mod was written and tested against; an older one may lack
+// calls the mod makes, so it switches itself off with one toast instead of failing hook by hook. A Claude Code that has
+// the API but not `$.session.version()` cannot be told apart: the mod goes on and leaves a debug line.
+export const MIN_CLAUDE_CODE = '2.1.311'
+export const isOlder = (version: string, min: string) => {
+  const parts = (v: string) => (/^(\d+)\.(\d+)\.(\d+)/.exec(v) ?? []).slice(1).map(Number)
+  const [a, b] = [parts(version), parts(min)]
+  if (a.length < 3 || b.length < 3) return false
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return (a[i] ?? 0) < (b[i] ?? 0)
+  return false
+}
+
 const pctOf = (c: Ctx) => Math.round((c.tokens / Math.max(1, c.limit)) * 100)
 const tone = (pct: number) => (pct >= 85 ? 'error' : pct >= 70 ? 'warning' : 'success')
 const bar = (pct: number, width: number) => {
@@ -1066,6 +1078,18 @@ export const register: Register = on => {
     // `-p` and the SDK load the plugin with nobody at the prompt: nothing is armed, nothing is forked.
     isAttended = e.isInteractive !== false
     if (!isAttended) return next(e)
+    let version = ''
+    try {
+      const v = await $.session.version()
+      version = v.base ?? v.version
+    } catch (err) {
+      $.ui.log(`cockpit: no pude comprobar la versión de Claude Code (${err instanceof Error ? err.message : String(err)}); sigo con la mínima probada ${MIN_CLAUDE_CODE}`, { to: 'debug' })
+    }
+    if (isOlder(version, MIN_CLAUDE_CODE)) {
+      isAttended = false
+      $.ui.toast(`Cockpit apagado: necesita Claude Code ${MIN_CLAUDE_CODE} o posterior y esta es la ${version}. Actualiza con «claude update» o quítalo con «claude plugin uninstall cockpit@setup-claude-code».`)
+      return next(e)
+    }
     await $.command.register({ name: 'autonomo', description: 'Continuación tras handoff del trabajo autorizado: /autonomo on|off', argumentHint: 'on|off' })
     await $.command.register({ name: 'dock', description: 'Abre el Agent Dock: agentes trabajando, misión y tamaño de equipo' })
     await $.command.register({ name: 'simple', description: 'Activa o desactiva el modo simple: pasos con barra y resumen corto' })
@@ -1320,7 +1344,7 @@ export const register: Register = on => {
 
   // ── 1 · Context / handoff watcher and 3 · Simple mode: the band above the prompt
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
+    if (e.props.hasSurvey || !isAttended) return next(e)
     const { Box, Text, Button } = $.ui.resolve(e)
     const cols = Math.max(30, e.props.bodyColumns)
     const [simple, c, ca, ts, sum, ho, tn, t, rc, as] = await Promise.all([
