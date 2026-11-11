@@ -115,7 +115,8 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
   el stdin del hook (`session_id`, `transcript_path`, `cwd`) y fusiona solo `## Último turno (auto)`: hora y evento,
   rama, HEAD y % de contexto, el último mensaje de la persona y de la sesión, ficheros tocados (git más transcript) y
   comandos con su rc. No toca las demás secciones, no rota `nucleo.prev-*`, no libera al dueño y conserva el mtime del
-  fichero; es lo primero que recorta el tope, sin copia en `diario.md`. Si `handoff --desde` o el cockpit tienen el
+  fichero; es lo primero que recorta el tope (también al inyectar), sin copia en `diario.md`, y con el nucleo ya
+  por encima del tope se escribe igual, en dos líneas: la vieja engañaría tras compactar. Si `handoff --desde` o el cockpit tienen el
   lock, sale 0 sin escribir. Cuando hubo trabajo (ficheros o comandos) deja `.claude/estado/autosave.dirty`
   (`motivo=edit|compact`, `desde=`, `ultimo=`); `handoff --desde` lo borra. Cada guardado anota una línea en
   `~/.claude/session-logs/autosave.log`. En `~`, sin proyecto, escribe en la ranura de la sesión; con `claude --resume`
