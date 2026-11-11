@@ -152,14 +152,14 @@ ln -sf $HOME/.venvs/tools/bin/ruff $HOME/.local/bin/ruff
 
 El kit no instala esto por ti; solo lo documenta:
 
-- **Los 5 agentes y las skills del método** ya están instalados con la base.
+- **Los 7 agentes y las skills del método** ya están instalados con la base.
 - **esenciales** está incluido en el repo y `scripts/scc.sh` lo carga localmente; la
   instalación global se hace con `bash install-plugins.sh` (diff-first).
   Que un plugin figure en `enabledPlugins` no demuestra que esté cargado: comprueba `/plugin`.
 - **agent-browser** es una herramienta externa: ver `docs/04-superpowers.md`.
 - **El mod `cockpit`** (opcional): da `/handoff` y `/nueva` dentro de Claude Code. Instálalo con `claude plugin install cockpit@setup-claude-code` después de registrar el marketplace en el tag del kit (las dos órdenes, en [`11-cockpit.md`](11-cockpit.md)). Sin él, `handoff --desde` hace lo mismo desde la terminal.
 
-Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, servidores MCP, skills adicionales como `graphify` o `deep-change`), ver `docs/08-plugins-mcp-y-skills.md`.
+Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, servidores MCP, skills adicionales como `ultrawork` o `agent-browser`), ver `docs/08-plugins-mcp-y-skills.md`.
 
 ## Paso 6 · Verificar
 

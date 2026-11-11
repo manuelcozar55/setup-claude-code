@@ -140,7 +140,6 @@ Las siguientes herramientas amplían esa base; su presencia se comprueba por sep
 
 | Skill | Trigger | Para qué |
 |---|---|---|
-| `graphify` | `/graphify` | cualquier input a grafo de conocimiento |
 | `deep-change` (incluida) | `/deep-change` | el bucle operativo brainstorm → plan → execute → verify para cambios sustanciales |
 | `ultrawork` | `/ultrawork` | modo de máxima potencia: todos los agentes, en paralelo, sin paradas |
 | `agent-browser` | se carga antes de cualquier tarea de navegador | estándar de automatización de navegador (ya cubierta en `04-superpowers.md`) |
