@@ -13,6 +13,7 @@ etiquetado.
 - Skill `domain-modeling`: 0 invocaciones de Skill en todo el histórico de transcripts. El kit pasa de 6 a 5 skills.
 - Skill `grilling`: 0 invocaciones de Skill en todo el histórico de transcripts. `deep-change` ya no la nombra. El kit pasa de 5 a 4 skills.
 - Skill `writing-for-agents`: 0 invocaciones de Skill en todo el histórico de transcripts. `retro` ya no la invoca como primer paso. El kit pasa de 4 a 3 skills.
+- Skill `to-questionnaire`: 0 invocaciones de Skill en todo el histórico de transcripts. El kit pasa de 3 a 2 skills (`deep-change` y `retro`).
 
 ## [1.10.0] - 2026-11-10
 

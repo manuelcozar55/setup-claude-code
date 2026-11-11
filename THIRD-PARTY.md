@@ -60,9 +60,8 @@ Directorios de este repositorio que derivan de ese proyecto, cada uno con su
 `LICENSE` original (`Copyright (c) 2026 Matt Pocock`, texto MIT):
 
 - `kit/claude/skills/retro/`
-- `kit/claude/skills/to-questionnaire/`
 
-Adaptación: en `retro` y `to-questionnaire` se sustituyó la sección final de
+Adaptación: en `retro` se sustituyó la sección final de
 adaptación local por una versión genérica (sin referencias a ninguna
 organización concreta). El resto se copia sin cambios. La skill `deep-change`
 de la misma carpeta es propia y no deriva de ese proyecto.

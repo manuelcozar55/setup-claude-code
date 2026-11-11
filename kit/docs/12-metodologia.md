@@ -142,9 +142,6 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
   (punteros de navegación, comprobaciones automáticas, estándares de revisión, tamaño de los
   ficheros de guía, acceso a información), ordenadas por gravedad. Aplicarlas es un cambio
   aparte, por `deep-change`. Es manual: nunca se invoca solo.
-- **`to-questionnaire`** convierte una decisión que no puedes resolver solo en un cuestionario
-  en Markdown para otra persona. Entrevista solo por el *envío* (a quién, qué necesitas de
-  vuelta); las preguntas del documento apuntan a la brecha de conocimiento.
 
 > **No confundir dos retros.** El comando de proyecto `/retro-repo`
 > ([`.claude/commands/retro-repo.md`](../../.claude/commands/retro-repo.md)) es para trabajar *en este repo*
@@ -155,11 +152,11 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
 
 | Pieza | Cómo llega a tu entorno |
 |---|---|
-| Skills `deep-change`, `retro`, `to-questionnaire` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
+| Skills `deep-change`, `retro` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
 | Agentes | `install.sh` los copia a `$CLAUDE_HOME/agents/` |
 | Mod `cockpit` (`/handoff`, Agent Dock) | **No** lo instala `install.sh`: se carga con `--plugin-dir` ([doc 11](11-cockpit.md)) |
 
-Las skills `retro` y `to-questionnaire`
-derivan de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su licencia en
+La skill `retro`
+deriva de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su licencia en
 cada carpeta y la atribución en [`THIRD-PARTY.md`](../../THIRD-PARTY.md)). `deep-change` es
 propia.
