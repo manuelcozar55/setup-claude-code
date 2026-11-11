@@ -1,6 +1,6 @@
-# SCC 1.10.0 — guía de entrega
+# SCC 1.10.1 — guía de entrega
 
-Para quien recibe el paquete. La versión es la de `VERSION` (1.10.0); `BUILD_ID` identifica
+Para quien recibe el paquete. La versión es la de `VERSION` (1.10.1); `BUILD_ID` identifica
 esta entrega. No se distribuyen credenciales ni configuración personal.
 
 ## Requisitos
@@ -14,30 +14,30 @@ no instala hooks, cockpit ni continuidad automática para Codex u opencode.
 
 ## Obtener la entrega
 
-Recibe del responsable el paquete de **1.10.0**, su manifiesto `SHA256SUMS` y la
+Recibe del responsable el paquete de **1.10.1**, su manifiesto `SHA256SUMS` y la
 identificación del origen (commit y suma del archivo transferido). Conserva esa
 identificación para soporte: `BUILD_ID` es una etiqueta de entrega, no un hash.
 Si prefieres Git y el tag ya está publicado, puedes obtener la versión así:
 
 ```bash
-git clone --branch v1.10.0 --single-branch https://github.com/manuelcozar55/setup-claude-code.git ~/scc
+git clone --branch v1.10.1 --single-branch https://github.com/manuelcozar55/setup-claude-code.git ~/scc
 git -C ~/scc rev-parse HEAD
 ```
 
 Contrasta ese commit con el facilitado por el responsable. Si el tag todavía no
 existe, usa el paquete transferido; no sustituyas esta versión por `main`.
 En ambos casos comprueba `cat VERSION BUILD_ID` desde `~/scc`: deben indicar
-`1.10.0` y `scc-v1.10.0`. No ejecutes una entrega con sumas incorrectas.
+`1.10.1` y `scc-v1.10.1`. No ejecutes una entrega con sumas incorrectas.
 
 ### Copia de Git sin acceso a la red
 
-La entrega incluye `scc-v1.10.0.bundle`, con la rama verificada y su historial,
+La entrega incluye `scc-v1.10.1.bundle`, con la rama verificada y su historial,
 y un manifiesto exterior que cubre tanto el bundle como el paquete. Comprueba
 ese manifiesto en la carpeta recibida antes de abrir ninguno:
 
 ```bash
 sha256sum -c SHA256SUMS
-git clone --branch release/scc-v1.10.0-debian scc-v1.10.0.bundle ~/scc
+git clone --branch release/scc-v1.10.1-debian scc-v1.10.1.bundle ~/scc
 git -C ~/scc rev-parse HEAD
 ```
 
@@ -205,20 +205,21 @@ Reinstalar un tag antiguo no devuelve su árbol exacto: conserva archivos de ver
 posteriores. No borres el directorio `.claude/estado/` de tus proyectos: contiene la
 continuidad.
 
-## Qué cambia en 1.10.0
+## Qué cambia en 1.10.1
 
 El detalle está en `CHANGELOG.md`. En resumen, para quien usa el kit:
 
-- `efectividad` (nuevo CLI, python3, sin red ni modelo) calcula sobre tus transcripts las cuatro
-  cifras que dicen si el kit sirve: compactaciones por día activo, frescura de `nucleo.md` al
-  compactar, correcciones de la persona y falsos positivos de los guards (bloqueo seguido de
-  comando reformulado en <60 s). `efectividad --antes FECHA` compara antes y después;
-  `--registrar` conserva la serie en `~/.claude/session-logs/efectividad.tsv`.
-- Cada release del kit publica esas cifras en el `CHANGELOG.md` (`### Cifras`), y `doctor`
-  avisa cuando hay uso y no hay cifras registradas en 35 días.
-- Lo de las entregas anteriores sigue igual: el estado se guarda solo tras cada turno (`autosave.sh`),
-  `claude --resume` desde `~` recupera su ranura, `install.sh --apply` respeta la configuración viva
-  y `COCKPIT_AUTONOMO=on` deja `/autonomo` activo en cada proceso nuevo.
+- Es un parche: arreglos y documentación, nada nuevo. Hasta el 2026-12-09 el kit está
+  congelado (`knowledge/BACKLOG.md`).
+- En cada proyecto nuevo, `handoff --iniciar` antes de la primera sesión (ver «Empezar»).
+- Con el cockpit desde el marketplace, tras `marketplace add …@tag` ejecuta
+  `claude plugin update cockpit@setup-claude-code` y repón `autoUpdate` si lo usabas
+  ([`11-cockpit.md`](kit/docs/11-cockpit.md)).
+- `doctor` ya no da FAIL de statusLine con `CLAUDE_HOME` fuera de `~/.claude`, y `make test`
+  dice por stderr qué capas se salta.
+- Lo de las entregas anteriores sigue igual: `efectividad` y las cifras de cada release, el
+  estado que se guarda solo tras cada turno (`autosave.sh`), `install.sh --apply` respetando la
+  configuración viva y `COCKPIT_AUTONOMO=on`.
 ## Continuidad entre sesiones
 
 - `/handoff` (opcional: el estado ya se guarda solo) guarda el estado y prepara el siguiente contexto; `/handoff solo` guarda sin
