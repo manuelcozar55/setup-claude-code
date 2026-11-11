@@ -13,6 +13,10 @@ de los hooks, skills y subagentes que este kit instala en `~/.claude/`.
 - Cambio mínimo por parche; nunca reescribir un fichero entero.
 - Evidencia, no afirmaciones: verifica con `oraculo -- <cmd>` (rc real; si no, `set -o pipefail`); nada está hecho sin esa salida delante.
 
+## Interfaces
+- UI: entra por `/impeccable` si está instalada; `ui-ux-pro-max` es solo su fuente de datos
+  (UX, accesibilidad, gráficos, stack), nunca la dirección visual.
+
 ## Contexto
 - Explorar y verificar se delega en los subagentes de `~/.claude/agents/` (`code-explorer`,
   `quick-checker`): al hilo principal vuelve la conclusión, no el volcado.
