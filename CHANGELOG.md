@@ -15,7 +15,7 @@ Línea base y congelación: arreglos de la validación en Debian del 10-nov y de
 
 - **doctor: la statusLine ya no da FAIL con `CLAUDE_HOME` fuera de `$HOME/.claude`:** la del kit nombra `$HOME/.claude/statusline-command.sh` y, en una máquina sin `~/.claude` (CI, instalación de prueba), doctor suspendía una instalación correcta. Ahora resuelve al script instalado en `CLAUDE_HOME` (caso nuevo en `test_doctor.sh`).
 - **`make test` anuncia por stderr las capas que se salta:** `test_evals.sh` sin pyyaml y `test_doc_claims.sh` sin `kit/evals/runs.jsonl` imprimen `SKIP: <suite> (<motivo>)`. El rc no cambia.
-- **Agentes (decisión D8):** `pnpm` en lugar de `npx`/`npm` en `deep-worker`, `quick-checker` y `security-reviewer`; las descripciones de `strategist` y `security-reviewer` dicen cuándo usarlos, sin «always» ni «PROACTIVELY»; `code-reviewer` ejecuta la suite del proyecto antes de puntuar «Verificación», y un hallazgo de estilo es LOW y no fuerza BLOCK.
+- **Agentes (plan de consolidación, 0.4):** `pnpm` en lugar de `npx`/`npm` en `deep-worker`, `quick-checker` y `security-reviewer`; las descripciones de `strategist` y `security-reviewer` dicen cuándo usarlos, sin «always» ni «PROACTIVELY»; `code-reviewer` ejecuta la suite del proyecto antes de puntuar «Verificación», y un hallazgo de estilo es LOW y no fuerza BLOCK.
 
 ### Documentation
 
@@ -23,13 +23,13 @@ Línea base y congelación: arreglos de la validación en Debian del 10-nov y de
 - **`11-cockpit.md`:** `claude plugin update cockpit@setup-claude-code` tras `marketplace add …@tag` (sin él el cockpit instalado no se actualiza) y aviso de que esa orden quita `autoUpdate` de la entrada del marketplace.
 - **`ENTREGA.md`:** en una instalación nueva, `handoff --iniciar` en cada proyecto antes de la primera sesión; sin él el autosave no escribe nada.
 
-### Cifras (uso real, 2026-10-12 → 2026-11-12, 207 sesiones)
-| Cifra | antes 2026-11-10 | después |
-|---|---|---|
-| Compactaciones por día activo | 8.0 (96 en 12 días) | 0.5 (1 en 2 días) |
-| Frescura de nucleo.md al compactar (≤30 min) | 68.8 % (n=535) | 85.7 % (n=14) |
-| Correcciones de la persona (heurística léxica) | 33.5 % (133/397 mensajes) | 25.0 % (11/44 mensajes) |
-| Falsos positivos revelados (reformulado <60 s) | 63.6 % (63/99 bloqueos) | 57.1 % (8/14 bloqueos) |
+### Cifras (uso real, 2026-10-12 → 2026-11-12, 210 sesiones)
+| Cifra | Valor |
+|---|---|
+| Compactaciones por día activo | 7.3 (95 en 13 días) |
+| Frescura de nucleo.md al compactar (≤30 min) | 69.4 % (n=552) |
+| Correcciones de la persona (heurística léxica) | 32.4 % (143/441 mensajes) |
+| Falsos positivos revelados (reformulado <60 s) | 64.9 % (72/111 bloqueos) |
 
 ## [1.10.0] - 2026-11-10
 
