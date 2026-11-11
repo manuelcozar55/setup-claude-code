@@ -152,7 +152,7 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
 
 | Pieza | Cómo llega a tu entorno |
 |---|---|
-| Skills `deep-change`, `retro` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
+| Skills `deep-change`, `retro`, `verification-before-completion` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
 | Agentes | `install.sh` los copia a `$CLAUDE_HOME/agents/` |
 | Mod `cockpit` (`/handoff`, Agent Dock) | **No** lo instala `install.sh`: se carga con `--plugin-dir` ([doc 11](11-cockpit.md)) |
 
