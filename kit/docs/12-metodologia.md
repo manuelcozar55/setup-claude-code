@@ -151,31 +151,15 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
 > (convierte lo aprendido en `knowledge/` versionado); la skill `retro` del kit se instala en el
 > `~/.claude` de quien use el kit y analiza el entorno del agente en cualquier proyecto.
 
-## 7 · `writing-for-agents`: cuánto cuesta cada línea
-
-Se usa al crear o editar skills, `AGENTS.md` o `CLAUDE.md`. Su idea central: todo lo que el
-agente tiene siempre cargado cuesta tokens y atención **en todos los turnos**, dispare o no.
-De ahí tres reglas:
-
-- Un fichero de guía se gasta en **punteros de contexto** (qué es el material y en qué casos
-  alcanzarlo), no en el material. Lo que solo necesitan algunas ramas se baja un escalón:
-  *divulgación progresiva*.
-- Cada paso acaba en un **criterio de finalización** que distinga hecho de no hecho; los
-  criterios medibles y exhaustivos son los que fuerzan trabajo a fondo.
-- Una línea que el cuerpo ya dice, o un sinónimo que renombra la misma rama, sobra.
-
-Por eso `CLAUDE.md` de este repo tiene un techo de tamaño que vigila
-`kit/test/test_harness_structure.sh`, y el mapa va en `AGENTS.md`.
-
 ## Qué instala el kit y qué no
 
 | Pieza | Cómo llega a tu entorno |
 |---|---|
-| Skills `deep-change`, `writing-for-agents`, `retro`, `to-questionnaire` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
+| Skills `deep-change`, `retro`, `to-questionnaire` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
 | Agentes | `install.sh` los copia a `$CLAUDE_HOME/agents/` |
 | Mod `cockpit` (`/handoff`, Agent Dock) | **No** lo instala `install.sh`: se carga con `--plugin-dir` ([doc 11](11-cockpit.md)) |
 
-Las skills `writing-for-agents`, `retro` y `to-questionnaire`
+Las skills `retro` y `to-questionnaire`
 derivan de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su licencia en
 cada carpeta y la atribución en [`THIRD-PARTY.md`](../../THIRD-PARTY.md)). `deep-change` es
 propia.

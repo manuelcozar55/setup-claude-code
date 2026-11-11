@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test_skills.sh — el kit distribuye 4 skills (kit/claude/skills): frontmatter valido,
-# LICENSE MIT en las 3 derivadas de mattpocock/skills, ningun termino privado (el repo es
+# test_skills.sh — el kit distribuye 3 skills (kit/claude/skills): frontmatter valido,
+# LICENSE MIT en las 2 derivadas de mattpocock/skills, ningun termino privado (el repo es
 # publico) e install.sh las copia. Falsable: plantar un termino privado debe poner rojo
 # el escaneo. Los terminos se construyen por concatenacion para que esta suite no los lleve literales.
 set -euo pipefail
@@ -13,7 +13,7 @@ ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT 
 PRIV="ci""rce|home/man""uel|mcoz""ar|manuelco""zar|recu""erda|compac""t-audit|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9._-]+@[A-Za-z0-9-]+\.[a-z]{2,}|/ho""me/"
 scan(){ grep -rIliE "$PRIV" "$1" 2>/dev/null | wc -l | tr -d ' '; }
 
-ck "$(find "$S" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" "4" "hay 4 skills en kit/claude/skills"
+ck "$(find "$S" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" "3" "hay 3 skills en kit/claude/skills"
 
 for d in "$S"/*/; do
   n="$(basename "$d")"; f="$d/SKILL.md"
@@ -22,7 +22,7 @@ for d in "$S"/*/; do
   ck "$(printf '%s\n' "$fm" | grep -qE '^description: *[^ >|]' && echo y || echo n)" "y" "$n: description no vacio"
 done
 
-for n in writing-for-agents retro to-questionnaire; do
+for n in retro to-questionnaire; do
   ck "$(grep -qE '^MIT License' "$S/$n/LICENSE" && grep -q 'Permission is hereby granted' "$S/$n/LICENSE" && echo y || echo n)" "y" "$n: LICENSE con texto MIT"
 done
 for n in retro to-questionnaire; do
