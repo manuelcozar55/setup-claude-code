@@ -86,7 +86,7 @@ flowchart LR
             HK["Hooks de sesión<br/>session-start · pre-compact"]
             SE["Sentinel<br/>IOCs"]
             AG["5 agentes<br/>con tiering"]
-            SK["6 skills<br/>del método"]
+            SK["5 skills<br/>del método"]
             MO["Mod cockpit<br/>/handoff · Agent Dock"]
             EV["evals/<br/>23 tareas"]
             TS["test/<br/>49 suites falsables"]
@@ -164,7 +164,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     A(["Encargo"]) --> B["IntentGate"]
-    B --> C["grilling<br/>+ domain-modeling"]
+    B --> C["grilling"]
     C --> D["Plan<br/>en fichero"]
     D --> E["Subagentes<br/>en paralelo"]
     E --> F{"Verificar<br/>rojo → verde"}
@@ -213,7 +213,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 5 agentes, 6 skills del método, el mod `cockpit`, `install.sh`, 49 suites falsables | v1.10.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 5 agentes, 5 skills del método, el mod `cockpit`, `install.sh`, 49 suites falsables | v1.10.0, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
@@ -498,7 +498,7 @@ parte de `make test`.
 | Guards de Bash/git | bloquean en duro `rm -rf`, `git push --force` a ramas protegidas, fugas de `.env`/claves por nombre de fichero, exfiltración por red, y más | [`kit/claude/hooks/`](kit/claude/hooks/) |
 | Sentinel | motor de políticas `PreToolUse` (IOCs), opcional, capa adicional sobre cualquier tool | [`kit/sentinel/`](kit/sentinel/) |
 | 5 agentes con tiering | `deep-worker`, `code-reviewer`, `security-reviewer`, `code-explorer`, `quick-checker` | [`kit/claude/agents/`](kit/claude/agents/) |
-| 6 skills del método | `deep-change`, `grilling`, `domain-modeling`, `writing-for-agents` y las manuales `retro` y `to-questionnaire`; `install.sh` las copia a `~/.claude/skills/` por el camino diff-first | [`kit/claude/skills/`](kit/claude/skills/) · [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) |
+| 5 skills del método | `deep-change`, `grilling`, `writing-for-agents` y las manuales `retro` y `to-questionnaire`; `install.sh` las copia a `~/.claude/skills/` por el camino diff-first | [`kit/claude/skills/`](kit/claude/skills/) · [`kit/docs/12-metodologia.md`](kit/docs/12-metodologia.md) |
 | Plugins de terceros | `ponytail`, `ui-ux-pro-max` y, opcionales, `impeccable` y `find-skills`, instalados por referencia desde su marketplace con `kit/install-plugins.sh` (diff-first) | [`kit/docs/08-plugins-mcp-y-skills.md`](kit/docs/08-plugins-mcp-y-skills.md) |
 | Mod `cockpit` | `/handoff` (traspaso de sesión) y el panel Agent Dock; opt-in: `claude plugin install cockpit@setup-claude-code` con el marketplace registrado en el tag del kit (no lo instala `install.sh`) | [`kit/mods/cockpit/`](kit/mods/cockpit/) · [`kit/docs/11-cockpit.md`](kit/docs/11-cockpit.md) |
 | Dos capas de secretos | Capa 1 (`secret-guard.sh`, por nombre de fichero, activa desde el primer `install.sh`) + Capa 2 (`gitleaks` en `pre-commit`, por contenido real, opt-in por repo) | [`kit/docs/05-security.md`](kit/docs/05-security.md) |

@@ -61,7 +61,6 @@ Directorios de este repositorio que derivan de ese proyecto, cada uno con su
 
 - `kit/claude/skills/grilling/`
 - `kit/claude/skills/writing-for-agents/`
-- `kit/claude/skills/domain-modeling/`
 - `kit/claude/skills/retro/`
 - `kit/claude/skills/to-questionnaire/`
 

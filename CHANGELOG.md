@@ -10,6 +10,7 @@ etiquetado.
 ### Retirado
 
 - Agente `strategist`: 0 invocaciones en 30 días y en todo el histórico; solapa con el agente nativo `Plan`. El kit pasa de 6 a 5 agentes.
+- Skill `domain-modeling`: 0 invocaciones de Skill en todo el histórico de transcripts. El kit pasa de 6 a 5 skills.
 
 ## [1.10.0] - 2026-11-10
 

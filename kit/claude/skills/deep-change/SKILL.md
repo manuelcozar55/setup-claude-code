@@ -31,8 +31,7 @@ user's package-manager, browser and approval preferences over generic skill defa
    Ask only for a missing decision that changes scope, risk or outcome. For a design choice
    not yet authorized, present the smallest viable proposal before implementing it.
    When several open decisions hang off each other, run the `grilling` skill until its
-   frontier is empty (decisions to the person, facts to subagents). A resolved term or a
-   hard-to-reverse trade-off goes to `GLOSSARY.md` / an ADR via `domain-modeling`.
+   frontier is empty (decisions to the person, facts to subagents).
    **Plan gate:** if the request bundles more than one objective, touches config /
    production, or includes an irreversible step, and the person has not seen the plan, end
    the turn with the plan (≤ 8 lines: objective, "done when", out of scope, steps) and wait for their OK. A generic "sí, hazlo"

@@ -12,9 +12,8 @@ flowchart TD
     R -->|"sí"| IG["<b>IntentGate</b><br/>resultado · alcance · criterios · supuestos"]
     IG --> GR{"¿decisiones<br/>encadenadas?"}
     GR -->|"sí"| GL["<b>grilling</b><br/>rondas hasta frontera vacía"]
-    GL --> DM["<b>domain-modeling</b><br/>glosario + ADR"]
     GR -->|"no"| PL
-    DM --> PL["<b>Plan</b> como artefacto<br/>tareas verificables"]
+    GL --> PL["<b>Plan</b> como artefacto<br/>tareas verificables"]
     PL --> AP{"¿aprobado?"}
     AP -->|"no"| IG
     AP -->|"sí"| SA["<b>Subagentes en paralelo</b><br/>contexto aislado · spec en fichero"]
@@ -49,7 +48,7 @@ Si hay un camino más simple, se dice. Si algo no está claro, se pregunta **una
 Vive en la plantilla [`kit/claude/AGENTS.md`](../claude/AGENTS.md) (sección *IntentGate*), que
 `install.sh` deja en tu `~/.claude` junto al `CLAUDE.md` que la importa.
 
-## 2 · `grilling` y `domain-modeling`: cuando las decisiones cuelgan unas de otras
+## 2 · `grilling`: cuando las decisiones cuelgan unas de otras
 
 - **`grilling`** entrevista hasta que no queda nada asumido. Dibuja un **árbol de decisiones**
   y trabaja por **rondas**: la *frontera* es el conjunto de preguntas cuyos prerrequisitos ya
@@ -57,10 +56,6 @@ Vive en la plantilla [`kit/claude/AGENTS.md`](../claude/AGENTS.md) (sección *In
   redactada para que «sí» la acepte. Las **decisiones** son de la persona; los **hechos**
   (ficheros, herramientas) los busca un subagente, nunca se le piden. Termina cuando la
   frontera está vacía, y no se actúa hasta que la persona confirma el acuerdo.
-- **`domain-modeling`** es la disciplina activa de vocabulario: cuestiona un término que choca
-  con `GLOSSARY.md`, inventa escenarios límite y escribe el glosario y los **ADR** en el
-  momento en que cristalizan (formato en `ADR-FORMAT.md` y `GLOSSARY-FORMAT.md`, dentro de la
-  skill). Crea los ficheros solo cuando hay algo que escribir.
 
 ## 3 · `deep-change`: el bucle operativo
 
@@ -188,11 +183,11 @@ Por eso `CLAUDE.md` de este repo tiene un techo de tamaño que vigila
 
 | Pieza | Cómo llega a tu entorno |
 |---|---|
-| Skills `deep-change`, `grilling`, `domain-modeling`, `writing-for-agents`, `retro`, `to-questionnaire` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
+| Skills `deep-change`, `grilling`, `writing-for-agents`, `retro`, `to-questionnaire` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
 | Agentes | `install.sh` los copia a `$CLAUDE_HOME/agents/` |
 | Mod `cockpit` (`/handoff`, Agent Dock) | **No** lo instala `install.sh`: se carga con `--plugin-dir` ([doc 11](11-cockpit.md)) |
 
-Las skills `grilling`, `writing-for-agents`, `domain-modeling`, `retro` y `to-questionnaire`
+Las skills `grilling`, `writing-for-agents`, `retro` y `to-questionnaire`
 derivan de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su licencia en
 cada carpeta y la atribución en [`THIRD-PARTY.md`](../../THIRD-PARTY.md)). `deep-change` es
 propia.
