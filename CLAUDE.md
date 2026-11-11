@@ -3,22 +3,22 @@
 Harness personal para Claude Code: **guías** (antes de actuar) y **sensores** (miden
 después). Mapa para agentes: `AGENTS.md`. Dos capas:
 
-- `kit/` — **capa de instalación**, v1.9.1, estable. Guards, hooks, Sentinel, `install.sh`,
-  47 suites de test. No se toca sin ejecutar `make test`.
+- `kit/` — **capa de instalación**, v1.10.0, estable. Guards, hooks, Sentinel, `install.sh`,
+  49 suites de test. No se toca sin ejecutar `make test`.
 - raíz — **capa de harness**: `.claude/`, `knowledge/`, `scripts/`. Lo nuevo va aquí.
 
 ## Oráculo de este repo
 
 ```
-make test  # 47 suites bash, sin red; 118-179 s (i9), ~410 s (WSL). exit 0 o el trabajo no está hecho.
+make test  # 49 suites bash, sin red; 118-179 s (i9), ~410 s (WSL). exit 0 o el trabajo no está hecho.
 ```
 
-No declares nada terminado sin esa salida delante. `/verify` lo hace bien.
+Nada está terminado sin esa salida delante. `/verify` lo hace bien.
 
 ## Gotchas de este entorno (medidos, no supuestos)
 
 **Un hook `PreToolUse/Bash` sustituía el ejecutable en posición de comando**: `rg` ejecutaba
-`grep`. Retirado en la 1.1.0, pero el hábito se queda: el canal es reescribible.
+`grep`. Retirado en la 1.1.0; el canal sigue siendo reescribible.
 → **Invoca todo oráculo por ruta absoluta o con `make …`.** Detalle: `MISTAKES.md` · M-001.
 
 **Los guards bloquean por el literal del comando, no por la acción**: nombrar un fichero de
@@ -27,7 +27,7 @@ allowlist** para esquivarlo.
 
 **`pnpm` no está en PATH**, solo como shim de corepack en el bindir de nvm.
 
-**Python**: el `python3` de sistema (3.14.4) no tiene pytest. Las herramientas viven en
+**Python**: el `python3` de sistema no tiene pytest. Las herramientas viven en
 `~/.venvs/tools/bin/`. Nunca `pip install --break-system-packages`.
 
 **`/mnt/c` es ~3,7× más lento** que ext4 (`du` de 1.000 ficheros: 4,4 s). Los guards no lo

@@ -75,6 +75,8 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_guia.sh
 	bash kit/test/test_plugin_esenciales.sh
 	bash kit/test/test_sesiones_home.sh
+	bash kit/test/test_efectividad.sh
+	bash kit/test/test_changelog_cifras.sh
 	@if [ -s "$(SCC_SKIP_LOG)" ]; then echo; echo "== make test: verde, pero con capas SALTADAS (no cuentan como verificadas) =="; sort -u "$(SCC_SKIP_LOG)"; fi; rm -f "$(SCC_SKIP_LOG)"
 
 test-cockpit: ## Tests funcionales del cockpit; requiere Claude Code con soporte de mods

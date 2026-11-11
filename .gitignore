@@ -26,6 +26,8 @@ desktop.ini
 
 # Temporales
 *.log
+# El fixture del oraculo de efectividad lleva un log real; sin el, la suite pasa en local y falla en CI.
+!kit/test/fixtures/efectividad/**/nucleo-freshness.log
 *.tmp
 
 # Superpowers SDD scratch (task briefs, diffs, progress ledger)

@@ -7,6 +7,26 @@ etiquetado.
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-10
+
+Oráculo de efectividad en uso real: desde esta versión el kit publica sus cifras en cada release (mejora 1 de la valoración del 2026-11-09).
+
+### Added
+
+- **`efectividad`, oráculo de efectividad en uso real (mejora 1 de la valoración del 9-nov):** CLI python3 sin red ni modelo que calcula, sobre los transcripts de `~/.claude/projects` y `session-logs/nucleo-freshness.log`, las cuatro cifras que dicen si el kit sirve: compactaciones por día activo, frescura de `nucleo.md` al compactar, correcciones de la persona (heurística léxica) y falsos positivos revelados (bloqueo seguido de comando reformulado en <60 s). `--antes FECHA` compara antes/después de una release, `--markdown` genera el bloque del CHANGELOG, `--registrar` deja la fila en `session-logs/efectividad.tsv`, `--por-sesion` desglosa. Sin hook nuevo: los bloqueos ya están en el transcript como `tool_result` de error con el nombre del guard. Suite `test_efectividad.sh` con fixture sintético y mutaciones.
+- **Toda release ≥ 1.10.0 publica cifras:** `test_changelog_cifras.sh` exige un bloque `### Cifras` bajo cada versión del CHANGELOG desde 1.10.0; el paso está en «Cortar una release» de `CONTRIBUTING.md`.
+- **doctor:** comprobación `efectividad` (PASS con cifras registradas hace ≤35 días o sin sesiones que medir; WARN si hay uso y no hay fila reciente).
+
+### Cifras (uso real, 2026-10-11 → 2026-11-11, 194 sesiones)
+| Cifra | antes 2026-11-09 | después |
+|---|---|---|
+| Compactaciones por día activo | 7.2 (87 en 12 días) | 10.0 (10 en 1 días) |
+| Frescura de nucleo.md al compactar (≤30 min) | 68.2 % (n=516) | 81.0 % (n=21) |
+| Correcciones de la persona (heurística léxica) | 32.3 % (113/350 mensajes) | 37.0 % (20/54 mensajes) |
+| Falsos positivos revelados (reformulado <60 s) | 63.4 % (52/82 bloqueos) | 66.7 % (12/18 bloqueos) |
+
+Primera medida: la ventana «después» (desde la 1.9.0) tiene un día; es la línea base, no una comparación. Salida literal de `efectividad --antes 2026-11-09 --markdown` sobre `~/.claude` del autor el 2026-11-10.
+
 ## [1.9.1] - 2026-11-10
 
 ### Fixed
@@ -2257,7 +2277,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.1...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.0...v1.8.1
