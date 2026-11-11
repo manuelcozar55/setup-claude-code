@@ -15,6 +15,9 @@ const HASH = 'a'.repeat(64)
 const NEW = `## Objetivo\nhaz X\n## Invariantes\n- no tocar Y\n## Plan\n- [ ] T1\n## Siguiente acción\nT1\nclave: ${FAKE_SK}\n`
 const PREV = '# Estado\n\n## Objetivo\nhaz X  \ntal cual\n\n## Invariantes\n- no tocar Y\n## Plan\n- [ ] T1\n## Skills sugeridas\n- retro\n'
 
+// The session id changes after a /clear, as in the engine: «Contexto limpio» is said only when it did. `auto` counts the clears.
+let clears = 0
+
 type Run = { argv: readonly string[]; init?: { cwd?: string; env?: Record<string, string> } }
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '' } }) as never
 const no = () => ({ value: { exitCode: 1, stdout: '', stderr: '' } }) as never
@@ -27,6 +30,7 @@ function repo(
   files: Record<string, string>,
   opts: { root?: string; tops?: Record<string, string>; links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; autonomo?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
 ) {
+  clears = 0
   let stateReads = 0
   const runs: Run[] = []
   const writes: { path: string; text: string }[] = []
@@ -36,7 +40,7 @@ function repo(
   if (!opts.noBin) files[bin] = '#!/usr/bin/env bash\n'
   on('session.cwd', () => ({ value: opts.cwd ?? '/work/proyecto/sub' }))
   on('session.root', () => ({ value: opts.root ?? opts.cwd ?? '/work/proyecto/sub' }))
-  on('session.id', () => ({ value: opts.session?.() ?? 'sesion-1' }) as never)
+  on('session.id', () => ({ value: opts.session?.() ?? (clears > 0 ? 'sesion-2' : 'sesion-1') }) as never)
   on('process.run', async (_, e) => {
     runs.push(e)
     const a = e.argv.join(' ')
@@ -493,6 +497,7 @@ function auto(
   o: { tokens: number; window?: number; agents?: { id: string; status: string }[]; usageFailsAfter?: number; forkText?: string | ((prompt: string) => string); nothingToFork?: number; fill?: { isFilled: boolean; refusal?: 'dialog' } | 'throws'; clearFails?: boolean; draft?: string | (() => string); beforeFork?: () => Promise<void>; afterClear?: () => Promise<void> },
 ) {
   const seen = { forks: 0, cleared: 0, fills: [] as string[], toasts: [] as string[], logs: [] as string[], usageCalls: 0 }
+  clears = 0
   on('session.usage', () => {
     if (o.usageFailsAfter !== undefined && ++seen.usageCalls > o.usageFailsAfter) throw new Error('usage caído')
     return {
@@ -518,6 +523,7 @@ function auto(
     if (e.command === 'clear' && o.clearFails) throw new Error('rechazado')
     if (e.command === 'clear') {
       seen.cleared++
+      clears++
       await o.afterClear?.()
     }
     return { text: '' }
