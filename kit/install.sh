@@ -306,7 +306,7 @@ aviso_claude_md() {
   local n
   if [ -n "$DOCS_NO_ACTUALIZADOS" ]; then
     echo
-    echo "==> AVISO:$DOCS_NO_ACTUALIZADOS no se han actualizado: difieren del kit y no hay registro de que el kit las escribiera"
+    echo "==> AVISO:$(for n in $DOCS_NO_ACTUALIZADOS; do printf ' %s.md' "$n"; done) no se han actualizado: difieren del kit y no hay registro de que el kit las escribiera"
     echo "    ni coinciden con una version anterior del kit. Si NO las has editado y quieres la version nueva:"
     for n in $DOCS_NO_ACTUALIZADOS; do echo "      cp \"$CLAUDE_HOME/$n.kit.md\" \"$CLAUDE_HOME/$n.md\""; done
     echo "    A partir de ahi el kit las mantendra al dia mientras no las modifiques. Si las editaste, compara y copia a mano."
@@ -427,33 +427,58 @@ aviso_path() {
   echo "    o añade a tu ~/.bashrc:  export PATH=\"\$HOME/.local/bin:\$PATH\""
 }
 
+# Lo que --apply cambiaria en settings.json, clave a clave (el diff -u de abajo lo da en bruto): + anade, ~ cambia.
+# Objetos: una linea por subclave nueva o distinta; listas (hooks, permisos): cuantas entradas se anaden.
+mostrar_fusion_settings() {  # instalado nuevo
+  local old="$1" new="$2" res
+  [ -f "$new" ] && jq empty "$new" 2>/dev/null || return 0
+  if [ -f "$old" ] && jq empty "$old" 2>/dev/null; then :; else old=/dev/null; fi
+  res="$(jq -r --slurpfile o <(if [ "$old" = /dev/null ]; then echo '{}'; else cat "$old"; fi) '
+    def r: tojson | if length > 70 then .[0:67] + "..." else . end;
+    ($o[0] // {}) as $old
+    | to_entries[] | .key as $k | .value as $v
+    | if ($old | has($k) | not) then
+        (if ($v | type) == "object" then "    + \($k): " + ($v | keys | join(", ")) else "    + \($k) = \($v | r)" end)
+      elif $old[$k] == $v then empty
+      elif ($v | type) == "object" and ($old[$k] | type) == "object" then
+        ($v | to_entries[] | . as $e | $e.key as $s | select($old[$k][$s] != $e.value)
+          | "    \(if $old[$k] | has($s) then "~" else "+" end) \($k).\($s)"
+            + (if ($e.value | type) == "array" then " (\((($e.value) - ($old[$k][$s] // [])) | length) entradas nuevas)" else " = \($e.value | r)" end))
+      else "    ~ \($k) = \($v | r)" end' "$new")"
+  echo "==> settings.json: claves que --apply anadiria (+) o cambiaria (~):"
+  if [ -n "$res" ]; then echo "$res"; else echo "    (ninguna)"; fi
+}
+
 run_diff_first() {
-  local out marker=".mcharness-out-marker" real_out real_home solape=0 f BK
-  if [ -n "${MCHARNESS_OUT:-}" ]; then
-    out="$MCHARNESS_OUT"
+  local out_temporal=0 out marker=".scc-out-marker" salida="${SCC_OUT:-${MCHARNESS_OUT:-}}" real_out real_home solape=0 f BK
+  if [ -n "$salida" ]; then
+    out="$salida"
     real_out="$(realpath -m -- "$out")"; real_home="$(realpath -m -- "$CLAUDE_HOME")"
     # Solape = iguales o una contiene a la otra: generar el plan ahi pisaria la instalacion.
     case "$real_out/" in "$real_home"/*) solape=1 ;; esac
     case "$real_home/" in "$real_out"/*) solape=1 ;; esac
     if [ "$solape" -eq 1 ]; then
-      echo "==> MCHARNESS_OUT ($out) solapa con CLAUDE_HOME ($CLAUDE_HOME): no se genera el plan ahi." >&2
+      echo "==> SCC_OUT ($out) solapa con CLAUDE_HOME ($CLAUDE_HOME): no se genera el plan ahi." >&2
       exit 1
     fi
     if [ -e "$out" ] || [ -L "$out" ]; then
-      if [ -f "$out/$marker" ] && [ ! -L "$out" ]; then
+      if { [ -f "$out/$marker" ] || [ -f "$out/.mcharness-out-marker" ]; } && [ ! -L "$out" ]; then
         # Solo un arbol que escribio este mismo script (lleva su marcador).
         rm -rf -- "$out"
       elif [ -d "$out" ] && [ ! -L "$out" ] && [ -z "$(ls -A -- "$out")" ]; then
         :
       else
-        echo "==> MCHARNESS_OUT ($out) existe y no es un plan anterior de este instalador (sin marcador): no se borra." >&2
+        echo "==> SCC_OUT ($out) existe y no es un plan anterior de este instalador (sin marcador): no se borra." >&2
         exit 1
       fi
     fi
   else
-    # Directorio nuevo y exclusivo por ejecucion: no hay nada previo que borrar. Se conserva
-    # a proposito: el paso 2 del texto de abajo manda copiar a mano desde ahi.
-    out="$(mktemp -d "${TMPDIR:-/tmp}/mcharness-plan.XXXXXX")"
+    # Directorio nuevo y exclusivo por ejecucion: no hay nada previo que borrar, y se borra al salir. Para
+    # quedarse con el arbol (y copiar a mano de ahi) se da SCC_OUT=<directorio>, que no se borra.
+    out="$(mktemp -d "${TMPDIR:-/tmp}/scc-plan.XXXXXX")"
+    # shellcheck disable=SC2064 # $out se expande ahora, a proposito: es el temporal de esta ejecucion
+    trap "rm -rf -- '$out'" EXIT
+    out_temporal=1
   fi
   mkdir -p "$out"; : > "$out/$marker"
   # El plan ensena lo que haria --apply: lo que se fusiona o no se pisa parte del instalado. Sobre un
@@ -463,7 +488,7 @@ run_diff_first() {
   for f in settings.json CLAUDE.md AGENTS.md "$DOCS_STATE"; do
     if [ -f "$CLAUDE_HOME/$f" ]; then cp -L -- "$CLAUDE_HOME/$f" "$out/$f"; fi
   done
-  BK="$out/.mcharness-plan-bk"
+  BK="$out/.scc-plan-bk"
   install_kit_files "$out" >/dev/null
   rm -rf -- "$BK"; rm -f -- "$out/$DOCS_STATE"
 
@@ -472,7 +497,11 @@ run_diff_first() {
   else
     echo "==> Modo --plan: no se escribe nada en $CLAUDE_HOME."
   fi
-  echo "    Arbol que se instalaria, generado en: $out"
+  if [ "$out_temporal" -eq 1 ]; then
+    echo "    Arbol que se instalaria: temporal, se borra al terminar (con SCC_OUT=<directorio> se conserva en ese)."
+  else
+    echo "    Arbol que se instalaria, generado en: $out"
+  fi
   echo
 
   local rel
@@ -499,6 +528,7 @@ run_diff_first() {
     echo "----- diff: $rel -----"
     diff -u "$CLAUDE_HOME/$rel" "$out/$rel" || true
   done
+  mostrar_fusion_settings "$CLAUDE_HOME/settings.json" "$out/settings.json"
   aviso_claude_md
   avisos_settings "$CLAUDE_HOME/settings.json"
 
@@ -519,10 +549,16 @@ run_diff_first() {
     echo "==> En modo aplicar (--apply) no se tocaria $LOCAL_BIN: CLAUDE_HOME no es $HOME/.claude."
     echo "    Se imprimirian las ordenes ln -s para que enlaces tu, si quieres."
   fi
+  echo "      1. Revisa arriba los ficheros nuevos/modificados y las claves de settings.json que se tocarian."
+  if [ "$out_temporal" -eq 1 ]; then
+    echo "      2. Si quieres copiar a mano lo que adoptes, repite con SCC_OUT=<directorio> para conservar el arbol."
+  else
+    echo "      2. Copia a mano lo que quieras adoptar de $out a $CLAUDE_HOME."
+  fi
+  if git -C "$CLAUDE_HOME" rev-parse --git-dir >/dev/null 2>&1; then
+    echo "      3. Commitea esos cambios en TU repo (el privado), como de costumbre."
+  fi
   cat <<EOF
-      1. Revisa arriba los ficheros nuevos/modificados (arbol completo en $out).
-      2. Copia a mano lo que quieras adoptar de $out a $CLAUDE_HOME.
-      3. Commitea esos cambios en TU repo (el privado), como de costumbre.
 
     Si en vez de eso quieres que este instalador escriba directamente sobre
     $CLAUDE_HOME (con el backup habitual de siempre), vuelve a lanzarlo con:
@@ -651,11 +687,7 @@ echo "==> Config instalada. Terceros (ver docs/): agent-browser, venv de tools. 
 echo "==> CLIs handoff y oraculo (valen en Claude Code, Codex y opencode):"
 enlazar_clis
 write_kit_state
-if [ -f "$KIT/.env.example" ]; then
-  echo "==> Rellena tus claves:  cp $KIT/.env.example \$HOME/.claude/.env  &&  editar"
-else
-  echo "==> Plantilla de credenciales no incluida: los servicios externos son opcionales."
-fi
+echo "==> El kit no usa claves: no hay nada que rellenar; los servicios externos son opcionales."
 echo "==> Capa 2 de secretos (gitleaks pre-commit) es opt-in, por repositorio. Actívala DONDE QUIERAS con:"
 echo "       bash $KIT/install.sh --enable-secrets-layer2   # ejecútalo dentro del repo a proteger"
 echo "    o el one-liner manual:  git config core.hooksPath \"$CLAUDE_HOME/hooks/git\""

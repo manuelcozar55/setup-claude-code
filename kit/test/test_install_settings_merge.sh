@@ -215,7 +215,7 @@ seed j <<'EOF'
   "permissions": { "disableBypassPermissionsMode": "", "defaultMode": "bypassPermissions" } }
 EOF
 sha_j="$(sha256sum "$S" | cut -d' ' -f1)"
-MCHARNESS_OUT="$tmp/plan-j" run --plan
+SCC_OUT="$tmp/plan-j" run --plan
 ck "$(jq -r '.permissions.disableBypassPermissionsMode' "$tmp/plan-j/settings.json")" "disable" "plan: el settings.json del plan lleva disable"
 ck "$(sha256sum "$S" | cut -d' ' -f1)" "$sha_j" "plan: tu settings.json queda intacto"
 ck "$(dice 'AVISO.*disableAllHooks')" "y" "plan: aviso de disableAllHooks"

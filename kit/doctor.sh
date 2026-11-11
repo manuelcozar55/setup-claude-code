@@ -465,7 +465,7 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     warn "Capa 2 de secretos no activada en este repo: core.hooksPath sin configurar (opt-in con: bash $KIT/install.sh --enable-secrets-layer2)"
   fi
 else
-  warn "no estas dentro de un repo git: no se puede comprobar la Capa 2 (core.hooksPath)"
+  warn "no estas dentro de un repo git: no se puede comprobar la Capa 2 (core.hooksPath). Dentro de un repo a proteger: bash $KIT/install.sh --enable-secrets-layer2"
 fi
 
 # 5d2. Estado del proyecto actual (ADR 016): .claude/estado/ lleva los prompts de la persona y los informes, y
