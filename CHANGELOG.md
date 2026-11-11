@@ -11,6 +11,7 @@ etiquetado.
 
 - Agente `strategist`: 0 invocaciones en 30 días y en todo el histórico; solapa con el agente nativo `Plan`. El kit pasa de 6 a 5 agentes.
 - Skill `domain-modeling`: 0 invocaciones de Skill en todo el histórico de transcripts. El kit pasa de 6 a 5 skills.
+- Skill `grilling`: 0 invocaciones de Skill en todo el histórico de transcripts. `deep-change` ya no la nombra. El kit pasa de 5 a 4 skills.
 
 ## [1.10.0] - 2026-11-10
 

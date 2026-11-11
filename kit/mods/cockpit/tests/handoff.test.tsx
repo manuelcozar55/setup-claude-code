@@ -13,7 +13,7 @@ const BIN = `${HOME}/.claude/bin/handoff`
 const TMP = '/tmp/cockpit-handoff.Ab12Cd'
 const HASH = 'a'.repeat(64)
 const NEW = `## Objetivo\nhaz X\n## Invariantes\n- no tocar Y\n## Plan\n- [ ] T1\n## Siguiente acción\nT1\nclave: ${FAKE_SK}\n`
-const PREV = '# Estado\n\n## Objetivo\nhaz X  \ntal cual\n\n## Invariantes\n- no tocar Y\n## Plan\n- [ ] T1\n## Skills sugeridas\n- grilling\n'
+const PREV = '# Estado\n\n## Objetivo\nhaz X  \ntal cual\n\n## Invariantes\n- no tocar Y\n## Plan\n- [ ] T1\n## Skills sugeridas\n- retro\n'
 
 type Run = { argv: readonly string[]; init?: { cwd?: string; env?: Record<string, string> } }
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '' } }) as never

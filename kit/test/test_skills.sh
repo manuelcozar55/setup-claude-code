@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test_skills.sh — el kit distribuye 5 skills (kit/claude/skills): frontmatter valido,
-# LICENSE MIT en las 4 derivadas de mattpocock/skills, ningun termino privado (el repo es
+# test_skills.sh — el kit distribuye 4 skills (kit/claude/skills): frontmatter valido,
+# LICENSE MIT en las 3 derivadas de mattpocock/skills, ningun termino privado (el repo es
 # publico) e install.sh las copia. Falsable: plantar un termino privado debe poner rojo
 # el escaneo. Los terminos se construyen por concatenacion para que esta suite no los lleve literales.
 set -euo pipefail
@@ -13,7 +13,7 @@ ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT 
 PRIV="ci""rce|home/man""uel|mcoz""ar|manuelco""zar|recu""erda|compac""t-audit|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9._-]+@[A-Za-z0-9-]+\.[a-z]{2,}|/ho""me/"
 scan(){ grep -rIliE "$PRIV" "$1" 2>/dev/null | wc -l | tr -d ' '; }
 
-ck "$(find "$S" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" "5" "hay 5 skills en kit/claude/skills"
+ck "$(find "$S" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" "4" "hay 4 skills en kit/claude/skills"
 
 for d in "$S"/*/; do
   n="$(basename "$d")"; f="$d/SKILL.md"
@@ -22,7 +22,7 @@ for d in "$S"/*/; do
   ck "$(printf '%s\n' "$fm" | grep -qE '^description: *[^ >|]' && echo y || echo n)" "y" "$n: description no vacio"
 done
 
-for n in grilling writing-for-agents retro to-questionnaire; do
+for n in writing-for-agents retro to-questionnaire; do
   ck "$(grep -qE '^MIT License' "$S/$n/LICENSE" && grep -q 'Permission is hereby granted' "$S/$n/LICENSE" && echo y || echo n)" "y" "$n: LICENSE con texto MIT"
 done
 for n in retro to-questionnaire; do
@@ -40,7 +40,7 @@ ck "$([ "$(scan "$tmp/skills-copy")" -ge 1 ] && echo rojo || echo verde)" "rojo"
 export CLAUDE_HOME="$tmp/dot"
 HOME="$tmp/fakehome" bash "$KIT/install.sh" >/dev/null 2>&1
 ck "$(cd "$S" && find . -type f | sort | md5sum)" "$(cd "$CLAUDE_HOME/skills" && find . -type f | sort | md5sum)" "install.sh instala todos los ficheros de las skills"
-ck "$([ -f "$CLAUDE_HOME/skills/grilling/agents/openai.yaml" ] && echo y || echo n)" "y" "install.sh copia subdirectorios (grilling/agents)"
+ck "$([ -f "$CLAUDE_HOME/skills/retro/agents/openai.yaml" ] && echo y || echo n)" "y" "install.sh copia subdirectorios (retro/agents)"
 ck "$(cmp -s "$S/deep-change/SKILL.md" "$CLAUDE_HOME/skills/deep-change/SKILL.md" && echo y || echo n)" "y" "contenido instalado identico"
 
 # no destructivo: una skill modificada se respalda al reinstalar
@@ -50,10 +50,10 @@ ck "$(find "$CLAUDE_HOME/backups" -path '*skills/retro/SKILL.md' 2>/dev/null | w
 
 # Una skill enlazada desde otro repo no se pisa: cp -p escribiria a traves del symlink
 echo "ajena" > "$tmp/ajena.md"
-ln -sf "$tmp/ajena.md" "$CLAUDE_HOME/skills/grilling/SKILL.md"
+ln -sf "$tmp/ajena.md" "$CLAUDE_HOME/skills/retro/SKILL.md"
 HOME="$tmp/fakehome" bash "$KIT/install.sh" >/dev/null 2>&1
 ck "$(cat "$tmp/ajena.md")" "ajena" "install.sh no escribe a traves de un symlink de skill"
-ck "$([ -L "$CLAUDE_HOME/skills/grilling/SKILL.md" ] && echo y || echo n)" "y" "el symlink de la skill sigue en su sitio"
+ck "$([ -L "$CLAUDE_HOME/skills/retro/SKILL.md" ] && echo y || echo n)" "y" "el symlink de la skill sigue en su sitio"
 
 echo "== $pass ok, $fail fallos"
 [ "$fail" -eq 0 ]

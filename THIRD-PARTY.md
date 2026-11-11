@@ -59,7 +59,6 @@ Repositorio: <https://github.com/mattpocock/skills>, commit `49dd158`.
 Directorios de este repositorio que derivan de ese proyecto, cada uno con su
 `LICENSE` original (`Copyright (c) 2026 Matt Pocock`, texto MIT):
 
-- `kit/claude/skills/grilling/`
 - `kit/claude/skills/writing-for-agents/`
 - `kit/claude/skills/retro/`
 - `kit/claude/skills/to-questionnaire/`

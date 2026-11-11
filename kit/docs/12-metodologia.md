@@ -10,10 +10,7 @@ flowchart TD
     E(["Encargo"]) --> R{"¿cuesta caro<br/>equivocarse?"}
     R -->|"no"| D(["Hazlo directo"])
     R -->|"sí"| IG["<b>IntentGate</b><br/>resultado · alcance · criterios · supuestos"]
-    IG --> GR{"¿decisiones<br/>encadenadas?"}
-    GR -->|"sí"| GL["<b>grilling</b><br/>rondas hasta frontera vacía"]
-    GR -->|"no"| PL
-    GL --> PL["<b>Plan</b> como artefacto<br/>tareas verificables"]
+    IG --> PL["<b>Plan</b> como artefacto<br/>tareas verificables"]
     PL --> AP{"¿aprobado?"}
     AP -->|"no"| IG
     AP -->|"sí"| SA["<b>Subagentes en paralelo</b><br/>contexto aislado · spec en fichero"]
@@ -29,7 +26,7 @@ flowchart TD
     classDef paso fill:#475569,stroke:#334155,color:#FFFFFF
     classDef evid fill:#1F7A38,stroke:#166534,color:#FFFFFF
     classDef fin fill:#A34A2C,stroke:#8F4026,color:#FFFFFF
-    class IG,GL,DM puerta
+    class IG puerta
     class PL,SA,CO,CL paso
     class VE evid
     class HO,RT,D fin
@@ -48,15 +45,6 @@ Si hay un camino más simple, se dice. Si algo no está claro, se pregunta **una
 Vive en la plantilla [`kit/claude/AGENTS.md`](../claude/AGENTS.md) (sección *IntentGate*), que
 `install.sh` deja en tu `~/.claude` junto al `CLAUDE.md` que la importa.
 
-## 2 · `grilling`: cuando las decisiones cuelgan unas de otras
-
-- **`grilling`** entrevista hasta que no queda nada asumido. Dibuja un **árbol de decisiones**
-  y trabaja por **rondas**: la *frontera* es el conjunto de preguntas cuyos prerrequisitos ya
-  están resueltos, y se hacen todas juntas, numeradas y con la respuesta recomendada
-  redactada para que «sí» la acepte. Las **decisiones** son de la persona; los **hechos**
-  (ficheros, herramientas) los busca un subagente, nunca se le piden. Termina cuando la
-  frontera está vacía, y no se actúa hasta que la persona confirma el acuerdo.
-
 ## 3 · `deep-change`: el bucle operativo
 
 Se invoca con `/deep-change` o entra solo cuando el cambio es sustancial, ambiguo, irreversible
@@ -64,7 +52,7 @@ o toca seguridad o producción. Sus fases:
 
 | Fase | Qué se hace |
 |---|---|
-| Resolver la incertidumbre | Solo lo que cambia el alcance, el riesgo o el resultado; `grilling` si hay decisiones encadenadas |
+| Resolver la incertidumbre | Solo lo que cambia el alcance, el riesgo o el resultado |
 | Investigar | Subagentes independientes con dueño explícito; vuelve evidencia, no volcados |
 | **Plan como artefacto** | `<tema>-plan.md`: tareas pequeñas y verificables, cada una con ficheros exactos, cambio y prueba. Es un documento duradero, no una conversación |
 | Ejecutar | Tarea a tarea; tras cada una, verificar y anotar. No se avanza en rojo |
@@ -183,11 +171,11 @@ Por eso `CLAUDE.md` de este repo tiene un techo de tamaño que vigila
 
 | Pieza | Cómo llega a tu entorno |
 |---|---|
-| Skills `deep-change`, `grilling`, `writing-for-agents`, `retro`, `to-questionnaire` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
+| Skills `deep-change`, `writing-for-agents`, `retro`, `to-questionnaire` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
 | Agentes | `install.sh` los copia a `$CLAUDE_HOME/agents/` |
 | Mod `cockpit` (`/handoff`, Agent Dock) | **No** lo instala `install.sh`: se carga con `--plugin-dir` ([doc 11](11-cockpit.md)) |
 
-Las skills `grilling`, `writing-for-agents`, `retro` y `to-questionnaire`
+Las skills `writing-for-agents`, `retro` y `to-questionnaire`
 derivan de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su licencia en
 cada carpeta y la atribución en [`THIRD-PARTY.md`](../../THIRD-PARTY.md)). `deep-change` es
 propia.
