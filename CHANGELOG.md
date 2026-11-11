@@ -15,6 +15,15 @@ etiquetado.
 - Skill `writing-for-agents`: 0 invocaciones de Skill en todo el histórico de transcripts. `retro` ya no la invoca como primer paso. El kit pasa de 4 a 3 skills.
 - Skill `to-questionnaire`: 0 invocaciones de Skill en todo el histórico de transcripts. El kit pasa de 3 a 2 skills (`deep-change` y `retro`).
 
+### Fixed
+
+Tope del nucleo (caso real del 11-nov: una sesión con varios encargos apilados llegó al 121 % del tope sin aviso y, al retomar, perdía Pendientes y Plan):
+
+- `nucleo-nudge.sh` avisa del tamaño también con el nucleo recién editado. Antes callaba si tenía menos de 10 min, justo cuando se acababa de inflar a mano.
+- `handoff --auto` ya no se omite con el nucleo por encima del tope: escribe la sección mínima, de dos líneas. Antes dejaba la «Último turno (auto)» anterior, que tras compactar describía otro turno.
+- La inyección quita primero «Último turno (auto)», que es regenerable, antes que Pendientes, Plan y Ficheros tocados, como ya hacía `handoff`. Además dice cuántos pasos `[x]` del Plan omite: uno marcado a mano no pasó por `handoff` ni está en `diario.md`.
+- `deep-change`: «Encargo original» e «Invariantes» son de un solo encargo. Al abrir otro en el mismo nucleo, el cerrado pasa entero a `diario.md`. Apilados solo crecían: cinco encargos ocupaban el 43 % del tope.
+
 ## [1.10.1] - 2026-11-11
 
 Línea base y congelación: arreglos de la validación en Debian del 10-nov y de la auditoría del 11-nov. Hasta el 2026-12-09 el kit solo admite arreglos, documentación y retiradas.
