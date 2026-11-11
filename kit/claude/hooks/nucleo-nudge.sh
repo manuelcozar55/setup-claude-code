@@ -3,8 +3,8 @@
 # airbag compacte. Por qué: el aviso del Stop lo ve la persona y llega al final del turno, pero la
 # mayoría de las compactaciones caen dentro de un turno autónomo; medido, 3 de cada 4 llegaban con
 # el nucleo sin escribir en los 20 turnos previos. additionalContext llega junto al tool_result.
-# Una vez por banda (50/70/85 % del airbag) y sesión, y solo si nucleo.md tiene más de 10 min o no
-# existe; bajo el 50 % se rearman (compactar no cambia el session_id). Sin nada que decir, salida
+# Una vez por banda (50/70/85 % del airbag) y sesión, y solo si nucleo.md tiene más de 10 min, no
+# existe o pasa del tope; bajo el 50 % se rearman (compactar no cambia el session_id). Sin nada que decir, salida
 # vacía. Camino caliente: corre tras cada herramienta.
 set -u
 IN=$(cat)
@@ -50,16 +50,20 @@ else
 [ -z "$RANURA" ] && nucleo_dueno_ajeno "$RAIZ" "$SID" >/dev/null && exit 0
 MT=$(stat -c %Y "$NUC" 2>/dev/null || stat -f %m "$NUC" 2>/dev/null)
 EDAD=$(( $(date +%s) - ${MT:-0} ))
-[ -z "$MT" ] || [ "$EDAD" -gt 600 ] || exit 0
+# Editado a mano no pasa por el tope de handoff: pasado el tope, al retomar se omiten secciones enteras.
+# Es el mismo tope con el que escribe handoff, con la reserva del bloque de agentes ya descontada. Se mira
+# también con el nucleo fresco: recién inflado es justo cuando hay que avisar.
+SZ=0 T=$((NUCLEO_TOPE - NUCLEO_RESERVA_AGENTES))
+[ -z "$MT" ] || SZ=$(wc -c <"$NUC" 2>/dev/null | tr -d ' ')
+[ -z "$MT" ] || [ "$EDAD" -gt 600 ] || [ "${SZ:-0}" -gt "$T" ] || exit 0
 mkdir -p "$(dirname "$MARCA")" && echo "$B" >>"$MARCA"
 # Para nucleo-gate.sh (PreToolUse): el nucleo que miré; el mtime de este fichero es la hora del aviso. Aviso nuevo, cuenta nueva.
 echo "$NUC" >"$MARCA.nucleo"; rm -f -- "${MARCA/nudge-/gate-}-$B" "${MARCA/nudge-/gate-}-$B.d"
-if [ -n "$MT" ]; then
+if [ "$NOM" = ESTADO.md ]; then HIST="saca lo cerrado del fichero"; else HIST="pasa lo cerrado a diario.md"; fi
+if [ -n "$MT" ] && [ "$EDAD" -le 600 ]; then
+  M="CONTEXTO $PCT % del airbag. $NUC ocupa $SZ B (tope $T): antes de la siguiente herramienta, $HIST; si no, al retomar se omitirán secciones enteras."
+elif [ -n "$MT" ]; then
   M="CONTEXTO $PCT % del airbag. $NOM lleva $((EDAD / 60)) min sin actualizar: antes de la siguiente herramienta actualiza Paso actual / Siguiente acción / Pendientes en $NUC."
-  # Editado a mano no pasa por el tope de handoff: pasado el tope, al retomar se omiten secciones enteras.
-  # Es el mismo tope con el que escribe handoff, con la reserva del bloque de agentes ya descontada.
-  SZ=$(wc -c <"$NUC" 2>/dev/null | tr -d ' ') T=$((NUCLEO_TOPE - NUCLEO_RESERVA_AGENTES))
-  if [ "$NOM" = ESTADO.md ]; then HIST="saca lo cerrado del fichero"; else HIST="pasa lo cerrado a diario.md"; fi
   [ "${SZ:-0}" -le "$T" ] || M="$M Ocupa $SZ B (tope $T): $HIST."
 else
   M="CONTEXTO $PCT % del airbag y no hay nucleo.md: antes de la siguiente herramienta créalo en $NUC con la forma de \$HOME/.claude/templates/nucleo.md."

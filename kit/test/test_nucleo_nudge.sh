@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test_nucleo_nudge.sh — contrato de kit/claude/hooks/nucleo-nudge.sh (PostToolUse): pide al modelo
 # actualizar nucleo.md por bandas del airbag (50/70/85 %), una vez por banda y sesión, solo con el
-# nucleo rancio (> 10 min) o ausente, en ≤ 400 chars y con la ruta exacta; si no toca, nada.
+# nucleo rancio (> 10 min), ausente o por encima del tope, en ≤ 400 chars y con la ruta exacta; si no toca, nada.
 # Uso: test_nucleo_nudge.sh [ruta al hook]. Sin red; HOME falso en un mktemp que se borra.
 set -u
 H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-nudge.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT; export CC_NUCLEO_GATE=1
@@ -49,6 +49,10 @@ head -c 6000 /dev/zero | tr '\0' x >"$NUC"; touch -d '-30 minutes' "$NUC"
 C=$(run s40 p60 | ctx)
 ok "nucleo por encima del tope: el aviso da tamaño y tope" "$(command grep -c 'Ocupa 6000 B (tope 5700): pasa lo cerrado a diario.md\.' <<<"$C")" 1
 ok "con el aviso de tope sigue ≤ 400 chars" "$([ "$(largo "$C")" -le 400 ] && echo si)" si
+# Recién inflado a mano es justo cuando hay que avisar: con el nucleo fresco el aviso callaba por su edad.
+touch "$NUC"; C=$(run s41 p60 | ctx)
+ok "nucleo fresco por encima del tope: avisa del tamaño, sin hablar de edad" "$(command grep -c "$NUC ocupa 6000 B (tope 5700): antes de la siguiente herramienta, pasa lo cerrado a diario.md" <<<"$C"),$(command grep -c 'sin actualizar' <<<"$C")" 1,0
+ok "aviso de tope con nucleo fresco ≤ 400 chars" "$([ "$(largo "$C")" -le 400 ] && echo si)" si
 rm -f "$NUC"
 ok "sin nucleo → pide crearlo con la plantilla" "$(run s4 p60 | ctx | command grep -c "créalo en $NUC con la forma de .*templates/nucleo.md")" 1
 ok "session_id con barras → nada (va a un nombre de fichero)" "$(run '../x' p60)" ""
