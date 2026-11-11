@@ -78,9 +78,12 @@ ok "la ruta se cita una sola vez" "$(nucleo_emitir "$G2/nucleo.md" | command gre
 F=$T/orden.md
 printf '%s\n' '# Estado' '## Ficheros tocados' 'F-1' '## Pendientes' 'PE-1' '## Plan' '- [x] hecho-1 — make test' '- [ ] abierto-1' '  - [x] sub-hecho' '1. [X] hecho-2' '## Comandos de verificación' 'C-1' \
   '## Siguiente acción' 'SA-1' '## Paso actual' 'PA-1' '## Invariantes' 'I-1' '## Objetivo' 'O-1' '## No repetir' 'NR-1' >"$F"
-ok "orden D5 en la emisión" "$(nucleo_emitir "$F" | command grep -v '^#' | command grep -v '^$' | paste -sd,)" "O-1,I-1,PA-1,SA-1,C-1,- [ ] abierto-1,PE-1,F-1,NR-1"
+ok "orden D5 en la emisión" "$(nucleo_emitir "$F" | command grep -v '^#\|^\[' | command grep -v '^$' | paste -sd,)" "O-1,I-1,PA-1,SA-1,C-1,- [ ] abierto-1,PE-1,F-1,NR-1"
 ok "el título del fichero va primero" "$(nucleo_emitir "$F" | head -n 1)" "# Estado"
 ok "Plan: los [x] no se emiten" "$(nucleo_emitir "$F" | command grep -c 'hecho-\|sub-hecho')" 0
+# Un [x] marcado a mano no pasa por handoff ni llega a diario.md: omitirlo en silencio lo perdía de vista.
+ok "Plan: se dice cuántos [x] se omiten" "$(nucleo_emitir "$F" | command grep -cx '\[Plan: se omiten 3 pasos \[x\]; si no están en diario.md, siguen en el nucleo\.\]')" 1
+ok "Plan sin [x]: sin ese aviso" "$(nucleo_emitir "$T/plan-cerca.md" | command grep -c '^\[Plan:')" 0
 printf '%s\n' '## Plan' '```' '- [x] en-cerca' '```' '- [ ] fuera' >"$T/plan-cerca.md"
 ok "Plan: un [x] dentro de una cerca sí se conserva" "$(nucleo_emitir "$T/plan-cerca.md" | command grep -c 'en-cerca')" 1
 # Log de recortes: solo cuando se recorta, junto al nucleo, acotado.
@@ -294,6 +297,10 @@ S=$(nucleo_emitir "$T/pasa-poco.md")
 ok "pasa poco: las reservadas y Ficheros tocados salen enteras" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|FICH-FIN' <<<"$S")" 4
 ok "pasa poco: Pendientes se omite entera y se dice" "$(command grep -c 'PEND-FIN' <<<"$S"),$(command grep -c '^\[recortado por tope: se omiten «Pendientes»' <<<"$S")" "0,1"
 ok "pasa poco: ninguna sección partida; sí pide leer el fichero" "$(command grep -c 'sección incompleta' <<<"$S"),$(command grep -c '^\[LEE ' <<<"$S")" "0,1"
+# Lo regenerable sale antes que lo accionable: con el auto fuera cabe, y Pendientes, Plan y Ficheros se conservan.
+{ cat "$T/cabe.md"; echo '## Pendientes'; big 100; echo PEND-FIN; echo '## Último turno (auto)'; big 600; echo AUTO-FIN; } >"$T/pasa-auto.md"
+S=$(nucleo_emitir "$T/pasa-auto.md")
+ok "pasa poco con sección auto: sale el auto y se conservan Pendientes y Ficheros" "$(command grep -c 'PEND-FIN\|FICH-FIN' <<<"$S"),$(command grep -c 'AUTO-FIN' <<<"$S"),$(command grep -c '^\[recortado por tope: se omiten «Último turno (auto)»\.\]$' <<<"$S")" "2,0,1"
 # Si ni quitando secciones cabe, el corte de una sección cae en un límite de línea (si ya salió alguna) y cierra la
 # cerca que deje abierta; si parte la primera línea, cierra el `código`. Antes la marca quedaba dentro del bloque.
 { echo '# Estado'; echo '## Objetivo'; big 2000; echo '## Invariantes'; big 2000; echo '## Paso actual'

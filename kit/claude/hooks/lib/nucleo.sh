@@ -805,8 +805,9 @@ _nucleo_emitir_awk() {
     cur == "#" && !cerca && !sesant && /^> sesión anterior: / { sesant = 1; sale(corta($0, 600)); next }
     # Y «> carpeta de trabajo: …» (dónde estaba la sesión cuando guardó; /clear la devuelve a la de arranque).
     cur == "#" && !cerca && !carpeta && /^> carpeta de trabajo: / { carpeta = 1; sale(corta($0, 450)); next }
-    # Del Plan solo se emiten los pasos abiertos: los [x] ya están en diario.md (y fuera de una cerca).
-    viva && actual == "Plan" && !cerca && $0 ~ /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { next }
+    # Del Plan solo se emiten los pasos abiertos: los [x] ya están en diario.md (y fuera de una cerca). Se cuentan
+    # y se dice: uno marcado a mano no pasó por handoff ni está en diario.md.
+    viva && actual == "Plan" && !cerca && $0 ~ /^[ \t]*(([-*]|[0-9]+\.)[ \t]+)?\[[xX]\]/ { hechos++; next }
     viva {
       resto = (rsv ? res : sec) - dentro; if (!rsv && tope - usado < resto) resto = tope - usado
       if (coment) { if (index($0, "-->")) coment = 0 }
@@ -826,12 +827,14 @@ _nucleo_emitir_awk() {
       m = split("Objetivo|Invariantes|Paso actual|Siguiente acción|Comandos de verificación|Plan|Pendientes|Ficheros tocados|No repetir|Último turno (auto)", ord, "|")
       if (medir == "entero") {
         total = length(buf["#"]); for (i = 1; i <= m; i++) total += length(buf[ord[i]])
-        q = split("Pendientes|Plan|Ficheros tocados", cola, "|")
+        # Lo regenerable (la sección de handoff --auto) sale antes que lo accionable, como en handoff.
+        q = split("Último turno (auto)|Pendientes|Plan|Ficheros tocados", cola, "|")
         for (i = 1; total > lim && i <= q; i++) if (buf[cola[i]] != "") { total -= length(buf[cola[i]]); buf[cola[i]] = ""; omitidas = omitidas " «" cola[i] "»" }
         if (total > lim) exit 3
       }
       printf "%s", buf["#"]
       for (i = 1; i <= m; i++) printf "%s", buf[ord[i]]
+      if (hechos && buf["Plan"] != "") print "[Plan: se omiten " hechos " pasos [x]; si no están en diario.md, siguen en el nucleo.]"
       if (cercas % 2) print "[cercas sin equilibrar: se ignoran; un # comentario dentro de un bloque puede cortar su sección]"
       if (omitidas != "") print "[recortado por tope: se omiten" omitidas ".]"
       if (recortes || omitidas != "" || cerradas || cercas % 2) print "[LEE " f " antes de actuar: lo inyectado está incompleto.]"
