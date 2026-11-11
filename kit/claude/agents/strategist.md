@@ -1,6 +1,6 @@
 ---
 name: strategist
-description: "Use before any complex feature, ambiguous task, or architecture decision. Interrogates true intent and scope via IntentGate before producing an executable plan. Invoke when: requirements are unclear, multiple approaches exist, cross-cutting concerns are involved, or the task could be interpreted multiple ways. Replaces generic planning — always prefer this over diving in blind."
+description: "Use when a feature is complex, a task is ambiguous, or an architecture decision is pending: requirements are unclear, multiple approaches exist, cross-cutting concerns are involved, or the task could be interpreted multiple ways. Interrogates true intent and scope via IntentGate before producing an executable plan."
 model: opus
 tools: [Read, Grep, Glob]
 ---

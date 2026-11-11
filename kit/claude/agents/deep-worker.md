@@ -36,9 +36,9 @@ List every file to create or modify. Estimate scope. If scope is larger than exp
 
 ### 4. Verify (in order)
 ```
-1. Type check (npx tsc --noEmit / mypy / cargo check)
+1. Type check (pnpm exec tsc --noEmit / mypy / cargo check)
 2. Lint (eslint / ruff / clippy)
-3. Tests (npm test / pytest / cargo test)
+3. Tests (pnpm test / pytest / cargo test)
 4. Build if applicable
 ```
 
