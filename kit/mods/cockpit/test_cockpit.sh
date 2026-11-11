@@ -6,7 +6,7 @@
 # tsc: COCKPIT_TSC, o `tsc` del PATH, o `pnpm dlx typescript@5.6.3 tsc`. Sin ninguno: SKIP anunciado.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../.." && pwd)"
+ROOT="$(cd "$HERE/../../.." && pwd)"
 MOD="$ROOT/kit/mods/cockpit"
 tmp="$(mktemp -d)"; trap 'rm -r "$tmp"' EXIT
 pass=0; fail=0

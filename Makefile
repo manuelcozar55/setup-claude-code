@@ -57,7 +57,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_evals.sh
 	bash kit/test/test_skills.sh
 	bash kit/test/test_mod_cockpit.sh
-	bash kit/test/test_cockpit.sh
+	bash kit/mods/cockpit/test_cockpit.sh
 	bash kit/test/test_statusline.sh
 	bash kit/test/test_session_start_clear.sh
 	bash kit/test/test_nucleo_lib.sh
@@ -81,7 +81,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	@if [ -s "$(SCC_SKIP_LOG)" ]; then echo; echo "== make test: verde, pero con capas SALTADAS (no cuentan como verificadas) =="; sort -u "$(SCC_SKIP_LOG)"; fi; rm -f "$(SCC_SKIP_LOG)"
 
 test-cockpit: ## tsc en clon limpio + contrato con el CLI real + claude plugin validate/test del cockpit (lo que falte se anuncia SKIP)
-	bash kit/test/test_cockpit.sh
+	bash kit/mods/cockpit/test_cockpit.sh
 
 # bateria: los cuatro oraculos de cierre, cada uno con su .rc y su .log. Corren todos aunque uno falle; rc != 0 si
 # alguno falla. Una herramienta ausente da rc 127 (el shell lo da solo), nunca un SKIP. Los BATERIA_* se pueden

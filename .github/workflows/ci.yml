@@ -259,7 +259,7 @@ jobs:
 
       # El runner no trae `claude`: validate y plugin test salen como SKIP anunciado, no como verde.
       - name: test_cockpit.sh
-        run: bash kit/test/test_cockpit.sh
+        run: bash kit/mods/cockpit/test_cockpit.sh
 
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root

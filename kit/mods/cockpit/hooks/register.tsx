@@ -89,7 +89,7 @@ const sections = (doc: string) => {
   }
   return out
 }
-// The headers the CLI admits (`admitida` in kit/claude/bin/handoff; kit/test/test_cockpit.sh runs the real CLI against this list).
+// The headers the CLI admits (`admitida` in kit/claude/bin/handoff; kit/mods/cockpit/test_cockpit.sh runs the real CLI against this list).
 // Anything else is rc 2 and nothing is saved, after the fork was paid: the draft is cleaned here instead. `decisiones` and
 // `como se comprueba` count only when the state is ESTADO.md.
 const ADMITTED = ['objetivo', 'invariantes', 'paso actual', 'siguiente accion', 'comandos de verificacion', 'plan', 'pendientes', 'ficheros tocados']

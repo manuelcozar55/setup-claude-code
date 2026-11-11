@@ -99,7 +99,7 @@ function repo(
       const draft = files[TMP] ?? ''
       calls.push({ argv: e.argv, draft })
       const seq = opts.cli ?? [0]
-      // Like the real CLI (kit/test/test_cockpit.sh runs it): headers outside the template, repeated ones and a draft with
+      // Like the real CLI (kit/mods/cockpit/test_cockpit.sh runs it): headers outside the template, repeated ones and a draft with
       // no «## » are rc 2 with the header named on stderr.
       const bad = cliVerdict(draft, !!opts.estadoMd)
       if (bad) return { value: { exitCode: 2, stdout: '', stderr: bad } } as never
@@ -2113,7 +2113,7 @@ for (const code of [4, 5]) {
   })
 }
 
-// Contrato con el CLI: el mod solo manda cabeceras que el CLI admite (kit/test/test_cockpit.sh ejecuta el CLI real con estos borradores).
+// Contrato con el CLI: el mod solo manda cabeceras que el CLI admite (kit/mods/cockpit/test_cockpit.sh ejecuta el CLI real con estos borradores).
 test('contrato: una sección «## Notas» del fork no tumba el guardado: se descarta antes del CLI y el aviso la nombra', async ($, on) => {
   fork(on, NEW + '## Notas\nalgo suelto\n')
   const r = repo(on, {})

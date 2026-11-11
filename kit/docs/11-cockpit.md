@@ -75,7 +75,7 @@ $HOME/.claude/bin/handoff --desde <borrador> --raiz <raíz> --sesion <id> --json
 
 Si el binario no existe el mod lo dice con la orden de instalación (`bash kit/install.sh --apply` desde el repo setup-claude-code, que copia `handoff` y `oraculo` en `~/.claude/bin`), no llama al modelo y no hay fusión de reserva en TypeScript. Antes de llamar al modelo consulta `handoff --estado`: si otra sesión vigente tiene el estado, no hace fork (sería pagar un borrador que el CLI rechazaría con el código 5).
 
-**El mod solo manda lo que el CLI admite.** El CLI rechaza (código 2) cualquier cabecera fuera de la plantilla (por ejemplo `## Notas`) o repetida. El mod descarta esas secciones del borrador antes de llamar y lo anota en los avisos («omití la sección …»); si no queda ninguna admitida, no escribe nada y lo dice. `kit/test/test_cockpit.sh` ejecuta el CLI real con los borradores del mod y comprueba que la lista de cabeceras del mod es la del CLI.
+**El mod solo manda lo que el CLI admite.** El CLI rechaza (código 2) cualquier cabecera fuera de la plantilla (por ejemplo `## Notas`) o repetida. El mod descarta esas secciones del borrador antes de llamar y lo anota en los avisos («omití la sección …»); si no queda ninguna admitida, no escribe nada y lo dice. `kit/mods/cockpit/test_cockpit.sh` ejecuta el CLI real con los borradores del mod y comprueba que la lista de cabeceras del mod es la del CLI.
 
 Con `CLAUDE_HOME` absoluto usa su `bin/handoff`. En HOME omite `--raiz` y usa la ranura del proceso que devuelve `--estado`; nunca inventa una ruta relativa. El recibo JSON debe confirmar ruta absoluta y SHA-256. Trae además `transcript` (ruta del `.jsonl` de la sesión anterior, o `null`) y `bytes` (tamaño de lo escrito); un CLI anterior no los trae y el mod los omite. Un código de salida distinto de 0, un recibo inválido o un dueño ajeno conservan el contexto. Con código 0 y recibo válido, los avisos se muestran y permiten continuar con `/clear`. El código 5 indica dueño ajeno y no se reintenta.
 
@@ -222,7 +222,7 @@ Ver «Cómo se carga»: `claude plugin marketplace add "manuelcozar55/setup-clau
 make test-cockpit    # desde la raíz: tsc en un clon limpio + CLI real + claude plugin validate y test
 ```
 
-`make test-cockpit` (`kit/test/test_cockpit.sh`, también un job de CI) hace tres cosas:
+`make test-cockpit` (`kit/mods/cockpit/test_cockpit.sh`, también un job de CI) hace tres cosas:
 
 1. **Tipos**, sobre una copia de lo versionado (como un clon limpio). `tsconfig.json` es autocontenido y los tipos de la API del mod (2.1.311) van versionados en `types/claude-code.d.ts`; no hace falta abrir antes ninguna sesión. Necesita `tsc` (`COCKPIT_TSC`, `tsc` en el PATH o `pnpm dlx typescript@5.6.3`); sin él, un SKIP anunciado, y en CI (`COCKPIT_REQUIRE_TSC=1`) un fallo.
 2. **Contrato con el CLI real** (`kit/claude/bin/handoff`) en un HOME de usar y tirar: los borradores que pide el mod se aceptan, `## Notas` da código 2, `--estado` trae lo que el mod lee.
