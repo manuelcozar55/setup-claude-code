@@ -1,6 +1,6 @@
 ---
 name: deep-worker
-description: "Use for autonomous end-to-end implementation when scope is already clear. Executes without interruption, explores existing patterns before writing code, delivers complete working implementation. Invoke after strategist has defined scope, or for self-contained tasks: implementing a defined feature, executing a migration, writing tests for existing code, refactoring a well-understood module."
+description: "Use for autonomous end-to-end implementation when scope is already clear. Executes without interruption, explores existing patterns before writing code, delivers complete working implementation. Use for self-contained tasks: implementing a defined feature, executing a migration, writing tests for existing code, refactoring a well-understood module."
 model: sonnet
 tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
@@ -36,9 +36,9 @@ List every file to create or modify. Estimate scope. If scope is larger than exp
 
 ### 4. Verify (in order)
 ```
-1. Type check (npx tsc --noEmit / mypy / cargo check)
+1. Type check (pnpm exec tsc --noEmit / mypy / cargo check)
 2. Lint (eslint / ruff / clippy)
-3. Tests (npm test / pytest / cargo test)
+3. Tests (pnpm test / pytest / cargo test)
 4. Build if applicable
 ```
 

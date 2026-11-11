@@ -15,6 +15,30 @@ etiquetado.
 - Skill `writing-for-agents`: 0 invocaciones de Skill en todo el histórico de transcripts. `retro` ya no la invoca como primer paso. El kit pasa de 4 a 3 skills.
 - Skill `to-questionnaire`: 0 invocaciones de Skill en todo el histórico de transcripts. El kit pasa de 3 a 2 skills (`deep-change` y `retro`).
 
+## [1.10.1] - 2026-11-11
+
+Línea base y congelación: arreglos de la validación en Debian del 10-nov y de la auditoría del 11-nov. Hasta el 2026-12-09 el kit solo admite arreglos, documentación y retiradas.
+
+### Fixed
+
+- **doctor: la statusLine ya no da FAIL con `CLAUDE_HOME` fuera de `$HOME/.claude`:** la del kit nombra `$HOME/.claude/statusline-command.sh` y, en una máquina sin `~/.claude` (CI, instalación de prueba), doctor suspendía una instalación correcta. Ahora resuelve al script instalado en `CLAUDE_HOME` (caso nuevo en `test_doctor.sh`).
+- **`make test` anuncia por stderr las capas que se salta:** `test_evals.sh` sin pyyaml y `test_doc_claims.sh` sin `kit/evals/runs.jsonl` imprimen `SKIP: <suite> (<motivo>)`. El rc no cambia.
+- **Agentes (plan de consolidación, 0.4):** `pnpm` en lugar de `npx`/`npm` en `deep-worker`, `quick-checker` y `security-reviewer`; las descripciones de `strategist` y `security-reviewer` dicen cuándo usarlos, sin «always» ni «PROACTIVELY»; `code-reviewer` ejecuta la suite del proyecto antes de puntuar «Verificación», y un hallazgo de estilo es LOW y no fuerza BLOCK.
+
+### Documentation
+
+- **Congelación:** `knowledge/BACKLOG.md` (nuevo) con la regla, la plantilla de entrada y seis propuestas pospuestas hasta después del 2026-12-09; `CONTRIBUTING.md` la enuncia en «Cortar una release».
+- **`11-cockpit.md`:** `claude plugin update cockpit@setup-claude-code` tras `marketplace add …@tag` (sin él el cockpit instalado no se actualiza) y aviso de que esa orden quita `autoUpdate` de la entrada del marketplace.
+- **`ENTREGA.md`:** en una instalación nueva, `handoff --iniciar` en cada proyecto antes de la primera sesión; sin él el autosave no escribe nada.
+
+### Cifras (uso real, 2026-10-12 → 2026-11-12, 210 sesiones)
+| Cifra | Valor |
+|---|---|
+| Compactaciones por día activo | 7.3 (95 en 13 días) |
+| Frescura de nucleo.md al compactar (≤30 min) | 69.4 % (n=552) |
+| Correcciones de la persona (heurística léxica) | 32.4 % (143/441 mensajes) |
+| Falsos positivos revelados (reformulado <60 s) | 64.9 % (72/111 bloqueos) |
+
 ## [1.10.0] - 2026-11-10
 
 Oráculo de efectividad en uso real: desde esta versión el kit publica sus cifras en cada release (mejora 1 de la valoración del 2026-11-09).
@@ -2285,7 +2309,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.1...HEAD
+[1.10.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.8.1...v1.9.0

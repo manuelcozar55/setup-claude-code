@@ -5,7 +5,7 @@ ejecutar herramientas, estado recuperable entre sesiones y pruebas reproducibles
 
 [![CI de main](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/manuelcozar55/setup-claude-code/actions/workflows/ci.yml)
 
-**Entrega: 1.10.0 · cockpit: 0.8.1.** El badge muestra la CI de `main`; la evidencia
+**Entrega: 1.10.1 · cockpit: 0.8.1.** El badge muestra la CI de `main`; la evidencia
 de un paquete concreto se identifica por su commit y sus SHA-256, no por ese badge.
 
 ---
@@ -212,7 +212,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 5 agentes, 2 skills del método, el mod `cockpit`, `install.sh`, 49 suites falsables | v1.10.0, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 5 agentes, 2 skills del método, el mod `cockpit`, `install.sh`, 49 suites falsables | v1.10.1, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),

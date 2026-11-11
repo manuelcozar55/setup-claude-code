@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: Security vulnerability detection specialist. Use PROACTIVELY after writing code that handles user input, authentication, API endpoints, or sensitive data. Flags secrets, SSRF, injection, unsafe crypto, and OWASP Top 10 vulnerabilities.
+description: Security vulnerability detection specialist. Use when code that handles user input, authentication, API endpoints, or sensitive data has been written or changed. Flags secrets, SSRF, injection, unsafe crypto, and OWASP Top 10 vulnerabilities.
 tools: ["Read", "Bash", "Grep", "Glob"]
 model: sonnet
 ---
@@ -54,7 +54,7 @@ Expert security specialist focused on identifying vulnerabilities in web applica
 ## Analysis Commands
 
 ```bash
-npm audit --audit-level=high
+pnpm audit --audit-level=high
 ```
 
 ## Critical findings
