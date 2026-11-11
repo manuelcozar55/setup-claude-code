@@ -7,6 +7,10 @@ etiquetado.
 
 ## [Unreleased]
 
+### Retirado
+
+- Agente `strategist`: 0 invocaciones en 30 días y en todo el histórico; solapa con el agente nativo `Plan`. El kit pasa de 6 a 5 agentes.
+
 ## [1.10.0] - 2026-11-10
 
 Oráculo de efectividad en uso real: desde esta versión el kit publica sus cifras en cada release (mejora 1 de la valoración del 2026-11-09).
