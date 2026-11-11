@@ -50,6 +50,13 @@ cmdn_oversize "$COMMAND" && exit 0
 cmdn_parse "$COMMAND" \
   || deny "BLOCKED (fail-closed): awk no pudo normalizar el comando, asi que este guard no puede evaluarlo."
 COMMAND=$CMDN_TEXT
+# Las reglas de DENY juzgan EXECT: el texto de las ordenes sin la prosa (mensaje de commit, patron de grep, argumento de echo,
+# cuerpo de un heredoc que solo guarda texto). Las de ASK siguen sobre COMMAND: preguntar de mas es el lado seguro.
+EXECT=$CMDN_EXEC
+# El valor de `git push -o <valor>` es texto para el servidor, no un flag: `-o '-f'` no es un force push.
+if [[ $EXECT == *push* && $EXECT =~ (-o|--push-option)[[:space:]=] ]]; then
+  EXECT=$(LC_ALL=C sed -E "s/(git[^;&|]*push[^;&|]*[[:space:]](-o|--push-option)[[:space:]=]+)('[^'~\/][^']*'|\"[^\"~\/][^\"]*\"|[^[:space:];&|'\"~\/][^[:space:];&|]*)/\1_/" <<<"$EXECT")
+fi
 
 ask() {
   jq -n --arg r "$1" '{
@@ -236,17 +243,7 @@ GH_PRE='(^[[:space:]]*|[;&|({`!][[:space:]]*|\b(then|do|else)[[:space:]]+|\b(ba|
 
 DENY_RULES=(
   # ── DESTRUCTIVE FILE/DISK ──────────────────────────────────────────────────
-  '\brm\s+-[a-z]*r[a-z]*f'            "BLOCKED: rm -rf (recursive force delete)"
-  '\brm\s+-[a-z]*f[a-z]*r'            "BLOCKED: rm -fr (recursive force delete)"
-  # Formas largas: `rm --recursive --force ruta` borra lo mismo que `rm -rf` y no lleva
-  # ninguna r ni f agrupada tras un guion, asi que las dos reglas de arriba la dejaban
-  # pasar entera. Se exige recursivo Y forzado (en cualquiera de los dos ordenes, corto o
-  # largo) para no bloquear un `rm -r node_modules` ni un `rm --force fichero`.
-  # LIMITE CONOCIDO, deliberadamente no cubierto: `rm -"rf" ruta` y `F=-rf; rm $F ruta`
-  # derrotan cualquier regex de flags -- el hook ve el literal del comando, no el argv que
-  # el shell expandira. Mas regex no lo arregla; eso lo cubre la capa de permisos.
-  '\brm\b[^;&|]*\s(--recursive|-[a-z]*r[a-z]*)\b[^;&|]*\s(--force|-[a-z]*f[a-z]*)\b'  "BLOCKED: rm --recursive --force (recursive force delete)"
-  '\brm\b[^;&|]*\s(--force|-[a-z]*f[a-z]*)\b[^;&|]*\s(--recursive|-[a-z]*r[a-z]*)\b'  "BLOCKED: rm --force --recursive (recursive force delete)"
+  # `rm` se decide por OPERANDOS en token_checks (mas abajo): `rm -rf node_modules` pasa, `rm -rf ~/Documentos` no.
   '\bshred\b'                          "BLOCKED: shred (secure file destruction)"
   '\bdd\s+.*\bof=/dev/[hsv][da]'      "BLOCKED: dd write to block device"
   '\bmkfs\b'                           "BLOCKED: mkfs (format filesystem)"
@@ -289,6 +286,11 @@ DENY_RULES=(
   '=["'"'"']?(\$\(|`)\s*(curl|wget)\b[^;&]*[;&]+\s*["'"'"']?\$\{?[A-Za-z_]'  "BLOCKED: curl/wget output executed as a command (RCE)"
   # Redirigir o `tee` hacia los ficheros de arranque del shell planta codigo que corre en la proxima sesion.
   '(>>?\|?|\btee\s+(-a\s+)?)\s*["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]"'"'"']+)/\.((bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(["'"'"'[:space:];&|)<>}]|$)|(bashrc|profile|zshrc)\.d/)'  "BLOCKED: write to a shell startup file (persistence)"
+  # Lo mismo con las demas formas de escribir ahi: `sed -i`/`perl -i` sobre el fichero, `cp`/`mv`/`ln`/`install` con el
+  # fichero de destino (ultimo operando) y `dd of=`.
+  '\b(sed|perl)\b[^;&|]*[[:space:]](-[A-Za-z]*i|--in-place)\b[^;&|]*(~|\$\{?HOME\}?|/root|/home/[^/[:space:]]+)/\.(bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(["'"'"'[:space:];&|)<>}]|$)'  "BLOCKED: in-place edit of a shell startup file (persistence)"
+  '\b(cp|mv|ln|install)\b[^;&|]*[[:space:]]["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]]+)/\.(bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)["'"'"']?[[:space:]]*([;&|)]|$)'  "BLOCKED: copy/move over a shell startup file (persistence)"
+  '\bdd\b[^;&|]*\bof=["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]]+)/\.(bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)'  "BLOCKED: dd over a shell startup file (persistence)"
   '\bnc\s+-[a-z]*l'                   "BLOCKED: netcat listener (reverse shell)"
   '/dev/tcp/'                         "BLOCKED: /dev/tcp (reverse shell)"
   '/dev/udp/'                         "BLOCKED: /dev/udp (reverse shell)"
@@ -378,18 +380,17 @@ ASK_RULES=(
   '\bpip\s+install\s+https?://' "Confirm: pip install from URL — verify source before installing"
 )
 
-# --no-verify (y su forma corta `commit -n`, tambien agrupada: `-nm`) se mira SIN los tramos
-# entre comillas: en el mensaje (`git commit -m "skip --no-verify docs"`) es texto, no un flag.
+# --no-verify (y su forma corta `commit -n`, tambien agrupada: `-nm`) se mira sobre EXECT: el mensaje de un commit
+# (`git commit -m "skip --no-verify docs"`) ya no esta ahi, es texto, no un flag.
 if [[ $COMMAND == *git* ]]; then
-  sed -E "s/\"[^\"]*\"|'[^']*'//g" <<<"$COMMAND" \
-    | LC_ALL=C grep -qiE '\bgit\b[^;&|]*\b(commit|push)\b[^;&|]*--no-veri|\bgit\b[^;&|]*\bcommit\b[^;&|]*\s-[a-z]*n' \
+  LC_ALL=C grep -qiE '\bgit\b[^;&|]*\b(commit|push)\b[^;&|]*--no-veri|\bgit\b[^;&|]*\bcommit\b[^;&|]*\s-[a-z]*n' <<<"$EXECT" \
     && deny "BLOCKED: --no-verify salta los hooks de git; arregla el hook que falla"
 fi
 
 if [[ $COMMAND == *git* ]]; then
-  sed -E "s/[\"']//g" <<<"$COMMAND" | LC_ALL=C grep -qiE '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*core\.hookspath' \
+  LC_ALL=C grep -qiE '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*core\.hookspath' <<<"$EXECT" \
     && deny "BLOCKED: git -c core.hooksPath (skips the repo's git hooks)"
-  sed -E "s/[\"']//g" <<<"$COMMAND" | LC_ALL=C grep -qiE '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*alias\.' \
+  LC_ALL=C grep -qiE '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*alias\.' <<<"$EXECT" \
     && deny "BLOCKED: git -c alias.* (redefines a git subcommand)"
 fi
 
@@ -506,6 +507,98 @@ if [[ $COMMAND == *git* && $COMMAND == *push* && ( $COMMAND == *-d* || $COMMAND 
   (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"
 fi
 
+# ── Reglas por token ─────────────────────────────────────────────────────────────────────────────
+# Lo que una regex sobre el texto no puede decidir y un guard que mira la ORDEN si: el borrado recursivo se juzga por sus
+# OPERANDOS (la ruta, no la palabra `rm -rf`), y una palabra que el shell resolvera despues (`$VAR`, `$(...)`) en un sitio
+# donde decide el peligro (subcomando de git, refspec, operando de rm/reset/clean, orden que recibe un pipe) se PREGUNTA:
+# el hook ve texto, no el valor final. Lo que es seguro de verdad pasa; lo que es peligroso de verdad se deniega.
+TOK_ASK=''
+tok_ask() { [[ -n $TOK_ASK ]] || TOK_ASK=$1; }
+token_checks() {
+  local seg a i r f dd skip tgt w nxt cdsens=0
+  local -a T wrote=()
+  for seg in "${CMDN_SEGS[@]}"; do
+    cmdn_fields "$seg"
+    # Una orden que recibe un pipe y que no se puede leer (`curl ... | $X`, `| $(which bash)`): puede ser un shell.
+    if [[ $T_SEP == *'|'* && ${T[1]:-} == '$'* ]] || [[ $T_SEP == *'|`' ]]; then
+      tok_ask "Confirm: la orden que recibe el pipe sale de una variable o una sustitucion (\$X, \$(...)), asi que el guard no puede saber si es un shell que ejecuta lo descargado. Escribe el nombre del interprete a la vista (bash, sh) o descarga a un fichero y revisalo."
+    fi
+    case ${T[1]:-} in
+      cd) cdsens=0; cmdn_sensitive_operand "${T[2]:-}" && ! cmdn_safe_operand "${T[2]:-}" && cdsens=1 ;;
+      rm)
+        r=0; f=0; dd=0
+        for a in "${T[@]:2}"; do
+          if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
+          if (( ! dd )) && [[ $a == -* ]]; then
+            case $a in --recursive) r=1 ;; --force) f=1 ;; --*) ;; *) [[ $a == -*[rR]* ]] && r=1; [[ $a == -*f* ]] && f=1 ;; esac
+            continue
+          fi
+          if cmdn_sensitive_operand "$a"; then
+            cmdn_safe_operand "$a" && continue
+            (( r && f )) && deny "BLOCKED: rm -rf (recursive force delete) sobre una ruta sensible ($a). Un directorio de build conocido (node_modules, dist, build...) o una ruta relativa del proyecto si se puede borrar. Si de verdad quieres borrar esa ruta, ejecutalo tu con ! en la sesion."
+          elif (( r || f )) && cmdn_opaque_operand "$a"; then
+            tok_ask "Confirm: rm con un operando que el guard no puede resolver ($a): una variable o sustitucion puede apuntar a una ruta que no es de build. Escribe la ruta a la vista (rm -rf build)."
+          elif (( r && f && cdsens )) && cmdn_cwd_operand "$a"; then
+            deny "BLOCKED: rm -rf $a tras un cd a una ruta sensible: vacia ese directorio. Si de verdad quieres hacerlo, ejecutalo tu con ! en la sesion."
+          elif (( r )) && cmdn_cwd_operand "$a"; then
+            tok_ask "Confirm: rm -r sobre $a vacia el directorio de trabajo (o el repo entero). Borra rutas concretas (rm -rf build dist)."
+          fi
+        done ;;
+      git)
+        if [[ ${T[2]:-} == '$'* || ${T[2]:-} == *'`'* ]]; then
+          tok_ask "Confirm: el subcomando de git sale de una variable o una sustitucion (git \$X): el guard no puede saber si es push, reset o clean. Escribe el subcomando a la vista."
+        fi
+        case ${T[2]:-} in
+          push|reset|clean)
+            skip=0
+            for a in "${T[@]:3}"; do
+              if (( skip )); then skip=0; continue; fi
+              [[ $a == -o || $a == --push-option || $a == --repo ]] && { skip=1; continue; }
+              if [[ $a != -* ]] && cmdn_opaque_operand "$a"; then
+                tok_ask "Confirm: git ${T[2]} con un operando que sale de una variable o sustitucion ($a): el guard no puede saber si apunta a main, a un --hard o a un clean forzado. Escribe la rama o la opcion a la vista."
+              elif [[ ${T[2]} != push && $a == -* ]] && cmdn_opaque_operand "$a"; then
+                tok_ask "Confirm: git ${T[2]} con una opcion que sale de una variable ($a): el guard no puede saber si es --hard o --force. Escribe la opcion a la vista."
+              fi
+            done ;;
+          config)
+            for a in "${T[@]:3}"; do
+              case ${a,,} in
+                alias.*|--*alias.*) tok_ask "Confirm: git config alias.* redefine un subcomando de git (o crea uno que empuje a main): los guards no ven lo que hace un alias. Ejecuta tu la orden con ! si es lo que quieres." ;;
+              esac
+            done ;;
+        esac ;;
+    esac
+    # Un fichero que el propio comando escribe y luego ejecuta: el guard solo ve la orden de arriba, no el contenido.
+    nxt=0
+    for a in "${T[@]:2}"; do
+      tgt=''
+      if (( nxt )); then tgt=$a; nxt=0
+      elif [[ $a =~ ^[0-9]*\>\>?\|?$ ]]; then nxt=1
+      elif [[ $a =~ ^[0-9]*\>\>?\|?([^\&\>\|].*)$ ]]; then tgt=${BASH_REMATCH[1]}
+      elif [[ ${T[1]} == tee && $a != -* ]]; then tgt=$a
+      fi
+      [[ -n $tgt && $tgt != /dev/* ]] && wrote+=("$tgt")
+    done
+    if (( ${#wrote[@]} )); then
+      case ${T[1]:-} in
+        sh|bash|zsh|dash|ksh|ash|source|.) w=1 ;;
+        *) w='' ;;
+      esac
+      for tgt in "${wrote[@]}"; do
+        # `bash x.sh`, `source x.sh`, `./x.sh`: el segmento que lo ejecuta es posterior al que lo escribio.
+        if [[ -n $w ]]; then
+          for a in "${T[@]:2}"; do
+            [[ $a == "$tgt" ]] && tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."
+          done
+        elif [[ ${T[1]:-} == "${tgt##*/}" && ${tgt##*/} == *.* ]]; then
+          tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."
+        fi
+      done
+    fi
+  done
+}
+if [[ $COMMAND == *rm* || $COMMAND == *git* || $COMMAND == *'|'* || $COMMAND == *'>'* ]]; then token_checks; fi
+
 # LC_ALL=C en los grep: con UTF-8 la union de patrones deja de ir por el automata y recorre el
 # comando con retroceso, cuadratico en una linea larga (32 KB = 2,8 s, 64 KB = 13 s de CPU, y el
 # timeout del hook corre en abierto). Los patrones son ASCII; en C solo cambia que un byte no
@@ -516,12 +609,15 @@ for ((i = 0; i < ${#ASK_RULES[@]}; i += 2)); do UNION+="|${ASK_RULES[i]}"; done
 # `|| exit 0` confundia "no ha emparejado" (grep rc=1) con "la regex no compila" (grep rc=2):
 # un solo patron mal formado en la tabla convertia TODO el blocklist en un permiso silencioso,
 # porque el error de grep sale por stderr y con exit 0 no se muestra. Se distinguen los dos.
-echo "$COMMAND" | LC_ALL=C grep -qiE "${UNION#|}"
+LC_ALL=C grep -qiE "${UNION#|}" <<<"$COMMAND"$'\n'"$EXECT"
 rc_union=$?
 if [ "$rc_union" -ge 2 ]; then
   deny "BLOCKED: el blocklist no compila (grep rc=$rc_union); se deniega por seguridad"
 fi
-[ "$rc_union" -eq 0 ] || exit 0
+if [ "$rc_union" -ne 0 ]; then
+  [[ -n $TOK_ASK ]] && ask "$TOK_ASK"
+  exit 0
+fi
 
 # writes_text_to_file: el comando parece ESCRIBIR texto (un heredoc, o un echo/printf con
 # redireccion), no ejecutar. El cuerpo sigue juzgandose como en main (no se vacia), pero si lo
@@ -532,23 +628,9 @@ writes_text_to_file() {
   return 1
 }
 
-# Las dos reglas de force push se juzgan sin el argumento de -m/--message de un commit: ahi es texto
-# (`git commit -m "nunca git push --force"`). Solo se quita si nada del comando ejecuta texto: ni `$(`
-# ni backtick (en el mensaje se ejecutan), ni un interprete, `eval`, `ssh`, `xargs`, `source`, `exec` o
-# `<(` fuera de ese argumento (`bash -c "..."` se sigue leyendo entero). Si algo de eso aparece, el
-# literal se juzga como antes.
-FORCE_SCAN=$COMMAND
-if [[ $COMMAND == *commit* && $COMMAND != *"\$("* &&$COMMAND != *\`* ]]; then
-  nomsg=$(sed -E "s/(-[A-Za-z]*m|--message)[[:space:]=]*(\"[^\"]*\"|'[^']*')//g" <<<"$COMMAND")
-  LC_ALL=C grep -qiE '(^|[^[:alnum:]_-])((ba|z|da|k|c|fi)?sh|eval|ssh|xargs|source|exec|python[0-9.]*|perl|ruby|node|php)([^[:alnum:]_]|$)|<\(' <<<"$nomsg" \
-    || FORCE_SCAN=$nomsg
-fi
-
 SAFE_FETCH=''
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do
-  rule_text=$COMMAND
-  [[ ${DENY_RULES[i + 1]} == "BLOCKED: git push --force" || ${DENY_RULES[i + 1]} == "BLOCKED: git push -f / -uf (force push)" ]] && rule_text=$FORCE_SCAN
-  echo "$rule_text" | LC_ALL=C grep -qiE "${DENY_RULES[i]}" || continue
+  LC_ALL=C grep -qiE "${DENY_RULES[i]}" <<<"$EXECT" || continue
   if [[ ${DENY_RULES[i]} == "$RCE_CURL" || ${DENY_RULES[i]} == "$RCE_WGET" ]]; then
     [[ -z $SAFE_FETCH ]] && { if fetch_safe_reader "$COMMAND"; then SAFE_FETCH=yes; else SAFE_FETCH=no; fi; }
     [[ $SAFE_FETCH == yes ]] && continue
@@ -562,7 +644,8 @@ for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do
   deny "$msg"
 done
 for ((i = 0; i < ${#ASK_RULES[@]}; i += 2)); do
-  echo "$COMMAND" | LC_ALL=C grep -qiE "${ASK_RULES[i]}" && ask "${ASK_RULES[i + 1]}"
+  LC_ALL=C grep -qiE "${ASK_RULES[i]}" <<<"$COMMAND" && ask "${ASK_RULES[i + 1]}"
 done
+[[ -n $TOK_ASK ]] && ask "$TOK_ASK"
 
 exit 0

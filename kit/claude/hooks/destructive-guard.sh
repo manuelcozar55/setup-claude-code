@@ -38,14 +38,13 @@ SAFE_DIRS="${CC_SAFE_DELETE_DIRS:-node_modules:dist:build:.cache:__pycache__:cov
 # shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit." >&2; exit 2; }
 cmdn_oversize "$COMMAND" && exit 0
-# El cuerpo de un `cat > fichero <<'FIN'` (delimitador entrecomillado, sin pipe) es texto, no una orden: la prosa de un
-# informe que cita `rm -rf` o `find -delete` no se evalua. Solo este guard lo salta (los demas ven el cuerpo entero).
-CMDN_SKIP_HEREDOC=1
+# Los Checks 1-3 miran el texto de las ORDENES (CMDN_EXEC): el mensaje de un commit, el patron de un grep, el argumento de un
+# echo y el cuerpo de un heredoc que solo guarda texto no son ordenes y ya no disparan el guard.
 if ! cmdn_parse "$COMMAND"; then
   echo "BLOCKED (fail-closed): awk no pudo normalizar el comando; destructive-guard no puede evaluarlo." >&2
   exit 2
 fi
-COMMAND_SCAN=$CMDN_TEXT
+COMMAND_SCAN=$CMDN_EXEC
 
 # Check 1: rm -rf on sensitive paths. ~ and .. are matched even when followed by
 # more text (previously end-anchored, so a trailing token defeated detection).
@@ -282,24 +281,6 @@ fi
 # Los checks de arriba siguen mirando el texto porque su patron no esta anclado y por eso ven
 # tambien lo que va dentro de un `bash -c "..."`; este cubre las grafias que sacaban el comando del
 # patron: `git -C dir reset --hard`, `sudo git clean --force -d`, `rm -rv`, `rm -R`, `rm -rf --`.
-# shellcheck disable=SC2088,SC2016  # `~` y `$HOME` son el TEXTO del operando, no se expanden.
-sensitive_operand() {
-  case $1 in
-    /|/[!a-z]*|/home*|/etc*|/usr*|/var*|/root*|/boot*|'~'|'~/'*|..|../*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*|*/..|*/../*) return 0 ;;
-  esac
-  return 1
-}
-safe_operand() {
-  local d p tail
-  case $1 in /home*|/etc*|/usr*|/var*|/root*|/boot*|/lib*|/bin*|/sbin*) return 1 ;; esac
-  p="/$1/"
-  for d in "${DIRS[@]}"; do
-    [[ $p == *"/$d/"* ]] || continue
-    tail="/${p#*"/$d/"}"
-    [[ $tail == *"/../"* ]] || return 0
-  done
-  return 1
-}
 IFS=':' read -ra DIRS <<< "$SAFE_DIRS"
 for seg in "${CMDN_SEGS[@]}"; do
   [[ $seg == *rm* || $seg == *git* ]] || continue
@@ -310,7 +291,7 @@ for seg in "${CMDN_SEGS[@]}"; do
       for a in "${T[@]:2}"; do
         if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
         if (( ! dd )) && [[ $a == -* ]]; then continue; fi
-        if sensitive_operand "$a" && ! safe_operand "$a"; then
+        if cmdn_sensitive_operand "$a" && ! cmdn_safe_operand "$a"; then
           log_block "rm on sensitive path"
           echo "BLOCKED: rm on sensitive path (WSL2 risk: NTFS junctions can delete beyond target)." >&2
           echo "Command: $COMMAND" >&2

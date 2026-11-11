@@ -81,7 +81,7 @@ scan() {
   local -a T segs ops targets gopts
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
-  [[ $seg == *push* || $seg == "$CMDN_US"cd"$CMDN_US"* ]] || continue
+  [[ $seg == *push* || $seg == *"$CMDN_US"cd"$CMDN_US"* ]] || continue
   [[ $seg == "$lastseg" && $CMDN_CWD == "$lastcwd" ]] && continue
   cmdn_fields "$seg"
   cmdn_track_cd

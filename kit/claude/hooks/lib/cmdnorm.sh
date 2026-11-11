@@ -28,6 +28,7 @@
 CMDN_US=$'\037'
 CMDN_GS=$'\035'
 CMDN_RS=$'\036'
+CMDN_FS=$'\034'
 
 # shellcheck disable=SC2016  # el programa awk va literal: nada se expande en bash.
 CMDN_AWK='
@@ -43,7 +44,131 @@ function argopt(b, o) {
   return 0
 }
 function gitopt(o) { return (o == "-C" || o == "-c" || o == "--git-dir" || o == "--work-tree" || o == "--namespace" || o == "--super-prefix" || o == "--config-env" || o == "--attr-source") }
-function emit(   k, w, b, o, g, line, j) {
+function clean_opt(t) { return (t ~ /^-[A-Za-z0-9]+$/ || t ~ /^--[A-Za-z0-9][A-Za-z0-9-]*$/ || t == "--") }
+function redir(t) { return (t ~ /^[0-9]*[<>]/) }
+function redir_alone(t) { return (t ~ /^[0-9]*(>>?[|]?|<<?)$/) }
+function push(body) { qn++; queue[qn] = body }
+
+# Palabra delimitadora de un heredoc que empieza en p (tras `<<`): deja HDQ (entrecomillada o con barra) y HDEND (indice tras ella).
+function hdword(s, p,   n, q, w, ch) {
+  n = length(s); w = ""; HDQ = 0
+  if (substr(s, p, 1) == "-") p++
+  while (substr(s, p, 1) == " " || substr(s, p, 1) == "\t") p++
+  ch = substr(s, p, 1)
+  if (ch == "\047" || ch == "\"") {
+    HDQ = 1; q = ch; p++
+    while (p <= n && substr(s, p, 1) != q) { w = w substr(s, p, 1); p++ }
+    p++
+  } else {
+    if (ch == "\\") { HDQ = 1; p++ }
+    while (p <= n) {
+      ch = substr(s, p, 1)
+      if (ch == " " || ch == "\t" || ch == "\n" || ch == ";" || ch == "|" || ch == "&" || ch == "<" || ch == ">" || ch == "(" || ch == ")") break
+      w = w ch; p++
+    }
+  }
+  HDEND = p
+  return w
+}
+
+# Indice del `)` que cierra un `$(` cuyo cuerpo empieza en i (n+1 si no cierra: el resto es el cuerpo). Respeta comillas,
+# `$(` anidados, parentesis de subshell y heredocs (el cuerpo de un heredoc puede llevar `)` sueltos).
+function subend(s, i,   n, d, c, j, hw, e, p, rest) {
+  n = length(s); d = 0; hw = ""
+  for (j = i; j <= n; j++) {
+    c = substr(s, j, 1)
+    if (c == "\\") { j++; continue }
+    if (c == "\047") { e = index(substr(s, j + 1), "\047"); if (!e) return n + 1; j += e; continue }
+    if (c == "\"") {
+      for (j++; j <= n; j++) {
+        c = substr(s, j, 1)
+        if (c == "\\") { j++; continue }
+        if (c == "\"") break
+        if (c == "$" && substr(s, j + 1, 1) == "(") j = subend(s, j + 2)
+      }
+      continue
+    }
+    if (c == "`") { e = index(substr(s, j + 1), "`"); if (!e) return n + 1; j += e; continue }
+    if (c == "$" && substr(s, j + 1, 1) == "(") { j = subend(s, j + 2); continue }
+    if (c == "(") { d++; continue }
+    if (c == ")") { if (d == 0) return j; d--; continue }
+    if (c == "<" && substr(s, j + 1, 1) == "<" && substr(s, j + 2, 1) != "<" && substr(s, j - 1, 1) != "<") {
+      hw = hdword(s, j + 2)
+      if (hw != "") { j = HDEND - 1 }
+      continue
+    }
+    if (c == "\n" && hw != "") {
+      rest = substr(s, j); p = index(rest, "\n" hw "\n")
+      if (p) j = j + p - 1 + length(hw)
+      hw = ""
+    }
+  }
+  return n + 1
+}
+
+# Cuerpos de `$( )` y de comillas invertidas dentro de un texto que el shell expande (comillas dobles, heredoc sin comillas):
+# se encolan para analizarlos como ordenes.
+function scansubs(s,   n, j, c, e) {
+  n = length(s)
+  for (j = 1; j <= n; j++) {
+    c = substr(s, j, 1)
+    if (c == "\\") { j++; continue }
+    if (c == "$" && substr(s, j + 1, 1) == "(") { e = subend(s, j + 2); push(substr(s, j + 2, e - (j + 2))); j = e; continue }
+    if (c == "`") { e = index(substr(s, j + 1), "`"); if (!e) e = n - j + 1; push(substr(s, j + 1, e - 1)); j += e; continue }
+  }
+}
+
+# Los argumentos que son PROSA (un mensaje de commit, el patron de un grep, el texto de un echo) no son ordenes. Devuelve
+# los argumentos del comando simple que empieza en toks[k] con esa prosa quitada. mode 0: solo lo que NUNCA se ejecuta
+# (el valor de -m de git, el cuerpo de un gh pr create); mode 1: ademas los argumentos de echo, printf, grep, sed...
+function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
+  out = ""; drop = 0
+  if (b == "git") {
+    sj = k + 1
+    while (sj <= nt && toks[sj] ~ /^-/) sj += (gitopt(toks[sj]) && sj < nt) ? 2 : 1
+    subc = toks[sj]
+    for (j = k + 1; j <= nt; j++) {
+      t = toks[j]
+      if (j <= sj) { out = out " " t; continue }
+      if (subc in msgsub) {
+        if (drop) { drop = 0; continue }
+        if (t ~ /^-[A-Za-z]*m$/ || t == "--message") { out = out " " t; drop = 1; continue }
+        if (t ~ /^--message=/) { out = out " --message"; continue }
+        if (match(t, /^-[A-Za-z]*m/)) { out = out " " substr(t, 1, RLENGTH); continue }
+      } else if (subc in dispsub) {
+        if (clean_opt(t) || redir(t)) out = out " " t
+        continue
+      }
+      out = out " " t
+    }
+    return out
+  }
+  if (b == "gh") {
+    for (j = k + 1; j <= nt; j++) {
+      t = toks[j]
+      if (drop) { drop = 0; continue }
+      if (t == "-b" || t == "--body" || t == "-t" || t == "--title" || t == "-m" || t == "--message" || t == "--notes" || t == "--description") { out = out " " t; drop = 1; continue }
+      if (t ~ /^--(body|title|message|notes|description)=/) { sub(/=.*/, "", t) }
+      out = out " " t
+    }
+    return out
+  }
+  if (mode == 1 && (b in prose)) {
+    keepnext = 0
+    for (j = k + 1; j <= nt; j++) {
+      t = toks[j]
+      if (keepnext) { keepnext = 0; out = out " " t; continue }
+      if (redir(t)) { out = out " " t; if (redir_alone(t)) keepnext = 1; continue }
+      if (b == "sed" || b == "awk" || b == "gawk" || b == "mawk" || b == "nawk") { if (t !~ /[ \t\n]/) out = out " " t; continue }
+      if (clean_opt(t)) out = out " " t
+    }
+    return out
+  }
+  for (j = k + 1; j <= nt; j++) out = out " " toks[j]
+  return out
+}
+
+function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl) {
   k = 1
   while (k <= nt) {
     w = toks[k]; b = base(w)
@@ -61,8 +186,25 @@ function emit(   k, w, b, o, g, line, j) {
     }
     break
   }
-  if (k > nt) return
-  b = base(toks[k]); g = ""; k++
+  kd = (forceS || subdepth > 0 || btick) ? "S" : "P"
+  for (j = 1; j <= nt; j++) gsub(/\n/, " ", toks[j])
+  nseg++
+  sepn[nseg] = pend; pend = ""
+  pre = ""
+  for (j = 1; j < k && j <= nt; j++) pre = pre (pre == "" ? "" : " ") toks[j]
+  segline[nseg] = ""; segcmd[nseg] = ""; segshell[nseg] = 0; segpsh[nseg] = 0
+  if (k > nt) { exA[nseg] = pre; exB[nseg] = pre; return }
+  b = base(toks[k]); g = ""
+  exA[nseg] = pre (pre == "" ? "" : " ") toks[k] render(k, b, 0)
+  exB[nseg] = (kd == "S") ? exA[nseg] : pre (pre == "" ? "" : " ") toks[k] render(k, b, 1)
+  segcmd[nseg] = b
+  # Un comando simple `shell [opciones sin -c]` lee su programa de la entrada; ssh, xargs y `. /dev/stdin` tambien lo ejecutan.
+  shl = (b in shells) || b == "ssh"
+  ok = 1
+  for (j = k + 1; j <= nt; j++) { a = toks[j]; if (b in shells) { if (!(a == "-" || (a ~ /^-/ && a !~ /^-.*c/))) ok = 0 } if (a in shells) shl = 1 }
+  psh = ((b in shells) && ok) || b == "ssh" || b == "xargs" || ((b == "source" || b == ".") && toks[k + 1] == "/dev/stdin")
+  segshell[nseg] = shl; segpsh[nseg] = psh
+  k++
   if (b == "git") {
     while (k <= nt && toks[k] ~ /^-/) {
       o = toks[k]
@@ -70,13 +212,55 @@ function emit(   k, w, b, o, g, line, j) {
       else { g = g (g == "" ? "" : GS) o; k++ }
     }
   }
-  line = g US b
-  for (j = k; j <= nt; j++) { w = toks[j]; gsub(/\n/, " ", w); line = line US w }
-  segs = segs line "\n"
+  line = kd sepn[nseg] FSEP g US b
+  for (j = k; j <= nt; j++) line = line US toks[j]
+  segline[nseg] = line
 }
 function endseg() { endtok(); if (nt > 0) emit(); nt = 0 }
-function parse(s,   n, i, j, k, p, rest, skiphd, c, d, nx, q, start, closed, pv) {
-  txt = ""; segs = ""; nt = 0; tok = ""; have = 0; openq = 0; hdw = ""; hdn = 0; hdbad = 0
+
+# Cuerpos de los heredocs pendientes de la linea que acaba de cerrarse. Un cuerpo es DATO (se salta) salvo que lo consuma un
+# shell, el segmento siguiente por pipe sea un shell, o sea un interprete y el codigo ejecute algo; sin delimitador de cierre
+# se trata como ordenes (falla cerrado). Si el delimitador no va entrecomillado, los `$( )` del cuerpo si se expanden: se encolan.
+function heredocs(s, i, n,   h, o, m, body, rest, p, e, w, isdata, bs, lt, L) {
+  for (h = 1; h <= hdn; h++) {
+    w = hdw[h]; o = hdo[h]
+    rest = substr(s, i - 1)
+    if (hddash[h]) {
+      e = 0; p = i
+      while (p <= n) {
+        m = index(substr(s, p), "\n"); lt = (m ? substr(s, p, m - 1) : substr(s, p)); L = length(lt)
+        sub(/^\t+/, "", lt)
+        if (lt == w) { e = p + L - 1; break }
+        if (!m) break
+        p += m
+      }
+      if (!e) return i
+      bs = p
+    } else {
+      p = index(rest, "\n" w "\n")
+      if (p) { bs = i - 1 + p; e = i - 2 + p + length(w) }
+      else if (substr(rest, length(rest) - length(w)) == "\n" w) { bs = n - length(w) + 1; e = n }
+      else return i
+    }
+    body = substr(s, i, bs - i)
+    isdata = 1
+    if (o <= nseg && segshell[o]) isdata = 0
+    for (m = o + 1; m <= nseg; m++) if (segpsh[m]) isdata = 0
+    # Un cuerpo que se guarda en un fichero y se ejecuta en la misma orden (`cat > a.sh <<EOF && bash a.sh`) es codigo.
+    for (m = o + 1; m <= nseg; m++) if ((segcmd[m] in shells) || segcmd[m] == "source" || segcmd[m] == "." || segcmd[m] ~ /^\.\//) isdata = 0
+    if (isdata && o <= nseg && (segcmd[o] in interps) && body ~ /(system|popen|subprocess|exec)/) isdata = 0
+    if (!isdata) return i
+    if (!hdq[h]) scansubs(body)
+    txt = txt substr(s, i, e - i + 1)
+    i = e + 1
+  }
+  return i
+}
+
+function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e, w) {
+  txt = ""; nt = 0; tok = ""; have = 0; openq = 0; hdn = 0; subdepth = 0; btick = 0
+  pend = ismain ? "" : ";"
+  forceS = !ismain
   n = length(s); i = 1
   while (i <= n) {
     c = substr(s, i, 1)
@@ -107,6 +291,18 @@ function parse(s,   n, i, j, k, p, rest, skiphd, c, d, nx, q, start, closed, pv)
           if (nx == "\n") { i += 2; continue }
           if (nx == "\"" || nx == "\\" || nx == "$" || nx == "`") { tok = tok nx; txt = txt d nx; i += 2; continue }
         }
+        if (q == "\"" && d == "$" && substr(s, i + 1, 1) == "(") {
+          # Sustitucion dentro de comillas dobles: el shell la ejecuta. Se copia entera al token y su cuerpo se encola.
+          e = subend(s, i + 2)
+          push(substr(s, i + 2, e - (i + 2)))
+          w = substr(s, i, e - i + 1); tok = tok w; txt = txt w; i = e + 1; continue
+        }
+        if (q == "\"" && d == "`") {
+          e = index(substr(s, i + 1), "`")
+          if (!e) e = n - i + 1
+          push(substr(s, i + 1, e - 1))
+          w = substr(s, i, e + 1); tok = tok w; txt = txt w; i += e + 1; continue
+        }
         tok = tok d; txt = txt d; i++
       }
       if (!closed) { openq = start; return }
@@ -117,51 +313,81 @@ function parse(s,   n, i, j, k, p, rest, skiphd, c, d, nx, q, start, closed, pv)
       continue
     }
     if (c == " " || c == "\t") { endtok(); txt = txt c; i++; continue }
-    if (NOHD && c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<" && substr(s, i + 2, 1) != "-" && substr(s, i - 1, 1) != "<") {
-      # Heredoc con delimitador ENTRECOMILLADO (sin expansion): se anota para saltar su cuerpo al llegar al salto de linea.
-      hdn++; hdw = ""
-      for (j = i + 2; substr(s, j, 1) == " "; j++) ;
-      nx = substr(s, j, 1)
-      if (nx == "\047" || nx == "\"") { for (k = j + 1; k <= n && substr(s, k, 1) != nx; k++) hdw = hdw substr(s, k, 1) }
-      if (hdw !~ /^[A-Za-z_][A-Za-z0-9_]*$/) hdw = ""
+    if (c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<" && substr(s, i - 1, 1) != "<") {
+      w = hdword(s, i + 2)
+      if (w != "") { hdn++; hdw[hdn] = w; hdq[hdn] = HDQ; hddash[hdn] = (substr(s, i + 2, 1) == "-"); hdo[hdn] = nseg + 1 }
     }
     if (c == "\n") {
-      endtok(); skiphd = 0
-      if (hdw != "" && hdn == 1 && !hdbad) {
-        for (k = 1; k <= nt; k++) if (toks[k] ~ /^[0-9]*>>?[^&]/ || (toks[k] ~ /^[0-9]*>>?$/ && k < nt)) skiphd = 1
-        if (skiphd && base(toks[1]) != "cat") skiphd = 0
-      }
-      endseg(); txt = txt c; i++
-      if (skiphd) {
-        rest = substr(s, i - 1); p = index(rest, "\n" hdw "\n")
-        if (p) i = i - 1 + p + length(hdw)
-        else if (substr(rest, length(rest) - length(hdw)) == "\n" hdw) i = n + 1
-      }
-      hdw = ""; hdn = 0; hdbad = 0
+      endtok(); endseg(); txt = txt c; i++
+      if (pend !~ /;$/) pend = pend ";"
+      if (hdn > 0) { i = heredocs(s, i, n); hdn = 0 }
       continue
     }
-    if (c == ";" || c == "|" || c == "(" || c == ")" || c == "`") { hdbad = 1; endseg(); txt = txt c; i++; continue }
+    if (c == ";" || c == "|" || c == "(" || c == ")" || c == "`") {
+      endseg(); txt = txt c; i++
+      if (c == "(") subdepth++
+      if (c == ")" && subdepth > 0) subdepth--
+      if (c == "`") btick = !btick
+      pend = pend c
+      continue
+    }
     if (c == "&") {
       pv = substr(s, i - 1, 1); nx = substr(s, i + 1, 1)
       if (pv == ">" || pv == "<" || nx == ">") { tok = tok c; have = 1 }
-      else { hdbad = 1; endseg() }
+      else { endseg(); pend = pend c }
       txt = txt c; i++; continue
     }
     tok = tok c; have = 1; txt = txt c; i++
   }
   endseg()
 }
+# Una pasada por texto: el comando de la persona y, encolados, los cuerpos de sus sustituciones.
+function run(s, ismain,   t, b0, q0) {
+  b0 = nseg; q0 = qn
+  delete skip
+  for (t = 0; t < 400; t++) {
+    nseg = b0; qn = q0
+    parse(s, ismain)
+    if (!openq) break
+    skip[openq] = 1
+  }
+  if (openq) {
+    nseg = b0; qn = q0
+    if (ismain) { txt = s; unparsed = 1 }
+    else { nseg++; sepn[nseg] = ";"; exA[nseg] = s; exB[nseg] = s; segline[nseg] = ""; segcmd[nseg] = ""; segshell[nseg] = 0; segpsh[nseg] = 0 }
+  }
+  if (ismain) { maintxt = txt; mainlast = nseg; maintail = pend; gsub(/;/, "", maintail) }
+}
 BEGIN {
-  RS = "\001"; US = "\037"; GS = "\035"
+  RS = "\001"; US = "\037"; GS = "\035"; FSEP = "\034"
   split("sudo doas env command nice nohup time exec builtin stdbuf ionice setsid timeout", arr, " "); for (x in arr) wrap[arr[x]] = 1
   split("{ ! then do else elif if while until", arr, " "); for (x in arr) ctl[arr[x]] = 1
+  split("sh bash zsh dash ksh ash fish mksh ksh93", arr, " "); for (x in arr) shells[arr[x]] = 1
+  split("python python2 python3 perl ruby node nodejs php lua deno bun Rscript tclsh pwsh", arr, " "); for (x in arr) interps[arr[x]] = 1
+  split("echo printf grep egrep fgrep rg ag ack zgrep sed awk gawk mawk nawk man type which test [", arr, " "); for (x in arr) prose[arr[x]] = 1
+  split("commit tag stash merge notes revert", arr, " "); for (x in arr) msgsub[arr[x]] = 1
+  split("log show diff grep blame shortlog rev-list", arr, " "); for (x in arr) dispsub[arr[x]] = 1
 }
 { src = src $0 RS }
 END {
   sub(/\001$/, "", src)
-  for (t = 0; t < 400; t++) { parse(src); if (!openq) break; skip[openq] = 1 }
-  if (openq) { txt = src; segs = "" }
-  printf "%s\036%s", txt, segs
+  nseg = 0; qn = 0; qi = 0; unparsed = 0
+  run(src, 1)
+  while (qi < qn && qi < 200 && !unparsed) { qi++; run(queue[qi], 0) }
+  if (unparsed) { ex = src; segs = "" }
+  else {
+    psh = 0
+    for (m = 1; m <= nseg; m++) if (segpsh[m]) psh = 1
+    ex = ""; segs = ""
+    for (m = 1; m <= nseg; m++) {
+      ex = ex sepn[m] (psh ? exA[m] : exB[m])
+      if (m == mainlast) ex = ex maintail
+      if (segline[m] != "") segs = segs segline[m] "\n"
+    }
+    # Pasado el tope de cuerpos encolados el resto no se analiza: se deja como texto de orden (falla cerrado).
+    for (m = qi + 1; m <= qn; m++) ex = ex ";" queue[m]
+  }
+  printf "%s\036%s\036%s", maintxt, ex, segs
 }
 '
 
@@ -186,13 +412,13 @@ cmdn_oversize() {
 
 cmdn_parse() {
   local out rest
-  CMDN_SEGS=(); CMDN_CWD=""
-  if ! out=$(awk -v NOHD="${CMDN_SKIP_HEREDOC:-0}" "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]]; then
-    CMDN_TEXT=$1; return 1
+  CMDN_SEGS=(); CMDN_CWD=""; CMDN_EXEC=""
+  if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]]; then
+    CMDN_TEXT=$1; CMDN_EXEC=$1; return 1
   fi
   # `${out%%…*}` y `${out#*…}` prueban cada longitud de prefijo: cuadráticos (64 KB ≈ 1,5 s de CPU,
   # el timeout del hook corre en abierto). `read` parte en el primer separador en una pasada.
-  IFS=$CMDN_RS read -r -d '' CMDN_TEXT rest <<<"$out"
+  IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC rest <<<"$out"
   mapfile -t CMDN_SEGS <<<"$rest"
   while (( ${#CMDN_SEGS[@]} )) && [[ -z ${CMDN_SEGS[-1]} ]]; do
     unset 'CMDN_SEGS[-1]'
@@ -200,8 +426,12 @@ cmdn_parse() {
   return 0
 }
 
+# cmdn_fields "$seg": T[0]=opciones globales de git, T[1]=cmd, T[2…]=args; T_KIND = P (orden) o S (dentro de una
+# sustitución o un subshell); T_SEP = lo que separó este comando del anterior (`;`, `|`, `&&`, `(`…).
 cmdn_fields() {
-  IFS=$CMDN_US read -r -a T <<<"$1"
+  local pre=${1%%"$CMDN_FS"*}
+  T_KIND=${pre:0:1}; T_SEP=${pre:1}
+  IFS=$CMDN_US read -r -a T <<<"${1#*"$CMDN_FS"}"
 }
 
 # cmdn_pipes_to_shell: 0 si algun comando simple es un interprete de shell que lee su programa de la
@@ -244,4 +474,49 @@ cmdn_track_cd() {
   if [[ $d == /* ]]; then :; else d="${CMDN_CWD:-.}/$d"; fi
   [[ -d $d ]] && CMDN_CWD=$d
   return 0
+}
+
+# ── rm: qué ruta es sensible y cuál es un directorio de build conocido ───────────────────────────────────
+# Compartido por block-dangerous-commands (deniega/pregunta) y destructive-guard (deniega): una sola
+# definición, para que no se desalineen. El operando es un token ya descomillado de cmdn_fields.
+# CMDN_SAFE_DIRS: los nombres de directorio que se pueden borrar aunque cuelguen de una ruta sensible
+# (`$HOME/proyecto/node_modules`). CC_SAFE_DELETE_DIRS los cambia, separados por `:`.
+CMDN_SAFE_DIRS=${CC_SAFE_DELETE_DIRS:-node_modules:dist:build:.cache:__pycache__:coverage:.next:.nuxt:tmp}
+IFS=':' read -ra CMDN_DIRS <<< "$CMDN_SAFE_DIRS"
+
+# shellcheck disable=SC2088,SC2016  # `~` y `$HOME` son el TEXTO del operando, no se expanden.
+cmdn_sensitive_operand() {
+  local p=${1%/}
+  case $1 in
+    /|/[!a-z]*|/home*|/etc*|/usr*|/var*|/root*|/boot*|/lib*|/bin*|/sbin*|/dev*|/proc*|/sys*|/mnt*|/media*|/opt*|/srv*) return 0 ;;
+    '~'|'~/'*|..|../*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*|*/..|*/../*) return 0 ;;
+  esac
+  # Un solo componente absoluto (`/tmp`, `/data`): es el directorio entero, no un hijo suyo.
+  [[ $p == /* && ${p:1} != */* ]] && return 0
+  return 1
+}
+
+# El directorio seguro tiene que ser un componente REAL de la ruta y no puede haber un `..` después (`dist/../Documents`).
+# Bajo las raíces del sistema (/home, /etc, /usr, /var, /root, /boot, /lib, /bin, /sbin) no hay exención.
+cmdn_safe_operand() {
+  local d p tail
+  case $1 in /home*|/etc*|/usr*|/var*|/root*|/boot*|/lib*|/bin*|/sbin*) return 1 ;; esac
+  p="/$1/"
+  for d in "${CMDN_DIRS[@]}"; do
+    [[ $p == *"/$d/"* ]] || continue
+    tail="/${p#*"/$d/"}"
+    [[ $tail == *"/../"* ]] || return 0
+  done
+  return 1
+}
+
+# Operando que no se puede resolver en un hook: variable, sustitución, comillas invertidas, o una llave con ruta dentro.
+cmdn_opaque_operand() {
+  [[ $1 == *'$'* || $1 == *'`'* || ( $1 == *'{'*','* && ( $1 == */* || $1 == *'~'* || $1 == *..* ) ) ]]
+}
+
+# Operando que vacía el directorio de trabajo o el repo entero: `.`, `./`, `*`, `./*`, `.*`, `.git`.
+cmdn_cwd_operand() {
+  case $1 in .|./|'*'|'./*'|'.*'|.git|.git/|./.git|./.git/) return 0 ;; esac
+  return 1
 }
