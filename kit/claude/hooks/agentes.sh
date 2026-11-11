@@ -68,10 +68,17 @@ case ${EV:-} in
         msg:($m | .[-300:]),
         res:$r}' <<<"$IN" 2>/dev/null) || exit 0 ;;
   SessionEnd)
+    # Espera el lock (el autosave del último Stop puede tenerlo): si la liberación se perdía, la sesión nueva de /clear
+    # se encontraba al dueño anterior. Si ni así, queda anotado en autosave.log.
     (
       E=$(nucleo_estado_leer "$RAIZ") || exit 0
       [ -f "$E/.dueno" ] || exit 0
-      nucleo_bloquear "$E" || exit 0
+      D=$(nucleo_dueno "$RAIZ") || exit 0
+      [ "${D% *}" = "$SID" ] || exit 0
+      if ! nucleo_bloquear "$E" 2; then
+        printf '%s\t%s\tfin\t0\tomitido=liberar dueño: estado ocupado\n' "$(date -u +%FT%TZ)" "${SID:--}" >>"${CLAUDE_HOME:-$HOME/.claude}/session-logs/autosave.log" 2>/dev/null
+        exit 0
+      fi
       D=$(nucleo_dueno "$RAIZ") || exit 0
       [ "${D% *}" != "$SID" ] || rm -f -- "$E/.dueno"
     ) >/dev/null 2>&1

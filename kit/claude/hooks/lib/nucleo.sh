@@ -94,10 +94,14 @@ nucleo_estado_leer() {
   printf '%s\n' "$d"
 }
 
+# nucleo_bloquear <estado> [segundos]: toma el lock del estado; sin espera (rc 4 si está ocupado) salvo que se pida
+# esperar: SessionEnd lo hace, porque su liberación del dueño no puede perderse por un autosave que acaba de empezar.
 nucleo_bloquear() {
   nucleo_estado_seguro "$1" || return 3
   exec {NUCLEO_LOCK_FD}>>"$1/.handoff.lock" || return 1
-  flock -n "$NUCLEO_LOCK_FD" || return 4
+  if [ -n "${2:-}" ]; then flock -w "$2" "$NUCLEO_LOCK_FD" || return 4
+  else flock -n "$NUCLEO_LOCK_FD" || return 4
+  fi
 }
 
 # nucleo_estado_dir <raíz>: imprime el directorio donde se escribe el estado de <raíz> y lo deja listo: crea al vuelo
@@ -132,9 +136,11 @@ nucleo_estado_dir() {
   printf '%s\n' "$d"
 }
 
-# Una tarea = una sesión dueña. <raíz>/.claude/estado/.dueno: «sesion=<session_id>» y «desde=<epoch>»; vigente
-# mientras vive el proceso identificado, o durante NUCLEO_DUENO_TTL (14 400 s) sin identidad verificable.
-# Lo reclama SessionStart y lo liberan `handoff` y SessionEnd de la sesión propietaria.
+# Una tarea = una sesión dueña. <raíz>/.claude/estado/.dueno: «sesion=<session_id>» y «desde=<epoch>», más «pid=» y
+# «proceso=» (identidad del proceso claude) si se conocen. Vigente mientras vive ese proceso, y deja de serlo en el acto
+# cuando muere; solo sin identidad registrada vale el TTL (NUCLEO_DUENO_TTL, 14 400 s). El mismo proceso conserva la tarea
+# aunque cambie el session_id (/clear, resume). Lo reclama SessionStart (si ya hay nucleo.md) o la primera escritura de
+# `handoff --auto`, y lo liberan `handoff` y SessionEnd de la sesión propietaria.
 
 # nucleo_dueno <raíz>: «<sesión> <desde>» si hay un dueño legible (vigente o no); rc 1 si no.
 nucleo_dueno() {
@@ -149,46 +155,66 @@ nucleo_dueno() {
   printf '%s %s\n' "$s" "$d"
 }
 
-# nucleo_dueno_vigente <raíz>: imprime «<sesión> <desde>» y rc 0 si el dueño no ha caducado.
-nucleo_dueno_vigente() {
-  local d e k v pid="" proceso="" ttl=${NUCLEO_DUENO_TTL:-14400}
-  d=$(nucleo_dueno "$1") || return 1
+# _nucleo_dueno_proceso <raíz>: imprime «<pid> <proceso>» del .dueno si registra identidad de proceso; rc 1 si no.
+_nucleo_dueno_proceso() {
+  local e k v pid="" proceso=""
   e=$(nucleo_estado_leer "$1") || return 1
-  while IFS='=' read -r k v; do
+  [ -f "$e/.dueno" ] || return 1
+  while IFS='=' read -r k v || [ -n "$k" ]; do
     case $k in pid) pid=$v ;; proceso) proceso=$v ;; esac
   done <"$e/.dueno"
-  case $pid in '' | *[!0-9]*) ;; *)
-    if [ -n "$proceso" ] && [ "$(_nucleo_proceso_id "$pid")" = "$proceso" ]; then
-      printf '%s\n' "$d"; return 0
-    fi ;;
-  esac
+  case $pid in '' | *[!0-9]*) return 1 ;; esac
+  [ -n "$proceso" ] || return 1
+  printf '%s %s\n' "$pid" "$proceso"
+}
+
+# nucleo_dueno_vigente <raíz>: imprime «<sesión> <desde>» y rc 0 si hay dueño vigente.
+nucleo_dueno_vigente() {
+  local d pp ttl=${NUCLEO_DUENO_TTL:-14400}
+  d=$(nucleo_dueno "$1") || return 1
+  if pp=$(_nucleo_dueno_proceso "$1"); then
+    [ "$(_nucleo_proceso_id "${pp% *}")" = "${pp#* }" ] || return 1
+    printf '%s\n' "$d"; return 0
+  fi
   case $ttl in '' | *[!0-9]*) ttl=14400 ;; esac
   [ $(( $(date +%s) - ${d#* } )) -lt "$ttl" ] || return 1
   printf '%s\n' "$d"
 }
 
-# nucleo_dueno_ajeno <raíz> <sesión>: rc 0 si hay un dueño vigente y no es <sesión>; imprime su id.
+# nucleo_dueno_ajeno <raíz> <sesión>: rc 0 si hay un dueño vigente y no es <sesión> ni el proceso de esta sesión (que
+# tras /clear o resume trae otro session_id); imprime su id.
 nucleo_dueno_ajeno() {
-  local d
+  local d pp pid
   d=$(nucleo_dueno_vigente "$1") || return 1
   [ "${d% *}" != "$2" ] || return 1
+  if pp=$(_nucleo_dueno_proceso "$1") && pid=$(nucleo_sesion_pid) && [ "$pid" = "${pp% *}" ] \
+    && [ "$(_nucleo_proceso_id "$pid")" = "${pp#* }" ]; then return 1; fi
   printf '%s\n' "${d% *}"
 }
 
-# nucleo_dueno_reclamar <raíz> <sesión>: reclama bajo lock, sin sustituir un dueño ajeno vigente.
-# Solo si el estado ya existe: no se crean directorios en repos que no usan estado.
-nucleo_dueno_reclamar() (
-  local d tmp pid proceso
-  d=$(nucleo_estado_leer "$1") || return 3
-  [ -d "$d" ] || return 0
-  nucleo_bloquear "$d" || return "$?"
-  nucleo_dueno_ajeno "$1" "$2" >/dev/null && return 5
-  tmp=$(mktemp "$d/.dueno.XXXXXX" 2>/dev/null) || return 1
-  printf 'sesion=%s\ndesde=%s\n' "$2" "$(date +%s)" >"$tmp"
+# nucleo_dueno_tomar <raíz> <estado> <sesión>: escribe .dueno a nombre de <sesión> sin sustituir a un dueño ajeno vigente
+# (rc 5). El llamador ya tiene el lock del estado (nucleo_bloquear).
+nucleo_dueno_tomar() {
+  local tmp pid proceso
+  nucleo_dueno_ajeno "$1" "$3" >/dev/null && return 5
+  tmp=$(mktemp "$2/.dueno.XXXXXX" 2>/dev/null) || return 1
+  printf 'sesion=%s\ndesde=%s\n' "$3" "$(date +%s)" >"$tmp"
   if pid=$(nucleo_sesion_pid) && proceso=$(_nucleo_proceso_id "$pid"); then
     printf 'pid=%s\nproceso=%s\n' "$pid" "$proceso" >>"$tmp"
   fi
-  mv -f "$tmp" "$d/.dueno" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  mv -f "$tmp" "$2/.dueno" 2>/dev/null || { rm -f "$tmp"; return 1; }
+}
+
+# nucleo_dueno_reclamar <raíz> <sesión>: reclama bajo lock, sin sustituir un dueño ajeno vigente. Solo si el proyecto ya
+# tiene estado con nucleo.md (o ESTADO.md): un estado/ vacío lo crean subagentes y PreCompact sin que nadie haya escrito
+# nada, y reclamar ahí le quitaba la tarea a la sesión que ya trabajaba.
+nucleo_dueno_reclamar() (
+  local d
+  d=$(nucleo_estado_leer "$1") || return 3
+  [ -d "$d" ] || return 0
+  [ -f "$d/nucleo.md" ] || nucleo_modo_estado_md "$1" || return 0
+  nucleo_bloquear "$d" || return "$?"
+  nucleo_dueno_tomar "$1" "$d" "$2"
 )
 
 # Estado de sesión en ~ (sin proyecto): una ranura por proceso claude, ~/.claude/estado/sesiones/<AAAAMMDD-HHMM de

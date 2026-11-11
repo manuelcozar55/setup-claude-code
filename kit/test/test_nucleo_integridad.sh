@@ -4,7 +4,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 BIN=$HERE/../claude/bin/handoff
 HOOK=$HERE/../claude/hooks
 T=$(mktemp -d)
-trap 'find "$T" -depth -delete' EXIT
+trap 'kill $(jobs -p) 2>/dev/null; find "$T" -depth -delete' EXIT
 export HOME=$T/home; unset CLAUDE_PROJECT_DIR
 mkdir -p "$HOME" "$T/repo/.claude/estado"
 git -C "$T/repo" init -q
@@ -140,12 +140,40 @@ for HINT_HOOK in nucleo-nudge session-start-compact stop-context-gauge; do
     ok "$HINT_HOOK sin SID válido no emite comando ejecutable" "$(grep -c -- '--desde <borrador>' <<<"$OUT")" 0
   done
  done
-LIVE=$T/live-owner; mkdir -p "$LIVE/.claude/estado"; git -C "$LIVE" init -q
+LIVE=$T/live-owner; mkdir -p "$LIVE/.claude/estado"; git -C "$LIVE" init -q; printf "## Paso actual\nx\n" >"$LIVE/.claude/estado/nucleo.md"
 CLAUDE_PID=$$ nucleo_dueno_reclamar "$LIVE" live
-NUCLEO_DUENO_TTL=0 CLAUDE_PID=$$ nucleo_dueno_reclamar "$LIVE" rival
+# Otro proceso vivo (no el mismo: tras /clear el proceso es el mismo y conserva la tarea, ver D1 más abajo).
+sleep 300 & RIVALPID=$!
+NUCLEO_DUENO_TTL=0 CLAUDE_PID=$RIVALPID nucleo_dueno_reclamar "$LIVE" rival
 ok 'proceso vivo protege dueño incluso con TTL vencido' "$?" 5
 jq -cn --arg r "$LIVE" '{cwd:$r,session_id:"rival",source:"clear"}' | bash "$HOOK/session-start-clear.sh" >"$T/rival-clear"
 ok 'clear ajeno no roba propietario vivo' "$(nucleo_dueno "$LIVE" | cut -d' ' -f1)" live
+# D1 (cv2/estado): el dueño es un proceso, no un reloj.
+sleep 300 & PA=$!; sleep 300 & PB=$!; sleep 300 & PC=$!; sleep 300 & PA2=$!; sleep 300 & PB2=$!
+D1=$T/d1; mkdir -p "$D1/.claude/estado"; git -C "$D1" init -q; printf '## Paso actual\nx\n' >"$D1/.claude/estado/nucleo.md"
+CLAUDE_PID=$PA nucleo_dueno_reclamar "$D1" sid-muerta
+nucleo_dueno_vigente "$D1" >/dev/null; ok 'D1: dueño con su proceso vivo: vigente' "$?" 0
+kill "$PA"; wait "$PA" 2>/dev/null
+nucleo_dueno_vigente "$D1" >/dev/null; ok 'D1: el proceso del dueño murió: sin dueño vigente en el acto (TTL de 4 h sin vencer)' "$?" 1
+CLAUDE_PID=$PB nucleo_dueno_reclamar "$D1" sid-nueva; ok 'D1: la sesión nueva reclama sin esperar al TTL' "$?,$(nucleo_dueno "$D1" | cut -d' ' -f1)" '0,sid-nueva'
+CLAUDE_PID=$PB nucleo_dueno_reclamar "$D1" sid-clear; ok 'D1: /clear (mismo proceso, otro session_id) conserva la tarea' "$?,$(nucleo_dueno "$D1" | cut -d' ' -f1)" '0,sid-clear'
+CLAUDE_PID=$PC nucleo_dueno_reclamar "$D1" sid-rival; ok 'D1: otro proceso vivo no la quita' "$?,$(nucleo_dueno "$D1" | cut -d' ' -f1)" '5,sid-clear'
+printf 'sesion=sin-pid\ndesde=%s\n' "$(date +%s)" >"$D1/.claude/estado/.dueno"
+nucleo_dueno_vigente "$D1" >/dev/null; ok 'D1: un dueño sin identidad de proceso sigue por TTL' "$?" 0
+jq -cn --arg r "$D1" '{cwd:$r,session_id:"sid-rival",source:"startup"}' | CLAUDE_PID=$PC bash "$HOOK/session-start-clear.sh" >"$T/d1-aviso"
+ok 'D1: el aviso de dueño ajeno dice qué hacer (liberar o trabajar en otra carpeta)' "$(jq -r '.systemMessage' "$T/d1-aviso" | command grep -c 'handoff --liberar sin-pid.*otra carpeta')" 1
+# B-4: la sesión que arrancó antes de que existiera estado/ lo reclama al escribir; la segunda terminal no se lo quita.
+D4=$T/d4; mkdir -p "$D4"; git -C "$D4" init -q
+jq -cn --arg r "$D4" '{cwd:$r,session_id:"sid-A",source:"startup"}' | CLAUDE_PID=$PA2 bash "$HOOK/session-start-clear.sh" >/dev/null
+jq -cn --arg r "$D4" '{hook_event_name:"SubagentStart",cwd:$r,session_id:"sid-A",agent_id:"ag1",agent_type:"Explore"}' | CLAUDE_PID=$PA2 bash "$HOOK/agentes.sh"
+printf '## Paso actual\nB\n' >"$T/d4-b"
+jq -cn --arg r "$D4" '{cwd:$r,session_id:"sid-B",source:"startup"}' | CLAUDE_PID=$PB2 bash "$HOOK/session-start-clear.sh" >/dev/null
+ok 'B-4: la segunda terminal que arranca después no se queda el dueño de un estado/ sin nucleo' "$(nucleo_dueno "$D4" 2>/dev/null | cut -d' ' -f1)" ""
+bash "$BIN" --iniciar --raiz "$D4" >/dev/null 2>&1
+printf 'cambio\n' >"$D4/trabajo.md"
+jq -cn --arg r "$D4" '{hook_event_name:"Stop",cwd:$r,session_id:"sid-A"}' | CLAUDE_PID=$PA2 bash "$BIN" --auto --json >/dev/null 2>&1
+ok 'B-4: la primera escritura de A (autosave) reclama la tarea' "$(nucleo_dueno "$D4" | cut -d' ' -f1)" sid-A
+(cd "$D4" && CLAUDE_PID=$PB2 bash "$BIN" --desde "$T/d4-b" --sesion sid-B >/dev/null 2>&1); ok 'B-4: B recibe rc 5 y no pisa' "$?,$(command grep -c '^B$' "$D4/.claude/estado/nucleo.md")" '5,0'
 # M10: un [x] sin comando entre comillas invertidas se archiva con la marca y el CLI lo avisa.
 R=$T/m10; E=$R/.claude/estado; mkdir -p "$E"; git -C "$R" init -q
 # shellcheck disable=SC2016  # Backticks literales.

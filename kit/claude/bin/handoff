@@ -42,7 +42,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
           rama, última petición, último mensaje, ficheros tocados y comandos, sacados de git y del transcript; sin modelo) y la marca
           autosave.dirty. Lee el JSON del hook por stdin (session_id, transcript_path, cwd, last_assistant_message, compact_summary,
           hook_event_name); las opciones mandan sobre el JSON. Conserva el mtime de nucleo.md (sigue siendo «la última síntesis del modelo»),
-          no rota nucleo.prev-*, no toca el dueño y, si el estado está ocupado o es de otra sesión, no hace nada (sale 0). Sin nucleo.md no crea
+          no rota nucleo.prev-*, no libera al dueño (si no hay dueño vigente, la sesión que escribe lo reclama) y, si el estado está ocupado o es de otra sesión, no hace nada (sale 0). Sin nucleo.md no crea
           nada, salvo en una ranura de ~ con trabajo que anotar. Con --json, {"omitido":"motivo"} o {nucleo,sha256,bytes,motivo}. Un --desde
           posterior conserva la sección (el borrador no la trae) y borra autosave.dirty.
 --iniciar crea <raíz>/.claude/estado/nucleo.md desde $CLAUDE_HOME/templates/nucleo.md (el primero del proyecto) y añade
@@ -382,7 +382,11 @@ if [ "$MODO" = auto ]; then
     NUC=$E/nucleo.md; [ -f "$NUC" ] || a_omitir "sin estado"
   fi
   nucleo_bloquear "$E" 2>/dev/null || a_omitir "ocupado"
-  if [ "$RAIZ" != "$HOME" ] && nucleo_dueno_ajeno "$RAIZ" "$SESION" >/dev/null; then a_omitir "dueño ajeno"; fi
+  if [ "$RAIZ" != "$HOME" ]; then
+    nucleo_dueno_ajeno "$RAIZ" "$SESION" >/dev/null && a_omitir "dueño ajeno"
+    # La primera escritura de una sesión sin dueño vigente la hace dueña (quien arrancó antes de que hubiera estado).
+    [ -z "$SESION" ] || { D=$(nucleo_dueno_vigente "$RAIZ") && [ "${D% *}" = "$SESION" ]; } || nucleo_dueno_tomar "$RAIZ" "$E" "$SESION" 2>/dev/null || true
+  fi
 
   # ---- la sección
   ATS=$(date +%Y-%m-%dT%H:%M)
@@ -498,8 +502,8 @@ fi
 nucleo_bloquear "$E" || die "$?" "estado ocupado o inseguro: reintenta"
 if [ -z "$SES" ] && D=$(nucleo_dueno_ajeno "$RAIZ" "$SESION"); then
   MIA=$(nucleo_sesion_dir 2>/dev/null) || MIA=""
-  [ -z "$MIA" ] || die 5 "la sesión dueña es otra ($D): estás en un proyecto de otra sesión; tu ranura es $MIA: handoff --desde $DESDE --sesion ${SESION:-<id>} --ranura $MIA"
-  die 5 "la sesión dueña es otra ($D): no escribo"
+  [ -z "$MIA" ] || die 5 "la sesión dueña es otra ($D): estás en un proyecto de otra sesión (si está abandonada: handoff --liberar $D); tu ranura es $MIA: handoff --desde $DESDE --sesion ${SESION:-<id>} --ranura $MIA"
+  die 5 "la sesión dueña es otra ($D): no escribo. Si está abandonada: handoff --liberar $D; si no, trabaja en otra carpeta"
 fi
 NUC=$E/nucleo.md; DIARIO=$E/diario.md; VLOG=$E/verificaciones.log
 HOY=$(date -u +%F)

@@ -75,7 +75,7 @@ case ${SID:-} in
      } ;;
 esac
 DAVISO=""
-[ -z "$AJENO" ] || { DAVISO="Esta tarea ya tiene otra sesión dueña (${AJENO}); no pisará su $NOM. Si está abandonada, usa handoff --liberar ${AJENO}."
+[ -z "$AJENO" ] || { DAVISO="Esta tarea ya tiene otra sesión dueña (${AJENO}); no pisará su $NOM. Si está abandonada, usa handoff --liberar ${AJENO}; si no, trabaja en otra carpeta (otro worktree)."
   AVISO="${AVISO:+$AVISO
 }$DAVISO"; }
 AGENTES=$(nucleo_agentes_ctx "$RAIZ")

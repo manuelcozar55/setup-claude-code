@@ -154,6 +154,12 @@ flock -u "$LOCK"; exec {LOCK}>&-
 ok 'SessionEnd con lock ocupado falla abierto y conserva dueño' "$RC,$OUT,$(sed -n 's/^sesion=//p' "$E/.dueno")" '0,,rival'
 end_session rival
 ok 'SessionEnd puede liberar al reintentar sin lock' "$([ -e "$E/.dueno" ] && echo ocupado || echo libre)" libre
+# D1: un autosave que suelta el lock a los pocos instantes no debe dejar el dueño sin liberar.
+printf 'sesion=rival\ndesde=%s\n' "$(date +%s)" >"$E/.dueno"
+( exec {LK}>>"$E/.handoff.lock"; flock "$LK"; sleep 1 ) & LKPID=$!
+sleep 0.3
+end_session rival; wait "$LKPID"
+ok 'SessionEnd espera un lock breve y libera al dueño' "$([ -e "$E/.dueno" ] && echo ocupado || echo libre)" libre
 for CYCLE in 1 2; do
   jq -cn --arg r "$R" --arg s "cycle-$CYCLE" '{cwd:$r,session_id:$s,source:"clear"}' | bash "$H/session-start-clear.sh" >/dev/null
   ok "clear ciclo$CYCLE reclama nueva sesión" "$(sed -n 's/^sesion=//p' "$E/.dueno")" "cycle-$CYCLE"
