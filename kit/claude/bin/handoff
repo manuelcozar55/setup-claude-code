@@ -409,7 +409,9 @@ if [ "$MODO" = auto ]; then
   # Tope de la sección: se quitan líneas desde el final (mínimo, la primera).
   while [ "$(bytes "$ASEC")" -gt "$AUTO_TOPE" ] && [ "$(printf '%s' "$ASEC" | wc -l)" -gt 2 ]; do ASEC=${ASEC%$'\n'*$'\n'}$'\n'; done
 
-  # ---- el nucleo sin su sección auto + la nueva; si pasa del tope se recorta solo la sección auto
+  # ---- el nucleo sin su sección auto + la nueva; si pasa del tope se recorta solo la sección auto, hasta
+  # dos líneas. Sin sitio ni para eso se escribe igual: omitirla dejaba la vieja, que tras compactar engaña;
+  # los bytes de más los recortan la inyección (el auto sale el primero) y el siguiente --desde.
   AW=$(mktemp -d "${TMPDIR:-/tmp}/handoff.XXXXXX") || a_omitir "sin temporal"
   TMP=""
   trap 'rm -rf -- "$AW"; [ -z "$TMP" ] || rm -f -- "$TMP"' EXIT
@@ -424,7 +426,6 @@ if [ "$MODO" = auto ]; then
   while [ "$(bytes "$ANUEVO")" -gt "$TOPE" ] && [ "$(printf '%s' "$ASEC" | wc -l)" -gt 2 ]; do
     ASEC=${ASEC%$'\n'*$'\n'}$'\n'; ANUEVO=$ARES$ASEC
   done
-  [ "$(bytes "$ANUEVO")" -le "$TOPE" ] || a_omitir "tope"
 
   # ---- dirty: ¿hay trabajo sin sintetizar?
   ADIRTY=$E/autosave.dirty; ANOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)

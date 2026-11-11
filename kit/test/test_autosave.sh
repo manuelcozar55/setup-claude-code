@@ -123,9 +123,11 @@ head -c 5560 "$T/gordo" >"$NUC"; printf '\n' >>"$NUC"; touch -d '2026-01-01 10:0
 auto Stop >"$T/out" 2>"$T/err"; RC=$?
 ok "11 nucleo casi al tope: rc 0 y <= 5700 B" "$RC,$([ "$(wc -c <"$NUC")" -le 5700 ] && echo si)" "0,si"
 ok "11 lo demás intacto" "$(sin_seccion "$NUC" | cksum)" "$(printf '%s\n' "$ORIG11" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' | cksum)"
+# Sin sitio ni para dos líneas se escribe la sección mínima igualmente: omitirla dejaba la vieja, que tras compactar
+# engaña más que unos bytes de más (la inyección los recorta, y la sección auto es lo primero que sale).
 head -c 5690 "$T/gordo" >"$NUC"; printf '\n' >>"$NUC"
-B11=$(cksum <"$NUC"); auto Stop >"$T/out"
-ok "11 sin sitio ni para dos líneas: omitido por tope y nada cambia" "$(jq -r .omitido "$T/out"),$([ "$(cksum <"$NUC")" = "$B11" ] && echo igual)" "tope,igual"
+B11=$(sin_seccion "$NUC" | cksum); auto Stop >"$T/out"
+ok "11 sin sitio ni para dos líneas: escribe la sección mínima y lo demás intacto" "$(jq -r '.omitido // "escrito"' "$T/out"),$(sed -n "/^$AUTOH\$/,\$p" "$NUC" | wc -l | tr -d ' '),$([ "$(sin_seccion "$NUC" | cksum)" = "$B11" ] && echo igual)" "escrito,2,igual"
 printf '# Estado\n\n## Objetivo\nhacer algo\n\n## Paso actual\nuno\n\n## Siguiente acción\ndos\n' >"$NUC"
 # 12. inyección: la sección se emite como dato en los SessionStart, sin avisos de «fuera de forma»
 auto Stop >/dev/null 2>&1
