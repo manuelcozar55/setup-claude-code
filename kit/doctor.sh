@@ -61,6 +61,18 @@ else
   fi
 fi
 
+# 1e. Version del kit instalada (.kit-version, la escribe install.sh --apply) frente a la del clon desde el que se
+# lanza el doctor. WARN, con la orden: una instalacion vieja sigue funcionando, pero no lleva lo nuevo.
+kit_clon=""; read -r kit_clon < "$KIT/../VERSION" 2>/dev/null || true
+kit_inst=""; read -r kit_inst < "$CLAUDE_HOME/.kit-version" 2>/dev/null || true
+if [ -z "$kit_inst" ]; then
+  warn "sin .kit-version: instalacion anterior a la 1.11 o no hecha con install.sh. Reinstala para registrar la version: bash $KIT/install.sh --apply"
+elif [ -n "$kit_clon" ] && [ "$kit_inst" != "$kit_clon" ]; then
+  warn "version del kit instalada $kit_inst, distinta de la de este clon $kit_clon: actualiza con bash $KIT/install.sh --apply"
+else
+  pass "version instalada del kit: $kit_inst  (fuente: .kit-version)"
+fi
+
 # 2. hooks referenciados existen y son ejecutables
 if [ -f "$CLAUDE_HOME/settings.json" ]; then
   # shellcheck disable=SC2016 # patron literal para grep -oE, no interpolacion de shell

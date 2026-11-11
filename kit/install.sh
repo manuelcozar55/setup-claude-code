@@ -127,6 +127,8 @@ case "${1:-}" in
   --plan)  MODE_PLAN=1 ;;
 esac
 
+# Lo que el kit escribe de verdad (no los symlinks omitidos): de ahi sale .kit-manifest, que uninstall.sh --kit usa.
+INSTALLED=()
 install_file() {  # src dst
   local src="$1" dst="$2"
   # Un symlink suele apuntar a otro repo (skills proyectadas): cp escribiria a traves de el.
@@ -141,6 +143,7 @@ install_file() {  # src dst
   fi
   # Atomico (tmp en el mismo directorio + mv): un hook que arranca durante la copia no lee un guard truncado.
   cp -p "$src" "$dst.tmp.$$" && mv -f "$dst.tmp.$$" "$dst"
+  INSTALLED+=("$dst")
 }
 
 # settings.json NO se reemplaza si ya existe: se fusiona. Regla, y es deliberada:
@@ -277,10 +280,10 @@ install_claude_md() {  # src dst
   base="$(dirname "$dst")"; n="$(basename "$dst" .md)"
   sha_src="$(sha256sum "$src" | cut -d' ' -f1)"
   if [ ! -f "$dst" ]; then
-    cp -p "$src" "$dst"; docs_sha_set "$base" "$n.md" "$sha_src"; return
+    cp -p "$src" "$dst"; docs_sha_set "$base" "$n.md" "$sha_src"; INSTALLED+=("$dst"); return
   fi
   if cmp -s "$src" "$dst"; then
-    docs_sha_set "$base" "$n.md" "$sha_src"; rm -f "$base/$n.kit.md"; return
+    docs_sha_set "$base" "$n.md" "$sha_src"; rm -f "$base/$n.kit.md"; INSTALLED+=("$dst"); return
   fi
   sha_dst="$(sha256sum "$dst" | cut -d' ' -f1)"
   # Idem si lo instalado es el $n.kit.md que dejamos la vez anterior: la persona lo acepto copiandolo (cp), sin editarlo.
@@ -293,7 +296,7 @@ install_claude_md() {  # src dst
   fi
   # Un CLAUDE.md propio sin el import deja AGENTS.md instalado pero sin que nadie lo lea.
   if [ "$n" = "CLAUDE" ] && ! command grep -qE '^[[:space:]]*@[^[:space:]]*AGENTS\.md' "$dst"; then CLAUDE_MD_PREVIO=1; fi
-  cp -p "$src" "$base/$n.kit.md"
+  cp -p "$src" "$base/$n.kit.md"; INSTALLED+=("$base/$n.kit.md")
   DOCS_NO_ACTUALIZADOS="$DOCS_NO_ACTUALIZADOS $n"
   echo "   $n.md ya existe y difiere del kit: NO se toca."
   echo "   La version del kit queda en $n.kit.md para que compares y copies lo que quieras."
@@ -339,6 +342,25 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit "$base"/statusline-command.sh "$base"/bin/* 2>/dev/null || true
 }
 
+# .kit-version y .kit-manifest: que version hay instalada y que escribio el kit (sha256 + ruta relativa; los
+# enlaces del bindir, como ~bin/<cli>). uninstall.sh --kit borra solo lo que sigue con esa suma. Las entradas de
+# una instalacion anterior que esta ya no escribe se conservan: son ficheros retirados que siguen siendo del kit.
+write_kit_state() {
+  local m="$CLAUDE_HOME/.kit-manifest" t f c ver=""
+  t="$(mktemp "$m.XXXXXX")"
+  {
+    for f in "${INSTALLED[@]}"; do
+      [ -f "$f" ] && printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "${f#"$CLAUDE_HOME"/}"
+    done
+    for c in $LINKED; do printf '%s  ~bin/%s\n' "$(printf '%s' "$CLAUDE_HOME/bin/$c" | sha256sum | cut -d' ' -f1)" "$c"; done
+  } > "$t.new"
+  if [ -f "$m" ]; then awk -F'  ' 'NR==FNR {seen[$2]=1; next} !($2 in seen)' "$t.new" "$m" > "$t.old"; else : > "$t.old"; fi
+  cat "$t.new" "$t.old" | awk -F'  ' '{print $2 "\t" $0}' | LC_ALL=C sort | cut -f2- > "$t"
+  rm -f "$t.new" "$t.old"; mv -f "$t" "$m"
+  read -r ver < "$KIT/../VERSION" 2>/dev/null || true
+  if [ -n "$ver" ]; then printf '%s\n' "$ver" > "$CLAUDE_HOME/.kit-version"; fi
+}
+
 # handoff y oraculo se llaman a pelo en las instrucciones y los hooks: sin estar en el PATH, «command not
 # found». Se enlazan en ~/.local/bin SOLO si el hueco esta libre o ya es un enlace nuestro (a $CLAUDE_HOME/bin):
 # un fichero o un enlace ajeno es de la persona y no se pisa.
@@ -366,7 +388,7 @@ cli_estado() {  # nombre -> libre | nuestro | ajeno
 }
 enlazar_clis() {
   local c st
-  LINK_AJENOS=""
+  LINK_AJENOS=""; LINKED=""
   if ! clis_enlazables; then
     echo "   CLAUDE_HOME ($CLAUDE_HOME) no es $HOME/.claude: no se toca $LOCAL_BIN. Si quieres los enlaces:"
     for c in $CLIS; do echo "     ln -s \"$CLAUDE_HOME/bin/$c\" \"$LOCAL_BIN/$c\""; done
@@ -387,6 +409,7 @@ enlazar_clis() {
       LINK_AJENOS="$LINK_AJENOS $c"
       echo "   AVISO: $LOCAL_BIN/$c ya existe y no es un enlace a $CLAUDE_HOME/bin/$c: no se toca." >&2
     else
+      LINKED="$LINKED $c"
       echo "   enlace: $LOCAL_BIN/$c -> $CLAUDE_HOME/bin/$c"
     fi
   done
@@ -516,6 +539,12 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo backup)-$$-${RANDOM:-0}"
 BK="$CLAUDE_HOME/backups/$STAMP"
 
 echo "==> Instalando en $CLAUDE_HOME"
+# Estado previo de settings.json, para que uninstall.sh --kit lo devuelva byte a byte: solo en la primera
+# instalacion (sin manifiesto ni registro de docs; tras una del kit el fichero ya lleva claves suyas).
+if [ -f "$CLAUDE_HOME/settings.json" ] && [ ! -e "$CLAUDE_HOME/.kit-manifest" ] && [ ! -e "$CLAUDE_HOME/$DOCS_STATE" ] \
+   && [ ! -e "$CLAUDE_HOME/.kit-settings-pre.json" ] && jq empty "$CLAUDE_HOME/settings.json" 2>/dev/null; then
+  cp -L "$CLAUDE_HOME/settings.json" "$CLAUDE_HOME/.kit-settings-pre.json"
+fi
 install_kit_files "$CLAUDE_HOME"
 
 # --- gitleaks: dependencia de la Capa 2 (opcional; la Capa 1 no la necesita) -
@@ -621,6 +650,7 @@ fi
 echo "==> Config instalada. Terceros (ver docs/): agent-browser, venv de tools. Plugins: install-plugins.sh."
 echo "==> CLIs handoff y oraculo (valen en Claude Code, Codex y opencode):"
 enlazar_clis
+write_kit_state
 if [ -f "$KIT/.env.example" ]; then
   echo "==> Rellena tus claves:  cp $KIT/.env.example \$HOME/.claude/.env  &&  editar"
 else
