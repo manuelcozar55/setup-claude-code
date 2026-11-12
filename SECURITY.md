@@ -116,7 +116,7 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
   contexto cerrado, una línea por exención y **cinco en total** (quinta vuelta):
   - `dato:echo-sin-consumidor`: el texto de un `echo`/`printf` que ningún intérprete lee (sin tubería o solo con receptores de texto).
   - `dato:patron-de-busqueda`: el patrón de `grep`/`rg`/`ag`/`ack` con opciones de la lista cerrada.
-  - `dato:mensaje-de-commit`: `-m` de `git commit|tag|stash|notes|merge|revert`, `--title|--body` de `gh`.
+  - `dato:mensaje-de-commit`: `-m` de `git commit|tag|stash|notes|revert`, `--title|--body` de `gh`. `git merge -m` ya no cuenta (sexta vuelta: una estrategia externa, `-s ext`, ejecuta un programa): veredicto de la base.
   - `dato:heredoc-de-texto`: el cuerpo de un heredoc que lee `cat`, `grep`, `head`… y que no se escribe a ningún fichero.
   - `git-rm-cached`: `git rm --cached [-r|-q|-n|--ignore-unmatch] <ruta relativa>`, sin `-f`, sin `..` ni rutas absolutas o `~`.
   **Familias retiradas** (cuatro rondas de revisión las rompieron una y otra vez; no se parchean, se quitan, y vuelve el veredicto de
@@ -130,7 +130,7 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
   pregunta.
   **Alcance**: los guards frenan **accidentes y descuidos de un agente**; no son una frontera frente a un adversario que escribe la
   orden (con intención, siempre habrá otra grafía que ningún analizador de texto vea).
-  Lo comprueban tres sensores. `test_guards_r1.sh` pasa 3.624 órdenes (631 de la revisión R1, 1.315 de la ronda 2, 570 de la ronda 3 y 1.108 de la ronda 4)
+  Lo comprueban tres sensores. `test_guards_r1.sh` pasa 3.636 órdenes (631 de la revisión R1, 1.315 de la ronda 2, 570 de la ronda 3 y 1.120 de la ronda 4)
   con la columna «base» de lo que daba bc68243: ninguna baja de bloqueo a permiso sin la exención con nombre escrita en su fila.
   `test_guards_monotonia.sh` es **generativo y diferencial** frente a una copia congelada de los guards de bc68243
   (`test/fixtures/guards-base/`, solo para tests): una gramática de 71.005 órdenes, muestra determinista de 1.200 más las cargas

@@ -5,6 +5,6 @@
 # preguntan; sin ella, la base).
 dato:echo-sin-consumidor	argumento de echo/printf cuyo texto no lo lee ningun interprete: sin escribir a ningun fichero, y sin tuberia o con todos los receptores de texto (grep, wc, head, jq...)
 dato:patron-de-busqueda	patron de grep/rg/ag/ack que no ejecuta nada (opciones de la lista cerrada, sin escribir a ningun fichero)
-dato:mensaje-de-commit	valor de git commit/tag/stash/notes/merge/revert -m, o titulo/cuerpo de gh (--title, --body, --message...), con opciones de la lista cerrada
+dato:mensaje-de-commit	valor de git commit/tag/stash/notes/revert -m (git merge no: sexta vuelta), o titulo/cuerpo de gh (--title, --body, --message...), con opciones de la lista cerrada
 dato:heredoc-de-texto	cuerpo de un heredoc cuyo lector es un consumidor de texto (cat, grep, head...) y que no se escribe a ningun fichero ni llega a una orden que lo ejecute
 git-rm-cached	git rm --cached [-r|-q|-n|--ignore-unmatch] <ruta relativa>, sin -f ni .. ni rutas absolutas, en una linea de una sola orden: solo toca el indice, no el fichero

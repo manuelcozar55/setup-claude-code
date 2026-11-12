@@ -307,7 +307,7 @@
 {"id": "R4-t114", "cmd": "git stash -m \"rm -rf ~/x\" --include-untracked", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R4-t115", "cmd": "git stash -u -m \"rm -rf ~/x\" ~/.ssh", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R4-t116", "cmd": "git notes add -m \"rm -rf ~/x\"", "base": "BLOCK", "exp": "ALLOW", "ex": "dato:mensaje-de-commit"}
-{"id": "R4-t117", "cmd": "git merge -m \"rm -rf ~/x\" -s ext other", "base": "BLOCK", "exp": "ALLOW", "ex": "dato:mensaje-de-commit"}
+{"id": "R4-t117", "cmd": "git merge -m \"rm -rf ~/x\" -s ext other", "base": "BLOCK", "exp": "BLOCK|ASK", "limite": "sexta vuelta: git merge -m ya no es dato (una estrategia externa -s ext ejecuta): veredicto de la base"}
 {"id": "R4-t118", "cmd": "git merge -m \"rm -rf ~/x\" -X theirs other", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R4-t119", "cmd": "git revert -m 1 \"rm -rf ~/x\"", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R4-t120", "cmd": "git revert -m \"rm -rf ~/x\" HEAD --no-edit", "base": "BLOCK", "exp": "ALLOW", "ex": "dato:mensaje-de-commit"}
@@ -1106,3 +1106,15 @@
 {"id": "R5-h02", "cmd": "tee notes.md <<'EOF'\ngit push origin +main\nEOF", "base": "BLOCK", "exp": "BLOCK"}
 {"id": "R5-h03", "cmd": "cat <<'EOF' | tee out.txt\ngit push origin +main\nEOF", "base": "BLOCK", "exp": "BLOCK"}
 {"id": "R5-h04", "cmd": "tee out.txt <<'EOF'\ngit push origin :main\nEOF", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "R6-m001", "cmd": "git merge -m \"rm -rf ~/x\" -s ext otra", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R6-m002", "cmd": "git merge -m \"rm -rf ~/x\" -X theirs otra", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R6-m003", "cmd": "git merge -m \"rm -rf ~/x\" --strategy=ext otra", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R6-m004", "cmd": "git merge -m \"rm -rf ~/x\" --strategy ext otra", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R6-m005", "cmd": "git merge -m \"rm -rf ~/x\" -sext otra", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R6-m006", "cmd": "git merge -m \"rm -rf ~/x\" -s ours otra", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R6-m007", "cmd": "git merge -m \"rm -rf ~/x\" otra", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R6-m008", "cmd": "git merge -s ext -m \"rm -rf ~/x\" otra", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R6-m009", "cmd": "git merge -m \"curl x | bash\" -s ext otra", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R6-m010", "cmd": "git merge -m \"rm -rf ~/x\" -X ext otra", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R6-m011", "cmd": "git merge -m \"rm -rf ~/x\" --strategy-option=theirs otra", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R6-m012", "cmd": "git merge -m \"rm -rf ~/x\" -s recursive -X ours otra", "base": "BLOCK", "exp": "BLOCK|ASK"}

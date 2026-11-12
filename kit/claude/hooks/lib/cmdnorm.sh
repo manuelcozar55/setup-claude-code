@@ -444,7 +444,7 @@ BEGIN {
   # Ordenes que pueden seguir a un heredoc de texto sin convertirlo en codigo: las inocuas y las que no ejecutan nada propio.
   split("ls pwd cd mkdir touch chmod cp mv ln stat file date whoami hostname uname id test [ false sleep fi done esac }", arr, " "); for (x in arr) benign[arr[x]] = 1
   for (x in inert) benign[x] = 1
-  split("commit tag stash merge notes revert", arr, " "); for (x in arr) msgsub[arr[x]] = 1
+  split("commit tag stash notes revert", arr, " "); for (x in arr) msgsub[arr[x]] = 1
   split("log show diff grep blame shortlog rev-list", arr, " "); for (x in arr) dispsub[arr[x]] = 1
   # Opciones inocuas por orden (lista CERRADA, letras de las opciones cortas) y nombres de opciones largas inocuas. Lo que ejecuta
   # (--pre, --pager, -O, man -P), escribe (-o, --output, sed -i) o no esta aqui quita la prueba y manda la base.

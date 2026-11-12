@@ -699,7 +699,7 @@ def _opt_ok(name, prev: list, w: str) -> bool:
         if prev and prev[-1] in ("-e", "-f", "--regexp"):
             return True
         return w in _GREP_LONG or w.split("=")[0] in _GREP_LONG or bool(re.fullmatch(r"-[A-Za-z0-9]+", w))
-    if name == "git" and prev[:1] in (["commit"], ["tag"], ["merge"]):
+    if name == "git" and prev[:1] in (["commit"], ["tag"]):
         if prev[-1] in ("-m", "--message"):
             return True
         return w.split("=")[0] in _GIT_MSG_OPTS or bool(re.fullmatch(r"-[amqvsu]+", w))
