@@ -412,8 +412,8 @@ mutate() { # etiqueta fichero(relativo a kit/) sed-expr
 # receptor o un heredoc cuyo lector no es de texto vuelven a ser datos «inocuos».
 mutate "un interprete (python3) vale como consumidor de texto" sentinel/sentinel_preflight.py 's/^_TEXT_READERS = \{"cat",/_TEXT_READERS = {"python3", "awk", "cat",/'
 mutate "el heredoc vale como dato sea cual sea su lector" sentinel/sentinel_preflight.py 's/if name not in _TEXT_READERS:/if False:/'
-mutate "escribir el echo a un fichero sigue siendo dato" claude/hooks/lib/cmdnorm.sh 's/if \(o !~ \/\^&\[0-9-\]\*\$\/ && !devnull\(o\)\) nosimple = 1/if (0) nosimple = 1/'
-mutate "tee a un fichero sigue siendo dato" claude/hooks/lib/cmdnorm.sh 's/toks\[j\] !~ \/\^-\/ && !devnull\(toks\[j\]\)\) nosimple = 1/0) nosimple = 1/'
+mutate "escribir el echo a un fichero sigue siendo dato" claude/hooks/lib/cmdnorm.sh 's/&& !devnull\(o\)\) \{ nosimple = 1; wf = 1 \}/\&\& 0) { nosimple = 1; wf = 1 }/'
+mutate "tee a un fichero sigue siendo dato" claude/hooks/lib/cmdnorm.sh 's/&& !devnull\(toks\[j\]\)\) \{ nosimple = 1; wf = 1 \}/\&\& 0) { nosimple = 1; wf = 1 }/'
 # shellcheck disable=SC2016  # el `$` es texto de la expresion sed
 mutate "rm -rf de un build con prueba pasa sin preguntar" claude/hooks/block-dangerous-commands.sh 's/tok_ask "Confirm: rm -rf de \$a, que se resuelve/: "Confirm: rm -rf de $a, que se resuelve/'
 mutate "git rm --cached admite cualquier opcion (-f)" sentinel/sentinel_preflight.py 's/all\(a\[0\] in \(.*startswith\("-"\)\)$/True/'
