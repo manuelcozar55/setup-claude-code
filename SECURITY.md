@@ -146,7 +146,7 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
   (`rm -rf $D`, `git push origin $B`, `git reset $H`), `git config alias.*` (los guards no ven lo que hace un alias) y un
   fichero que el propio comando escribe y ejecuta (`echo … > x.sh; bash x.sh`). Preguntar de más es el lado seguro.
 - **Lo que es peligroso de verdad, se deniega.** El corpus de 25 comandos peligrosos de la auditoría se bloquea entero y
-  `test_guards_veredictos.sh` lo comprueba en cada `make test`, junto a 32 legítimos que pasan (y 2 falsos positivos que ya daba la versión anterior y quedan declarados: el borrado de `../otro-proyecto/node_modules`, con `..`, y un heredoc a `python3` que contiene el literal `rm -rf /`), 12 bypasses y los casos
+  `test_guards_veredictos.sh` lo comprueba en cada `make test`, junto a 34 legítimos: 22 pasan, 3 preguntan (`rm -rf node_modules`, `./build dist`, `/tmp/build-123`: la exención de build se retiró) y 9 son falsos positivos declarados que ya daba la versión anterior (el borrado de `../otro-proyecto/node_modules`, un heredoc a `python3` con el literal `rm -rf /`, y escribir un texto a un fichero: `cat > f <<EOF`, `echo … >> README.md`), 12 bypasses y los casos
   que parecen prosa y no lo son.
 
 **Lo que sigue sin ver ningún guard** (límites declarados, fijados en `test/fixtures/guards-bypass.jsonl`): el código de
