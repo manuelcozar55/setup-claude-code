@@ -387,7 +387,7 @@ mutate() { # etiqueta fichero(relativo a kit/) sed-expr
 mutate "un interprete (python3) vale como consumidor de texto" claude/hooks/lib/cmdnorm.sh 's/(sha256sum cksum basename dirname git gh echo printf true :)/\1 python3 awk perl ruby node/'
 mutate "cualquier operando pasa como prueba de rm -rf" claude/hooks/lib/cmdnorm.sh 's/^cmdn_rm_proof\(\) \{/cmdn_rm_proof() { REPLY=hueco; return 0/'
 mutate "git rm --cached tambien vale tras --" sentinel/sentinel_preflight.py 's/args\[1:cut\]/args[1:]/'
-mutate "lease con --all o --mirror pasa" claude/hooks/block-dangerous-commands.sh 's/\(\( lease && pall \)\) && return 0/:/'
+mutate "lease con --tags pasa sin preguntar" claude/hooks/block-dangerous-commands.sh 's/\(\( lease && ptags \)\) && tok_ask "[^"]*"/:/'
 bypass_fail=$((bypass_fail+MUT_FAIL))
 if [ "$bypass_fail" -ne 0 ]; then
   echo "FAIL: $bypass_fail casos de bypass/negativos incorrectos."
