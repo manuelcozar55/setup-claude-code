@@ -75,10 +75,23 @@ ck "$(readlink "$HOME/.local/bin/oraculo")" "/bin/true" "un enlace del bindir qu
 
 # ---- 5. sin manifiesto y manifiesto sin sumas validas
 nuevo_home h5
-mkdir -p "$CLAUDE_HOME"
+mkdir -p "$CLAUDE_HOME/hooks"
+: > "$CLAUDE_HOME/hooks/branch-guard.sh"
 bash "$UN" --kit >"$tmp/o5" 2>&1; rc=$?
-ck "$rc" "1" "sin manifiesto: rc 1"
+ck "$rc" "1" "kit sin manifiesto (quedan ficheros del kit): rc 1"
 ck "$(grep -c 'install.sh --apply' "$tmp/o5")" "1" "y dice que reinstalar"
+nuevo_home h5b
+mkdir -p "$CLAUDE_HOME"
+bash "$UN" --kit --apply >"$tmp/o5b" 2>&1; rc=$?
+ck "$rc" "0" "sin kit instalado (ni manifiesto ni ficheros): rc 0, nada que hacer"
+ck "$(grep -c 'no hay kit instalado' "$tmp/o5b")" "1" "y lo dice sin hablar de versiones"
+ck "$(grep -c 'version que lo escriba' "$tmp/o5b")" "0" "sin el mensaje del manifiesto"
+nuevo_home h5c
+bash "$INST" --apply >/dev/null 2>&1
+bash "$UN" --kit --apply >/dev/null 2>&1
+bash "$UN" --kit --apply >"$tmp/o5c" 2>&1; rc=$?
+ck "$rc" "0" "segunda desinstalacion seguida: rc 0"
+ck "$(grep -c 'no hay kit instalado' "$tmp/o5c")" "1" "y dice que no hay kit instalado"
 nuevo_home h6
 bash "$INST" --apply >/dev/null 2>&1
 sed -i 's/^[0-9a-f]\{64\}/0000000000000000000000000000000000000000000000000000000000000000/' "$CLAUDE_HOME/.kit-manifest"

@@ -404,7 +404,12 @@ kit_uninstall() {
   [ "$MODE" = apply ] && apply=1
   [ "$MODE" != list ] || die "--kit no se combina con --list"
   [ -z "$FROM" ] || die "--kit no se combina con --from"
-  [ -f "$man" ] || die "no hay $man: el kit no se instalo con una version que lo escriba (1.11 o posterior). Reinstala con bash $HERE/kit/install.sh --apply y repite, o restaura un backup con uninstall.sh (sin --kit)"
+  if [ ! -f "$man" ] && [ ! -e "$CLAUDE_HOME/.kit-version" ] && [ ! -e "$CLAUDE_HOME/.kit-settings-pre.json" ] \
+     && [ ! -e "$CLAUDE_HOME/.kit-docs.sha256" ] && [ ! -e "$CLAUDE_HOME/hooks/branch-guard.sh" ] && [ ! -e "$CLAUDE_HOME/bin/handoff" ]; then
+    echo "no hay kit instalado en $CLAUDE_HOME (ni manifiesto ni ficheros del kit): nada que desinstalar"
+    return 0
+  fi
+  [ -f "$man" ] || die "hay ficheros del kit en $CLAUDE_HOME pero no $man: el kit no se instalo con una version que lo escriba (1.11 o posterior). Reinstala con bash $HERE/kit/install.sh --apply y repite, o restaura un backup con uninstall.sh (sin --kit)"
   command -v jq >/dev/null 2>&1 || die "uninstall --kit necesita jq"
   local localbin="$HOME/.local/bin"
   while IFS= read -r line; do
