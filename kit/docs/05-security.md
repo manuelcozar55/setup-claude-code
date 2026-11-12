@@ -193,7 +193,6 @@ Las variables son las que lee el código:
 | `bash-write-guard.sh` y `write-guard.py` | ninguno | Los patrones están en `hooks/lib/secret-patterns` (una fila por patrón; solo cuentan las filas `block`). Quitar una fila deja de detectarla. | La persona. |
 | Sentinel | `~/.claude/sentinel-allowlist.json` (`paths`, `commands`, `domains`, `env_vars`) | `paths` exime un campo que es **una ruta** (`Read`, `Edit`, `Write`…) y **nunca** un comando de `Bash`; `commands` exime un comando entero de los patrones de comando peligroso, por igualdad exacta. Lo que hay en `ALWAYS_DENY_PATHS` y `PROTECTED_CONFIG` no lo levanta ninguna entrada. | La persona; el kit protege el fichero de ediciones de la sesión. |
 | `optional-hook.sh` | `PYTHON_HOOK_BIN=ruta` (intérprete) y `CC_WARN_DIR=dir` (dónde guarda el aviso de «una vez por sesión») | Fija el `python3` que usan Sentinel y `write-guard.py`; con una ruta que no existe se comporta como sin `python3`. | Tests y quien depura. |
-| `nucleo-gate.sh` | `CC_NUCLEO_GATE=1` | Activa su aviso (opt-in); no es un guard de seguridad. | La persona. |
 
 Un interruptor es una decisión de la persona sobre su máquina: un agente que lo propone para «salir del paso» está pidiendo desarmar la barrera, y la respuesta es reformular el comando (cada bloqueo acaba con `Que hacer:` por eso).
 
