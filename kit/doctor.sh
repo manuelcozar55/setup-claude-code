@@ -186,6 +186,10 @@ for tree in claude sentinel; do
         case "$rel" in *.py) comparar=1 ;; esac ;;
     esac
     if [ ! -f "$dst" ]; then
+      if [ -f "$CLAUDE_HOME/.kit-desactivados" ] && grep -qxF -- "$nombre" "$CLAUDE_HOME/.kit-desactivados"; then
+        echo "INFO · desactivado por ti (consta en .kit-desactivados): $nombre"
+        continue
+      fi
       ausentes=$((ausentes + 1))
       if [ "$tree" = sentinel ] && [ "$comparar" -eq 0 ]; then continue; fi
       fail "componente obligatorio del kit ausente: $nombre"

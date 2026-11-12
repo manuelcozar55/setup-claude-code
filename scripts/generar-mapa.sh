@@ -29,7 +29,7 @@ desc() {
       if (i > 1 && substr(l, 1, i - 1) !~ / /) { f = substr(l, i + 5); c = 1 }
       next
     }
-    c > 0 && c < 4 && index(f, ". ") == 0 && $0 !~ /^(#?$|""")/ { l = $0; sub(/^# ?/, "", l); f = f " " l; c++ }
+    c > 0 && c < 4 && index(f, ". ") == 0 { l = $0; sub(/^# ?/, "", l); if (l ~ /^[a-z($]/) { f = f " " l; c++ } else c = 9 }
     END {
       if (q == "") { i = index(f " ", ". "); if (i > 0) f = substr(f, 1, i) }
       r = (q != "") ? q : f; gsub(/[ \t]+$/, "", r); gsub(/\|/, "\\|", r); print r

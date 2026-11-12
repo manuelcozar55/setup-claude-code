@@ -55,5 +55,16 @@ out="$(doc)"; rc=$?
 ck "$rc" "0" "4: tras reinstalar el hook vuelve y una lista obsoleta no es FAIL"
 ck "$(grep -c '^WARN · .kit-desactivados lista branch-guard.sh pero settings.json lo cablea' <<<"$out")" "1" "4: WARN por la lista obsoleta"
 
+rm "$CLAUDE_HOME/agents/code-reviewer.md"
+out="$(doc)"; rc=$?
+ck "$rc" "1" "5: un agente borrado sin anotar es FAIL"
+ck "$(grep -c '^FAIL · componente obligatorio del kit ausente: agents/code-reviewer.md' <<<"$out")" "1" "5: y dice cual"
+echo "agents/code-reviewer.md" >> "$CLAUDE_HOME/.kit-desactivados"
+out="$(doc)"; rc=$?
+ck "$rc" "0" "5: anotado en .kit-desactivados, doctor sale 0"
+ck "$(grep -c '^INFO · desactivado por ti (consta en .kit-desactivados): agents/code-reviewer.md' <<<"$out")" "1" "5: INFO por el agente"
+HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
+ck "$([ -f "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo vuelve)" "vuelve" "5: install --apply devuelve el agente (la baja se repite tras actualizar)"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
