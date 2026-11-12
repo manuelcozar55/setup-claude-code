@@ -85,32 +85,53 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
   (un shell sin `-c`, `ssh`, `xargs`, `. /dev/stdin`) o el heredoc se guarda y se ejecuta en la misma orden
   (`cat > a.sh <<EOF … EOF && bash a.sh`), el texto vuelve a contar como código.
 - **El borrado recursivo se decide por operandos**, no por la palabra: `rm -rf node_modules` o `rm -rf build` pasan,
-  `rm -rf ~/Documentos` o `rm -rf /` se deniegan, y `rm -rf .`, `*`, `./*` o `.git` también (vacían el repo). La exención es de
-  una ruta relativa de build **dentro del proyecto** o de una subruta concreta (`/tmp/prueba-123`), nunca del directorio entero
-  (`/tmp`, `/tmp/*`), de la raíz de otro usuario (`~root`, `~+`) ni de un sitio del sistema (`/opt/tmp`, `/mnt/c/…/dist`).
+  `rm -rf ~/Documentos` o `rm -rf /` se deniegan, y `rm -rf .`, `*`, `./*` o `.git` también (vacían el repo). La exención es una
+  **prueba positiva** (lista cerrada, abajo): una ruta relativa de build **dentro del proyecto** sin `..` (`build`, `./dist/x`),
+  `~/proyecto/…/build` o una subruta concreta de `/tmp` (`/tmp/prueba-123`). Todo lo demás se deniega como en la versión anterior:
+  `~/build`, `~/dist`, `~/.cache` (bajo `~` el nombre del directorio no basta), `../node_modules`, `/tmp` o `/tmp/*`, `~root`, `/run`,
+  `/snap`, `/opt/tmp`, `/mnt/c/…/dist` y las rutas con comodines en el primer componente (`/ho?e/u`, `/h*/u`, `/h{o}me/u`).
   Un `rm -r` que llega como **argumento** de otra orden (`xargs rm -rf`, `flock l rm -rf …`, `find -exec rm`, `at`,
   `awk 'BEGIN{system(…)}'`) se juzga como si fuera la orden: con un operando sensible a la vista se deniega, y si no se ve
   la ruta se pregunta. `git clean -n` pasa.
-- **Monotonía.** Lo que la versión anterior (bc68243) bloqueaba solo pasa si el analizador demuestra que el literal peligroso
-  es **dato** en un contexto conocido (argumento de `echo`/`printf`, patrón de `grep`/`rg`, valor de `-m`, cuerpo de `gh`,
-  heredoc a un fichero, comentario) o es el borrado de una ruta relativa de build. En cualquier otro caso en que el análisis
-  no encuentre la orden, el veredicto es `ask` (o bloqueo), nunca un permiso en silencio. `test_guards_r1.sh` lo comprueba con
-  631 órdenes y la columna «base» de lo que daba bc68243: ninguna puede bajar de bloqueo a permiso sin una exención escrita
-  y justificada en la propia fila.
+- **Monotonía: lo demostrablemente inocuo, no lo que «no parece peligroso».** Lo que la versión anterior (bc68243) bloqueaba solo
+  puede pasar si el analizador **demuestra** de forma positiva que es inocuo, con una prueba de una lista cerrada (abajo). Sin
+  prueba manda el veredicto de la base (bloqueo) o, en lo ya decidido y aceptado, `ask`. El código no contiene listas de lo
+  peligroso (shells receptoras, raíces del sistema) como criterio para eximir: esas listas siempre dejan fuera la orden siguiente
+  (`python3`, `busybox sh`, `env -S`, `/ho?e/u`).
+  Dos consecuencias. El texto de un `echo`, un `printf`, un heredoc o un `<( )` es **dato** solo si nadie lo consume o si **todos** los
+  consumidores son de texto (`cat`, `tee`, `grep`, `wc`, `head`, `sort`, `jq`, `base64`, `git`…); un intérprete (`python3`, `ruby`,
+  `node`, `perl`, `awk`, `sed`), `parallel`, `busybox`, `env -S`, `flock`, `su`, `unshare`, un ejecutable desconocido o una variable no
+  lo prueban, y entonces el texto cuenta como orden. Y una redirección o sustitución de procesos que alimenta a `xargs`, a un
+  `while read` o a un `cat $(…)` (`xargs cat < <(echo .env)`) cuenta como una lectura del nombre. Una orden de más de 128 KB no se
+  analiza, pero tampoco se pregunta a ciegas: lo que la base bloqueaba por su texto se deniega, y solo el resto pregunta.
+  **Lista cerrada de exenciones** (`test/fixtures/guards-exenciones.txt`; un nombre fuera de ella hace caer el test):
+  `dato:echo-sin-consumidor`, `dato:patron-de-busqueda` (patrón de `grep`/`rg`/`ag`/`ack`, programa de `sed`/`awk` que no ejecuta),
+  `dato:mensaje-de-commit` (`-m` de `git commit|tag|stash`, `--title|--body` de `gh`), `dato:heredoc-a-fichero`, `dato:comentario`,
+  `build-relativo`, `home-proyecto-build`, `tmp-subruta`, `lease-rama-de-trabajo` (`--force-with-lease` a ramas con prefijo de
+  trabajo `feat/`, `fix/`, `chore/`, `release/`…, o a la rama actual si lo es; `develop`, `trunk`, `Main`, `--tags` preguntan; `--all` y
+  `--mirror` se deniegan) y `git-rm-cached` (`--cached` **antes** de `--`: tras `--` todo es un nombre de fichero).
+  Lo comprueban dos sensores. `test_guards_r1.sh` pasa 1.936 órdenes (631 de la revisión R1 y 1.305 de la ronda 2) con la columna
+  «base» de lo que daba bc68243: ninguna baja de bloqueo a permiso sin la exención con nombre escrita en su fila.
+  `test_guards_monotonia.sh` es **generativo y diferencial** frente a una copia congelada de los guards de bc68243
+  (`test/fixtures/guards-base/`, solo para tests): una gramática de 64.438 órdenes, muestra determinista de 1.200 (semilla fija; con
+  `GUARDS_MONOTONIA_N=0` la recorre entera) y falla con cualquier «la base bloquea, ahora pasa» sin prueba con nombre.
+  `test_guards_falsifiability.sh` reintroduce cuatro agujeros en copias temporales y comprueba que el sensor cae.
 - **Lo que no se puede resolver, se pregunta (`ask`)**: una variable o una sustitución en la orden que recibe un pipe
   (`curl … | $X`), en la propia orden (`$X -rf ~`, `$(echo rm) -rf ~`, `{rm,-rf,~}`), en el subcomando de git (`git $X`), en
   un refspec o en el operando de `rm`, `reset` o `clean`
   (`rm -rf $D`, `git push origin $B`, `git reset $H`), `git config alias.*` (los guards no ven lo que hace un alias) y un
   fichero que el propio comando escribe y ejecuta (`echo … > x.sh; bash x.sh`). Preguntar de más es el lado seguro.
 - **Lo que es peligroso de verdad, se deniega.** El corpus de 25 comandos peligrosos de la auditoría se bloquea entero y
-  `test_guards_veredictos.sh` lo comprueba en cada `make test`, junto a 34 legítimos que pasan, 12 bypasses y los casos
+  `test_guards_veredictos.sh` lo comprueba en cada `make test`, junto a 32 legítimos que pasan (y 2 falsos positivos que ya daba la versión anterior y quedan declarados: el borrado de `../otro-proyecto/node_modules`, con `..`, y un heredoc a `python3` que contiene el literal `rm -rf /`), 12 bypasses y los casos
   que parecen prosa y no lo son.
 
 **Lo que sigue sin ver ningún guard** (límites declarados, fijados en `test/fixtures/guards-bypass.jsonl`): el código de
 un intérprete (`python3 -c "import shutil; shutil.rmtree('/home/u')"`, `perl -e "unlink glob q(/home/*/*)"`: el hook ve
 texto, no lo que ejecutará Python o Perl), `eval "$X"` y `bash -c "$X"` con el valor construido antes, un nombre armado
 con comillas (`cur''l`, `b""ash`), `rsync --delete` y cualquier cosa que borre sin nombrar una ruta. También pasan, y ya
-pasaban en la versión anterior, estos que la revisión R1 midió (están fijados como `limite` en `test/fixtures/guards-r1.jsonl`):
+pasaban en la versión anterior, estos que la revisión R1 midió (39 filas `limite` en `test/fixtures/guards-r1.jsonl`: 36 que la
+base ya dejaba pasar y 3 falsos positivos preexistentes que siguen bloqueados, L36, Q17 y Q74; y otras 125 de la ronda 2 en
+`guards-r2.jsonl`, todas con el mismo veredicto que la base):
 `git checkout -- .`, `git checkout .` y `git restore .` (descartan cambios sin pasar por el reflog), `git branch -D` de una
 rama que no es `main`/`master`, `git stash clear`, `git filter-branch`, `git reflog expire`, `git gc --prune=now`,
 `git reset --merge|--keep`, `git checkout -f`, `git switch -f`, `mv ~ …`, `truncate` de un dotfile, `kill -9 -1`, `pkill -9 -u`,
@@ -120,9 +141,12 @@ nombre por glob (`cat .en*`), `rm${IFS}-rf${IFS}~/x`, la expansión de llaves `{
 (esta última sí pregunta: lleva un `$` en la orden). La barrera real es la capa de permisos de Claude Code y, para lo
 catastrófico, que el agente no corra con permisos que no necesita.
 
-`git push --force-with-lease` y `--force-if-includes` a una rama de trabajo **pasan** (solo pisan la rama si nadie la ha tocado);
-a `main`/`master`, con `--force` junto a ellos o con un `+refspec`, se deniegan igual. El texto de `gh pr create|issue comment
---body|--title` es prosa. `python3 -c "print('rm -rf ~')"` sigue bloqueado: el código de un intérprete es un límite declarado.
+`git push --force-with-lease` y `--force-if-includes` a una rama de trabajo (prefijo `feat/`, `fix/`, `release/`… o la rama actual si lo
+lleva) **pasan** (solo pisan la rama si nadie la ha tocado); a `main`/`master`, con `--all` o `--mirror`, con `--force` junto a ellos o
+con un `+refspec`, se deniegan, y a una rama sin prefijo de trabajo (`develop`, `trunk`) o con `--tags` se pregunta. El texto de
+`gh pr create|issue comment --body|--title` es prosa. Un intérprete con su propio código es un límite real: `python3 -c "print('hola')"`
+pasa (como en la versión anterior) y también `python3 - <<EOF … shutil.rmtree('/home/u') … EOF`, porque el guard ve texto, no lo
+que ejecutará Python; `python3 -c "print('rm -rf ~')"` sigue bloqueado por el literal (falso positivo preexistente, L36).
 
 `secret-guard.sh` y `bash-write-guard.sh` miran cosas distintas: el primero el nombre de lo que se añade al índice
 (`git add .env`, `*.pem`), el segundo el contenido que un comando escribe. El chequeo de `git add -A` trabaja sobre el
@@ -209,7 +233,7 @@ este texto):
 | Guard | Interruptor (variable real) | Efecto de usarlo | Quién y dónde |
 |---|---|---|---|
 | `destructive-guard.sh` | `CC_ALLOW_DESTRUCTIVE=1` | Apaga el guard entero: pasan `rm` sobre rutas sensibles, `git reset --hard`, `git clean -fd` y `find … -delete`. Se atiende antes del fail-closed, así que no hace falta `jq`. `block-dangerous-commands.sh` y Sentinel siguen activos y **pueden seguir bloqueando** lo mismo. | La persona, en el entorno de la sesión (`env` de `settings.json` o `export`), nunca el agente. |
-| `destructive-guard.sh` y `block-dangerous-commands.sh` | `CC_SAFE_DELETE_DIRS=node_modules:dist:…` | Lista (separada por `:`) de directorios de build que `rm -rf` puede borrar aunque cuelguen de una ruta sensible. Por defecto `node_modules:dist:build:.cache:__pycache__:coverage:.next:.nuxt:tmp`. Ampliarla amplía lo que se borra sin preguntar. | La persona, en el entorno. La lee `lib/cmdnorm.sh`. |
+| `destructive-guard.sh` y `block-dangerous-commands.sh` | `CC_SAFE_DELETE_DIRS=node_modules:dist:…` | Lista (separada por `:`) de directorios de build que `rm -rf` puede borrar aunque cuelguen de una ruta sensible. Por defecto `node_modules:dist:build:out:target:.cache:__pycache__:coverage:.next:.nuxt:.turbo:.parcel-cache:.svelte-kit:.pytest_cache:.mypy_cache:.ruff_cache:.tox:.venv:tmp`; solo cuentan como prueba dentro del proyecto (relativas, o `~/proyecto/…`), nunca bajo `~` directamente. Ampliarla amplía lo que se borra sin preguntar. | La persona, en el entorno. La lee `lib/cmdnorm.sh`. |
 | `destructive-guard.sh` | `CC_BLOCK_LOG=ruta` | Dónde se registran sus bloqueos (por defecto `~/.claude/audit-logs/blocked-commands.log`). No cambia ninguna decisión. | Quien depura; los tests lo apuntan a un temporal. |
 | `branch-guard.sh` | `CC_PROTECT_BRANCHES=main:master:production` | Ramas cuyo `git push` se bloquea (separadas por `:`). Vaciarla o quitar `main` deja empujar ahí. | La persona, en el entorno. |
 | `block-dangerous-commands.sh` | ninguno | Sus reglas están en el script. Se cambia el script (`DENY_RULES`, `ASK_RULES`) o se quita el hook de `settings.json`. | La persona. |

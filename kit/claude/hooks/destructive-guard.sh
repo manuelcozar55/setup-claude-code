@@ -64,7 +64,7 @@ if echo "$COMMAND_SCAN" | grep -qE "$RM_SENS_RX"; then
       [[ $a == -* ]] && continue
       echo "rm $a" | grep -qE "$RM_SENS_RX" || continue
       HIT=1
-      cmdn_safe_operand "$a" || SAFE=0
+      cmdn_rm_proof "$a" || SAFE=0
     done
   done < <(echo "$COMMAND_SCAN" | grep -oE '(^|[^[:alnum:]_.-])rm[[:space:]][^;&|]*')
   (( HIT )) || SAFE=0
@@ -300,7 +300,7 @@ for seg in "${CMDN_SEGS[@]}"; do
       for a in "${T[@]:2}"; do
         if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
         if (( ! dd )) && [[ $a == -* ]]; then continue; fi
-        if cmdn_sensitive_operand "$a" && ! cmdn_safe_operand "$a"; then
+        if cmdn_sensitive_operand "$a" && ! cmdn_rm_proof "$a"; then
           log_block "rm on sensitive path"
           echo "BLOCKED: rm on sensitive path (WSL2 risk: NTFS junctions can delete beyond target)." >&2
           echo "Command: $COMMAND" >&2

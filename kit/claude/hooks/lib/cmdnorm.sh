@@ -172,7 +172,7 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
   return out
 }
 
-function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl) {
+function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl, sp) {
   k = 1
   while (k <= nt) {
     w = toks[k]; b = base(w)
@@ -197,7 +197,13 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl) {
   pre = ""
   for (j = 1; j < k && j <= nt; j++) pre = pre (pre == "" ? "" : " ") toks[j]
   segline[nseg] = ""; segcmd[nseg] = ""; segshell[nseg] = 0; segpsh[nseg] = 0
-  if (k > nt) { exA[nseg] = pre; exB[nseg] = pre; return }
+  if (k > nt) {
+    exA[nseg] = pre; exB[nseg] = pre
+    # Un receptor de pipe sin orden que se pueda leer (`| env -S sh`, `| X=1`): el consumidor es desconocido.
+    sp = sepn[nseg]; gsub(/[|][|]/, "", sp)
+    if (nt > 0 && !(nt == 1 && (toks[1] in ctl)) && (sp ~ /[|]/ || sepn[nseg] ~ /@/)) segpsh[nseg] = 1
+    return
+  }
   b = base(toks[k]); g = ""
   exA[nseg] = pre (pre == "" ? "" : " ") toks[k] render(k, b, 0)
   exB[nseg] = (kd == "S") ? exA[nseg] : pre (pre == "" ? "" : " ") toks[k] render(k, b, 1)
@@ -207,6 +213,12 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl) {
   ok = 1
   for (j = k + 1; j <= nt; j++) { a = toks[j]; if (b in shells) { if (!(a == "-" || (a ~ /^-/ && a !~ /^-.*c/))) ok = 0 } if (a in shells) shl = 1 }
   psh = ((b in shells) && ok) || b == "ssh" || b == "xargs" || b == "at" || b == "batch" || b == "crontab" || ((b == "source" || b == ".") && toks[k + 1] == "/dev/stdin")
+  # Regla estructural: el texto que llega por una tuberia (o a un >( )) solo es DATO si el receptor esta en la lista cerrada de
+  # consumidores de texto; cualquier otro (python3, awk, parallel, busybox sh, un ejecutable desconocido, $X...) lo puede ejecutar.
+  sp = sepn[nseg]; gsub(/[|][|]/, "", sp)
+  if ((sp ~ /[|]/ || sepn[nseg] ~ /@/) && !(b in inert)) psh = 1
+  # `<( )` alimenta a la orden que lo precede: si esa no es un consumidor de texto (`source <(echo ...)`, `python3 <(...)`), el texto es codigo.
+  if (sepn[nseg] ~ /@/ && nseg > 1 && !(segcmd[nseg - 1] in inert)) psh = 1
   segshell[nseg] = shl; segpsh[nseg] = psh
   k++
   if (b == "git") {
@@ -216,7 +228,8 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl) {
       else { g = g (g == "" ? "" : GS) o; k++ }
     }
   }
-  line = kd sepn[nseg] FSEP g US b
+  sq = sepn[nseg]; gsub(/@/, "", sq)
+  line = kd sq FSEP g US b
   for (j = k; j <= nt; j++) line = line US toks[j]
   segline[nseg] = line
 }
@@ -247,13 +260,15 @@ function heredocs(s, i, n,   h, o, m, body, rest, p, e, w, isdata, bs, lt, L) {
       else return i
     }
     body = substr(s, i, bs - i)
+    # Un cuerpo es DATO solo si lo recibe un consumidor de texto de la lista cerrada (cat, tee, git...) y no lo leen un shell ni
+    # un receptor de pipe que no sea de texto. Un interprete (`python3 - <<EOF`) o una orden desconocida NO lo prueban. Lo que
+    # venga DESPUES en la orden (`cat > a.sh <<EOF ... EOF` y luego `bash a.sh`) se mira al final: hdb/hdo quedan pendientes.
     isdata = 1
+    if (!(o <= nseg && (segcmd[o] in inert))) isdata = 0
     if (o <= nseg && segshell[o]) isdata = 0
     for (m = o + 1; m <= nseg; m++) if (segpsh[m]) isdata = 0
-    # Un cuerpo que se guarda en un fichero y se ejecuta en la misma orden (`cat > a.sh <<EOF && bash a.sh`) es codigo.
-    for (m = o + 1; m <= nseg; m++) if ((segcmd[m] in shells) || segcmd[m] == "source" || segcmd[m] == "." || segcmd[m] ~ /^\.\//) isdata = 0
-    if (isdata && o <= nseg && (segcmd[o] in interps) && body ~ /(system|popen|subprocess|exec)/) isdata = 0
     if (!isdata) return i
+    nhb++; hdb[nhb] = body; hdo2[nhb] = o
     if (!hdq[h]) scansubs(body)
     txt = txt substr(s, i, e - i + 1)
     i = e + 1
@@ -328,11 +343,12 @@ function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e,
       continue
     }
     if (c == ";" || c == "|" || c == "(" || c == ")" || c == "`") {
+      pv = (c == "(" && tok ~ /^[0-9]*[<>]$/)
       endseg(); txt = txt c; i++
       if (c == "(") subdepth++
       if (c == ")" && subdepth > 0) subdepth--
       if (c == "`") btick = !btick
-      pend = pend c
+      pend = pend (pv ? "@" : "") c
       continue
     }
     if (c == "&") {
@@ -369,29 +385,46 @@ BEGIN {
   split("sh bash zsh dash ksh ash fish mksh ksh93", arr, " "); for (x in arr) shells[arr[x]] = 1
   split("python python2 python3 perl ruby node nodejs php lua deno bun Rscript tclsh pwsh", arr, " "); for (x in arr) interps[arr[x]] = 1
   split("echo printf grep egrep fgrep rg ag ack zgrep sed awk gawk mawk nawk man type which test [", arr, " "); for (x in arr) prose[arr[x]] = 1
+  # Consumidores de TEXTO inocuos (lista CERRADA): ninguno ejecuta lo que lee. Un receptor que no esta aqui (un interprete, un
+  # envoltorio, un ejecutable desconocido, una variable) NO prueba que el texto de un echo o de un heredoc sea dato.
+  split("cat tee grep egrep fgrep rg ag ack zgrep wc head tail sort uniq cut tr jq less more column nl fold tac rev paste expand unexpand comm diff cmp xxd od hexdump base64 md5sum sha1sum sha256sum cksum basename dirname git gh echo printf true :", arr, " "); for (x in arr) inert[arr[x]] = 1
+  # Ordenes que pueden seguir a un heredoc de texto sin convertirlo en codigo: las inocuas y las que no ejecutan nada propio.
+  split("ls pwd cd mkdir touch chmod cp mv ln stat file date whoami hostname uname id test [ false sleep fi done esac }", arr, " "); for (x in arr) benign[arr[x]] = 1
+  for (x in inert) benign[x] = 1
   split("commit tag stash merge notes revert", arr, " "); for (x in arr) msgsub[arr[x]] = 1
   split("log show diff grep blame shortlog rev-list", arr, " "); for (x in arr) dispsub[arr[x]] = 1
 }
 { src = src $0 RS }
+function drain() { while (qi < qn && qi < 200 && !unparsed) { qi++; run(queue[qi], 0) } }
 END {
   sub(/\001$/, "", src)
-  nseg = 0; qn = 0; qi = 0; unparsed = 0
+  nseg = 0; qn = 0; qi = 0; unparsed = 0; nhb = 0; hp = 1
   run(src, 1)
-  while (qi < qn && qi < 200 && !unparsed) { qi++; run(queue[qi], 0) }
-  if (unparsed) { ex = src; segs = "" }
+  drain()
+  # Los cuerpos de heredoc dados por dato se confirman ahora que se ve la orden entera: si despues viene algo que no es inocuo
+  # (un shell, un interprete, `./a.sh`), el cuerpo pasa a ser codigo y se analiza como ordenes.
+  while (hp <= nhb && !unparsed) {
+    ok = 1
+    for (m = hdo2[hp] + 1; m <= nseg; m++) if (!(segcmd[m] in benign)) ok = 0
+    if (!ok) push(hdb[hp])
+    hp++
+    drain()
+  }
+  if (unparsed) { ex = src; segs = ""; psh = 1 }
   else {
     psh = 0
     for (m = 1; m <= nseg; m++) if (segpsh[m]) psh = 1
     ex = ""; segs = ""
     for (m = 1; m <= nseg; m++) {
-      ex = ex sepn[m] (psh ? exA[m] : exB[m])
+      sq = sepn[m]; gsub(/@/, "", sq)
+      ex = ex sq (psh ? exA[m] : exB[m])
       if (m == mainlast) ex = ex maintail
       if (segline[m] != "") segs = segs segline[m] "\n"
     }
     # Pasado el tope de cuerpos encolados el resto no se analiza: se deja como texto de orden (falla cerrado).
     for (m = qi + 1; m <= qn; m++) ex = ex ";" queue[m]
   }
-  printf "%s\036%s\036%s", maintxt, ex, segs
+  printf "%s\036%s\036%s\036%s", maintxt, ex, psh, segs
 }
 '
 
@@ -416,7 +449,7 @@ cmdn_oversize() {
 
 cmdn_parse() {
   local out rest
-  CMDN_SEGS=(); CMDN_CWD=""; CMDN_EXEC=""
+  CMDN_SEGS=(); CMDN_CWD=""; CMDN_EXEC=""; CMDN_PSH=1
   # Los cuatro bytes de control con los que el parser separa sus salidas (\034-\037) no pueden ir en el comando: un \036 propio
   # desplazaria texto, EXEC y segmentos. Bash no los trata como separador, asi que pasan a espacio.
   set -- "${1//[$'\034\035\036\037']/ }"
@@ -425,7 +458,7 @@ cmdn_parse() {
   fi
   # `${out%%…*}` y `${out#*…}` prueban cada longitud de prefijo: cuadráticos (64 KB ≈ 1,5 s de CPU,
   # el timeout del hook corre en abierto). `read` parte en el primer separador en una pasada.
-  IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC rest <<<"$out"
+  IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC CMDN_PSH rest <<<"$out"
   mapfile -t CMDN_SEGS <<<"$rest"
   while (( ${#CMDN_SEGS[@]} )) && [[ -z ${CMDN_SEGS[-1]} ]]; do
     unset 'CMDN_SEGS[-1]'
@@ -441,24 +474,11 @@ cmdn_fields() {
   IFS=$CMDN_US read -r -a T <<<"${1#*"$CMDN_FS"}"
 }
 
-# cmdn_pipes_to_shell: 0 si algun comando simple es un interprete de shell que lee su programa de la
-# entrada (`| bash`, `| sudo sh -`, sin `-c` ni fichero). Entonces el texto de un echo/printf anterior
-# ES la orden, y los guards ya no lo tratan como prosa.
-cmdn_pipes_to_shell() {
-  local seg a ok cmd
-  local -a T
-  for seg in "${CMDN_SEGS[@]}"; do
-    cmd=${seg#*"$CMDN_US"}; cmd=${cmd%%"$CMDN_US"*}
-    case $cmd in bash|sh|zsh|dash|ksh|ash|fish|mksh|ksh93) ;; *) continue ;; esac
-    cmdn_fields "$seg"
-    ok=1
-    for a in "${T[@]:2}"; do
-      [[ $a == - || ( $a == -* && $a != -*c* ) ]] || ok=0
-    done
-    (( ok )) && return 0
-  done
-  return 1
-}
+# cmdn_pipes_to_shell: 0 si el texto de un echo/printf (o de un heredoc) puede acabar EJECUTADO: algun receptor de una tuberia (o de un
+# >( )) no es un consumidor de texto de la lista cerrada de cmdnorm (python3, awk, parallel, busybox sh, un ejecutable desconocido, $X,
+# un shell que lee su programa de la entrada...). Entonces ese texto ES la orden y los guards ya no lo tratan como prosa: sin prueba
+# de que es dato, manda lo que diria el analisis del texto entero. Lo calcula el parser (CMDN_PSH); si no pudo, es 1.
+cmdn_pipes_to_shell() { (( CMDN_PSH )); }
 
 # cmdn_code_inner "$arg" palabra: el argumento de `python -c`/`perl -e`... lleva el comando dentro de
 # una llamada (`os.system('find . -delete')`, `subprocess.run(['git','push'])`). Comillas, corchetes,
@@ -486,9 +506,9 @@ cmdn_track_cd() {
 # ── rm: qué ruta es sensible y cuál es un directorio de build conocido ───────────────────────────────────
 # Compartido por block-dangerous-commands (deniega/pregunta) y destructive-guard (deniega): una sola
 # definición, para que no se desalineen. El operando es un token ya descomillado de cmdn_fields.
-# CMDN_SAFE_DIRS: los nombres de directorio que se pueden borrar aunque cuelguen de una ruta sensible
-# (`$HOME/proyecto/node_modules`). CC_SAFE_DELETE_DIRS los cambia, separados por `:`.
-CMDN_SAFE_DIRS=${CC_SAFE_DELETE_DIRS:-node_modules:dist:build:.cache:__pycache__:coverage:.next:.nuxt:tmp}
+# CMDN_SAFE_DIRS: los nombres de directorio de build o de cache que se pueden borrar (la lista cerrada de `cmdn_rm_proof`).
+# CC_SAFE_DELETE_DIRS los cambia, separados por `:`.
+CMDN_SAFE_DIRS=${CC_SAFE_DELETE_DIRS:-node_modules:dist:build:out:target:.cache:__pycache__:coverage:.next:.nuxt:.turbo:.parcel-cache:.svelte-kit:.pytest_cache:.mypy_cache:.ruff_cache:.tox:.venv:tmp}
 IFS=':' read -ra CMDN_DIRS <<< "$CMDN_SAFE_DIRS"
 
 # cmdn_path_norm "$ruta": en REPLY, la ruta sin `//`, sin `/./` y sin `/` ni `/.` finales (`/tmp//`, `/tmp/.` son `/tmp`).
@@ -515,21 +535,37 @@ cmdn_sensitive_operand() {
   return 1
 }
 
-# El directorio seguro tiene que ser un componente REAL de la ruta y no puede haber un `..` después (`dist/../Documents`).
-# Bajo las raíces del sistema (/home, /etc, /usr, /var, /root, /boot, /lib, /bin, /sbin, /mnt, /media, /opt, /srv, /dev, /proc, /sys)
-# no hay exención, ni para otro usuario (`~root/build`: solo vale la tilde sola con barra), ni para el directorio temporal entero.
-cmdn_safe_operand() {
-  local d p tail
+# cmdn_rm_proof "$operando": PRUEBA POSITIVA de que un operando de `rm -rf` es inocuo (lista cerrada, nada se exime por no parecer
+# peligroso). Devuelve 0 y deja el nombre de la prueba en REPLY; 1 si no la hay, y entonces manda el criterio de la base (denegar).
+#   build-relativo        ruta relativa dentro del proyecto con un directorio de build conocido (CMDN_DIRS) como componente, sin `..`,
+#                         sin comodin ni llave en el primer componente
+#   home-proyecto-build   ~/<proyecto>/.../<directorio de build>, con el proyecto no oculto y sin comodin
+#   tmp-subruta           /tmp/<subruta concreta>: nunca /tmp, /tmp/* ni /tmp/.*
+# Cualquier otra ruta absoluta, con `~usuario`, con `$` o con `..` no tiene prueba (`~/build`, `~/.cache`, `/run/user/1000`, `/ho?e/u`).
+# shellcheck disable=SC2088  # `~` es el TEXTO del operando, no se expande.
+cmdn_rm_proof() {
+  local p first rest d c
+  local -a parts
   cmdn_path_norm "$1"; p=$REPLY
-  case $p in /home*|/etc*|/usr*|/var*|/root*|/boot*|/lib*|/bin*|/sbin*|/mnt*|/media*|/opt*|/srv*|/dev*|/proc*|/sys*) return 1 ;; esac
-  case $p in '~'|'~'[!/]*) return 1 ;; esac
-  [[ $p == /* && ${p:1} != */* ]] && return 1
-  [[ ( $p == /*/'*' || $p == /*/'.*' || $p == /*/'**' ) && ${p:1} != */*/* ]] && return 1
-  p="/$p/"
-  for d in "${CMDN_DIRS[@]}"; do
-    [[ $p == *"/$d/"* ]] || continue
-    tail="/${p#*"/$d/"}"
-    [[ $tail == *"/../"* ]] || return 0
+  [[ -n $p && $p != *..* && $p != *'$'* && $p != *'`'* && $p != *\\* ]] || return 1
+  case $p in
+    /tmp/*)
+      rest=${p#/tmp/}; first=${rest%%/*}
+      [[ -n $first && $first != *['*?[{']* ]] || return 1
+      REPLY=tmp-subruta; return 0 ;;
+    /*|'~'|'~'[!/]*) return 1 ;;
+    '~/'*)
+      rest=${p#'~/'}; first=${rest%%/*}
+      [[ $rest == */* && -n $first && $first != .* && $first != *['*?[{']* ]] || return 1
+      rest=${rest#*/}; REPLY=home-proyecto-build ;;
+    *)
+      rest=${p#./}; first=${rest%%/*}
+      [[ -n $first && $first != *['*?[{']* ]] || return 1
+      REPLY=build-relativo ;;
+  esac
+  IFS=/ read -ra parts <<<"$rest"
+  for c in "${parts[@]}"; do
+    for d in "${CMDN_DIRS[@]}"; do [[ $c == "$d" ]] && return 0; done
   done
   return 1
 }

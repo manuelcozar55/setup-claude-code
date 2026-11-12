@@ -676,7 +676,9 @@ def _command_roles(cmd: list, piped: bool = False) -> list:
     # another command may read them as names, so there they stay paths. `git rm --cached` edits the index, it reads nothing.
     if name in ("echo", "printf") and not piped and not any("{" in a[0] for a in args):
         return roles + [(a, "path" if a[0].startswith("-") else "skip") for a in args]
-    if name == "git" and args and args[0][0] == "rm" and any(a[0] == "--cached" for a in args[1:]):
+    # After `--` every word is a file name, `--cached` included: `git rm -- --cached <file>` deletes <file>.
+    cut = next((i for i, a in enumerate(args) if a[0] == "--"), len(args))
+    if name == "git" and args and args[0][0] == "rm" and any(a[0] == "--cached" for a in args[1:cut]):
         return roles + [(a, "path" if a[0].startswith("-") else "skip") for a in args]
     if name not in _OPTS:
         return roles + [(a, "path") for a in args]
@@ -714,12 +716,15 @@ def _scrub_command(text: str) -> str | None:
     except Exception:
         return None
     out, cut, name = [], False, None
+    # sed and awk are programs, not text consumers: what they read can run (e, system, getline), so with one of them
+    # in the command no body is scrubbed and the whole text is judged as the base did.
+    prog = any(c and _cmd_name(c[0][0]) in ("sed", "awk") for c in _simple_commands(toks))
     for t in toks:
         if isinstance(t, str):
             out.append(t)
             name = None
         elif isinstance(t, dict):
-            if roles.get(id(t), "shell") == "data":
+            if roles.get(id(t), "shell") == "data" and not prog:
                 cut = True
             elif t["body"] is not None:
                 out.append("<<'" + t["delim"] + "'\n" + t["body"] + "\n" + t["delim"])
@@ -886,8 +891,9 @@ def _word_roles(toks: list, sink: str = "data", out_read: bool = False) -> list:
     or not: writers and names are not followed. out_read: the text is the body of a $( ) whose output
     lands in a word another command reads, so an echo in it is not prose (`cat $(echo NAME)`)."""
     out, cmd, redirect, docs, stages, cmds = [], [], False, [], [], []
-    pipe, pdepth, kdepth, closed, prev = 0, 0, 0, False, None
+    pipe, pdepth, kdepth, closed, prev, last, psub = 0, 0, 0, False, None, None, []
     for t in toks + ["\n"]:
+        before, last = last, t
         if isinstance(t, dict):
             docs.append((t, len(stages)))
         elif isinstance(t, str) and ("<" in t or ">" in t):
@@ -905,7 +911,12 @@ def _word_roles(toks: list, sink: str = "data", out_read: bool = False) -> list:
             if t == "\n" and prev in ("|", "|&"):
                 t = prev
             pipe += t not in ("|", "|&", "(", ")")
-            out += _command_roles(cmd, out_read or t in ("|", "|&"))
+            # Inside <( ) or >( ) the output goes to the command around it, which may read the words as names.
+            out += _command_roles(cmd, out_read or any(psub) or t in ("|", "|&"))
+            if t == "(":
+                psub.append(before in ("<", ">"))
+            elif t == ")" and psub:
+                psub.pop()
             cmd, redirect, prev = [], False, t
         elif redirect:
             out.append((t, "path"))

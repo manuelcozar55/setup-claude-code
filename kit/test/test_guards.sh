@@ -792,10 +792,13 @@ done
 # shellcheck disable=SC2016  # el $HOME va literal: es el comando que se evalua
 for c in 'rm -rf ~/dist/../Documents' 'rm -rf ~/node_modules/../.ssh' 'rm -rf dist/..' \
          'rm -rf ./node_modules/x/../..' 'rm -rf $HOME/build/../Documents' 'rm -rf "$HOME/dist/../Documents"' \
-         'sudo rm -rf ~/tmp/../Documents' 'rm -rf ~/dist/foo/../../Documents'; do
+         'sudo rm -rf ~/tmp/../Documents' 'rm -rf ~/dist/foo/../../Documents' \
+         'rm -rf ~/node_modules/x' 'rm -rf ../node_modules' 'rm -rf ~/dist'; do
   expect "destructive (E7.3): $c denegado" "$(run_dg "$c")" BLOCK
 done
-for c in 'rm -rf ./node_modules/x' 'rm -rf ~/node_modules/x' 'rm -rf ../node_modules' 'rm -rf dist build' 'rm -rf ~/dist'; do
+# Tercera vuelta (cambio de especificacion declarado): un rm -rf solo pasa con una PRUEBA positiva (build relativo sin `..`, ~/proyecto/.../build,
+# /tmp/<subruta>). `~/dist`, `~/node_modules/x` y `../node_modules` no la tienen (el nombre no basta bajo ~ ni con `..`): manda la base, que los bloqueaba.
+for c in 'rm -rf ./node_modules/x' 'rm -rf dist build' 'rm -rf ~/proj/dist'; do
   expect "destructive (E7.3): $c NO denegado" "$(run_dg "$c")" ALLOW
 done
 
@@ -1510,14 +1513,24 @@ big_over=$(head -c 140000 /dev/zero | tr '\0' 'a')
 big_ask() { # $1 etiqueta, resto = el guard (argv)
   local label=$1 payload out
   shift
-  printf 'echo %s; git push --force origin main' "$big_over" > "$GUARDS_TEST_HOME/big.cmd"  # jq --arg no admite >128 KB
+  printf 'echo %s; %s' "$big_over" "${BIG_TAIL:-git push --force origin main}" > "$GUARDS_TEST_HOME/big.cmd"  # jq --arg no admite >128 KB
   payload=$(jq -nc --rawfile c "$GUARDS_TEST_HOME/big.cmd" '{tool_name:"Bash",tool_input:{command:$c}}')
   out=$(cd "$SG_DIR" && printf '%s' "$payload" | HOME="$GUARDS_TEST_HOME" CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" "$@" 2>&1)
   if [ "$(jq -r '.hookSpecificOutput.permissionDecision' <<<"$out" 2>/dev/null)" = ask ] && grep -q 'herramienta Write' <<<"$out"; then
     pass=$((pass+1))
   else fail=$((fail+1)); echo "FAIL: $label: 140 KB no pide confirmacion con aviso de Write (salida: ${out:0:200})"; fi
 }
-big_ask "block-dangerous" bash "$KIT/claude/hooks/block-dangerous-commands.sh"
+# Tercera vuelta (hallazgo 7): sobre el tope block-dangerous aplica el criterio de la base al texto: lo que la base bloqueaba se DENIEGA
+# (antes se preguntaba, y un force push a main de 140 KB pasaba con un clic); lo que no, se pregunta.
+BIG_TAIL='ls' big_ask "block-dangerous" bash "$KIT/claude/hooks/block-dangerous-commands.sh"
+for tail_cmd in 'git push --force origin main' 'rm -rf ~/x' 'git push -f origin master'; do
+  printf 'echo %s; %s' "$big_over" "$tail_cmd" > "$GUARDS_TEST_HOME/big.cmd"
+  payload=$(jq -nc --rawfile c "$GUARDS_TEST_HOME/big.cmd" '{tool_name:"Bash",tool_input:{command:$c}}')
+  out=$(cd "$SG_DIR" && printf '%s' "$payload" | HOME="$GUARDS_TEST_HOME" CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1)
+  rc=$?
+  if [ "$rc" = 2 ] || [ "$(jq -r '.hookSpecificOutput.permissionDecision' <<<"$out" 2>/dev/null)" = deny ]; then pass=$((pass+1))
+  else fail=$((fail+1)); echo "FAIL: block-dangerous: 140 KB con '$tail_cmd' (la base lo bloqueaba) no se deniega (rc=$rc)"; fi
+done
 big_ask "branch-guard"    bash "$KIT/claude/hooks/branch-guard.sh"
 big_ask "destructive"     bash "$KIT/claude/hooks/destructive-guard.sh"
 big_ask "secret-guard"    bash "$KIT/claude/hooks/secret-guard.sh"

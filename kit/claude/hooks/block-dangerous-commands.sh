@@ -48,9 +48,17 @@ command_allowlisted && exit 0
 # shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" 2>/dev/null \
   || deny "BLOCKED (fail-closed): falta lib/cmdnorm.sh junto al guard; reinstala el kit."
-cmdn_oversize "$COMMAND" && exit 0
-cmdn_parse "$COMMAND" \
-  || deny "BLOCKED (fail-closed): awk no pudo normalizar el comando, asi que este guard no puede evaluarlo."
+# Por encima del tope (CMDN_MAX_BYTES) el parser no se arriesga, pero tampoco se pasa a `ask` a ciegas: se aplica el criterio de la base
+# (las reglas de DENY sobre el texto entero, sin quitar prosa) y solo si no salta ninguna se pregunta. Sobre 1 MB ni eso cabe en el timeout.
+OVER=0
+if cmdn_oversize "$COMMAND" >/dev/null; then
+  OVER=1
+  (( ${#COMMAND} > 8 * CMDN_MAX_BYTES )) && { cmdn_oversize "$COMMAND"; exit 0; }
+  CMDN_TEXT=$COMMAND; CMDN_EXEC=$COMMAND; CMDN_SEGS=(); CMDN_PSH=1
+else
+  cmdn_parse "$COMMAND" \
+    || deny "BLOCKED (fail-closed): awk no pudo normalizar el comando, asi que este guard no puede evaluarlo."
+fi
 COMMAND=$CMDN_TEXT
 # Las reglas de DENY juzgan EXECT: el texto de las ordenes sin la prosa (mensaje de commit, patron de grep, argumento de echo,
 # cuerpo de un heredoc que solo guarda texto). Las de ASK siguen sobre COMMAND: preguntar de mas es el lado seguro.
@@ -405,9 +413,23 @@ fi
 # que pasa de su timeout deja ejecutar el comando ENTERO. Solo se vuelve a normalizar la cadena que
 # puede llevar el refspec (push y +), y pasadas 16 se deniega: fallar cerrado.
 NEST=0
+# El ask de los analisis por token se acumula aqui (lo emite el final del guard).
+TOK_ASK=''
+WX=0
+tok_ask() { [[ -n $TOK_ASK ]] || TOK_ASK=$1; }
+# lease_work_ok <rama>: PRUEBA de que una rama es de trabajo (lista cerrada de prefijos: feat/, fix/, release/...). `HEAD` es la rama
+# actual, que se lee con git. Un nombre sin prefijo (trunk, develop, Main, un tag) no tiene prueba: manda el criterio de la base.
+LEASE_PREFIXES='feat|feature|fix|bugfix|hotfix|chore|docs|refactor|test|tests|ci|build|perf|style|release|wip|topic|users|dependabot|renovate|cv2'
+lease_work_ok() {
+  local b=${1#refs/heads/}
+  if [[ $b == HEAD || $b == @ ]]; then
+    b=$(git ${CMDN_CWD:+-C "$CMDN_CWD"} symbolic-ref --short -q HEAD 2>/dev/null) || return 1
+  fi
+  [[ $b =~ ^($LEASE_PREFIXES)/[A-Za-z0-9._/-]+$ && $b != *..* ]]
+}
 push_refspec() {
-  local depth=$1 kind=$2 seg a i inner skip dd rc v lease
-  local -a T segs
+  local depth=$1 kind=$2 seg a i inner skip dd rc v lease pall ptags r side lwok
+  local -a T segs pos
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
     case $kind in
@@ -446,7 +468,7 @@ push_refspec() {
     fi
     if [[ $kind == verify ]]; then [[ ${T[2]:-} == push || ${T[2]:-} == commit ]] || continue
     else [[ ${T[2]:-} == push ]] || continue; fi
-    skip=0; dd=0; lease=0
+    skip=0; dd=0; lease=0; pall=0; ptags=0; pos=()
     for a in "${T[@]:3}"; do
       if (( skip )); then skip=0; continue; fi
       if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
@@ -456,6 +478,8 @@ push_refspec() {
             --force-with-lease=*main*|--force-with-lease=*master*) return 0 ;;
             --force-with-lease|--force-with-lease=*|--force-if-includes) lease=1 ;;
             --force*) return 0 ;;
+            --all|--mirror) pall=1 ;;
+            --tags) ptags=1 ;;
             --*) ;;
             -*) [[ ${a#-} == *f* ]] && return 0 ;;
           esac
@@ -492,16 +516,38 @@ push_refspec() {
       if [[ $kind == force ]]; then
         [[ $a == +* || $a == '$'+* ]] && return 0
         (( lease )) && [[ $a == main || $a == master || $a == *:main || $a == *:master || $a == */main || $a == */master ]] && return 0
+        pos+=("$a")
       elif [[ $kind == delete ]]; then
         [[ $a == :?* || $a == '$':?* ]] && return 0
       fi
     done
+    [[ $kind == force ]] && (( lease )) && LEASE_REAL=$(( LEASE_REAL + 1 ))
+    # El lease con --all o --mirror alcanza a main/master: se trata como a main. Con --tags, que no se ve que etiquetas pisa: ask.
+    (( lease && pall )) && return 0
+    if [[ $kind == force ]] && (( lease && ! ptags )); then
+      lwok=1
+      if (( ${#pos[@]} < 2 )); then lease_work_ok HEAD || lwok=0
+      else
+        for r in "${pos[@]:1}"; do
+          for side in ${r//:/ }; do lease_work_ok "$side" || lwok=0; done
+        done
+      fi
+      (( lwok )) || tok_ask "Confirm: git push con lease a una rama que no se reconoce como de trabajo (feat/, fix/, chore/, release/...): puede ser la rama principal con otro nombre. Empuja una rama con prefijo o ejecutalo tu con !."
+    fi
+    (( lease && ptags )) && tok_ask "Confirm: git push con lease y --tags pisa etiquetas del remoto que el guard no ve. Empuja la rama y las etiquetas concretas por separado."
   done
   return 1
 }
 PIPED=0; cmdn_pipes_to_shell && PIPED=1
+LEASE_REAL=0
 if [[ $COMMAND == *git* && $COMMAND == *push* ]]; then
   push_refspec 0 force; rc_refspec=$?
+  # Un lease que el texto muestra y ninguna orden analizada es (codigo de un interprete, env -S, un argumento opaco) no tiene la
+  # prueba de la rama de trabajo: manda el criterio de la base, que lo denegaba.
+  if (( rc_refspec == 1 )); then
+    LEASE_TEXT=$(LC_ALL=C grep -oE '\bgit\b[^;&|]*\bpush\b[^;&|]*--force-(with-lease|if-includes)' <<<"$EXECT" | wc -l)
+    (( LEASE_TEXT > LEASE_REAL )) && deny "BLOCKED: git push con lease que el guard no puede analizar como orden (dentro de codigo de un interprete, env -S...): sin la prueba de que la rama es de trabajo vale el criterio de siempre. Escribelo como orden directa."
+  fi
   (( rc_refspec == 0 )) && deny "BLOCKED: git push --force / -f / +refspec (force push)"
   (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"
 fi
@@ -523,8 +569,6 @@ fi
 # OPERANDOS (la ruta, no la palabra `rm -rf`), y una palabra que el shell resolvera despues (`$VAR`, `$(...)`) en un sitio
 # donde decide el peligro (subcomando de git, refspec, operando de rm/reset/clean, orden que recibe un pipe) se PREGUNTA:
 # el hook ve texto, no el valor final. Lo que es seguro de verdad pasa; lo que es peligroso de verdad se deniega.
-TOK_ASK=''
-tok_ask() { [[ -n $TOK_ASK ]] || TOK_ASK=$1; }
 
 # judge_rm <argumentos de un rm>: deniega o pregunta segun los operandos. Deja en RM_R si lleva -r. Las opciones se leen
 # antes que los operandos (`rm ~/x -rf` es lo mismo que `rm -rf ~/x`).
@@ -541,15 +585,19 @@ judge_rm() {
   for a in "$@"; do
     if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
     if (( ! dd )) && [[ $a == -* ]]; then continue; fi
+    # Sin prueba de que el operando es inocuo (cmdn_rm_proof: ruta de build relativa, ~/proyecto/.../build, /tmp/<subruta>) manda el
+    # criterio de la base: un `rm -rf` se deniega. Lo peligroso no se reconoce por lista; lo inocuo, si.
+    (( r && f )) && cmdn_rm_proof "$a" && continue
     if cmdn_sensitive_operand "$a"; then
-      cmdn_safe_operand "$a" && continue
-      (( r && f )) && deny "BLOCKED: rm -rf (recursive force delete) sobre una ruta sensible ($a). Un directorio de build conocido (node_modules, dist, build...) dentro del proyecto o una subruta concreta si se puede borrar. Si de verdad quieres borrar esa ruta, ejecutalo tu con ! en la sesion."
+      (( r && f )) && deny "BLOCKED: rm -rf (recursive force delete) sobre una ruta sensible ($a). Un directorio de build conocido (node_modules, dist, build...) dentro del proyecto o una subruta concreta de /tmp si se puede borrar. Si de verdad quieres borrar esa ruta, ejecutalo tu con ! en la sesion."
     elif (( r || f )) && cmdn_opaque_operand "$a"; then
       tok_ask "Confirm: rm con un operando que el guard no puede resolver ($a): una variable o sustitucion puede apuntar a una ruta que no es de build. Escribe la ruta a la vista (rm -rf build)."
     elif (( r && f )) && cmdn_cwd_operand "$a"; then
       deny "BLOCKED: rm -rf $a vacia el directorio de trabajo (o el repo entero). Borra rutas concretas (rm -rf build dist); si de verdad quieres vaciarlo, ejecutalo tu con ! en la sesion."
     elif (( r )) && cmdn_cwd_operand "$a"; then
       tok_ask "Confirm: rm -r sobre $a vacia el directorio de trabajo (o el repo entero). Borra rutas concretas (rm -rf build dist)."
+    elif (( r && f )); then
+      deny "BLOCKED: rm -rf (recursive force delete) sobre $a, que no es un directorio de build conocido (node_modules, dist, build, target...) dentro del proyecto ni una subruta concreta de /tmp. Borra la ruta concreta de build; si de verdad quieres borrar esa, ejecutalo tu con ! en la sesion."
     fi
   done
 }
@@ -559,8 +607,8 @@ judge_rm() {
 # que ruta recibira, asi que se juzga como si fuera la orden: con un operando sensible visible, deniega; si no, pregunta.
 RM_TEXT_RX='(^|[^[:alnum:]_.-])rm([[:space:]]+-[A-Za-z-]+)*[[:space:]]+(-[A-Za-z-]*[rR][A-Za-z-]*|--recursive)([[:space:]][^;&|]*)?'
 rm_text_net() {
-  local m
-  local -a words matches
+  local m seg a
+  local -a words matches T
   mapfile -t matches < <(LC_ALL=C grep -oE "$RM_TEXT_RX" <<<"$EXECT")
   (( ${#matches[@]} > RM_REAL )) || return 0
   for m in "${matches[@]}"; do
@@ -568,6 +616,18 @@ rm_text_net() {
     m=${m//[\'\"\`]/}
     read -ra words <<<"$m"
     judge_rm "${words[@]:1}"
+  done
+  # `echo / | xargs rm -rf`: lo que imprime un echo/printf de la orden es la lista de rutas del rm; si una es sensible o vacia el
+  # directorio de trabajo, se deniega (no es una duda: la ruta esta a la vista).
+  for seg in "${CMDN_SEGS[@]}"; do
+    cmdn_fields "$seg"
+    [[ ${T[1]:-} == echo || ${T[1]:-} == printf ]] || continue
+    for a in "${T[@]:2}"; do
+      [[ $a == -* ]] && continue
+      if cmdn_sensitive_operand "$a" || cmdn_cwd_operand "$a"; then
+        deny "BLOCKED: un rm recursivo llega como argumento de otra orden (xargs...) y el texto que lo alimenta incluye una ruta sensible ($a). Borra rutas concretas (rm -rf build dist)."
+      fi
+    done
   done
   tok_ask "Confirm: un rm recursivo llega como argumento de otra orden (xargs, flock, parallel, find -exec, at, awk, bash -c...): el guard no ve que ruta va a borrar. Ejecuta el rm directamente con la ruta a la vista (rm -rf build)."
 }
@@ -659,16 +719,24 @@ token_checks() {
         # `bash x.sh`, `source x.sh`, `./x.sh`: el segmento que lo ejecuta es posterior al que lo escribio.
         if [[ -n $w ]]; then
           for a in "${T[@]:2}"; do
-            [[ $a == "$tgt" ]] && tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."
+            [[ ${a#./} == "${tgt#./}" ]] && WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."
           done
         elif [[ ${T[1]:-} == "${tgt##*/}" && ${tgt##*/} == *.* ]]; then
-          tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."
+          WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."
         fi
       done
     fi
   done
+  (( WX )) && EXECT=$COMMAND
   [[ $COMMAND == *rm* ]] && rm_text_net
 }
+if (( OVER )); then
+  # Sin analisis de segmentos: un rm recursivo con --force o -f en el texto se deniega (el criterio de la base sobre el texto entero).
+  while IFS= read -r m; do
+    [[ $m =~ (^|[[:space:]])(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$) ]] \
+      && deny "BLOCKED: rm -rf en una orden de mas de $(( CMDN_MAX_BYTES / 1024 )) KB: no se puede analizar, y el criterio de la base es denegar. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto."
+  done < <(LC_ALL=C grep -oE "$RM_TEXT_RX" <<<"$COMMAND")
+fi
 if [[ $COMMAND == *rm* || $COMMAND == *git* || $COMMAND == *'|'* || $COMMAND == *'>'* || $COMMAND == *chmod* || $COMMAND == *chown* || $COMMAND == *chgrp* || $COMMAND == *'$'* || $COMMAND == *'`'* || $COMMAND == *'{'* ]]; then token_checks; fi
 
 # LC_ALL=C en los grep: con UTF-8 la union de patrones deja de ir por el automata y recorre el
@@ -688,6 +756,7 @@ if [ "$rc_union" -ge 2 ]; then
 fi
 if [ "$rc_union" -ne 0 ]; then
   [[ -n $TOK_ASK ]] && ask "$TOK_ASK"
+  (( OVER )) && cmdn_oversize "$COMMAND"
   exit 0
 fi
 
@@ -700,6 +769,8 @@ writes_text_to_file() {
   return 1
 }
 
+# Un fichero que el propio comando escribe y ejecuta: el texto que escribe es CODIGO, no prosa; manda el criterio de la base (el texto entero).
+(( WX )) && EXECT=$COMMAND
 SAFE_FETCH=''
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do
   LC_ALL=C grep -qiE "${DENY_RULES[i]}" <<<"$EXECT" || continue
@@ -719,5 +790,6 @@ for ((i = 0; i < ${#ASK_RULES[@]}; i += 2)); do
   LC_ALL=C grep -qiE "${ASK_RULES[i]}" <<<"$COMMAND" && ask "${ASK_RULES[i + 1]}"
 done
 [[ -n $TOK_ASK ]] && ask "$TOK_ASK"
+(( OVER )) && cmdn_oversize "$COMMAND"
 
 exit 0
