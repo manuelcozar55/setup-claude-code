@@ -303,13 +303,16 @@ fi
 if [ -x "$HOME/.venvs/tools/bin/python3" ]; then pass "venv tools presente"; else warn "venv tools ausente (opcional; ver docs/02-install.md)"; fi
 
 # 4b. interprete para los hooks Python (sentinel_preflight, write-guard).
-# No es FAIL: optional-hook.sh los convierte en no-op si no hay interprete, y el
-# resto de la cadena (los guards de bash) sigue protegiendo. Pero conviene
-# saberlo, porque son capas menos.
+# Es FAIL: optional-hook.sh convierte esos hooks en no-op si no hay interprete, asi que sin python3 dos capas
+# (Sentinel y write-guard) estan apagadas sin que nada lo diga. Con --sin-python se instala a sabiendas, pero
+# doctor no lo da por bueno: el mensaje lleva la orden para arreglarlo.
 if [ -x "$HOME/.venvs/tools/bin/python3" ] || command -v python3 >/dev/null 2>&1; then
   pass "interprete para hooks Python disponible  (fuente: venv o python3 del sistema)"
 else
-  warn "sin python3: el preflight de Sentinel y write-guard quedan en no-op (los guards de bash siguen activos)"
+  fail "python3 no instalado: Sentinel y write-guard estan APAGADAS (los guards de bash siguen activos). Instala python3 (sudo apt install python3, o brew install python3) y repite"
+fi
+if grep -q 'write-guard\.py' "$CLAUDE_HOME/settings.json" 2>/dev/null && [ ! -f "$CLAUDE_HOME/hooks/write-guard.py" ]; then
+  fail "write-guard.py falta en $CLAUDE_HOME/hooks pero settings.json lo cablea: el hook falla en cada escritura. Repite: bash $KIT/install.sh --apply"
 fi
 
 # 5. Enrutado de la API: si algo enruta a un proxy, ese proxy TIENE que contestar.

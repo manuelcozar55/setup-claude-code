@@ -132,7 +132,8 @@ if ! command -v python3 >/dev/null 2>&1 && [ ! -x "$HOME/.venvs/tools/bin/python
       brew install python3         # macOS
 
     Si aun asi quieres instalar el kit con esas capas apagadas, repite el mismo comando
-    anadiendo --sin-python.
+    anadiendo --sin-python:
+      bash install.sh --apply --sin-python
 EOF
   if [ "$SIN_PYTHON" -ne 1 ]; then exit 1; fi
   echo "==> --sin-python: se continua SIN python3; las capas de arriba no protegeran nada hasta que lo instales." >&2
@@ -242,7 +243,7 @@ install_settings() {  # src dst
   if jq -s '
       .[0] as $kit | .[1] as $old |
       ([$kit.hooks // {} | .. | .command? // empty | splits(" +") | gsub("[\"\u0027]"; "") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")]
-        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh"] | unique) as $suyos |
+        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh", "nucleo-gate.sh", "stop-context-gauge.sh", "post-compact-check.sh"] | unique) as $suyos |
       def propio: ("/" + .) as $t | any($suyos[]; . as $s | $t | endswith("/.claude/hooks/" + $s) or endswith("/.claude/sentinel/" + $s));
       def del_kit: [(.command | strings // "") | splits(" +") | gsub("[\"\u0027]"; "") | select(length > 0)]
         | any(.[]; propio) and all(.[]; propio or startswith("-") or (sub(".*/"; "") | test("^(optional-hook\\.sh|python[0-9.]*|bash|sh)$")));
@@ -650,6 +651,18 @@ if [ -f "$CLAUDE_HOME/settings.json" ] && [ ! -e "$CLAUDE_HOME/.kit-manifest" ] 
   cp -L "$CLAUDE_HOME/settings.json" "$CLAUDE_HOME/.kit-settings-pre.json"
 fi
 install_kit_files "$CLAUDE_HOME"
+
+# Hooks que el kit ya no trae (settings.json ya no los cablea): se borra el script solo si su suma es la de una
+# version publicada; uno modificado por la persona se conserva y se dice.
+for name in nucleo-gate.sh stop-context-gauge.sh post-compact-check.sh; do
+  f="$CLAUDE_HOME/hooks/$name"
+  [ -f "$f" ] || continue
+  if grep -q "^$(sha256sum < "$f" | cut -d' ' -f1)  $name\$" "$KIT/hooks-retirados.sha256"; then
+    rm -f -- "$f"; echo "==> hook retirado del kit, borrado: hooks/$name"
+  else
+    echo "==> hook retirado del kit y modificado por ti, se conserva: hooks/$name (ya no esta cableado; borralo si no lo usas)"
+  fi
+done
 
 # --- gitleaks: dependencia de la Capa 2 (opcional; la Capa 1 no la necesita) -
 gitleaks_present() {

@@ -1,0 +1,18 @@
+# Hooks que el kit ya no trae: sha256 de cada version que se publico, para que install.sh solo borre
+# los que la persona no modifico. Formato: sha256  nombre (en $CLAUDE_HOME/hooks).
+3518d753cb5da708cebdb418a99a2b4c68b82154f434e28a05eba010d7cc3a47  stop-context-gauge.sh
+39ded76048462ea91abf24c34a32cf03211b6e49ab0c8d1b373a488f219d98e8  stop-context-gauge.sh
+42c8d20c82bbc353b79c67bfc584c919757964e16692516170e8dbfb844dc36f  post-compact-check.sh
+4b69eae859a7d6b1488b3f62deff881117639d9b89171601f2e8dbc125db1769  post-compact-check.sh
+549b306f274d81c2907dc9367daebec7fd363317bfab5db2e1c99b1bc60bf162  nucleo-gate.sh
+6add674b00d42151824a4c80d58c071382c29b22bf39c0767c4e179c8b3383e6  nucleo-gate.sh
+7fae861c64866657a4c0cf8a01054e535327ab88a84294eccfd79c7fcfb2c958  stop-context-gauge.sh
+a5b3eb2a69ba6bd40bd68abf2f09124cdc14242af7714ea1a6400e5d9e60fd39  nucleo-gate.sh
+a970a1f14585f07eaa70458ddb93101188cfe62f843d34a28db3bc88280fedbd  nucleo-gate.sh
+bc17078377f347b6bdead4b9bf5fec907d4eb4b2dcf046c121ae9102fd4ad28e  post-compact-check.sh
+cbc72796d12e30842e79de230464ffd519e5e4a56679a34ce58d18344254779c  nucleo-gate.sh
+ce85cd511d5b70995494a4e24d1645239f5b699576e96ec51170e110d0122b56  stop-context-gauge.sh
+dafff4571a692471933cf5e3cca021d4243bda0109afc4204485a73358a33a98  post-compact-check.sh
+e1a5383246d81414af75da5a663bdb8c27365297e0319b682570ea9be4e8eee5  stop-context-gauge.sh
+e37b430d670b80feea0d09ab7029d16189ed9b36de9ad73a5a3d0028650e4e52  nucleo-gate.sh
+f7ae55381a2f855d637b9143003c0503e9a0f2fb67502b9e5ec317205e5558f2  stop-context-gauge.sh

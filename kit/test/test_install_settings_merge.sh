@@ -271,4 +271,25 @@ ck "$(jq -Sc '.extraKnownMarketplaces["setup-claude-code"]' "$S")" "{\"autoUpdat
 # Por la misma razon, `plugin install cockpit --marketplace <repo>` sin ref falla con el marketplace ya fijado.
 ck "$(grep -rl -- '--marketplace manuelcozar55' "$KIT/docs" "$KIT/../README.md" | wc -l)" "0" "ninguna doc instala el cockpit con --marketplace <repo> sin ref"
 
+# Caso r: actualizar una instalacion 1.9.x/1.10.x. Los hooks nucleo-gate, stop-context-gauge y post-compact-check
+# se retiraron: sus entradas de settings.json (con y sin comillas) y sus scripts deben irse, salvo el script que
+# la persona haya modificado, que se conserva. Los hooks de la persona no se tocan.
+seed r <<'EOF'
+{ "hooks": {
+    "Stop": [ { "hooks": [ { "type": "command", "command": "\"$HOME/.claude/hooks/nucleo-gate.sh\"" },
+                           { "type": "command", "command": "$HOME/.claude/hooks/stop-context-gauge.sh" },
+                           { "type": "command", "command": "~/.local/bin/mi-stop" } ] } ],
+    "PostCompact": [ { "hooks": [ { "type": "command", "command": "\"$HOME/.claude/hooks/post-compact-check.sh\"" } ] } ] } }
+EOF
+mkdir -p "$CLAUDE_HOME/hooks"
+nucleo_gate_viejo="$(git -C "$KIT/.." log --format=%H -1 --diff-filter=D -- kit/claude/hooks/nucleo-gate.sh)^"
+git -C "$KIT/.." show "$nucleo_gate_viejo:kit/claude/hooks/nucleo-gate.sh" > "$CLAUDE_HOME/hooks/nucleo-gate.sh"
+echo "# editado por la persona" > "$CLAUDE_HOME/hooks/stop-context-gauge.sh"
+run
+ck "$(jq '[.hooks | .. | strings | select(test("nucleo-gate|stop-context-gauge|post-compact-check"))] | length' "$S")" "0" "retirados: sus entradas de settings.json se van, con y sin comillas"
+ck "$(jq -r '[.hooks.Stop[].hooks[].command] | map(select(test("mi-stop"))) | length' "$S")" "1" "retirados: el hook de la persona en el mismo grupo se queda"
+ck "$([ -e "$CLAUDE_HOME/hooks/nucleo-gate.sh" ] && echo y || echo n)" "n" "retirados: el script intacto se borra de hooks/"
+ck "$([ -e "$CLAUDE_HOME/hooks/stop-context-gauge.sh" ] && echo y || echo n)" "y" "retirados: el script que la persona modifico se conserva"
+ck "$(dice 'stop-context-gauge.sh')" "y" "retirados: y el instalador lo dice"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]
