@@ -188,7 +188,7 @@ KIT_BASE=""
 desactivados_lista() { [ -f "$CLAUDE_HOME/.kit-desactivados" ] && grep -v '^[[:space:]]*\(#\|$\)' "$CLAUDE_HOME/.kit-desactivados"; return 0; }
 desactivado() { [ -f "$CLAUDE_HOME/.kit-desactivados" ] && grep -qxF -- "$1" "$CLAUDE_HOME/.kit-desactivados"; }
 aviso_desactivados() {
-  local d; d="$(desactivados_lista | tr '\n' ' ')"
+  local d; d="$(desactivados_lista)"; d="${d//$'\n'/ }"
   [ -n "$d" ] || return 0
   echo "==> desactivado por ti (consta en .kit-desactivados), no se recablea ni se recopia: $d"
 }
