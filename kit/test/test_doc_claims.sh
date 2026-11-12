@@ -215,7 +215,7 @@ rm -f "$OMTMP/sin.md" "$OMTMP/con.md"; rmdir "$OMTMP"
 # --- 2. Todo script citado en la doc existe --------------------------------
 # Asi es como sobrevivio 'session-brief.sh' en tres documentos despues de borrarlo.
 # Nombres generico de ejemplo: no son ficheros del repo y no deben existir.
-GENERICOS=" script.sh script-que-lo-contiene.sh "
+GENERICOS=" script.sh script-que-lo-contiene.sh mi-hook.sh "
 missing=""
 while IFS= read -r s; do
   case "$GENERICOS" in *" $s "*) continue;; esac

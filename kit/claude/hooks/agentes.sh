@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# QUE-HACE: registra cada subagente (inicio, fin e informe) en .claude/estado/agentes.jsonl y, en el Stop, anota si hubo un commit sin actualizar nucleo.md (solo bloquea con NUCLEO_GATE=block).
 # SubagentStart | SubagentStop | Stop | SessionEnd — registro mecánico de agentes (ADR 017): una línea JSON por evento en
 # <raíz>/.claude/estado/agentes.jsonl (lib/nucleo.sh: nucleo_agentes_anotar, que rota a 200 líneas o 14 días).
 # Por qué: SubagentStop marca el fin del *turno* del agente, no el de su trabajo, y no trae resultado; tras /clear, una

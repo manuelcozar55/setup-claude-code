@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# QUE-HACE: avisa, sin bloquear, cuando se va a releer un fichero que esta misma sesión ya editó.
 """
 stale-read-guard.py — PreToolUse hook for Read.
 
