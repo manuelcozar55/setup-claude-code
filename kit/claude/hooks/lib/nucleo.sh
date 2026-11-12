@@ -910,3 +910,44 @@ nucleo_puerta_commit() {
   fi
   printf '%s' "$pc_motivo"
 }
+
+# ¿Sobrevivieron al resumen las anclas del checkpoint? (PostCompact, solo log: autosave.sh lo llama y no emite nada.)
+# Anclas = ficheros que el checkpoint de pre-compact.sh declara tocados (su sección «## git», el `git status --short`;
+# un fichero que la persona solo nombra en un prompt no es ancla). Los que el resumen no nombra van a
+# session-logs/compact-AAAA-MM.log (anclas_perdidas=, que lee scripts/compact-audit.py). medida= distingue «0 perdidas»
+# de «no se pudo medir». Uso: nucleo_compact_medir <JSON del evento>. Siempre rc 0.
+nucleo_compact_medir() {
+  local cm_in=$1 cm_trig cm_sum cm_sid cm_cwd cm_raiz cm_ck="" cm_estado cm_logd cm_miss="" cm_n=0 cm_medida=ok cm_f cm_nm
+  cm_trig=$(jq -r '.trigger // "unknown"' <<<"$cm_in" 2>/dev/null) || return 0
+  cm_sum=$(jq -r '.compact_summary // ""' <<<"$cm_in" 2>/dev/null) || return 0
+  cm_sid=$(jq -r '.session_id // empty' <<<"$cm_in" 2>/dev/null)
+  cm_cwd=$(jq -r '.cwd // empty' <<<"$cm_in" 2>/dev/null); cm_cwd=${cm_cwd:-$PWD}
+  cm_raiz=$(nucleo_raiz "$cm_cwd" 2)
+  nucleo_enlazado "$cm_raiz" && return 0
+  if [ "$cm_raiz" != "$HOME" ] && cm_estado=$(nucleo_estado_leer "$cm_raiz"); then
+    cm_ck="$cm_estado/checkpoints/checkpoint-compact.md"
+    [ -n "$cm_sid" ] && cm_ck="$cm_estado/checkpoints/checkpoint-compact-$(printf '%s' "$cm_sid" | sha256sum | cut -d' ' -f1).md"
+  fi
+  cm_logd="${CLAUDE_HOME:-$HOME/.claude}/session-logs"; mkdir -p "$cm_logd" 2>/dev/null || return 0
+  if [ "$cm_raiz" = "$HOME" ]; then cm_medida=home
+  elif [ -z "$cm_ck" ] || [ ! -f "$cm_ck" ] || [ -L "$cm_ck" ]; then cm_medida=sin_checkpoint
+  else
+    # Se excluye el propio estado (.claude/estado/*): lo reinyecta session-start-compact.sh. Un «??» tampoco cuenta: el
+    # git status lista todo lo no seguido, lo haya tocado la sesión o no (medido: 12 de 12 anclas falsas).
+    while read -r cm_f; do
+      [ -n "$cm_f" ] || continue
+      cm_n=$((cm_n + 1))
+      cm_nm=${cm_f##*/}
+      [[ $cm_sum == *"$cm_nm"* ]] || cm_miss="$cm_miss $cm_f"
+    done < <(awk '/^## /{g=($0=="## git");next} g && !/^rama: / && !/^\?\? /' "$cm_ck" 2>/dev/null \
+      | command grep -oE '[A-Za-z0-9_./-]+\.(py|ts|tsx|js|md|sh|json|sql|toml|ya?ml)' | command grep -v '/estado/' | sort -u | head -40)
+    [ "$cm_n" -gt 0 ] || cm_medida=sin_anclas
+  fi
+  cm_miss=${cm_miss# }
+  local cm_nmiss
+  # shellcheck disable=SC2086  # contar palabras
+  cm_nmiss=$(set -- $cm_miss; echo $#)
+  printf '%s\t%s\tresumen_chars=%s\tanclas_perdidas=%s\t%s\tmedida=%s\tanclas_total=%s\n' \
+    "$(date -Is)" "$cm_trig" "${#cm_sum}" "$cm_nmiss" "${cm_miss:0:300}" "$cm_medida" "$cm_n" >>"$cm_logd/compact-$(date +%Y-%m).log" 2>/dev/null
+  return 0
+}

@@ -90,3 +90,17 @@ correr el comando que lo prueba, revisar si los tests de un PR cubren el comport
 el listado de cada sesión.
 **Decisión:** entra (2026-11-11), por decisión del dueño al levantar la congelación. Se mide su
 uso en la retro del 2026-12-09; sin usos, se retira.
+
+---
+
+## B-008 · Fundir `session-start.sh`, `session-start-clear.sh` y `session-start-compact.sh`
+**Problema que resuelve:** tres scripts de `SessionStart` (matchers `startup|resume`, `clear` y
+`compact`) comparten resolución de raíz, ranura de sesión y recorte; cada arreglo de estado hay
+que repetirlo tres veces. La auditoría B de la consolidación (12-nov) lo señaló.
+**Coste:** unas 50 referencias a los tres nombres en 9 suites (`test_session_start_clear`,
+`test_nucleo_hooks`, `test_sesiones_home`, `test_presupuesto_contexto`, `test_doc_claims`…) y en
+`scripts/contexto-base.sh`; riesgo de romper la inyección tras `/clear` y tras compactar, que es
+lo que mide `nucleo-freshness.log`. Sin ganancia visible para la persona.
+**Decisión:** aplazada (2026-11-12). Se hizo antes lo que sí se notaba: dueño por proceso, un
+solo aviso de contexto, `post-compact-check.sh` plegado en `autosave.sh`. Reabrir si un cuarto
+arreglo vuelve a tocar los tres.

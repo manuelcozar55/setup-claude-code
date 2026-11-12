@@ -197,15 +197,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/post-compact-check.sh",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "$HOME/.claude/hooks/autosave.sh",
             "timeout": 8
           }

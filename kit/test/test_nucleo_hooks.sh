@@ -1041,10 +1041,10 @@ BORRADOR
 (cd "$WT" && bash "$BIN/handoff" --desde "$T/w2-b.md" >/dev/null 2>&1); RC=$?
 ok "W2 --desde: sobre el tope sobreviven Paso actual, Siguiente acción, Comandos y Ficheros tocados" "$RC,$(sed -n 's/^## //p' "$WT/.claude/estado/nucleo.md" | paste -sd,)" "0,Objetivo,Paso actual,Siguiente acción,Comandos de verificación,Ficheros tocados"
 
-# --- post-compact-check.sh (PostCompact): anclas del checkpoint que el resumen no nombra ---
-pc() { jq -cn --arg c "$1" --arg s "$2" --arg m "$3" '{cwd:$c,session_id:$s,trigger:"auto",compact_summary:$m}' | bash "$H/post-compact-check.sh"; }
-ev "$R" pc1 | PATH="$T/gitlento:$PATH" timeout -k 1 5 bash "$H/post-compact-check.sh" >/dev/null 2>&1
-ok "post-compact: un git colgado termina antes de sus 5 s de timeout" "$?" 0
+# --- autosave.sh en PostCompact: anclas del checkpoint que el resumen no nombra (solo log, sin aviso) ---
+pc() { jq -cn --arg c "$1" --arg s "$2" --arg m "$3" '{hook_event_name:"PostCompact",cwd:$c,session_id:$s,trigger:"auto",compact_summary:$m}' | bash "$H/autosave.sh"; }
+ev "$R" pc1 | jq -c '. + {hook_event_name:"PostCompact"}' | PATH="$T/gitlento:$PATH" timeout -k 1 8 bash "$H/autosave.sh" >/dev/null 2>&1
+ok "post-compact: un git colgado termina antes de sus 8 s de timeout" "$?" 0
 PCL=$HOME/.claude/session-logs/compact-$(date +%Y-%m).log; rm -f "$PCL"
 # Anclas = ficheros del git status del checkpoint real; los que la persona nombra en un prompt no cuentan.
 mkdir -p "$R/src"; echo a >"$R/src/alfa.py"; echo b >"$R/src/beta.sh"
@@ -1058,12 +1058,12 @@ OUT=$(pc "$R/sub" pc1 'se tocaron alfa.py, beta.sh y registro-cambios.md'); RC=$
 ok "post-compact: anclas presentes → rc 0, sin aviso" "$RC,$OUT" "0,"
 ok "post-compact: anclas presentes → log con anclas_perdidas=0" "$(awk -F'\t' '{print $2, $4}' "$PCL")" "auto anclas_perdidas=0"
 OUT=$(pc "$R" pc1 'se tocó alfa.py y registro-cambios.md'); RC=$?
-ok "post-compact: ancla perdida → rc 0 y aviso con la ancla" "$RC,$(jq -r .systemMessage <<<"$OUT" | command grep -c 'src/beta.sh')" "0,1"
+ok "post-compact: ancla perdida → rc 0 y en silencio (solo log)" "$RC,$OUT" "0,"
 ok "post-compact: ancla perdida queda en el log" "$(tail -n1 "$PCL" | awk -F'\t' '{print $4, $5}')" "anclas_perdidas=1 src/beta.sh"
 N=$(wc -l <"$PCL")
 OUT=$(pc "$R" otra-sesion 'nada'); RC=$?
 ok "post-compact: sin checkpoint → rc 0, sin aviso, anclas_perdidas=0" "$RC,$OUT,$(tail -n1 "$PCL" | awk -F'\t' '{print $4}')" "0,,anclas_perdidas=0"
-OUT=$(printf 'no es json {' | bash "$H/post-compact-check.sh" 2>&1); RC=$?
+OUT=$(printf 'no es json {' | bash "$H/autosave.sh" 2>&1); RC=$?
 ok "post-compact: entrada malformada → rc 0 y en silencio" "$RC,$OUT" "0,"
 ok "post-compact: desde ~ (sin proyecto) → rc 0" "$(pc "$HOME" pc1 x >/dev/null 2>&1; echo $?)" 0
 ok "post-compact: una línea de log por evento válido" "$(( $(wc -l <"$PCL") - N ))" 2

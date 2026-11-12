@@ -20,8 +20,9 @@ ok "Stop → agentes.sh (foto de agentes y compuerta de commit)" "$(cmd Stop '' 
 ok "ya no hay stop-context-gauge.sh" "$(command grep -c 'stop-context-gauge' "$S")" 0
 ok "un solo PreCompact" "$(q '.hooks.PreCompact | length')" 1
 ok "PreCompact → pre-compact.sh" "$(q '.hooks.PreCompact[0].hooks[0].command' | command grep -c 'hooks/pre-compact.sh')" 1
-ok "PostCompact → post-compact-check.sh" "$(q '.hooks.PostCompact[0].hooks[0].command' | command grep -c 'hooks/post-compact-check.sh')" 1
-ok "PostCompact con timeout ≤ 5 s" "$(q '.hooks.PostCompact[0].hooks[0].timeout <= 5')" true
+ok "PostCompact → autosave.sh (la medida de anclas va dentro, solo log)" "$(q '.hooks.PostCompact[0].hooks[0].command' | command grep -c 'hooks/autosave.sh')" 1
+ok "PostCompact: un solo hook" "$(q '.hooks.PostCompact | length')" 1
+ok "PostCompact con timeout 8 s (cubre los 5 s del CLI y la medida de anclas)" "$(q '.hooks.PostCompact[0].hooks[0].timeout == 8')" true
 ok "cleanupPeriodDays = 14" "$(q '.cleanupPeriodDays')" 14
 ok "tui = fullscreen" "$(q '.tui')" fullscreen
 ok "theme = dark" "$(q '.theme')" dark
