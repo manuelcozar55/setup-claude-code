@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# QUE-HACE: al empezar la sesión imprime una línea de señal de vida con las entradas de memoria del proyecto y avisa si el índice MEMORY.md pasa de 60 líneas.
 # SessionStart hook — brief context reminder
 #
 # NO imprime el cuerpo de MEMORY.md: el sistema de auto-memoria de Claude Code ya

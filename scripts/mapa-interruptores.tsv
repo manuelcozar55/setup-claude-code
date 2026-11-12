@@ -1,0 +1,8 @@
+# script	variable	texto (generar-mapa.sh lo valida: la variable debe aparecer en el código del script)
+destructive-guard.sh	CC_ALLOW_DESTRUCTIVE	`CC_ALLOW_DESTRUCTIVE=1` en esa orden lo deja pasar una vez
+destructive-guard.sh	CC_SAFE_DELETE_DIRS	amplía los directorios que se pueden borrar sin avisar
+branch-guard.sh	CC_PROTECT_BRANCHES	cambia las ramas protegidas (por defecto `main:master:production`)
+optional-hook.sh	CC_WARN_DIR	cambia dónde anota los avisos
+optional-hook.sh	PYTHON_HOOK_BIN	elige el intérprete de Python
+nucleo-nudge.sh	NUCLEO_COCKPIT	fuerza «hay cockpit» (`1`) o «no hay» (`0`)
+pre-compact.sh	NUCLEO_CHECKPOINT_KEEP	cuántos checkpoints se conservan por proyecto

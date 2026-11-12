@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# QUE-HACE: guarda sin modelo la sección «Último turno (auto)» de nucleo.md al terminar el turno, tras compactar y al cerrar la sesión; no escribe nada en la conversación.
 # Stop | PostCompact | SessionEnd — guardado sin modelo (ADR 028, capa 1): `handoff --auto` deja en nucleo.md la sección
 # «Último turno (auto)» (ver bin/handoff). Un script para los tres eventos: el stdin trae hook_event_name, session_id,
 # transcript_path y cwd, y el CLI decide el resto.
