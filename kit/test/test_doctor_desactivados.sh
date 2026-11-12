@@ -37,8 +37,14 @@ ck "$(grep -c '\.kit-desactivados' <<<"$out")" "1" "1: el FAIL dice donde anotar
 printf 'branch-guard.sh\n' > "$CLAUDE_HOME/.kit-desactivados"
 out="$(doc)"; rc=$?
 ck "$rc" "0" "2: anotado en .kit-desactivados, doctor sale 0"
-ck "$(grep -c '^INFO · desactivado por ti.*branch-guard.sh' <<<"$out")" "1" "2: sale INFO «desactivado por ti» con el script"
+ck "$(grep -c '^WARN · guard de seguridad desactivado por ti.*branch-guard.sh' <<<"$out")" "1" "2: un guard anotado sale WARN (no INFO) con el nombre"
+ck "$(grep -c '^INFO · desactivado por ti.*branch-guard.sh' <<<"$out")" "0" "2: y no como INFO"
+ck "$(grep -c 'deja de proteger' <<<"$out")" "1" "2: el WARN dice que deja de protegerse"
 ck "$(grep -c '^FAIL' <<<"$out")" "0" "2: ningun FAIL"
+quitar nucleo-nudge.sh; printf 'nucleo-nudge.sh\n' >> "$CLAUDE_HOME/.kit-desactivados"
+out="$(doc)"; rc=$?
+ck "$(grep -c '^INFO · desactivado por ti.*nucleo-nudge.sh' <<<"$out")" "1" "2: un hook que no es guard anotado sigue siendo INFO"
+ck "$(grep -c '^WARN .*nucleo-nudge.sh' <<<"$out")" "0" "2: sin WARN"
 
 quitar destructive-guard.sh
 out="$(doc)"; rc=$?
@@ -46,14 +52,16 @@ ck "$rc" "1" "3: un segundo hook quitado sin anotar sigue siendo FAIL"
 ck "$(grep -c '^FAIL .*destructive-guard.sh' <<<"$out")" "1" "3: el FAIL nombra solo el que no consta"
 ck "$(grep -c '^FAIL .*branch-guard.sh' <<<"$out")" "0" "3: el anotado no sale en el FAIL"
 
-printf '# lo quite yo\n\ndestructive-guard.sh\n' >> "$CLAUDE_HOME/.kit-desactivados"
+printf '# lo quite yo\n\nhooks/destructive-guard.sh\n' >> "$CLAUDE_HOME/.kit-desactivados"
 out="$(doc)"; rc=$?
-ck "$rc" "0" "3b: comentarios y lineas vacias de la lista se ignoran; con los dos anotados, rc 0"
+ck "$rc" "0" "3b: comentarios y lineas vacias de la lista se ignoran; con los dos anotados (uno como hooks/x.sh), rc 0"
+ck "$(grep -c '^FAIL' <<<"$out")" "0" "3b: hooks/x.sh y x.sh son el mismo nombre: ningun FAIL"
+ck "$(grep -c 'destructive-guard.sh' <<<"$out" | tr -d ' ')" "1" "3b: y ni FAIL ni WARN contradictorios: el guard sale una sola vez"
 
 HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
 out="$(doc)"; rc=$?
 ck "$rc" "0" "4: tras reinstalar el hook apagado sigue apagado y doctor sale 0"
-ck "$(grep -c '^INFO · desactivado por ti.*branch-guard.sh' <<<"$out")" "1" "4: y sigue contando como desactivado por ti"
+ck "$(grep -c '^WARN · guard de seguridad desactivado por ti.*branch-guard.sh' <<<"$out")" "1" "4: y sigue contando como guard desactivado por ti (WARN)"
 grep -v '^branch-guard.sh$' "$CLAUDE_HOME/.kit-desactivados" > "$tmp/lista.new"; cat "$tmp/lista.new" > "$CLAUDE_HOME/.kit-desactivados"
 HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
 out="$(doc)"; rc=$?
