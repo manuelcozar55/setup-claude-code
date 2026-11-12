@@ -1,0 +1,10 @@
+# guard<TAB>orden que dispara el mensaje<TAB>salida tal como la propone el mensaje<TAB>orden concreta que se prueba contra los guards
+# test_guards_mensajes.sh exige que el mensaje siga proponiendo esa salida y que la orden concreta no sea un bloqueo. Texto, nunca se ejecuta.
+block-dangerous-commands	rm -rf $X/foo	rm -rf build	rm -rf build
+block-dangerous-commands	find . -name x | xargs rm -rf	rm -rf build	rm -rf build
+block-dangerous-commands	rm -rf .	rm -rf build dist	rm -rf build dist
+destructive-guard	rm -rf ~/Documentos	rm -rf build dist	rm -rf build dist
+destructive-guard	git reset --hard	git stash	git stash
+destructive-guard	git reset --hard	git reset --soft	git reset --soft HEAD~1
+destructive-guard	git clean -fd	git clean -n	git clean -n
+destructive-guard	find / -name x -delete	find build -name '*.tmp' -delete	find build -name '*.tmp' -delete

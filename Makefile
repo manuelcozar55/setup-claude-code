@@ -33,6 +33,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_guards_corpus.sh
 	bash kit/test/test_guards_veredictos.sh
 	bash kit/test/test_guards_mensajes.sh
+	bash kit/test/test_guards_r1.sh
 	bash kit/test/test_guards_degradacion.sh
 	bash kit/test/test_secret_content_gitleaks.sh
 	bash kit/test/test_scan_secrets.sh
