@@ -63,6 +63,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_bump.sh
 	bash kit/test/test_empaquetar_entrega.sh
 	bash kit/test/test_origen.sh
+	bash kit/test/test_doctor_desactivados.sh
 	bash kit/test/test_doc_claims.sh
 	bash kit/test/test_permisos_efectivos.sh
 	bash kit/test/test_evals.sh
