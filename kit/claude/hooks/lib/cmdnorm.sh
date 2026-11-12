@@ -191,7 +191,7 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
       if (drop) { drop = 0; continue }
       if (t == "-b" || t == "--body" || t == "-t" || t == "--title" || t == "-m" || t == "--message" || t == "--notes" || t == "--description") { out = out " " t; drop = 1; continue }
       if (t ~ /^--(body|title|message|notes|description)=/) { sub(/=.*/, "", t) }
-      if (t ~ /^-./ && t != "--" && t !~ /^(-[btmBdH]|--(body|title|message|notes|description|base|head|draft|fill))$/) nosimple = 1
+      if (t ~ /^-./ && t != "--" && t !~ /^(-[btmBdH]|--(body|title|message|notes|description|base|head|draft|fill|body-file|notes-file))$/) nosimple = 1
       out = out " " t
     }
     return out
@@ -472,7 +472,7 @@ BEGIN {
   lett["comm"] = "123iz"; lett["diff"] = "uqrcbBwiyEZaNsTp"; lett["cmp"] = "bilns"; lett["xxd"] = "abcEgiluprRs"
   lett["od"] = "AjNtvxcodabfhilz"; lett["hexdump"] = "bcCdnosvx"; lett["base64"] = "diw"
   lett["md5sum"] = "bctwzq"; lett["sha1sum"] = "bctwzq"; lett["sha256sum"] = "bctwzq"; lett["cksum"] = "ar"
-  lett["basename"] = "asz"; lett["dirname"] = "z"; lett["tee"] = "ai"; lett["true"] = ""; lett[":"] = ""; lett["rm"] = "rRfvdiI"; lett["gitmsg"] = "amqvs"
+  lett["basename"] = "asz"; lett["dirname"] = "z"; lett["tee"] = "ai"; lett["true"] = ""; lett[":"] = ""; lett["rm"] = "rRfvdiI"; lett["gitmsg"] = "amqvsu"
   split("--color --colour --ignore-case --line-number --count --recursive --word-regexp --fixed-strings --extended-regexp --files-with-matches --files-without-match --invert-match --quiet --silent --no-filename --with-filename --null --text --max-count --regexp --include --exclude --type --glob --after-context --before-context --context --only-matching --no-messages --hidden --follow --smart-case --case-sensitive --no-ignore --oneline --graph --stat --name-only --name-status --decorate --all --no-color --abbrev-commit --shortstat --numstat --cached --staged --merges --no-merges --first-parent --reverse --patch --full-history --pretty --format --since --until --after --before --author --committer --grep --date --abbrev --diff-filter --arg --argjson --raw-output --compact-output --slurp --tab --indent --sort-keys --raw-input --null-input --exit-status --join-output --slurpfile --rawfile --args --jsonargs --regexp-extended --separate --null-data --numeric-sort --unique --number --show-all --squeeze-blank --show-ends --show-tabs --lines --bytes --verbose --words --chars --append --apropos --whatis --where --force --dir --amend --no-edit --signoff --allow-empty --annotate", arr, " "); for (x in arr) longs[arr[x]] = 1
 }
 { src = src $0 RS }

@@ -703,7 +703,7 @@ def _opt_ok(name, prev: list, w: str) -> bool:
     if name == "git" and prev[:1] in (["commit"], ["tag"], ["merge"]):
         if prev[-1] in ("-m", "--message"):
             return True
-        return w.split("=")[0] in _GIT_MSG_OPTS or bool(re.fullmatch(r"-[amqvs]+", w))
+        return w.split("=")[0] in _GIT_MSG_OPTS or bool(re.fullmatch(r"-[amqvsu]+", w))
     return True
 
 
