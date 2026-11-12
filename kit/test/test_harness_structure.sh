@@ -342,6 +342,19 @@ else
   ck "y" "y" "Makefile o ci.yml ausente (check por vacio)"
 fi
 
+# El check anterior solo mira Makefile -> CI. Una suite retirada que seguia en ci.yml (nucleo-gate)
+# hizo salir 127 al job de suites con make test en verde; y una suite nueva sin entrada no corre en CI.
+if [ -f "$WF" ] && [ -d kit/test ]; then
+  fantasma=$(comm -23 \
+    <(grep -oE 'bash kit/test/[A-Za-z0-9_]+\.sh' "$WF" | sed 's/^bash //' | sort -u) \
+    <(find kit/test -maxdepth 1 -name 'test_*.sh' | sort -u) | grep -c . || true)
+  ck "$fantasma" "0" "toda suite que lanza ci.yml existe en kit/test (fantasmas: $fantasma)"
+  huerfanas=$(comm -13 \
+    <(grep -oE 'bash kit/test/[A-Za-z0-9_]+\.sh' "$WF" | sed 's/^bash //' | sort -u) \
+    <(find kit/test -maxdepth 1 -name 'test_*.sh' | sort -u) | grep -c . || true)
+  ck "$huerfanas" "0" "todo kit/test/test_*.sh corre en ci.yml (huerfanas: $huerfanas)"
+fi
+
 echo "== 10) test_diagramas_mermaid =="
 # Un diagrama es codigo: se versiona, se difea, y una IA lo lee como texto estructurado. Por eso
 # van en fences `mermaid` --que GitHub renderiza nativo-- y no en PNG: una imagen es vistosa para
