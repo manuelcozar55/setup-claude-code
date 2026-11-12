@@ -132,7 +132,7 @@ jobs:
       - name: test_guards_r1.sh (corpus de la revision R1 y sensor de monotonia frente a la version anterior)
         run: bash kit/test/test_guards_r1.sh
 
-      - name: test_guards_monotonia.sh (sensor generativo: ninguna orden que la base bloqueaba pasa sin una prueba de la lista cerrada)
+      - name: test_guards_monotonia.sh (sensor generativo, ninguna orden que la base bloqueaba pasa sin una prueba de la lista cerrada)
         run: bash kit/test/test_guards_monotonia.sh
 
       - name: test_guards_degradacion.sh (la tabla de fallos de SECURITY.md)
