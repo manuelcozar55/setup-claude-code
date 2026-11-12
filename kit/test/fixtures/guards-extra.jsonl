@@ -14,5 +14,5 @@
 {"id":"X14","nota":"git log -S de un literal","cmd":"git log -S 'rm -rf' --oneline -- kit/","exp":"ALLOW"}
 {"id":"X15","nota":"sed que imprime (sin -i) y cita rm -rf /","cmd":"sed -n '/rm -rf \\//p' docs/limites.md","exp":"ALLOW"}
 {"id":"X16","nota":"rm -rf de un dir con nombre de build pero que es .venv","cmd":"rm -rf .pytest_cache","exp":"ALLOW"}
-{"id":"X17","nota":"heredoc a ssh remoto con comando inocuo","cmd":"ssh build@ci.example.org bash <<'EOF'\ncd /srv/app && git pull --ff-only\nEOF","exp":"ALLOW"}
-{"id":"X18","nota":"heredoc a ssh remoto que hace reset --hard (debe bloquear)","cmd":"ssh build@ci.example.org bash <<'EOF'\ncd /srv/app && git reset --hard origin/main\nEOF","exp":"BLOCK"}
+{"id":"X17","nota":"heredoc a ssh remoto con comando inocuo","cmd":"ssh build@example.org bash <<'EOF'\ncd /srv/app && git pull --ff-only\nEOF","exp":"ALLOW"}
+{"id":"X18","nota":"heredoc a ssh remoto que hace reset --hard (debe bloquear)","cmd":"ssh build@example.org bash <<'EOF'\ncd /srv/app && git reset --hard origin/main\nEOF","exp":"BLOCK"}
