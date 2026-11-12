@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# QUE-HACE: escanea lo que Write, Edit, MultiEdit y NotebookEdit van a escribir en busca de secretos: avisa y bloquea los de alta confianza.
 """
 write-guard.py — PreToolUse hook for Write, Edit, MultiEdit and NotebookEdit.
 Scans content being written/edited for hardcoded secrets before the write

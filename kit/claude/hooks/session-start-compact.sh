@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# QUE-HACE: tras compactar re-inyecta nucleo.md por secciones y el checkpoint que dejó pre-compact.sh (recortado a 1 500 bytes), envueltos como datos.
 # SessionStart(compact): re-inyecta el estado del proyecto tras compactar: nucleo.md por secciones
 # (lib/nucleo.sh) y el checkpoint determinista que dejó pre-compact.sh, recortado a 1 500 bytes.
 # Por qué: cada compactación destruye la mayor parte del contexto y el resumen del modelo no
