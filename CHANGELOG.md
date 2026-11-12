@@ -9,6 +9,25 @@ etiquetado.
 
 Se levanta la congelación (2026-11-11, decisión del dueño): entran tres piezas de terceros con su entrada B-007 en `knowledge/BACKLOG.md`.
 
+### Consolidación: instalar, operar y adaptar el kit sin ser su autor
+
+- **Guards:** dejan de bloquear órdenes legítimas (se pasa de 19 bloqueos falsos en 34 órdenes de uso normal a ninguno), siguen bloqueando las 25 peligrosas y cierran 7 de 9 rodeos conocidos; los otros 2 (código dentro de un intérprete) quedan documentados como límite.
+- **Estado y avisos:** un solo aviso de contexto, con o sin cockpit; el autosave funciona en un proyecto sin `nucleo.md`; `handoff --auto` oculta secretos; la compuerta de commit vive en `agentes.sh` y `nucleo-gate.sh` se retira.
+- **Instalación:** `install.sh --plan` enseña qué fusionará en `settings.json`; se instala el lanzador `scc` y la copia del cockpit; `uninstall.sh --kit` quita solo lo que instaló el kit; `doctor` avisa si la versión instalada no es la del repo.
+- **Cockpit:** ver la sección «cockpit 0.9.0» más abajo.
+- **Documentación:** `README.md` de una página (requisitos, coste, un solo camino de instalación); `kit/docs/OPERAR.md` (qué hacer ante un bloqueo, cómo quitar un hook, cuánto cuesta, cómo actualizar y desinstalar); `kit/docs/MAPA.md`, generado por `scripts/generar-mapa.sh` desde los hooks y `settings.json`, con cada hook, interruptor, agente, skill y comando; `kit/docs/guia/06-adaptar.md` reescrita con recetas que se ejecutan en un test. `mcharness` queda como nombre del andamiaje de desarrollo; el producto es SCC.
+- **doctor:** distingue «desactivado por ti» de «roto» con la lista `.kit-desactivados` (hooks, agentes y skills). Ojo: `install.sh --apply` no la respeta y hay que repetir la baja tras cada actualización; `doctor` lo avisa.
+- **Retirado:** `CC_NUCLEO_GATE`; el código solo lee `NUCLEO_GATE`.
+- Sensores nuevos: `test_mapa.sh`, `test_doctor_desactivados.sh`, `test_adaptar.sh` y `test_docs_enlaces.sh` (enlaces, rutas, versión mínima de Claude Code y versión del cockpit de README y ENTREGA frente al código).
+
+### Cifras
+
+| Cifra | Valor |
+|---|---|
+| Órdenes peligrosas bloqueadas | 25 de 25 (antes 25 de 25) |
+| Órdenes legítimas bloqueadas por error | 0 de 34 (antes 19 de 34) |
+| Rodeos conocidos cerrados | 7 de 9, 2 documentados como límite (antes 0) |
+
 ### Changed (cockpit 0.9.0)
 
 - **Cockpit 0.9.0, cambio de comportamiento por defecto:** el autosave con modelo pasa a **apagado** (opt-in con `/autosave on` o `COCKPIT_AUTOSAVE=on`): cada síntesis es un fork con todo el contexto y nadie lo había pedido. Con el estado en manos de otra sesión no hace fork; retroceso exponencial (10/20 min) y parada con un solo aviso tras 3 fallos; el log anota el `usage` del fork (la doc decía que no lo devolvía).
