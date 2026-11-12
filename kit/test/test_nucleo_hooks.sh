@@ -1089,8 +1089,8 @@ printf '## Pendientes\n- [ ] PEND-COMPARTIDO\n' >"$HOME/.claude/estado/nucleo.md
 # shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
 RS=$(. "$H/lib/nucleo.sh"; CLAUDE_PID=$$ nucleo_sesion_dir crear)
 printf '## Pendientes\n- [ ] PEND-RANURA\n' >"$RS/nucleo.md"; touch -d '-30 minutes' "$RS/nucleo.md"
-jq -cn --arg c "$HOME" --arg t "$TP" '{session_id:"rs1",transcript_path:$t,cwd:$c,tool_name:"Bash"}' | CLAUDE_PID=$$ bash "$H/nucleo-nudge.sh" >/dev/null
-ok "ranura desde ~: el nudge exige la ranura" "$(cat "$HOME/.claude/session-logs/nudge-rs1.nucleo" 2>/dev/null)" "$RS/nucleo.md"
+RSO=$(jq -cn --arg c "$HOME" --arg t "$TP" '{session_id:"rs1",transcript_path:$t,cwd:$c,tool_name:"Bash"}' | CLAUDE_PID=$$ bash "$H/nucleo-nudge.sh")
+ok "ranura desde ~: el nudge exige la ranura" "$(jq -r '.hookSpecificOutput.additionalContext // empty' <<<"$RSO" | command grep -cF "$RS/nucleo.md")" 1
 touch -d '-100 seconds' "$RS/nucleo.md"
 jq -cn --arg c "$HOME" --arg t "$TP" '{session_id:"rs1",transcript_path:$t,cwd:$c,trigger:"auto"}' | CLAUDE_PID=$$ bash "$H/pre-compact.sh" 2>/dev/null
 RSL=$(tail -n1 "$HOME/.claude/session-logs/nucleo-freshness.log")

@@ -15,8 +15,7 @@ ok "SessionStart startup|clear|resume → session-start-clear.sh" "$(cmd Session
 ok "SessionStart compact → session-start-compact.sh" "$(cmd SessionStart compact | command grep -c 'hooks/session-start-compact.sh')" 1
 ok "PostToolUse \"\" (todas) → nucleo-nudge.sh" "$(cmd PostToolUse '' | command grep -c 'hooks/nucleo-nudge.sh')" 1
 ok "nudge con timeout ≤ 5 s (camino caliente)" "$(q '[.hooks.PostToolUse[].hooks[] | select(.command|test("nucleo-nudge")) | .timeout <= 5] | (length > 0 and all)')" true
-ok "PreToolUse \"\" (todas) → nucleo-gate.sh" "$(cmd PreToolUse '' | command grep -c 'hooks/nucleo-gate.sh')" 1
-ok "compuerta con timeout ≤ 5 s" "$(q '[.hooks.PreToolUse[].hooks[] | select(.command|test("nucleo-gate")) | .timeout <= 5] | (length > 0 and all)')" true
+ok "ya no hay nucleo-gate.sh" "$(command grep -c 'nucleo-gate' "$S")" 0
 ok "Stop → agentes.sh (foto de agentes y compuerta de commit)" "$(cmd Stop '' | command grep -c 'hooks/agentes.sh')" 1
 ok "ya no hay stop-context-gauge.sh" "$(command grep -c 'stop-context-gauge' "$S")" 0
 ok "un solo PreCompact" "$(q '.hooks.PreCompact | length')" 1

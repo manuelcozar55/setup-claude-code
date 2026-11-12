@@ -76,8 +76,6 @@ modelo() {
   [ -z "$MT" ] || SZ=$(wc -c <"$NUC" 2>/dev/null | tr -d ' ')
   [ -z "$MT" ] || [ "$EDAD" -gt 600 ] || [ "${SZ:-0}" -gt "$T" ] || return 1
   echo "$B" >>"$MARCA"
-  # Para nucleo-gate.sh (PreToolUse): el nucleo que miré; el mtime de este fichero es la hora del aviso. Aviso nuevo, cuenta nueva.
-  echo "$NUC" >"$MARCA.nucleo"; rm -f -- "${MARCA/nudge-/gate-}-$B" "${MARCA/nudge-/gate-}-$B.d"
   if [ "$NOM" = ESTADO.md ]; then HIST="saca lo cerrado del fichero"; else HIST="pasa lo cerrado a diario.md"; fi
   if [ -n "$MT" ] && [ "$EDAD" -le 600 ]; then
     M="CONTEXTO $PCT % del airbag. $NUC ocupa $SZ B (tope $T): antes de la siguiente herramienta, $HIST; si no, al retomar se omitirán secciones enteras."

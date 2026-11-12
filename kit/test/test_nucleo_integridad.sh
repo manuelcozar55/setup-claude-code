@@ -211,7 +211,7 @@ done
 (
 HERE="$(cd "$(dirname "$0")" && pwd)"; H="$HERE/../claude/hooks"; HO="$HERE/../claude/bin/handoff"
 T=$(mktemp -d -t scc-estmd.XXXXXX); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8 CC_NUCLEO_GATE=1; unset CLAUDE_HOME CLAUDE_PID CLAUDE_PROJECT_DIR NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_HOME CLAUDE_PID CLAUDE_PROJECT_DIR NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
 mkdir -p "$HOME"
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }

@@ -4,7 +4,7 @@
 # nucleo rancio (> 10 min), ausente o por encima del tope, en ≤ 400 chars y con la ruta exacta; si no toca, nada.
 # Uso: test_nucleo_nudge.sh [ruta al hook]. Sin red; HOME falso en un mktemp que se borra.
 set -u
-H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-nudge.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT; export CC_NUCLEO_GATE=1 NUCLEO_COCKPIT=1
+H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-nudge.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT; export NUCLEO_COCKPIT=1
 export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
@@ -130,20 +130,10 @@ touch -d '-30 minutes' "$NUC"
 WC=$(PATH=/usr/bin:/bin run s40 p72 | ctx); WP=$(sed -n 's/.*`\([^ ]*\) --desde.*/\1/p' <<<"$WC")
 ok "W2 nudge: sin handoff en el PATH enseña la ruta absoluta y existe" "$WP,$([ -x "$WP" ] && echo si)" "$HOME/.claude/bin/handoff,si"
 ok "W2 nudge 70 % con la ruta ≤ 600 chars" "$([ "$(largo "$WC")" -le 600 ] && echo si)" si
-# --- compuerta: el nudge deja la ruta del nucleo que miró (el mtime es la hora del aviso) y rearma la cuenta ---
-touch -d '-30 minutes' "$NUC"; run s50 p72 >/dev/null
-ok "nudge deja nudge-<sid>.nucleo con la ruta exacta" "$(cat "$HOME/.claude/session-logs/nudge-s50.nucleo" 2>/dev/null)" "$NUC"
-G=$(dirname "$H")/nucleo-gate.sh; GC='{"session_id":"s50","tool_name":"Bash","tool_input":{"command":"ls"}}'
-gate() { case $(bash "$G" <<<"$GC") in '') echo pasa;; *deny*) echo deny;; esac; }
-ok "nudge + compuerta de extremo a extremo: 1.ª a 3.ª pasan, 4.ª deniega" "$(for _ in 1 2 3 4; do gate; done | tr '\n' ' ')" "pasa pasa pasa deny "
-# Desde ~ con ranura (se sabe el pid de la sesión): la marca apunta al nucleo de la ranura, el que usa handoff, y la
-# compuerta actúa también ahí. Sin pid (K8) sigue sin marca.
-C=$(CLAUDE_PID=$$ runh s60 p72 | ctx); SN=$(cat "$HOME/.claude/session-logs/nudge-s60.nucleo" 2>/dev/null)
-ok "~ con ranura: nudge-<sid>.nucleo apunta a sesiones/*-<pid>/nucleo.md" "$(case $SN in "$HOME"/.claude/estado/sesiones/*-$$/nucleo.md) echo ranura;; *) echo "${SN:-nada}";; esac)" ranura
+# Desde ~ con ranura (se sabe el pid de la sesión): el aviso nombra el nucleo de la ranura, el que usa handoff.
+C=$(CLAUDE_PID=$$ runh s60 p72 | ctx); SN=$(find "$HOME/.claude/estado/sesiones" -maxdepth 1 -name "*-$$" 2>/dev/null | head -n 1)/nucleo.md
 ok "~ con ranura: el aviso nombra la ranura y no el nucleo de ~" "$(command grep -cF "${SN:-nada}" <<<"$C"),$(command grep -cF "$HN" <<<"$C")" 1,0
 ok "~ con ranura: el comando del nudge lleva --ranura con la ranura" "$(command grep -cF -- "--sesion s60 --ranura ${SN%/nucleo.md}" <<<"$C")" 1
-GC='{"session_id":"s60","tool_name":"Bash","tool_input":{"command":"ls"}}'
-ok "~ con ranura: nudge + compuerta, la 4.ª deniega" "$(for _ in 1 2 3 4; do gate; done | tr '\n' ' ')" "pasa pasa pasa deny "
 
 # --- D3 (cv2/estado): el nudge es el único emisor; avisa también a la persona, una vez por banda, con o sin cockpit ---
 R2=$T/repo2; mkdir -p "$R2/.claude/estado"; git -C "$R2" init -q; echo x >"$R2/.claude/estado/nucleo.md"; touch -d '-30 minutes' "$R2/.claude/estado/nucleo.md"
