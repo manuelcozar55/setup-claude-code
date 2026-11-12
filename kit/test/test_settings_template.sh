@@ -27,6 +27,7 @@ ok "cleanupPeriodDays = 14" "$(q '.cleanupPeriodDays')" 14
 # W4/7: model, effortLevel, theme y tui son decisiones de quien recibe el kit, no del autor: la plantilla no los
 # fija (install.sh fusiona respetando lo que ya hubiera) y los deny de un MCP ajeno (linkedin) tampoco viajan.
 ok "la plantilla no fija model, effortLevel, theme ni tui" "$(q '[has("model"), has("effortLevel"), has("theme"), has("tui")] | any')" false
+ok ".kit-desactivados se protege como settings.json: deny de Edit" "$(q '[.permissions.deny[] | select(. == "Edit(/.kit-desactivados)")] | length')" 1
 ok "sin deny de mcp__linkedin__*" "$(q '[.permissions.deny[] | select(test("linkedin"))] | length')" 0
 ok "env fija CLAUDE_CODE_AUTO_COMPACT_WINDOW (entero)" "$(q '.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW // "" | test("^[0-9]+$")')" true
 ok "sin CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (es un hook de test)" "$(q '.env | has("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")')" false

@@ -19,6 +19,7 @@
       "Edit(/hooks/**)",
       "Edit(/settings.json)",
       "Edit(/settings.local.json)",
+      "Edit(/.kit-desactivados)",
       "Edit(/sentinel-allowlist.json)",
       "Edit(/sentinel/**)",
       "Read(~/.ssh/**)",
