@@ -13,7 +13,7 @@ Se levanta la congelación (2026-11-11, decisión del dueño): entran tres pieza
 
 - **Cockpit 0.9.0, cambio de comportamiento por defecto:** el autosave con modelo pasa a **apagado** (opt-in con `/autosave on` o `COCKPIT_AUTOSAVE=on`): cada síntesis es un fork con todo el contexto y nadie lo había pedido. Con el estado en manos de otra sesión no hace fork; retroceso exponencial (10/20 min) y parada con un solo aviso tras 3 fallos; el log anota el `usage` del fork (la doc decía que no lo devolvía).
 - Cockpit: en `-p`/SDK (`isInteractive: false`) no arma temporizadores, dock, handoff automático ni autosave; el handoff automático guarda una vez por cruce del umbral; «Contexto limpio» solo si el id de sesión cambió tras el `/clear`; versión mínima 2.1.311 (por debajo se apaga con un aviso); el mod solo manda las cabeceras que admite `handoff` (`## Notas` daba rc 2 tras pagar el fork); fallos con mensaje y siguiente paso (sin `handoff`, sin `.claude/estado/`, fork vacío o con error, `/clear` no lanzado) y textos del dock sin jerga.
-- Cockpit: tipado reproducible en un clon limpio (`tsconfig.json` autocontenido, tipos en `types/claude-code.d.ts`), `make test-cockpit` y job de CI `cockpit`.
+- Cockpit: tipado reproducible en un clon limpio (`tsconfig.json` autocontenido contra los tipos que escribe el motor, sin versionarlos; sin ellos tsc se anuncia saltado), `make test-cockpit` y job de CI `cockpit`.
 
 ### Added
 

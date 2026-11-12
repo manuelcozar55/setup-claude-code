@@ -22,7 +22,7 @@ ver="$(jq -r '.version // empty' "$MOD/.claude-plugin/plugin.json" 2>/dev/null |
 mver="$(jq -r '.plugins[] | select(.name == "cockpit") | .version // empty' "$MOD/../../../.claude-plugin/marketplace.json" 2>/dev/null || true)"
 check "$(grep -c "cockpit $ver\\.\$" "$MOD/../../docs/11-cockpit.md")" "1" "la doc cita la version de plugin.json ($ver)"
 check "${mver:-$ver}" "$ver" "el marketplace no contradice la version de plugin.json"
-for f in hooks/register.tsx hooks/hooks.json tsconfig.json .gitignore types/index.d.ts types/claude-code.d.ts \
+for f in hooks/register.tsx hooks/hooks.json tsconfig.json .gitignore types/index.d.ts \
          tests/cockpit.test.tsx tests/dock.test.tsx tests/handoff.test.tsx; do exists "$f"; done
 check "$(jq -r '.modules[0]' "$MOD/hooks/hooks.json")" "./register.tsx" "hooks.json apunta a register.tsx"
 check "$(grep -c 'claude-plugin/types' "$MOD/.gitignore")" "1" "tipos generados por Claude Code gitignorados"

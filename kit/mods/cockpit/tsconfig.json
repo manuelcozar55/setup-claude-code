@@ -2,7 +2,8 @@
   "compilerOptions": {
     "target": "es2023",
     "lib": ["es2023"],
-    "types": [],
+    "typeRoots": [".claude-plugin/types"],
+    "types": ["claude-code"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "strict": true,

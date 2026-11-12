@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # test_cockpit.sh — capas ejecutables del mod cockpit (kit/mods/cockpit):
-#   1. tsc sobre una copia de lo VERSIONADO (como un clon limpio: el tsconfig no puede depender de nada generado).
+#   1. tsc sobre una copia de lo VERSIONADO (como un clon limpio), contra los tipos que escribe el motor de Claude Code
+#      (.claude-plugin/types/claude-code/index.d.ts, de la versión instalada; no se versionan: son de Anthropic).
 #   2. contrato con el CLI real kit/claude/bin/handoff (sin claude, sin red).
 #   3. claude plugin validate y claude plugin test (no cuestan dinero). Sin `claude`: SKIP anunciado, nunca verde.
 # tsc: COCKPIT_TSC, o `tsc` del PATH, o `pnpm dlx typescript@5.6.3 tsc`. Sin ninguno: SKIP anunciado.
+# Tipos, por orden: los que escriba `claude plugin validate`/`test` sobre el clon; los que ya haya junto al mod (los escribe una
+# sesión interactiva con `claude --plugin-dir`); el fichero que diga COCKPIT_TYPES. Sin ninguno: tsc SALTADO, con el motivo.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
@@ -25,7 +28,23 @@ if [ -n "${COCKPIT_TSC:-}" ]; then read -r -a TSC <<<"$COCKPIT_TSC"
 elif command -v tsc >/dev/null 2>&1; then TSC=(tsc)
 elif command -v pnpm >/dev/null 2>&1 && timeout 120 pnpm dlx typescript@5.6.3 tsc --version >/dev/null 2>&1; then TSC=(pnpm dlx typescript@5.6.3 tsc)
 else TSC=(); fi
+GEN=.claude-plugin/types/claude-code/index.d.ts
+types_from=""
 if [ "${#TSC[@]}" -gt 0 ]; then
+  if command -v claude >/dev/null 2>&1; then
+    claude plugin validate "$copy/kit/mods/cockpit" >/dev/null 2>&1 || true
+    [ -f "$copy/kit/mods/cockpit/$GEN" ] || (cd "$copy/kit/mods/cockpit" && claude plugin test . >/dev/null 2>&1) || true
+    [ ! -f "$copy/kit/mods/cockpit/$GEN" ] || types_from="los que escribe claude plugin validate/test"
+  fi
+  if [ -z "$types_from" ] && [ -f "$MOD/$GEN" ]; then
+    mkdir -p "$copy/kit/mods/cockpit/${GEN%/*}" && cp "$MOD/$GEN" "$copy/kit/mods/cockpit/$GEN" && types_from="los de $MOD/$GEN"
+  fi
+  if [ -z "$types_from" ] && [ -n "${COCKPIT_TYPES:-}" ] && [ -f "$COCKPIT_TYPES" ]; then
+    mkdir -p "$copy/kit/mods/cockpit/${GEN%/*}" && cp "$COCKPIT_TYPES" "$copy/kit/mods/cockpit/$GEN" && types_from="COCKPIT_TYPES"
+  fi
+fi
+if [ "${#TSC[@]}" -gt 0 ] && [ -n "$types_from" ]; then
+  echo "tipos del motor: $types_from ($(head -1 "$copy/kit/mods/cockpit/$GEN"))"
   set +e; (cd "$copy/kit/mods/cockpit" && "${TSC[@]}" -p . --noEmit >"$tmp/tsc.log" 2>&1); rc=$?; set -e
   [ "$rc" -eq 0 ] || head -20 "$tmp/tsc.log"
   check "$rc" "0" "tsc en un clon limpio del mod"
@@ -33,6 +52,10 @@ if [ "${#TSC[@]}" -gt 0 ]; then
   printf 'export const planted: number = "x"\n' > "$copy/kit/mods/cockpit/hooks/planted.ts"
   set +e; (cd "$copy/kit/mods/cockpit" && "${TSC[@]}" -p . --noEmit >/dev/null 2>&1); rc=$?; set -e
   check "$([ "$rc" -ne 0 ] && echo rojo || echo verde)" "rojo" "falsabilidad: un error de tipos plantado da rojo"
+elif [ "${#TSC[@]}" -gt 0 ]; then
+  # Ninguna orden gratuita de claude genera los tipos (medido en 2.1.311: validate, test, details y list no los escriben;
+  # solo los escribe una sesión interactiva al cargar el mod). Saltar, nunca dar verde en falso.
+  skip "tsc del cockpit: no hay tipos del motor (.claude-plugin/types/claude-code/index.d.ts); abre una sesión con 'claude --plugin-dir kit/mods/cockpit' o pasa COCKPIT_TYPES=<ruta>"
 else
   # En CI (COCKPIT_REQUIRE_TSC=1) la ausencia de tsc es un fallo, no un salto.
   if [ -n "${COCKPIT_REQUIRE_TSC:-}" ]; then check "sin tsc" "tsc" "hay un tsc con el que tipar el cockpit"
