@@ -204,6 +204,9 @@ jobs:
       - name: "test_uninstall_kit.sh (uninstall --kit: quita lo del manifiesto y des-fusiona settings.json)"
         run: bash kit/test/test_uninstall_kit.sh
 
+      - name: "test_bump.sh (bump.sh sube la version en todos los sitios y corre los sensores)"
+        run: bash kit/test/test_bump.sh
+
       # Estas dos corrian en `make test` pero NO en CI, y nada lo declaraba: un PR que
       # rompiera una cifra del README pasaba en verde. Son el sensor anti-mentira.
       - name: "test_doc_claims.sh (toda cifra que la doc afirma sobre el repo tiene sensor)"

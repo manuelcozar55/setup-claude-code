@@ -107,7 +107,7 @@ fijada en `SHELLCHECK_VERSION` con su checksum, como gitleaks: usa esa misma en 
 (`shellcheck --version`) o acepta que **el oraculo es CI**, no tu maquina.
 
 Corre todo con `make test` o cada script suelto con `bash kit/test/<script>.sh`
-(las 55 suites de `kit/test/`).
+(las 56 suites de `kit/test/`).
 
 **El eval set (`kit/evals/`) no forma parte de `make test` ni de CI.** Cuesta
 dinero real (llamadas a la API de Anthropic). Es opt-in: `bash
@@ -214,7 +214,7 @@ de `branch-guard.sh` solo mira `main`, `master` y `production`, así que
 # 1. main al dia y limpio
 git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 
-# 2. las 55 suites y el escaner de secretos
+# 2. las 56 suites y el escaner de secretos
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 
