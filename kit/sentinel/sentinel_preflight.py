@@ -1586,7 +1586,7 @@ def fetch_safe_reader(text: str, fetch_patterns: list) -> bool:
 # Never exempt: the allowlist does not apply. Limit: code inside python -c / node -e is not read.
 _HOME_RX = r"(?:/home/[^/]+|/root|/Users/[^/]+)"
 _PROTECTED_CFG = re.compile(
-    rf"^(?:{_HOME_RX}/\.claude/(?:hooks|sentinel)(?:/.*)?|{_HOME_RX}/\.claude/settings[^/]*\.json|.*/sentinel-allowlist\.json)$")
+    rf"^(?:{_HOME_RX}/\.claude/(?:hooks|sentinel)(?:/.*)?|{_HOME_RX}/\.claude/settings[^/]*\.json|{_HOME_RX}/\.claude/\.kit-desactivados|.*/sentinel-allowlist\.json)$")
 _WRITE_ALL = {"rm", "unlink", "rmdir", "chmod", "chown", "chgrp", "touch", "truncate", "tee", "shred",
               "mv", "sponge", "patch", "ed", "curl", "wget"}
 _WRITE_DEST = {"cp", "install", "ln", "rsync"}
@@ -1605,7 +1605,7 @@ def _protected_path(word: str, cwd: str) -> bool:
     return bool(_PROTECTED_CFG.match(path)
                 or home and (path in (f"{home}/.claude/hooks", f"{home}/.claude/sentinel")
                              or path.startswith((f"{home}/.claude/hooks/", f"{home}/.claude/sentinel/"))
-                             or re.fullmatch(re.escape(home) + r"/\.claude/settings[^/]*\.json", path)))
+                             or re.fullmatch(re.escape(home) + r"/\.claude/(?:settings[^/]*\.json|\.kit-desactivados)", path)))
 
 
 def _is_claude_home(word: str, cwd: str) -> bool:
@@ -1674,11 +1674,11 @@ def _braces(word: str, limit: int = 64) -> list[str]:
 
 def _hits_protected(full: str, cwd: str) -> bool:
     """Ruta final del fichero escrito. Con glob se compara, componente a componente, con los nombres protegidos de
-    ~/.claude (settings.json, settings.local.json, hooks, sentinel y lo que cuelga de los dos ultimos)."""
+    ~/.claude (settings.json, settings.local.json, .kit-desactivados, hooks, sentinel y lo que cuelga de los dos ultimos)."""
     if not re.search(r"[*?\[]", full):
         return _protected_path(full, cwd)
     claude = os.path.expanduser("~").rstrip("/") + "/.claude"
-    cands = [f"{claude}/{n}" for n in ("settings.json", "settings.local.json", "hooks", "sentinel", "hooks/x", "sentinel/x")]
+    cands = [f"{claude}/{n}" for n in ("settings.json", "settings.local.json", ".kit-desactivados", "hooks", "sentinel", "hooks/x", "sentinel/x")]
     parts = full.split("/")
     return any(len(c.split("/")) == len(parts) and all(fnmatchcase(a, b) for a, b in zip(c.split("/"), parts)) for c in cands)
 
