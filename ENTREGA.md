@@ -36,7 +36,7 @@ git clone --branch release/scc-v2.0.0-debian scc-v2.0.0.bundle ~/scc
 git -C ~/scc rev-parse HEAD                   # debe coincidir con el commit de PROCEDENCIA.json
 ```
 
-`--branch release/scc-v2.0.0-debian` es obligatorio: el bundle no tiene `HEAD`, y un `git clone scc-v2.0.0.bundle` a
+El `--branch` de arriba es obligatorio: el bundle no tiene `HEAD`, y un `git clone scc-v2.0.0.bundle` a
 secas termina con «remote HEAD refers to nonexistent ref, unable to checkout» y un árbol vacío (`kit/` no aparece).
 El bundle permite clonar y consultar el historial; no implica que exista una etiqueta publicada. No sustituyas esta
 versión por `main`. Mantén la carpeta (`~/scc`) en su sitio: `scc` carga los plugins de la copia que `install.sh`
