@@ -20,7 +20,7 @@ P="$tmp/out"
 
 (cd "$R" && bash scripts/empaquetar-entrega.sh --out "$P" >/dev/null 2>&1); rc=$?
 ck "$rc" "0" "empaquetar sale 0"
-ck "$(LC_ALL=C ls "$P" | tr '\n' ' ')" "PROCEDENCIA.json SHA256SUMS scc-v$VER scc-v$VER.bundle scc-v$VER.zip " "deja directorio, zip, bundle, PROCEDENCIA y SHA256SUMS"
+ck "$(find "$P" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort | tr '\n' ' ')" "PROCEDENCIA.json SHA256SUMS scc-v$VER scc-v$VER.bundle scc-v$VER.zip " "deja directorio, zip, bundle, PROCEDENCIA y SHA256SUMS"
 D="$P/scc-v$VER"
 ck "$(cd "$P" && sha256sum -c SHA256SUMS >/dev/null 2>&1; echo $?)" "0" "sha256sum -c SHA256SUMS pasa"
 ck "$(jq -r .commit "$P/PROCEDENCIA.json")" "$COMMIT" "PROCEDENCIA.json lleva el commit"
@@ -31,8 +31,8 @@ for f in kit/install.sh kit/doctor.sh uninstall.sh scripts/backup.sh scripts/scc
   [ -e "$R/$f" ] || continue
   ck "$([ -f "$D/$f" ] && echo y)" "y" "lleva $f"
 done
-ck "$(ls -d "$D"/kit/test "$D"/kit/evals "$D"/knowledge "$D"/.claude "$D"/CLAUDE.md "$D"/AGENTS.md "$D"/config 2>/dev/null | wc -l | tr -d ' ')" "0" "no lleva kit/test, kit/evals, knowledge, .claude, config ni CLAUDE.md/AGENTS.md de la raiz"
-ck "$(ls "$D"/scripts | tr '\n' ' ')" "aceptacion-local.sh backup.sh scc.sh " "de scripts/ solo los tres que usa el producto"
+ck "$(find "$D"/kit/test "$D"/kit/evals "$D"/knowledge "$D"/.claude "$D"/CLAUDE.md "$D"/AGENTS.md "$D"/config -maxdepth 0 2>/dev/null | wc -l | tr -d ' ')" "0" "no lleva kit/test, kit/evals, knowledge, .claude, config ni CLAUDE.md/AGENTS.md de la raiz"
+ck "$(find "$D"/scripts -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort | tr '\n' ' ')" "aceptacion-local.sh backup.sh scc.sh " "de scripts/ solo los tres que usa el producto"
 
 # El ZIP trae lo mismo que el directorio
 ck "$(cd "$tmp" && mkdir z && cd z && unzip -q "$P/scc-v$VER.zip" && find . -type f | wc -l | tr -d ' ')" "$(find "$D" -type f | wc -l | tr -d ' ')" "el ZIP tiene los mismos ficheros que el directorio"

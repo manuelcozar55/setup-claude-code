@@ -15,7 +15,9 @@ ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT 
 VER="$(tr -d '[:space:]' < "$REPO/VERSION")"
 
 # claude falso: imprime sus argumentos, uno por linea.
-mkdir -p "$tmp/fake"; printf '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "9.9.9 (fake)"; exit 0; fi\nfor a in "$@"; do echo "ARG:$a"; done\n' > "$tmp/fake/claude"; chmod +x "$tmp/fake/claude"
+mkdir -p "$tmp/fake"
+# shellcheck disable=SC2016  # las comillas simples son a proposito: $1, $@ y $a los expande el script generado, no este
+printf '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "9.9.9 (fake)"; exit 0; fi\nfor a in "$@"; do echo "ARG:$a"; done\n' > "$tmp/fake/claude"; chmod +x "$tmp/fake/claude"
 
 # ---- 10. lanzador y copia
 export HOME="$tmp/h"; mkdir -p "$HOME"; export CLAUDE_HOME="$HOME/.claude"
@@ -39,7 +41,9 @@ ck "$rc" "0" "scc --version sale 0 aunque claude no este en el PATH"
 COCKV="$(jq -r .version "$KIT/mods/cockpit/.claude-plugin/plugin.json")"
 out="$(PATH="$tmp/fake:$PATH" "$CLAUDE_HOME/bin/scc" --version 2>&1)"
 ck "$(echo "$out" | grep -c "^cockpit $COCKV\$")" "1" "scc --version imprime la version del cockpit"
-mkdir -p "$tmp/old"; printf '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "1.0.0 (viejo)"; exit 0; fi\nfor a in "$@"; do echo "ARG:$a"; done\n' > "$tmp/old/claude"; chmod +x "$tmp/old/claude"
+mkdir -p "$tmp/old"
+# shellcheck disable=SC2016  # idem: $1, $@ y $a son del claude falso, no de este script
+printf '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "1.0.0 (viejo)"; exit 0; fi\nfor a in "$@"; do echo "ARG:$a"; done\n' > "$tmp/old/claude"; chmod +x "$tmp/old/claude"
 out="$(PATH="$tmp/old:$PATH" "$CLAUDE_HOME/bin/scc" -p hola 2>&1)"
 ck "$(echo "$out" | grep -c 'anterior a la minima')" "1" "claude anterior a la minima: lo dice"
 ck "$(echo "$out" | grep -c 'plugin-dir')" "0" "y lanza claude a secas, sin plugins"
