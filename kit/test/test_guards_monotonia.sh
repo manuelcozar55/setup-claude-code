@@ -244,8 +244,10 @@ def comps(x):
     # La opcion desconocida se inyecta donde una orden la leeria como opcion: tras la orden y su subcomando; las palabras que
     # siguen a un echo/printf son texto, y en una tuberia la ultima orden es otra.
     text = w[0] in ("echo", "printf")
+    head, _, tail = x.partition("\n")
+    hw = head.split(" ")
     for i in (1, 2):
-        if len(w) > i and not (text and i == 2): out.append(" ".join(w[:i] + ["--zzunk"] + w[i:]))
+        if len(hw) > i and not (text and i == 2): out.append(" ".join(hw[:i] + ["--zzunk"] + hw[i:]) + ("\n" + tail if tail else ""))
     if not text and "|" not in x: out.append(first_line(x, " --zzunk"))
     return out
 comp_cases, no_seed = [], []

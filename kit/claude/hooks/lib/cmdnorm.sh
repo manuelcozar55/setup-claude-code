@@ -221,23 +221,25 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl, sp) {
     break
   }
   if (k > 1) nosimple = 1
+  wf = 0
   for (j = 1; j <= nt; j++) {
     a = toks[j]
     if (a ~ /^[0-9&]*>>?[|]?/) {
       o = a; sub(/^[0-9&]*>>?[|]?/, "", o)
       if (o == "" && j < nt) o = toks[j + 1]
-      if (o !~ /^&[0-9-]*$/ && !devnull(o)) nosimple = 1
+      if (o !~ /^&[0-9-]*$/ && !devnull(o)) { nosimple = 1; wf = 1 }
     }
   }
   if (k <= nt) {
     b = base(toks[k])
     if ((b in lett) && b != "git") for (j = k + 1; j <= nt; j++) { if (toks[j] == "--" || ((b == "echo" || b == "printf") && toks[j] !~ /^-/)) break; if (toks[j] ~ /^-./ && !optok(b, toks[j])) nosimple = 1 }
-    if (b == "tee") for (j = k + 1; j <= nt; j++) if (toks[j] !~ /^-/ && !devnull(toks[j])) nosimple = 1
+    if (b == "tee") for (j = k + 1; j <= nt; j++) if (toks[j] !~ /^-/ && !devnull(toks[j])) { nosimple = 1; wf = 1 }
     if (b == "cd" || b == "pushd" || b == "popd") nosimple = 1
   }
   kd = (forceS || subdepth > 0 || btick) ? "S" : "P"
   for (j = 1; j <= nt; j++) gsub(/\n/, " ", toks[j])
   nseg++
+  segwf[nseg] = wf
   sepn[nseg] = pend; pend = ""
   # Un receptor de pipe solo cierra el contexto si es un consumidor de texto de la lista cerrada (`| less`, `| gh api`, `| git var` no).
   if (k <= nt && sepn[nseg] ~ /[|]/ && (!(b in lett) || (b == "git" && !(toks[k + 1] in dispsub)))) nosimple = 1
@@ -314,7 +316,8 @@ function heredocs(s, i, n,   h, o, m, body, rest, p, e, w, isdata, bs, lt, L) {
     isdata = 1
     if (!(o <= nseg && (segcmd[o] in inert))) isdata = 0
     if (o <= nseg && segshell[o]) isdata = 0
-    for (m = o + 1; m <= nseg; m++) if (segpsh[m]) isdata = 0
+    if (o <= nseg && segwf[o]) isdata = 0
+    for (m = o + 1; m <= nseg; m++) if (segpsh[m] || segwf[m]) isdata = 0
     if (!isdata) return i
     nhb++; hdb[nhb] = body; hdo2[nhb] = o
     if (!hdq[h]) scansubs(body)

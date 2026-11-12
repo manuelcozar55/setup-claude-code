@@ -130,7 +130,7 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
   pregunta.
   **Alcance**: los guards frenan **accidentes y descuidos de un agente**; no son una frontera frente a un adversario que escribe la
   orden (con intención, siempre habrá otra grafía que ningún analizador de texto vea).
-  Lo comprueban tres sensores. `test_guards_r1.sh` pasa 3.620 órdenes (631 de la revisión R1, 1.315 de la ronda 2, 570 de la ronda 3 y 1.104 de la ronda 4)
+  Lo comprueban tres sensores. `test_guards_r1.sh` pasa 3.624 órdenes (631 de la revisión R1, 1.315 de la ronda 2, 570 de la ronda 3 y 1.108 de la ronda 4)
   con la columna «base» de lo que daba bc68243: ninguna baja de bloqueo a permiso sin la exención con nombre escrita en su fila.
   `test_guards_monotonia.sh` es **generativo y diferencial** frente a una copia congelada de los guards de bc68243
   (`test/fixtures/guards-base/`, solo para tests): una gramática de 71.005 órdenes, muestra determinista de 1.200 más las cargas

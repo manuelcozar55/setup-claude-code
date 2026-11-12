@@ -1102,3 +1102,7 @@
 {"id": "R4-z006", "cmd": "cat <<'EOF' --zzunk | docker run -i alpine sh\ngit rm --cached .env\nEOF", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R4-z007", "cmd": "cat <<'EOF'\nrm -rf ~\nEOF", "base": "BLOCK", "exp": "ALLOW", "ex": "dato:heredoc-de-texto"}
 {"id": "R4-z008", "cmd": "cat <<'EOF' | sh\nrm -rf ~\nEOF", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R5-h01", "cmd": "cat > notes.md <<EOF\ngit push origin :main\nEOF", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "R5-h02", "cmd": "tee notes.md <<'EOF'\ngit push origin +main\nEOF", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "R5-h03", "cmd": "cat <<'EOF' | tee out.txt\ngit push origin +main\nEOF", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "R5-h04", "cmd": "tee out.txt <<'EOF'\ngit push origin :main\nEOF", "base": "BLOCK", "exp": "BLOCK"}
