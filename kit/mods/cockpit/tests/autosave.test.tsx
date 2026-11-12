@@ -120,7 +120,7 @@ test('autosave: con dirty, ≥5 turnos y ≥10 min por turnos (8) guarda en sile
   const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: DOCK })
   expect(await pane.find({ text: /^guardado \d\d:\d\d$/ })).toBeTruthy()
   const line = (files[LOG] ?? '').trim().split('\t')
-  expect(line).toHaveLength(6)
+  expect(line).toHaveLength(10)
   expect(line[1]).toBe('sesion-1')
   expect(line[2]).toBe('turn')
   expect(Number(line[3])).toBeGreaterThan(1000)
