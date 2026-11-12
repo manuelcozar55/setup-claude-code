@@ -42,6 +42,10 @@ HOME="$H2" CLAUDE_HOME="$H2/.claude" TMPDIR="$tmp" bash "$KIT/install.sh" --plan
 ck "$(find "$H2" -mindepth 1 | wc -l | tr -d ' ')" "0" "--plan no escribe nada en el HOME"
 
 # doctor: version instalada y aviso si difiere.
+# Un `claude` propio en el PATH: sin el, doctor avisa «claude no se encuentra ... claude --version» y ese WARN
+# casa con 'WARN · .*version'; aqui se mide el aviso de version del KIT, no que la maquina tenga claude.
+mkdir -p "$tmp/bin"; printf '#!/bin/sh\necho "99.0.0 (Claude Code)"\n' >"$tmp/bin/claude"; chmod +x "$tmp/bin/claude"
+export PATH="$tmp/bin:$PATH"
 out="$(bash "$KIT/doctor.sh" 2>&1)"
 ck "$(printf '%s\n' "$out" | grep -c "version instalada del kit: $VER")" "1" "doctor imprime la version instalada"
 ck "$(printf '%s\n' "$out" | grep -c 'WARN · .*version')" "0" "sin aviso de version cuando coincide"
