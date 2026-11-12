@@ -517,9 +517,16 @@ fi
 TOK_ASK=''
 tok_ask() { [[ -n $TOK_ASK ]] || TOK_ASK=$1; }
 token_checks() {
-  local seg a i r f dd skip tgt w nxt cdsens=0
+  local seg a i r f dd skip tgt w nxt cdsens=0 c
   local -a T wrote=()
   for seg in "${CMDN_SEGS[@]}"; do
+    # Prefiltro barato (un comando de 64 KB trae miles de segmentos y cmdn_fields cuesta): solo las ordenes que estas
+    # reglas miran, o las que llevan una sustitucion, una redireccion o un pipe.
+    c=${seg#*"$CMDN_US"}; c=${c%%"$CMDN_US"*}
+    case $c in
+      rm|git|cd|tee|sh|bash|zsh|dash|ksh|ash|source|.|*.*|*/*) ;;
+      *) [[ $seg == *['$`>|']* ]] || continue ;;
+    esac
     cmdn_fields "$seg"
     # Una orden que recibe un pipe y que no se puede leer (`curl ... | $X`, `| $(which bash)`): puede ser un shell.
     if [[ $T_SEP == *'|'* && ${T[1]:-} == '$'* ]] || [[ $T_SEP == *'|`' ]]; then
