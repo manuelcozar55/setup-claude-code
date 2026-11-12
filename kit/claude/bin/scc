@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# scc — lanza Claude Code con el cockpit y los plugins del kit cargados desde la copia que install.sh deja en
+# $CLAUDE_HOME/scc/ (no depende de donde este el clon). `scc --version` imprime la version del kit instalada
+# y la de claude. Cualquier otro argumento pasa tal cual a claude. Con install.sh --sin-cockpit no hay copia y
+# scc arranca claude sin plugins.
+set -euo pipefail
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
+CLAUDE_HOME="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+if [ "${1:-}" = "--version" ] && [ "$#" -eq 1 ]; then
+  kit_v=""; read -r kit_v < "$CLAUDE_HOME/.kit-version" 2>/dev/null || true
+  echo "scc (kit) ${kit_v:-desconocida: sin .kit-version}"
+  if command -v claude >/dev/null 2>&1; then echo "claude $(claude --version 2>/dev/null | head -1)"; else echo "claude: no se encuentra en el PATH"; fi
+  exit 0
+fi
+
+args=()
+for d in "$CLAUDE_HOME/scc/mods/cockpit" "$CLAUDE_HOME/scc/plugins/esenciales"; do
+  if [ -d "$d" ]; then args+=(--plugin-dir "$d"); fi
+done
+command -v claude >/dev/null 2>&1 || { echo "scc: no se encuentra el CLI 'claude' en el PATH" >&2; exit 127; }
+exec claude "${args[@]}" "$@"

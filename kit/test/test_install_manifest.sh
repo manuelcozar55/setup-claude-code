@@ -25,7 +25,7 @@ ck "$bad" "0" "las sumas del manifiesto coinciden con lo instalado"
 for f in hooks/branch-guard.sh bin/handoff sentinel/sentinel_preflight.py statusline-command.sh CLAUDE.md AGENTS.md settings.json .gitleaks.toml sentinel-allowlist.json; do
   ck "$(grep -c "  $f\$" "$M")" "1" "manifiesto lista $f"
 done
-ck "$(grep -c '  ~bin/' "$M")" "4" "manifiesto lista los 4 enlaces del bindir"
+ck "$(grep -c '  ~bin/' "$M")" "5" "manifiesto lista los 5 enlaces del bindir (con scc)"
 ck "$(grep -c 'kit-manifest\|kit-version' "$M")" "0" "el manifiesto no se lista a si mismo"
 
 # Reinstalar es idempotente: mismo manifiesto.

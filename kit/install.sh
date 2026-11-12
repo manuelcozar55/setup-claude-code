@@ -6,24 +6,31 @@
 #      en el repo git DESDE el que se invoca; opt-in, por repositorio)
 set -euo pipefail
 usage() {
-  printf '%s\n' 'Uso: bash install.sh [--apply | --plan | --enable-secrets-layer2 | --help | -h]' \
+  printf '%s\n' 'Uso: bash install.sh [--apply | --plan | --enable-secrets-layer2 | --help | -h] [--sin-cockpit] [--sin-python]' \
     '  sin argumentos: instala el kit; muestra un plan si CLAUDE_HOME es un repo con remoto.' \
     '  --apply: aplica la instalacion.' \
     '  --plan: prepara el plan sin modificar CLAUDE_HOME.' \
     '  --enable-secrets-layer2: activa la capa 2 en el repo actual.' \
+    '  --sin-cockpit: no copia el cockpit ni los plugins a CLAUDE_HOME/scc (el lanzador scc queda sin ellos).' \
+    '  --sin-python: sigue sin python3 aun sabiendo que Sentinel, write-guard, stale-read-guard y efectividad quedan apagados.' \
     '  --help, -h: muestra esta ayuda sin instalar.'
 }
-if (( $# > 1 )); then
-  printf '%s\n' 'Error: se admite como maximo una opcion.' >&2
-  usage >&2
-  exit 64
-fi
-if (( $# == 1 )); then
-  case $1 in
-    --help|-h) usage; exit 0 ;;
-    --apply|--plan|--enable-secrets-layer2) ;;
-    *) printf 'Error: argumento no reconocido: %s\n' "$1" >&2; usage >&2; exit 64 ;;
+MODE_ARG=""; SIN_COCKPIT=0; SIN_PYTHON=0
+for arg in "$@"; do
+  case $arg in
+    --help|-h)
+      if (( $# > 1 )); then printf '%s\n' 'Error: --help no se combina con otras opciones.' >&2; usage >&2; exit 64; fi
+      usage; exit 0 ;;
+    --apply|--plan|--enable-secrets-layer2)
+      if [ -n "$MODE_ARG" ]; then printf '%s\n' 'Error: se admite como maximo una de --apply, --plan y --enable-secrets-layer2.' >&2; usage >&2; exit 64; fi
+      MODE_ARG=$arg ;;
+    --sin-cockpit) SIN_COCKPIT=1 ;;
+    --sin-python)  SIN_PYTHON=1 ;;
+    *) printf 'Error: argumento no reconocido: %s\n' "$arg" >&2; usage >&2; exit 64 ;;
   esac
+done
+if [ "$MODE_ARG" = "--enable-secrets-layer2" ] && (( $# > 1 )); then
+  printf '%s\n' 'Error: --enable-secrets-layer2 no admite otras opciones.' >&2; usage >&2; exit 64
 fi
 KIT="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
@@ -83,8 +90,52 @@ Instala jq y repite:
   sudo apt install jq      # Debian / Ubuntu / WSL2
   sudo dnf install jq      # Fedora
   sudo pacman -S jq        # Arch
+  brew install jq          # macOS (el instalador solo corre en Linux/WSL2, pero jq se pide igual en tu Mac de trabajo)
 EOF
   exit 1
+fi
+
+# --- Puertas de dependencia: git, bash >= 5 y python3 ------------------------
+# Tambien en --plan: que el plan salga limpio y --apply falle despues es peor que fallar pronto.
+# git y bash >= 5: los hooks y los CLIs los usan; sin ellos no hay kit, asi que se para.
+if ! command -v git >/dev/null 2>&1; then
+  cat >&2 <<EOF
+==> Falta git, y este kit lo necesita (los guards de rama y los hooks de estado lo llaman).
+
+  sudo apt install git     # Debian / Ubuntu / WSL2
+  brew install git         # macOS
+EOF
+  exit 1
+fi
+if [ "${BASH_VERSINFO[0]:-0}" -lt 5 ]; then
+  cat >&2 <<EOF
+==> Hace falta bash >= 5 y este es ${BASH_VERSION:-desconocido}: los hooks usan funciones de bash 5.
+
+  sudo apt install bash    # Debian / Ubuntu / WSL2 (ya viene >= 5)
+  brew install bash        # macOS (trae la 3.2): luego lanza el instalador con el bash nuevo
+EOF
+  exit 1
+fi
+# python3 no para la instalacion por si solo, pero SIN el cuatro capas se apagan en silencio (optional-hook.sh
+# sale 0 si no hay interprete): se dice en grande y se exige --sin-python para seguir sabiendolo.
+if ! command -v python3 >/dev/null 2>&1 && [ ! -x "$HOME/.venvs/tools/bin/python3" ]; then
+  cat >&2 <<EOF
+==> ATENCION: falta python3.
+    Sin python3 quedan APAGADAS, sin avisar en cada sesion, estas capas del kit:
+      - Sentinel (preflight de comandos y rutas sensibles)
+      - write-guard (escrituras a ficheros protegidos)
+      - stale-read-guard (ediciones sobre lecturas viejas)
+      - efectividad (las cifras de uso real)
+    Instala python3 y repite:
+
+      sudo apt install python3     # Debian / Ubuntu / WSL2
+      brew install python3         # macOS
+
+    Si aun asi quieres instalar el kit con esas capas apagadas, repite el mismo comando
+    anadiendo --sin-python.
+EOF
+  if [ "$SIN_PYTHON" -ne 1 ]; then exit 1; fi
+  echo "==> --sin-python: se continua SIN python3; las capas de arriba no protegeran nada hasta que lo instales." >&2
 fi
 
 # --- Subcomando: activar la Capa 2 de secretos en el repo actual ------------
@@ -94,7 +145,7 @@ fi
 # desinstale una herramienta. Este subcomando es opt-in y explicito: solo
 # actua si lo invocas tu mismo, estando dentro del repo que quieres proteger.
 # Ver kit/docs/05-security.md para el razonamiento completo.
-if [ "${1:-}" = "--enable-secrets-layer2" ]; then
+if [ "$MODE_ARG" = "--enable-secrets-layer2" ]; then
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "==> --enable-secrets-layer2 debe ejecutarse DENTRO del repo git que quieres proteger." >&2
     exit 1
@@ -122,7 +173,7 @@ is_git_repo_with_remote() {
 
 MODE_APPLY=0
 MODE_PLAN=0
-case "${1:-}" in
+case "$MODE_ARG" in
   --apply) MODE_APPLY=1 ;;
   --plan)  MODE_PLAN=1 ;;
 esac
@@ -339,6 +390,18 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   for f in "$KIT"/sentinel/*;      do [ -f "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
   mkdir -p "$base/hooks/git"
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
+  # El cockpit y los plugins del kit, copiados para que `scc` no dependa de donde este el clon. Sin tests ni
+  # node_modules: pesan y no se ejecutan. Entran en el manifiesto como cualquier otro fichero.
+  if [ "$SIN_COCKPIT" -ne 1 ]; then
+    for f in mods/cockpit plugins/esenciales; do
+      [ -d "$KIT/$f" ] || continue
+      while IFS= read -r -d '' src; do
+        rel="${src#"$KIT"/}"
+        mkdir -p "$base/scc/$(dirname "$rel")"
+        install_file "$src" "$base/scc/$rel"
+      done < <(find "$KIT/$f" \( -name tests -o -name node_modules \) -prune -o -type f -print0)
+    done
+  fi
   chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit "$base"/statusline-command.sh "$base"/bin/* 2>/dev/null || true
 }
 
@@ -368,7 +431,7 @@ write_kit_state() {
 # enlazaba en el ~/.local/bin real y, al borrar su ruta, dejaba enlaces colgantes que ya no se reparaban
 # (contaban como ajenos). Con otro CLAUDE_HOME se imprimen las ordenes y no se escribe.
 LOCAL_BIN="$HOME/.local/bin"
-CLIS="handoff oraculo cupo efectividad"
+CLIS="handoff oraculo cupo efectividad scc"
 clis_enlazables() { [ "$(realpath -m -- "$CLAUDE_HOME")" = "$(realpath -m -- "$HOME/.claude")" ]; }
 cli_estado() {  # nombre -> libre | nuestro | ajeno
   local dst="$LOCAL_BIN/$1" t
@@ -529,6 +592,11 @@ run_diff_first() {
     diff -u "$CLAUDE_HOME/$rel" "$out/$rel" || true
   done
   mostrar_fusion_settings "$CLAUDE_HOME/settings.json" "$out/settings.json"
+  if [ "$SIN_COCKPIT" -eq 1 ]; then
+    echo "==> --sin-cockpit: no se copiarian el cockpit ni los plugins a $CLAUDE_HOME/scc."
+  else
+    echo "==> cockpit y plugins del kit: se copiarian a $CLAUDE_HOME/scc (lanzador: scc; omitir con --sin-cockpit)."
+  fi
   aviso_claude_md
   avisos_settings "$CLAUDE_HOME/settings.json"
 
