@@ -661,21 +661,20 @@ def _parse(args: list[str], short: str, long: dict, stop: bool, ends: set) -> li
 
 # Closed context (the rule of the exemption proofs): a proof that a word is data (echo and printf words, git rm --cached, the prose
 # of _scrub_command) holds only when the whole line is ONE pipeline with no substitution, no separator, no prefix (env, cd...), no
-# global git option and no write to anything but a document. Anything else gets the verdict the base gave.
+# global git option and no write to any file. Anything else gets the verdict the base gave. A text written to a file is never proved
+# to be data: the file is read later by an agent, make, git or a shell (four review rounds broke every list of safe targets).
 _CTX_PREFIXES = {"env", "sudo", "doas", "command", "nice", "nohup", "time", "exec", "builtin", "stdbuf", "ionice", "setsid",
                  "timeout", "cd", "pushd", "popd"}
-_DOC_FILE = re.compile(r"\.(md|txt|log|rst|csv|tsv)$")
-_NO_DOC_DIR = re.compile(r"(^|/)\.(git|claude|husky|github)(/|$)")
-_AGENT_DOCS = {"CLAUDE.md", "AGENTS.md", "SKILL.md", "MEMORY.md"}
 _CLOSED = False
+# Plain text consumers (closed list): none runs what it reads and none writes a file named by an argument (uniq, xxd, sed, awk are out).
+_TEXT_READERS = {"cat", "tee", "head", "tail", "wc", "sort", "tr", "cut", "grep", "egrep", "fgrep", "rg", "ag", "ack", "jq", "base64",
+                 "md5sum", "sha1sum", "sha256sum", "git", "gh", "echo", "printf", "column", "nl", "fold", "tac", "rev", "paste", "diff",
+                 "cmp", "comm", "od", "hexdump", "expand", "unexpand", "cksum", "basename", "dirname", "true", ":"}
 
 
-def _doc_target(w: str) -> bool:
-    """A write target nobody reads as code or configuration: a document outside .git, .claude, .husky and .github."""
-    if w in ("/dev/null", "/dev/stdout", "/dev/stderr") or re.fullmatch(r"&?[0-9-]+", w):
-        return True
-    return bool(_DOC_FILE.search(w) or os.path.basename(w) == ".gitignore") and not _NO_DOC_DIR.search(w) and os.path.basename(w) not in _AGENT_DOCS \
-        and not re.search(r"[$`*?{}\[~\\]", w)
+def _null_target(w: str) -> bool:
+    """The only write targets of a closed context: /dev/null, the standard streams and file descriptors (2>&1)."""
+    return w in ("/dev/null", "/dev/stdout", "/dev/stderr") or bool(re.fullmatch(r"&?[0-9-]+", w))
 
 
 _GREP_NAMES = {"grep", "egrep", "fgrep", "zgrep", "rg", "ag", "ack"}
@@ -716,12 +715,16 @@ def _closed_context(text: str) -> bool:
     except Exception:
         return False
     start, newline, target, name, cmdargs = True, False, False, None, []
+    piped = False
     for k, t in enumerate(toks):
         if isinstance(t, dict):
+            # A heredoc body is data only for a plain text reader; ./run.sh, docker, an unknown command read it as input to run.
+            if name not in _TEXT_READERS:
+                return False
             continue
         if isinstance(t, str):
             if t in ("|", "|&"):
-                start, name = True, None
+                start, name, piped = True, None, True
             elif t == "\n":
                 newline = True
             elif ">" in t:
@@ -734,7 +737,7 @@ def _closed_context(text: str) -> bool:
         w = t[0]
         if target:
             target = False
-            if not _doc_target(w):
+            if not _null_target(w):
                 return False
             continue
         if not start and not _opt_ok(name, cmdargs, w):
@@ -744,13 +747,16 @@ def _closed_context(text: str) -> bool:
             start = False
             cmdargs = []
             name = _cmd_name(w)
+            # What receives a pipe is a plain text consumer or the line proves nothing (docker run, python, a script...).
+            if piped and name not in _TEXT_READERS:
+                return False
             nxt = toks[k + 1] if k + 1 < len(toks) else None
             if re.match(r"\w+=", w) or name in _CTX_PREFIXES or name in _SHELLS or name in _INTERPRETERS \
                     or name in ("xargs", "ssh", "find", "parallel", "watch", "at", "batch", "crontab", "source", ".", "busybox", "!"):
                 return False
             if name == "git" and isinstance(nxt, tuple) and nxt[0].startswith("-"):
                 return False
-        elif name == "tee" and not w.startswith("-") and not _doc_target(w):
+        elif name == "tee" and not w.startswith("-") and not _null_target(w):
             return False
         elif name == "sort" and re.match(r"-[A-Za-z]*o|--output", w):
             return False

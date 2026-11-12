@@ -50,24 +50,16 @@ function redir_alone(t) { return (t ~ /^[0-9]*(>>?[|]?|<<?)$/) }
 function push(body) { qn++; queue[qn] = body }
 
 # Contexto cerrado (regla de las pruebas de exencion): una prueba solo vale si la linea entera es UNA tuberia de la orden exenta y
-# consumidores de la lista cerrada, con opciones de una lista cerrada y escritura solo a ficheros de documento. Cualquier otra cosa
-# (un separador, un prefijo, una opcion desconocida, un destino que un interprete o make leeria) deja nosimple=1 y manda la base.
-# Destino de una escritura que NO es codigo ni configuracion de nadie: extension de documento, fuera de .git, .claude, .husky,
-# .github y de los ficheros que un agente lee como instrucciones.
-function docext(t,   b) {
-  if (t == "/dev/null" || t == "/dev/stdout" || t == "/dev/stderr") return 1
-  if (t ~ /(^|\/)\.(git|claude|husky|github)(\/|$)/) return 0
-  b = base(t)
-  if (b == "CLAUDE.md" || b == "AGENTS.md" || b == "SKILL.md" || b == "MEMORY.md") return 0
-  return ((t ~ /\.(md|txt|log|rst|csv|tsv)$/ || b == ".gitignore") && t !~ /[$`*?{[~\\]/)
-}
+# consumidores de la lista cerrada, con opciones de una lista cerrada y SIN escribir a ningun fichero. Cualquier otra cosa (un
+# separador, un prefijo, una opcion desconocida, un destino de escritura) deja nosimple=1 y manda la base. Escribir un texto a un
+# fichero no se prueba como dato: el fichero lo lee despues un agente, make, git o un shell (cuatro rondas de revision lo rompieron).
+function devnull(t) { return (t == "/dev/null" || t == "/dev/stdout" || t == "/dev/stderr") }
 # Opcion (token que empieza por -) de la lista cerrada de inocuas de la orden b: una opcion que ejecuta (--pre, --pager, -O, -P de
 # man, --hostname-bin), que escribe (-o, --output) o desconocida no esta.
 function optok(b, t,   nm, i, l) {
   if (t == "-" || t == "--" || t ~ /^-[0-9]+$/) return 1
   if (t ~ /^--[A-Za-z][A-Za-z0-9-]*(=.*)?$/) { nm = t; sub(/=.*/, "", nm); return (nm in longs) }
   if ((b in grepf) && t ~ /^-e./) return 1
-  if (b == "awk" && t ~ /^-F./) return 1
   if (t ~ /^-[A-Za-z0-9]+$/) {
     l = lett[b]
     for (i = 2; i <= length(t); i++) if (index(l, substr(t, i, 1)) == 0 && substr(t, i, 1) !~ /[0-9]/) return 0
@@ -202,11 +194,6 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
       t = toks[j]
       if (keepnext) { keepnext = 0; out = out " " t; continue }
       if (redir(t)) { out = out " " t; if (redir_alone(t)) keepnext = 1; continue }
-      if (b == "sed" || b == "awk" || b == "gawk" || b == "mawk" || b == "nawk") {
-        # Un programa de awk con system/getline/pipe y un script de sed con el comando `e` o la bandera `e` EJECUTAN: no son prosa.
-        if (t !~ /[ \t\n]/ || (b == "sed" ? t ~ /(^|[^A-Za-z_])e([ \t;}]|$)|\/[A-Za-z]*e[A-Za-z]*([ \t;}]|$)/ : t ~ /system|getline|popen|[|]/)) out = out " " t
-        continue
-      }
       if (clean_opt(t)) out = out " " t
     }
     return out
@@ -239,14 +226,13 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl, sp) {
     if (a ~ /^[0-9&]*>>?[|]?/) {
       o = a; sub(/^[0-9&]*>>?[|]?/, "", o)
       if (o == "" && j < nt) o = toks[j + 1]
-      if (o !~ /^&[0-9-]*$/ && !docext(o)) nosimple = 1
+      if (o !~ /^&[0-9-]*$/ && !devnull(o)) nosimple = 1
     }
   }
   if (k <= nt) {
     b = base(toks[k])
     if ((b in lett) && b != "git") for (j = k + 1; j <= nt; j++) { if (toks[j] == "--" || ((b == "echo" || b == "printf") && toks[j] !~ /^-/)) break; if (toks[j] ~ /^-./ && !optok(b, toks[j])) nosimple = 1 }
-    if (b == "tee") for (j = k + 1; j <= nt; j++) if (toks[j] !~ /^-/ && !docext(toks[j])) nosimple = 1
-    if (b == "uniq" || b == "xxd") { o = 0; for (j = k + 1; j <= nt; j++) if (toks[j] !~ /^-/) o++; if (o > 1) nosimple = 1 }
+    if (b == "tee") for (j = k + 1; j <= nt; j++) if (toks[j] !~ /^-/ && !devnull(toks[j])) nosimple = 1
     if (b == "cd" || b == "pushd" || b == "popd") nosimple = 1
   }
   kd = (forceS || subdepth > 0 || btick) ? "S" : "P"
@@ -447,10 +433,11 @@ BEGIN {
   split("{ ! then do else elif if while until", arr, " "); for (x in arr) ctl[arr[x]] = 1
   split("sh bash zsh dash ksh ash fish mksh ksh93", arr, " "); for (x in arr) shells[arr[x]] = 1
   split("python python2 python3 perl ruby node nodejs php lua deno bun Rscript tclsh pwsh", arr, " "); for (x in arr) interps[arr[x]] = 1
-  split("echo printf grep egrep fgrep rg ag ack zgrep sed awk gawk mawk nawk man type which test [", arr, " "); for (x in arr) prose[arr[x]] = 1
+  # sed y awk NO estan: su programa es codigo (system, getline, `w fichero`, @include) y un -v lo esconde; con el patron que sea, manda la base.
+  split("echo printf grep egrep fgrep rg ag ack zgrep man type which test [", arr, " "); for (x in arr) prose[arr[x]] = 1
   # Consumidores de TEXTO inocuos (lista CERRADA): ninguno ejecuta lo que lee. Un receptor que no esta aqui (un interprete, un
   # envoltorio, un ejecutable desconocido, una variable) NO prueba que el texto de un echo o de un heredoc sea dato.
-  split("cat tee grep egrep fgrep rg ag ack zgrep wc head tail sort uniq cut tr jq less more column nl fold tac rev paste expand unexpand comm diff cmp xxd od hexdump base64 md5sum sha1sum sha256sum cksum basename dirname git gh echo printf true :", arr, " "); for (x in arr) inert[arr[x]] = 1
+  split("cat tee grep egrep fgrep rg ag ack zgrep wc head tail sort cut tr jq less more column nl fold tac rev paste expand unexpand comm diff cmp od hexdump base64 md5sum sha1sum sha256sum cksum basename dirname git gh echo printf true :", arr, " "); for (x in arr) inert[arr[x]] = 1
   # Ordenes que pueden seguir a un heredoc de texto sin convertirlo en codigo: las inocuas y las que no ejecutan nada propio.
   split("ls pwd cd mkdir touch chmod cp mv ln stat file date whoami hostname uname id test [ false sleep fi done esac }", arr, " "); for (x in arr) benign[arr[x]] = 1
   for (x in inert) benign[x] = 1
@@ -462,14 +449,13 @@ BEGIN {
   lett["grep"] = g0; lett["egrep"] = g0; lett["fgrep"] = g0; lett["zgrep"] = g0; lett["rg"] = g0; lett["ag"] = g0; lett["ack"] = g0
   split("grep egrep fgrep zgrep rg ag ack", arr, " "); for (x in arr) grepf[arr[x]] = 1
   lett["git"] = "pnvcwlLhHEFiIqsazUuTbmABCSGgkrxP"
-  lett["sed"] = "nEerzsu"; lett["awk"] = "Fv"; lett["gawk"] = "Fv"; lett["mawk"] = "Fv"; lett["nawk"] = "Fv"
   lett["man"] = "kfwa"; lett["which"] = "a"; lett["type"] = "afptP"; lett["echo"] = "neE"; lett["printf"] = ""
   lett["test"] = "abcdefghLknoprstuwxzGOS"; lett["["] = lett["test"]
   lett["cat"] = "AbeEnstTuv"; lett["head"] = "cnqvz"; lett["tail"] = "cnqvzf"; lett["wc"] = "clmwL"
-  lett["sort"] = "bdfgiMhnRrsuVzckmt"; lett["uniq"] = "cdDfiuszw"; lett["cut"] = "bcdfnsz"; lett["tr"] = "cdst"
+  lett["sort"] = "bdfgiMhnRrsuVzckmt"; lett["cut"] = "bcdfnsz"; lett["tr"] = "cdst"
   lett["jq"] = "CcenrRsSaj"; lett["column"] = "tsnxecwo"; lett["nl"] = "bdfhilnpsvw"
   lett["fold"] = "bsw"; lett["tac"] = "brs"; lett["rev"] = ""; lett["paste"] = "dsz"; lett["expand"] = "it"; lett["unexpand"] = "at"
-  lett["comm"] = "123iz"; lett["diff"] = "uqrcbBwiyEZaNsTp"; lett["cmp"] = "bilns"; lett["xxd"] = "abcEgiluprRs"
+  lett["comm"] = "123iz"; lett["diff"] = "uqrcbBwiyEZaNsTp"; lett["cmp"] = "bilns"
   lett["od"] = "AjNtvxcodabfhilz"; lett["hexdump"] = "bcCdnosvx"; lett["base64"] = "diw"
   lett["md5sum"] = "bctwzq"; lett["sha1sum"] = "bctwzq"; lett["sha256sum"] = "bctwzq"; lett["cksum"] = "ar"
   lett["basename"] = "asz"; lett["dirname"] = "z"; lett["tee"] = "ai"; lett["true"] = ""; lett[":"] = ""; lett["rm"] = "rRfvdiI"; lett["gitmsg"] = "amqvsu"
@@ -627,19 +613,23 @@ cmdn_sensitive_operand() {
   return 1
 }
 
-# cmdn_not_link <directorio> <componente> [strict]: el componente, resuelto con el disco como esta, sigue siendo hijo directo del
-# directorio (no es un enlace a otro sitio). strict: el propio directorio tampoco es un enlace (/tmp). Sin `realpath` no hay prueba.
+# cmdn_not_link <directorio> <subruta> [strict]: la subruta ENTERA, resuelta con el disco como esta, queda donde el texto dice: ningun
+# componente (ni el primero ni uno intermedio) es un enlace a otro sitio. strict: el propio directorio tampoco es un enlace (/tmp).
+# Deja el destino resuelto en CMDN_RM_RESOLVED. Sin `realpath` no hay prueba.
 cmdn_not_link() {
   command -v realpath >/dev/null 2>&1 || return 1
   local b r
   b=$(realpath -m -- "$1" 2>/dev/null) || return 1
   [[ -z ${3:-} || $b == "$1" ]] || return 1
   r=$(realpath -m -- "$1/$2" 2>/dev/null) || return 1
-  [[ $r == "${b%/}/$2" ]]
+  [[ $r == "${b%/}/$2" ]] || return 1
+  CMDN_RM_RESOLVED=$r
 }
 
-# cmdn_rm_proof "$operando": PRUEBA POSITIVA de que un operando de `rm -rf` es inocuo (lista cerrada, nada se exime por no parecer
-# peligroso). Devuelve 0 y deja el nombre de la prueba en REPLY; 1 si no la hay, y entonces manda el criterio de la base (denegar).
+# cmdn_rm_proof "$operando": PRUEBA POSITIVA de que un operando de `rm -rf` parece un directorio de build (lista cerrada). Devuelve 0 y
+# deja el nombre de la prueba en REPLY y la ruta resuelta en CMDN_RM_RESOLVED; 1 si no la hay, y entonces manda el criterio de la base
+# (denegar). Con prueba el guard PREGUNTA (nunca da allow: cuatro rondas de revision la rompieron); destructive-guard no deniega.
+#   (los nombres solo describen la prueba; ninguno da allow)
 #   build-relativo        ruta relativa dentro del proyecto con un directorio de build conocido (CMDN_DIRS) como componente, sin `..`,
 #                         sin comodin ni llave en el primer componente
 #   home-proyecto-build   ~/<proyecto>/.../<directorio de build>, con el proyecto no oculto y sin comodin
@@ -659,21 +649,23 @@ cmdn_rm_proof() {
   case $p in
     /tmp/*)
       rest=${p#/tmp/}; first=${rest%%/*}
-      [[ -n $first && $first != *['*?[{']* ]] || return 1
-      cmdn_not_link /tmp "$first" strict || return 1
+      [[ -n $first && $first != .* && $first != *['*?[{']* ]] || return 1
+      cmdn_not_link /tmp "$rest" strict || return 1
       REPLY=tmp-subruta; return 0 ;;
     /*|'~'|'~'[!/]*) return 1 ;;
     '~/'*)
       rest=${p#'~/'}; first=${rest%%/*}
       [[ $rest == */* && -n $first && $first != .* && $first != *['*?[{']* ]] || return 1
-      cmdn_not_link "$HOME" "$first" || return 1
+      cmdn_not_link "$HOME" "$rest" || return 1
       rest=${rest#*/}; REPLY=home-proyecto-build ;;
     *)
       rest=${p#./}; first=${rest%%/*}
       [[ -n $first && $first != *['*?[{']* ]] || return 1
       base=$PWD
       case $base in /|/tmp|/home|/etc*|/usr*|/var*|/bin*|/sbin*|/lib*|/boot*|/dev*|/proc*|/sys*|/root*) return 1 ;; /?*) ;; *) return 1 ;; esac
-      cmdn_not_link "$base" "$first" || return 1
+      # Desde HOME (o desde un enlace que lleva a HOME) un `.cache` o un `.venv` relativo es la cache o el entorno de la persona.
+      [[ $(realpath -m -- "$base" 2>/dev/null) != "$(realpath -m -- "${HOME:-/nonexistent}" 2>/dev/null)" ]] || return 1
+      cmdn_not_link "$base" "$rest" || return 1
       REPLY=build-relativo ;;
   esac
   IFS=/ read -ra parts <<<"$rest"
