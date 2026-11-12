@@ -6,24 +6,31 @@
 #      en el repo git DESDE el que se invoca; opt-in, por repositorio)
 set -euo pipefail
 usage() {
-  printf '%s\n' 'Uso: bash install.sh [--apply | --plan | --enable-secrets-layer2 | --help | -h]' \
+  printf '%s\n' 'Uso: bash install.sh [--apply | --plan | --enable-secrets-layer2 | --help | -h] [--sin-cockpit] [--sin-python]' \
     '  sin argumentos: instala el kit; muestra un plan si CLAUDE_HOME es un repo con remoto.' \
     '  --apply: aplica la instalacion.' \
     '  --plan: prepara el plan sin modificar CLAUDE_HOME.' \
     '  --enable-secrets-layer2: activa la capa 2 en el repo actual.' \
+    '  --sin-cockpit: no copia el cockpit ni los plugins a CLAUDE_HOME/scc (el lanzador scc queda sin ellos).' \
+    '  --sin-python: sigue sin python3 aun sabiendo que Sentinel, write-guard, stale-read-guard y efectividad quedan apagados.' \
     '  --help, -h: muestra esta ayuda sin instalar.'
 }
-if (( $# > 1 )); then
-  printf '%s\n' 'Error: se admite como maximo una opcion.' >&2
-  usage >&2
-  exit 64
-fi
-if (( $# == 1 )); then
-  case $1 in
-    --help|-h) usage; exit 0 ;;
-    --apply|--plan|--enable-secrets-layer2) ;;
-    *) printf 'Error: argumento no reconocido: %s\n' "$1" >&2; usage >&2; exit 64 ;;
+MODE_ARG=""; SIN_COCKPIT=0; SIN_PYTHON=0
+for arg in "$@"; do
+  case $arg in
+    --help|-h)
+      if (( $# > 1 )); then printf '%s\n' 'Error: --help no se combina con otras opciones.' >&2; usage >&2; exit 64; fi
+      usage; exit 0 ;;
+    --apply|--plan|--enable-secrets-layer2)
+      if [ -n "$MODE_ARG" ]; then printf '%s\n' 'Error: se admite como maximo una de --apply, --plan y --enable-secrets-layer2.' >&2; usage >&2; exit 64; fi
+      MODE_ARG=$arg ;;
+    --sin-cockpit) SIN_COCKPIT=1 ;;
+    --sin-python)  SIN_PYTHON=1 ;;
+    *) printf 'Error: argumento no reconocido: %s\n' "$arg" >&2; usage >&2; exit 64 ;;
   esac
+done
+if [ "$MODE_ARG" = "--enable-secrets-layer2" ] && (( $# > 1 )); then
+  printf '%s\n' 'Error: --enable-secrets-layer2 no admite otras opciones.' >&2; usage >&2; exit 64
 fi
 KIT="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
@@ -83,8 +90,53 @@ Instala jq y repite:
   sudo apt install jq      # Debian / Ubuntu / WSL2
   sudo dnf install jq      # Fedora
   sudo pacman -S jq        # Arch
+  brew install jq          # macOS (el instalador solo corre en Linux/WSL2, pero jq se pide igual en tu Mac de trabajo)
 EOF
   exit 1
+fi
+
+# --- Puertas de dependencia: git, bash >= 5 y python3 ------------------------
+# Tambien en --plan: que el plan salga limpio y --apply falle despues es peor que fallar pronto.
+# git y bash >= 5: los hooks y los CLIs los usan; sin ellos no hay kit, asi que se para.
+if ! command -v git >/dev/null 2>&1; then
+  cat >&2 <<EOF
+==> Falta git, y este kit lo necesita (los guards de rama y los hooks de estado lo llaman).
+
+  sudo apt install git     # Debian / Ubuntu / WSL2
+  brew install git         # macOS
+EOF
+  exit 1
+fi
+if [ "${BASH_VERSINFO[0]:-0}" -lt 5 ]; then
+  cat >&2 <<EOF
+==> Hace falta bash >= 5 y este es ${BASH_VERSION:-desconocido}: los hooks usan funciones de bash 5.
+
+  sudo apt install bash    # Debian / Ubuntu / WSL2 (ya viene >= 5)
+  brew install bash        # macOS (trae la 3.2): luego lanza el instalador con el bash nuevo
+EOF
+  exit 1
+fi
+# python3 no para la instalacion por si solo, pero SIN el cuatro capas se apagan en silencio (optional-hook.sh
+# sale 0 si no hay interprete): se dice en grande y se exige --sin-python para seguir sabiendolo.
+if ! command -v python3 >/dev/null 2>&1 && [ ! -x "$HOME/.venvs/tools/bin/python3" ]; then
+  cat >&2 <<EOF
+==> ATENCION: falta python3.
+    Sin python3 quedan APAGADAS, sin avisar en cada sesion, estas capas del kit:
+      - Sentinel (preflight de comandos y rutas sensibles)
+      - write-guard (escrituras a ficheros protegidos)
+      - stale-read-guard (ediciones sobre lecturas viejas)
+      - efectividad (las cifras de uso real)
+    Instala python3 y repite:
+
+      sudo apt install python3     # Debian / Ubuntu / WSL2
+      brew install python3         # macOS
+
+    Si aun asi quieres instalar el kit con esas capas apagadas, repite el mismo comando
+    anadiendo --sin-python:
+      bash install.sh --apply --sin-python
+EOF
+  if [ "$SIN_PYTHON" -ne 1 ]; then exit 1; fi
+  echo "==> --sin-python: se continua SIN python3; las capas de arriba no protegeran nada hasta que lo instales." >&2
 fi
 
 # --- Subcomando: activar la Capa 2 de secretos en el repo actual ------------
@@ -94,7 +146,7 @@ fi
 # desinstale una herramienta. Este subcomando es opt-in y explicito: solo
 # actua si lo invocas tu mismo, estando dentro del repo que quieres proteger.
 # Ver kit/docs/05-security.md para el razonamiento completo.
-if [ "${1:-}" = "--enable-secrets-layer2" ]; then
+if [ "$MODE_ARG" = "--enable-secrets-layer2" ]; then
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "==> --enable-secrets-layer2 debe ejecutarse DENTRO del repo git que quieres proteger." >&2
     exit 1
@@ -122,11 +174,13 @@ is_git_repo_with_remote() {
 
 MODE_APPLY=0
 MODE_PLAN=0
-case "${1:-}" in
+case "$MODE_ARG" in
   --apply) MODE_APPLY=1 ;;
   --plan)  MODE_PLAN=1 ;;
 esac
 
+# Lo que el kit escribe de verdad (no los symlinks omitidos): de ahi sale .kit-manifest, que uninstall.sh --kit usa.
+INSTALLED=()
 install_file() {  # src dst
   local src="$1" dst="$2"
   # Un symlink suele apuntar a otro repo (skills proyectadas): cp escribiria a traves de el.
@@ -141,6 +195,7 @@ install_file() {  # src dst
   fi
   # Atomico (tmp en el mismo directorio + mv): un hook que arranca durante la copia no lee un guard truncado.
   cp -p "$src" "$dst.tmp.$$" && mv -f "$dst.tmp.$$" "$dst"
+  INSTALLED+=("$dst")
 }
 
 # settings.json NO se reemplaza si ya existe: se fusiona. Regla, y es deliberada:
@@ -188,7 +243,7 @@ install_settings() {  # src dst
   if jq -s '
       .[0] as $kit | .[1] as $old |
       ([$kit.hooks // {} | .. | .command? // empty | splits(" +") | gsub("[\"\u0027]"; "") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")]
-        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh"] | unique) as $suyos |
+        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh", "nucleo-gate.sh", "stop-context-gauge.sh", "post-compact-check.sh"] | unique) as $suyos |
       def propio: ("/" + .) as $t | any($suyos[]; . as $s | $t | endswith("/.claude/hooks/" + $s) or endswith("/.claude/sentinel/" + $s));
       def del_kit: [(.command | strings // "") | splits(" +") | gsub("[\"\u0027]"; "") | select(length > 0)]
         | any(.[]; propio) and all(.[]; propio or startswith("-") or (sub(".*/"; "") | test("^(optional-hook\\.sh|python[0-9.]*|bash|sh)$")));
@@ -277,10 +332,10 @@ install_claude_md() {  # src dst
   base="$(dirname "$dst")"; n="$(basename "$dst" .md)"
   sha_src="$(sha256sum "$src" | cut -d' ' -f1)"
   if [ ! -f "$dst" ]; then
-    cp -p "$src" "$dst"; docs_sha_set "$base" "$n.md" "$sha_src"; return
+    cp -p "$src" "$dst"; docs_sha_set "$base" "$n.md" "$sha_src"; INSTALLED+=("$dst"); return
   fi
   if cmp -s "$src" "$dst"; then
-    docs_sha_set "$base" "$n.md" "$sha_src"; rm -f "$base/$n.kit.md"; return
+    docs_sha_set "$base" "$n.md" "$sha_src"; rm -f "$base/$n.kit.md"; INSTALLED+=("$dst"); return
   fi
   sha_dst="$(sha256sum "$dst" | cut -d' ' -f1)"
   # Idem si lo instalado es el $n.kit.md que dejamos la vez anterior: la persona lo acepto copiandolo (cp), sin editarlo.
@@ -293,7 +348,7 @@ install_claude_md() {  # src dst
   fi
   # Un CLAUDE.md propio sin el import deja AGENTS.md instalado pero sin que nadie lo lea.
   if [ "$n" = "CLAUDE" ] && ! command grep -qE '^[[:space:]]*@[^[:space:]]*AGENTS\.md' "$dst"; then CLAUDE_MD_PREVIO=1; fi
-  cp -p "$src" "$base/$n.kit.md"
+  cp -p "$src" "$base/$n.kit.md"; INSTALLED+=("$base/$n.kit.md")
   DOCS_NO_ACTUALIZADOS="$DOCS_NO_ACTUALIZADOS $n"
   echo "   $n.md ya existe y difiere del kit: NO se toca."
   echo "   La version del kit queda en $n.kit.md para que compares y copies lo que quieras."
@@ -303,7 +358,7 @@ aviso_claude_md() {
   local n
   if [ -n "$DOCS_NO_ACTUALIZADOS" ]; then
     echo
-    echo "==> AVISO:$DOCS_NO_ACTUALIZADOS no se han actualizado: difieren del kit y no hay registro de que el kit las escribiera"
+    echo "==> AVISO:$(for n in $DOCS_NO_ACTUALIZADOS; do printf ' %s.md' "$n"; done) no se han actualizado: difieren del kit y no hay registro de que el kit las escribiera"
     echo "    ni coinciden con una version anterior del kit. Si NO las has editado y quieres la version nueva:"
     for n in $DOCS_NO_ACTUALIZADOS; do echo "      cp \"$CLAUDE_HOME/$n.kit.md\" \"$CLAUDE_HOME/$n.md\""; done
     echo "    A partir de ahi el kit las mantendra al dia mientras no las modifiques. Si las editaste, compara y copia a mano."
@@ -336,7 +391,38 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   for f in "$KIT"/sentinel/*;      do [ -f "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
   mkdir -p "$base/hooks/git"
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
+  # El cockpit y los plugins del kit, copiados para que `scc` no dependa de donde este el clon. Sin tests ni
+  # node_modules: pesan y no se ejecutan. Entran en el manifiesto como cualquier otro fichero.
+  if [ "$SIN_COCKPIT" -ne 1 ]; then
+    for f in mods/cockpit plugins/esenciales; do
+      [ -d "$KIT/$f" ] || continue
+      while IFS= read -r -d '' src; do
+        rel="${src#"$KIT"/}"
+        mkdir -p "$base/scc/$(dirname "$rel")"
+        install_file "$src" "$base/scc/$rel"
+      done < <(find "$KIT/$f" \( -name tests -o -name node_modules \) -prune -o -type f -print0)
+    done
+  fi
   chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit "$base"/statusline-command.sh "$base"/bin/* 2>/dev/null || true
+}
+
+# .kit-version y .kit-manifest: que version hay instalada y que escribio el kit (sha256 + ruta relativa; los
+# enlaces del bindir, como ~bin/<cli>). uninstall.sh --kit borra solo lo que sigue con esa suma. Las entradas de
+# una instalacion anterior que esta ya no escribe se conservan: son ficheros retirados que siguen siendo del kit.
+write_kit_state() {
+  local m="$CLAUDE_HOME/.kit-manifest" t f c ver=""
+  t="$(mktemp "$m.XXXXXX")"
+  {
+    for f in "${INSTALLED[@]}"; do
+      [ -f "$f" ] && printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "${f#"$CLAUDE_HOME"/}"
+    done
+    for c in $LINKED; do printf '%s  ~bin/%s\n' "$(printf '%s' "$CLAUDE_HOME/bin/$c" | sha256sum | cut -d' ' -f1)" "$c"; done
+  } > "$t.new"
+  if [ -f "$m" ]; then awk -F'  ' 'NR==FNR {seen[$2]=1; next} !($2 in seen)' "$t.new" "$m" > "$t.old"; else : > "$t.old"; fi
+  cat "$t.new" "$t.old" | awk -F'  ' '{print $2 "\t" $0}' | LC_ALL=C sort | cut -f2- > "$t"
+  rm -f "$t.new" "$t.old"; mv -f "$t" "$m"
+  read -r ver < "$KIT/../VERSION" 2>/dev/null || true
+  if [ -n "$ver" ]; then printf '%s\n' "$ver" > "$CLAUDE_HOME/.kit-version"; fi
 }
 
 # handoff y oraculo se llaman a pelo en las instrucciones y los hooks: sin estar en el PATH, «command not
@@ -346,7 +432,7 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
 # enlazaba en el ~/.local/bin real y, al borrar su ruta, dejaba enlaces colgantes que ya no se reparaban
 # (contaban como ajenos). Con otro CLAUDE_HOME se imprimen las ordenes y no se escribe.
 LOCAL_BIN="$HOME/.local/bin"
-CLIS="handoff oraculo cupo efectividad"
+CLIS="handoff oraculo cupo efectividad scc"
 clis_enlazables() { [ "$(realpath -m -- "$CLAUDE_HOME")" = "$(realpath -m -- "$HOME/.claude")" ]; }
 cli_estado() {  # nombre -> libre | nuestro | ajeno
   local dst="$LOCAL_BIN/$1" t
@@ -366,7 +452,7 @@ cli_estado() {  # nombre -> libre | nuestro | ajeno
 }
 enlazar_clis() {
   local c st
-  LINK_AJENOS=""
+  LINK_AJENOS=""; LINKED=""
   if ! clis_enlazables; then
     echo "   CLAUDE_HOME ($CLAUDE_HOME) no es $HOME/.claude: no se toca $LOCAL_BIN. Si quieres los enlaces:"
     for c in $CLIS; do echo "     ln -s \"$CLAUDE_HOME/bin/$c\" \"$LOCAL_BIN/$c\""; done
@@ -387,6 +473,7 @@ enlazar_clis() {
       LINK_AJENOS="$LINK_AJENOS $c"
       echo "   AVISO: $LOCAL_BIN/$c ya existe y no es un enlace a $CLAUDE_HOME/bin/$c: no se toca." >&2
     else
+      LINKED="$LINKED $c"
       echo "   enlace: $LOCAL_BIN/$c -> $CLAUDE_HOME/bin/$c"
     fi
   done
@@ -404,33 +491,58 @@ aviso_path() {
   echo "    o añade a tu ~/.bashrc:  export PATH=\"\$HOME/.local/bin:\$PATH\""
 }
 
+# Lo que --apply cambiaria en settings.json, clave a clave (el diff -u de abajo lo da en bruto): + anade, ~ cambia.
+# Objetos: una linea por subclave nueva o distinta; listas (hooks, permisos): cuantas entradas se anaden.
+mostrar_fusion_settings() {  # instalado nuevo
+  local old="$1" new="$2" res
+  [ -f "$new" ] && jq empty "$new" 2>/dev/null || return 0
+  if [ -f "$old" ] && jq empty "$old" 2>/dev/null; then :; else old=/dev/null; fi
+  res="$(jq -r --slurpfile o <(if [ "$old" = /dev/null ]; then echo '{}'; else cat "$old"; fi) '
+    def r: tojson | if length > 70 then .[0:67] + "..." else . end;
+    ($o[0] // {}) as $old
+    | to_entries[] | .key as $k | .value as $v
+    | if ($old | has($k) | not) then
+        (if ($v | type) == "object" then "    + \($k): " + ($v | keys | join(", ")) else "    + \($k) = \($v | r)" end)
+      elif $old[$k] == $v then empty
+      elif ($v | type) == "object" and ($old[$k] | type) == "object" then
+        ($v | to_entries[] | . as $e | $e.key as $s | select($old[$k][$s] != $e.value)
+          | "    \(if $old[$k] | has($s) then "~" else "+" end) \($k).\($s)"
+            + (if ($e.value | type) == "array" then " (\((($e.value) - ($old[$k][$s] // [])) | length) entradas nuevas)" else " = \($e.value | r)" end))
+      else "    ~ \($k) = \($v | r)" end' "$new")"
+  echo "==> settings.json: claves que --apply anadiria (+) o cambiaria (~):"
+  if [ -n "$res" ]; then echo "$res"; else echo "    (ninguna)"; fi
+}
+
 run_diff_first() {
-  local out marker=".mcharness-out-marker" real_out real_home solape=0 f BK
-  if [ -n "${MCHARNESS_OUT:-}" ]; then
-    out="$MCHARNESS_OUT"
+  local out_temporal=0 out marker=".scc-out-marker" salida="${SCC_OUT:-${MCHARNESS_OUT:-}}" real_out real_home solape=0 f BK
+  if [ -n "$salida" ]; then
+    out="$salida"
     real_out="$(realpath -m -- "$out")"; real_home="$(realpath -m -- "$CLAUDE_HOME")"
     # Solape = iguales o una contiene a la otra: generar el plan ahi pisaria la instalacion.
     case "$real_out/" in "$real_home"/*) solape=1 ;; esac
     case "$real_home/" in "$real_out"/*) solape=1 ;; esac
     if [ "$solape" -eq 1 ]; then
-      echo "==> MCHARNESS_OUT ($out) solapa con CLAUDE_HOME ($CLAUDE_HOME): no se genera el plan ahi." >&2
+      echo "==> SCC_OUT ($out) solapa con CLAUDE_HOME ($CLAUDE_HOME): no se genera el plan ahi." >&2
       exit 1
     fi
     if [ -e "$out" ] || [ -L "$out" ]; then
-      if [ -f "$out/$marker" ] && [ ! -L "$out" ]; then
+      if { [ -f "$out/$marker" ] || [ -f "$out/.mcharness-out-marker" ]; } && [ ! -L "$out" ]; then
         # Solo un arbol que escribio este mismo script (lleva su marcador).
         rm -rf -- "$out"
       elif [ -d "$out" ] && [ ! -L "$out" ] && [ -z "$(ls -A -- "$out")" ]; then
         :
       else
-        echo "==> MCHARNESS_OUT ($out) existe y no es un plan anterior de este instalador (sin marcador): no se borra." >&2
+        echo "==> SCC_OUT ($out) existe y no es un plan anterior de este instalador (sin marcador): no se borra." >&2
         exit 1
       fi
     fi
   else
-    # Directorio nuevo y exclusivo por ejecucion: no hay nada previo que borrar. Se conserva
-    # a proposito: el paso 2 del texto de abajo manda copiar a mano desde ahi.
-    out="$(mktemp -d "${TMPDIR:-/tmp}/mcharness-plan.XXXXXX")"
+    # Directorio nuevo y exclusivo por ejecucion: no hay nada previo que borrar, y se borra al salir. Para
+    # quedarse con el arbol (y copiar a mano de ahi) se da SCC_OUT=<directorio>, que no se borra.
+    out="$(mktemp -d "${TMPDIR:-/tmp}/scc-plan.XXXXXX")"
+    # shellcheck disable=SC2064 # $out se expande ahora, a proposito: es el temporal de esta ejecucion
+    trap "rm -rf -- '$out'" EXIT
+    out_temporal=1
   fi
   mkdir -p "$out"; : > "$out/$marker"
   # El plan ensena lo que haria --apply: lo que se fusiona o no se pisa parte del instalado. Sobre un
@@ -440,7 +552,7 @@ run_diff_first() {
   for f in settings.json CLAUDE.md AGENTS.md "$DOCS_STATE"; do
     if [ -f "$CLAUDE_HOME/$f" ]; then cp -L -- "$CLAUDE_HOME/$f" "$out/$f"; fi
   done
-  BK="$out/.mcharness-plan-bk"
+  BK="$out/.scc-plan-bk"
   install_kit_files "$out" >/dev/null
   rm -rf -- "$BK"; rm -f -- "$out/$DOCS_STATE"
 
@@ -449,7 +561,11 @@ run_diff_first() {
   else
     echo "==> Modo --plan: no se escribe nada en $CLAUDE_HOME."
   fi
-  echo "    Arbol que se instalaria, generado en: $out"
+  if [ "$out_temporal" -eq 1 ]; then
+    echo "    Arbol que se instalaria: temporal, se borra al terminar (con SCC_OUT=<directorio> se conserva en ese)."
+  else
+    echo "    Arbol que se instalaria, generado en: $out"
+  fi
   echo
 
   local rel
@@ -476,6 +592,12 @@ run_diff_first() {
     echo "----- diff: $rel -----"
     diff -u "$CLAUDE_HOME/$rel" "$out/$rel" || true
   done
+  mostrar_fusion_settings "$CLAUDE_HOME/settings.json" "$out/settings.json"
+  if [ "$SIN_COCKPIT" -eq 1 ]; then
+    echo "==> --sin-cockpit: no se copiarian el cockpit ni los plugins a $CLAUDE_HOME/scc."
+  else
+    echo "==> cockpit y plugins del kit: se copiarian a $CLAUDE_HOME/scc (lanzador: scc; omitir con --sin-cockpit)."
+  fi
   aviso_claude_md
   avisos_settings "$CLAUDE_HOME/settings.json"
 
@@ -496,10 +618,16 @@ run_diff_first() {
     echo "==> En modo aplicar (--apply) no se tocaria $LOCAL_BIN: CLAUDE_HOME no es $HOME/.claude."
     echo "    Se imprimirian las ordenes ln -s para que enlaces tu, si quieres."
   fi
+  echo "      1. Revisa arriba los ficheros nuevos/modificados y las claves de settings.json que se tocarian."
+  if [ "$out_temporal" -eq 1 ]; then
+    echo "      2. Si quieres copiar a mano lo que adoptes, repite con SCC_OUT=<directorio> para conservar el arbol."
+  else
+    echo "      2. Copia a mano lo que quieras adoptar de $out a $CLAUDE_HOME."
+  fi
+  if git -C "$CLAUDE_HOME" rev-parse --git-dir >/dev/null 2>&1; then
+    echo "      3. Commitea esos cambios en TU repo (el privado), como de costumbre."
+  fi
   cat <<EOF
-      1. Revisa arriba los ficheros nuevos/modificados (arbol completo en $out).
-      2. Copia a mano lo que quieras adoptar de $out a $CLAUDE_HOME.
-      3. Commitea esos cambios en TU repo (el privado), como de costumbre.
 
     Si en vez de eso quieres que este instalador escriba directamente sobre
     $CLAUDE_HOME (con el backup habitual de siempre), vuelve a lanzarlo con:
@@ -516,7 +644,25 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo backup)-$$-${RANDOM:-0}"
 BK="$CLAUDE_HOME/backups/$STAMP"
 
 echo "==> Instalando en $CLAUDE_HOME"
+# Estado previo de settings.json, para que uninstall.sh --kit lo devuelva byte a byte: solo en la primera
+# instalacion (sin manifiesto ni registro de docs; tras una del kit el fichero ya lleva claves suyas).
+if [ -f "$CLAUDE_HOME/settings.json" ] && [ ! -e "$CLAUDE_HOME/.kit-manifest" ] && [ ! -e "$CLAUDE_HOME/$DOCS_STATE" ] \
+   && [ ! -e "$CLAUDE_HOME/.kit-settings-pre.json" ] && jq empty "$CLAUDE_HOME/settings.json" 2>/dev/null; then
+  cp -L "$CLAUDE_HOME/settings.json" "$CLAUDE_HOME/.kit-settings-pre.json"
+fi
 install_kit_files "$CLAUDE_HOME"
+
+# Hooks que el kit ya no trae (settings.json ya no los cablea): se borra el script solo si su suma es la de una
+# version publicada; uno modificado por la persona se conserva y se dice.
+for name in nucleo-gate.sh stop-context-gauge.sh post-compact-check.sh; do
+  f="$CLAUDE_HOME/hooks/$name"
+  [ -f "$f" ] || continue
+  if grep -q "^$(sha256sum < "$f" | cut -d' ' -f1)  $name\$" "$KIT/hooks-retirados.sha256"; then
+    rm -f -- "$f"; echo "==> hook retirado del kit, borrado: hooks/$name"
+  else
+    echo "==> hook retirado del kit y modificado por ti, se conserva: hooks/$name (ya no esta cableado; borralo si no lo usas)"
+  fi
+done
 
 # --- gitleaks: dependencia de la Capa 2 (opcional; la Capa 1 no la necesita) -
 gitleaks_present() {
@@ -621,11 +767,8 @@ fi
 echo "==> Config instalada. Terceros (ver docs/): agent-browser, venv de tools. Plugins: install-plugins.sh."
 echo "==> CLIs handoff y oraculo (valen en Claude Code, Codex y opencode):"
 enlazar_clis
-if [ -f "$KIT/.env.example" ]; then
-  echo "==> Rellena tus claves:  cp $KIT/.env.example \$HOME/.claude/.env  &&  editar"
-else
-  echo "==> Plantilla de credenciales no incluida: los servicios externos son opcionales."
-fi
+write_kit_state
+echo "==> El kit no usa claves: no hay nada que rellenar; los servicios externos son opcionales."
 echo "==> Capa 2 de secretos (gitleaks pre-commit) es opt-in, por repositorio. Actívala DONDE QUIERAS con:"
 echo "       bash $KIT/install.sh --enable-secrets-layer2   # ejecútalo dentro del repo a proteger"
 echo "    o el one-liner manual:  git config core.hooksPath \"$CLAUDE_HOME/hooks/git\""

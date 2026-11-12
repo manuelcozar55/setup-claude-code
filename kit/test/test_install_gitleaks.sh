@@ -31,9 +31,11 @@ ck "$(echo "$out" | grep -qc 'gitleaks ya presente' && echo y || echo n)" "y" "r
 # proposito (ver test_clean_install_resilience.sh y test_install_settings_merge.sh). Lo que
 # este caso mide es gitleaks ausente, no jq ausente; dejarlo fuera hacia fallar la suite por
 # una razon que no es la suya.
+# git y python3: desde W4 install.sh comprueba bash>=5, jq, git y python3 antes de tocar nada (misma razon que jq);
+# sort: lo usa el manifiesto .kit-manifest.
 # cut, awk y mv: el registro de lo que el instalador escribe (.kit-docs.sha256) y la copia atomica de los hooks.
 RESTRICTED="$tmp/restrictedbin"; mkdir -p "$RESTRICTED"
-for b in bash uname date cp mkdir mv ln readlink chmod cmp cut awk dirname basename sed sha256sum tar install curl mktemp cat jq; do
+for b in bash uname date cp mkdir mv ln readlink chmod cmp cut awk dirname basename sed sha256sum tar install curl mktemp cat jq git python3 sort; do
   p="$(command -v "$b" 2>/dev/null || true)"
   [ -n "$p" ] && ln -sf "$p" "$RESTRICTED/$b"
 done

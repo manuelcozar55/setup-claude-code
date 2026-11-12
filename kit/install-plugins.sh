@@ -18,7 +18,9 @@ done
 # `owner/repo@ref` es la sintaxis de `marketplace add` (code.claude.com/docs/en/plugins/marketplace-reference).
 # read y no cat: PATH puede ser minimo (los tests corren con solo dobles).
 KIT_REF=""; read -r KIT_REF < "${BASH_SOURCE[0]%/*}/../VERSION" || true
-KIT_MARKETPLACE="manuelcozar55/setup-claude-code${KIT_REF:+@v$KIT_REF}"
+# El owner/repo de origen vive en kit/ORIGEN (un fork lo cambia con scripts/cambiar-origen.sh).
+KIT_ORIGEN="manuelcozar55/setup-claude-code"; read -r KIT_ORIGEN < "${BASH_SOURCE[0]%/*}/ORIGEN" || true
+KIT_MARKETPLACE="$KIT_ORIGEN${KIT_REF:+@v$KIT_REF}"
 # "<repo del marketplace> <plugin>@<marketplace>"; el marketplace oficial ya viene registrado.
 RECOMMENDED=(
   "- frontend-design@claude-plugins-official"

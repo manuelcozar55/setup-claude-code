@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# scc — lanza Claude Code con el cockpit y los plugins del kit cargados desde la copia que install.sh deja en
+# $CLAUDE_HOME/scc/ (no depende de donde este el clon). `scc --version` imprime la version del kit, la del
+# cockpit y la de Claude Code. Cualquier otro argumento pasa tal cual a claude. Si Claude Code falta o es
+# anterior a la minima que declara el cockpit, lo dice y lanza claude a secas. Con install.sh --sin-cockpit no
+# hay copia y scc arranca claude sin plugins.
+set -euo pipefail
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
+CLAUDE_HOME="$(cd "$(dirname "$SELF")/.." && pwd)"
+COCKPIT="$CLAUDE_HOME/scc/mods/cockpit"
+
+claude_v=""
+if command -v claude >/dev/null 2>&1; then claude_v="$(claude --version 2>/dev/null | head -1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"; fi
+cockpit_v=""
+if [ -f "$COCKPIT/.claude-plugin/plugin.json" ] && command -v jq >/dev/null 2>&1; then
+  cockpit_v="$(jq -r '.version // empty' "$COCKPIT/.claude-plugin/plugin.json" 2>/dev/null || true)"
+fi
+min_v=""
+if [ -f "$COCKPIT/hooks/register.tsx" ]; then
+  min_v="$(grep -Eo "MIN_CLAUDE_CODE = '[0-9.]+'" "$COCKPIT/hooks/register.tsx" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+fi
+
+if [ "${1:-}" = "--version" ] && [ "$#" -eq 1 ]; then
+  kit_v=""; read -r kit_v < "$CLAUDE_HOME/.kit-version" 2>/dev/null || true
+  echo "scc (kit) ${kit_v:-desconocida: sin .kit-version}"
+  echo "cockpit ${cockpit_v:-no instalado}"
+  if [ -n "$claude_v" ]; then echo "claude $claude_v"; else echo "claude: no se encuentra en el PATH"; fi
+  exit 0
+fi
+
+command -v claude >/dev/null 2>&1 || { echo "scc: no se encuentra el CLI 'claude' en el PATH; instalalo antes de usar scc" >&2; exit 127; }
+
+args=()
+if [ -n "$min_v" ] && [ -n "$claude_v" ] && [ "$(printf '%s\n%s\n' "$min_v" "$claude_v" | sort -V | head -1)" != "$min_v" ]; then
+  echo "scc: Claude Code $claude_v es anterior a la minima del cockpit ($min_v): arranco claude sin cockpit. Actualiza con: claude update" >&2
+else
+  for d in "$COCKPIT" "$CLAUDE_HOME/scc/plugins/esenciales"; do
+    if [ -d "$d" ]; then args+=(--plugin-dir "$d"); fi
+  done
+fi
+exec claude "${args[@]}" "$@"

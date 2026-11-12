@@ -8,6 +8,12 @@
 # Sin --from solo se elige entre los backups internos: un ZIP es un snapshot
 # completo, y restaurarlo por ser "el mas reciente" pisaria todo con un estado posterior.
 #
+# --kit es otra cosa: DESINSTALA el kit segun el manifiesto que install.sh --apply deja en
+# $CLAUDE_HOME/.kit-manifest (sha256 + ruta). Borra lo que sigue con su suma, conserva y lista lo que la
+# persona modifico, quita los enlaces del bindir solo si apuntan a $CLAUDE_HOME/bin y des-fusiona de
+# settings.json lo que el kit anadio (hooks del kit, statusLine, marketplace, plugins, claves de env que
+# conservan el valor del kit), dejando lo demas. Copia de settings.json en $CLAUDE_HOME/backups/ antes.
+#
 # Por defecto NO TOCA NADA (--dry-run): solo muestra que se restauraria.
 # Restaurar de verdad exige --apply, y antes de escribir nada hace su propio
 # backup del estado actual via scripts/backup.sh (nunca se destruye sin red).
@@ -18,6 +24,7 @@
 #   uninstall.sh --dry-run    idem que sin argumentos, explicito
 #   uninstall.sh --apply      restaura de verdad (con backup previo de seguridad)
 #   uninstall.sh [--dry-run|--apply] --from FICHERO   restaura ese ZIP (o ese directorio de backup)
+#   uninstall.sh --kit [--apply]   desinstala el kit (simulacro por defecto; ver arriba)
 #   uninstall.sh --help       esta ayuda
 #
 # Overrides (igual que scripts/backup.sh):
@@ -59,13 +66,17 @@ fmt_date() {
   date -d "@$epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r "$epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "epoch:$epoch"
 }
 
-usage() { echo "uso: $0 [--list|--dry-run|--apply] [--from FICHERO]   (restaura un backup; no desinstala el kit)"; }
-MODE="dry-run"; FROM=""
+usage() {
+  echo "uso: $0 [--list|--dry-run|--apply] [--from FICHERO]   (restaura un backup; no desinstala el kit)"
+  echo "     $0 --kit [--dry-run|--apply]                      (desinstala el kit segun .kit-manifest)"
+}
+MODE="dry-run"; FROM=""; KIT_MODE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --list)    MODE="list" ;;
     --dry-run) MODE="dry-run" ;;
     --apply)   MODE="apply" ;;
+    --kit)     KIT_MODE=1 ;;
     --from)    [ -n "${2:-}" ] || die "--from exige un fichero ZIP o un directorio de backup"; FROM="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "argumento no reconocido: $1" ;;
@@ -117,7 +128,7 @@ resolve_latest() {
     return
   fi
   latest="$(list_internal_backups | sort -t'|' -k2 -rg | head -1)"
-  [ -n "$latest" ] || die "no hay ningun backup interno en $CLAUDE_HOME/backups (los ZIP de $BACKUP_DIR solo se restauran con --from FICHERO)"
+  [ -n "$latest" ] || die "no hay ningun backup interno en $CLAUDE_HOME/backups (los ZIP de $BACKUP_DIR solo se restauran con --from FICHERO). Para quitar el kit: bash $HERE/uninstall.sh --kit --apply"
   printf '%s\n' "$latest"
 }
 
@@ -299,6 +310,157 @@ safety_backup() {
   SCC_BACKUP_JSON_ENTRY="$JSON_ENTRY" BACKUP_PREFIX="claude-safety" CLAUDE_HOME="$CLAUDE_HOME" BACKUP_DIR="$BACKUP_DIR" CLAUDE_JSON="$CLAUDE_JSON" bash "$HERE/scripts/backup.sh" \
     || die "fallo el backup de seguridad previo; abortando la restauracion (nada se ha tocado)"
 }
+
+# ------------------------------------------------------------ desinstalar el kit
+# jq de la des-fusion. Entradas: $kit (la plantilla, o {}), $pre (settings.json de antes de la primera
+# instalacion, o null) y $names (scripts del kit: los del manifiesto mas los de la plantilla). Un hook es del
+# kit con la misma regla que usa install.sh para fusionar: todo lo que su comando nombra es un script del kit
+# o un interprete/envoltorio conocido. Sin $pre solo se tocan hooks, statusLine, marketplace, plugins y env
+# (lo que el kit anade y se reconoce por su valor); con $pre tambien permisos y el resto de claves del kit.
+read -r -d '' UNMERGE_JQ <<'JQ' || true
+def propio: ("/" + .) as $t | any($names[]; . as $s | $t | endswith("/.claude/hooks/" + $s) or endswith("/.claude/sentinel/" + $s));
+def del_kit: [(.command | strings // "") | splits(" +") | gsub("[\"\u0027]"; "") | select(length > 0)]
+  | any(.[]; propio) and all(.[]; propio or startswith("-") or (sub(".*/"; "") | test("^(optional-hook\\.sh|python[0-9.]*|bash|sh)$")));
+def undo_hooks:
+  if (.hooks | type) == "object" then
+    .hooks |= (with_entries(
+        if (.value | type) == "array" then
+          .value |= [.[] | if (type == "object" and (.hooks | type) == "array")
+                           then (.hooks |= map(select((type == "object" and del_kit) | not))) | select(.hooks | length > 0)
+                           else . end]
+        else . end)
+      | with_entries(select((.value | type) != "array" or (.value | length) > 0)))
+    | if .hooks == {} then del(.hooks) else . end
+  else . end;
+def sin_pre($k): $pre == null or ($pre | has($k) | not);
+def undo_map($k):
+  if ($kit[$k] | type) == "object" and (.[$k] | type) == "object" then
+    reduce ($kit[$k] | to_entries[]) as $e (.;
+      if .[$k][$e.key] == $e.value and ($pre == null or ($pre[$k] // {} | has($e.key) | not)) then del(.[$k][$e.key]) else . end)
+    | if .[$k] == {} and sin_pre($k) then del(.[$k]) else . end
+  else . end;
+def undo_mkt:
+  if ($kit.extraKnownMarketplaces | type) == "object" and (.extraKnownMarketplaces | type) == "object" then
+    reduce ($kit.extraKnownMarketplaces | keys[]) as $m (.;
+      if .extraKnownMarketplaces | has($m) then
+        if $pre != null and ($pre.extraKnownMarketplaces // {} | has($m)) then .extraKnownMarketplaces[$m] = $pre.extraKnownMarketplaces[$m]
+        else del(.extraKnownMarketplaces[$m]) end
+      else . end)
+    | if .extraKnownMarketplaces == {} and sin_pre("extraKnownMarketplaces") then del(.extraKnownMarketplaces) else . end
+  else . end;
+def undo_perm:
+  if $pre != null and (.permissions | type) == "object" then
+    (($pre.permissions // {}) as $pp | ($kit.permissions // {}) as $kp |
+      reduce ("allow", "deny") as $l (.;
+        if (.permissions[$l] | type) == "array" then
+          .permissions[$l] |= map(select(. as $x | ((($kp[$l] // []) | index($x)) == null) or ((($pp[$l] // []) | index($x)) != null)))
+          | if .permissions[$l] == [] and ($pp | has($l) | not) then del(.permissions[$l]) else . end
+        else . end)
+      | if $pp | has("disableBypassPermissionsMode") then .permissions.disableBypassPermissionsMode = $pp.disableBypassPermissionsMode
+        else del(.permissions.disableBypassPermissionsMode) end
+      | if .permissions == {} and ($pre | has("permissions") | not) then del(.permissions) else . end)
+  else . end;
+def undo_resto:
+  if $pre == null then . else
+    reduce ($kit | keys[] | select(. as $k | ["hooks","env","permissions","extraKnownMarketplaces","enabledPlugins","statusLine"] | index($k) | not)) as $k (.;
+      if .[$k] == $kit[$k] and ($pre | has($k) | not) then del(.[$k]) else . end) end;
+undo_hooks
+| if $kit.statusLine != null and .statusLine == $kit.statusLine and sin_pre("statusLine") then del(.statusLine) else . end
+| undo_mkt | undo_map("enabledPlugins") | undo_map("env") | undo_perm | undo_resto
+JQ
+
+kit_uninstall() {
+  local apply=0 man="$CLAUDE_HOME/.kit-manifest" line sha rel p n real="" bk stamp tmpj newj names kitjson prejson
+  local rm_list=() keep_list=() lk_rm=() lk_keep=() settings_unmerge=0 d
+  [ "$MODE" = apply ] && apply=1
+  [ "$MODE" != list ] || die "--kit no se combina con --list"
+  [ -z "$FROM" ] || die "--kit no se combina con --from"
+  [ -f "$man" ] || die "no hay $man: el kit no se instalo con una version que lo escriba (1.11 o posterior). Reinstala con bash $HERE/kit/install.sh --apply y repite, o restaura un backup con uninstall.sh (sin --kit)"
+  command -v jq >/dev/null 2>&1 || die "uninstall --kit necesita jq"
+  local localbin="$HOME/.local/bin"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    sha="${line%%  *}"; rel="${line#*  }"
+    case "$rel" in
+      "~bin/"*)
+        n="${rel#\~bin/}"
+        case "$n" in */*|"") continue ;; esac
+        if [ -L "$localbin/$n" ] && [ "$(realpath -m -- "$localbin/$n")" = "$(realpath -m -- "$CLAUDE_HOME/bin/$n")" ]; then lk_rm+=("$n")
+        elif [ -e "$localbin/$n" ] || [ -L "$localbin/$n" ]; then lk_keep+=("$n"); fi
+        continue ;;
+      /*|*..*) continue ;;
+    esac
+    p="$CLAUDE_HOME/$rel"
+    if [ -L "$p" ]; then keep_list+=("$rel (enlace: no es del kit)")
+    elif [ ! -e "$p" ]; then :
+    elif [ "$(sha256sum "$p" | cut -d' ' -f1)" = "$sha" ]; then rm_list+=("$rel")
+    else keep_list+=("$rel (modificado por ti)"); fi
+  done < "$man"
+  case " ${rm_list[*]:-} " in *" settings.json "*) ;; *) [ -f "$CLAUDE_HOME/settings.json" ] && settings_unmerge=1 ;; esac
+
+  names="$(
+    { while IFS= read -r line; do rel="${line#*  }"; case "$rel" in hooks/*/*|sentinel/*/*) ;; hooks/*|sentinel/*) echo "${rel##*/}" ;; esac; done < "$man"
+      [ -f "$HERE/kit/claude/settings.json" ] && jq -r '[.hooks // {} | .. | .command? // empty | splits(" +") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")] | .[]' "$HERE/kit/claude/settings.json"
+      printf '%s\n' smart_approve.py preflight.sh stop-session-summary.sh
+    } | sort -u | grep -v '^optional-hook.sh$' | jq -R . | jq -s -c .)"
+  kitjson="$HERE/kit/claude/settings.json"; [ -f "$kitjson" ] || kitjson=""
+  prejson="$CLAUDE_HOME/.kit-settings-pre.json"; [ -f "$prejson" ] || prejson=""
+
+  tmpj="$(mktemp -d)"; trap 'rm -r "$tmpj"' RETURN
+  newj="$tmpj/settings.json"
+  if [ "$settings_unmerge" -eq 1 ]; then
+    real="$CLAUDE_HOME/settings.json"; [ -L "$real" ] && real="$(readlink -f "$real")"
+    if ! jq empty "$real" 2>/dev/null; then
+      settings_unmerge=0; keep_list+=("settings.json (no es JSON valido: no se toca)")
+    elif jq --argjson names "$names" --slurpfile k <(if [ -n "$kitjson" ]; then cat "$kitjson"; else echo '{}'; fi) \
+         --slurpfile pr <(if [ -n "$prejson" ]; then cat "$prejson"; else echo null; fi) \
+         '$k[0] as $kit | $pr[0] as $pre | '"$UNMERGE_JQ" "$real" > "$newj"; then
+      if [ -n "$prejson" ] && [ "$(jq -S . "$newj")" = "$(jq -S . "$prejson")" ]; then cp "$prejson" "$newj"; fi
+    else
+      settings_unmerge=0; keep_list+=("settings.json (la des-fusion fallo: no se toca)")
+    fi
+  fi
+
+  echo "== uninstall --kit ($([ "$apply" -eq 1 ] && echo apply || echo 'dry-run: no se modifica nada')) sobre $CLAUDE_HOME =="
+  echo "  se borrarian ${#rm_list[@]} ficheros del kit (su suma coincide con el manifiesto)"
+  if [ "${#lk_rm[@]}" -gt 0 ]; then echo "  enlaces de $localbin que se quitarian: ${lk_rm[*]}"; fi
+  if [ "${#lk_keep[@]}" -gt 0 ]; then echo "  enlaces de $localbin que NO se tocan (no apuntan a $CLAUDE_HOME/bin): ${lk_keep[*]}"; fi
+  if [ "$settings_unmerge" -eq 1 ]; then
+    echo "  settings.json: se des-fusiona lo del kit; cambios:"
+    diff <(jq -S . "$real") <(jq -S . "$newj") | sed -n '1,40p' | sed 's/^/    /' || true
+  fi
+  if [ "${#keep_list[@]}" -gt 0 ]; then
+    echo "  se CONSERVAN (no coinciden con lo que instalo el kit):"
+    printf '    %s\n' "${keep_list[@]}"
+  fi
+  if [ "$apply" -eq 0 ]; then
+    echo
+    printf 'Para desinstalar de verdad:  bash %q --kit --apply\n' "$HERE/uninstall.sh"
+    return 0
+  fi
+
+  stamp="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo uninstall)-$$"
+  bk="$CLAUDE_HOME/backups/uninstall-$stamp"
+  mkdir -p "$bk"
+  [ -f "$CLAUDE_HOME/settings.json" ] && cp -pL "$CLAUDE_HOME/settings.json" "$bk/settings.json"
+  cp -p "$man" "$bk/.kit-manifest"
+  ok "copia previa en $bk"
+  for rel in "${rm_list[@]}"; do
+    rm -f -- "$CLAUDE_HOME/$rel"
+    d="$(dirname "$rel")"
+    while [ "$d" != . ] && rmdir -- "$CLAUDE_HOME/$d" 2>/dev/null; do d="$(dirname "$d")"; done
+  done
+  for n in "${lk_rm[@]}"; do rm -f -- "${localbin:?}/$n"; done
+  if [ "$settings_unmerge" -eq 1 ]; then cat "$newj" > "$real"; ok "settings.json des-fusionado"; fi
+  rm -f -- "$man" "$CLAUDE_HOME/.kit-version" "$CLAUDE_HOME/.kit-settings-pre.json" "$CLAUDE_HOME/.kit-docs.sha256"
+  ok "kit desinstalado: ${#rm_list[@]} ficheros borrados, ${#keep_list[@]} conservados"
+  echo "  La copia de settings.json y del manifiesto esta en $bk"
+}
+
+if [ "$KIT_MODE" -eq 1 ]; then
+  kit_uninstall
+  exit 0
+fi
 
 case "$MODE" in
   list)

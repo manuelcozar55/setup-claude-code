@@ -61,6 +61,18 @@ else
   fi
 fi
 
+# 1e. Version del kit instalada (.kit-version, la escribe install.sh --apply) frente a la del clon desde el que se
+# lanza el doctor. WARN, con la orden: una instalacion vieja sigue funcionando, pero no lleva lo nuevo.
+kit_clon=""; read -r kit_clon < "$KIT/../VERSION" 2>/dev/null || true
+kit_inst=""; read -r kit_inst < "$CLAUDE_HOME/.kit-version" 2>/dev/null || true
+if [ -z "$kit_inst" ]; then
+  warn "sin .kit-version: instalacion anterior a la 1.11 o no hecha con install.sh. Reinstala para registrar la version: bash $KIT/install.sh --apply"
+elif [ -n "$kit_clon" ] && [ "$kit_inst" != "$kit_clon" ]; then
+  warn "version del kit instalada $kit_inst, distinta de la de este clon $kit_clon: actualiza con bash $KIT/install.sh --apply"
+else
+  pass "version instalada del kit: $kit_inst  (fuente: .kit-version)"
+fi
+
 # 2. hooks referenciados existen y son ejecutables
 if [ -f "$CLAUDE_HOME/settings.json" ]; then
   # shellcheck disable=SC2016 # patron literal para grep -oE, no interpolacion de shell
@@ -291,13 +303,16 @@ fi
 if [ -x "$HOME/.venvs/tools/bin/python3" ]; then pass "venv tools presente"; else warn "venv tools ausente (opcional; ver docs/02-install.md)"; fi
 
 # 4b. interprete para los hooks Python (sentinel_preflight, write-guard).
-# No es FAIL: optional-hook.sh los convierte en no-op si no hay interprete, y el
-# resto de la cadena (los guards de bash) sigue protegiendo. Pero conviene
-# saberlo, porque son capas menos.
+# Es FAIL: optional-hook.sh convierte esos hooks en no-op si no hay interprete, asi que sin python3 dos capas
+# (Sentinel y write-guard) estan apagadas sin que nada lo diga. Con --sin-python se instala a sabiendas, pero
+# doctor no lo da por bueno: el mensaje lleva la orden para arreglarlo.
 if [ -x "$HOME/.venvs/tools/bin/python3" ] || command -v python3 >/dev/null 2>&1; then
   pass "interprete para hooks Python disponible  (fuente: venv o python3 del sistema)"
 else
-  warn "sin python3: el preflight de Sentinel y write-guard quedan en no-op (los guards de bash siguen activos)"
+  fail "python3 no instalado: Sentinel y write-guard estan APAGADAS (los guards de bash siguen activos). Instala python3 (sudo apt install python3, o brew install python3) y repite"
+fi
+if grep -q 'write-guard\.py' "$CLAUDE_HOME/settings.json" 2>/dev/null && [ ! -f "$CLAUDE_HOME/hooks/write-guard.py" ]; then
+  fail "write-guard.py falta en $CLAUDE_HOME/hooks pero settings.json lo cablea: el hook falla en cada escritura. Repite: bash $KIT/install.sh --apply"
 fi
 
 # 5. Enrutado de la API: si algo enruta a un proxy, ese proxy TIENE que contestar.
@@ -453,7 +468,7 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     warn "Capa 2 de secretos no activada en este repo: core.hooksPath sin configurar (opt-in con: bash $KIT/install.sh --enable-secrets-layer2)"
   fi
 else
-  warn "no estas dentro de un repo git: no se puede comprobar la Capa 2 (core.hooksPath)"
+  warn "no estas dentro de un repo git: no se puede comprobar la Capa 2 (core.hooksPath). Dentro de un repo a proteger: bash $KIT/install.sh --enable-secrets-layer2"
 fi
 
 # 5d2. Estado del proyecto actual (ADR 016): .claude/estado/ lleva los prompts de la persona y los informes, y

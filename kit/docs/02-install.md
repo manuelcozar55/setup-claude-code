@@ -214,9 +214,26 @@ bash kit/doctor.sh
 claude plugin update cockpit@setup-claude-code   # solo si instalaste el cockpit
 ```
 
-`install.sh` es idempotente: lo que cambia se guarda antes en `$CLAUDE_HOME/backups/<fecha>-…/` y tu `settings.json` se fusiona, no se pisa (tus hooks se conservan junto a los del kit, ver el Paso 2). Actualiza el kit y el cockpit a la vez: `install.sh` mueve el marketplace del kit al tag nuevo; después, `claude plugin marketplace add "manuelcozar55/setup-claude-code@v$(cat VERSION)"` y `claude plugin update cockpit@setup-claude-code`. Para volver a una versión anterior, haz `git checkout` de su tag y repite las dos órdenes de arriba; los ficheros que esa versión ya no trae no se borran de `$CLAUDE_HOME`.
+`install.sh` es idempotente: lo que cambia se guarda antes en `$CLAUDE_HOME/backups/<fecha>-…/` y tu `settings.json` se fusiona, no se pisa (tus hooks se conservan junto a los del kit, ver el Paso 2). Actualiza el kit y el cockpit a la vez: `install.sh` mueve el marketplace del kit al tag nuevo; después, `claude plugin marketplace add "manuelcozar55/setup-claude-code@v$(cat VERSION)"` y `claude plugin update cockpit@setup-claude-code`. Para volver a una versión anterior, haz `git checkout` de su tag y repite las dos órdenes de arriba; los ficheros que esa versión ya no trae no se borran de `$CLAUDE_HOME`, salvo los hooks que el kit retiró (`nucleo-gate`, `stop-context-gauge` y `post-compact-check`): al actualizar, `install.sh` quita sus entradas de `settings.json` y borra su script si no lo modificaste (si lo modificaste, lo conserva y te lo dice).
+
+`$CLAUDE_HOME/.kit-version` guarda la versión instalada y `doctor.sh` avisa (`WARN`, con la orden) si difiere de la del clon desde el que lo lanzas.
 
 ## Desinstalar y volver atrás
+
+Para quitar el kit entero:
+
+```bash
+bash uninstall.sh --kit          # simulacro: lista lo que borraría, lo que conserva y lo que des-fusiona
+bash uninstall.sh --kit --apply  # lo ejecuta (antes copia settings.json a $CLAUDE_HOME/backups/)
+```
+
+Borra lo que `$CLAUDE_HOME/.kit-manifest` lista y sigue con la suma que escribió el instalador (lo que
+modificaste se conserva y se enumera), quita los enlaces de `~/.local/bin` solo si apuntan a
+`$CLAUDE_HOME/bin`, y saca de `settings.json` lo que el kit añadió (sus hooks, `statusLine`, marketplace,
+plugins y las claves de `env` que conservan el valor del kit) sin tocar lo tuyo. Sin manifiesto
+(instalación anterior a 1.11), usa el modo de restaurar de abajo.
+
+Para volver al estado anterior desde un backup:
 
 ```bash
 bash uninstall.sh          # desde la raíz del repo; dry-run: dice qué haría y no toca nada
