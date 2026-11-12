@@ -11,12 +11,13 @@ Se levanta la congelación (2026-11-11, decisión del dueño): entran tres pieza
 
 ### Consolidación: instalar, operar y adaptar el kit sin ser su autor
 
-- **Guards:** dejan de bloquear órdenes legítimas (se pasa de 19 bloqueos falsos en 34 órdenes de uso normal a ninguno), siguen bloqueando las 25 peligrosas y cierran 7 de 9 rodeos conocidos; los otros 2 (código dentro de un intérprete) quedan documentados como límite.
+- **Guards:** bloquean menos órdenes legítimas sin abrir nada: de 34 órdenes de uso normal pasan 22 (antes 15), 3 preguntan (borrar un directorio de build) y 9 siguen bloqueadas como antes, declaradas como límite (escribir por shell a un fichero un texto que cita una orden peligrosa, que se hace con la herramienta de edición, y borrados recursivos compuestos o fuera del proyecto). Siguen bloqueando las 25 peligrosas y cierran 10 de 12 rodeos conocidos; los otros 2 (código dentro de un intérprete) quedan documentados como límite. Regla nueva, comprobada en cada `make test` contra los guards de la 1.10.1: una orden que antes se bloqueaba solo pasa por una de cinco exenciones de lista cerrada. Cuatro rondas de revisión adversaria rompieron las demás (escritura a fichero como dato, `sed`/`awk` como prosa, borrado de build y `--force-with-lease` como permiso) y se retiraron en vez de parchearse: esas órdenes se bloquean como antes o preguntan. Alcance declarado en `SECURITY.md`: frenan accidentes de un agente, no a un adversario.
+- **Sentinel:** `~/.claude/.kit-desactivados` se protege frente a escrituras por Bash igual que `settings.json`.
 - **Estado y avisos:** un solo aviso de contexto, con o sin cockpit; el autosave funciona en un proyecto sin `nucleo.md`; `handoff --auto` oculta secretos; la compuerta de commit vive en `agentes.sh` y `nucleo-gate.sh` se retira.
 - **Instalación:** `install.sh --plan` enseña qué fusionará en `settings.json`; se instala el lanzador `scc` y la copia del cockpit; `uninstall.sh --kit` quita solo lo que instaló el kit; `doctor` avisa si la versión instalada no es la del repo.
 - **Cockpit:** ver la sección «cockpit 0.9.0» más abajo.
 - **Documentación:** `README.md` de una página (requisitos, coste, un solo camino de instalación); `kit/docs/OPERAR.md` (qué hacer ante un bloqueo, cómo quitar un hook, cuánto cuesta, cómo actualizar y desinstalar); `kit/docs/MAPA.md`, generado por `scripts/generar-mapa.sh` desde los hooks y `settings.json`, con cada hook, interruptor, agente, skill y comando; `kit/docs/guia/06-adaptar.md` reescrita con recetas que se ejecutan en un test. `mcharness` queda como nombre del andamiaje de desarrollo; el producto es SCC.
-- **doctor:** distingue «desactivado por ti» de «roto» con la lista `.kit-desactivados` (hooks, agentes y skills). Ojo: `install.sh --apply` no la respeta y hay que repetir la baja tras cada actualización; `doctor` lo avisa.
+- **doctor:** distingue «desactivado por ti» de «roto» con la lista `.kit-desactivados` (hooks, agentes y skills). `install.sh --apply` la respeta: no vuelve a cablear ni a copiar lo que tú quitaste, y nunca quita nada por estar en la lista (un hook que sigue en `settings.json` se queda). Un guard de seguridad apagado y anotado da WARN, no INFO; la plantilla deniega la edición de la lista por el agente. `uninstall.sh --kit --settings-plantilla` quita de `settings.json` lo que sea igual a la plantilla del kit cuando no hay copia previa a la instalación.
 - **Retirado:** `CC_NUCLEO_GATE`; el código solo lee `NUCLEO_GATE`.
 - Sensores nuevos: `test_mapa.sh`, `test_doctor_desactivados.sh`, `test_adaptar.sh` y `test_docs_enlaces.sh` (enlaces, rutas, versión mínima de Claude Code y versión del cockpit de README y ENTREGA frente al código).
 
@@ -25,8 +26,8 @@ Se levanta la congelación (2026-11-11, decisión del dueño): entran tres pieza
 | Cifra | Valor |
 |---|---|
 | Órdenes peligrosas bloqueadas | 25 de 25 (antes 25 de 25) |
-| Órdenes legítimas bloqueadas por error | 0 de 34 (antes 19 de 34) |
-| Rodeos conocidos cerrados | 7 de 9, 2 documentados como límite (antes 0) |
+| Órdenes legítimas bloqueadas por error | 9 de 34, y 3 que preguntan (antes 19 de 34) |
+| Rodeos conocidos cerrados | 10 de 12, 2 documentados como límite (antes 0) |
 
 ### Changed (cockpit 0.9.0)
 
