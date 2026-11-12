@@ -42,6 +42,13 @@ bash kit/install.sh --apply    # instala en ~/.claude, con copia de lo que sobre
 bash kit/doctor.sh             # comprueba la instalación
 ```
 
+```mermaid
+flowchart LR
+  A[--plan] -->|nada escrito| B[--apply]
+  B -->|copia de lo que sobrescribe| C[doctor.sh]
+  C -->|0 FAIL| D[reinicia Claude Code]
+```
+
 `--apply` termina diciendo «Reinicia las sesiones abiertas de Claude Code»; `doctor.sh` termina en `== OK (0 FAIL) ==`.
 Si dice que `~/.local/bin` no está en tu `PATH`, añade `export PATH="$HOME/.local/bin:$PATH"` a tu `~/.bashrc`.
 
