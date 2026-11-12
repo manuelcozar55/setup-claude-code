@@ -286,7 +286,9 @@ mkdir -p "$CLAUDE_HOME/hooks"
 cp "$HERE/fixtures/nucleo-gate.retirado.sh" "$CLAUDE_HOME/hooks/nucleo-gate.sh"   # una version publicada, sin tocar
 echo "# editado por la persona" > "$CLAUDE_HOME/hooks/stop-context-gauge.sh"
 run
-ck "$(jq '[.hooks | .. | strings | select(test("nucleo-gate|stop-context-gauge|post-compact-check"))] | length' "$S")" "0" "retirados: sus entradas de settings.json se van, con y sin comillas"
+ck "$(jq '[.hooks | .. | strings | select(test("nucleo-gate|post-compact-check"))] | length' "$S")" "0" "retirados: las entradas de una version publicada (o sin script) se van, con y sin comillas"
+ck "$(jq '[.hooks | .. | strings | select(test("stop-context-gauge"))] | length' "$S")" "1" "retirados: la entrada cuyo script la persona modifico se conserva (puede ser un hook suyo)"
+ck "$(dice 'entrada de settings.json de hooks/stop-context-gauge.sh')" "y" "retirados: y el instalador avisa de que conserva esa entrada"
 ck "$(jq -r '[.hooks.Stop[].hooks[].command] | map(select(test("mi-stop"))) | length' "$S")" "1" "retirados: el hook de la persona en el mismo grupo se queda"
 ck "$([ -e "$CLAUDE_HOME/hooks/nucleo-gate.sh" ] && echo y || echo n)" "n" "retirados: el script intacto se borra de hooks/"
 ck "$([ -e "$CLAUDE_HOME/hooks/stop-context-gauge.sh" ] && echo y || echo n)" "y" "retirados: el script que la persona modifico se conserva"

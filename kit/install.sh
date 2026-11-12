@@ -216,8 +216,18 @@ install_file() {  # src dst
 # contexto por sesion), ANTHROPIC_MODEL con el sufijo de la ventana de 1M,
 # CLAUDE_CODE_AUTO_COMPACT_WINDOW y tres limites mas. Habia backup, pero un backup que hay que
 # descubrir no es una salvaguarda: es una autopsia.
+RETIRADOS="nucleo-gate.sh stop-context-gauge.sh post-compact-check.sh"
+retirado_publicado() {  # fichero nombre: su suma es la de una version publicada del hook
+  grep -q "^$(sha256sum < "$1" | cut -d' ' -f1)  $2\$" "$KIT/hooks-retirados.sha256"
+}
 install_settings() {  # src dst
-  local src="$1" dst="$2" tmp real name
+  local src="$1" dst="$2" tmp real name conserva=() r
+  # Un retirado cuyo script existe y no es una version publicada lo editó la persona o es suyo: su entrada se queda.
+  for r in $RETIRADOS; do
+    if [ -f "$(dirname "$dst")/hooks/$r" ] && ! retirado_publicado "$(dirname "$dst")/hooks/$r" "$r"; then
+      conserva+=("$r"); echo "   AVISO: se conserva la entrada de settings.json de hooks/$r: el script no es una version publicada del kit (editado o tuyo)" >&2
+    fi
+  done
   # Sin fichero previo no hay nada que fusionar. El caso "sin jq" ya no llega hasta aqui:
   # la puerta de dependencia del principio aborta antes, sin tocar tu settings.json.
   if [ ! -f "$dst" ]; then
@@ -240,10 +250,10 @@ install_settings() {  # src dst
   # optional-hook.sh con sus flags. Asi caen las formas antiguas de sus guards; un comando con algo mas
   # (`mio.sh && ...guard.sh`) es tuyo y se queda: un duplicado se ve en doctor, una perdida no. Lo que
   # no tiene forma de hook (un evento que no es lista, un grupo sin `hooks`) se descarta y queda en el backup.
-  if jq -s '
+  if jq -s --argjson conserva "$(jq -nc '$ARGS.positional' --args "${conserva[@]}")" '
       .[0] as $kit | .[1] as $old |
-      ([$kit.hooks // {} | .. | .command? // empty | splits(" +") | gsub("[\"\u0027]"; "") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")]
-        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh", "nucleo-gate.sh", "stop-context-gauge.sh", "post-compact-check.sh"] | unique) as $suyos |
+      (([$kit.hooks // {} | .. | .command? // empty | splits(" +") | gsub("[\"\u0027]"; "") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")]
+        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh", "nucleo-gate.sh", "stop-context-gauge.sh", "post-compact-check.sh"] | unique) - $conserva) as $suyos |
       def propio: ("/" + .) as $t | any($suyos[]; . as $s | $t | endswith("/.claude/hooks/" + $s) or endswith("/.claude/sentinel/" + $s));
       def del_kit: [(.command | strings // "") | splits(" +") | gsub("[\"\u0027]"; "") | select(length > 0)]
         | any(.[]; propio) and all(.[]; propio or startswith("-") or (sub(".*/"; "") | test("^(optional-hook\\.sh|python[0-9.]*|bash|sh)$")));
@@ -654,10 +664,10 @@ install_kit_files "$CLAUDE_HOME"
 
 # Hooks que el kit ya no trae (settings.json ya no los cablea): se borra el script solo si su suma es la de una
 # version publicada; uno modificado por la persona se conserva y se dice.
-for name in nucleo-gate.sh stop-context-gauge.sh post-compact-check.sh; do
+for name in $RETIRADOS; do
   f="$CLAUDE_HOME/hooks/$name"
   [ -f "$f" ] || continue
-  if grep -q "^$(sha256sum < "$f" | cut -d' ' -f1)  $name\$" "$KIT/hooks-retirados.sha256"; then
+  if retirado_publicado "$f" "$name"; then
     rm -f -- "$f"; echo "==> hook retirado del kit, borrado: hooks/$name"
   else
     echo "==> hook retirado del kit y modificado por ti, se conserva: hooks/$name (ya no esta cableado; borralo si no lo usas)"
