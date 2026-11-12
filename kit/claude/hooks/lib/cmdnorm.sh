@@ -76,7 +76,7 @@ function optok(b, t,   nm, i, l) {
   return 0
 }
 
-# Cuerpo de un `"$( )"` que es SOLO `cat <<'DELIM' ... DELIM`: su salida es el texto literal del heredoc (delimitador entre comillas, sin
+# Cuerpo de un `"$( )"` que es SOLO un `cat` con heredoc de delimitador entrecomillado: su salida es el texto literal del heredoc (delimitador entre comillas, sin
 # expansion) y no cambia nada de la linea: no quita el contexto cerrado (es la forma habitual del mensaje de commit).
 function catdoc(b,   d, r, p, t) {
   if (!match(b, "^[ \t\n]*cat[ \t]+<<-?[ \t]*\047[A-Za-z_][A-Za-z0-9_]*\047[ \t]*\n")) return 0

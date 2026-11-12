@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# QUE-HACE: Deniega leer o enviar ficheros de credenciales (.env, ~/.ssh, ~/.aws), patrones de exfiltracion y comandos peligrosos en CUALQUIER herramienta; pregunta si agota su presupuesto de analisis; deja pasar el texto que solo nombra un fichero como dato (echo, git rm --cached) en una linea de una sola orden.
 """
 sentinel_preflight.py — PreToolUse hook for ALL tools (matcher: "").
 

@@ -1,5 +1,6 @@
 #!/bin/bash
 # secret-guard.sh — Blocks git add of .env, credentials, private keys
+# QUE-HACE: Deniega git add de .env, credenciales y claves privadas (por nombre, patron o comodin) y git add -A/. con un .env sin ignorar; deja pasar el resto de git add; el contenido de lo que se commitea lo mira el pre-commit con gitleaks (Capa 2).
 # Source: yurukusa/claude-code-hooks (MIT)
 # Protocol: exit 2 = block
 #

@@ -412,7 +412,7 @@
 {"id": "R3-c122", "cmd": "rm -r -f -- build/..", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R3-c123", "cmd": "rm -rf --interactive=never build/..", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R3-c124", "cmd": "rm -rf --preserve-root=all /home/u", "base": "BLOCK", "exp": "BLOCK|ASK"}
-{"id": "R3-c125", "cmd": "rm -rf --one-file-system -- /home/u/build/../..", "base": "BLOCK", "exp": "BLOCK|ASK"}
+{"id": "R3-c125", "cmd": "rm -rf --one-file-system -- /home/user/build/../..", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R3-c126", "cmd": "command rm -rf build/..", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R3-c127", "cmd": "\\rm -rf build/..", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R3-c128", "cmd": "\"rm\" -rf build/..", "base": "BLOCK", "exp": "BLOCK|ASK"}

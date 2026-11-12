@@ -1,5 +1,6 @@
 #!/bin/bash
 # block-dangerous-commands.sh — PreToolUse Bash security blocklist
+# QUE-HACE: Deniega pipe-a-shell, rm -rf sin prueba de inocuidad, force push y --no-verify, -c core.hooksPath y exfiltracion de credenciales; pregunta ante un lease sin rama de trabajo, --tags o git config de hooks; deja pasar el texto que solo es dato (echo, mensaje de commit, patron de grep) en una linea de una sola orden.
 # Source: randomdreft/claude-code-security-hook (public domain), extended
 # Protocol: JSON deny/ask output + exit 0, or silent exit 0 to allow
 
