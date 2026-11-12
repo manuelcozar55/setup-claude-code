@@ -14,7 +14,7 @@
 {"id":"L14","nota":"borrar build/dist relativos","cmd":"rm -rf ./build dist","exp":"ALLOW"}
 {"id":"L15","nota":"borrar dir temporal absoluto","cmd":"rm -rf /tmp/build-123","exp":"ALLOW"}
 {"id":"L16","nota":"compuesto cd && rm -rf build","cmd":"cd ~/proyecto && rm -rf build","exp":"ALLOW"}
-{"id":"L17","nota":"rm -rf de node_modules del proyecto hermano","cmd":"rm -rf ../otro-proyecto/node_modules","exp":"ALLOW"}
+{"id":"L17","nota":"rm -rf de node_modules del proyecto hermano","cmd":"rm -rf ../otro-proyecto/node_modules","exp":"BLOCK","limite":"falso positivo preexistente (la base tambien lo bloquea): un operando con `..` no tiene prueba de la lista cerrada de exenciones; borra desde el otro proyecto (cd ../otro-proyecto && rm -rf node_modules)"}
 {"id":"L18","nota":"recrear venv","cmd":"rm -rf .venv && python3 -m venv .venv","exp":"ALLOW"}
 {"id":"L19","nota":"leer plantilla .env.example","cmd":"cat .env.example","exp":"ALLOW"}
 {"id":"L20","nota":"diff de plantillas","cmd":"diff .env.example .env.sample","exp":"ALLOW"}
@@ -30,5 +30,5 @@
 {"id":"L30","nota":"add de plantilla y README","cmd":"git add .env.example README.md","exp":"ALLOW"}
 {"id":"L31","nota":"sed -i sin secreto","cmd":"sed -i 's/foo/bar/' src/app.py","exp":"ALLOW"}
 {"id":"L32","nota":"commit -m que nombra .env y *.pem","cmd":"git commit -m \"chore: ignora .env y *.pem\"","exp":"ALLOW"}
-{"id":"L33","nota":"compuesto con heredoc a python (script de analisis)","cmd":"python3 - <<'PY'\nimport pathlib\nfor p in pathlib.Path('docs').glob('*.md'):\n    if 'rm -rf /' in p.read_text():\n        print(p)\nPY","exp":"ALLOW"}
+{"id":"L33","nota":"compuesto con heredoc a python (script de analisis)","cmd":"python3 - <<'PY'\nimport pathlib\nfor p in pathlib.Path('docs').glob('*.md'):\n    if 'rm -rf /' in p.read_text():\n        print(p)\nPY","exp":"BLOCK","limite":"falso positivo preexistente (la base tambien lo bloquea): un interprete (python3 - <<EOF) no prueba que el texto del heredoc sea dato, y el literal peligroso esta dentro; escribe el script con Write"}
 {"id":"L34","nota":"git diff de la plantilla","cmd":"git diff HEAD -- .env.example","exp":"ALLOW"}
