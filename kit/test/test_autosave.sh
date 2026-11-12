@@ -205,5 +205,18 @@ ok "15 por_sid encuentra la ranura" "$(nucleo_sesion_dir por_sid home-1)" "$SH"
 jq -cn --arg c "$HOME" --arg t "$TRH" '{hook_event_name:"Stop",session_id:"home-1",transcript_path:$t,cwd:$c}' | CLAUDE_PID=$PH bash "$HOOK/autosave.sh"
 ok "16 autosave.sh en ~ escribe en la ranura del proceso" "$(find "$SES" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' '),$(seccion "$SH/nucleo.md" | grep -c "^$AUTOH\$")" "1,1"
 
+# 17. D6: la sección no copia secretos (mismas reglas que el redact del cockpit). Claves falsas por concatenación.
+R17=$T/repo17; mkdir -p "$R17/.claude/estado"; git -C "$R17" init -q; printf '# Estado\n\n## Objetivo\nx\n' >"$R17/.claude/estado/nucleo.md"
+AT=@; K1="sk-""ant-api03-ABCDEFGHIJKLMNOPQRSTUV"; K2="gh""p_0123456789abcdefghijABCDEFGHIJ012345"; K3="AK""IAABCDEFGHIJKLMNOP"; K4="ey""JhbGciOiJIUzI1NiJ9.ey""JzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghij12345"
+TR17=$HOME/t17.jsonl
+jq -cn --arg p "usa la clave $K1 y el token $K2 para el deploy, password=hunter2x y $K4" '{type:"user",message:{role:"user",content:$p}}' >"$TR17"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"%s/a.sh"}}]}}\n' "$R17" >>"$TR17"
+jq -cn --arg t "$TR17" --arg c "$R17" --arg m "Listo, la clave era $K3 y la URL https://usuario:clave99${AT}host.ejemplo/x con Bearer abcdef123456" \
+  '{hook_event_name:"Stop",session_id:"sid-17",transcript_path:$t,cwd:$c,last_assistant_message:$m}' | bash "$BIN" --auto --json >"$T/out" 2>&1; RC=$?
+S17=$(seccion "$R17/.claude/estado/nucleo.md")
+ok "17 la sección se escribe (rc 0, con persona y asistente)" "$RC,$(grep -c '^- Persona: \|^- Asistente: ' <<<"$S17")" "0,2"
+ok "17 ninguna clave, token, contraseña, JWT ni credencial de URL sobrevive" "$(grep -c "$K1\|$K2\|$K3\|hunter2x\|ey""JhbGci\|clave99\|abcdef123456" <<<"$S17")" 0
+ok "17 queda la marca [REDACTADO]" "$(grep -c 'REDACTADO' <<<"$S17")" 2
+
 [ "$FAIL" -eq 0 ] && echo "PASS" || echo "FAIL"
 exit "$FAIL"

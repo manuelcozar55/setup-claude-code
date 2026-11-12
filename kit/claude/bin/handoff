@@ -355,7 +355,24 @@ if [ "$MODO" = auto ]; then
   fi
   ALM=$(a_json .last_assistant_message | tr -s '[:space:]' ' ' | tr -d '<>' | LC_ALL=C tr -d '\000-\010\013-\037\177')
   [ -z "${ALM// /}" ] || AASIST=$ALM
-  AUTOCORTA() { jq -rn --arg t "$1" --argjson n "$2" '$t | sub("^ +"; "") | sub(" +$"; "") | .[0:$n]'; }
+  # Se redacta ANTES de cortar (una clave partida por el corte quedaría a medias). Mismas reglas que `redact` del
+  # cockpit (kit/mods/cockpit/hooks/register.tsx); es un respaldo, no un escáner de secretos.
+  # shellcheck disable=SC2016  # el programa jq lleva $t y $n, no son de bash
+  AUTOCORTA() { jq -rn --arg t "$1" --argjson n "$2" '
+    def r: "[REDACTADO]";
+    $t
+    | gsub("\\bsk-[A-Za-z0-9_-]{16,}"; r)
+    | gsub("\\bgh[pousr]_[A-Za-z0-9]{20,}"; r)
+    | gsub("\\bAKIA[0-9A-Z]{16}\\b"; r)
+    | gsub("\\bxox[abprs]-[A-Za-z0-9-]{10,}"; r)
+    | gsub("\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}"; r)
+    | gsub("\\bgithub_pat_[A-Za-z0-9_]{20,}"; r)
+    | gsub("\\bglpat-[A-Za-z0-9_-]{16,}"; r)
+    | gsub("-----BEGIN [A-Z ]*PRIVATE KEY-----(.|\n)*?(-----END [A-Z ]*PRIVATE KEY-----|$)"; r)
+    | gsub("(?<e>\\b[a-z][a-z0-9+.-]*://)[^\\s/@:]+:[^\\s/@]+@"; "\(.e)[REDACTADO]@"; "i")
+    | gsub("\\bBearer\\s+\\S+"; "Bearer [REDACTADO]"; "i")
+    | gsub("(?<k>\\b(password|passwd|pwd|secret|token|api[_-]?key)[\"\\x27]?\\s*[:=]\\s*)(?!\\[REDACTADO\\])(\"[^\"]*\"|\\x27[^\\x27]*\\x27|\\S+)"; "\(.k)[REDACTADO]"; "i")
+    | sub("^ +"; "") | sub(" +$"; "") | .[0:$n]'; }
   # Tocados: del transcript (lo más reciente primero) y de git; rutas relativas a la raíz, sin duplicados, ni .claude/estado/.
   declare -A VISTO=()
   ATOC=(); ASHA=""; ARAMA=""
