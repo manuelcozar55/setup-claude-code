@@ -516,10 +516,10 @@
 {"id": "R3-d076", "cmd": "git push --force-with-lease origin HEAD~5:feat/y", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R3-d077", "cmd": "git push --force-with-lease origin refs/for/main", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R3-d078", "cmd": "git push --force-with-lease origin release/1.0:main", "base": "BLOCK", "exp": "BLOCK|ASK"}
-{"id": "R3-d079", "cmd": "git push --force-with-lease origin hotfix/x", "base": "BLOCK", "exp": "ALLOW", "ex": "lease-rama-de-trabajo", "limite": "la revision (ronda 3) no las cuenta: prefijo de rama de trabajo con refspec unico, sin -C, remoto explicito"}
-{"id": "R3-d080", "cmd": "git push --force-with-lease origin users/me/x", "base": "BLOCK", "exp": "ALLOW", "ex": "lease-rama-de-trabajo", "limite": "la revision (ronda 3) no las cuenta: prefijo de rama de trabajo con refspec unico, sin -C, remoto explicito"}
-{"id": "R3-d081", "cmd": "git push --force-with-lease origin feature/x", "base": "BLOCK", "exp": "ALLOW", "ex": "lease-rama-de-trabajo", "limite": "la revision (ronda 3) no las cuenta: prefijo de rama de trabajo con refspec unico, sin -C, remoto explicito"}
-{"id": "R3-d082", "cmd": "git push --force-with-lease origin build/x", "base": "BLOCK", "exp": "ALLOW", "ex": "lease-rama-de-trabajo", "limite": "la revision (ronda 3) no las cuenta: prefijo de rama de trabajo con refspec unico, sin -C, remoto explicito"}
+{"id": "R3-d079", "cmd": "git push --force-with-lease origin hotfix/x", "base": "BLOCK", "exp": "BLOCK|ASK", "limite": "quinta vuelta: el lease con prueba de rama de trabajo ya no da allow, pregunta; sin prueba (release/, hotfix/, url), la base"}
+{"id": "R3-d080", "cmd": "git push --force-with-lease origin users/me/x", "base": "BLOCK", "exp": "BLOCK|ASK", "limite": "quinta vuelta: el lease con prueba de rama de trabajo ya no da allow, pregunta; sin prueba (release/, hotfix/, url), la base"}
+{"id": "R3-d081", "cmd": "git push --force-with-lease origin feature/x", "base": "BLOCK", "exp": "ASK", "limite": "quinta vuelta: el lease con prueba de rama de trabajo ya no da allow, pregunta; sin prueba (release/, hotfix/, url), la base"}
+{"id": "R3-d082", "cmd": "git push --force-with-lease origin build/x", "base": "BLOCK", "exp": "BLOCK|ASK", "limite": "quinta vuelta: el lease con prueba de rama de trabajo ya no da allow, pregunta; sin prueba (release/, hotfix/, url), la base"}
 {"id": "R3-d083", "cmd": "git push --force-with-lease origin feat/../main", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R3-d084", "cmd": "git push --force-with-lease origin feat/.main", "base": "BLOCK", "exp": "BLOCK|ASK"}
 {"id": "R3-d085", "cmd": "git push --force-with-lease origin feat", "base": "BLOCK", "exp": "BLOCK|ASK"}

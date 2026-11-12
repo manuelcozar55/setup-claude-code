@@ -231,8 +231,9 @@ monotonic_ms() { python3 -c 'import time; print(time.monotonic_ns() // 1000000)'
 # infla cualquier medida: se vio 1041 ms contra un tope de 1000 y paso al repetir. Un sensor que cae segun la carga no puede ir en una
 # entrega, y subir el tope a ciegas le quitaria el filo. Se calibra EN ESTA CORRIDA con una referencia que gasta lo mismo que un guard
 # (150 arranques de awk, 210 ms de CPU medidos en una maquina en reposo y estables con carga 8): el tope se escala por lo que la
-# referencia haya inflado, con suelo 1 (nunca mas estricto) y techo 3. Una regresion real (un proceso por segmento: 7 a 36 s contra
-# 1 s) sigue muy por encima del techo, asi que se sigue cazando; lo que deja de caer es el ruido de la carga.
+# referencia haya inflado, con suelo 1 (nunca mas estricto) y techo 1,5 (150 %). Una regresion real (un proceso por segmento: 7 a 36 s contra
+# 1 s) sigue muy por encima del techo, asi que se sigue cazando. Lo que este techo NO ve: una regresion que cueste menos de 1,5 veces el
+# tope (1 a 1,5 s de CPU en una orden de 128 KB) pasa; con la maquina saturada el tope sube a lo sumo a 1500 ms y no mas.
 CAL_REF_MS=210
 calib_cpu_ms() {
   local best=999999 t u s ms
@@ -246,7 +247,7 @@ calib_cpu_ms() {
   echo "$best"
 }
 CAL_MS=$(calib_cpu_ms)
-CAL_PCT=$(( CAL_MS * 100 / CAL_REF_MS )); [ "$CAL_PCT" -lt 100 ] && CAL_PCT=100; [ "$CAL_PCT" -gt 300 ] && CAL_PCT=300
+CAL_PCT=$(( CAL_MS * 100 / CAL_REF_MS )); [ "$CAL_PCT" -lt 100 ] && CAL_PCT=100; [ "$CAL_PCT" -gt 150 ] && CAL_PCT=150
 CAP_CPU=$(( 1000 * CAL_PCT / 100 )); CAP_WALL=$(( 2000 * CAL_PCT / 100 ))
 echo "PERF: calibracion: referencia ${CAL_MS} ms (patron ${CAL_REF_MS}), topes CPU ${CAP_CPU} ms y reloj ${CAP_WALL} ms"
 nest_case() { # $1 guard, $2 deny|allow, $3 veces, $4 comando simple que se repite
@@ -406,16 +407,19 @@ mutate() { # etiqueta fichero(relativo a kit/) sed-expr
   echo "FALSABLE: sensor generativo con el agujero «$label»: $(grep -oE 'FAIL=[0-9]+' <<<"$out" | tail -n 1) (rc=$rc)"
   if [ "$rc" -eq 0 ]; then MUT_FAIL=$((MUT_FAIL+1)); echo "FAIL: el sensor generativo no detecta el agujero «$label»"; fi
 }
-mutate "un interprete (python3) vale como consumidor de texto" claude/hooks/lib/cmdnorm.sh 's/(sha256sum cksum basename dirname git gh echo printf true :)/\1 python3 awk perl ruby node/'
-mutate "cualquier operando pasa como prueba de rm -rf" claude/hooks/lib/cmdnorm.sh 's/^cmdn_rm_proof\(\) \{/cmdn_rm_proof() { REPLY=hueco; return 0/'
+# Quinta vuelta (retirada): lo que se retiro ya no da allow, y el sensor tiene que caer si alguien lo vuelve a abrir. Con prueba, rm -rf
+# de un build y el lease preguntan; aqui se les quita la pregunta (pasan a allow). Escribir un texto a un fichero, un interprete como
+# receptor o un heredoc cuyo lector no es de texto vuelven a ser datos «inocuos».
+mutate "un interprete (python3) vale como consumidor de texto" sentinel/sentinel_preflight.py 's/^_TEXT_READERS = \{"cat",/_TEXT_READERS = {"python3", "awk", "cat",/'
+mutate "el heredoc vale como dato sea cual sea su lector" sentinel/sentinel_preflight.py 's/if name not in _TEXT_READERS:/if False:/'
+mutate "escribir el echo a un fichero sigue siendo dato" claude/hooks/lib/cmdnorm.sh 's/&& !devnull\(o\)\) \{ nosimple = 1; wf = 1 \}/\&\& 0) { nosimple = 1; wf = 1 }/'
+mutate "tee a un fichero sigue siendo dato" claude/hooks/lib/cmdnorm.sh 's/&& !devnull\(toks\[j\]\)\) \{ nosimple = 1; wf = 1 \}/\&\& 0) { nosimple = 1; wf = 1 }/'
+# shellcheck disable=SC2016  # el `$` es texto de la expresion sed
+mutate "rm -rf de un build con prueba pasa sin preguntar" claude/hooks/block-dangerous-commands.sh 's/tok_ask "Confirm: rm -rf de \$a, que se resuelve/: "Confirm: rm -rf de $a, que se resuelve/'
 mutate "git rm --cached admite cualquier opcion (-f)" sentinel/sentinel_preflight.py 's/all\(a\[0\] in \(.*startswith\("-"\)\)$/True/'
-mutate "lease con --tags pasa sin preguntar" claude/hooks/block-dangerous-commands.sh 's/^( +)if \(\( ptags \)\); then$/\1if false; then/'
-# Cuarta vuelta: la propiedad de COMPOSICION del mismo sensor. 1) la mutacion del revisor (el lease ya no mira que la rama sea de
-# trabajo); 2 y 3) la prueba de rm y la del lease valen aunque la linea no sea de una sola orden (cd, ln, git -C, `;`, `&&`);
-# 4) una opcion desconocida ya no quita el contexto cerrado.
-mutate "el lease no comprueba que la rama sea de trabajo" claude/hooks/block-dangerous-commands.sh 's/&& lease_work_ok "\$\{pos\[1\]\}"/\&\& true/'
-mutate "la prueba de rm vale aunque la linea no sea de una sola orden" claude/hooks/lib/cmdnorm.sh 's/^  \(\( \$\{CMDN_LINE_SIMPLE:-0\} \)\) \|\| return 1$/  :/'
-mutate "la prueba del lease vale con -C, cd o varias ordenes" claude/hooks/block-dangerous-commands.sh 's/\(\( depth == 0 && \$\{CMDN_LINE_SIMPLE:-0\} && ! lunk \)\) && \[\[ -z \$\{T\[0\]:-\} \]\] \|\| return 0/:/'
+# shellcheck disable=SC2016  # el `$` es texto de la expresion sed
+mutate "el lease a una rama de trabajo pasa sin preguntar" claude/hooks/block-dangerous-commands.sh 's/tok_ask "Confirm: git push --force-with-lease \$\{pos\[0\]\}/: "Confirm: git push --force-with-lease ${pos[0]}/'
+# La propiedad de COMPOSICION del mismo sensor: una opcion desconocida ya no quita el contexto cerrado.
 mutate "una opcion desconocida no quita el contexto cerrado" claude/hooks/lib/cmdnorm.sh 's/!optok\(b, toks\[j\]\)/0/'
 bypass_fail=$((bypass_fail+MUT_FAIL))
 if [ "$bypass_fail" -ne 0 ]; then

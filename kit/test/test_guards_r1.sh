@@ -23,7 +23,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 H="${R1_HOOKS_DIR:-$KIT/claude/hooks}"
 SEN="${R1_SENTINEL:-$KIT/sentinel/sentinel_preflight.py}"
 PY="${PYTHON3:-python3}"
-FIXES="${R1_FIXTURE:-$HERE/fixtures/guards-r1.jsonl $HERE/fixtures/guards-r2.jsonl $HERE/fixtures/guards-r3.jsonl}"
+FIXES="${R1_FIXTURE:-$HERE/fixtures/guards-r1.jsonl $HERE/fixtures/guards-r2.jsonl $HERE/fixtures/guards-r3.jsonl $HERE/fixtures/guards-r4.jsonl}"
 EXENC="$HERE/fixtures/guards-exenciones.txt"
 JOBS=${R1_JOBS:-8}
 

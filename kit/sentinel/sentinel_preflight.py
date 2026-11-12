@@ -661,21 +661,20 @@ def _parse(args: list[str], short: str, long: dict, stop: bool, ends: set) -> li
 
 # Closed context (the rule of the exemption proofs): a proof that a word is data (echo and printf words, git rm --cached, the prose
 # of _scrub_command) holds only when the whole line is ONE pipeline with no substitution, no separator, no prefix (env, cd...), no
-# global git option and no write to anything but a document. Anything else gets the verdict the base gave.
+# global git option and no write to any file. Anything else gets the verdict the base gave. A text written to a file is never proved
+# to be data: the file is read later by an agent, make, git or a shell (four review rounds broke every list of safe targets).
 _CTX_PREFIXES = {"env", "sudo", "doas", "command", "nice", "nohup", "time", "exec", "builtin", "stdbuf", "ionice", "setsid",
                  "timeout", "cd", "pushd", "popd"}
-_DOC_FILE = re.compile(r"\.(md|txt|log|rst|csv|tsv)$")
-_NO_DOC_DIR = re.compile(r"(^|/)\.(git|claude|husky|github)(/|$)")
-_AGENT_DOCS = {"CLAUDE.md", "AGENTS.md", "SKILL.md", "MEMORY.md"}
 _CLOSED = False
+# Plain text consumers (closed list): none runs what it reads and none writes a file named by an argument (uniq, xxd, sed, awk are out).
+_TEXT_READERS = {"cat", "tee", "head", "tail", "wc", "sort", "tr", "cut", "grep", "egrep", "fgrep", "rg", "ag", "ack", "jq", "base64",
+                 "md5sum", "sha1sum", "sha256sum", "git", "gh", "echo", "printf", "column", "nl", "fold", "tac", "rev", "paste", "diff",
+                 "cmp", "comm", "od", "hexdump", "expand", "unexpand", "cksum", "basename", "dirname", "true", ":"}
 
 
-def _doc_target(w: str) -> bool:
-    """A write target nobody reads as code or configuration: a document outside .git, .claude, .husky and .github."""
-    if w in ("/dev/null", "/dev/stdout", "/dev/stderr") or re.fullmatch(r"&?[0-9-]+", w):
-        return True
-    return bool(_DOC_FILE.search(w) or os.path.basename(w) == ".gitignore") and not _NO_DOC_DIR.search(w) and os.path.basename(w) not in _AGENT_DOCS \
-        and not re.search(r"[$`*?{}\[~\\]", w)
+def _null_target(w: str) -> bool:
+    """The only write targets of a closed context: /dev/null, the standard streams and file descriptors (2>&1)."""
+    return w in ("/dev/null", "/dev/stdout", "/dev/stderr") or bool(re.fullmatch(r"&?[0-9-]+", w))
 
 
 _GREP_NAMES = {"grep", "egrep", "fgrep", "zgrep", "rg", "ag", "ack"}
@@ -716,12 +715,16 @@ def _closed_context(text: str) -> bool:
     except Exception:
         return False
     start, newline, target, name, cmdargs = True, False, False, None, []
+    piped = False
     for k, t in enumerate(toks):
         if isinstance(t, dict):
+            # A heredoc body is data only for a plain text reader; ./run.sh, docker, an unknown command read it as input to run.
+            if name not in _TEXT_READERS:
+                return False
             continue
         if isinstance(t, str):
             if t in ("|", "|&"):
-                start, name = True, None
+                start, name, piped = True, None, True
             elif t == "\n":
                 newline = True
             elif ">" in t:
@@ -734,7 +737,7 @@ def _closed_context(text: str) -> bool:
         w = t[0]
         if target:
             target = False
-            if not _doc_target(w):
+            if not _null_target(w):
                 return False
             continue
         if not start and not _opt_ok(name, cmdargs, w):
@@ -744,13 +747,16 @@ def _closed_context(text: str) -> bool:
             start = False
             cmdargs = []
             name = _cmd_name(w)
+            # What receives a pipe is a plain text consumer or the line proves nothing (docker run, python, a script...).
+            if piped and name not in _TEXT_READERS:
+                return False
             nxt = toks[k + 1] if k + 1 < len(toks) else None
             if re.match(r"\w+=", w) or name in _CTX_PREFIXES or name in _SHELLS or name in _INTERPRETERS \
                     or name in ("xargs", "ssh", "find", "parallel", "watch", "at", "batch", "crontab", "source", ".", "busybox", "!"):
                 return False
             if name == "git" and isinstance(nxt, tuple) and nxt[0].startswith("-"):
                 return False
-        elif name == "tee" and not w.startswith("-") and not _doc_target(w):
+        elif name == "tee" and not w.startswith("-") and not _null_target(w):
             return False
         elif name == "sort" and re.match(r"-[A-Za-z]*o|--output", w):
             return False
@@ -1580,7 +1586,7 @@ def fetch_safe_reader(text: str, fetch_patterns: list) -> bool:
 # Never exempt: the allowlist does not apply. Limit: code inside python -c / node -e is not read.
 _HOME_RX = r"(?:/home/[^/]+|/root|/Users/[^/]+)"
 _PROTECTED_CFG = re.compile(
-    rf"^(?:{_HOME_RX}/\.claude/(?:hooks|sentinel)(?:/.*)?|{_HOME_RX}/\.claude/settings[^/]*\.json|.*/sentinel-allowlist\.json)$")
+    rf"^(?:{_HOME_RX}/\.claude/(?:hooks|sentinel)(?:/.*)?|{_HOME_RX}/\.claude/settings[^/]*\.json|{_HOME_RX}/\.claude/\.kit-desactivados|.*/sentinel-allowlist\.json)$")
 _WRITE_ALL = {"rm", "unlink", "rmdir", "chmod", "chown", "chgrp", "touch", "truncate", "tee", "shred",
               "mv", "sponge", "patch", "ed", "curl", "wget"}
 _WRITE_DEST = {"cp", "install", "ln", "rsync"}
@@ -1599,7 +1605,7 @@ def _protected_path(word: str, cwd: str) -> bool:
     return bool(_PROTECTED_CFG.match(path)
                 or home and (path in (f"{home}/.claude/hooks", f"{home}/.claude/sentinel")
                              or path.startswith((f"{home}/.claude/hooks/", f"{home}/.claude/sentinel/"))
-                             or re.fullmatch(re.escape(home) + r"/\.claude/settings[^/]*\.json", path)))
+                             or re.fullmatch(re.escape(home) + r"/\.claude/(?:settings[^/]*\.json|\.kit-desactivados)", path)))
 
 
 def _is_claude_home(word: str, cwd: str) -> bool:
@@ -1668,11 +1674,11 @@ def _braces(word: str, limit: int = 64) -> list[str]:
 
 def _hits_protected(full: str, cwd: str) -> bool:
     """Ruta final del fichero escrito. Con glob se compara, componente a componente, con los nombres protegidos de
-    ~/.claude (settings.json, settings.local.json, hooks, sentinel y lo que cuelga de los dos ultimos)."""
+    ~/.claude (settings.json, settings.local.json, .kit-desactivados, hooks, sentinel y lo que cuelga de los dos ultimos)."""
     if not re.search(r"[*?\[]", full):
         return _protected_path(full, cwd)
     claude = os.path.expanduser("~").rstrip("/") + "/.claude"
-    cands = [f"{claude}/{n}" for n in ("settings.json", "settings.local.json", "hooks", "sentinel", "hooks/x", "sentinel/x")]
+    cands = [f"{claude}/{n}" for n in ("settings.json", "settings.local.json", ".kit-desactivados", "hooks", "sentinel", "hooks/x", "sentinel/x")]
     parts = full.split("/")
     return any(len(c.split("/")) == len(parts) and all(fnmatchcase(a, b) for a, b in zip(c.split("/"), parts)) for c in cands)
 

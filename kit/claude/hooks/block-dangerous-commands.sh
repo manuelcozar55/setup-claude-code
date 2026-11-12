@@ -1,6 +1,6 @@
 #!/bin/bash
 # block-dangerous-commands.sh — PreToolUse Bash security blocklist
-# QUE-HACE: Deniega pipe-a-shell, rm -rf sin prueba de inocuidad, force push y --no-verify, -c core.hooksPath y exfiltracion de credenciales; pregunta ante un lease sin rama de trabajo, --tags o git config de hooks; deja pasar el texto que solo es dato (echo, mensaje de commit, patron de grep) en una linea de una sola orden.
+# QUE-HACE: Deniega pipe-a-shell, rm -rf sin prueba de inocuidad, force push y --no-verify, -c core.hooksPath y exfiltracion de credenciales; pregunta ante un lease a una rama de trabajo, un rm -rf de un build, --tags o git config de hooks; deja pasar el texto que solo es dato (echo, mensaje de commit, patron de grep) en una linea de una sola orden.
 # Source: randomdreft/claude-code-security-hook (public domain), extended
 # Protocol: JSON deny/ask output + exit 0, or silent exit 0 to allow
 
@@ -418,16 +418,17 @@ NEST=0
 TOK_ASK=''
 WX=0
 tok_ask() { [[ -n $TOK_ASK ]] || TOK_ASK=$1; }
-# lease_work_ok <rama>: PRUEBA de que un nombre de rama es de trabajo (lista cerrada de prefijos: feat/, fix/, release/...). Solo mira el
+# lease_work_ok <rama>: PRUEBA de que un nombre de rama es de trabajo (lista cerrada de prefijos: feat/, fix/, chore/...; no release/ ni hotfix/,
+# que en muchos equipos estan protegidas). Con ella el lease PREGUNTA; nunca da allow. Solo mira el
 # texto: `HEAD` (la rama en curso, que lee del disco lo que la propia linea puede haber cambiado) no tiene prueba. Un nombre sin prefijo
 # (trunk, develop, Main, un tag) tampoco: manda el criterio de la base.
-LEASE_PREFIXES='feat|feature|fix|bugfix|hotfix|chore|docs|refactor|test|tests|ci|build|perf|style|release|wip|topic|users|dependabot|renovate|cv2'
+LEASE_PREFIXES='feat|feature|fix|bugfix|chore|wip'
 lease_work_ok() {
   local b=${1#refs/heads/}
   [[ $b =~ ^($LEASE_PREFIXES)/[A-Za-z0-9._/-]+$ && $b != *..* && $b != */.* && $b != *.lock && $b != */ ]]
 }
 push_refspec() {
-  local depth=$1 kind=$2 seg a i inner skip dd rc v lease pall ptags lunk lwok
+  local depth=$1 kind=$2 seg a i inner skip dd rc v lease pall ptags lunk
   local -a T segs pos
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
@@ -532,11 +533,11 @@ push_refspec() {
       if (( ptags )); then
         tok_ask "Confirm: git push con lease y --tags pisa etiquetas del remoto que el guard no ve. Empuja la rama y las etiquetas concretas por separado."
       else
-        # Con refspec explicito dejan de importar push.default, remote.*.push y la rama en curso: remoto y UN refspec llano de
-        # rama de trabajo. Sin refspec, con :, +, HEAD o varios, no hay prueba (pregunta; nunca pasa en silencio).
-        lwok=1
-        (( ${#pos[@]} == 2 )) && [[ ${pos[1]} != *[:+]* && ${pos[1]} != HEAD ]] && lease_work_ok "${pos[1]}" || lwok=0
-        (( lwok )) || tok_ask "Confirm: git push con lease sin un refspec explicito de rama de trabajo (feat/, fix/, chore/, release/...): empuja a la rama que decidan la configuracion o el estado de git, que puede ser la principal. Escribe remoto y rama (git push --force-with-lease origin feat/x)."
+        # Con refspec explicito dejan de importar push.default, remote.*.push y la rama en curso: remoto con nombre y UN refspec
+        # llano de rama de trabajo. Con esa prueba el guard PREGUNTA (nunca da allow); sin ella (sin refspec, con :, +, HEAD, varios,
+        # una URL o una ruta como remoto) manda la base: denegar.
+        (( ${#pos[@]} == 2 )) && [[ ${pos[0]} =~ ^[A-Za-z][A-Za-z0-9_-]*$ && ${pos[1]} != *[:+]* && ${pos[1]} != HEAD ]] && lease_work_ok "${pos[1]}" || return 0
+        tok_ask "Confirm: git push --force-with-lease ${pos[0]} ${pos[1]} reescribe esa rama en el remoto (el lease solo comprueba que nadie empujo antes). Confirma que ${pos[1]} es tu rama de trabajo y que ${pos[0]} es el remoto que esperas."
       fi
     fi
   done
@@ -576,22 +577,26 @@ fi
 
 # judge_rm <argumentos de un rm>: deniega o pregunta segun los operandos. Deja en RM_R si lleva -r. Las opciones se leen
 # antes que los operandos (`rm ~/x -rf` es lo mismo que `rm -rf ~/x`).
-RM_R=0; RM_REAL=0
+RM_R=0; RM_REAL=0; RM_NOOP=0
 judge_rm() {
-  local a r=0 f=0 dd=0
+  local a r=0 f=0 dd=0 nops
   for a in "$@"; do
     if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
     (( dd )) && continue
     [[ $a == -* ]] || continue
     case $a in --recursive) r=1 ;; --force) f=1 ;; --*) ;; *) [[ $a == -*[rR]* ]] && r=1; [[ $a == -*f* ]] && f=1 ;; esac
   done
-  RM_R=$r; dd=0
+  RM_R=$r; RM_NOOP=0; dd=0; nops=0
   for a in "$@"; do
     if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
     if (( ! dd )) && [[ $a == -* ]]; then continue; fi
-    # Sin prueba de que el operando es inocuo (cmdn_rm_proof: ruta de build relativa, ~/proyecto/.../build, /tmp/<subruta>) manda el
-    # criterio de la base: un `rm -rf` se deniega. Lo peligroso no se reconoce por lista; lo inocuo, si.
-    (( r && f )) && cmdn_rm_proof "$a" && continue
+    nops=$(( nops + 1 ))
+    # Con prueba de que el operando parece un directorio de build (cmdn_rm_proof: ruta de build relativa, ~/proyecto/.../build,
+    # /tmp/<subruta>) el guard PREGUNTA con la ruta resuelta delante; sin prueba manda el criterio de la base: un `rm -rf` se deniega.
+    if (( r && f )) && cmdn_rm_proof "$a"; then
+      tok_ask "Confirm: rm -rf de $a, que se resuelve a $CMDN_RM_RESOLVED (un directorio de build conocido). Borrado recursivo y forzado: confirma que es esa ruta y no otra."
+      continue
+    fi
     if cmdn_sensitive_operand "$a"; then
       (( r && f )) && deny "BLOCKED: rm -rf (recursive force delete) sobre una ruta sensible ($a). Un directorio de build conocido (node_modules, dist, build...) dentro del proyecto o una subruta concreta de /tmp si se puede borrar. Si de verdad quieres borrar esa ruta, ejecutalo tu con ! en la sesion."
     elif (( r || f )) && cmdn_opaque_operand "$a"; then
@@ -604,6 +609,9 @@ judge_rm() {
       deny "BLOCKED: rm -rf (recursive force delete) sobre $a, que no es un directorio de build conocido (node_modules, dist, build, target...) dentro del proyecto ni una subruta concreta de /tmp. Borra la ruta concreta de build; si de verdad quieres borrar esa, ejecutalo tu con ! en la sesion."
     fi
   done
+  # `rm -rf` cuyo operando lo aporta una sustitucion (`rm -rf \`pwd\``, `$(...)`): el operando no esta en este segmento y no hay nada
+  # que probar; manda la base.
+  (( r && f && nops == 0 )) && RM_NOOP=1
 }
 
 # rm_text_net: un `rm` recursivo que aparece como PALABRA en el texto de la orden (ya sin la prosa conocida) y que ninguna orden simple
@@ -613,7 +621,11 @@ RM_TEXT_RX='(^|[^[:alnum:]_.-])rm([[:space:]]+-[A-Za-z-]+)*[[:space:]]+(-[A-Za-z
 rm_text_net() {
   local m seg a
   local -a words matches T
-  mapfile -t matches < <(LC_ALL=C grep -oE "$RM_TEXT_RX" <<<"$EXECT")
+  # `git rm --cached [-r|-q|-n|--ignore-unmatch] <ruta>` solo toca el indice y no es el rm del sistema (la base lo dejaba pasar); con
+  # cualquier otra opcion (-f, --force) o sin --cached borra del arbol de trabajo y sigue contando.
+  local gpre='-r|-q|-n|--quiet|--dry-run|--ignore-unmatch'
+  local gopt='-r|-rf|-fr|-q|-n|--quiet|--dry-run|--ignore-unmatch'
+  mapfile -t matches < <(LC_ALL=C sed -E "s/(^|[^[:alnum:]_.-])git(([[:space:]]+-[-A-Za-z]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*)[[:space:]]+rm(([[:space:]]+($gpre))*[[:space:]]+--cached([[:space:]]+($gopt))*([[:space:]]+[^-;&|~\/\$[:space:]][^;&|[:space:]]*)*([[:space:]]+--([[:space:]]+[^;&|[:space:]]+)*)?[[:space:]]*([;&|]|\$))/\1git git-rm\5/g" <<<"$EXECT" | LC_ALL=C grep -oE "$RM_TEXT_RX")
   (( ${#matches[@]} > RM_REAL )) || return 0
   for m in "${matches[@]}"; do
     [[ ${m:0:1} == r ]] || m=${m:1}
@@ -658,7 +670,8 @@ token_checks() {
         tok_ask "Confirm: la orden que se va a ejecutar sale de una variable, una sustitucion o una llave (${T[1]:-}): el guard no puede saber cual es. Escribe el nombre de la orden a la vista." ;;
     esac
     case ${T[1]:-} in
-      rm) judge_rm "${T[@]:2}"; (( RM_R )) && RM_REAL=$(( RM_REAL + 1 )) ;;
+      rm) judge_rm "${T[@]:2}"; (( RM_R )) && RM_REAL=$(( RM_REAL + 1 ))
+          (( RM_NOOP )) && deny "BLOCKED: rm -rf sin una ruta a la vista (el operando lo aporta una sustitucion o una variable): el guard no sabe que borra. Escribe la ruta concreta (rm -rf build)." ;;
       chmod|chown|chgrp)
         r=0
         for a in "${T[@]:2}"; do [[ $a == --recursive || ( $a == -* && $a != --* && $a == *R* ) ]] && r=1; done

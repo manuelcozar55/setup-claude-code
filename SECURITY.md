@@ -108,40 +108,45 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
   cambiar lo que ese texto significa. Es una línea de **una sola tubería** (sin `;`, `&&`, `||`, `&`, otra orden en otra línea,
   sustitución, subshell ni `cd`), sin prefijo (`VAR=`, `env`, `sudo`…) ni opción global de git (`-C`, `-c`), con las **opciones de la
   lista cerrada** de cada orden (cualquier otra, conocida o no, quita la prueba: `rg --pre`, `--hostname-bin`, `git grep -O`,
-  `ag --pager`, `ack --pager`, `man -P`, `git -c core.pager` ejecutan), escribiendo **solo a documentos** (`.md`, `.txt`, `.log`,
-  `.rst`, `.csv`, `.tsv`, `.gitignore`; nunca `.sh`, `.py`, `Makefile`, hooks de git, `package.json`, `~/.bashrc`, `~/.local/bin`) y con
-  receptores de tubería de la lista cerrada de consumidores de texto (`less`, `gh`, `git var` no lo son). Fuera de ese contexto la
+  `ag --pager`, `ack --pager`, `man -P`, `git -c core.pager` ejecutan), **sin escribir a ningún fichero** (ni `>`, `>>`, `>|`, ni
+  `tee f`, ni `sort -o`; solo `/dev/null` y los duplicados de descriptor) y con receptores de tubería de la lista cerrada de consumidores de texto (`less`, `gh`, `git var` no lo son). Fuera de ese contexto la
   prueba no existe: manda el veredicto de la base. En la duda se quita la exención; el precio son falsos positivos declarados, nunca un
   bypass nuevo.
   **Lista cerrada de exenciones** (`test/fixtures/guards-exenciones.txt`; un nombre fuera de ella hace caer el test), todas solo en
-  contexto cerrado: `dato:echo-sin-consumidor`, `dato:patron-de-busqueda` (patrón de `grep`/`rg`/`ag`/`ack`, programa de `sed`/`awk` que
-  no ejecuta), `dato:mensaje-de-commit` (`-m` de `git commit|tag|stash`, `--title|--body` de `gh`), `dato:heredoc-a-fichero`,
-  `build-relativo`, `home-proyecto-build` y `tmp-subruta` (`rm -rf` de un operando **literal**, `[A-Za-z0-9._/+@-]`, sin comodín, `%`,
-  `~` suelta ni `/.`, con un directorio de build como componente y la ruta **resuelta con `realpath`** en el disco: una ruta que sea
-  un enlace a otro sitio, o un directorio de trabajo `/`, `/tmp`, `/home`, `/etc`…, no tiene prueba; sin `realpath` tampoco),
-  `lease-rama-de-trabajo` (`--force-with-lease` con remoto explícito y **un** refspec de rama llana con prefijo de trabajo `feat/`,
-  `fix/`, `chore/`, `release/`…, sin `-C`, sin `HEAD`, sin `:` ni `+`, sin `--all`, `--mirror`, `--tags`, `--prune` ni `--delete`; la rama
-  se juzga por su texto, nunca por lo que haya en disco; sin refspec, `develop`, `trunk` o `Main` preguntan; `--all` y `--mirror` se
-  deniegan) y `git-rm-cached` (`git rm --cached [-r|-q|-n|--ignore-unmatch] <ruta relativa>`, sin `-f`, sin `..` ni rutas absolutas, sin
-  opciones tras `--`). **Retiradas en esta vuelta**: `dato:comentario` (la base nunca bloqueaba un comentario: no era una exención) y,
-  como exención, todo lo que dependía de leer el estado del disco (`HEAD` del lease) o de ignorar `cd`, `ln -s` y los enlaces.
-  Lo comprueban tres sensores. `test_guards_r1.sh` pasa 2.550 órdenes (631 de la revisión R1, 1.315 de la ronda 2 y 570 de la ronda 3)
+  contexto cerrado, una línea por exención y **cinco en total** (quinta vuelta):
+  - `dato:echo-sin-consumidor`: el texto de un `echo`/`printf` que ningún intérprete lee (sin tubería o solo con receptores de texto).
+  - `dato:patron-de-busqueda`: el patrón de `grep`/`rg`/`ag`/`ack` con opciones de la lista cerrada.
+  - `dato:mensaje-de-commit`: `-m` de `git commit|tag|stash|notes|merge|revert`, `--title|--body` de `gh`.
+  - `dato:heredoc-de-texto`: el cuerpo de un heredoc que lee `cat`, `grep`, `head`… y que no se escribe a ningún fichero.
+  - `git-rm-cached`: `git rm --cached [-r|-q|-n|--ignore-unmatch] <ruta relativa>`, sin `-f`, sin `..` ni rutas absolutas o `~`.
+  **Familias retiradas** (cuatro rondas de revisión las rompieron una y otra vez; no se parchean, se quitan, y vuelve el veredicto de
+  la base): (1) escribir un texto a un fichero como dato (`echo … > f`, `cat > f <<EOF`, `tee f`, `sort -o`); (2) `uniq` y `xxd`
+  como receptores de texto; (3) los programas de `sed` y `awk` como prosa; (4) `rm -rf` de un directorio de build (`build-relativo`,
+  `home-proyecto-build`, `tmp-subruta`) como permiso; (5) `--force-with-lease` como permiso. Qué ve la persona ahora: en (1) a (3)
+  la orden se **bloquea** como antes de las exenciones (o pregunta, si el veredicto de la base era preguntar); en (4), si la ruta
+  literal pasa la prueba, **pregunta** con la ruta resuelta y, si no, se bloquea; en (5), con remoto con nombre y una rama
+  `feat/`, `fix/`, `chore/`, `wip/`… **pregunta** y en cualquier otro caso se bloquea. Para seguir: confirmar la pregunta, o ejecutar
+  la orden uno mismo con `!` en el prompt. `rm -rf` con el directorio de trabajo en `$HOME`, con `` ` ` `` o con `$( )` se bloquea sin
+  pregunta.
+  **Alcance**: los guards frenan **accidentes y descuidos de un agente**; no son una frontera frente a un adversario que escribe la
+  orden (con intención, siempre habrá otra grafía que ningún analizador de texto vea).
+  Lo comprueban tres sensores. `test_guards_r1.sh` pasa 3.624 órdenes (631 de la revisión R1, 1.315 de la ronda 2, 570 de la ronda 3 y 1.108 de la ronda 4)
   con la columna «base» de lo que daba bc68243: ninguna baja de bloqueo a permiso sin la exención con nombre escrita en su fila.
   `test_guards_monotonia.sh` es **generativo y diferencial** frente a una copia congelada de los guards de bc68243
-  (`test/fixtures/guards-base/`, solo para tests): una gramática de 69.014 órdenes, muestra determinista de 1.200 más las cargas
+  (`test/fixtures/guards-base/`, solo para tests): una gramática de 71.005 órdenes, muestra determinista de 1.200 más las cargas
   peligrosas en ejecución directa (semilla fija; con `GUARDS_MONOTONIA_N=0` la recorre entera) y falla con cualquier «la base bloquea,
   ahora pasa» sin prueba con nombre. Además cumple una **propiedad de composición genérica**: para cada nombre de la lista toma
   semillas, las compone con `cd /`, `ln -s ~ build`, `git checkout main`, `git -C`, `;`, `&&`, `| sh`, `VAR=`, sustituciones y un
   `>> a.sh; sh a.sh`, les inyecta una opción desconocida, y exige que ninguna pase si la base la bloqueaba; un nombre sin semilla
-  también falla. `test_guards_falsifiability.sh` reintroduce ocho agujeros en copias temporales (entre ellos el del revisor, un lease
-  que no comprueba la rama de trabajo) y comprueba que el sensor cae en todos.
+  también falla. `test_guards_falsifiability.sh` reintroduce ocho agujeros en copias temporales (una familia retirada que vuelve
+  a dar allow, un intérprete como receptor de texto…) y comprueba que el sensor cae en todos.
 - **Lo que no se puede resolver, se pregunta (`ask`)**: una variable o una sustitución en la orden que recibe un pipe
   (`curl … | $X`), en la propia orden (`$X -rf ~`, `$(echo rm) -rf ~`, `{rm,-rf,~}`), en el subcomando de git (`git $X`), en
   un refspec o en el operando de `rm`, `reset` o `clean`
   (`rm -rf $D`, `git push origin $B`, `git reset $H`), `git config alias.*` (los guards no ven lo que hace un alias) y un
   fichero que el propio comando escribe y ejecuta (`echo … > x.sh; bash x.sh`). Preguntar de más es el lado seguro.
 - **Lo que es peligroso de verdad, se deniega.** El corpus de 25 comandos peligrosos de la auditoría se bloquea entero y
-  `test_guards_veredictos.sh` lo comprueba en cada `make test`, junto a 32 legítimos que pasan (y 2 falsos positivos que ya daba la versión anterior y quedan declarados: el borrado de `../otro-proyecto/node_modules`, con `..`, y un heredoc a `python3` que contiene el literal `rm -rf /`), 12 bypasses y los casos
+  `test_guards_veredictos.sh` lo comprueba en cada `make test`, junto a 34 legítimos: 22 pasan, 3 preguntan (`rm -rf node_modules`, `./build dist`, `/tmp/build-123`: la exención de build se retiró) y 9 son falsos positivos declarados que ya daba la versión anterior (el borrado de `../otro-proyecto/node_modules`, un heredoc a `python3` con el literal `rm -rf /`, y escribir un texto a un fichero: `cat > f <<EOF`, `echo … >> README.md`), 12 bypasses y los casos
   que parecen prosa y no lo son.
 
 **Lo que sigue sin ver ningún guard** (límites declarados, fijados en `test/fixtures/guards-bypass.jsonl`): el código de

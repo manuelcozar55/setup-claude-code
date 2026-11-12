@@ -117,6 +117,11 @@ C-04	sen	B	cd ~/.claude && sed -i s/a/b/ settings.json
 C-04	sen	B	mv x ~/.claude/sentinel-allowlist.json
 C-04	sen	B	truncate -s0 ~/.claude/settings.json
 C-04	sen	B	: > ~/.claude/settings.json
+C-04	sen	B	echo x > ~/.claude/.kit-desactivados
+C-04	sen	B	echo block-dangerous-commands.sh >> ~/.claude/.kit-desactivados
+C-04	sen	B	echo x | tee -a ~/.claude/.kit-desactivados
+C-04	sen	B	cp x ~/.claude/.kit-desactivados
+C-04	sen	N	cat ~/.claude/.kit-desactivados
 C-04	sen	N	cat ~/.claude/settings.json
 C-04	sen	N	ls ~/.claude/hooks
 C-04	sen	N	jq . ~/.claude/settings.json
