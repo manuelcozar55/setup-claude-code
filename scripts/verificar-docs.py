@@ -150,7 +150,8 @@ def main():
             fallos.append(f"{rel}: cita scripts/scc.sh; el lanzador instalado es `scc`")
     for d in list(root.rglob("*.md")) + list(root.rglob("*.sh")) + list(root.rglob("*.py")):
         rel = d.relative_to(root).as_posix()
-        if rel.startswith((".git/", "kit/mods/cockpit/node_modules")) or rel in GATE_PERMITIDO or rel == "scripts/verificar-docs.py":
+        # .claude/estado/ es estado local ignorado por git (nucleo, informes): puede citar la historia y no es producto.
+        if rel.startswith((".git/", ".claude/estado/", "kit/mods/cockpit/node_modules")) or rel in GATE_PERMITIDO or rel == "scripts/verificar-docs.py":
             continue
         if "CC_NUCLEO_GATE" in d.read_text(encoding="utf-8", errors="replace"):
             fallos.append(f"{rel}: cita CC_NUCLEO_GATE; el codigo lee NUCLEO_GATE")
