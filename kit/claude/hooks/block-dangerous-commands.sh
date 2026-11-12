@@ -6,7 +6,9 @@
 set -uo pipefail
 
 deny() {
-  jq -n --arg r "$1" '{
+  local r=$1
+  [[ $r == *"Que hacer:"* ]] || r+=" Que hacer: reformula sin la parte peligrosa (una ruta concreta, el comando a la vista); si de verdad es lo que quieres, ejecutalo tu con ! en la sesion. No se amplia la allowlist ni se desactiva el guard."
+  jq -n --arg r "$r" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -22,11 +24,11 @@ deny() {
 # llegar aqui sin el es una instalacion incompleta, no el caso normal. El JSON va literal
 # porque deny() necesita el jq que falta.
 if ! command -v jq >/dev/null 2>&1; then
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (fail-closed): falta jq en el PATH, asi que este guard no puede evaluar el comando. Instala jq (apt install jq) y reintenta."}}'
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (fail-closed): falta jq en el PATH, asi que este guard no puede evaluar el comando. Que hacer: instala jq (apt install jq) y reintenta."}}'
   exit 0
 fi
 COMMAND=$(jq -r '.tool_input.command // empty' 2>/dev/null) \
-  || deny "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable, asi que este guard no puede evaluar el comando."
+  || deny "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable, asi que este guard no puede evaluar el comando. Que hacer: reintenta; si se repite es un fallo de Claude Code, no de tu comando."
 [[ -z "$COMMAND" ]] && exit 0
 
 ALLOWLIST_FILE="${HOME:-/nonexistent}/.claude/sentinel-allowlist.json"
