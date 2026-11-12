@@ -25,10 +25,12 @@ INPUT=$(cat)
 if ! command -v jq >/dev/null 2>&1; then
   echo "BLOCKED (fail-closed): falta jq en el PATH, asi que secret-guard no puede leer el comando." >&2
   echo "Instala jq (apt install jq) y reintenta." >&2
+  echo "Que hacer: instala jq (sudo apt install jq / brew install jq) y reintenta." >&2
   exit 2
 fi
 if ! COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null); then
   echo "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable; secret-guard no puede leer el comando." >&2
+  echo "Que hacer: reintenta; si se repite es un fallo de Claude Code, no de tu comando." >&2
   exit 2
 fi
 [[ -z "$COMMAND" ]] && exit 0
@@ -38,10 +40,11 @@ fi
 # entero, y fallaban en tres sitios: `git -C . add .env` no llegaba al filtro, la exencion del fichero
 # de ejemplo se evaluaba sobre TODO el comando (`git add .env.example .env` pasaba) y `--all` no existia.
 # shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit." >&2; exit 2; }
+. "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit. Que hacer: reinstala el kit (./install.sh --apply)." >&2; exit 2; }
 cmdn_oversize "$COMMAND" && exit 0
 if ! cmdn_parse "$COMMAND"; then
   echo "BLOCKED (fail-closed): awk no pudo normalizar el comando; secret-guard no puede evaluarlo." >&2
+  echo "Que hacer: comprueba que awk (mawk o gawk) esta instalado y reintenta con un comando mas corto." >&2
   exit 2
 fi
 
@@ -99,6 +102,7 @@ for seg in "${CMDN_SEGS[@]}"; do
       for comp in "${comps[@]}"; do
         if env_name "$comp"; then
           echo "BLOCKED: Staging .env file — add to .gitignore instead." >&2
+          echo "Que hacer: anade .env a .gitignore y haz git add de los ficheros concretos." >&2
           exit 2
         fi
       done
@@ -109,6 +113,7 @@ for seg in "${CMDN_SEGS[@]}"; do
     if [[ $op =~ (\.pem|\.p12|\.pfx|\.jks|\.keystore|\.key|credentials\.json)$ ]]; then
       echo "BLOCKED: Staging potential credential file." >&2
       echo "Command: $COMMAND" >&2
+      echo "Que hacer: no subas la clave al repo; guardala fuera de el, o ejecuta tu el git add con ! en la sesion si es una clave de prueba." >&2
       exit 2
     fi
     [[ $op == . || $op == ./ || $op == '*' ]] && dot=1
@@ -123,6 +128,7 @@ for seg in "${CMDN_SEGS[@]}"; do
       (( all )) || base="$top/$(git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" rev-parse --show-prefix 2>/dev/null)"
       if [ -f "$base/.env" ] && ! git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" check-ignore -q "$base/.env" 2>/dev/null; then
         echo "BLOCKED: git add -A/. with untracked .env present — add to .gitignore first." >&2
+        echo "Que hacer: anade .env a .gitignore, o haz git add de ficheros concretos en vez de -A o ." >&2
         exit 2
       fi
     fi

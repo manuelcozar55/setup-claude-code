@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import signal
 import sys
 from datetime import datetime, timezone
@@ -657,8 +658,9 @@ def _parse(args: list[str], short: str, long: dict, stop: bool, ends: set) -> li
     return out
 
 
-def _command_roles(cmd: list) -> list:
-    """(word, role) for one simple command; role is path, code (qcode in perl/ruby) or skip."""
+def _command_roles(cmd: list, piped: bool = False) -> list:
+    """(word, role) for one simple command; role is path, code (qcode in perl/ruby) or skip.
+    piped: its output goes down a pipe, where a later command may read the words as names."""
     roles = []
     while cmd and re.match(r"\w+=", cmd[0][0]):
         roles.append((cmd.pop(0), "path"))
@@ -670,6 +672,12 @@ def _command_roles(cmd: list) -> list:
     if name == "git" and args and args[0][0] in ("grep", "commit", "tag", "merge"):
         name = "grep" if args[0][0] == "grep" else "git-message"
         roles.append((args.pop(0), "path"))
+    # echo and printf only print their words: `echo .env >> .gitignore` names no file. Down a pipe (`echo .env | xargs cat`)
+    # another command may read them as names, so there they stay paths. `git rm --cached` edits the index, it reads nothing.
+    if name in ("echo", "printf") and not piped and not any("{" in a[0] for a in args):
+        return roles + [(a, "path" if a[0].startswith("-") else "skip") for a in args]
+    if name == "git" and args and args[0][0] == "rm" and any(a[0] == "--cached" for a in args[1:]):
+        return roles + [(a, "path" if a[0].startswith("-") else "skip") for a in args]
     if name not in _OPTS:
         return roles + [(a, "path") for a in args]
     parsed = _parse([a[0] for a in args], *_OPTS[name])
@@ -689,6 +697,44 @@ def _command_roles(cmd: list) -> list:
             role, first = "skip", False
         roles.append((a, role))
     return roles
+
+
+_PROSE_COMMANDS = {"git", "grep", "egrep", "fgrep", "rg", "ag", "ack", "echo", "printf"}
+
+
+def _scrub_command(text: str) -> str | None:
+    """The command without its prose: words that name no file (commit message, grep pattern, echo
+    words) become `_` and the heredoc bodies that only reach a data sink go. Whole-text checks
+    (credential paths, dangerous patterns) judge this, so a rule that is quoted in a message or
+    a README does not block the command that writes it. None when there is nothing to scrub or
+    the command has a substitution ($( ) or backticks), which stays judged as written."""
+    try:
+        toks = _lex(text, True)
+        roles = {id(it): r for it, r in _word_roles(toks)}
+    except Exception:
+        return None
+    out, cut, name = [], False, None
+    for t in toks:
+        if isinstance(t, str):
+            out.append(t)
+            name = None
+        elif isinstance(t, dict):
+            if roles.get(id(t), "shell") == "data":
+                cut = True
+            elif t["body"] is not None:
+                out.append("<<'" + t["delim"] + "'\n" + t["body"] + "\n" + t["delim"])
+        else:
+            if t[2]:
+                return None
+            if name is None and not re.match(r"\w+=", t[0]):
+                name = _cmd_name(t[0])
+            # Only prose commands: a jq or sed program is a word that skips as a name but decides what the command does.
+            if roles.get(id(t)) == "skip" and name in _PROSE_COMMANDS:
+                cut = True
+                out.append("_")
+            else:
+                out.append(shlex.quote(t[0]))
+    return " ".join(out) if cut else None
 
 
 def _cmd_name(word: str) -> str:
@@ -858,7 +904,7 @@ def _word_roles(toks: list, sink: str = "data") -> list:
             if t == "\n" and prev in ("|", "|&"):
                 t = prev
             pipe += t not in ("|", "|&", "(", ")")
-            out += _command_roles(cmd)
+            out += _command_roles(cmd, t in ("|", "|&"))
             cmd, redirect, prev = [], False, t
         elif redirect:
             out.append((t, "path"))
@@ -1134,6 +1180,9 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
     key_note = "" if exts else " (default extensions: iocs.json has no valid key_file_extensions)"
 
     for key, text in collect_pairs(tool_input, PATH_FIELDS):
+        raw = text
+        if key == "command":
+            text = _scrub_command(text) or text
         for cand in _deny_candidates(text):
             for rx in ALWAYS_DENY_PATHS:
                 m = re.search(rx, cand)
@@ -1152,7 +1201,7 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
         for rx in regexes:
             if _search(rx, text):
                 return (f"sensitive path pattern", "critical")
-        key_reason = key_file_hit(text, key_rx)
+        key_reason = key_file_hit(raw, key_rx)
         if key_reason:
             return (f"sensitive {key_reason}{key_note}", "critical")
     return (None, None)
@@ -1698,6 +1747,7 @@ def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
             continue
         # A backslash-newline is a continuation: the shell reads it as one line, so must the regexes.
         text = re.sub(r"\\\r?\n[ \t]*", " ", text)
+        text = _scrub_command(text) or text
         safe_fetch = fetch_safe_reader(text, fetch_patterns)
         for rx in patterns:
             if safe_fetch and rx in fetch_patterns:
@@ -1811,7 +1861,7 @@ def main() -> None:
     try:
         payload = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError:
-        print("SENTINEL BLOCKED (fail-closed): payload de PreToolUse no es JSON.", file=sys.stderr)
+        print("SENTINEL BLOCKED (fail-closed): payload de PreToolUse no es JSON. Que hacer: reintenta; si se repite es un fallo de Claude Code, no de tu comando.", file=sys.stderr)
         sys.exit(2)
 
     tool_name = payload.get("tool_name") or payload.get("tool", "<unknown>")
@@ -1868,16 +1918,33 @@ def main() -> None:
         # A blocked command or a write to the kit's own config gets the way out instead: the
         # allowlist is no way past a command block (the policy says never widen it to get past one).
         if reason and "kit protects" in reason:
-            hint = "\nLa configuracion del kit (hooks, settings, sentinel) la cambia la persona, no una sesion."
+            hint = (
+                "\nLa configuracion del kit (hooks, settings, sentinel) la cambia la persona, no una sesion."
+                "\nQue hacer: pide a la persona que haga el cambio (a mano o con ! en la sesion)."
+            )
         elif reason and "dangerous command pattern" in reason:
             hint = (
                 "\nAlternativa: descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o "
                 "python -c que solo lea e imprima (json, sys, print)."
+                "\nQue hacer: descarga a un fichero (curl -o), revisalo y ejecutalo aparte; si de verdad es lo que quieres, "
+                "ejecutalo tu con ! en la sesion."
+            )
+        elif always_deny_hit(tool_input):
+            hint = (
+                "\nQue hacer: ninguna allowlist levanta este bloqueo (es material de credenciales); "
+                "pide a la persona que lo lea o lo haga ella con ! en la sesion."
+            )
+        elif tool_name == "Bash":
+            # The allowlist `paths` only exempts a field that is one path (EXEMPTABLE_FIELDS): never a command.
+            hint = (
+                "\nQue hacer: la allowlist no levanta un bloqueo sobre un comando. Nombra la ruta solo donde el comando "
+                "la necesite (un mensaje de commit, un patron de grep o un echo no cuentan), usa Read/Edit sobre esa "
+                "ruta (ahi si vale la allowlist de paths) o ejecutalo tu con ! en la sesion."
             )
         else:
             hint = (
-                "" if always_deny_hit(tool_input)
-                else "\nTo allowlist a false positive: add to ~/.claude/sentinel-allowlist.json"
+                "\nQue hacer: si es un falso positivo, la persona anade la ruta a paths de "
+                "~/.claude/sentinel-allowlist.json."
             )
         print(json.dumps({
             "hookSpecificOutput": {
@@ -1904,5 +1971,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"SENTINEL BLOCKED (fail-closed): error interno del preflight: {e!r}", file=sys.stderr)
+        print(f"SENTINEL BLOCKED (fail-closed): error interno del preflight: {e!r}. Que hacer: reintenta con un comando mas corto; si se repite, avisa a quien mantiene el kit.", file=sys.stderr)
         sys.exit(2)

@@ -719,7 +719,7 @@ expect "destructive: heredoc con ; y rm -rf en la cabecera denegado"    "$(run_d
 expect "destructive: heredoc sin comillas con \$( ) denegado"          "$(run_destructive_jq "cat > a.md <<EOF${NL}\$(rm -rf ~)${NL}EOF")" BLOCK
 expect "destructive: heredoc a un shell denegado"                       "$(run_destructive_jq "bash <<'EOF'${NL}rm -rf ~${NL}EOF")" BLOCK
 expect "destructive: heredoc con pipe a un shell denegado"              "$(run_destructive_jq "cat <<'EOF' | bash${NL}rm -rf ~${NL}EOF")" BLOCK
-expect "destructive: heredoc a stdout (sin fichero) denegado"           "$(run_destructive_jq "cat <<'EOF'${NL}rm -rf ~${NL}EOF")" BLOCK
+expect "destructive: heredoc a stdout (sin fichero) es dato, NO denegado"           "$(run_destructive_jq "cat <<'EOF'${NL}rm -rf ~${NL}EOF")" ALLOW
 expect "destructive: heredoc sin cierre denegado"                       "$(run_destructive_jq "cat > a.md <<'EOF'${NL}rm -rf ~${NL}")" BLOCK
 expect "destructive: heredoc a fichero con && bash denegado"            "$(run_destructive_jq "cat > a.sh <<'EOF' && bash a.sh${NL}rm -rf ~${NL}EOF")" BLOCK
 # Hueco `~` entre comillas: `~` o `..` pegados a la comilla de cierre (o a `;`, `)`...) no contaban como objetivo de rm.

@@ -326,6 +326,23 @@ sen_cost_case "curl x | y 120000 parentesis" 'curl x | ' '(' 120000 '; cat .env'
 sen_cost_case "echo \$(xN" '' 'echo $(' 18000 '; cat .env'
 sen_cost_case "curl x | jq . |xN" '' 'curl x | jq . |' 8500 '; cat .env'
 rm -rf "$BYPASS_HOME"
+
+# Los cinco guards de Bash son falsables: cada uno, sustituido por un stub «permitir siempre», hace caer sus filas de
+# test_guards_mensajes.sh (esa suite ejecuta cada guard solo, sin el respaldo de los otros). Con la cadena entera un
+# guard redundante podria desaparecer sin que nada cayera; por eso el recuento va por guard. Se exige que caigan al
+# menos sus filas de fixtures/guards-mensajes.tsv mas la de «sin jq».
+for g in block-dangerous-commands branch-guard destructive-guard secret-guard bash-write-guard; do
+  FD=$(mktemp -d); cp -R "$HERE/../claude/hooks/." "$FD/"
+  printf '#!/bin/bash\nexit 0\n' > "$FD/$g.sh"; chmod +x "$FD/$g.sh"
+  rows=$(grep -c "^$g	" "$HERE/fixtures/guards-mensajes.tsv")
+  base_f=$(bash "$HERE/test_guards_mensajes.sh" 2>&1 | grep -oE 'FAIL=[0-9]+' | tail -n 1 | cut -d= -f2)
+  stub_f=$(MENSAJES_HOOKS_DIR="$FD" bash "$HERE/test_guards_mensajes.sh" 2>&1 | grep -oE 'FAIL=[0-9]+' | tail -n 1 | cut -d= -f2)
+  rm -rf "$FD"
+  echo "FALSABLE: $g neutralizado: caen $((stub_f - base_f)) casos (filas propias: $rows)"
+  if [ "${base_f:-1}" -ne 0 ] || [ "$((stub_f - base_f))" -lt "$((rows + 1))" ]; then
+    bypass_fail=$((bypass_fail+1)); echo "FAIL: $g neutralizado deberia hacer caer al menos $((rows + 1)) casos de test_guards_mensajes.sh (base=$base_f, stub=$stub_f)"
+  fi
+done
 if [ "$bypass_fail" -ne 0 ]; then
   echo "FAIL: $bypass_fail casos de bypass/negativos incorrectos."
   exit 1

@@ -17,14 +17,40 @@
 # nunca cuando está instalado y dice no. Contrato probado en
 # kit/test/test_optional_hook.sh.
 #
+# Dos guards no son opcionales: el preflight de Sentinel y write-guard.py. Si falta su script (con
+# intérprete presente) deniegan con exit 2. Si falta el intérprete, la máquina no puede ejecutarlos y
+# el wrapper sigue sin bloquear, pero ya no calla: avisa UNA vez por sesión por additionalContext
+# (el modelo y la persona ven que Sentinel o write-guard no están activos). La tabla completa de
+# fallos (sin jq, sin python3, JSON roto, caída, timeout) está en SECURITY.md y en docs/05-security.md.
+#
 # Uso:
 #   optional-hook.sh <cmd> [args...]              # ejecutable en PATH o ruta absoluta
 #   optional-hook.sh --python <script.py> [args]  # resuelve el intérprete él solo
 set -u
 
+# Un aviso por sesión y guard: el marcador vive en un directorio de runtime y lleva el session_id del payload.
+payload=""
+warn_once() { # <clave> <mensaje>
+  local sid dir marker
+  [ -t 0 ] || payload=$(cat 2>/dev/null || true)
+  sid=$(printf '%s' "$payload" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1 | tr -c 'A-Za-z0-9_\n-' '_')
+  [ -n "$sid" ] || sid=sinsesion
+  dir="${CC_WARN_DIR:-${XDG_RUNTIME_DIR:-/tmp}}"
+  marker="$dir/cc-degradado-$(id -u)-$sid-$1"
+  [ -e "$marker" ] && return 0
+  : > "$marker" 2>/dev/null || true
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}\n' "$2"
+  printf '%s\n' "$2" >&2
+}
+
 if [ "${1:-}" = "--python" ]; then
   shift
   script="${1:-}"
+  guard=""
+  case "$(basename "$script")" in
+    sentinel_preflight.py) guard="Sentinel (rutas sensibles y comandos peligrosos)" ;;
+    write-guard.py) guard="write-guard (escrituras con secretos)" ;;
+  esac
 
   # Preferencia: el venv de tools (es donde el kit documenta las herramientas
   # Python), y si no está, el python3 del sistema. Así el hook sigue protegiendo
@@ -37,15 +63,18 @@ if [ "${1:-}" = "--python" ]; then
     done
   fi
 
-  # El preflight de Sentinel no es opcional: si su script falta deniega (exit 2) en vez de
-  # convertirse en un permiso silencioso. Sin intérprete sigue siendo no-op: es la máquina
-  # limpia que prueba test_clean_install_resilience.sh.
-  if [ "$(basename "$script")" = "sentinel_preflight.py" ] && [ -n "$py" ] && [ -x "$py" ] && [ ! -f "$script" ]; then
-    echo "BLOCKED (fail-closed): falta el guard obligatorio $script; reinstala el kit." >&2
+  # Sentinel y write-guard no son opcionales: si su script falta deniegan (exit 2) en vez de
+  # convertirse en un permiso silencioso. Sin intérprete siguen sin bloquear (es la máquina
+  # limpia que prueba test_clean_install_resilience.sh), pero avisan una vez por sesión.
+  if [ -n "$guard" ] && [ -n "$py" ] && [ -x "$py" ] && [ ! -f "$script" ]; then
+    echo "BLOCKED (fail-closed): falta el guard obligatorio $script. Que hacer: reinstala el kit (./install.sh --apply)." >&2
     exit 2
   fi
 
-  [ -n "$py" ] && [ -x "$py" ] || exit 0
+  if [ -z "$py" ] || [ ! -x "$py" ]; then
+    [ -n "$guard" ] && warn_once "${guard%% *}" "[SCC] $guard NO esta activo: falta python3 en esta maquina, asi que ese guard no se ejecuta (los guards bash siguen activos). Que hacer: instala python3 (apt install python3) y reinicia la sesion."
+    exit 0
+  fi
   [ -n "$script" ] && [ -f "$script" ] || exit 0
   # -I -S: sin site ni PYTHON*; los hooks solo usan stdlib y un .pth ajeno no entra en un guard.
   exec "$py" -I -S "$@"
