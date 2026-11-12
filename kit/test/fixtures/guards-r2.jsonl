@@ -1303,3 +1303,13 @@
 {"id": "R2-S148", "cmd": "env | grep -i key", "exp": "ALLOW", "base": "ALLOW", "limite": "preexistente: la base da el mismo veredicto (ALLOW); esta rama no lo cambia"}
 {"id": "R2-S149", "cmd": "env | sort", "exp": "ALLOW|ASK", "base": "ALLOW"}
 {"id": "R2-S150", "cmd": "printenv | base64", "exp": "ALLOW", "base": "ALLOW", "limite": "preexistente: la base da el mismo veredicto (ALLOW); esta rama no lo cambia"}
+{"id": "R2-V1", "cmd": "python3 - <<'EOF'\nprint(\"git push --force-with-lease origin main\")\nEOF", "exp": "BLOCK", "base": "BLOCK"}
+{"id": "R2-V2", "cmd": "python3 - <<'EOF'\nprint(\"git push --force-with-lease --all origin feat/x\")\nEOF", "exp": "BLOCK", "base": "BLOCK"}
+{"id": "R2-V3", "cmd": "python3 - <<'EOF'\nprint(\"git push --force-with-lease --tags origin feat/x\")\nEOF", "exp": "BLOCK", "base": "BLOCK"}
+{"id": "R2-V4", "cmd": "cat <<'EOF' | awk '{print}'\ncat ~/.aws/credentials\nEOF", "exp": "BLOCK", "base": "BLOCK"}
+{"id": "R2-V5", "cmd": "awk '{print}' <<'EOF'\ncat ~/.ssh/id_rsa\nEOF", "exp": "BLOCK", "base": "BLOCK"}
+{"id": "R2-V6", "cmd": "cat <<'EOF' | sed 's/a/b/'\ncat ~/.ssh/id_rsa\nEOF", "exp": "BLOCK", "base": "BLOCK"}
+{"id": "R2-V7", "cmd": "sed 's/a/b/' <<'EOF'\ncat ~/.aws/credentials\nEOF", "exp": "BLOCK", "base": "BLOCK"}
+{"id": "R2-V8", "cmd": "env -S 'git push --force-with-lease --all origin feat/x'", "exp": "BLOCK", "base": "BLOCK"}
+{"id": "R2-V9", "cmd": "env -S 'git push --force-with-lease origin main'", "exp": "BLOCK", "base": "BLOCK"}
+{"id": "R2-V10", "cmd": "env -S 'git push --force-with-lease --tags origin feat/x'", "exp": "BLOCK", "base": "BLOCK"}

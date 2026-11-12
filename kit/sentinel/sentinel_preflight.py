@@ -716,12 +716,15 @@ def _scrub_command(text: str) -> str | None:
     except Exception:
         return None
     out, cut, name = [], False, None
+    # sed and awk are programs, not text consumers: what they read can run (e, system, getline), so with one of them
+    # in the command no body is scrubbed and the whole text is judged as the base did.
+    prog = any(c and _cmd_name(c[0][0]) in ("sed", "awk") for c in _simple_commands(toks))
     for t in toks:
         if isinstance(t, str):
             out.append(t)
             name = None
         elif isinstance(t, dict):
-            if roles.get(id(t), "shell") == "data":
+            if roles.get(id(t), "shell") == "data" and not prog:
                 cut = True
             elif t["body"] is not None:
                 out.append("<<'" + t["delim"] + "'\n" + t["body"] + "\n" + t["delim"])

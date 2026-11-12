@@ -521,6 +521,7 @@ push_refspec() {
         [[ $a == :?* || $a == '$':?* ]] && return 0
       fi
     done
+    [[ $kind == force ]] && (( lease )) && LEASE_REAL=$(( LEASE_REAL + 1 ))
     # El lease con --all o --mirror alcanza a main/master: se trata como a main. Con --tags, que no se ve que etiquetas pisa: ask.
     (( lease && pall )) && return 0
     if [[ $kind == force ]] && (( lease && ! ptags )); then
@@ -538,8 +539,15 @@ push_refspec() {
   return 1
 }
 PIPED=0; cmdn_pipes_to_shell && PIPED=1
+LEASE_REAL=0
 if [[ $COMMAND == *git* && $COMMAND == *push* ]]; then
   push_refspec 0 force; rc_refspec=$?
+  # Un lease que el texto muestra y ninguna orden analizada es (codigo de un interprete, env -S, un argumento opaco) no tiene la
+  # prueba de la rama de trabajo: manda el criterio de la base, que lo denegaba.
+  if (( rc_refspec == 1 )); then
+    LEASE_TEXT=$(LC_ALL=C grep -oE '\bgit\b[^;&|]*\bpush\b[^;&|]*--force-(with-lease|if-includes)' <<<"$EXECT" | wc -l)
+    (( LEASE_TEXT > LEASE_REAL )) && deny "BLOCKED: git push con lease que el guard no puede analizar como orden (dentro de codigo de un interprete, env -S...): sin la prueba de que la rama es de trabajo vale el criterio de siempre. Escribelo como orden directa."
+  fi
   (( rc_refspec == 0 )) && deny "BLOCKED: git push --force / -f / +refspec (force push)"
   (( rc_refspec == 2 )) && deny "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con git push: no caben en el timeout del guard; dividelo en comandos cortos"
 fi
