@@ -85,9 +85,21 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
   (un shell sin `-c`, `ssh`, `xargs`, `. /dev/stdin`) o el heredoc se guarda y se ejecuta en la misma orden
   (`cat > a.sh <<EOF … EOF && bash a.sh`), el texto vuelve a contar como código.
 - **El borrado recursivo se decide por operandos**, no por la palabra: `rm -rf node_modules` o `rm -rf build` pasan,
-  `rm -rf ~/Documentos` o `rm -rf /` se deniegan, y un `cd /` seguido de `rm -rf *` también. `git clean -n` pasa.
+  `rm -rf ~/Documentos` o `rm -rf /` se deniegan, y `rm -rf .`, `*`, `./*` o `.git` también (vacían el repo). La exención es de
+  una ruta relativa de build **dentro del proyecto** o de una subruta concreta (`/tmp/prueba-123`), nunca del directorio entero
+  (`/tmp`, `/tmp/*`), de la raíz de otro usuario (`~root`, `~+`) ni de un sitio del sistema (`/opt/tmp`, `/mnt/c/…/dist`).
+  Un `rm -r` que llega como **argumento** de otra orden (`xargs rm -rf`, `flock l rm -rf …`, `find -exec rm`, `at`,
+  `awk 'BEGIN{system(…)}'`) se juzga como si fuera la orden: con un operando sensible a la vista se deniega, y si no se ve
+  la ruta se pregunta. `git clean -n` pasa.
+- **Monotonía.** Lo que la versión anterior (bc68243) bloqueaba solo pasa si el analizador demuestra que el literal peligroso
+  es **dato** en un contexto conocido (argumento de `echo`/`printf`, patrón de `grep`/`rg`, valor de `-m`, cuerpo de `gh`,
+  heredoc a un fichero, comentario) o es el borrado de una ruta relativa de build. En cualquier otro caso en que el análisis
+  no encuentre la orden, el veredicto es `ask` (o bloqueo), nunca un permiso en silencio. `test_guards_r1.sh` lo comprueba con
+  631 órdenes y la columna «base» de lo que daba bc68243: ninguna puede bajar de bloqueo a permiso sin una exención escrita
+  y justificada en la propia fila.
 - **Lo que no se puede resolver, se pregunta (`ask`)**: una variable o una sustitución en la orden que recibe un pipe
-  (`curl … | $X`), en el subcomando de git (`git $X`), en un refspec o en el operando de `rm`, `reset` o `clean`
+  (`curl … | $X`), en la propia orden (`$X -rf ~`, `$(echo rm) -rf ~`, `{rm,-rf,~}`), en el subcomando de git (`git $X`), en
+  un refspec o en el operando de `rm`, `reset` o `clean`
   (`rm -rf $D`, `git push origin $B`, `git reset $H`), `git config alias.*` (los guards no ven lo que hace un alias) y un
   fichero que el propio comando escribe y ejecuta (`echo … > x.sh; bash x.sh`). Preguntar de más es el lado seguro.
 - **Lo que es peligroso de verdad, se deniega.** El corpus de 25 comandos peligrosos de la auditoría se bloquea entero y
@@ -97,8 +109,20 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
 **Lo que sigue sin ver ningún guard** (límites declarados, fijados en `test/fixtures/guards-bypass.jsonl`): el código de
 un intérprete (`python3 -c "import shutil; shutil.rmtree('/home/u')"`, `perl -e "unlink glob q(/home/*/*)"`: el hook ve
 texto, no lo que ejecutará Python o Perl), `eval "$X"` y `bash -c "$X"` con el valor construido antes, un nombre armado
-con comillas (`cur''l`, `b""ash`), `rsync --delete` y cualquier cosa que borre sin nombrar una ruta. La barrera real es
-la capa de permisos de Claude Code y, para lo catastrófico, que el agente no corra con permisos que no necesita.
+con comillas (`cur''l`, `b""ash`), `rsync --delete` y cualquier cosa que borre sin nombrar una ruta. También pasan, y ya
+pasaban en la versión anterior, estos que la revisión R1 midió (están fijados como `limite` en `test/fixtures/guards-r1.jsonl`):
+`git checkout -- .`, `git checkout .` y `git restore .` (descartan cambios sin pasar por el reflog), `git branch -D` de una
+rama que no es `main`/`master`, `git stash clear`, `git filter-branch`, `git reflog expire`, `git gc --prune=now`,
+`git reset --merge|--keep`, `git checkout -f`, `git switch -f`, `mv ~ …`, `truncate` de un dotfile, `kill -9 -1`, `pkill -9 -u`,
+`printenv`, `cat /proc/self/environ`, `cat` de ficheros de credenciales que no están en la lista cerrada
+(`~/.git-credentials`, la config de gcloud), un nombre armado con `printf` o con `${X:-…}` (`cat $(printf .en%s v)`), el
+nombre por glob (`cat .en*`), `rm${IFS}-rf${IFS}~/x`, la expansión de llaves `{rm,-rf,~/x}` y `$'\x72m' -rf ~`
+(esta última sí pregunta: lleva un `$` en la orden). La barrera real es la capa de permisos de Claude Code y, para lo
+catastrófico, que el agente no corra con permisos que no necesita.
+
+`git push --force-with-lease` y `--force-if-includes` a una rama de trabajo **pasan** (solo pisan la rama si nadie la ha tocado);
+a `main`/`master`, con `--force` junto a ellos o con un `+refspec`, se deniegan igual. El texto de `gh pr create|issue comment
+--body|--title` es prosa. `python3 -c "print('rm -rf ~')"` sigue bloqueado: el código de un intérprete es un límite declarado.
 
 `secret-guard.sh` y `bash-write-guard.sh` miran cosas distintas: el primero el nombre de lo que se añade al índice
 (`git add .env`, `*.pem`), el segundo el contenido que un comando escribe. El chequeo de `git add -A` trabaja sobre el
