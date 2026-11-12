@@ -60,6 +60,8 @@ if ! grep -q "^## \[$NEW\]" CHANGELOG.md; then
   echo "bump: AVISO: CHANGELOG.md no tiene la seccion «## [$NEW] - AAAA-MM-DD». Escribela (con «### Cifras» o «Sin cifras: <motivo>»); los sensores no pasaran sin ella." >&2
 fi
 echo "bump: $cambiados ficheros editados ($OLD -> $NEW)"
+ORIGEN="$(head -1 kit/ORIGEN 2>/dev/null || true)"
+[ -z "$ORIGEN" ] || echo "bump: origen del repo: $ORIGEN (kit/ORIGEN; tag previsto v$NEW en https://github.com/$ORIGEN)"
 
 [ "$SENSORES" -eq 1 ] || exit 0
 rc=0

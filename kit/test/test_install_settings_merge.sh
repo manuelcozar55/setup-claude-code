@@ -38,6 +38,7 @@ fi
 
 # Todo ocurre en un HOME temporal: esta suite no puede acercarse al ~/.claude real.
 export HOME="$tmp/home"; mkdir -p "$HOME"
+read -r ORIG < "$KIT/ORIGEN"   # owner/repo de origen: un fork lo cambia en un solo sitio (scripts/cambiar-origen.sh)
 S=""
 seed(){  # $1 = caso; stdin = el settings.json que ya tenias. Deja $CLAUDE_HOME y $S puestos.
   export CLAUDE_HOME="$tmp/$1"; mkdir -p "$CLAUDE_HOME"
@@ -252,7 +253,7 @@ ck "$(jq -r '.extraKnownMarketplaces["setup-claude-code"].source.ref' "$KIT/clau
 for previo in '' '"ref": "v0.0.1",'; do
 seed k <<EOF
 { "extraKnownMarketplaces": {
-    "setup-claude-code": { "source": { $previo "source": "github", "repo": "manuelcozar55/setup-claude-code" } },
+    "setup-claude-code": { "source": { $previo "source": "github", "repo": "$ORIG" } },
     "otro": { "source": { "source": "github", "repo": "alguien/otro", "ref": "main" } } } }
 EOF
 run
@@ -262,14 +263,14 @@ ck "$(jq -c '.extraKnownMarketplaces.otro' "$S")" '{"source":{"source":"github",
 done
 # Caso k2: la entrada del kit llevaba ademas `autoUpdate` (tuyo). Hasta la 1.9.0 la fusion sustituia la
 # entrada entera y lo perdia en cada --apply: solo el `source` es del kit.
-seed k2 <<'EOF'
+seed k2 <<EOF
 { "extraKnownMarketplaces": {
-    "setup-claude-code": { "source": { "source": "github", "repo": "manuelcozar55/setup-claude-code", "ref": "v0.0.1" }, "autoUpdate": true } } }
+    "setup-claude-code": { "source": { "source": "github", "repo": "$ORIG", "ref": "v0.0.1" }, "autoUpdate": true } } }
 EOF
 run
-ck "$(jq -Sc '.extraKnownMarketplaces["setup-claude-code"]' "$S")" "{\"autoUpdate\":true,\"source\":{\"ref\":\"$ref\",\"repo\":\"manuelcozar55/setup-claude-code\",\"source\":\"github\"}}" "marketplace del kit con autoUpdate tuyo: el ref sigue a $ref y autoUpdate se conserva"
+ck "$(jq -Sc '.extraKnownMarketplaces["setup-claude-code"]' "$S")" "{\"autoUpdate\":true,\"source\":{\"ref\":\"$ref\",\"repo\":\"$ORIG\",\"source\":\"github\"}}" "marketplace del kit con autoUpdate tuyo: el ref sigue a $ref y autoUpdate se conserva"
 # Por la misma razon, `plugin install cockpit --marketplace <repo>` sin ref falla con el marketplace ya fijado.
-ck "$(grep -rl -- '--marketplace manuelcozar55' "$KIT/docs" "$KIT/../README.md" | wc -l)" "0" "ninguna doc instala el cockpit con --marketplace <repo> sin ref"
+ck "$(grep -rl -- "--marketplace $ORIG" "$KIT/docs" "$KIT/../README.md" | wc -l)" "0" "ninguna doc instala el cockpit con --marketplace <repo> sin ref"
 
 # Caso r: actualizar una instalacion 1.9.x/1.10.x. Los hooks nucleo-gate, stop-context-gauge y post-compact-check
 # se retiraron: sus entradas de settings.json (con y sin comillas) y sus scripts deben irse, salvo el script que
@@ -282,8 +283,7 @@ seed r <<'EOF'
     "PostCompact": [ { "hooks": [ { "type": "command", "command": "\"$HOME/.claude/hooks/post-compact-check.sh\"" } ] } ] } }
 EOF
 mkdir -p "$CLAUDE_HOME/hooks"
-nucleo_gate_viejo="$(git -C "$KIT/.." log --format=%H -1 --diff-filter=D -- kit/claude/hooks/nucleo-gate.sh)^"
-git -C "$KIT/.." show "$nucleo_gate_viejo:kit/claude/hooks/nucleo-gate.sh" > "$CLAUDE_HOME/hooks/nucleo-gate.sh"
+cp "$HERE/fixtures/nucleo-gate.retirado.sh" "$CLAUDE_HOME/hooks/nucleo-gate.sh"   # una version publicada, sin tocar
 echo "# editado por la persona" > "$CLAUDE_HOME/hooks/stop-context-gauge.sh"
 run
 ck "$(jq '[.hooks | .. | strings | select(test("nucleo-gate|stop-context-gauge|post-compact-check"))] | length' "$S")" "0" "retirados: sus entradas de settings.json se van, con y sin comillas"

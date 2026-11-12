@@ -42,7 +42,8 @@ ok "allow reducido a lo genérico (sin dominios, graphify ni rtk personales)" "$
 ok "ni oraculo ni handoff en allow (envuelven comandos arbitrarios)" "$(q '[.permissions.allow[]? | select(test("oraculo|handoff"))] | length')" 0
 # shellcheck disable=SC2016 # $k y $m son variables de jq, no del shell
 ok "todo plugin de terceros tiene su marketplace en extraKnownMarketplaces" "$(q '(.extraKnownMarketplaces // {} | keys) as $k | [.enabledPlugins | keys[] | split("@")[1] | select(. != "claude-plugins-official") | select(. as $m | $k | index($m) | not)] | join(" ")')" ""
-ok "marketplace setup-claude-code apunta a manuelcozar55/setup-claude-code" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.repo')" manuelcozar55/setup-claude-code
+read -r ORIG < "$(dirname "$0")/../ORIGEN"
+ok "marketplace setup-claude-code apunta al origen de kit/ORIGEN ($ORIG)" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.repo')" "$ORIG"
 ok "sin plugins personales ni de contexto caro (codex, understand-anything, frontend-design)" "$(q '[.enabledPlugins | keys[] | select(test("^(codex|understand-anything|frontend-design)@"))] | length')" 0
 # L4: el marketplace del kit va fijado al tag de esta version (source.ref de la fuente github, doc oficial
 # code.claude.com/docs/en/plugins/marketplace-reference#marketplace-sources). Sin ref seguia la rama por defecto:
