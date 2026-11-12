@@ -658,6 +658,105 @@ def _parse(args: list[str], short: str, long: dict, stop: bool, ends: set) -> li
     return out
 
 
+# Closed context (the rule of the exemption proofs): a proof that a word is data (echo and printf words, git rm --cached, the prose
+# of _scrub_command) holds only when the whole line is ONE pipeline with no substitution, no separator, no prefix (env, cd...), no
+# global git option and no write to anything but a document. Anything else gets the verdict the base gave.
+_CTX_PREFIXES = {"env", "sudo", "doas", "command", "nice", "nohup", "time", "exec", "builtin", "stdbuf", "ionice", "setsid",
+                 "timeout", "cd", "pushd", "popd"}
+_DOC_FILE = re.compile(r"\.(md|txt|log|rst|csv|tsv)$")
+_NO_DOC_DIR = re.compile(r"(^|/)\.(git|claude|husky|github)(/|$)")
+_AGENT_DOCS = {"CLAUDE.md", "AGENTS.md", "SKILL.md", "MEMORY.md"}
+_CLOSED = False
+
+
+def _doc_target(w: str) -> bool:
+    """A write target nobody reads as code or configuration: a document outside .git, .claude, .husky and .github."""
+    if w in ("/dev/null", "/dev/stdout", "/dev/stderr") or re.fullmatch(r"&?[0-9-]+", w):
+        return True
+    return bool(_DOC_FILE.search(w) or os.path.basename(w) == ".gitignore") and not _NO_DOC_DIR.search(w) and os.path.basename(w) not in _AGENT_DOCS \
+        and not re.search(r"[$`*?{}\[~\\]", w)
+
+
+_GREP_NAMES = {"grep", "egrep", "fgrep", "zgrep", "rg", "ag", "ack"}
+_GREP_LONG = {"--color", "--colour", "--ignore-case", "--line-number", "--count", "--recursive", "--word-regexp", "--fixed-strings",
+              "--extended-regexp", "--files-with-matches", "--files-without-match", "--invert-match", "--quiet", "--silent",
+              "--no-filename", "--with-filename", "--null", "--text", "--max-count", "--regexp", "--include", "--exclude", "--type",
+              "--glob", "--after-context", "--before-context", "--context", "--only-matching", "--no-messages", "--hidden",
+              "--follow", "--smart-case", "--case-sensitive", "--no-ignore", "--"}
+_GIT_MSG_OPTS = {"--message", "--quiet", "--verbose", "--signoff", "--all", "--amend", "--no-edit", "--annotate"}
+
+
+def _opt_ok(name, prev: list, w: str) -> bool:
+    """Options of the commands whose words a proof reads as data come from a closed list: an unknown option may execute something
+    (rg --pre, ag --pager, git commit --template...), so the line then gets the verdict of the base."""
+    if "--" in prev or not w.startswith("-") or w == "--":
+        return True
+    if name == "echo":
+        return bool(re.fullmatch(r"-[neE]+", w)) if all(p.startswith("-") for p in prev) else True
+    if name == "printf":
+        return bool(prev)
+    if name in _GREP_NAMES or (name == "git" and prev[:1] == ["grep"]):
+        if prev and prev[-1] in ("-e", "-f", "--regexp"):
+            return True
+        return w in _GREP_LONG or w.split("=")[0] in _GREP_LONG or bool(re.fullmatch(r"-[A-Za-z0-9]+", w))
+    if name == "git" and prev[:1] in (["commit"], ["tag"], ["merge"]):
+        if prev[-1] in ("-m", "--message"):
+            return True
+        return w.split("=")[0] in _GIT_MSG_OPTS or bool(re.fullmatch(r"-[amqvs]+", w))
+    return True
+
+
+def _closed_context(text: str) -> bool:
+    """Whether the line is one pipeline in a closed context; sets _CLOSED, which _command_roles reads."""
+    global _CLOSED
+    _CLOSED = False
+    try:
+        toks = _lex(text, True)
+    except Exception:
+        return False
+    start, newline, target, name, cmdargs = True, False, False, None, []
+    for k, t in enumerate(toks):
+        if isinstance(t, dict):
+            continue
+        if isinstance(t, str):
+            if t in ("|", "|&"):
+                start, name = True, None
+            elif t == "\n":
+                newline = True
+            elif ">" in t:
+                target = True
+            elif "<" not in t:
+                return False
+            continue
+        if newline or t[2]:
+            return False
+        w = t[0]
+        if target:
+            target = False
+            if not _doc_target(w):
+                return False
+            continue
+        if not start and not _opt_ok(name, cmdargs, w):
+            return False
+        cmdargs.append(w)
+        if start:
+            start = False
+            cmdargs = []
+            name = _cmd_name(w)
+            nxt = toks[k + 1] if k + 1 < len(toks) else None
+            if re.match(r"\w+=", w) or name in _CTX_PREFIXES or name in _SHELLS or name in _INTERPRETERS \
+                    or name in ("xargs", "ssh", "find", "parallel", "watch", "at", "batch", "crontab", "source", ".", "busybox", "!"):
+                return False
+            if name == "git" and isinstance(nxt, tuple) and nxt[0].startswith("-"):
+                return False
+        elif name == "tee" and not w.startswith("-") and not _doc_target(w):
+            return False
+        elif name == "sort" and re.match(r"-[A-Za-z]*o|--output", w):
+            return False
+    _CLOSED = True
+    return True
+
+
 def _command_roles(cmd: list, piped: bool = False) -> list:
     """(word, role) for one simple command; role is path, code (qcode in perl/ruby) or skip.
     piped: its output goes down a pipe, where a later command may read the words as names."""
@@ -674,12 +773,17 @@ def _command_roles(cmd: list, piped: bool = False) -> list:
         roles.append((args.pop(0), "path"))
     # echo and printf only print their words: `echo .env >> .gitignore` names no file. Down a pipe (`echo .env | xargs cat`)
     # another command may read them as names, so there they stay paths. `git rm --cached` edits the index, it reads nothing.
-    if name in ("echo", "printf") and not piped and not any("{" in a[0] for a in args):
+    if name in ("echo", "printf") and _CLOSED and not piped and not any("{" in a[0] for a in args):
         return roles + [(a, "path" if a[0].startswith("-") else "skip") for a in args]
     # After `--` every word is a file name, `--cached` included: `git rm -- --cached <file>` deletes <file>.
     cut = next((i for i, a in enumerate(args) if a[0] == "--"), len(args))
-    if name == "git" and args and args[0][0] == "rm" and any(a[0] == "--cached" for a in args[1:cut]):
-        return roles + [(a, "path" if a[0].startswith("-") else "skip") for a in args]
+    if name == "git" and _CLOSED and not piped and args and args[0][0] == "rm" and any(a[0] == "--cached" for a in args[1:cut]):
+        # Closed form only: `git rm --cached [-r|-q|-n] [--] <relative paths>`; no -f, no option after `--`, no absolute or `..` operands.
+        ops = [a for a in args[1:cut] if not a[0].startswith("-")] + args[cut + 1:]
+        if (all(a[0] in ("--cached", "-r", "-q", "-n", "--quiet", "--dry-run", "--ignore-unmatch") for a in args[1:cut] if a[0].startswith("-"))
+                and not any(a[0] == "--" or a[0].startswith("-") for a in args[cut + 1:])
+                and not any(a[0].startswith(("/", "~")) or ".." in a[0] for a in ops)):
+            return roles + [(a, "path" if a[0].startswith("-") else "skip") for a in args]
     if name not in _OPTS:
         return roles + [(a, "path") for a in args]
     parsed = _parse([a[0] for a in args], *_OPTS[name])
@@ -709,7 +813,10 @@ def _scrub_command(text: str) -> str | None:
     words) become `_` and the heredoc bodies that only reach a data sink go. Whole-text checks
     (credential paths, dangerous patterns) judge this, so a rule that is quoted in a message or
     a README does not block the command that writes it. None when there is nothing to scrub or
-    the command has a substitution ($( ) or backticks), which stays judged as written."""
+    the command has a substitution ($( ) or backticks), which stays judged as written. None too
+    outside a closed context (_closed_context): then nothing is proved to be prose."""
+    if not _closed_context(text):
+        return None
     try:
         toks = _lex(text, True)
         roles = {id(it): r for it, r in _word_roles(toks)}
@@ -1074,6 +1181,8 @@ def key_file_hit(text: str, rx, real: bool = True, depth: int = 0, budget: list 
     code: text from an interpreter's literals, checked unexpanded past the caps. sink: who
     reads the output of a heredoc that only goes through data sinks (_word_roles). out_read: the
     text is the body of a substitution whose output another command reads (_word_roles)."""
+    if depth == 0 and budget is None:
+        _closed_context(text)
     budget = [0] if budget is None else budget
     if depth > 4:
         return "key file name" if _key_file_word(text, rx) else None

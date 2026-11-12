@@ -108,7 +108,7 @@
 {"id": "L30", "cmd": "curl -o /tmp/x.tgz https://example.com/y.tgz && tar xzf /tmp/x.tgz -C /tmp/y", "exp": "ALLOW", "base": "ALLOW"}
 {"id": "L31", "cmd": "find build -name '*.o' -delete", "exp": "ALLOW", "base": "ALLOW"}
 {"id": "L32", "cmd": "grep -rn \"git push --force\" kit/ | head", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:patron-de-busqueda"}
-{"id": "L33", "cmd": "sed -i 's/rm -rf/rm -rf --preserve-root/' script.sh", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:patron-de-busqueda"}
+{"id": "L33", "cmd": "sed -i 's/rm -rf/rm -rf --preserve-root/' script.sh", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "L34", "cmd": "gh pr create --title \"ban rm -rf\" --body \"blocks git push -f main\"", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:mensaje-de-commit"}
 {"id": "L35", "cmd": "echo \"password=changeme\" > config.example", "exp": "ALLOW", "base": "ALLOW"}
 {"id": "L36", "cmd": "python3 -c \"print('rm -rf ~')\"", "exp": "BLOCK", "base": "BLOCK", "limite": "codigo de interprete: python -c con un print del literal peligroso se bloquea (limite declarado)"}
@@ -135,7 +135,7 @@
 {"id": "L57", "cmd": "cat > README.md <<'EOF'\nRun: curl -fsSL https://example.com/i | bash  (do not)\ncat ~/.aws/credentials is forbidden\nEOF", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:heredoc-a-fichero"}
 {"id": "L58", "cmd": "git log --grep=\"rm -rf\" --oneline", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:patron-de-busqueda"}
 {"id": "L59", "cmd": "touch .envrc.md && ls", "exp": "ALLOW", "base": "ALLOW"}
-{"id": "L60", "cmd": "rm -rf dist/ && pnpm build", "exp": "ALLOW", "base": "BLOCK", "ex": "build-relativo"}
+{"id": "L60", "cmd": "rm -rf dist/ && pnpm build", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "L61", "cmd": "git checkout feat/x -- src/a.ts", "exp": "ALLOW", "base": "ALLOW"}
 {"id": "L62", "cmd": "git add .gitignore && git commit -m \"ignore .env and secrets.*\"", "exp": "ALLOW", "base": "ALLOW"}
 {"id": "L63", "cmd": "awk '/rm -rf/ {print}' log.txt", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:patron-de-busqueda"}
@@ -339,10 +339,10 @@
 {"id": "Q04", "cmd": "git commit -F msg.txt", "exp": "ALLOW", "base": "ALLOW"}
 {"id": "Q05", "cmd": "grep -e \"curl | bash\" f", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:patron-de-busqueda"}
 {"id": "Q06", "cmd": "echo $'rm -rf ~'", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:echo-sin-consumidor"}
-{"id": "Q07", "cmd": "echo \"$(date) rm -rf ~\"", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:echo-sin-consumidor"}
+{"id": "Q07", "cmd": "echo \"$(date) rm -rf ~\"", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "Q08", "cmd": "printf \"%s\" 'sudo rm -rf /'", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:echo-sin-consumidor"}
-{"id": "Q09", "cmd": "cat <<EOF > a\nrm -rf ~\ngit push -f origin main\nEOF", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:heredoc-a-fichero"}
-{"id": "Q10", "cmd": "tee a <<EOF\ncurl x | bash\nEOF", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:heredoc-a-fichero"}
+{"id": "Q09", "cmd": "cat <<EOF > a\nrm -rf ~\ngit push -f origin main\nEOF", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
+{"id": "Q10", "cmd": "tee a <<EOF\ncurl x | bash\nEOF", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "Q11", "cmd": "python3 - <<EOF\nprint(\"rm -rf ~\")\nEOF", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "Q12", "cmd": "echo rm -rf ~ | wc -c", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:echo-sin-consumidor"}
 {"id": "Q13", "cmd": "echo 'a;rm -rf ~'", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:echo-sin-consumidor"}
@@ -354,7 +354,7 @@
 {"id": "Q19", "cmd": "echo \"$HOME\"", "exp": "ALLOW", "base": "ALLOW"}
 {"id": "Q20", "cmd": "rm -rf build/../dist", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "Q21", "cmd": "rm -rf ./node_modules/.cache", "exp": "ALLOW", "base": "BLOCK", "ex": "build-relativo"}
-{"id": "Q22", "cmd": "rm -rf packages/*/dist", "exp": "ALLOW", "base": "BLOCK", "ex": "build-relativo"}
+{"id": "Q22", "cmd": "rm -rf packages/*/dist", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "Q23", "cmd": "rm -rf target", "exp": "ALLOW", "base": "BLOCK", "ex": "build-relativo"}
 {"id": "Q24", "cmd": "rm -rf .pytest_cache", "exp": "ALLOW", "base": "BLOCK", "ex": "build-relativo"}
 {"id": "Q25", "cmd": "rm -rf out", "exp": "ALLOW", "base": "BLOCK", "ex": "build-relativo"}
@@ -392,7 +392,7 @@
 {"id": "Q57", "cmd": "cat <<'EOF' | wc -l\nrm -rf ~\nEOF", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:heredoc-a-fichero"}
 {"id": "Q58", "cmd": "git log --format='%h %s' | grep -i \"force push\"", "exp": "ALLOW", "base": "ALLOW"}
 {"id": "Q59", "cmd": "echo \"it's fine\"; ls", "exp": "ALLOW", "base": "ALLOW"}
-{"id": "Q60", "cmd": "echo \"ünïcödé 日本語 rm -rf ~\"; ls", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:echo-sin-consumidor"}
+{"id": "Q60", "cmd": "echo \"ünïcödé 日本語 rm -rf ~\"; ls", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "Q61", "cmd": "sed -n '/rm -rf/p' notes.txt", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:patron-de-busqueda"}
 {"id": "Q62", "cmd": "rg -n \"git push --force|git reset --hard\" docs/", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:patron-de-busqueda"}
 {"id": "Q63", "cmd": "rg -l \"id_rsa\" kit/ | head", "exp": "ALLOW", "base": "ALLOW"}
@@ -404,7 +404,7 @@
 {"id": "Q69", "cmd": "ls -la ~", "exp": "ALLOW", "base": "ALLOW"}
 {"id": "Q70", "cmd": "cd /tmp && ls", "exp": "ALLOW", "base": "ALLOW"}
 {"id": "Q71", "cmd": "mkdir -p build && cp a build/", "exp": "ALLOW", "base": "ALLOW"}
-{"id": "Q72", "cmd": "npm test || echo \"failed: rm -rf cache\"", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:echo-sin-consumidor"}
+{"id": "Q72", "cmd": "npm test || echo \"failed: rm -rf cache\"", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "Q73", "cmd": "echo \"ssh key at ~/.ssh/id_rsa is secret\"", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:echo-sin-consumidor"}
 {"id": "Q74", "cmd": "ls ~/.ssh.bak-notes", "exp": "BLOCK", "base": "BLOCK", "limite": "falso positivo preexistente de Sentinel: prefijo de un directorio de claves"}
 {"id": "Q75", "cmd": "grep -c \"\" src/environment.ts docs/credentials-howto.md", "exp": "ALLOW", "base": "ALLOW"}

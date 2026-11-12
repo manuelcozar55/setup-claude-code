@@ -49,6 +49,45 @@ function redir(t) { return (t ~ /^[0-9]*[<>]/) }
 function redir_alone(t) { return (t ~ /^[0-9]*(>>?[|]?|<<?)$/) }
 function push(body) { qn++; queue[qn] = body }
 
+# Contexto cerrado (regla de las pruebas de exencion): una prueba solo vale si la linea entera es UNA tuberia de la orden exenta y
+# consumidores de la lista cerrada, con opciones de una lista cerrada y escritura solo a ficheros de documento. Cualquier otra cosa
+# (un separador, un prefijo, una opcion desconocida, un destino que un interprete o make leeria) deja nosimple=1 y manda la base.
+# Destino de una escritura que NO es codigo ni configuracion de nadie: extension de documento, fuera de .git, .claude, .husky,
+# .github y de los ficheros que un agente lee como instrucciones.
+function docext(t,   b) {
+  if (t == "/dev/null" || t == "/dev/stdout" || t == "/dev/stderr") return 1
+  if (t ~ /(^|\/)\.(git|claude|husky|github)(\/|$)/) return 0
+  b = base(t)
+  if (b == "CLAUDE.md" || b == "AGENTS.md" || b == "SKILL.md" || b == "MEMORY.md") return 0
+  return ((t ~ /\.(md|txt|log|rst|csv|tsv)$/ || b == ".gitignore") && t !~ /[$`*?{[~\\]/)
+}
+# Opcion (token que empieza por -) de la lista cerrada de inocuas de la orden b: una opcion que ejecuta (--pre, --pager, -O, -P de
+# man, --hostname-bin), que escribe (-o, --output) o desconocida no esta.
+function optok(b, t,   nm, i, l) {
+  if (t == "-" || t == "--" || t ~ /^-[0-9]+$/) return 1
+  if (t ~ /^--[A-Za-z][A-Za-z0-9-]*(=.*)?$/) { nm = t; sub(/=.*/, "", nm); return (nm in longs) }
+  if ((b in grepf) && t ~ /^-e./) return 1
+  if (b == "awk" && t ~ /^-F./) return 1
+  if (t ~ /^-[A-Za-z0-9]+$/) {
+    l = lett[b]
+    for (i = 2; i <= length(t); i++) if (index(l, substr(t, i, 1)) == 0 && substr(t, i, 1) !~ /[0-9]/) return 0
+    return 1
+  }
+  return 0
+}
+
+# Cuerpo de un `"$( )"` que es SOLO `cat <<'DELIM' ... DELIM`: su salida es el texto literal del heredoc (delimitador entre comillas, sin
+# expansion) y no cambia nada de la linea: no quita el contexto cerrado (es la forma habitual del mensaje de commit).
+function catdoc(b,   d, r, p, t) {
+  if (!match(b, "^[ \t\n]*cat[ \t]+<<-?[ \t]*\047[A-Za-z_][A-Za-z0-9_]*\047[ \t]*\n")) return 0
+  t = substr(b, 1, RLENGTH); r = substr(b, RLENGTH + 1)
+  sub(/^[^\047]*\047/, "", t); sub(/\047.*$/, "", t); d = t
+  r = "\n" r "\n"
+  p = index(r, "\n" d "\n")
+  if (!p) return 0
+  return (substr(r, p + length(d) + 2) ~ /^[ \t\n]*$/)
+}
+
 # Palabra delimitadora de un heredoc que empieza en p (tras `<<`): deja HDQ (entrecomillada o con barra) y HDEND (indice tras ella).
 function hdword(s, p,   n, q, w, ch) {
   n = length(s); w = ""; HDQ = 0
@@ -127,14 +166,17 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
     sj = k + 1
     while (sj <= nt && toks[sj] ~ /^-/) sj += (gitopt(toks[sj]) && sj < nt) ? 2 : 1
     subc = toks[sj]
+    if (sj > k + 1) nosimple = 1
     for (j = k + 1; j <= nt; j++) {
       t = toks[j]
       if (j <= sj) { out = out " " t; continue }
+      if ((subc in dispsub) && t ~ /^-./ && t != "--" && !optok("git", t)) nosimple = 1
       if (subc in msgsub) {
         if (drop) { drop = 0; continue }
         if (t ~ /^-[A-Za-z]*m$/ || t == "--message") { out = out " " t; drop = 1; continue }
         if (t ~ /^--message=/) { out = out " --message"; continue }
         if (match(t, /^-[A-Za-z]*m/)) { out = out " " substr(t, 1, RLENGTH); continue }
+        if (t ~ /^-./ && t != "--" && !optok("gitmsg", t)) nosimple = 1
       } else if (subc in dispsub) {
         if (clean_opt(t) || redir(t)) out = out " " t
         continue
@@ -149,6 +191,7 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
       if (drop) { drop = 0; continue }
       if (t == "-b" || t == "--body" || t == "-t" || t == "--title" || t == "-m" || t == "--message" || t == "--notes" || t == "--description") { out = out " " t; drop = 1; continue }
       if (t ~ /^--(body|title|message|notes|description)=/) { sub(/=.*/, "", t) }
+      if (t ~ /^-./ && t != "--" && t !~ /^(-[btmBdH]|--(body|title|message|notes|description|base|head|draft|fill))$/) nosimple = 1
       out = out " " t
     }
     return out
@@ -190,10 +233,28 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl, sp) {
     }
     break
   }
+  if (k > 1) nosimple = 1
+  for (j = 1; j <= nt; j++) {
+    a = toks[j]
+    if (a ~ /^[0-9&]*>>?[|]?/) {
+      o = a; sub(/^[0-9&]*>>?[|]?/, "", o)
+      if (o == "" && j < nt) o = toks[j + 1]
+      if (o !~ /^&[0-9-]*$/ && !docext(o)) nosimple = 1
+    }
+  }
+  if (k <= nt) {
+    b = base(toks[k])
+    if ((b in lett) && b != "git") for (j = k + 1; j <= nt; j++) { if (toks[j] == "--" || ((b == "echo" || b == "printf") && toks[j] !~ /^-/)) break; if (toks[j] ~ /^-./ && !optok(b, toks[j])) nosimple = 1 }
+    if (b == "tee") for (j = k + 1; j <= nt; j++) if (toks[j] !~ /^-/ && !docext(toks[j])) nosimple = 1
+    if (b == "uniq" || b == "xxd") { o = 0; for (j = k + 1; j <= nt; j++) if (toks[j] !~ /^-/) o++; if (o > 1) nosimple = 1 }
+    if (b == "cd" || b == "pushd" || b == "popd") nosimple = 1
+  }
   kd = (forceS || subdepth > 0 || btick) ? "S" : "P"
   for (j = 1; j <= nt; j++) gsub(/\n/, " ", toks[j])
   nseg++
   sepn[nseg] = pend; pend = ""
+  # Un receptor de pipe solo cierra el contexto si es un consumidor de texto de la lista cerrada (`| less`, `| gh api`, `| git var` no).
+  if (k <= nt && sepn[nseg] ~ /[|]/ && (!(b in lett) || (b == "git" && !(toks[k + 1] in dispsub)))) nosimple = 1
   pre = ""
   for (j = 1; j < k && j <= nt; j++) pre = pre (pre == "" ? "" : " ") toks[j]
   segline[nseg] = ""; segcmd[nseg] = ""; segshell[nseg] = 0; segpsh[nseg] = 0
@@ -227,6 +288,7 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl, sp) {
       if (gitopt(o) && k < nt) { g = g (g == "" ? "" : GS) o GS toks[k + 1]; k += 2 }
       else { g = g (g == "" ? "" : GS) o; k++ }
     }
+    if (g != "") nosimple = 1
   }
   sq = sepn[nseg]; gsub(/@/, "", sq)
   line = kd sq FSEP g US b
@@ -314,6 +376,7 @@ function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e,
           # Sustitucion dentro de comillas dobles: el shell la ejecuta. Se copia entera al token y su cuerpo se encola.
           e = subend(s, i + 2)
           push(substr(s, i + 2, e - (i + 2)))
+          if (ismain && catdoc(substr(s, i + 2, e - (i + 2)))) neutral++
           w = substr(s, i, e - i + 1); tok = tok w; txt = txt w; i = e + 1; continue
         }
         if (q == "\"" && d == "`") {
@@ -362,11 +425,11 @@ function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e,
   endseg()
 }
 # Una pasada por texto: el comando de la persona y, encolados, los cuerpos de sus sustituciones.
-function run(s, ismain,   t, b0, q0) {
-  b0 = nseg; q0 = qn
+function run(s, ismain,   t, b0, q0, n0) {
+  b0 = nseg; q0 = qn; n0 = neutral
   delete skip
   for (t = 0; t < 400; t++) {
-    nseg = b0; qn = q0
+    nseg = b0; qn = q0; neutral = n0
     parse(s, ismain)
     if (!openq) break
     skip[openq] = 1
@@ -393,6 +456,24 @@ BEGIN {
   for (x in inert) benign[x] = 1
   split("commit tag stash merge notes revert", arr, " "); for (x in arr) msgsub[arr[x]] = 1
   split("log show diff grep blame shortlog rev-list", arr, " "); for (x in arr) dispsub[arr[x]] = 1
+  # Opciones inocuas por orden (lista CERRADA, letras de las opciones cortas) y nombres de opciones largas inocuas. Lo que ejecuta
+  # (--pre, --pager, -O, man -P), escribe (-o, --output, sed -i) o no esta aqui quita la prueba y manda la base.
+  g0 = "ivnrRlLcwxFEGHhsqoaIzUuTbmABCSVyZPgtjkfeMlN"
+  lett["grep"] = g0; lett["egrep"] = g0; lett["fgrep"] = g0; lett["zgrep"] = g0; lett["rg"] = g0; lett["ag"] = g0; lett["ack"] = g0
+  split("grep egrep fgrep zgrep rg ag ack", arr, " "); for (x in arr) grepf[arr[x]] = 1
+  lett["git"] = "pnvcwlLhHEFiIqsazUuTbmABCSGgkrxP"
+  lett["sed"] = "nEerzsu"; lett["awk"] = "Fv"; lett["gawk"] = "Fv"; lett["mawk"] = "Fv"; lett["nawk"] = "Fv"
+  lett["man"] = "kfwa"; lett["which"] = "a"; lett["type"] = "afptP"; lett["echo"] = "neE"; lett["printf"] = ""
+  lett["test"] = "abcdefghLknoprstuwxzGOS"; lett["["] = lett["test"]
+  lett["cat"] = "AbeEnstTuv"; lett["head"] = "cnqvz"; lett["tail"] = "cnqvzf"; lett["wc"] = "clmwL"
+  lett["sort"] = "bdfgiMhnRrsuVzckmt"; lett["uniq"] = "cdDfiuszw"; lett["cut"] = "bcdfnsz"; lett["tr"] = "cdst"
+  lett["jq"] = "CcenrRsSaj"; lett["column"] = "tsnxecwo"; lett["nl"] = "bdfhilnpsvw"
+  lett["fold"] = "bsw"; lett["tac"] = "brs"; lett["rev"] = ""; lett["paste"] = "dsz"; lett["expand"] = "it"; lett["unexpand"] = "at"
+  lett["comm"] = "123iz"; lett["diff"] = "uqrcbBwiyEZaNsTp"; lett["cmp"] = "bilns"; lett["xxd"] = "abcEgiluprRs"
+  lett["od"] = "AjNtvxcodabfhilz"; lett["hexdump"] = "bcCdnosvx"; lett["base64"] = "diw"
+  lett["md5sum"] = "bctwzq"; lett["sha1sum"] = "bctwzq"; lett["sha256sum"] = "bctwzq"; lett["cksum"] = "ar"
+  lett["basename"] = "asz"; lett["dirname"] = "z"; lett["tee"] = "ai"; lett["true"] = ""; lett[":"] = ""; lett["rm"] = "rRfvdiI"; lett["gitmsg"] = "amqvs"
+  split("--color --colour --ignore-case --line-number --count --recursive --word-regexp --fixed-strings --extended-regexp --files-with-matches --files-without-match --invert-match --quiet --silent --no-filename --with-filename --null --text --max-count --regexp --include --exclude --type --glob --after-context --before-context --context --only-matching --no-messages --hidden --follow --smart-case --case-sensitive --no-ignore --oneline --graph --stat --name-only --name-status --decorate --all --no-color --abbrev-commit --shortstat --numstat --cached --staged --merges --no-merges --first-parent --reverse --patch --full-history --pretty --format --since --until --after --before --author --committer --grep --date --abbrev --diff-filter --arg --argjson --raw-output --compact-output --slurp --tab --indent --sort-keys --raw-input --null-input --exit-status --join-output --slurpfile --rawfile --args --jsonargs --regexp-extended --separate --null-data --numeric-sort --unique --number --show-all --squeeze-blank --show-ends --show-tabs --lines --bytes --verbose --words --chars --append --apropos --whatis --where --force --dir --amend --no-edit --signoff --allow-empty --annotate", arr, " "); for (x in arr) longs[arr[x]] = 1
 }
 { src = src $0 RS }
 function drain() { while (qi < qn && qi < 200 && !unparsed) { qi++; run(queue[qi], 0) } }
@@ -424,7 +505,15 @@ END {
     # Pasado el tope de cuerpos encolados el resto no se analiza: se deja como texto de orden (falla cerrado).
     for (m = qi + 1; m <= qn; m++) ex = ex ";" queue[m]
   }
-  printf "%s\036%s\036%s\036%s", maintxt, ex, psh, segs
+  # Contexto cerrado: una sola tuberia, sin sustituciones, subshells, prefijos ni escrituras a codigo. Sin el, ninguna prueba de
+  # exencion vale: el texto vuelve entero (como lo veia la base) y los guards de ordenes no eximen nada.
+  simple = (!unparsed && qn == neutral && !nosimple && maintail == "")
+  for (m = 1; m <= mainlast && simple; m++) {
+    if (m == 1) { if (sepn[m] != "") simple = 0 }
+    else if (sepn[m] != "|" && sepn[m] != "|&") simple = 0
+  }
+  if (!simple) ex = maintxt
+  printf "%s\036%s\036%s\036%s\036%s", maintxt, ex, psh, simple + 0, segs
 }
 '
 
@@ -449,16 +538,19 @@ cmdn_oversize() {
 
 cmdn_parse() {
   local out rest
-  CMDN_SEGS=(); CMDN_CWD=""; CMDN_EXEC=""; CMDN_PSH=1
+  CMDN_SEGS=(); CMDN_CWD=""; CMDN_EXEC=""; CMDN_PSH=1; CMDN_SIMPLE=0
   # Los cuatro bytes de control con los que el parser separa sus salidas (\034-\037) no pueden ir en el comando: un \036 propio
   # desplazaria texto, EXEC y segmentos. Bash no los trata como separador, asi que pasan a espacio.
   set -- "${1//[$'\034\035\036\037']/ }"
   if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]]; then
-    CMDN_TEXT=$1; CMDN_EXEC=$1; return 1
+    CMDN_TEXT=$1; CMDN_EXEC=$1; [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=0; CMDN_LINE_SET=1; }; return 1
   fi
   # `${out%%…*}` y `${out#*…}` prueban cada longitud de prefijo: cuadráticos (64 KB ≈ 1,5 s de CPU,
   # el timeout del hook corre en abierto). `read` parte en el primer separador en una pasada.
-  IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC CMDN_PSH rest <<<"$out"
+  IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC CMDN_PSH CMDN_SIMPLE rest <<<"$out"
+  # CMDN_LINE_SIMPLE: el contexto cerrado de la orden PRINCIPAL (la primera que se analiza); los analisis de ordenes anidadas
+  # (bash -c, ssh...) no lo cambian y por tanto nunca lo heredan.
+  [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=$CMDN_SIMPLE; CMDN_LINE_SET=1; }
   mapfile -t CMDN_SEGS <<<"$rest"
   while (( ${#CMDN_SEGS[@]} )) && [[ -z ${CMDN_SEGS[-1]} ]]; do
     unset 'CMDN_SEGS[-1]'
@@ -535,6 +627,17 @@ cmdn_sensitive_operand() {
   return 1
 }
 
+# cmdn_not_link <directorio> <componente> [strict]: el componente, resuelto con el disco como esta, sigue siendo hijo directo del
+# directorio (no es un enlace a otro sitio). strict: el propio directorio tampoco es un enlace (/tmp). Sin `realpath` no hay prueba.
+cmdn_not_link() {
+  command -v realpath >/dev/null 2>&1 || return 1
+  local b r
+  b=$(realpath -m -- "$1" 2>/dev/null) || return 1
+  [[ -z ${3:-} || $b == "$1" ]] || return 1
+  r=$(realpath -m -- "$1/$2" 2>/dev/null) || return 1
+  [[ $r == "${b%/}/$2" ]]
+}
+
 # cmdn_rm_proof "$operando": PRUEBA POSITIVA de que un operando de `rm -rf` es inocuo (lista cerrada, nada se exime por no parecer
 # peligroso). Devuelve 0 y deja el nombre de la prueba en REPLY; 1 si no la hay, y entonces manda el criterio de la base (denegar).
 #   build-relativo        ruta relativa dentro del proyecto con un directorio de build conocido (CMDN_DIRS) como componente, sin `..`,
@@ -544,23 +647,33 @@ cmdn_sensitive_operand() {
 # Cualquier otra ruta absoluta, con `~usuario`, con `$` o con `..` no tiene prueba (`~/build`, `~/.cache`, `/run/user/1000`, `/ho?e/u`).
 # shellcheck disable=SC2088  # `~` es el TEXTO del operando, no se expande.
 cmdn_rm_proof() {
-  local p first rest d c
+  local p first rest d c base
   local -a parts
+  # Contexto cerrado: la prueba mira el operando, pero vale solo si la linea es una orden simple (sin `cd`, sin `ln`, sin nada que
+  # cambie lo que el operando nombra) y la ruta RESUELTA, con el disco como esta, queda donde el texto dice.
+  (( ${CMDN_LINE_SIMPLE:-0} )) || return 1
+  # Operando literal: solo `[A-Za-z0-9._/+@-]` (y `~/` inicial); ni comodines, ni `%`, ni `~` suelta, ni `/.` finales.
+  [[ -n $1 && ${1#'~/'} =~ ^[A-Za-z0-9._/+@-]+$ && $1 != */. && $1 != */./* ]] || return 1
   cmdn_path_norm "$1"; p=$REPLY
   [[ -n $p && $p != *..* && $p != *'$'* && $p != *'`'* && $p != *\\* ]] || return 1
   case $p in
     /tmp/*)
       rest=${p#/tmp/}; first=${rest%%/*}
       [[ -n $first && $first != *['*?[{']* ]] || return 1
+      cmdn_not_link /tmp "$first" strict || return 1
       REPLY=tmp-subruta; return 0 ;;
     /*|'~'|'~'[!/]*) return 1 ;;
     '~/'*)
       rest=${p#'~/'}; first=${rest%%/*}
       [[ $rest == */* && -n $first && $first != .* && $first != *['*?[{']* ]] || return 1
+      cmdn_not_link "$HOME" "$first" || return 1
       rest=${rest#*/}; REPLY=home-proyecto-build ;;
     *)
       rest=${p#./}; first=${rest%%/*}
       [[ -n $first && $first != *['*?[{']* ]] || return 1
+      base=$PWD
+      case $base in /|/tmp|/home|/etc*|/usr*|/var*|/bin*|/sbin*|/lib*|/boot*|/dev*|/proc*|/sys*|/root*) return 1 ;; /?*) ;; *) return 1 ;; esac
+      cmdn_not_link "$base" "$first" || return 1
       REPLY=build-relativo ;;
   esac
   IFS=/ read -ra parts <<<"$rest"

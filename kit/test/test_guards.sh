@@ -718,7 +718,9 @@ expect "destructive: rm forma larga en /home denegado" "$(run_destructive 'rm --
 run_destructive_jq() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" bash "$KIT/claude/hooks/destructive-guard.sh" 2>&1; }
 NL=$'\n'
 expect "destructive: prosa con rm -rf en heredoc a fichero NO denegada"  "$(run_destructive_jq "cat > informe.md <<'EOF'${NL}no usar rm -rf ~ ni find . -delete${NL}EOF")" ALLOW
-expect "destructive: heredoc a fichero y luego un comando normal NO denegado" "$(run_destructive_jq "cat >a.md <<\"FIN\"${NL}rm -rf /etc${NL}FIN${NL}ls")" ALLOW
+# Cuarta vuelta (cambio de especificacion declarado): la prueba de dato solo vale en contexto cerrado, una sola tuberia. Con una
+# orden mas en otra linea el texto escrito podria consumirla (`cat > a.sh <<EOF`...`sh a.sh`): vuelve el veredicto de la base.
+expect "destructive: heredoc a fichero y luego otra orden en otra linea: vuelve el veredicto de la base (cuarta vuelta)" "$(run_destructive_jq "cat >a.md <<\"FIN\"${NL}rm -rf /etc${NL}FIN${NL}ls")" BLOCK
 expect "destructive: heredoc a fichero, rm -rf real despues denegado"   "$(run_destructive_jq "cat > a.md <<'EOF'${NL}hola${NL}EOF${NL}rm -rf ~")" BLOCK
 expect "destructive: heredoc con ; y rm -rf en la cabecera denegado"    "$(run_destructive_jq "cat > a.md <<'EOF' ; rm -rf ~${NL}hola${NL}EOF")" BLOCK
 expect "destructive: heredoc sin comillas con \$( ) denegado"          "$(run_destructive_jq "cat > a.md <<EOF${NL}\$(rm -rf ~)${NL}EOF")" BLOCK
