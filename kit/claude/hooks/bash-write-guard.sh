@@ -1,5 +1,6 @@
 #!/bin/bash
 # bash-write-guard.sh — PreToolUse Bash: secretos en el contenido que un comando ESCRIBE.
+# QUE-HACE: Deniega una orden que ESCRIBE un secreto (clave privada, token, clave de API) con cat > f <<EOF, echo >>, tee o sed -i; deja pasar las que no escriben (no hay > ni << ni tee ni sed) y el texto sin patron de secreto.
 # write-guard.py escanea Write/Edit/MultiEdit/NotebookEdit, pero `Edit(...)` y ese guard no frenan a
 # Bash: `cat > f <<EOF`, `echo ... >> f`, `tee f` y `sed -i` escriben igual y pasaban sin mirar. Aqui
 # se escanea el comando con las filas `block` de lib/secret-patterns, la MISMA lista que write-guard.py

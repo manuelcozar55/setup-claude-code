@@ -668,7 +668,7 @@
 {"id": "R2-E90", "cmd": "git rm -- .env", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "R2-E91", "cmd": "git rm --cached -- .env && git rm .env", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "R2-E92", "cmd": "git rm --cached .env; git rm -f .env", "exp": "BLOCK", "base": "BLOCK"}
-{"id": "R2-E93", "cmd": "git rm .env --cached -f", "exp": "ALLOW|ASK", "base": "BLOCK", "ex": "git-rm-cached"}
+{"id": "R2-E93", "cmd": "git rm .env --cached -f", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "R2-E94", "cmd": "git rm -r --cached . && rm -rf ~/x", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "R2-E95", "cmd": "git rm --cached .env.local", "exp": "ALLOW", "base": "BLOCK", "ex": "git-rm-cached"}
 {"id": "R2-E96", "cmd": "git rm --cached -r --ignore-unmatch .env", "exp": "ALLOW|ASK", "base": "BLOCK"}
@@ -677,7 +677,7 @@
 {"id": "R2-E99", "cmd": "git rm -- --cached", "exp": "ALLOW", "base": "ALLOW", "limite": "preexistente: la base da el mismo veredicto (ALLOW); esta rama no lo cambia"}
 {"id": "R2-E100", "cmd": "git rm --cac .env", "exp": "BLOCK|ASK", "base": "BLOCK"}
 {"id": "R2-E101", "cmd": "git rm --cache .env", "exp": "BLOCK|ASK", "base": "BLOCK"}
-{"id": "R2-E102", "cmd": "git rm --cached .env ../x", "exp": "ALLOW|ASK", "base": "BLOCK", "ex": "git-rm-cached"}
+{"id": "R2-E102", "cmd": "git rm --cached .env ../x", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "R2-E103", "cmd": "git rm --cached \"$f\"", "exp": "ALLOW", "base": "ALLOW", "limite": "preexistente: la base da el mismo veredicto (ALLOW); esta rama no lo cambia"}
 {"id": "R2-E104", "cmd": "git rm --cached $(ls)", "exp": "ALLOW", "base": "ALLOW", "limite": "preexistente: la base da el mismo veredicto (ALLOW); esta rama no lo cambia"}
 {"id": "R2-E105", "cmd": "git rm --pathspec-from-file=l .env", "exp": "BLOCK|ASK", "base": "BLOCK"}
@@ -828,7 +828,7 @@
 {"id": "R2-MG05", "cmd": "git push --force-with-lease origin HEAD:main", "exp": "BLOCK", "base": "BLOCK", "br": "main"}
 {"id": "R2-G06", "cmd": "git push --force-with-lease origin master", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "R2-MG06", "cmd": "git push --force-with-lease origin master", "exp": "BLOCK", "base": "BLOCK", "br": "main"}
-{"id": "R2-G07", "cmd": "git push --force-with-lease", "exp": "ALLOW", "base": "BLOCK", "ex": "lease-rama-de-trabajo"}
+{"id": "R2-G07", "cmd": "git push --force-with-lease", "exp": "ASK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "R2-MG07", "cmd": "git push --force-with-lease", "exp": "BLOCK", "base": "BLOCK", "br": "main", "limite": "preexistente: la base da el mismo veredicto (BLOCK); esta rama no lo cambia"}
 {"id": "R2-G08", "cmd": "git push -f origin refs/heads/main", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "R2-MG08", "cmd": "git push -f origin refs/heads/main", "exp": "BLOCK", "base": "BLOCK", "br": "main"}
@@ -850,10 +850,10 @@
 {"id": "R2-MG16", "cmd": "git push origin feat/x --force-with-lease", "exp": "ALLOW", "base": "BLOCK", "br": "main", "ex": "lease-rama-de-trabajo"}
 {"id": "R2-G17", "cmd": "git push -u --force-with-lease origin feat/x", "exp": "ALLOW", "base": "BLOCK", "ex": "lease-rama-de-trabajo"}
 {"id": "R2-MG17", "cmd": "git push -u --force-with-lease origin feat/x", "exp": "ALLOW", "base": "BLOCK", "br": "main", "ex": "lease-rama-de-trabajo"}
-{"id": "R2-G18", "cmd": "git push --force-with-lease origin HEAD", "exp": "ALLOW", "base": "BLOCK", "ex": "lease-rama-de-trabajo"}
+{"id": "R2-G18", "cmd": "git push --force-with-lease origin HEAD", "exp": "ASK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "R2-MG18", "cmd": "git push --force-with-lease origin HEAD", "exp": "BLOCK", "base": "BLOCK", "br": "main", "limite": "preexistente: la base da el mismo veredicto (BLOCK); esta rama no lo cambia"}
-{"id": "R2-G19", "cmd": "git -C . push --force-with-lease origin feat/x", "exp": "ALLOW", "base": "BLOCK", "ex": "lease-rama-de-trabajo"}
-{"id": "R2-MG19", "cmd": "git -C . push --force-with-lease origin feat/x", "exp": "ALLOW", "base": "BLOCK", "br": "main", "ex": "lease-rama-de-trabajo"}
+{"id": "R2-G19", "cmd": "git -C . push --force-with-lease origin feat/x", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
+{"id": "R2-MG19", "cmd": "git -C . push --force-with-lease origin feat/x", "exp": "BLOCK", "base": "BLOCK", "br": "main", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "R2-G20", "cmd": "git push --force-with-lease origin +feat/x", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "R2-MG20", "cmd": "git push --force-with-lease origin +feat/x", "exp": "BLOCK", "base": "BLOCK", "br": "main"}
 {"id": "R2-G21", "cmd": "git push --force-with-lease origin feat/x +main", "exp": "BLOCK", "base": "BLOCK"}
@@ -894,8 +894,8 @@
 {"id": "R2-MG38", "cmd": "git push --force-with-lease=x origin 'refs/heads/feat/x'", "exp": "ALLOW", "base": "BLOCK", "br": "main", "ex": "lease-rama-de-trabajo"}
 {"id": "R2-G39", "cmd": "git push --no-verify --force-with-lease origin feat/x", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "R2-MG39", "cmd": "git push --no-verify --force-with-lease origin feat/x", "exp": "BLOCK", "base": "BLOCK", "br": "main"}
-{"id": "R2-G40", "cmd": "git push --force-with-lease -o x origin feat/x", "exp": "ALLOW", "base": "BLOCK", "ex": "lease-rama-de-trabajo"}
-{"id": "R2-MG40", "cmd": "git push --force-with-lease -o x origin feat/x", "exp": "ALLOW", "base": "BLOCK", "br": "main", "ex": "lease-rama-de-trabajo"}
+{"id": "R2-G40", "cmd": "git push --force-with-lease -o x origin feat/x", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
+{"id": "R2-MG40", "cmd": "git push --force-with-lease -o x origin feat/x", "exp": "BLOCK", "base": "BLOCK", "br": "main", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "R2-G41", "cmd": "git push --force-with-lease --set-upstream origin feat/x", "exp": "ALLOW", "base": "BLOCK", "ex": "lease-rama-de-trabajo"}
 {"id": "R2-MG41", "cmd": "git push --force-with-lease --set-upstream origin feat/x", "exp": "ALLOW", "base": "BLOCK", "br": "main", "ex": "lease-rama-de-trabajo"}
 {"id": "R2-G42", "cmd": "git push --force-with-lease --tags", "exp": "BLOCK|ASK", "base": "BLOCK"}
@@ -958,8 +958,8 @@
 {"id": "R2-MG70", "cmd": "git rm --cached .env; rm -rf ~/x", "exp": "BLOCK", "base": "BLOCK", "br": "main"}
 {"id": "R2-G71", "cmd": "git rm -rf --cached .", "exp": "BLOCK", "base": "BLOCK", "limite": "preexistente: la base da el mismo veredicto (BLOCK); esta rama no lo cambia"}
 {"id": "R2-MG71", "cmd": "git rm -rf --cached .", "exp": "BLOCK", "base": "BLOCK", "br": "main", "limite": "preexistente: la base da el mismo veredicto (BLOCK); esta rama no lo cambia"}
-{"id": "R2-G72", "cmd": "git rm --cached -f .env", "exp": "ALLOW", "base": "BLOCK", "ex": "git-rm-cached"}
-{"id": "R2-MG72", "cmd": "git rm --cached -f .env", "exp": "ALLOW", "base": "BLOCK", "br": "main", "ex": "git-rm-cached"}
+{"id": "R2-G72", "cmd": "git rm --cached -f .env", "exp": "BLOCK", "base": "BLOCK", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
+{"id": "R2-MG72", "cmd": "git rm --cached -f .env", "exp": "BLOCK", "base": "BLOCK", "br": "main", "limite": "cuarta vuelta: la prueba solo vale en contexto cerrado (una sola tuberia, opciones de la lista cerrada, escritura solo a documentos, ruta resuelta, lease con refspec explicito); esta orden no lo cumple y vuelve al veredicto de la base (falso positivo declarado)"}
 {"id": "R2-G73", "cmd": "git reset --hard", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "R2-MG73", "cmd": "git reset --hard", "exp": "BLOCK", "base": "BLOCK", "br": "main"}
 {"id": "R2-G74", "cmd": "git reset --hard HEAD~1", "exp": "BLOCK", "base": "BLOCK"}

@@ -1,5 +1,6 @@
 #!/bin/bash
 # destructive-guard.sh — Blocks rm-rf on sensitive paths, git reset --hard, git clean
+# QUE-HACE: Deniega rm -rf de rutas sensibles (home, /, .., comodines, enlaces), find -delete amplio, git reset --hard y git clean; deja pasar rm -rf de un directorio de build probado (CC_SAFE_DELETE_DIRS) y el texto que solo menciona esos comandos; CC_ALLOW_DESTRUCTIVE=1 lo apaga.
 # Source: yurukusa/claude-code-hooks (MIT)
 # WSL2 note: rm -rf follows NTFS junctions — can delete far beyond target directory
 # Protocol: exit 2 = block
