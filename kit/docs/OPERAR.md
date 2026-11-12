@@ -100,6 +100,10 @@ Reinicia las sesiones abiertas de Claude Code: no recargan los hooks ni el cockp
 borrado (ver arriba). `~/.claude/.kit-version` dice qué versión tienes; `scc --version` imprime la del kit, la del
 cockpit y la de Claude Code.
 
+Lo que una versión retira del kit (en 2.0.0: el agente `strategist` y las skills `domain-modeling`, `grilling`,
+`to-questionnaire` y `writing-for-agents`) lo borra `install.sh --apply` solo si es idéntico a una versión que el kit
+publicó; si lo modificaste lo conserva y lo dice, y `doctor` lo avisa mientras siga ahí.
+
 ## Desinstalar
 
 ```bash

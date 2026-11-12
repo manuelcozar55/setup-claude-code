@@ -141,5 +141,26 @@ bk9="$(find "$CLAUDE_HOME/backups" -mindepth 1 -maxdepth 1 -name 'uninstall-*')"
 ck "$(jq '.permissions.deny | length' "$bk9/settings.json")" "$ndeny" "la copia previa de settings.json conserva el original"
 ck "$(grep -qF "$bk9" "$tmp/ap9" && echo y)" "y" "y su ruta sale en la salida"
 
+# ---- 10. restos de 1.9.1 retirados en 2.0.0 (strategist y skills): sin manifiesto de 1.9.1, la regla es la de
+# install.sh: se borra lo que coincide con una version publicada; lo modificado se conserva y se lista.
+nuevo_home h10
+FX="$HERE/fixtures/retirados"
+bash "$INST" --apply >/dev/null 2>&1
+mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/skills/grilling/agents" "$CLAUDE_HOME/skills/to-questionnaire"
+cp "$FX/strategist.md" "$CLAUDE_HOME/agents/strategist.md"
+cp "$FX/grilling-LICENSE" "$CLAUDE_HOME/skills/grilling/LICENSE"
+cp "$FX/grilling-SKILL.md" "$CLAUDE_HOME/skills/grilling/SKILL.md"
+cp "$FX/grilling-openai.yaml" "$CLAUDE_HOME/skills/grilling/agents/openai.yaml"
+{ cat "$FX/to-questionnaire-SKILL.md"; echo "# mi cambio"; } > "$CLAUDE_HOME/skills/to-questionnaire/SKILL.md"
+bash "$UN" --kit >"$tmp/dry10" 2>&1
+ck "$([ -e "$CLAUDE_HOME/agents/strategist.md" ] && echo y)" "y" "simulacro: el retirado sigue ahi"
+ck "$(grep -c 'skills/to-questionnaire/SKILL.md (modificado por ti)' "$tmp/dry10")" "1" "simulacro: lista el retirado modificado como conservado"
+bash "$UN" --kit --apply >"$tmp/ap10" 2>&1; rc=$?
+ck "$rc" "0" "--kit --apply con restos de 1.9.1 sale 0"
+ck "$([ -e "$CLAUDE_HOME/agents/strategist.md" ] && echo y || echo n)" "n" "borra el agente retirado publicado"
+ck "$([ -e "$CLAUDE_HOME/skills/grilling" ] && echo y || echo n)" "n" "borra la skill retirada publicada y su carpeta"
+ck "$(grep -c 'mi cambio' "$CLAUDE_HOME/skills/to-questionnaire/SKILL.md")" "1" "conserva el retirado que la persona modifico"
+ck "$(find "$CLAUDE_HOME" -mindepth 1 -maxdepth 1 ! -name backups ! -name skills | wc -l | tr -d ' ')" "0" "no quedan restos del kit fuera de lo conservado"
+
 echo "== $pass ok, $fail fallos =="
 [ "$fail" -eq 0 ]

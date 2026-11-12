@@ -46,6 +46,9 @@ CLAUDE_PROBADA="$(grep -Eo "MIN_CLAUDE_CODE = '[0-9.]+'" "$KIT/mods/cockpit/hook
 if [ -z "$CLAUDE_PROBADA" ]; then
   warn "no se pudo leer la version minima de Claude Code de kit/mods/cockpit/hooks/register.tsx: no se compara la de claude"
   claude_v=""
+elif ! command -v claude >/dev/null 2>&1 && [ -x "$HOME/.local/bin/claude" ]; then
+  warn "claude esta instalado en $HOME/.local/bin/claude pero ese directorio no esta en tu PATH: añade export PATH=\"\$HOME/.local/bin:\$PATH\" a tu ~/.bashrc y abre una terminal nueva; no se ha comprobado su version"
+  claude_v=""
 elif ! command -v claude >/dev/null 2>&1; then
   warn "claude no se encuentra en el PATH: instala Claude Code (el kit se probo con $CLAUDE_PROBADA) y comprueba con claude --version"
 else
@@ -150,6 +153,18 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
       | select(length > 0) | "\(length) (\(join("; ")))"' "$CLAUDE_HOME/settings.json" 2>/dev/null)"
   [ -n "$ajenos" ] && pass "hooks ajenos al kit, conservados al instalar: $ajenos  (fuente: jq .hooks contra kit/claude/settings.json)"
 fi
+
+# 2a. Agentes y skills que el kit retiro (rutas con barra en hooks-retirados.sha256) y siguen instalados:
+# siguen cargando como agente o skill aunque el kit ya no los traiga ni los actualice.
+while IFS= read -r rel; do
+  p="$CLAUDE_HOME/$rel"
+  { [ -f "$p" ] && [ ! -L "$p" ]; } || continue
+  if command grep -qxF "$(sha256sum < "$p" | cut -d' ' -f1)  $rel" "$KIT/hooks-retirados.sha256"; then
+    warn "$rel lo retiro el kit y sigue instalado (version publicada): bash $KIT/install.sh --apply lo borra"
+  else
+    warn "$rel lo retiro el kit y lo modificaste: ya no se actualiza; borralo si no lo usas"
+  fi
+done < <(awk -F'  ' '$0 !~ /^#/ && $2 ~ /\// {print $2}' "$KIT/hooks-retirados.sha256" 2>/dev/null | LC_ALL=C sort -u)
 
 # 2b0. CLIs del flujo de estado y plantilla. Sin bin/handoff, bin/oraculo o templates/nucleo.md el flujo v3
 # no arranca: es FAIL. Que no esten en el PATH es WARN (se resuelve con una terminal nueva o el enlace).
