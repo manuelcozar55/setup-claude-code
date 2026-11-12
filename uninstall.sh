@@ -430,6 +430,21 @@ kit_uninstall() {
     elif [ "$(sha256sum "$p" | cut -d' ' -f1)" = "$sha" ]; then rm_list+=("$rel")
     else keep_list+=("$rel (modificado por ti)"); fi
   done < "$man"
+  # Agentes y skills que una version anterior instalo y 2.0.0 retiro (strategist, skills): no estan en el manifiesto
+  # (1.9.1 no lo escribia). Misma regla que install.sh: se borra el que coincide con una version publicada
+  # (hooks-retirados.sha256); el modificado se conserva y se lista.
+  local retfile="$HERE/kit/hooks-retirados.sha256"
+  if [ -f "$retfile" ]; then
+    while IFS= read -r rel; do
+      p="$CLAUDE_HOME/$rel"
+      if [ -L "$p" ] || [ ! -f "$p" ]; then continue; fi
+      # Carpeta enlazada (skill proyectada desde otro repo): borrar escribiria en ese repo.
+      [ "$(cd "$(dirname "$p")" && pwd -P)" = "$(cd "$CLAUDE_HOME" && pwd -P)/$(dirname "$rel")" ] || continue
+      case " ${rm_list[*]:-} " in *" $rel "*) continue ;; esac
+      if grep -qxF "$(sha256sum < "$p" | cut -d' ' -f1)  $rel" "$retfile"; then rm_list+=("$rel")
+      else keep_list+=("$rel (modificado por ti)"); fi
+    done < <(awk -F'  ' '$0 !~ /^#/ && $2 ~ /\// {print $2}' "$retfile" | LC_ALL=C sort -u)
+  fi
   case " ${rm_list[*]:-} " in *" settings.json "*) ;; *) [ -f "$CLAUDE_HOME/settings.json" ] && settings_unmerge=1 ;; esac
 
   names="$(

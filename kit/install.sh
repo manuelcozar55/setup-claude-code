@@ -247,7 +247,13 @@ install_file() {  # src dst
 # descubrir no es una salvaguarda: es una autopsia.
 RETIRADOS="nucleo-gate.sh stop-context-gauge.sh post-compact-check.sh"
 retirado_publicado() {  # fichero nombre: su suma es la de una version publicada del hook
-  grep -q "^$(sha256sum < "$1" | cut -d' ' -f1)  $2\$" "$KIT/hooks-retirados.sha256"
+  grep -qxF "$(sha256sum < "$1" | cut -d' ' -f1)  $2" "$KIT/hooks-retirados.sha256"
+}
+retirados_rutas() {  # agentes y skills retirados: las lineas de hooks-retirados.sha256 cuyo nombre lleva barra
+  awk -F'  ' '$0 !~ /^#/ && $2 ~ /\// {print $2}' "$KIT/hooks-retirados.sha256" | LC_ALL=C sort -u
+}
+ruta_propia() {  # rel: ningun tramo de la ruta bajo $CLAUDE_HOME es un symlink (carpeta de skill proyectada desde otro repo)
+  [ "$(cd "$CLAUDE_HOME/$(dirname "$1")" 2>/dev/null && pwd -P)" = "$(cd "$CLAUDE_HOME" && pwd -P)/$(dirname "$1")" ]
 }
 install_settings() {  # src dst
   local src="$1" dst="$2" tmp real name conserva=() r off=() l w
@@ -720,6 +726,19 @@ for name in $RETIRADOS; do
     echo "==> hook retirado del kit y modificado por ti, se conserva: hooks/$name (ya no esta cableado; borralo si no lo usas)"
   fi
 done
+# Agentes y skills retirados en 2.0.0 (strategist, domain-modeling, grilling, to-questionnaire, writing-for-agents): la
+# misma regla. Una 1.9.1 no dejo manifiesto, asi que lo unico que prueba que son del kit es su suma publicada.
+while IFS= read -r rel; do
+  f="$CLAUDE_HOME/$rel"
+  { [ -f "$f" ] && [ ! -L "$f" ] && ruta_propia "$rel"; } || continue
+  if retirado_publicado "$f" "$rel"; then
+    rm -f -- "$f"; echo "==> retirado del kit, borrado: $rel"
+    d="$(dirname "$rel")"
+    while [ "$d" != . ] && rmdir -- "$CLAUDE_HOME/$d" 2>/dev/null; do d="$(dirname "$d")"; done
+  else
+    echo "==> retirado del kit y modificado por ti, se conserva: $rel (borralo si no lo usas)"
+  fi
+done < <(retirados_rutas)
 
 # --- gitleaks: dependencia de la Capa 2 (opcional; la Capa 1 no la necesita) -
 gitleaks_present() {

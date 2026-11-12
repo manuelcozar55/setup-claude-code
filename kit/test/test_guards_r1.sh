@@ -77,6 +77,9 @@ run_case() {
 }
 
 n=0; running=0
+# El corpus se vuelca a un fichero: con `done < <(cat ...)` el `wait` sin argumentos de abajo espera tambien a la
+# sustitucion de proceso (bash 5.2, Debian 13), que no termina hasta que se lea el pipe: interbloqueo.
+for f in $FIXES; do cat "$f"; done > "$T/corpus.jsonl"
 declare -a IDS EXPS BASES EXS
 while IFS= read -r line; do
   [[ -z $line ]] && continue
@@ -91,7 +94,7 @@ while IFS= read -r line; do
   run_case "$n" "$T/cmd.$n" "$T/repo$([[ $(jq -r '.br // ""' <<<"$line") == main ]] && echo -main)" &
   running=$((running+1))
   if (( running >= JOBS )); then wait; running=0; fi
-done < <(for f in $FIXES; do cat "$f"; done)
+done < "$T/corpus.jsonl"
 wait
 
 pass=0; fail=0; viol=0; peli=0; peli_mal=0; leg=0; leg_blk=0; exentos=0

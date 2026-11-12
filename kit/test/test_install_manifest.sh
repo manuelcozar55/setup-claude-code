@@ -42,6 +42,10 @@ HOME="$H2" CLAUDE_HOME="$H2/.claude" TMPDIR="$tmp" bash "$KIT/install.sh" --plan
 ck "$(find "$H2" -mindepth 1 | wc -l | tr -d ' ')" "0" "--plan no escribe nada en el HOME"
 
 # doctor: version instalada y aviso si difiere.
+# Un `claude` propio en el PATH: sin el, doctor avisa «claude no se encuentra ... claude --version» y ese WARN
+# casa con 'WARN · .*version'; aqui se mide el aviso de version del KIT, no que la maquina tenga claude.
+mkdir -p "$tmp/bin"; printf '#!/bin/sh\necho "99.0.0 (Claude Code)"\n' >"$tmp/bin/claude"; chmod +x "$tmp/bin/claude"
+export PATH="$tmp/bin:$PATH"
 out="$(bash "$KIT/doctor.sh" 2>&1)"
 ck "$(printf '%s\n' "$out" | grep -c "version instalada del kit: $VER")" "1" "doctor imprime la version instalada"
 ck "$(printf '%s\n' "$out" | grep -c 'WARN · .*version')" "0" "sin aviso de version cuando coincide"
@@ -51,6 +55,40 @@ ck "$(printf '%s\n' "$out" | grep -c "WARN · .*0.0.1.*$VER.*install.sh --apply"
 rm "$CLAUDE_HOME/.kit-version"
 out="$(bash "$KIT/doctor.sh" 2>&1)"
 ck "$(printf '%s\n' "$out" | grep -c 'WARN · .*sin .kit-version.*install.sh --apply')" "1" "doctor avisa si no hay .kit-version"
+
+# Elementos que 2.0.0 retiro (agente strategist, skills grilling/to-questionnaire/...): al instalar encima de una
+# 1.9.1 se borran los que coinciden con una version publicada; el modificado por la persona se conserva y doctor
+# lo avisa; un fichero propio en la carpeta de una skill retirada no se toca (ni su carpeta).
+FX="$HERE/fixtures/retirados"
+H3="$tmp/h3"; mkdir -p "$H3"
+export HOME="$H3" CLAUDE_HOME="$H3/.claude"
+bash "$KIT/install.sh" --apply >/dev/null 2>&1
+mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/skills/grilling/agents" "$CLAUDE_HOME/skills/to-questionnaire" "$CLAUDE_HOME/skills/domain-modeling"
+cp "$FX/strategist.md" "$CLAUDE_HOME/agents/strategist.md"
+cp "$FX/grilling-LICENSE" "$CLAUDE_HOME/skills/grilling/LICENSE"
+cp "$FX/grilling-SKILL.md" "$CLAUDE_HOME/skills/grilling/SKILL.md"
+cp "$FX/grilling-openai.yaml" "$CLAUDE_HOME/skills/grilling/agents/openai.yaml"
+{ cat "$FX/to-questionnaire-SKILL.md"; echo "# mi cambio"; } > "$CLAUDE_HOME/skills/to-questionnaire/SKILL.md"
+echo mio > "$CLAUDE_HOME/skills/domain-modeling/mio.md"
+bash "$KIT/install.sh" --apply >"$tmp/i3.log" 2>&1
+ck "$([ -e "$CLAUDE_HOME/agents/strategist.md" ] && echo y || echo n)" "n" "install borra el agente retirado si es una version publicada"
+ck "$([ -e "$CLAUDE_HOME/skills/grilling" ] && echo y || echo n)" "n" "install borra la skill retirada entera (y su carpeta) si todo es publicado"
+ck "$(grep -c 'mi cambio' "$CLAUDE_HOME/skills/to-questionnaire/SKILL.md")" "1" "el fichero retirado y modificado por la persona se conserva"
+ck "$(grep -c 'skills/to-questionnaire/SKILL.md' "$tmp/i3.log")" "1" "y la instalacion lo dice"
+ck "$(cat "$CLAUDE_HOME/skills/domain-modeling/mio.md")" "mio" "un fichero propio en la carpeta de una skill retirada no se toca"
+out="$(bash "$KIT/doctor.sh" 2>&1)"
+ck "$(printf '%s\n' "$out" | grep -c 'WARN · .*skills/to-questionnaire/SKILL.md')" "1" "doctor avisa del retirado que sigue instalado"
+# claude instalado en ~/.local/bin pero fuera del PATH no es «claude no instalado».
+mkdir -p "$H3/.local/bin"; cp "$tmp/bin/claude" "$H3/.local/bin/claude"
+out="$(PATH=/usr/local/bin:/usr/bin:/bin bash "$KIT/doctor.sh" 2>&1)"
+ck "$(printf '%s\n' "$out" | grep -c 'WARN · claude esta instalado en .*no esta en tu PATH')" "1" "doctor distingue claude fuera del PATH de claude no instalado"
+# Una skill retirada cuya carpeta es un symlink (skill proyectada desde otro repo): la ruta pasa por el enlace y
+# borrar escribiria en ese repo, aunque el fichero final no sea un symlink. No se toca.
+O="$tmp/otro-repo/grilling"; mkdir -p "$O/agents"
+cp "$FX/grilling-SKILL.md" "$O/SKILL.md"; cp "$FX/grilling-openai.yaml" "$O/agents/openai.yaml"
+ln -s "$O" "$CLAUDE_HOME/skills/grilling"
+bash "$KIT/install.sh" --apply >/dev/null 2>&1
+ck "$([ -f "$O/SKILL.md" ] && [ -f "$O/agents/openai.yaml" ] && echo y || echo n)" "y" "install no borra a traves de una carpeta de skill enlazada"
 
 echo "== $pass ok, $fail fallos =="
 [ "$fail" -eq 0 ]

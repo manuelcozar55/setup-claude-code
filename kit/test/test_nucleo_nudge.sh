@@ -137,7 +137,10 @@ ok "~ con ranura: el comando del nudge lleva --ranura con la ranura" "$(command 
 
 # --- D3 (cv2/estado): el nudge es el único emisor; avisa también a la persona, una vez por banda, con o sin cockpit ---
 R2=$T/repo2; mkdir -p "$R2/.claude/estado"; git -C "$R2" init -q; echo x >"$R2/.claude/estado/nucleo.md"; touch -d '-30 minutes' "$R2/.claude/estado/nucleo.md"
-runr() { jq -cn --arg c "$R2" --arg s "$1" --arg t "$T/$2.jsonl" '{session_id:$s,transcript_path:$t,cwd:$c,hook_event_name:"PostToolUse",tool_name:"Bash"}' | bash "$H"; }
+# Un `handoff` propio en el PATH: estas aserciones miden el texto con el CLI resoluble, no que la maquina lo tenga
+# (sin el, el aviso da la ruta absoluta .../bin/handoff, que el grep de '/handoff' contaria como el comando).
+mkdir -p "$T/hobin"; printf '#!/bin/sh\nexit 0\n' >"$T/hobin/handoff"; chmod +x "$T/hobin/handoff"
+runr() { jq -cn --arg c "$R2" --arg s "$1" --arg t "$T/$2.jsonl" '{session_id:$s,transcript_path:$t,cwd:$c,hook_event_name:"PostToolUse",tool_name:"Bash"}' | PATH="$T/hobin:$PATH" bash "$H"; }
 sysm() { jq -r '.systemMessage // empty' 2>/dev/null; }
 PC=$(NUCLEO_COCKPIT=1 runr d1 p60 | sysm); PN=$(NUCLEO_COCKPIT=0 runr d2 p60 | sysm)
 ok "persona al 60 %, con cockpit: /handoff" "$(command grep -c 'Fase cerrada: /handoff' <<<"$PC")" 1

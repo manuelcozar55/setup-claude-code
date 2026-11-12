@@ -1,5 +1,6 @@
 # Hooks que el kit ya no trae: sha256 de cada version que se publico, para que install.sh solo borre
-# los que la persona no modifico. Formato: sha256  nombre (en $CLAUDE_HOME/hooks).
+# los que la persona no modifico. Formato: sha256  nombre (en $CLAUDE_HOME/hooks), o sha256  ruta/con/barra
+# (relativa a $CLAUDE_HOME: agentes y skills retirados en 2.0.0; un fichero por linea y version publicada).
 3518d753cb5da708cebdb418a99a2b4c68b82154f434e28a05eba010d7cc3a47  stop-context-gauge.sh
 39ded76048462ea91abf24c34a32cf03211b6e49ab0c8d1b373a488f219d98e8  stop-context-gauge.sh
 42c8d20c82bbc353b79c67bfc584c919757964e16692516170e8dbfb844dc36f  post-compact-check.sh
@@ -16,3 +17,22 @@ dafff4571a692471933cf5e3cca021d4243bda0109afc4204485a73358a33a98  post-compact-c
 e1a5383246d81414af75da5a663bdb8c27365297e0319b682570ea9be4e8eee5  stop-context-gauge.sh
 e37b430d670b80feea0d09ab7029d16189ed9b36de9ad73a5a3d0028650e4e52  nucleo-gate.sh
 f7ae55381a2f855d637b9143003c0503e9a0f2fb67502b9e5ec317205e5558f2  stop-context-gauge.sh
+45afd95b0bfb9b99ea81a8f253a21a321b299072372f86ec4ce585660b6546d2  agents/strategist.md
+4af0c6c9ad1c1c2676ad49c528990013bf1106524dc29d33e373739c48e71b2b  agents/strategist.md
+675327304e663e7e300f3b22c9610e312999b04bf40ba321a753c9b8944d8481  agents/strategist.md
+9c920c2cc6e4c59036cf5b27dc13414ecc99c6471bb68074d7c27816015fa73b  agents/strategist.md
+944c92aa790e8fbdc9199640b170979abb8a34ba8d0fe18c2a01a63bce140ca0  skills/domain-modeling/ADR-FORMAT.md
+21dcc40cdec8e151a829b98ab1517c1867bc444e3665134a98c6983411996801  skills/domain-modeling/GLOSSARY-FORMAT.md
+0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5  skills/domain-modeling/LICENSE
+7b925d7b1e341a2eeae33ad68a8a8c0ab889a38ddd22a7598e4c240e5a7556a3  skills/domain-modeling/SKILL.md
+f6bf2aa996c6e6f53fdd0708e18a0d16a56aed8322cca59fedbe3c0d2c75f06b  skills/domain-modeling/agents/openai.yaml
+0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5  skills/grilling/LICENSE
+befdff1e27a1dfe2a294d5871169ac1afe16d983911daa4f32627514a48c1e15  skills/grilling/SKILL.md
+1411d7df7d99b7e621a1ff8283c8133cc2464be63d064e52d8ce169c6800ee9b  skills/grilling/agents/openai.yaml
+0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5  skills/to-questionnaire/LICENSE
+346f235d1a9b3069a0d17617b35ac5eddbe6ad83c432c670199bcd1c9cb42bc8  skills/to-questionnaire/SKILL.md
+9e8a06c38c8842eea8d4922cb9d1ead8e3ace647bab259b943c994a1b4742bc2  skills/to-questionnaire/agents/openai.yaml
+0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5  skills/writing-for-agents/LICENSE
+c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059  skills/writing-for-agents/SKILL-MECHANICS.md
+551adca942227b44192edba88acd4e8db911f0121ce58ad16944ccf6a896a74a  skills/writing-for-agents/SKILL.md
+eacb24b2a618cfb81dacb0416f4fdd75ddf3a8060f8ddb99aae1b1e301907e4b  skills/writing-for-agents/agents/openai.yaml

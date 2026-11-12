@@ -20,7 +20,7 @@ P="$tmp/out"
 
 (cd "$R" && bash scripts/empaquetar-entrega.sh --out "$P" >/dev/null 2>&1); rc=$?
 ck "$rc" "0" "empaquetar sale 0"
-ck "$(ls "$P" | tr '\n' ' ')" "PROCEDENCIA.json SHA256SUMS scc-v$VER scc-v$VER.bundle scc-v$VER.zip " "deja directorio, zip, bundle, PROCEDENCIA y SHA256SUMS"
+ck "$(LC_ALL=C ls "$P" | tr '\n' ' ')" "PROCEDENCIA.json SHA256SUMS scc-v$VER scc-v$VER.bundle scc-v$VER.zip " "deja directorio, zip, bundle, PROCEDENCIA y SHA256SUMS"
 D="$P/scc-v$VER"
 ck "$(cd "$P" && sha256sum -c SHA256SUMS >/dev/null 2>&1; echo $?)" "0" "sha256sum -c SHA256SUMS pasa"
 ck "$(jq -r .commit "$P/PROCEDENCIA.json")" "$COMMIT" "PROCEDENCIA.json lleva el commit"
