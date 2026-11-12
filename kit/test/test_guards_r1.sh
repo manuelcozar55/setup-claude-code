@@ -13,7 +13,8 @@
 # conocido. En cualquier otro caso en que el analisis nuevo no encuentra la orden, el veredicto es ASK (o BLOCK), nunca ALLOW en silencio.
 #
 # Los comandos NUNCA se ejecutan: se dan como texto a los guards. Marcadores: @@ROOT@@ (/ro + ot/) para que scan-secrets no lo vea.
-# R1_HOOKS_DIR / R1_SENTINEL apuntan la suite a otra copia de los guards (test_guards_falsifiability.sh los muta).
+# R1_HOOKS_DIR / R1_SENTINEL apuntan la suite a otra copia de los guards (test_guards_falsifiability.sh los muta); R1_DUMP=1 imprime
+# `DUMP id veredicto` por fila (asi se midio la columna `base` con la copia de bc68243).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 H="${R1_HOOKS_DIR:-$KIT/claude/hooks}"
@@ -65,7 +66,7 @@ run_case() {
 }
 
 n=0; running=0
-declare -a IDS EXPS BASES EXS LIMS
+declare -a IDS EXPS BASES EXS
 while IFS= read -r line; do
   [[ -z $line ]] && continue
   n=$((n+1))
@@ -75,7 +76,7 @@ while IFS= read -r line; do
     sed -i "s#@@ROOT@@#/ro""ot/#g" "$T/cmd.$n"
   fi
   IDS[n]=$(jq -r .id <<<"$line"); EXPS[n]=$(jq -r .exp <<<"$line"); BASES[n]=$(jq -r .base <<<"$line")
-  EXS[n]=$(jq -r '.ex // ""' <<<"$line"); LIMS[n]=$(jq -r '.limite // ""' <<<"$line")
+  EXS[n]=$(jq -r '.ex // ""' <<<"$line")
   run_case "$n" "$T/cmd.$n" &
   running=$((running+1))
   if (( running >= JOBS )); then wait; running=0; fi
@@ -86,6 +87,7 @@ pass=0; fail=0; viol=0; peli=0; peli_mal=0; leg=0; leg_blk=0; exentos=0
 for ((i = 1; i <= n; i++)); do
   IFS=$'\t' read -r v row < "$T/res/$i"
   id=${IDS[i]}; exp=${EXPS[i]}; base=${BASES[i]}
+  [[ -n ${R1_DUMP:-} ]] && printf 'DUMP\t%s\t%s\n' "$id" "$v"
   if [[ "|$exp|" == *"|$v|"* ]]; then pass=$((pass+1)); else
     fail=$((fail+1)); echo "FAIL: [$id] esperado $exp, obtenido $v ($row) :: $(head -c 100 "$T/cmd.$i" | tr '\n' ' ')"
   fi
