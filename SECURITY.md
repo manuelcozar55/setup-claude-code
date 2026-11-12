@@ -104,18 +104,37 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
   lo prueban, y entonces el texto cuenta como orden. Y una redirección o sustitución de procesos que alimenta a `xargs`, a un
   `while read` o a un `cat $(…)` (`xargs cat < <(echo .env)`) cuenta como una lectura del nombre. Una orden de más de 128 KB no se
   analiza, pero tampoco se pregunta a ciegas: lo que la base bloqueaba por su texto se deniega, y solo el resto pregunta.
-  **Lista cerrada de exenciones** (`test/fixtures/guards-exenciones.txt`; un nombre fuera de ella hace caer el test):
-  `dato:echo-sin-consumidor`, `dato:patron-de-busqueda` (patrón de `grep`/`rg`/`ag`/`ack`, programa de `sed`/`awk` que no ejecuta),
-  `dato:mensaje-de-commit` (`-m` de `git commit|tag|stash`, `--title|--body` de `gh`), `dato:heredoc-a-fichero`, `dato:comentario`,
-  `build-relativo`, `home-proyecto-build`, `tmp-subruta`, `lease-rama-de-trabajo` (`--force-with-lease` a ramas con prefijo de
-  trabajo `feat/`, `fix/`, `chore/`, `release/`…, o a la rama actual si lo es; `develop`, `trunk`, `Main`, `--tags` preguntan; `--all` y
-  `--mirror` se deniegan) y `git-rm-cached` (`--cached` **antes** de `--`: tras `--` todo es un nombre de fichero).
-  Lo comprueban dos sensores. `test_guards_r1.sh` pasa 1.936 órdenes (631 de la revisión R1 y 1.305 de la ronda 2) con la columna
-  «base» de lo que daba bc68243: ninguna baja de bloqueo a permiso sin la exención con nombre escrita en su fila.
+  **Regla del contexto cerrado** (cuarta vuelta): una prueba mira un operando o un texto, y por eso vale **solo** si la línea no puede
+  cambiar lo que ese texto significa. Es una línea de **una sola tubería** (sin `;`, `&&`, `||`, `&`, otra orden en otra línea,
+  sustitución, subshell ni `cd`), sin prefijo (`VAR=`, `env`, `sudo`…) ni opción global de git (`-C`, `-c`), con las **opciones de la
+  lista cerrada** de cada orden (cualquier otra, conocida o no, quita la prueba: `rg --pre`, `--hostname-bin`, `git grep -O`,
+  `ag --pager`, `ack --pager`, `man -P`, `git -c core.pager` ejecutan), escribiendo **solo a documentos** (`.md`, `.txt`, `.log`,
+  `.rst`, `.csv`, `.tsv`, `.gitignore`; nunca `.sh`, `.py`, `Makefile`, hooks de git, `package.json`, `~/.bashrc`, `~/.local/bin`) y con
+  receptores de tubería de la lista cerrada de consumidores de texto (`less`, `gh`, `git var` no lo son). Fuera de ese contexto la
+  prueba no existe: manda el veredicto de la base. En la duda se quita la exención; el precio son falsos positivos declarados, nunca un
+  bypass nuevo.
+  **Lista cerrada de exenciones** (`test/fixtures/guards-exenciones.txt`; un nombre fuera de ella hace caer el test), todas solo en
+  contexto cerrado: `dato:echo-sin-consumidor`, `dato:patron-de-busqueda` (patrón de `grep`/`rg`/`ag`/`ack`, programa de `sed`/`awk` que
+  no ejecuta), `dato:mensaje-de-commit` (`-m` de `git commit|tag|stash`, `--title|--body` de `gh`), `dato:heredoc-a-fichero`,
+  `build-relativo`, `home-proyecto-build` y `tmp-subruta` (`rm -rf` de un operando **literal**, `[A-Za-z0-9._/+@-]`, sin comodín, `%`,
+  `~` suelta ni `/.`, con un directorio de build como componente y la ruta **resuelta con `realpath`** en el disco: una ruta que sea
+  un enlace a otro sitio, o un directorio de trabajo `/`, `/tmp`, `/home`, `/etc`…, no tiene prueba; sin `realpath` tampoco),
+  `lease-rama-de-trabajo` (`--force-with-lease` con remoto explícito y **un** refspec de rama llana con prefijo de trabajo `feat/`,
+  `fix/`, `chore/`, `release/`…, sin `-C`, sin `HEAD`, sin `:` ni `+`, sin `--all`, `--mirror`, `--tags`, `--prune` ni `--delete`; la rama
+  se juzga por su texto, nunca por lo que haya en disco; sin refspec, `develop`, `trunk` o `Main` preguntan; `--all` y `--mirror` se
+  deniegan) y `git-rm-cached` (`git rm --cached [-r|-q|-n|--ignore-unmatch] <ruta relativa>`, sin `-f`, sin `..` ni rutas absolutas, sin
+  opciones tras `--`). **Retiradas en esta vuelta**: `dato:comentario` (la base nunca bloqueaba un comentario: no era una exención) y,
+  como exención, todo lo que dependía de leer el estado del disco (`HEAD` del lease) o de ignorar `cd`, `ln -s` y los enlaces.
+  Lo comprueban tres sensores. `test_guards_r1.sh` pasa 2.550 órdenes (631 de la revisión R1, 1.315 de la ronda 2 y 570 de la ronda 3)
+  con la columna «base» de lo que daba bc68243: ninguna baja de bloqueo a permiso sin la exención con nombre escrita en su fila.
   `test_guards_monotonia.sh` es **generativo y diferencial** frente a una copia congelada de los guards de bc68243
-  (`test/fixtures/guards-base/`, solo para tests): una gramática de 64.438 órdenes, muestra determinista de 1.200 (semilla fija; con
-  `GUARDS_MONOTONIA_N=0` la recorre entera) y falla con cualquier «la base bloquea, ahora pasa» sin prueba con nombre.
-  `test_guards_falsifiability.sh` reintroduce cuatro agujeros en copias temporales y comprueba que el sensor cae.
+  (`test/fixtures/guards-base/`, solo para tests): una gramática de 69.014 órdenes, muestra determinista de 1.200 más las cargas
+  peligrosas en ejecución directa (semilla fija; con `GUARDS_MONOTONIA_N=0` la recorre entera) y falla con cualquier «la base bloquea,
+  ahora pasa» sin prueba con nombre. Además cumple una **propiedad de composición genérica**: para cada nombre de la lista toma
+  semillas, las compone con `cd /`, `ln -s ~ build`, `git checkout main`, `git -C`, `;`, `&&`, `| sh`, `VAR=`, sustituciones y un
+  `>> a.sh; sh a.sh`, les inyecta una opción desconocida, y exige que ninguna pase si la base la bloqueaba; un nombre sin semilla
+  también falla. `test_guards_falsifiability.sh` reintroduce ocho agujeros en copias temporales (entre ellos el del revisor, un lease
+  que no comprueba la rama de trabajo) y comprueba que el sensor cae en todos.
 - **Lo que no se puede resolver, se pregunta (`ask`)**: una variable o una sustitución en la orden que recibe un pipe
   (`curl … | $X`), en la propia orden (`$X -rf ~`, `$(echo rm) -rf ~`, `{rm,-rf,~}`), en el subcomando de git (`git $X`), en
   un refspec o en el operando de `rm`, `reset` o `clean`

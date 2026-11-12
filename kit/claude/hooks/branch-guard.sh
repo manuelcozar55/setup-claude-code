@@ -1,5 +1,6 @@
 #!/bin/bash
 # branch-guard.sh — Blocks git push to protected branches
+# QUE-HACE: Deniega git push a las ramas protegidas (main, master, production; CC_PROTECT_BRANCHES) aunque vaya con refspec, HEAD, +rama o dentro de bash -c; falla cerrado si no puede analizar la orden; deja pasar los push a ramas de trabajo y todo lo que no sea git push.
 # Source: yurukusa/claude-code-hooks (MIT)
 # Protocol: exit 2 = block with stderr reason
 

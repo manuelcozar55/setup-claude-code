@@ -1,5 +1,6 @@
 #!/bin/bash
 # block-dangerous-commands.sh — PreToolUse Bash security blocklist
+# QUE-HACE: Deniega pipe-a-shell, rm -rf sin prueba de inocuidad, force push y --no-verify, -c core.hooksPath y exfiltracion de credenciales; pregunta ante un lease sin rama de trabajo, --tags o git config de hooks; deja pasar el texto que solo es dato (echo, mensaje de commit, patron de grep) en una linea de una sola orden.
 # Source: randomdreft/claude-code-security-hook (public domain), extended
 # Protocol: JSON deny/ask output + exit 0, or silent exit 0 to allow
 
@@ -399,9 +400,9 @@ if [[ $COMMAND == *git* ]]; then
 fi
 
 if [[ $COMMAND == *git* ]]; then
-  LC_ALL=C grep -qiE '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*core\.hookspath' <<<"$EXECT" \
+  LC_ALL=C grep -qiE '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*core\.hookspath' <<<"${EXECT//[\"\']/}" \
     && deny "BLOCKED: git -c core.hooksPath (skips the repo's git hooks)"
-  LC_ALL=C grep -qiE '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*alias\.' <<<"$EXECT" \
+  LC_ALL=C grep -qiE '\bgit\b[^;&|]*[[:space:]]-c[[:space:]]*alias\.' <<<"${EXECT//[\"\']/}" \
     && deny "BLOCKED: git -c alias.* (redefines a git subcommand)"
 fi
 
@@ -417,18 +418,16 @@ NEST=0
 TOK_ASK=''
 WX=0
 tok_ask() { [[ -n $TOK_ASK ]] || TOK_ASK=$1; }
-# lease_work_ok <rama>: PRUEBA de que una rama es de trabajo (lista cerrada de prefijos: feat/, fix/, release/...). `HEAD` es la rama
-# actual, que se lee con git. Un nombre sin prefijo (trunk, develop, Main, un tag) no tiene prueba: manda el criterio de la base.
+# lease_work_ok <rama>: PRUEBA de que un nombre de rama es de trabajo (lista cerrada de prefijos: feat/, fix/, release/...). Solo mira el
+# texto: `HEAD` (la rama en curso, que lee del disco lo que la propia linea puede haber cambiado) no tiene prueba. Un nombre sin prefijo
+# (trunk, develop, Main, un tag) tampoco: manda el criterio de la base.
 LEASE_PREFIXES='feat|feature|fix|bugfix|hotfix|chore|docs|refactor|test|tests|ci|build|perf|style|release|wip|topic|users|dependabot|renovate|cv2'
 lease_work_ok() {
   local b=${1#refs/heads/}
-  if [[ $b == HEAD || $b == @ ]]; then
-    b=$(git ${CMDN_CWD:+-C "$CMDN_CWD"} symbolic-ref --short -q HEAD 2>/dev/null) || return 1
-  fi
-  [[ $b =~ ^($LEASE_PREFIXES)/[A-Za-z0-9._/-]+$ && $b != *..* ]]
+  [[ $b =~ ^($LEASE_PREFIXES)/[A-Za-z0-9._/-]+$ && $b != *..* && $b != */.* && $b != *.lock && $b != */ ]]
 }
 push_refspec() {
-  local depth=$1 kind=$2 seg a i inner skip dd rc v lease pall ptags r side lwok
+  local depth=$1 kind=$2 seg a i inner skip dd rc v lease pall ptags lunk lwok
   local -a T segs pos
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
@@ -468,7 +467,7 @@ push_refspec() {
     fi
     if [[ $kind == verify ]]; then [[ ${T[2]:-} == push || ${T[2]:-} == commit ]] || continue
     else [[ ${T[2]:-} == push ]] || continue; fi
-    skip=0; dd=0; lease=0; pall=0; ptags=0; pos=()
+    skip=0; dd=0; lease=0; pall=0; ptags=0; lunk=0; pos=()
     for a in "${T[@]:3}"; do
       if (( skip )); then skip=0; continue; fi
       if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
@@ -480,8 +479,10 @@ push_refspec() {
             --force*) return 0 ;;
             --all|--mirror) pall=1 ;;
             --tags) ptags=1 ;;
-            --*) ;;
-            -*) [[ ${a#-} == *f* ]] && return 0 ;;
+            # Opciones inocuas de un push con lease (lista cerrada): cualquier otra (--prune, --delete, --receive-pack, -o...) quita la prueba.
+            --set-upstream|--quiet|--verbose|--dry-run|--atomic|--porcelain|--progress|--no-progress|--thin|--no-thin) ;;
+            --*) lunk=1 ;;
+            -*) [[ ${a#-} == *f* ]] && return 0; [[ ${a#-} =~ ^[uqv]+$ ]] || lunk=1 ;;
           esac
         fi
         if [[ $kind == delete ]]; then
@@ -508,7 +509,7 @@ push_refspec() {
                fi ;;
           esac
         fi
-        case $a in --repo|-o|--push-option|--receive-pack|--exec|--message|--file|--reuse-message|--reedit-message|--author|--date|--template) skip=1 ;; esac
+        case $a in --repo|-o|--push-option|--receive-pack|--exec|--message|--file|--reuse-message|--reedit-message|--author|--date|--template) skip=1; lunk=1 ;; esac
         continue
       fi
       # `$\...` es un `$'\x2df'` que cmdnorm no pudo resolver: no se sabe que es, se trata como el peor caso.
@@ -524,17 +525,20 @@ push_refspec() {
     [[ $kind == force ]] && (( lease )) && LEASE_REAL=$(( LEASE_REAL + 1 ))
     # El lease con --all o --mirror alcanza a main/master: se trata como a main. Con --tags, que no se ve que etiquetas pisa: ask.
     (( lease && pall )) && return 0
-    if [[ $kind == force ]] && (( lease && ! ptags )); then
-      lwok=1
-      if (( ${#pos[@]} < 2 )); then lease_work_ok HEAD || lwok=0
+    if [[ $kind == force ]] && (( lease )); then
+      # La prueba del lease vale solo en contexto cerrado: orden principal y simple (el estado de git no lo cambia nada de la linea),
+      # sin opciones globales de git (-C, -c push.default...) ni opciones fuera de la lista inocua. Si no, manda la base: denegar.
+      (( depth == 0 && ${CMDN_LINE_SIMPLE:-0} && ! lunk )) && [[ -z ${T[0]:-} ]] || return 0
+      if (( ptags )); then
+        tok_ask "Confirm: git push con lease y --tags pisa etiquetas del remoto que el guard no ve. Empuja la rama y las etiquetas concretas por separado."
       else
-        for r in "${pos[@]:1}"; do
-          for side in ${r//:/ }; do lease_work_ok "$side" || lwok=0; done
-        done
+        # Con refspec explicito dejan de importar push.default, remote.*.push y la rama en curso: remoto y UN refspec llano de
+        # rama de trabajo. Sin refspec, con :, +, HEAD o varios, no hay prueba (pregunta; nunca pasa en silencio).
+        lwok=1
+        (( ${#pos[@]} == 2 )) && [[ ${pos[1]} != *[:+]* && ${pos[1]} != HEAD ]] && lease_work_ok "${pos[1]}" || lwok=0
+        (( lwok )) || tok_ask "Confirm: git push con lease sin un refspec explicito de rama de trabajo (feat/, fix/, chore/, release/...): empuja a la rama que decidan la configuracion o el estado de git, que puede ser la principal. Escribe remoto y rama (git push --force-with-lease origin feat/x)."
       fi
-      (( lwok )) || tok_ask "Confirm: git push con lease a una rama que no se reconoce como de trabajo (feat/, fix/, chore/, release/...): puede ser la rama principal con otro nombre. Empuja una rama con prefijo o ejecutalo tu con !."
     fi
-    (( lease && ptags )) && tok_ask "Confirm: git push con lease y --tags pisa etiquetas del remoto que el guard no ve. Empuja la rama y las etiquetas concretas por separado."
   done
   return 1
 }

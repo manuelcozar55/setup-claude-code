@@ -4,9 +4,8 @@ dato:echo-sin-consumidor	argumento de echo/printf cuyo texto no lo lee ningun in
 dato:patron-de-busqueda	patron de grep/rg/ag/ack o programa de sed/awk que no ejecuta nada (sin system, getline, pipe ni comando e)
 dato:mensaje-de-commit	valor de git commit/tag/stash -m, o titulo/cuerpo de gh (--title, --body, --message...)
 dato:heredoc-a-fichero	cuerpo de un heredoc cuyo receptor y cuyas ordenes posteriores son de texto (cat, tee, git...)
-dato:comentario	texto tras un # fuera de comillas
 build-relativo	rm -rf de una ruta relativa dentro del proyecto con un directorio de build conocido, sin .. y sin comodin en el primer componente
 home-proyecto-build	rm -rf de ~/<proyecto>/.../<directorio de build conocido>, sin .. y sin comodin
 tmp-subruta	rm -rf de /tmp/<subruta concreta> (nunca /tmp, /tmp/* ni con ..)
-lease-rama-de-trabajo	git push con lease cuyas ramas (todas, o la actual si no hay refspec) llevan un prefijo de trabajo de la lista cerrada (feat/, fix/, chore/, release/...); sin --all, --mirror, --tags ni +ref
-git-rm-cached	git rm --cached antes de --: solo toca el indice, no el fichero
+lease-rama-de-trabajo	git push con lease, remoto explicito y UN refspec de rama llana con prefijo de trabajo de la lista cerrada (feat/, fix/, chore/, release/...), en una linea de una sola orden: sin -C, sin cd, sin HEAD, sin : ni +, sin --all, --mirror, --tags, --prune ni --delete
+git-rm-cached	git rm --cached [-r|-q|-n|--ignore-unmatch] <ruta relativa>, sin -f ni .. ni rutas absolutas, en una linea de una sola orden: solo toca el indice, no el fichero

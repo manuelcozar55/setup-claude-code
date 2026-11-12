@@ -227,6 +227,28 @@ EOF
 # deciden nada: el guard tiene que denegar (fallar cerrado); cadenas que no pueden llevar la orden
 # (`x git` sin push): tiene que permitir. En los dos casos, menos de 1 s de CPU, hasta 128 KB (el tope).
 monotonic_ms() { python3 -c 'import time; print(time.monotonic_ns() // 1000000)'; }
+# Los topes de tiempo son absolutos (1000 ms de CPU, 2000 de reloj), pero una maquina cargada (tres `make test` a la vez, WSL, Debian)
+# infla cualquier medida: se vio 1041 ms contra un tope de 1000 y paso al repetir. Un sensor que cae segun la carga no puede ir en una
+# entrega, y subir el tope a ciegas le quitaria el filo. Se calibra EN ESTA CORRIDA con una referencia que gasta lo mismo que un guard
+# (150 arranques de awk, 210 ms de CPU medidos en una maquina en reposo y estables con carga 8): el tope se escala por lo que la
+# referencia haya inflado, con suelo 1 (nunca mas estricto) y techo 3. Una regresion real (un proceso por segmento: 7 a 36 s contra
+# 1 s) sigue muy por encima del techo, asi que se sigue cazando; lo que deja de caer es el ruido de la carga.
+CAL_REF_MS=210
+calib_cpu_ms() {
+  local best=999999 t u s ms
+  TIMEFORMAT='%3U %3S'
+  for _ in 1 2 3; do
+    t=$({ time bash -c 'for ((i=0;i<150;i++)); do awk "BEGIN{x=1}" </dev/null; done'; } 2>&1)
+    read -r u s <<<"$t"
+    ms=$(awk -v u="$u" -v s="$s" 'BEGIN { printf "%d", (u + s) * 1000 + 0.5 }')
+    [ "$ms" -lt "$best" ] && best=$ms
+  done
+  echo "$best"
+}
+CAL_MS=$(calib_cpu_ms)
+CAL_PCT=$(( CAL_MS * 100 / CAL_REF_MS )); [ "$CAL_PCT" -lt 100 ] && CAL_PCT=100; [ "$CAL_PCT" -gt 300 ] && CAL_PCT=300
+CAP_CPU=$(( 1000 * CAL_PCT / 100 )); CAP_WALL=$(( 2000 * CAL_PCT / 100 ))
+echo "PERF: calibracion: referencia ${CAL_MS} ms (patron ${CAL_REF_MS}), topes CPU ${CAP_CPU} ms y reloj ${CAP_WALL} ms"
 nest_case() { # $1 guard, $2 deny|allow, $3 veces, $4 comando simple que se repite
   local cmd payload t u s ms rc got t0 wall
   cmd=$(for ((i = 0; i < $3; i++)); do printf '%s;' "$4"; done)
@@ -243,7 +265,7 @@ nest_case() { # $1 guard, $2 deny|allow, $3 veces, $4 comando simple que se repi
     read -r u s <<<"$t"
     try=$(awk -v u="$u" -v s="$s" 'BEGIN { printf "%d", (u + s) * 1000 + 0.5 }')
     [ "$try" -lt "$ms" ] && ms=$try
-    [ "$ms" -lt 1000 ] && break
+    [ "$ms" -lt "$CAP_CPU" ] && break
   done
   rc=$(cat "$BYPASS_HOME/nest.rc")
   echo "PERF: $1: $3 x «$4»: cpu=${ms}ms (mejor de hasta 3) wall=${wall}ms"
@@ -254,8 +276,8 @@ nest_case() { # $1 guard, $2 deny|allow, $3 veces, $4 comando simple que se repi
     bypass_fail=$((bypass_fail+1)); echo "FAIL: $1: $3 x «$4» paso de 20 s y se mato"
   elif [ "$got" != "$2" ]; then
     bypass_fail=$((bypass_fail+1)); echo "FAIL: $1: $3 x «$4» dio $got y se esperaba $2"
-  elif [ "$ms" -ge 1000 ]; then
-    bypass_fail=$((bypass_fail+1)); echo "FAIL: $1: $3 x «$4» gasto ${ms} ms de CPU (tope 1000)"
+  elif [ "$ms" -ge "$CAP_CPU" ]; then
+    bypass_fail=$((bypass_fail+1)); echo "FAIL: $1: $3 x «$4» gasto ${ms} ms de CPU (tope $CAP_CPU, 1000 en una maquina en reposo)"
   fi
 }
 nest_case block-dangerous-commands.sh deny 2000 "x 'git stash push +1'"
@@ -286,8 +308,8 @@ sn1_case() { # $1 veces, $2 segmento que se repite, $3 comando final
   echo "PERF: branch-guard: $1 x «$2»: cpu=${cpu}ms wall=${ms}ms"
   if [ "$rc" -ne 2 ]; then
     bypass_fail=$((bypass_fail+1)); echo "FAIL: branch-guard: $1 x «$2» + «$3» dio rc=$rc y se esperaba 2 (${ms} ms)"
-  elif [ "$ms" -ge 2000 ]; then
-    bypass_fail=$((bypass_fail+1)); echo "FAIL: branch-guard: $1 x «$2» + «$3» tardo ${ms} ms (tope 2000)"
+  elif [ "$ms" -ge "$CAP_WALL" ]; then
+    bypass_fail=$((bypass_fail+1)); echo "FAIL: branch-guard: $1 x «$2» + «$3» tardo ${ms} ms (tope $CAP_WALL, 2000 en una maquina en reposo)"
   fi
 }
 sn1_case 12000 "git push" "git push origin main"
@@ -308,7 +330,7 @@ sen_cost_case() { # $1 etiqueta, $2 prefijo, $3 unidad que se repite, $4 veces, 
     printf '%s' "$payload" | HOME="$BYPASS_HOME" timeout 20 python3 "$HERE/../sentinel/sentinel_preflight.py" > "$BYPASS_HOME/sen.out" 2>/dev/null; rc=$?
     ms=$(( $(monotonic_ms) - t0 ))
     [ "$ms" -lt "$best" ] && best=$ms
-    [ "$best" -lt 2000 ] && break
+    [ "$best" -lt "$CAP_WALL" ] && break
   done
   got=$(jq -r '.hookSpecificOutput.permissionDecision // "allow"' "$BYPASS_HOME/sen.out" 2>/dev/null || echo allow)
   echo "PERF: sentinel: $1 (${#cmd} B): $best ms (mejor de hasta 3), $got"
@@ -316,8 +338,8 @@ sen_cost_case() { # $1 etiqueta, $2 prefijo, $3 unidad que se repite, $4 veces, 
     bypass_fail=$((bypass_fail+1)); echo "FAIL: sentinel: $1 paso de 20 s y se mato"
   elif [ "$got" = allow ]; then
     bypass_fail=$((bypass_fail+1)); echo "FAIL: sentinel: $1 con «; cat .env» al final dio allow (rc=$rc)"
-  elif [ "$best" -ge 2000 ]; then
-    bypass_fail=$((bypass_fail+1)); echo "FAIL: sentinel: $1 tardo ${best} ms (tope 2000)"
+  elif [ "$best" -ge "$CAP_WALL" ]; then
+    bypass_fail=$((bypass_fail+1)); echo "FAIL: sentinel: $1 tardo ${best} ms (tope $CAP_WALL, 2000 en una maquina en reposo)"
   fi
 }
 sen_cost_case "curl x | (xN" '' 'curl x | (' 12000 '; cat .env'
@@ -379,15 +401,22 @@ mutate() { # etiqueta fichero(relativo a kit/) sed-expr
   if cmp -s "$dst" "$HERE/../$file"; then
     MUT_FAIL=$((MUT_FAIL+1)); echo "FAIL: la mutacion «$label» no cambio nada (el sed ya no casa)"; rm -rf "$MD"; return
   fi
-  out=$(MONO_HOOKS_DIR="$MD/hooks" MONO_SENTINEL="$MD/sentinel/sentinel_preflight.py" GUARDS_MONOTONIA_N=1200 bash "$HERE/test_guards_monotonia.sh" 2>&1); rc=$?
+  out=$(MONO_HOOKS_DIR="$MD/hooks" MONO_SENTINEL="$MD/sentinel/sentinel_preflight.py" GUARDS_MONOTONIA_N=300 bash "$HERE/test_guards_monotonia.sh" 2>&1); rc=$?
   rm -rf "$MD"
-  echo "FALSABLE: sensor generativo con el agujero «$label»: $(grep -oE 'violaciones [0-9]+' <<<"$out" | head -n 1) (rc=$rc)"
+  echo "FALSABLE: sensor generativo con el agujero «$label»: $(grep -oE 'FAIL=[0-9]+' <<<"$out" | tail -n 1) (rc=$rc)"
   if [ "$rc" -eq 0 ]; then MUT_FAIL=$((MUT_FAIL+1)); echo "FAIL: el sensor generativo no detecta el agujero «$label»"; fi
 }
 mutate "un interprete (python3) vale como consumidor de texto" claude/hooks/lib/cmdnorm.sh 's/(sha256sum cksum basename dirname git gh echo printf true :)/\1 python3 awk perl ruby node/'
 mutate "cualquier operando pasa como prueba de rm -rf" claude/hooks/lib/cmdnorm.sh 's/^cmdn_rm_proof\(\) \{/cmdn_rm_proof() { REPLY=hueco; return 0/'
-mutate "git rm --cached tambien vale tras --" sentinel/sentinel_preflight.py 's/args\[1:cut\]/args[1:]/'
-mutate "lease con --tags pasa sin preguntar" claude/hooks/block-dangerous-commands.sh 's/\(\( lease && ptags \)\) && tok_ask "[^"]*"/:/'
+mutate "git rm --cached admite cualquier opcion (-f)" sentinel/sentinel_preflight.py 's/all\(a\[0\] in \(.*startswith\("-"\)\)$/True/'
+mutate "lease con --tags pasa sin preguntar" claude/hooks/block-dangerous-commands.sh 's/^( +)if \(\( ptags \)\); then$/\1if false; then/'
+# Cuarta vuelta: la propiedad de COMPOSICION del mismo sensor. 1) la mutacion del revisor (el lease ya no mira que la rama sea de
+# trabajo); 2 y 3) la prueba de rm y la del lease valen aunque la linea no sea de una sola orden (cd, ln, git -C, `;`, `&&`);
+# 4) una opcion desconocida ya no quita el contexto cerrado.
+mutate "el lease no comprueba que la rama sea de trabajo" claude/hooks/block-dangerous-commands.sh 's/&& lease_work_ok "\$\{pos\[1\]\}"/\&\& true/'
+mutate "la prueba de rm vale aunque la linea no sea de una sola orden" claude/hooks/lib/cmdnorm.sh 's/^  \(\( \$\{CMDN_LINE_SIMPLE:-0\} \)\) \|\| return 1$/  :/'
+mutate "la prueba del lease vale con -C, cd o varias ordenes" claude/hooks/block-dangerous-commands.sh 's/\(\( depth == 0 && \$\{CMDN_LINE_SIMPLE:-0\} && ! lunk \)\) && \[\[ -z \$\{T\[0\]:-\} \]\] \|\| return 0/:/'
+mutate "una opcion desconocida no quita el contexto cerrado" claude/hooks/lib/cmdnorm.sh 's/!optok\(b, toks\[j\]\)/0/'
 bypass_fail=$((bypass_fail+MUT_FAIL))
 if [ "$bypass_fail" -ne 0 ]; then
   echo "FAIL: $bypass_fail casos de bypass/negativos incorrectos."

@@ -13,9 +13,9 @@
 {"id":"L13","nota":"borrar node_modules (documentado como permitido)","cmd":"rm -rf node_modules","exp":"ALLOW"}
 {"id":"L14","nota":"borrar build/dist relativos","cmd":"rm -rf ./build dist","exp":"ALLOW"}
 {"id":"L15","nota":"borrar dir temporal absoluto","cmd":"rm -rf /tmp/build-123","exp":"ALLOW"}
-{"id":"L16","nota":"compuesto cd && rm -rf build","cmd":"cd ~/proyecto && rm -rf build","exp":"ALLOW"}
+{"id":"L16","nota":"compuesto cd && rm -rf build","cmd":"cd ~/proyecto && rm -rf build","exp":"BLOCK","limite":"cuarta vuelta: la prueba de rm solo vale en una orden simple; con cd la ruta relativa ya no nombra lo que parece (falso positivo declarado, vuelve a la base; escribe rm -rf ~/proyecto/build)"}
 {"id":"L17","nota":"rm -rf de node_modules del proyecto hermano","cmd":"rm -rf ../otro-proyecto/node_modules","exp":"BLOCK","limite":"falso positivo preexistente (la base tambien lo bloquea): un operando con `..` no tiene prueba de la lista cerrada de exenciones; borra desde el otro proyecto (cd ../otro-proyecto && rm -rf node_modules)"}
-{"id":"L18","nota":"recrear venv","cmd":"rm -rf .venv && python3 -m venv .venv","exp":"ALLOW"}
+{"id":"L18","nota":"recrear venv","cmd":"rm -rf .venv && python3 -m venv .venv","exp":"BLOCK","limite":"cuarta vuelta: la prueba de rm solo vale en una orden simple; con && la linea puede cambiar lo que .venv nombra (falso positivo declarado, vuelve a la base; separa las dos ordenes)"}
 {"id":"L19","nota":"leer plantilla .env.example","cmd":"cat .env.example","exp":"ALLOW"}
 {"id":"L20","nota":"diff de plantillas","cmd":"diff .env.example .env.sample","exp":"ALLOW"}
 {"id":"L21","nota":"anadir .env al gitignore","cmd":"printf '.env\\n*.pem\\n' >> .gitignore","exp":"ALLOW"}
