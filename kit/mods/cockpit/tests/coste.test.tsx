@@ -13,6 +13,9 @@ const PREV = '# Estado\n\n## Objetivo\nhaz X\n\n## Invariantes\n- no tocar Y\n##
 const PLAN = '## Plan\n- [ ] T2\n## Siguiente acción\nT2\n'
 const DONE_TURN = { answer: 'ok', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' as const }
 const MIN = 60_000
+// Simulating hours fires the mod's 1.5 s poll thousands of times: ~4 s of CPU on an idle machine, over the default
+// 5000 ms on a loaded or slower one. A time budget, not an assertion.
+const HOURS = { timeoutMs: 30_000 }
 const BAND = { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 200, scroll: { offset: 0, bodyRows: 20 }, view: {} }
 const USAGE = { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 20, cache_creation_input_tokens: 5 }
 
@@ -130,7 +133,7 @@ async function threeHours($: any, clock: ReturnType<typeof mock.clock>, files: R
   }
 }
 
-test('B1: si el dueño del estado es otra sesión vigente no hay fork, y a la tercera se para con un solo aviso', async ($, on) => {
+test('B1: si el dueño del estado es otra sesión vigente no hay fork, y a la tercera se para con un solo aviso', HOURS, async ($, on) => {
   const clock = mock.clock(on)
   const { files, seen } = await setup($, on, { dirty: 'motivo=edit\n', owner: { sesion: 'otra-sesion-id', vigente: true } })
   await start($)
@@ -147,7 +150,7 @@ for (const [name, opt] of [
   ['el CLI rechaza con rc 2', { cli: 2 }],
   ['la API falla en el fork', { fork: 'error' as const }],
 ] as const) {
-  test(`B1: ${name}: como mucho 3 intentos y un solo aviso visible`, async ($, on) => {
+  test(`B1: ${name}: como mucho 3 intentos y un solo aviso visible`, HOURS, async ($, on) => {
     const clock = mock.clock(on)
     const { files, seen } = await setup($, on, { dirty: 'motivo=edit\n', ...opt })
     await start($)
@@ -160,7 +163,7 @@ for (const [name, opt] of [
   })
 }
 
-test('B1: tras un fallo el reintento espera 10 min y tras el segundo 20 (retroceso exponencial)', async ($, on) => {
+test('B1: tras un fallo el reintento espera 10 min y tras el segundo 20 (retroceso exponencial)', HOURS, async ($, on) => {
   const clock = mock.clock(on)
   const { files, seen } = await setup($, on, { dirty: 'motivo=edit\n', fork: 'error' })
   await start($)

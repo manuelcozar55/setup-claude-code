@@ -315,4 +315,32 @@ ck "$([ -e "$CLAUDE_HOME/agents/code-explorer.md" ] && echo y || echo n)" "y" "d
 ck "$(dice 'desactivado por ti.*stale-read-guard.py')" "y" "desactivados: el resumen de --apply lo dice"
 ck "$(dice 'desactivado por ti.*agents/code-reviewer.md')" "y" "desactivados: y nombra tambien el agente"
 
+# Caso t: la lista nunca descablea. Un guard cableado se queda aunque conste en .kit-desactivados (basta una linea en
+# un fichero sin proteger para apagarlo en la siguiente actualizacion), y un fichero que existe se actualiza como siempre;
+# la lista solo evita recrear lo que no esta. `hooks/x.sh` y `x.sh` son lo mismo.
+seed t <<'EOF'
+{}
+EOF
+run --apply
+cuenta(){ jq --arg s "$1" '[.hooks | .. | .command? | strings | select(contains($s))] | length' "$S"; }
+b0="$(cuenta block-dangerous-commands.sh)"; d0="$(cuenta destructive-guard.sh)"
+ck "$b0$d0" "11" "lista-no-descablea: la instalacion limpia cablea block-dangerous-commands y destructive-guard"
+printf '%s\n' block-dangerous-commands.sh hooks/destructive-guard.sh hooks/branch-guard.sh > "$CLAUDE_HOME/.kit-desactivados"
+echo "# manipulado" >> "$CLAUDE_HOME/hooks/branch-guard.sh"
+run --apply
+ck "$(cuenta block-dangerous-commands.sh)" "$b0" "lista-no-descablea: un guard cableado y anotado por nombre se queda cableado"
+ck "$(cuenta destructive-guard.sh)" "$d0" "lista-no-descablea: y anotado como hooks/x.sh tambien"
+ck "$(dice 'block-dangerous-commands.sh.*sigue cableado: no se toca')" "y" "lista-no-descablea: el instalador dice que sigue cableado"
+ck "$(dice 'destructive-guard.sh.*sigue cableado: no se toca')" "y" "lista-no-descablea: con la misma frase para hooks/x.sh"
+ck "$(cmp -s "$CLAUDE_HOME/hooks/branch-guard.sh" "$KIT/claude/hooks/branch-guard.sh" && echo y)" "y" "lista-no-descablea: un fichero que existe se actualiza aunque conste en la lista"
+ck "$(dice 'no se copia.*branch-guard')" "n" "lista-no-descablea: y no dice que no lo copia"
+# lo que falta y consta, sigue sin recrearse, con las dos formas del nombre
+rm -f "$CLAUDE_HOME/agents/code-reviewer.md" "$CLAUDE_HOME/hooks/stale-read-guard.py"
+printf '%s\n' agents/code-reviewer.md hooks/stale-read-guard.py > "$CLAUDE_HOME/.kit-desactivados"
+jq '.hooks |= with_entries(.value |= map(select(.hooks | map(.command | contains("stale-read-guard")) | any | not)))' "$S" > "$tmp/t.new"; cat "$tmp/t.new" > "$S"
+run --apply
+ck "$(cuenta stale-read-guard.py)" "0" "lista-no-descablea: lo anotado como hooks/x.py y no cableado sigue sin cablearse"
+ck "$([ -e "$CLAUDE_HOME/hooks/stale-read-guard.py" ] && echo y || echo n)" "n" "lista-no-descablea: y su fichero ausente no se recrea"
+ck "$([ -e "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo y || echo n)" "n" "lista-no-descablea: ni el agente ausente"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

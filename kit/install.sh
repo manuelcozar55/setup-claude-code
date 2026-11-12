@@ -182,19 +182,33 @@ esac
 # Lo que el kit escribe de verdad (no los symlinks omitidos): de ahi sale .kit-manifest, que uninstall.sh --kit usa.
 INSTALLED=()
 # Lo que la persona apago a proposito consta en $CLAUDE_HOME/.kit-desactivados (una linea por script o ruta, como lo ve
-# doctor.sh): actualizar no lo vuelve a encender. Un nombre suelto de hook solo des-cablea su entrada; una ruta
-# (agents/x.md) tampoco se copia.
+# doctor.sh). La lista NUNCA quita nada: solo evita volver a anadir lo que falta (una entrada de hook que no esta en
+# settings.json, un fichero que no esta en disco). Lo que ya esta cableado o existe se trata como siempre: basta una linea
+# en un fichero sin proteger para que, si no, la siguiente actualizacion apagara un guard. Los nombres se comparan sin el
+# prefijo hooks/ o sentinel/ (`hooks/x.sh` y `x.sh` son lo mismo), igual que en doctor.sh.
 KIT_BASE=""
-desactivados_lista() { [ -f "$CLAUDE_HOME/.kit-desactivados" ] && grep -v '^[[:space:]]*\(#\|$\)' "$CLAUDE_HOME/.kit-desactivados"; return 0; }
-desactivado() { [ -f "$CLAUDE_HOME/.kit-desactivados" ] && grep -qxF -- "$1" "$CLAUDE_HOME/.kit-desactivados"; }
+desact_nombre() { REPLY="${1#hooks/}"; REPLY="${REPLY#sentinel/}"; }
+desactivados_lista() {
+  local l
+  [ -f "$CLAUDE_HOME/.kit-desactivados" ] || return 0
+  while IFS= read -r l || [ -n "$l" ]; do
+    case "$l" in ''|[[:space:]]*|'#'*) continue ;; esac
+    desact_nombre "$l"; printf '%s\n' "$REPLY"
+  done < "$CLAUDE_HOME/.kit-desactivados"
+}
+desactivado() {  # ruta relativa
+  local l; desact_nombre "$1"; local n="$REPLY"
+  while IFS= read -r l; do [ "$l" = "$n" ] && return 0; done < <(desactivados_lista)
+  return 1
+}
 aviso_desactivados() {
   local d; d="$(desactivados_lista)"; d="${d//$'\n'/ }"
   [ -n "$d" ] || return 0
-  echo "==> desactivado por ti (consta en .kit-desactivados), no se recablea ni se recopia: $d"
+  echo "==> desactivado por ti (consta en .kit-desactivados; solo evita recrear lo que falta, no quita nada): $d"
 }
 install_file() {  # src dst
   local src="$1" dst="$2"
-  if desactivado "${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}"; then
+  if [ ! -e "$dst" ] && [ ! -L "$dst" ] && desactivado "${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}"; then
     echo "   no se copia (desactivado por ti): ${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}"
     return 0
   fi
@@ -236,8 +250,17 @@ retirado_publicado() {  # fichero nombre: su suma es la de una version publicada
   grep -q "^$(sha256sum < "$1" | cut -d' ' -f1)  $2\$" "$KIT/hooks-retirados.sha256"
 }
 install_settings() {  # src dst
-  local src="$1" dst="$2" tmp real name conserva=() r off=() l
-  while IFS= read -r l; do off+=("${l##*/}"); done < <(desactivados_lista)
+  local src="$1" dst="$2" tmp real name conserva=() r off=() l w
+  # Nombres de script de la lista que NO estan cableados ya en el settings.json actual: solo esos se dejan sin cablear.
+  # Los que siguen cableados se quedan (la lista no descablea) y se dice.
+  w=" "; [ -f "$dst" ] && w=" $(jq -r '[.hooks? // {} | .. | .command? | strings | splits(" +") | gsub("\""; "") | sub(".*/"; "")] | unique | join(" ")' "$dst" 2>/dev/null || true) "
+  while IFS= read -r l; do
+    l="${l##*/}"
+    case "$w" in
+      *" $l "*) echo "   AVISO: $l consta como desactivado pero sigue cableado: no se toca" >&2 ;;
+      *) off+=("$l") ;;
+    esac
+  done < <(desactivados_lista)
   # Un retirado cuyo script existe y no es una version publicada lo editó la persona o es suyo: su entrada se queda.
   for r in $RETIRADOS; do
     if [ -f "$(dirname "$dst")/hooks/$r" ] && ! retirado_publicado "$(dirname "$dst")/hooks/$r" "$r"; then
