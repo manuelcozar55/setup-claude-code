@@ -91,9 +91,9 @@ def chain(cmd, hooks, sen, home, repo):
 # Cargas: (texto, prueba propia de inocuidad o None). Todas las que NO llevan prueba y son bloqueo en la base tienen que
 # seguir sin ser ALLOW en cualquier contexto.
 RM = ["rm -rf", "rm -fr", "rm -r -f", "rm --recursive --force", "rm -rfv", "rm -Rf"]
-OPS_OK = [("build", "build-relativo"), ("./dist", "build-relativo"), ("node_modules", "build-relativo"), (".next .cache", "build-relativo"),
-          ("packages/*/dist", "build-relativo"), ("/tmp/x1", "tmp-subruta"), ("/tmp/a/b", "tmp-subruta"),
-          ("~/proj/node_modules", "home-proyecto-build")]
+OPS_OK = [("build", None), ("./dist", None), ("node_modules", None), (".next .cache", None),
+          ("packages/*/dist", None), ("/tmp/x1", None), ("/tmp/a/b", None),
+          ("~/proj/node_modules", None)]
 OPS_MAL = ["/tmp", "/tmp/", "/tmp/*", "/tmp/.*", "~", "~/", "~/x", "~/build", "~/.cache", "/", "/*", "/home/user/d", "/ho?e/u", "/h*/u",
            "/h{o}me/u", "/run/user/1000", "/snap/x", "/data/p/build", "/var/tmp/x", ".", "*", "./*", ".git", "..", "../x", "foo",
            "src/old", "build/../x", "$HOME/x", "$X", "~user", "~user/x", "/etc/x", "/usr/lib/x", "/opt/x/build", "/mnt/c/Users/x",
@@ -110,12 +110,12 @@ OTHER = [("git push --force origin main", None), ("git push -f origin main", Non
          ("git push --force-with-lease origin develop", None), ("git push --force-with-lease origin trunk", None),
          ("git push --force-with-lease origin HEAD", None), ("git push --force-with-lease origin feat/x:main", None),
          ("git push --force-with-lease", None), ("git push --force-with-lease origin feat/x origin2 main", None),
-         ("git push --force-with-lease origin feat/x", "lease-rama-de-trabajo"), ("git rm --cached .env", "git-rm-cached")]
+         ("git push --force-with-lease origin feat/x", None), ("git rm --cached .env", "git-rm-cached")]
 PAYLOADS = [("%s %s" % (r, o), None) for r in RM[:2] for o in OPS_MAL] + [("%s %s" % (r, o), p) for r in RM for o, p in OPS_OK] \
     + [("%s %s" % (RM[3], o), None) for o in OPS_MAL[:12]] + OTHER
 # Consumidores de texto inocuos (con prueba) y receptores que NO lo son (sin prueba: el echo/heredoc que les llega es codigo).
-INERT = ["wc -c", "grep x", "head -1", "tail -1", "sort", "uniq", "cut -c1-5", "tr a b", "tee out.txt", "cat", "jq -R .", "less", "column", "nl", "fold"]
-NOT_INERT = ["python3", "python3 -c 'import sys;exec(sys.stdin.read())'", "ruby", "node", "perl", "awk '{system($0)}'", "awk '{print}'",
+INERT = ["wc -c", "grep x", "head -1", "tail -1", "sort", "cut -c1-5", "tr a b", "cat", "jq -R .", "less", "column", "nl", "fold"]
+NOT_INERT = ["uniq", "xxd", "tee out.txt", "python3", "python3 -c 'import sys;exec(sys.stdin.read())'", "ruby", "node", "perl", "awk '{system($0)}'", "awk '{print}'",
              "sed 's/^/ /e'", "sed 's/a/b/'", "parallel", "csh", "tcsh", "rbash", "pwsh", "busybox sh", "toybox sh", "env -S sh",
              "flock l bash", "su -c sh", "unshare sh", "script -qc sh", "chroot / sh", "docker run -i alpine sh", "bash", "sh", "dash",
              "zsh", "xargs sh -c", "xargs -I{} sh -c {}", "while read l; do eval \"$l\"; done", "./run.sh", "$X", "$(which sh)",
@@ -150,16 +150,16 @@ def cases():
             add("F%d%s" % (pi, st), "printf '%%s\\n' %s" % q(p, st), "dato:echo-sin-consumidor")
         add("Eu%d" % pi, "echo " + p.replace(";", "").replace("|", "").replace("&", "").replace("(", "").replace(")", ""), "dato:echo-sin-consumidor") \
             if not any(c in p for c in ";|&()<>`$'\"{}\\") else None
-        add("EF%d" % pi, "echo %s > notes.txt" % q(p, "s"), "dato:echo-sin-consumidor")
+        add("EF%d" % pi, "echo %s > notes.txt" % q(p, "s"), None)
         add("M%d" % pi, "git commit -m %s" % q(p, "d"), "dato:mensaje-de-commit")
         add("MG%d" % pi, "gh pr create --title t --body %s" % q(p, "s"), "dato:mensaje-de-commit")
         add("G%d" % pi, "grep -rn %s src/" % q(p, "s"), "dato:patron-de-busqueda")
         add("R%d" % pi, "rg %s docs" % q(p, "d"), "dato:patron-de-busqueda")
-        add("A%d" % pi, "awk %s log.txt" % q("/%s/ {print}" % p.replace("/", "\\/"), "s"), "dato:patron-de-busqueda")
+        add("A%d" % pi, "awk %s log.txt" % q("/%s/ {print}" % p.replace("/", "\\/"), "s"), None)
         add("C%d" % pi, "ls # %s" % p, None)
-        add("H%d" % pi, "cat <<'EOF'\n%s\nEOF" % p, "dato:heredoc-a-fichero")
-        add("HF%d" % pi, "cat > notes.md <<EOF\n%s\nEOF" % p, "dato:heredoc-a-fichero")
-        add("HT%d" % pi, "tee notes.md <<'EOF'\n%s\nEOF" % p, "dato:heredoc-a-fichero")
+        add("H%d" % pi, "cat <<'EOF'\n%s\nEOF" % p, "dato:heredoc-de-texto")
+        add("HF%d" % pi, "cat > notes.md <<EOF\n%s\nEOF" % p, None)
+        add("HT%d" % pi, "tee notes.md <<'EOF'\n%s\nEOF" % p, None)
         add("HR%d" % pi, "cat > a.sh <<'EOF'\n%s\nEOF\nbash a.sh" % p, None)
         add("HS%d" % pi, "cat > a.sh <<'EOF'\n%s\nEOF\nsh ./a.sh" % p, None)
         add("HP%d" % pi, "cat > a.py <<'EOF'\n%s\nEOF\npython3 a.py" % p, None)
@@ -179,7 +179,7 @@ def cases():
         for ci, c in enumerate(INERT):
             st = "sda"[(pi + ci) % 3]
             add("I%d.%d" % (pi, ci), "echo %s | %s" % (q(p, st), c), "dato:echo-sin-consumidor")
-            add("IH%d.%d" % (pi, ci), "cat <<'EOF' | %s\n%s\nEOF" % (c, p), "dato:heredoc-a-fichero")
+            add("IH%d.%d" % (pi, ci), "cat <<'EOF' | %s\n%s\nEOF" % (c, p), "dato:heredoc-de-texto")
         for ci, c in enumerate(NOT_INERT):
             st = "sda"[(pi + ci) % 3]
             add("N%d.%d" % (pi, ci), "echo %s | %s" % (q(p, st), c), None)

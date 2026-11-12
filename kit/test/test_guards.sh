@@ -515,8 +515,10 @@ expect "guard: -C antes de push denegado"         "$(run_blockdc 'git -C /home/u
 expect "guard: refspec + forzado denegado"        "$(run_blockdc 'git push origin +release:release')"            BLOCK
 expect "guard: --mirror denegado"                 "$(run_blockdc 'git push --mirror origin')"                    BLOCK
 expect "guard: --delete de rama remota denegado"  "$(run_blockdc 'git push origin --delete release')"            BLOCK
-# --force-with-lease y --force-if-includes pisan la rama solo si nadie la ha tocado: pasan a una rama que no es main/master.
-expect "guard: --force-with-lease a una rama de trabajo NO denegado" "$(run_blockdc 'git push --force-with-lease origin feature')"  ALLOW
+# Quinta vuelta: --force-with-lease nunca es allow. Con prueba (remoto con nombre y rama feat/, fix/, chore/...) PREGUNTA (aqui «no
+# denegado»); sin prueba manda el veredicto de la base (deny).
+expect "guard: --force-with-lease a una rama de trabajo con prueba pregunta (no deniega)" "$(run_blockdc 'git push --force-with-lease origin feat/x')"  ALLOW
+expect "guard: --force-with-lease a una rama sin prueba vuelve a la base" "$(run_blockdc 'git push --force-with-lease origin feature')"  BLOCK
 expect "guard: --force-with-lease a main sigue denegado" "$(run_blockdc 'git push --force-with-lease origin main')"  BLOCK
 expect "guard: --force-with-lease=main sigue denegado"   "$(run_blockdc 'git push origin --force-with-lease=main')"  BLOCK
 expect "guard: --force-with-lease junto a --force denegado" "$(run_blockdc 'git push --force-with-lease --force origin feature')"  BLOCK
@@ -531,7 +533,7 @@ expect "guard: flag corto entre comillas simples denegado"  "$(run_blockjq "git 
 expect "guard: flag largo con comillas parciales denegado"  "$(run_blockjq "git push --\"force\" origin rama-x")"    BLOCK
 expect "guard: guion y letra separados por comillas denegado" "$(run_blockjq "git push \"-\"f origin rama-x")"       BLOCK
 expect "guard: flag largo entrecomillado denegado"          "$(run_blockjq "git push '$FF' origin rama-x")"          BLOCK
-expect "guard: --force-with-lease entrecomillado NO denegado" "$(run_blockjq "git push '$FF-with-lease' origin rama-x")" ALLOW
+expect "guard: --force-with-lease entrecomillado, sin prueba de rama, vuelve a la base" "$(run_blockjq "git push '$FF-with-lease' origin rama-x")" BLOCK
 expect "guard: -uf entrecomillado denegado"                 "$(run_blockjq "git push '-uf' origin rama-x")"          BLOCK
 expect "guard: flag entrecomillado tras el refspec denegado" "$(run_blockjq "git push origin rama-x '-f'")"          BLOCK
 expect "guard: flag entrecomillado tras -C denegado"        "$(run_blockjq "git -C /r push '-f' origin rama-x")"     BLOCK
@@ -548,7 +550,7 @@ expect "guard: \$'-f' tras -C denegado"                     "$(run_blockjq "git 
 expect "guard: \$'+rama' denegado"                          "$(run_blockjq "git push origin \$'+rama-x'")"           BLOCK
 expect "guard: \$'\\x2df' (escape sin resolver) denegado"   "$(run_blockjq "git push \$'\\x2df' origin rama-x")"      BLOCK
 expect "guard: \$'\\x2bmain' (refspec con escape) denegado" "$(run_blockjq "git push origin \$'\\x2bmain'")"           BLOCK
-expect "guard: --force-if-includes NO denegado"             "$(run_blockjq "git push $FF-if-includes origin rama-x")" ALLOW
+expect "guard: --force-if-includes, sin prueba de rama, vuelve a la base" "$(run_blockjq "git push $FF-if-includes origin rama-x")" BLOCK
 expect "guard: refspec +HEAD:main denegado"                 "$(run_blockjq "git push origin +HEAD:main")"            BLOCK
 expect "guard: -C dir con +main denegado"                   "$(run_blockjq "git -C /r push origin +main")"           BLOCK
 expect "guard: \$'rama-x' NO denegado"                      "$(run_blockjq "git push origin \$'rama-x'")"            ALLOW
@@ -717,7 +719,8 @@ expect "destructive: rm forma larga en /home denegado" "$(run_destructive 'rm --
 # entrecomillado y sin pipe es texto; en cualquier otra forma (sin comillas, a un shell, con `;`/`&&`, sin cierre) sigue valiendo.
 run_destructive_jq() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" bash "$KIT/claude/hooks/destructive-guard.sh" 2>&1; }
 NL=$'\n'
-expect "destructive: prosa con rm -rf en heredoc a fichero NO denegada"  "$(run_destructive_jq "cat > informe.md <<'EOF'${NL}no usar rm -rf ~ ni find . -delete${NL}EOF")" ALLOW
+expect "destructive: heredoc a fichero con rm -rf: quinta vuelta, escribir un texto ya no se prueba como dato (base)"  "$(run_destructive_jq "cat > informe.md <<'EOF'${NL}no usar rm -rf ~ ni find . -delete${NL}EOF")" BLOCK
+expect "destructive: heredoc de texto sin fichero con rm -rf NO denegado"  "$(run_destructive_jq "cat <<'EOF'${NL}no usar rm -rf ~ ni find . -delete${NL}EOF")" ALLOW
 # Cuarta vuelta (cambio de especificacion declarado): la prueba de dato solo vale en contexto cerrado, una sola tuberia. Con una
 # orden mas en otra linea el texto escrito podria consumirla (`cat > a.sh <<EOF`...`sh a.sh`): vuelve el veredicto de la base.
 expect "destructive: heredoc a fichero y luego otra orden en otra linea: vuelve el veredicto de la base (cuarta vuelta)" "$(run_destructive_jq "cat >a.md <<\"FIN\"${NL}rm -rf /etc${NL}FIN${NL}ls")" BLOCK
