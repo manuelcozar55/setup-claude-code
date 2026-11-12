@@ -87,6 +87,16 @@ for spec in "sentinel_preflight.py:Sentinel" "write-guard.py:write-guard"; do
 done
 out=$(echo '{"session_id":"sesC"}' | CC_WARN_DIR="$T/warn" PYTHON_HOOK_BIN=/no/existe/python3 "$W" --python /x/otro-hook.py 2>&1)
 [[ -z $out ]] && ok || ko "un hook opcional sin python3 sigue en silencio (salio: ${out:0:80})"
+# El marcador de aviso no se crea a traves de un enlace plantado en el directorio de runtime: ni trunca un fichero
+# existente ni crea el destino de un enlace colgante.
+printf 'VICTIMA\n' > "$T/victima"
+ln -s "$T/victima" "$T/warn/cc-degradado-$(id -u)-sesL-Sentinel"
+ln -s "$T/no-debe-existir" "$T/warn/cc-degradado-$(id -u)-sesL-write-guard"
+for s in sentinel_preflight.py write-guard.py; do
+  echo '{"session_id":"sesL"}' | CC_WARN_DIR="$T/warn" PYTHON_HOOK_BIN=/no/existe/python3 "$W" --python "/x/$s" >/dev/null 2>&1
+done
+[[ $(cat "$T/victima") == VICTIMA ]] && ok || ko "el marcador de aviso truncó un fichero a traves de un enlace"
+[[ ! -e "$T/no-debe-existir" ]] && ok || ko "el marcador de aviso creo el destino de un enlace colgante"
 
 # 5. falta el script del guard (con python3 presente): exit 2, como un guard que dice no
 for s in sentinel_preflight.py write-guard.py; do

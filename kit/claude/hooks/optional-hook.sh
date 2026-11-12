@@ -37,8 +37,8 @@ warn_once() { # <clave> <mensaje>
   [ -n "$sid" ] || sid=sinsesion
   dir="${CC_WARN_DIR:-${XDG_RUNTIME_DIR:-/tmp}}"
   marker="$dir/cc-degradado-$(id -u)-$sid-$1"
-  [ -e "$marker" ] && return 0
-  : > "$marker" 2>/dev/null || true
+  # noclobber abre con O_EXCL: no sigue un enlace plantado en el directorio y, si el marcador ya existe, no avisa de nuevo.
+  if ! ( set -o noclobber; : > "$marker" ) 2>/dev/null && { [ -e "$marker" ] || [ -L "$marker" ]; }; then return 0; fi
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}\n' "$2"
   printf '%s\n' "$2" >&2
 }
