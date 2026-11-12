@@ -80,11 +80,22 @@ RT=$TR; TR=$HOME/no-existe.jsonl
 auto Stop >"$T/out" 2>"$T/err"; RC=$?
 ok "7 transcript ausente: rc 0 y primera línea sin ctx" "$RC,$(seccion "$NUC" | sed -n 2p | grep -c ctx)" "0,0"
 TR=$RT
-# 8. sin nucleo (ni plantilla) no crea nada
+# 8. repo git sin estado (cv2/estado, D2: antes «no crea nada»; el método promete que se guarda solo): sin trabajo
+# no crea nada y lo anota en el log; con trabajo crea el estado desde la plantilla, lo excluye de git y hace dueña a la sesión.
 N=$T/vacio; mkdir -p "$N"; git -C "$N" init -q
-CWD=$N auto Stop >"$T/out"; RC=$?
-ok "8 sin nucleo: rc 0, omitido y no crea .claude/" "$RC,$(jq -r .omitido "$T/out"),$([ -e "$N/.claude" ] && echo creado || echo nada)" "0,sin estado,nada"
-printf '# Estado\nESTADO\n' >"$N/ESTADO.md"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":"hola"}}' >"$T/sin-trabajo.jsonl"
+: >"$T/log0"; ALOGF=$HOME/.claude/session-logs/autosave.log; L0=$(wc -l <"$ALOGF" 2>/dev/null || echo 0)
+CWD=$N TP=$T/sin-trabajo.jsonl auto Stop >"$T/out"; RC=$?
+ok "8 sin nucleo ni trabajo: rc 0, omitido y no crea .claude/" "$RC,$(jq -r .omitido "$T/out"),$([ -e "$N/.claude" ] && echo creado || echo nada)" "0,sin trabajo,nada"
+ok "8 el turno saltado queda en autosave.log con su motivo" "$(tail -n +"$((L0 + 1))" "$ALOGF" | command grep -c 'omitido=sin trabajo')" 1
+NUCLEO_AUTOINICIO=0 CWD=$N TP=$T/sin-trabajo.jsonl auto Stop >"$T/out"
+ok "8 NUCLEO_AUTOINICIO=0 apaga el autoinicio" "$(jq -r .omitido "$T/out"),$([ -e "$N/.claude" ] && echo creado || echo nada)" "sin estado,nada"
+echo trabajo >"$N/hecho.md"
+CWD=$N TP=$T/sin-trabajo.jsonl auto Stop >"$T/out"; RC=$?
+ok "8 sin nucleo y con trabajo: crea nucleo.md desde la plantilla y escribe la sección" "$RC,$(grep -c '^## Paso actual' "$N/.claude/estado/nucleo.md"),$(grep -c '^## Último turno (auto)$' "$N/.claude/estado/nucleo.md"),$(grep -c 'hecho.md' "$N/.claude/estado/nucleo.md")" "0,1,1,1"
+ok "8 el estado nuevo queda fuera de git (info/exclude)" "$(git -C "$N" status --short | command grep -c claude)" 0
+ok "8 la sesión que lo creó es la dueña" "$(nucleo_dueno "$N" | cut -d' ' -f1)" sid-1
+N=$T/solo-estado-md; mkdir -p "$N"; git -C "$N" init -q; printf '# Estado\nESTADO\n' >"$N/ESTADO.md"
 CWD=$N auto Stop >"$T/out"
 ok "8 modo ESTADO.md: omitido y ESTADO.md intacto" "$(jq -r .omitido "$T/out"),$(cat "$N/ESTADO.md" | tr '\n' ' ')" "modo ESTADO.md,# Estado ESTADO "
 # 9. compact
@@ -109,15 +120,15 @@ ok "10 --desde conserva la sección auto, la última" "$(grep -c "^$AUTOH\$" "$N
 ok "10 --desde aplicó el borrador" "$(grep -c '^nuevo paso$' "$NUC")" 1
 ok "10 un --auto tras --desde no rota ni toca el dueño" "$(auto Stop >/dev/null 2>&1; find "$E" -name 'nucleo.prev-*' | wc -l | tr -d ' ')" 1
 printf '%s\n## Ficheros tocados\n- x\n## Último turno (auto)\n- inventada\n' "$(printf '## Paso actual\notro paso')" >"$T/draft2"
-bash "$BIN" --raiz "$R" --desde "$T/draft2" >/dev/null 2>&1; RC=$?
+CLAUDE_CODE_SESSION_ID=sid-1 bash "$BIN" --raiz "$R" --desde "$T/draft2" >/dev/null 2>&1; RC=$?
 ok "10 un borrador que copia la sección auto no falla ni la sustituye" "$RC,$(grep -c inventada "$NUC"),$(grep '^## ' "$NUC" | tail -1)" "0,0,$AUTOH"
 # 10b. al recortar, la sección auto es lo primero que sale, sin copia en diario ni aviso
 { printf '## Paso actual\n'; for i in $(seq 1 75); do printf 'linea de paso %03d con algo de relleno para pesar bastante en el nucleo\n' "$i"; done; } >"$T/grande"
-bash "$BIN" --raiz "$R" --desde "$T/grande" >"$T/out" 2>"$T/err"; RC=$?
+CLAUDE_CODE_SESSION_ID=sid-1 bash "$BIN" --raiz "$R" --desde "$T/grande" >"$T/out" 2>"$T/err"; RC=$?
 ok "10b tope: rc 0, la sección auto se fue y el paso entero se conserva" "$RC,$(grep -c "^$AUTOH\$" "$NUC"),$(grep -c 'linea de paso 075' "$NUC")" "0,0,1"
 ok "10b tope: sin copia de la sección auto en diario.md" "$(grep -c 'Último turno (auto)\|omitido por tope: Último' "$E/diario.md" 2>/dev/null)" 0
 # 11. tope: con el nucleo casi al tope la sección se recorta o no entra; nunca otra sección
-bash "$BIN" --raiz "$R" --desde "$T/draft" >/dev/null 2>&1
+CLAUDE_CODE_SESSION_ID=sid-1 bash "$BIN" --raiz "$R" --desde "$T/draft" >/dev/null 2>&1
 { cat "$NUC"; printf '\n## Pendientes\n'; for i in $(seq 1 120); do printf -- '- [ ] pendiente %02d con texto de relleno para engordar el fichero\n' "$i"; done; } >"$T/gordo"
 head -c 5560 "$T/gordo" >"$NUC"; printf '\n' >>"$NUC"; touch -d '2026-01-01 10:00:00' "$NUC"; ORIG11=$(cat "$NUC")
 auto Stop >"$T/out" 2>"$T/err"; RC=$?
@@ -193,6 +204,19 @@ ok "15 por_sid encuentra la ranura" "$(nucleo_sesion_dir por_sid home-1)" "$SH"
 # 16. el hook en ~ (timeout es el padre de handoff): CLAUDE_PID le da la ranura
 jq -cn --arg c "$HOME" --arg t "$TRH" '{hook_event_name:"Stop",session_id:"home-1",transcript_path:$t,cwd:$c}' | CLAUDE_PID=$PH bash "$HOOK/autosave.sh"
 ok "16 autosave.sh en ~ escribe en la ranura del proceso" "$(find "$SES" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' '),$(seccion "$SH/nucleo.md" | grep -c "^$AUTOH\$")" "1,1"
+
+# 17. D6: la sección no copia secretos (mismas reglas que el redact del cockpit). Claves falsas por concatenación.
+R17=$T/repo17; mkdir -p "$R17/.claude/estado"; git -C "$R17" init -q; printf '# Estado\n\n## Objetivo\nx\n' >"$R17/.claude/estado/nucleo.md"
+AT=@; K1="sk-""ant-api03-ABCDEFGHIJKLMNOPQRSTUV"; K2="gh""p_0123456789abcdefghijABCDEFGHIJ012345"; K3="AK""IAABCDEFGHIJKLMNOP"; K4="ey""JhbGciOiJIUzI1NiJ9.ey""JzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghij12345"
+TR17=$HOME/t17.jsonl
+jq -cn --arg p "usa la clave $K1 y el token $K2 para el deploy, password=hunter2x y $K4" '{type:"user",message:{role:"user",content:$p}}' >"$TR17"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"%s/a.sh"}}]}}\n' "$R17" >>"$TR17"
+jq -cn --arg t "$TR17" --arg c "$R17" --arg m "Listo, la clave era $K3 y la URL https://usuario:clave99${AT}host.ejemplo/x con Bearer abcdef123456" \
+  '{hook_event_name:"Stop",session_id:"sid-17",transcript_path:$t,cwd:$c,last_assistant_message:$m}' | bash "$BIN" --auto --json >"$T/out" 2>&1; RC=$?
+S17=$(seccion "$R17/.claude/estado/nucleo.md")
+ok "17 la sección se escribe (rc 0, con persona y asistente)" "$RC,$(grep -c '^- Persona: \|^- Asistente: ' <<<"$S17")" "0,2"
+ok "17 ninguna clave, token, contraseña, JWT ni credencial de URL sobrevive" "$(grep -c "$K1\|$K2\|$K3\|hunter2x\|ey""JhbGci\|clave99\|abcdef123456" <<<"$S17")" 0
+ok "17 queda la marca [REDACTADO]" "$(grep -c 'REDACTADO' <<<"$S17")" 2
 
 [ "$FAIL" -eq 0 ] && echo "PASS" || echo "FAIL"
 exit "$FAIL"

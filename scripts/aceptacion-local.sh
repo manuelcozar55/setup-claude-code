@@ -87,8 +87,8 @@ for ev in SubagentStart SubagentStop; do
     '{cwd:$r,session_id:$s,hook_event_name:$ev,agent_id:"aceptacion-agente",agent_type:"worker",agent_transcript_path:$tp,last_assistant_message:"turno sintético"}' > "$D/$ev.json"
   ejecutar "$ev" 0 bash "$H/agentes.sh" < "$D/$ev.json"
 done
-jq '. + {background_tasks:[{id:"aceptacion-agente",type:"subagent",status:"running"}]}' "$D/startup.json" > "$D/stop.json"
-ejecutar foto 0 bash "$H/stop-context-gauge.sh" < "$D/stop.json"
+jq '. + {hook_event_name:"Stop",background_tasks:[{id:"aceptacion-agente",type:"subagent",status:"running"}]}' "$D/startup.json" > "$D/stop.json"
+ejecutar foto 0 bash "$H/agentes.sh" < "$D/stop.json"
 ejecutar agentes 0 bash "$CLI" --agentes --raiz "$R"
 comprobar agente-en-vuelo grep -q 'en vuelo' "$D/agentes.log"
 ejecutar estado-primera 0 bash "$CLI" --estado --raiz "$R" --sesion "$S1"

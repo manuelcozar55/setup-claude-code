@@ -15,13 +15,14 @@ ok "SessionStart startup|clear|resume → session-start-clear.sh" "$(cmd Session
 ok "SessionStart compact → session-start-compact.sh" "$(cmd SessionStart compact | command grep -c 'hooks/session-start-compact.sh')" 1
 ok "PostToolUse \"\" (todas) → nucleo-nudge.sh" "$(cmd PostToolUse '' | command grep -c 'hooks/nucleo-nudge.sh')" 1
 ok "nudge con timeout ≤ 5 s (camino caliente)" "$(q '[.hooks.PostToolUse[].hooks[] | select(.command|test("nucleo-nudge")) | .timeout <= 5] | (length > 0 and all)')" true
-ok "PreToolUse \"\" (todas) → nucleo-gate.sh" "$(cmd PreToolUse '' | command grep -c 'hooks/nucleo-gate.sh')" 1
-ok "compuerta con timeout ≤ 5 s" "$(q '[.hooks.PreToolUse[].hooks[] | select(.command|test("nucleo-gate")) | .timeout <= 5] | (length > 0 and all)')" true
-ok "Stop → stop-context-gauge.sh" "$(cmd Stop '' | command grep -c 'hooks/stop-context-gauge.sh')" 1
+ok "ya no hay nucleo-gate.sh" "$(command grep -c 'nucleo-gate' "$S")" 0
+ok "Stop → agentes.sh (foto de agentes y compuerta de commit)" "$(cmd Stop '' | command grep -c 'hooks/agentes.sh')" 1
+ok "ya no hay stop-context-gauge.sh" "$(command grep -c 'stop-context-gauge' "$S")" 0
 ok "un solo PreCompact" "$(q '.hooks.PreCompact | length')" 1
 ok "PreCompact → pre-compact.sh" "$(q '.hooks.PreCompact[0].hooks[0].command' | command grep -c 'hooks/pre-compact.sh')" 1
-ok "PostCompact → post-compact-check.sh" "$(q '.hooks.PostCompact[0].hooks[0].command' | command grep -c 'hooks/post-compact-check.sh')" 1
-ok "PostCompact con timeout ≤ 5 s" "$(q '.hooks.PostCompact[0].hooks[0].timeout <= 5')" true
+ok "PostCompact → autosave.sh (la medida de anclas va dentro, solo log)" "$(q '.hooks.PostCompact[0].hooks[0].command' | command grep -c 'hooks/autosave.sh')" 1
+ok "PostCompact: un solo hook" "$(q '.hooks.PostCompact | length')" 1
+ok "PostCompact con timeout 8 s (cubre los 5 s del CLI y la medida de anclas)" "$(q '.hooks.PostCompact[0].hooks[0].timeout == 8')" true
 ok "cleanupPeriodDays = 14" "$(q '.cleanupPeriodDays')" 14
 ok "tui = fullscreen" "$(q '.tui')" fullscreen
 ok "theme = dark" "$(q '.theme')" dark
@@ -48,4 +49,23 @@ ok "sin plugins personales ni de contexto caro (codex, understand-anything, fron
 V="$(cat "$(dirname "$S")/../../VERSION" 2>/dev/null)"
 ok "marketplace setup-claude-code: source github" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.source')" github
 ok "marketplace setup-claude-code: ref = v<VERSION> (hoy v$V)" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.ref')" "v$V"
+
+# D7: con un HOME con espacios cada comando registrado se resuelve y arranca. Sin comillas en el JSON, el shell partía la
+# ruta y salía 127 en silencio (los hooks fallan en abierto: nadie lo notaba). Se ejecuta cada comando tal cual, con el
+# JSON mínimo de un evento, y solo se exige que no salga 126/127 ni «No such file».
+KITC=$(cd "$(dirname "$S")" && pwd)
+TH=$(mktemp -d); trap 'find "$TH" -depth -delete' EXIT
+HX="$TH/casa con espacios"; mkdir -p "$HX/.claude" "$TH/proy"
+ln -s "$KITC/hooks" "$HX/.claude/hooks"; [ ! -d "$KITC/../sentinel" ] || ln -s "$KITC/../sentinel" "$HX/.claude/sentinel"
+git -C "$TH/proy" init -q 2>/dev/null
+N=0; MAL=""
+while IFS=$'\t' read -r ev c; do
+  N=$((N + 1))
+  J=$(jq -cn --arg e "$ev" --arg d "$TH/proy" '{hook_event_name:$e,session_id:"smoke",cwd:$d,transcript_path:($d+"/t.jsonl"),tool_name:"Bash",tool_input:{command:"true"},prompt:"hola",source:"startup",trigger:"auto",compact_summary:"x"}')
+  out=$(cd "$TH/proy" && printf '%s' "$J" | HOME="$HX" CLAUDE_HOME="$HX/.claude" timeout 20 bash -c "$c" 2>&1 >/dev/null); rc=$?
+  case "$rc:$out" in 126:*|127:*|*"No such file"*|*"command not found"*) MAL="$MAL [$ev rc=$rc: $c]";; esac
+done < <(jq -r '.hooks | to_entries[] | .key as $e | .value[].hooks[] | [$e, .command] | @tsv' "$S")
+ok "smoke: $N comandos registrados arrancan con un HOME con espacios${MAL:+ (fallan:$MAL)}" "${MAL:-}" ""
+# shellcheck disable=SC2016  # filtro jq
+ok "smoke: todo comando cita \$HOME entre comillas" "$(q '[.hooks[][].hooks[].command | select(test("(^|[ ])\\$HOME"))] | length')" 0
 exit $FAIL

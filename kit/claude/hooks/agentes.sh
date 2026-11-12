@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SubagentStart | SubagentStop | SessionEnd — registro mecánico de agentes (ADR 017): una línea JSON por evento en
+# SubagentStart | SubagentStop | Stop | SessionEnd — registro mecánico de agentes (ADR 017): una línea JSON por evento en
 # <raíz>/.claude/estado/agentes.jsonl (lib/nucleo.sh: nucleo_agentes_anotar, que rota a 200 líneas o 14 días).
 # Por qué: SubagentStop marca el fin del *turno* del agente, no el de su trabajo, y no trae resultado; tras /clear, una
 # compactación o al reanudar, la sesión nueva no sabe si debe recoger o relanzar. El estado se deriva al leer
@@ -10,11 +10,13 @@
 #                  last_assistant_message (medido en 2.1.308); si falta o viene vacío, el último texto de su transcript y la ruta del RESULTADO.md que pedía su brief
 #                  (primer mensaje de su transcript; barato: 3 líneas; vacía si no la nombra).
 #                  background_tasks puede contener hermanos: no demuestra descendencia ni trabajo pendiente del agente.
+#   Stop:          la foto de los agentes vivos (background_tasks) y la compuerta de commit sin nucleo actualizado
+#                  (nucleo_puerta_commit; observe por defecto, NUCLEO_GATE=block bloquea). Es lo único que sale por stdout.
 #   SessionEnd:    los subagentes que seguían vivos en la última foto de Stop de esta sesión (SessionEnd no trae
-#                  background_tasks; la foto la deja stop-context-gauge.sh): «cortado al cerrar».
+#                  background_tasks; la foto la deja el Stop): «cortado al cerrar».
 # Agentes internos (sugerencias de prompt, resúmenes de /compact): llegan con agent_type vacío (medido en S0, una muestra;
 # la doc no lo dice) y no se registran, para que no desplacen a los reales del tope de 200 líneas.
-# Sin red ni modelo. Fail-open: exit 0 siempre, sin salida; JSON roto, enlaces o disco lleno no rompen nada.
+# Sin red ni modelo. Fail-open: exit 0 siempre, sin salida (salvo el bloqueo del Stop en NUCLEO_GATE=block); JSON roto, enlaces o disco lleno no rompen nada.
 set -u
 IN=$(cat)
 { read -r EV; read -r SID; read -r ID; read -r TIPO; read -r CWD; read -r TP; } < <(
@@ -67,11 +69,27 @@ case ${EV:-} in
         tipo:(.agent_type // ""), tp:(.agent_transcript_path // .transcript_path // ""),
         msg:($m | .[-300:]),
         res:$r}' <<<"$IN" 2>/dev/null) || exit 0 ;;
+  Stop)
+    # Solo el hilo principal (un subagente trae agent_id; el Stop de un subagente es SubagentStop).
+    [ -z "$ID" ] || exit 0
+    VIVOS=$(jq -c '[ (.background_tasks // [])[] | select(.status == null or .status == "running") ]' <<<"$IN" 2>/dev/null) || VIVOS='[]'
+    nucleo_agentes_foto "$RAIZ" "$SID" "$VIVOS" 2>/dev/null || true
+    [ -n "$TP" ] && [ -f "$TP" ] || exit 0
+    REASON=$(nucleo_puerta_commit "$IN" "$TP" "$SID" "$RAIZ")
+    [ -z "$REASON" ] || jq -cn --arg r "$REASON" '{decision:"block",reason:$r}'
+    exit 0 ;;
   SessionEnd)
+    # Espera el lock (el autosave del último Stop puede tenerlo): si la liberación se perdía, la sesión nueva de /clear
+    # se encontraba al dueño anterior. Si ni así, queda anotado en autosave.log.
     (
       E=$(nucleo_estado_leer "$RAIZ") || exit 0
       [ -f "$E/.dueno" ] || exit 0
-      nucleo_bloquear "$E" || exit 0
+      D=$(nucleo_dueno "$RAIZ") || exit 0
+      [ "${D% *}" = "$SID" ] || exit 0
+      if ! nucleo_bloquear "$E" 2; then
+        printf '%s\t%s\tfin\t0\t0\tomitido=liberar dueño: estado ocupado\n' "$(date -u +%FT%TZ)" "${SID:--}" >>"${CLAUDE_HOME:-$HOME/.claude}/session-logs/autosave.log" 2>/dev/null
+        exit 0
+      fi
       D=$(nucleo_dueno "$RAIZ") || exit 0
       [ "${D% *}" != "$SID" ] || rm -f -- "$E/.dueno"
     ) >/dev/null 2>&1

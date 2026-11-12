@@ -123,8 +123,53 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
   `session-start-clear.sh` adopta por `session_id` la ranura de la sesión anterior si su proceso ya no existe.
   El KPI de `pre-compact.sh` suma `edad_auto` (segundos desde esa sección, `-1` si no hay). Límite: `Stop` no corre
   si la persona interrumpe el turno; lo cubren el siguiente `Stop`, `PostCompact` y `SessionEnd`.
-- Dueño: `.claude/estado/.dueno` (`sesion=`, `desde=`) lo reclama SessionStart; la sesión ajena recibe un aviso
-  y su nudge de contexto calla; caduca a las 4 h (`NUCLEO_DUENO_TTL`).
+- Dueño: `.claude/estado/.dueno` (`sesion=`, `desde=`, `pid=`, `proceso=`). El dueño es un proceso `claude` vivo
+  (se compara su `ticks` de `/proc/<pid>/stat`), no un reloj: lo reclama SessionStart, o el primer `handoff --auto` si
+  quien arrancó antes de que hubiera estado, y lo libera SessionEnd (espera el lock 2 s; si no puede, lo anota en
+  `autosave.log`). Sin identidad de proceso (macOS, `pid` ajeno) vale el TTL de 4 h. La sesión ajena recibe un aviso al
+  arrancar, su aviso de contexto le pide terminar o seguir en otra carpeta, y `--auto` no escribe en el estado de otra.
+  `handoff --liberar <sesión>` lo suelta a mano.
+- **Un repo sin estado se guarda solo**: el primer `--auto` con trabajo (ficheros tocados o comandos) crea `nucleo.md`
+  desde la plantilla, deja `.claude/estado/` en `.git/info/exclude` y marca el fallback. Sin repo, o desde `~`, usa la
+  ranura de la sesión. `NUCLEO_AUTOINICIO=0` lo apaga.
+- **La sección auto no copia secretos**: el último mensaje de la persona y del asistente se redactan antes de cortarse
+  (claves `sk-`, tokens `gh*`, `AKIA`, `xox`, JWT, `github_pat`, `glpat`, PEM, credenciales en URL, `Bearer`,
+  `password|token|api_key=`; las mismas reglas que el `redact` del cockpit). Es un respaldo, no un escáner.
+
+### Cuándo se guarda, qué avisa y cómo se apaga
+
+| Evento | Hooks (timeout) | Efecto visible |
+|---|---|---|
+| `SessionStart` | `session-start.sh`, `session-start-clear.sh` (`startup\|clear\|resume`), `session-start-compact.sh` (`compact`) | Inyecta el nucleo como dato; avisa a la persona si retoma con la caché caducada o si otra sesión es la dueña; tras compactar pide al modelo actualizarlo si lleva más de 10 min |
+| `PostToolUse` | `nucleo-nudge.sh` (5) | Único emisor de avisos de contexto: al modelo en el 50, 70 y 85 % del airbag, a la persona en el 60 y el 85 % |
+| `Stop` | `autosave.sh` (10, asíncrono), `agentes.sh` (15) | Guarda `## Último turno (auto)`; anota los agentes en vuelo; compuerta de commit (`NUCLEO_GATE`, por defecto solo registra) |
+| `PreCompact` | `pre-compact.sh` (10) | Checkpoint y la línea de `nucleo-freshness.log` |
+| `PostCompact` | `autosave.sh` (8) | Guarda y mide cuántas anclas del checkpoint nombra el resumen (`compact-AAAA-MM.log`, sin aviso) |
+| `SessionEnd` | `autosave.sh` (10), `agentes.sh` (3) | Guarda, libera al dueño y anota los agentes que se cortan al cerrar |
+| `SubagentStart` / `SubagentStop` | `agentes.sh` (3) | Registro de agentes (el bloque `<agentes>` del arranque) |
+
+Qué ve la persona al subir el contexto (el literal completo, en `nucleo-nudge.sh`): con cockpit, al 60 %
+«Fase cerrada: /handoff (deja el estado en nucleo.md y retoma limpio)…» y al 85 % «El airbag compactará en breve:
+/handoff ya (guarda el estado) y /clear.»; sin cockpit, lo mismo con la orden `handoff --desde <borrador> --sesion <id>`
+y `/clear`. Con agentes en vuelo el aviso dice que no se limpie la sesión todavía. Sin cockpit el estado ya queda
+guardado por `autosave.sh`; el cockpit añade el handoff y el `/clear` automáticos al 70 % y los comandos
+`/handoff`, `/nueva` y `/autonomo`. El cockpit se detecta por `enabledPlugins` (`cockpit@…`) en el `settings.json` de usuario.
+
+Cómo se apaga cada cosa (no hay variables `AUTOSAVE_*` ni `HANDOFF_*`; el guardado se quita del `settings.json`):
+
+| Variable | Defecto | Efecto |
+|---|---|---|
+| `NUCLEO_TOPE` | `6500` | Bytes que se inyectan del nucleo y que `handoff` deja escritos (menos 800 de reserva para `<agentes>`) |
+| `NUCLEO_AUTOINICIO` | `1` | `0`: un repo sin `nucleo.md` no se crea solo desde `--auto` |
+| `NUCLEO_DUENO_TTL` | `14400` | Segundos tras los que caduca un dueño sin identidad de proceso |
+| `NUCLEO_GATE` | `observe` | `block`: el `Stop` bloquea tras un `git commit` si el nucleo no se tocó; `observe` solo anota en `gate-nucleo.log` |
+| `NUCLEO_COCKPIT` | sin fijar | `1` o `0` fuerza «hay cockpit» o «no hay»; sin fijar se detecta |
+| `NUCLEO_CHECKPOINT_KEEP` | `5` | Checkpoints de `pre-compact.sh` que se conservan por proyecto |
+| `NUCLEO_REGISTRO` | `~/.claude/estado/raices` | Registro de raíces que alimenta el índice de `~` |
+| `COCKPIT_AUTO_HANDOFF` | sin fijar | `off`: el cockpit no hace el handoff automático (el aviso lo dice) |
+
+Para apagar el guardado quita las entradas de `autosave.sh` (`Stop`, `PostCompact`, `SessionEnd`); para apagar los
+avisos, la de `nucleo-nudge.sh` (`PostToolUse`). El resto sigue funcionando.
 
 ## 6 · Cambiar de sesión y cerrar el ciclo
 
@@ -136,9 +181,9 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
   retoma desde él. Con `solo` guarda el documento y no limpia nada.
   El cockpit lo lanza también solo al cerrar un turno con el contexto al 70 % del límite de autocompactación
   (`COCKPIT_AUTO_HANDOFF=off` lo desactiva); `/nueva <tarea>` archiva el estado y cambia de tarea.
-  Sin cockpit el defecto es checkpoint + reinyección + aviso: `pre-compact.sh` deja un checkpoint, tras compactar
-  `session-start-compact.sh` reinyecta `nucleo.md` y, si lleva más de 10 min sin tocarse, pide al modelo
-  actualizarlo con `handoff --desde`; `/handoff` es manual y opcional.
+  Sin cockpit el defecto es guardado automático + checkpoint + reinyección + aviso: `autosave.sh` guarda tras cada turno,
+  `pre-compact.sh` deja un checkpoint, tras compactar `session-start-compact.sh` reinyecta `nucleo.md` y, si lleva más
+  de 10 min sin tocarse, pide al modelo actualizarlo con `handoff --desde`; `/handoff` es manual y opcional.
 - **`/retro`** cierra el ciclo: revisa una sesión y propone mejoras al **entorno** del agente
   (punteros de navegación, comprobaciones automáticas, estándares de revisión, tamaño de los
   ficheros de guía, acceso a información), ordenadas por gravedad. Aplicarlas es un cambio
