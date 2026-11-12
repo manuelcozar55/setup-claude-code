@@ -4,7 +4,7 @@
 #      (.claude-plugin/types/claude-code/index.d.ts, de la versión instalada; no se versionan: son de Anthropic).
 #   2. contrato con el CLI real kit/claude/bin/handoff (sin claude, sin red).
 #   3. claude plugin validate y claude plugin test (no cuestan dinero). Sin `claude`: SKIP anunciado, nunca verde.
-# tsc: COCKPIT_TSC, o `tsc` del PATH, o `pnpm dlx typescript@5.6.3 tsc`. Sin ninguno: SKIP anunciado.
+# tsc: COCKPIT_TSC, o `tsc` del PATH, o `pnpm --package=typescript@5.6.3 dlx tsc` (typescript trae dos binarios: sin --package, pnpm 11 sale con ERR_PNPM_DLX_MULTIPLE_BINS). Sin ninguno: SKIP anunciado.
 # Tipos, por orden: los que escriba `claude plugin validate`/`test` sobre el clon; los que ya haya junto al mod (los escribe una
 # sesión interactiva con `claude --plugin-dir`); el fichero que diga COCKPIT_TYPES. Sin ninguno: tsc SALTADO, con el motivo.
 set -euo pipefail
@@ -26,7 +26,7 @@ else
 fi
 if [ -n "${COCKPIT_TSC:-}" ]; then read -r -a TSC <<<"$COCKPIT_TSC"
 elif command -v tsc >/dev/null 2>&1; then TSC=(tsc)
-elif command -v pnpm >/dev/null 2>&1 && timeout 120 pnpm dlx typescript@5.6.3 tsc --version >/dev/null 2>&1; then TSC=(pnpm dlx typescript@5.6.3 tsc)
+elif command -v pnpm >/dev/null 2>&1 && timeout 120 pnpm --package=typescript@5.6.3 dlx tsc --version >/dev/null 2>&1; then TSC=(pnpm --package=typescript@5.6.3 dlx tsc)
 else TSC=(); fi
 GEN=.claude-plugin/types/claude-code/index.d.ts
 types_from=""
