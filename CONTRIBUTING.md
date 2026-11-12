@@ -218,31 +218,39 @@ git checkout main && git pull --ff-only && git status --porcelain   # sin salida
 make test                    # exit 0
 bash kit/scan-secrets.sh .   # PASS en un arbol limpio (ver nota abajo)
 
-# 2b. cifras de uso real (desde 1.10.0): la ventana «después» es la de la release anterior hasta hoy.
-#     Pega el bloque «### Cifras» bajo la version nueva del CHANGELOG: test_changelog_cifras.sh
-#     lo exige en toda release >= 1.10.0. exit 2 = sin sesiones: no se corta una release sin cifras.
+# 2b. cifras: test_changelog_cifras.sh exige bajo la version nueva del CHANGELOG un bloque
+#     «### Cifras» con UNA de estas dos formas (desde 1.10.0):
+#     (a) con serie propia de uso real: la tabla que imprime el CLI `efectividad`. La ventana
+#         «antes» es la fecha de la release anterior (el `## [X.Y.Z] - AAAA-MM-DD` previo del CHANGELOG).
+#         Lee TUS transcripts (~/.claude/projects); sin sesiones en la ventana sale con rc=2.
 efectividad --antes AAAA-MM-DD --registrar --markdown
+#     (b) sin serie propia (otra persona, otra maquina, sin sesiones): no inventes cifras; escribe
+#         el bloque con el motivo, una linea que empiece por «Sin cifras:» y no este vacia:
+#             ### Cifras
+#
+#             Sin cifras: release cortada en una maquina sin transcripts de uso real.
 
-# 3. la prueba que de verdad importa: instalacion limpia en un CLAUDE_HOME virgen
+# 3. la prueba que de verdad importa: instalacion limpia en un HOME y CLAUDE_HOME virgenes
 T=$(mktemp -d)
-CLAUDE_HOME="$T/h" bash kit/install.sh
-CLAUDE_HOME="$T/h" bash kit/doctor.sh   # exit 0, 0 FAIL
+HOME="$T" CLAUDE_HOME="$T/h" bash kit/install.sh --apply
+HOME="$T" CLAUDE_HOME="$T/h" bash kit/doctor.sh   # exit 0, 0 FAIL
 rm -r "$T"
 
-# 4. rama de release. Son CUATRO ficheros, no solo el CHANGELOG: la version
-#    tiene una fuente legible por maquina (VERSION) y dos copias en prosa, y
-#    test_doc_claims.sh exige que las tres coincidan con la seccion mas nueva
-#    del CHANGELOG. Mover solo el CHANGELOG deja la suite en rojo.
+# 4. rama de release y version. La version vive en 8 ficheros (VERSION, BUILD_ID, README, CLAUDE,
+#    ENTREGA, kit/docs/11-cockpit.md, el ref del marketplace en kit/claude/settings.json...):
+#    no los edites a mano, bump.sh los descubre con git grep y los sube todos. Con --cockpit
+#    sube tambien la version del mod (plugin.json y sus dos citas). No toca el CHANGELOG.
 V=X.Y.Z
 git checkout -b "release/v$V"
-# ... editar CHANGELOG.md: [Unreleased] -> [X.Y.Z] - AAAA-MM-DD, dejar
-#     [Unreleased] vacio y actualizar los dos enlaces de comparacion del final
-echo "$V" > VERSION
-# ... y la linea que declara el estado del kit ("vX.Y.Z, estable") en README.md
-#     y en CLAUDE.md: es a esa a la que se ancla el sensor
-git status --porcelain   # CHANGELOG.md, VERSION, README.md, CLAUDE.md
-make test                # aqui es donde falla el sensor de version, si falla
-git add CHANGELOG.md VERSION README.md CLAUDE.md
+# ... editar CHANGELOG.md: [Unreleased] -> [X.Y.Z] - AAAA-MM-DD (con su «### Cifras», paso 2b),
+#     dejar [Unreleased] vacio y actualizar los dos enlaces de comparacion del final
+bash scripts/bump.sh "$V"               # o: bash scripts/bump.sh "$V" --cockpit A.B.C
+#    al final corre los sensores de version (test_doc_claims, test_settings_template,
+#    test_changelog_cifras); si alguno sale ROJO, dice cual. Si cambia el numero de suites,
+#    actualiza la cifra en los documentos que te senale test_doc_claims.
+git status --porcelain
+make test
+git add -A
 git commit -m "docs: preparar CHANGELOG para v$V"
 git push -u origin "release/v$V"
 gh pr create --title "docs: preparar CHANGELOG para v$V" --body "Release v$V."
@@ -264,7 +272,42 @@ git push origin "v$V"
 awk -v v="## [$V]" 'index($0,v)==1{f=1;next} f && (/^## \[/ || /^\[[^]]+\]: http/){exit} f' \
     CHANGELOG.md > /tmp/notas-$V.md
 gh release create "v$V" --title "v$V" --notes-file /tmp/notas-$V.md
+
+# 7. paquete de entrega (lo que se pasa a quien recibe el kit sin GitHub). Sale del commit
+#    del tag, no del arbol de trabajo: directorio y ZIP scc-v$V con SOLO el producto, el bundle
+#    de git, PROCEDENCIA.json (commit, fecha, arbol limpio) y SHA256SUMS.
+bash scripts/empaquetar-entrega.sh --out "$HOME/entrega-$V" "v$V"
+( cd "$HOME/entrega-$V" && sha256sum -c SHA256SUMS )
 ```
+
+Sin `gh` (o sin permisos sobre el repo): los pasos 4-6 se hacen igual desde la
+web de GitHub (PR, merge con «Create a merge commit», y «Draft a new release» con
+el tag `v$V` y las notas del CHANGELOG). El tag y el paquete no necesitan `gh`.
+
+**Si el CI de `main` falla tras el merge (paso 5).** No etiquetes. Un tag solo
+se pone sobre un `main` en verde. Abre una rama desde `main`, arregla la causa
+(no relajes el test ni uses `--no-verify`), PR, merge y espera a que `main` vuelva
+a verde; entonces el paso 6. Si ya empujaste el tag y despues descubres el fallo:
+no lo muevas ni lo borres si alguien pudo clonarlo; publica un PATCH (`vX.Y.Z+1`)
+con el arreglo y deja la nota en el CHANGELOG. Solo si NADIE lo ha usado (minutos
+despues, sin release publicada) se borra y se re-crea: `git push --delete origin
+"v$V"` y repites desde el paso 6; esa es la unica excepcion.
+
+### Si haces un fork
+
+El repo de origen (`owner/repo` de GitHub) vive en `kit/ORIGEN`; de ahí leen
+`kit/install-plugins.sh`, `scripts/bump.sh` y los tests. Tras clonar tu fork:
+
+```bash
+bash scripts/cambiar-origen.sh tu-org/tu-fork   # reescribe settings.json, docs y kit/ORIGEN
+make test
+```
+
+El script lista lo que NO cambia (nombre y correo del autor en README, SECURITY y
+`kit/README.md`): son datos de autoría, cámbialos tú. Ajusta también a mano el
+canal de reporte de `SECURITY.md` y la protección de `main` de TU repo; el
+marketplace `setup-claude-code` del `settings.json` apuntará a tu fork y a tu tag
+`v<VERSION>`, que tiene que existir antes de que lo instale nadie.
 
 Nota sobre el paso 2: `scan-secrets.sh` recorre también ficheros no
 versionados y gitignorados **a propósito** — así un `.env` real que aún no
