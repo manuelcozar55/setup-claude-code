@@ -59,6 +59,18 @@ compactar, y a ti al 60 y al 85 %. Para apagarlo, quita ese hook con el procedim
 (`nucleo-nudge.sh`). El guardado automático del estado (`autosave.sh`) sigue funcionando. Si usas el cockpit y solo
 quieres que no haga el handoff solo al 70 %: `COCKPIT_AUTO_HANDOFF=off scc`.
 
+## Lo que el kit hace solo, y cómo apagarlo
+
+| Qué hace | Qué te cuesta | Cómo se apaga |
+|---|---|---|
+| **Handoff automático del cockpit** (solo con `scc`): al 70 % del contexto guarda el estado y después limpia la conversación (`/clear`), sin pedírtelo | Una llamada al modelo con todo el contexto; la conversación se limpia y retomas desde el estado guardado | `COCKPIT_AUTO_HANDOFF=off` (un número de 50 a 95 cambia el umbral) |
+| **Autoinicio del estado**: el primer guardado con trabajo en cualquier repo git crea `<repo>/.claude/estado/nucleo.md` y añade `.claude/estado/` a `.git/info/exclude` | Un fichero local por repo; no entra en git. El desinstalador no lo borra: es tuyo | `NUCLEO_AUTOINICIO=0` |
+| **Marcas del aviso de contexto**: `nucleo-nudge.sh` escribe `nudge-<sesión>` en `$HOME/.claude/session-logs`, aunque uses otro `CLAUDE_HOME` | Ficheros vacíos en tu carpeta personal | Quitar el hook (ver «Quiero quitar un hook») |
+| Guardado con modelo (`/autosave`) | **Apagado por defecto**: encendido, una llamada por guardado | `/autosave on` o `COCKPIT_AUTOSAVE=on` lo encienden; `/autosave off` lo apaga |
+
+Estas variables van en `env` de tu `settings.json` (ver la receta de la guía de adaptación) o en el entorno desde el que
+lanzas `scc`.
+
 ## Cuánto cuesta
 
 - **Contexto fijo en cada sesión.** Lo que el kit añade son sus ficheros de reglas, las descripciones de agentes y skills,
@@ -122,6 +134,13 @@ Conserva y lista lo que modificaste, quita los enlaces de `~/.local/bin` solo si
 2. Aísla el hook: quítalo con el procedimiento de arriba y comprueba si el problema desaparece.
 3. Abre una incidencia con la salida de `scc --version`, la de `doctor.sh` y el mensaje del fallo.
 4. Mientras tanto, `claude` a secas funciona sin el cockpit: `scc` solo añade los plugins del kit.
+
+## Límite conocido: `CLAUDE_HOME` distinto de `~/.claude`
+
+`CLAUDE_HOME=/otra/ruta bash kit/install.sh --apply` copia el kit a esa ruta, pero los comandos de hooks que escribe en
+`settings.json` siguen apuntando a `"$HOME/.claude/hooks/…"` (lo comprobado: instalado con un `HOME` limpio y otro
+`CLAUDE_HOME`, `settings.json` cita `$HOME/.claude/hooks/agentes.sh` y esa ruta no existe). Fuera de `~/.claude` los hooks no
+se ejecutan: usa `CLAUDE_HOME` solo para ensayar (con `doctor.sh`) y para instalar de verdad deja el valor por defecto.
 
 ## Ver también
 

@@ -24,6 +24,17 @@ No es un tutorial de Claude Code ni funciona en Windows nativo ni en macOS (en W
 - **Llamadas al modelo**: sin el cockpit, ninguna; todo son scripts. Con el cockpit (`scc`), el handoff automático al 70 %
   del contexto hace una; `/autosave` está apagado y, si lo enciendes, gasta tokens en cada guardado.
 - Puede bloquear una orden legítima. Cómo ver qué guard fue, dejarla pasar o quitarlo: `OPERAR.md`.
+- El conjunto de evals (23 tareas) llama al modelo y cuesta dinero: no corre solo; `make evals-dryrun` dice cuánto costaría.
+
+### Qué hace solo y cómo apagarlo
+
+| Qué hace | Se apaga con |
+|---|---|
+| Con `scc`, al 70 % del contexto guarda el estado (una llamada al modelo con todo el contexto) y **limpia la conversación** sin preguntar | `COCKPIT_AUTO_HANDOFF=off` |
+| El primer guardado con trabajo en un repo git crea `.claude/estado/nucleo.md` y lo añade a `.git/info/exclude` (local, no entra en git, el desinstalador no lo borra) | `NUCLEO_AUTOINICIO=0` |
+| El guardado con modelo (`/autosave`) está **apagado**: solo gasta si lo enciendes | `/autosave off` |
+
+Detalle en [`OPERAR.md`](kit/docs/OPERAR.md#lo-que-el-kit-hace-solo-y-cómo-apagarlo).
 
 ## Requisitos
 
