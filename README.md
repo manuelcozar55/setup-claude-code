@@ -89,7 +89,7 @@ flowchart LR
             SK["3 skills<br/>del método"]
             MO["Mod cockpit<br/>/handoff · Agent Dock"]
             EV["evals/<br/>23 tareas"]
-            TS["test/<br/>58 suites falsables"]
+            TS["test/<br/>59 suites falsables"]
         end
     end
     INS{{"install.sh<br/>diff-first"}}
@@ -212,7 +212,7 @@ Este repo tiene **dos capas** que hacen cosas distintas y no se mezclan:
 
 | Capa | Qué es | Estado |
 |---|---|---|
-| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 7 agentes, 3 skills del método, el mod `cockpit`, `install.sh`, 58 suites falsables | v1.10.1, estable |
+| **`kit/`** | La **instalación**: guards deterministas, Sentinel, 7 agentes, 3 skills del método, el mod `cockpit`, `install.sh`, 59 suites falsables | v1.10.1, estable |
 | **raíz** | El **harness**: `.claude/`, `knowledge/`, `config/`, `scripts/` — sensores y conocimiento vivo | v0.1.0, nuevo |
 
 La distinción viene de Birgitta Böckeler ([*Harness engineering*](https://martinfowler.com/articles/harness-engineering.html),
