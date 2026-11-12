@@ -3,7 +3,7 @@
 # sobre un HOME aislado, en su orden, y cada afirmacion de la guia se comprueba:
 #   1. hook propio: el script corre y su cableado en settings.json sobrevive a install.sh --apply.
 #   2. umbral: CC_PROTECT_BRANCHES en el env de settings.json cambia lo que branch-guard.sh bloquea, y sobrevive.
-#   3. agente: borrado y anotado, doctor sale 0 con INFO; tras actualizar vuelve y doctor avisa con WARN solo si lo cablea.
+#   3. agente: borrado y anotado, doctor sale 0 con INFO; tras actualizar sigue apagado (install.sh lee .kit-desactivados).
 #   4. actualizacion: un CLAUDE.md propio no se pisa (el kit deja CLAUDE.kit.md).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."; ROOT="$KIT/.."
@@ -55,7 +55,7 @@ ck "$(jq -r '.env.CC_PROTECT_BRANCHES' "$S")" "production" "4: el umbral propio 
 ck "$([ -x "$CLAUDE_HOME/hooks/mi-hook.sh" ] && echo si)" "si" "4: el script del hook propio sobrevive"
 ck "$(tail -1 "$CLAUDE_HOME/CLAUDE.md")" "# mio" "4: tu CLAUDE.md no se pisa"
 ck "$([ -f "$CLAUDE_HOME/CLAUDE.kit.md" ] && echo si)" "si" "4: el del kit queda como CLAUDE.kit.md"
-ck "$([ -f "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo vuelve)" "vuelve" "4: el agente quitado vuelve (la guia lo dice)"
+ck "$([ -f "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo vuelve)" "" "4: el agente quitado y anotado sigue apagado (la guia lo dice)"
 out="$(bash "$KIT/doctor.sh" 2>&1)"; rc=$?
 ck "$rc" "0" "4: doctor sigue sin FAIL tras la actualizacion"
 

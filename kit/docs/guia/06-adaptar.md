@@ -62,8 +62,8 @@ y los hooks se quitan igual; el procedimiento completo está en [`OPERAR.md`](..
 
 - **Se conserva:** tu hook propio (el cableado y el script), las claves de `env` que añadiste (`CC_PROTECT_BRANCHES`), y tu
   `CLAUDE.md` y `AGENTS.md` si son tuyos (el kit deja el suyo como `CLAUDE.kit.md`).
-- **Vuelve:** los hooks y agentes del kit que quitaste. Repite el borrado tras cada actualización; hasta entonces
-  `doctor.sh` avisa con un WARN de que la lista de desactivados está obsoleta.
+- **Sigue apagado:** lo que quitaste y anotaste en `.kit-desactivados` (un hook no se vuelve a cablear y un agente no se
+  vuelve a copiar); el plan y el resumen de `install.sh` dicen qué se deja apagado. Para encenderlo, borra su línea y reinstala.
 
 Receta completa de actualización: [`OPERAR.md`](../OPERAR.md#actualizar-a-una-versión-nueva).
 
