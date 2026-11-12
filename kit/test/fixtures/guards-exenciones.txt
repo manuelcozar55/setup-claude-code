@@ -8,5 +8,5 @@ dato:comentario	texto tras un # fuera de comillas
 build-relativo	rm -rf de una ruta relativa dentro del proyecto con un directorio de build conocido, sin .. y sin comodin en el primer componente
 home-proyecto-build	rm -rf de ~/<proyecto>/.../<directorio de build conocido>, sin .. y sin comodin
 tmp-subruta	rm -rf de /tmp/<subruta concreta> (nunca /tmp, /tmp/* ni con ..)
-lease-rama-de-trabajo	git push con lease a una rama que no es main/master (ni --all, --mirror, +ref)
+lease-rama-de-trabajo	git push con lease cuyas ramas (todas, o la actual si no hay refspec) llevan un prefijo de trabajo de la lista cerrada (feat/, fix/, chore/, release/...); sin --all, --mirror, --tags ni +ref
 git-rm-cached	git rm --cached antes de --: solo toca el indice, no el fichero

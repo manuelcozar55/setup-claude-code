@@ -392,7 +392,7 @@
 {"id": "Q57", "cmd": "cat <<'EOF' | wc -l\nrm -rf ~\nEOF", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:heredoc-a-fichero"}
 {"id": "Q58", "cmd": "git log --format='%h %s' | grep -i \"force push\"", "exp": "ALLOW", "base": "ALLOW"}
 {"id": "Q59", "cmd": "echo \"it's fine\"; ls", "exp": "ALLOW", "base": "ALLOW"}
-{"id": "Q60", "cmd": "echo \"\u00fcn\u00efc\u00f6d\u00e9 \u65e5\u672c\u8a9e rm -rf ~\"; ls", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:echo-sin-consumidor"}
+{"id": "Q60", "cmd": "echo \"ünïcödé 日本語 rm -rf ~\"; ls", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:echo-sin-consumidor"}
 {"id": "Q61", "cmd": "sed -n '/rm -rf/p' notes.txt", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:patron-de-busqueda"}
 {"id": "Q62", "cmd": "rg -n \"git push --force|git reset --hard\" docs/", "exp": "ALLOW", "base": "BLOCK", "ex": "dato:patron-de-busqueda"}
 {"id": "Q63", "cmd": "rg -l \"id_rsa\" kit/ | head", "exp": "ALLOW", "base": "ALLOW"}

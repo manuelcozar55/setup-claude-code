@@ -361,9 +361,34 @@ sensor() { # fila-json esperado(0=pasa,1=falla) etiqueta
   if [ "$rc" -ne "$2" ]; then bypass_fail=$((bypass_fail+1)); echo "FAIL: sensor de monotonia: $3 (rc=$rc, esperado $2)"; fi
 }
 sensor '{"id":"M1","cmd":"echo hola","exp":"ALLOW","base":"BLOCK"}' 1 "BLOCK->ALLOW sin exencion deberia fallar"
-sensor '{"id":"M2","cmd":"echo hola","exp":"ALLOW","base":"BLOCK","ex":"prosa: texto de un echo"}' 0 "BLOCK->ALLOW con exencion deberia pasar"
-sensor '{"id":"M3","cmd":"echo hola","exp":"ALLOW","base":"ALLOW","ex":"una exencion de mas"}' 1 "exencion sobre una fila que no baja deberia fallar"
+sensor '{"id":"M2","cmd":"echo hola","exp":"ALLOW","base":"BLOCK","ex":"dato:echo-sin-consumidor"}' 0 "BLOCK->ALLOW con exencion de la lista cerrada deberia pasar"
+sensor '{"id":"M4","cmd":"echo hola","exp":"ALLOW","base":"BLOCK","ex":"prosa: texto de un echo"}' 1 "una exencion que no esta en la lista cerrada deberia fallar"
+sensor '{"id":"M3","cmd":"echo hola","exp":"ALLOW","base":"ALLOW","ex":"dato:echo-sin-consumidor"}' 1 "exencion sobre una fila que no baja deberia fallar"
 rm -f "$MF"
+# El sensor GENERATIVO (test_guards_monotonia.sh) tambien es falsable: cada agujero de la tercera vuelta se reintroduce en una copia
+# temporal de los guards y el sensor tiene que caer (violaciones > 0). Con los guards reales pasa (lo comprueba su propia suite).
+MUT_FAIL=0
+mutate() { # etiqueta fichero(relativo a kit/) sed-expr
+  local label=$1 file=$2 expr=$3 MD out rc dst
+  MD=$(mktemp -d); cp -R "$HERE/../claude/hooks" "$MD/hooks"; mkdir -p "$MD/sentinel"; cp "$HERE/../sentinel/sentinel_preflight.py" "$MD/sentinel/"
+  case $file in
+    sentinel/*) dst="$MD/$file" ;;
+    *) dst="$MD/hooks/${file#claude/hooks/}" ;;
+  esac
+  LC_ALL=C sed -i -E "$expr" "$dst"
+  if cmp -s "$dst" "$HERE/../$file"; then
+    MUT_FAIL=$((MUT_FAIL+1)); echo "FAIL: la mutacion «$label» no cambio nada (el sed ya no casa)"; rm -rf "$MD"; return
+  fi
+  out=$(MONO_HOOKS_DIR="$MD/hooks" MONO_SENTINEL="$MD/sentinel/sentinel_preflight.py" GUARDS_MONOTONIA_N=1200 bash "$HERE/test_guards_monotonia.sh" 2>&1); rc=$?
+  rm -rf "$MD"
+  echo "FALSABLE: sensor generativo con el agujero «$label»: $(grep -oE 'violaciones [0-9]+' <<<"$out" | head -n 1) (rc=$rc)"
+  if [ "$rc" -eq 0 ]; then MUT_FAIL=$((MUT_FAIL+1)); echo "FAIL: el sensor generativo no detecta el agujero «$label»"; fi
+}
+mutate "un interprete (python3) vale como consumidor de texto" claude/hooks/lib/cmdnorm.sh 's/(sha256sum cksum basename dirname git gh echo printf true :)/\1 python3 awk perl ruby node/'
+mutate "cualquier operando pasa como prueba de rm -rf" claude/hooks/lib/cmdnorm.sh 's/^cmdn_rm_proof\(\) \{/cmdn_rm_proof() { REPLY=hueco; return 0/'
+mutate "git rm --cached tambien vale tras --" sentinel/sentinel_preflight.py 's/args\[1:cut\]/args[1:]/'
+mutate "lease con --all o --mirror pasa" claude/hooks/block-dangerous-commands.sh 's/\(\( lease && pall \)\) && return 0/:/'
+bypass_fail=$((bypass_fail+MUT_FAIL))
 if [ "$bypass_fail" -ne 0 ]; then
   echo "FAIL: $bypass_fail casos de bypass/negativos incorrectos."
   exit 1
