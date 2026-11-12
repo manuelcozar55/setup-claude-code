@@ -123,7 +123,7 @@ jobs:
       - name: test_guards_corpus.sh (corpus adversario de E5 contra los guards bash)
         run: bash kit/test/test_guards_corpus.sh
 
-      - name: test_guards_veredictos.sh (corpus de la auditoria A: peligrosos, legitimos, bypasses)
+      - name: test_guards_veredictos.sh (corpus de la auditoria A, peligrosos legitimos y bypasses)
         run: bash kit/test/test_guards_veredictos.sh
 
       - name: test_guards_mensajes.sh (todo bloqueo acaba con la salida que funciona)
