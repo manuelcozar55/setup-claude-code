@@ -76,7 +76,7 @@ case ${EV:-} in
       D=$(nucleo_dueno "$RAIZ") || exit 0
       [ "${D% *}" = "$SID" ] || exit 0
       if ! nucleo_bloquear "$E" 2; then
-        printf '%s\t%s\tfin\t0\tomitido=liberar dueño: estado ocupado\n' "$(date -u +%FT%TZ)" "${SID:--}" >>"${CLAUDE_HOME:-$HOME/.claude}/session-logs/autosave.log" 2>/dev/null
+        printf '%s\t%s\tfin\t0\t0\tomitido=liberar dueño: estado ocupado\n' "$(date -u +%FT%TZ)" "${SID:--}" >>"${CLAUDE_HOME:-$HOME/.claude}/session-logs/autosave.log" 2>/dev/null
         exit 0
       fi
       D=$(nucleo_dueno "$RAIZ") || exit 0

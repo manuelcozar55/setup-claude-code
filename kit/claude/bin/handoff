@@ -303,11 +303,15 @@ if [ "$MODO" = auto ]; then
   ALOG=${CLAUDE_HOME:-$HOME/.claude}/session-logs/autosave.log
   # a_omitir <motivo>: nada que hacer (rc 0), sin escribir nada.
   a_omitir() {
+    # Todo turno saltado queda anotado: un guardado que no ocurre sin dejar rastro es indistinguible de uno roto.
+    if mkdir -p "$(dirname "$ALOG")" 2>/dev/null; then
+      printf '%s\t%s\t%s\t0\t0\tomitido=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${SESION:--}" "$MOTIVO" "$1" >>"$ALOG" 2>/dev/null || true
+    fi
     if [ "$JSON" = 1 ]; then jq -cn --arg o "$1" '{omitido:$o}'; else echo "handoff: --auto omitido: $1"; fi
     exit 0
   }
   [ -z "$CWDJ" ] || { a_ruta "$CWDJ" && [ -d "$CWDJ" ]; } || a_omitir "cwd inválido"
-  AES=""
+  AES=""; AINI=0
   if [ -n "$RAIZ_ARG" ]; then resolver_raiz || RAIZ=""
   elif [ -n "$CWDJ" ]; then RAIZ=$(nucleo_raiz "$CWDJ") || RAIZ=""
   else resolver_raiz || RAIZ=""
@@ -320,7 +324,9 @@ if [ "$MODO" = auto ]; then
   else
     nucleo_enlazado "$RAIZ" && a_omitir "estado enlazado"
     ! nucleo_modo_estado_md "$RAIZ" || a_omitir "modo ESTADO.md"
-    AE=$(nucleo_estado_leer "$RAIZ") && [ -f "$AE/nucleo.md" ] || a_omitir "sin estado"
+    AE=$(nucleo_estado_leer "$RAIZ") || a_omitir "sin estado"
+    # Repo sin estado: el primer guardado con trabajo lo crea desde la plantilla (NUCLEO_AUTOINICIO=0 lo apaga).
+    [ -f "$AE/nucleo.md" ] || { [ "${NUCLEO_AUTOINICIO:-1}" != 0 ] || a_omitir "sin estado"; AINI=1; }
   fi
 
   # El transcript solo vale si es un fichero normal bajo ~ o bajo la raíz del proyecto (ADR 027).
@@ -366,26 +372,41 @@ if [ "$MODO" = auto ]; then
     ASHA=$(timeout 3 git -c core.fsmonitor=false -C "$RAIZ" rev-parse HEAD 2>/dev/null) || ASHA=""
     ARAMA=$(timeout 3 git -c core.fsmonitor=false -C "$RAIZ" branch --show-current 2>/dev/null) || ARAMA=""
     while IFS= read -r f; do atoc_add "$f"; done < <(
-      { timeout 3 git -c core.fsmonitor=false -C "$RAIZ" diff --name-only HEAD 2>/dev/null
+      { timeout 3 git -c core.fsmonitor=false -C "$RAIZ" diff --name-only HEAD 2>/dev/null || true
         timeout 3 git -c core.fsmonitor=false -C "$RAIZ" ls-files --others --exclude-standard 2>/dev/null; } | head -n 200)
   fi
   ATOCN=${#ATOC[@]}
   ACMDN=${#ACMDS[@]}
 
   # Sin trabajo que anotar, una ranura nueva de ~ no se crea (y no se anota nada en una sesión sin nada).
-  if [ -n "$AES" ] && [ ! -f "$AES/nucleo.md" ] && [ "$ATOCN" -eq 0 ] && [ "$ACMDN" -eq 0 ]; then a_omitir "sin trabajo"; fi
+  if { [ -n "$AES" ] && [ ! -f "$AES/nucleo.md" ]; } || [ "$AINI" -eq 1 ]; then
+    [ "$ATOCN" -gt 0 ] || [ "$ACMDN" -gt 0 ] || a_omitir "sin trabajo"
+  fi
   if [ "$RAIZ" = "$HOME" ]; then
     [ -d "$AES" ] || AES=$(nucleo_sesion_dir crear 2>/dev/null) || a_omitir "sin ranura"
     E=$AES; NUC=$E/nucleo.md
   else
     E=$(nucleo_estado_dir "$RAIZ" 2>/dev/null) || a_omitir "estado no escribible"
-    NUC=$E/nucleo.md; [ -f "$NUC" ] || a_omitir "sin estado"
+    NUC=$E/nucleo.md; [ -f "$NUC" ] || [ "$AINI" -eq 1 ] || a_omitir "sin estado"
   fi
   nucleo_bloquear "$E" 2>/dev/null || a_omitir "ocupado"
   if [ "$RAIZ" != "$HOME" ]; then
     nucleo_dueno_ajeno "$RAIZ" "$SESION" >/dev/null && a_omitir "dueño ajeno"
     # La primera escritura de una sesión sin dueño vigente la hace dueña (quien arrancó antes de que hubiera estado).
     [ -z "$SESION" ] || { D=$(nucleo_dueno_vigente "$RAIZ") && [ "${D% *}" = "$SESION" ]; } || nucleo_dueno_tomar "$RAIZ" "$E" "$SESION" 2>/dev/null || true
+  fi
+
+  if [ "$AINI" -eq 1 ] && [ ! -f "$NUC" ]; then
+    APLANT=${CLAUDE_HOME:-$HOME/.claude}/templates/nucleo.md
+    [ -f "$APLANT" ] || APLANT=$(dirname "$SELF")/../templates/nucleo.md
+    [ -f "$APLANT" ] || a_omitir "sin plantilla"
+    cp -- "$APLANT" "$NUC" 2>/dev/null || a_omitir "estado no escribible"
+    [ "$E" = "$RAIZ/.claude/estado" ] || : >"$E/.nucleo-fallback"
+    if AEX=$(git -C "$RAIZ" rev-parse --git-path info/exclude 2>/dev/null); then
+      case $AEX in /*) ;; *) AEX=$RAIZ/$AEX ;; esac
+      mkdir -p "$(dirname "$AEX")" 2>/dev/null || true
+      command grep -qFx '.claude/estado/' "$AEX" 2>/dev/null || printf '.claude/estado/\n' >>"$AEX" 2>/dev/null || true
+    fi
   fi
 
   # ---- la sección
