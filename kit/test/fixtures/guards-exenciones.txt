@@ -1,0 +1,12 @@
+# Lista CERRADA de exenciones: lo unico que puede bajar una orden que la base (bc68243) bloqueaba a ALLOW. Cada nombre es una
+# PRUEBA positiva de que el literal peligroso es inocuo; sin prueba manda el veredicto de la base. nombre<TAB>que demuestra
+dato:echo-sin-consumidor	argumento de echo/printf cuyo texto no lo lee ningun interprete: sin tuberia, o todos los consumidores son de texto (grep, wc, head, tee...)
+dato:patron-de-busqueda	patron de grep/rg/ag/ack o programa de sed/awk que no ejecuta nada (sin system, getline, pipe ni comando e)
+dato:mensaje-de-commit	valor de git commit/tag/stash -m, o titulo/cuerpo de gh (--title, --body, --message...)
+dato:heredoc-a-fichero	cuerpo de un heredoc cuyo receptor y cuyas ordenes posteriores son de texto (cat, tee, git...)
+dato:comentario	texto tras un # fuera de comillas
+build-relativo	rm -rf de una ruta relativa dentro del proyecto con un directorio de build conocido, sin .. y sin comodin en el primer componente
+home-proyecto-build	rm -rf de ~/<proyecto>/.../<directorio de build conocido>, sin .. y sin comodin
+tmp-subruta	rm -rf de /tmp/<subruta concreta> (nunca /tmp, /tmp/* ni con ..)
+lease-rama-de-trabajo	git push con lease a una rama que no es main/master (ni --all, --mirror, +ref)
+git-rm-cached	git rm --cached antes de --: solo toca el indice, no el fichero
