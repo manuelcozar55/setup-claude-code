@@ -92,5 +92,40 @@ bash "$UN" >"$tmp/o7" 2>&1; rc=$?
 ck "$rc" "1" "sin backup y sin --kit: sigue fallando"
 ck "$(grep -c -- '--kit' "$tmp/o7")" "1" "y el mensaje remite a --kit"
 
+# ---- 7. actualizar desde una version sin .kit-settings-pre.json y desinstalar: lo que queda igual a la plantilla se
+# avisa (no se sabe si era de la persona) y solo se quita con --settings-plantilla, con copia previa.
+KSET="$REPO/kit/claude/settings.json"
+ndeny="$(jq '.permissions.deny | length' "$KSET")"
+actualizado() {
+  nuevo_home "$1"
+  bash "$INST" --apply >/dev/null 2>&1
+  rm -f "$CLAUDE_HOME/.kit-settings-pre.json"
+  jq '.permissions.allow += ["Bash(mio:*)"] | .theme = "dark" | .autoUpdatesChannel = "beta"' "$CLAUDE_HOME/settings.json" > "$tmp/s.$1"
+  cat "$tmp/s.$1" > "$CLAUDE_HOME/settings.json"
+}
+actualizado h8
+ck "$(jq '.permissions.deny | length' "$CLAUDE_HOME/settings.json")" "$ndeny" "actualizado: settings.json trae las reglas deny de la plantilla"
+bash "$UN" --kit >"$tmp/dry8" 2>&1
+ck "$(grep -c -- '--settings-plantilla' "$tmp/dry8")" "1" "el plan dice como quitar lo que coincide con la plantilla"
+ck "$(grep -c 'copia previa' "$tmp/dry8")" "1" "el plan explica por que se conserva (no hay copia previa a la instalacion)"
+ck "$(grep -c 'permissions.deny: Edit(/settings.json)' "$tmp/dry8")" "1" "el plan enumera las reglas deny que quedan"
+bash "$UN" --kit --apply >"$tmp/ap8" 2>&1; rc=$?
+ck "$rc" "0" "actualizado: --kit --apply sale 0"
+ck "$(grep -c ' 0 conservados' "$tmp/ap8")" "0" "el resumen no dice 0 conservados si queda algo del kit en settings.json"
+ck "$(sed -n '/kit desinstalado/,$p' "$tmp/ap8" | grep -c -- '--settings-plantilla')" "1" "el resumen final repite la orden para quitarlo"
+ck "$(jq '.permissions.deny | length' "$CLAUDE_HOME/settings.json")" "$ndeny" "sin el interruptor las reglas deny siguen en settings.json"
+actualizado h9
+bash "$UN" --kit --settings-plantilla >"$tmp/dry9" 2>&1
+ck "$(jq '.permissions.deny | length' "$CLAUDE_HOME/settings.json")" "$ndeny" "--settings-plantilla en simulacro no cambia settings.json"
+bash "$UN" --kit --settings-plantilla --apply >"$tmp/ap9" 2>&1; rc=$?
+ck "$rc" "0" "--settings-plantilla --apply sale 0"
+ck "$(jq '(.permissions.deny // []) | length' "$CLAUDE_HOME/settings.json")" "0" "con el interruptor se quitan las reglas deny iguales a la plantilla"
+ck "$(jq -r '.permissions.allow | join(",")' "$CLAUDE_HOME/settings.json")" "Bash(mio:*)" "y la regla propia se conserva"
+ck "$(jq -r '.theme + "/" + .autoUpdatesChannel' "$CLAUDE_HOME/settings.json")" "dark/beta" "lo que difiere de la plantilla (o no esta en ella) no se toca"
+ck "$(jq 'has("cleanupPeriodDays")' "$CLAUDE_HOME/settings.json")" "false" "la clave escalar con el valor de la plantilla se quita"
+bk9="$(find "$CLAUDE_HOME/backups" -mindepth 1 -maxdepth 1 -name 'uninstall-*')"
+ck "$(jq '.permissions.deny | length' "$bk9/settings.json")" "$ndeny" "la copia previa de settings.json conserva el original"
+ck "$(grep -qF "$bk9" "$tmp/ap9" && echo y)" "y" "y su ruta sale en la salida"
+
 echo "== $pass ok, $fail fallos =="
 [ "$fail" -eq 0 ]
