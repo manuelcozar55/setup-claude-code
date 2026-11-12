@@ -7,6 +7,12 @@ etiquetado.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-12
+
+Versión mayor: los guards cambian de veredicto (órdenes que antes se bloqueaban ahora preguntan o pasan, y al
+revés), el estado de sesión y el cockpit cambian de comportamiento por defecto, y `.kit-desactivados` pasa a
+gobernar qué se instala. Quien adapte el kit debe leer este bloque antes de actualizar.
+
 Se levanta la congelación (2026-11-11, decisión del dueño): entran tres piezas de terceros con su entrada B-007 en `knowledge/BACKLOG.md`.
 
 ### Consolidación: instalar, operar y adaptar el kit sin ser su autor

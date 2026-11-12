@@ -1,15 +1,15 @@
-# SCC 1.10.1 — guía de entrega
+# SCC 2.0.0 — guía de entrega
 
-Para quien recibe el paquete. La versión es la de `VERSION` (1.10.1); `BUILD_ID` identifica esta entrega.
+Para quien recibe el paquete. La versión es la de `VERSION` (2.0.0); `BUILD_ID` identifica esta entrega.
 No se distribuyen credenciales ni configuración personal. Instalar, usar y desinstalar se explica en
 [`README.md`](README.md); este documento solo cubre lo que es propio de una entrega transferida.
 
 ## Qué se entrega
 
-Una carpeta `scc-v1.10.1/` con lo que necesita quien usa el kit: `kit/` (sin tests ni evaluaciones), `uninstall.sh`,
+Una carpeta `scc-v2.0.0/` con lo que necesita quien usa el kit: `kit/` (sin tests ni evaluaciones), `uninstall.sh`,
 `scripts/{backup,scc,aceptacion-local}.sh`, `README.md`, `SECURITY.md`, `CHANGELOG.md`, `THIRD-PARTY.md`, `LICENSE`,
 `NOTICE`, `VERSION` y `BUILD_ID`. Junto a la carpeta llegan el manifiesto `SHA256SUMS`, el archivo ZIP, el bundle de
-Git `scc-v1.10.1.bundle`, `PROCEDENCIA.json` (commit, fecha y si el árbol estaba limpio) y `VALIDACION-DEBIAN.md`
+Git `scc-v2.0.0.bundle`, `PROCEDENCIA.json` (commit, fecha y si el árbol estaba limpio) y `VALIDACION-DEBIAN.md`
 (qué se ejecutó en Debian, con sus códigos de salida). Esos recibos se generan al preparar la entrega y no forman
 parte del árbol de Git.
 
@@ -19,7 +19,7 @@ Antes de abrir nada, en la carpeta recibida:
 
 ```bash
 sha256sum -c SHA256SUMS                       # cubre el paquete y el bundle; todo debe decir OK
-cd scc-v1.10.1 && cat VERSION BUILD_ID        # 1.10.1 y scc-v1.10.1
+cd scc-v2.0.0 && cat VERSION BUILD_ID        # 2.0.0 y scc-v2.0.0
 ```
 
 La suma del ZIP exterior se entrega aparte, por otro canal, para comprobar primero la transferencia. No ejecutes una
@@ -28,7 +28,7 @@ entrega con sumas incorrectas. Conserva la identificación del origen (commit y 
 Si prefieres un clon con historial, sin red ni GitHub:
 
 ```bash
-git clone --branch release/scc-v1.10.1-debian scc-v1.10.1.bundle ~/scc
+git clone --branch release/scc-v2.0.0-debian scc-v2.0.0.bundle ~/scc
 git -C ~/scc rev-parse HEAD                   # debe coincidir con el commit de PROCEDENCIA.json
 ```
 

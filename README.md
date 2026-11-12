@@ -1,6 +1,6 @@
 # SCC · setup-claude-code
 
-**v1.10.1, estable** · cockpit: 0.9.0 · necesita Claude Code 2.1.311 o posterior, bash ≥ 5, jq, git y python3 · Linux o WSL2.
+**v2.0.0, estable** · cockpit: 0.9.0 · necesita Claude Code 2.1.311 o posterior, bash ≥ 5, jq, git y python3 · Linux o WSL2.
 
 SCC configura tu Claude Code con controles que actúan antes de cada herramienta (bloquean borrados destructivos,
 pushes a ramas protegidas y secretos escritos en ficheros), guarda el estado de cada tarea para retomarla tras un
