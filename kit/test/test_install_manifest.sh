@@ -82,6 +82,13 @@ ck "$(printf '%s\n' "$out" | grep -c 'WARN · .*skills/to-questionnaire/SKILL.md
 mkdir -p "$H3/.local/bin"; cp "$tmp/bin/claude" "$H3/.local/bin/claude"
 out="$(PATH=/usr/local/bin:/usr/bin:/bin bash "$KIT/doctor.sh" 2>&1)"
 ck "$(printf '%s\n' "$out" | grep -c 'WARN · claude esta instalado en .*no esta en tu PATH')" "1" "doctor distingue claude fuera del PATH de claude no instalado"
+# Una skill retirada cuya carpeta es un symlink (skill proyectada desde otro repo): la ruta pasa por el enlace y
+# borrar escribiria en ese repo, aunque el fichero final no sea un symlink. No se toca.
+O="$tmp/otro-repo/grilling"; mkdir -p "$O/agents"
+cp "$FX/grilling-SKILL.md" "$O/SKILL.md"; cp "$FX/grilling-openai.yaml" "$O/agents/openai.yaml"
+ln -s "$O" "$CLAUDE_HOME/skills/grilling"
+bash "$KIT/install.sh" --apply >/dev/null 2>&1
+ck "$([ -f "$O/SKILL.md" ] && [ -f "$O/agents/openai.yaml" ] && echo y || echo n)" "y" "install no borra a traves de una carpeta de skill enlazada"
 
 echo "== $pass ok, $fail fallos =="
 [ "$fail" -eq 0 ]

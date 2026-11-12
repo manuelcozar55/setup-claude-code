@@ -159,6 +159,8 @@ fi
 while IFS= read -r rel; do
   p="$CLAUDE_HOME/$rel"
   { [ -f "$p" ] && [ ! -L "$p" ]; } || continue
+  # Bajo una carpeta enlazada (skill proyectada desde otro repo) no es del kit: install.sh tampoco la toca.
+  [ "$(cd "$(dirname "$p")" && pwd -P)" = "$(cd "$CLAUDE_HOME" && pwd -P)/$(dirname "$rel")" ] || continue
   if command grep -qxF "$(sha256sum < "$p" | cut -d' ' -f1)  $rel" "$KIT/hooks-retirados.sha256"; then
     warn "$rel lo retiro el kit y sigue instalado (version publicada): bash $KIT/install.sh --apply lo borra"
   else

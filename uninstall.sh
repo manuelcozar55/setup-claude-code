@@ -438,6 +438,8 @@ kit_uninstall() {
     while IFS= read -r rel; do
       p="$CLAUDE_HOME/$rel"
       if [ -L "$p" ] || [ ! -f "$p" ]; then continue; fi
+      # Carpeta enlazada (skill proyectada desde otro repo): borrar escribiria en ese repo.
+      [ "$(cd "$(dirname "$p")" && pwd -P)" = "$(cd "$CLAUDE_HOME" && pwd -P)/$(dirname "$rel")" ] || continue
       case " ${rm_list[*]:-} " in *" $rel "*) continue ;; esac
       if grep -qxF "$(sha256sum < "$p" | cut -d' ' -f1)  $rel" "$retfile"; then rm_list+=("$rel")
       else keep_list+=("$rel (modificado por ti)"); fi

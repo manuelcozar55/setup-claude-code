@@ -162,5 +162,13 @@ ck "$([ -e "$CLAUDE_HOME/skills/grilling" ] && echo y || echo n)" "n" "borra la 
 ck "$(grep -c 'mi cambio' "$CLAUDE_HOME/skills/to-questionnaire/SKILL.md")" "1" "conserva el retirado que la persona modifico"
 ck "$(find "$CLAUDE_HOME" -mindepth 1 -maxdepth 1 ! -name backups ! -name skills | wc -l | tr -d ' ')" "0" "no quedan restos del kit fuera de lo conservado"
 
+# ---- 11. skill retirada cuya carpeta es un symlink a otro repo: no se borra a traves del enlace.
+nuevo_home h11
+bash "$INST" --apply >/dev/null 2>&1
+O="$tmp/otro-repo11/grilling"; mkdir -p "$O"; cp "$FX/grilling-SKILL.md" "$O/SKILL.md"
+mkdir -p "$CLAUDE_HOME/skills"; ln -s "$O" "$CLAUDE_HOME/skills/grilling"
+bash "$UN" --kit --apply >/dev/null 2>&1
+ck "$([ -f "$O/SKILL.md" ] && echo y || echo n)" "y" "--kit --apply no borra a traves de una carpeta de skill enlazada"
+
 echo "== $pass ok, $fail fallos =="
 [ "$fail" -eq 0 ]
