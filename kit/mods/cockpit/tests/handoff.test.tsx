@@ -15,6 +15,32 @@ const HASH = 'a'.repeat(64)
 const NEW = `## Objetivo\nhaz X\n## Invariantes\n- no tocar Y\n## Plan\n- [ ] T1\n## Siguiente acción\nT1\nclave: ${FAKE_SK}\n`
 const PREV = '# Estado\n\n## Objetivo\nhaz X  \ntal cual\n\n## Invariantes\n- no tocar Y\n## Plan\n- [ ] T1\n## Skills sugeridas\n- retro\n'
 
+// The session id changes after a /clear, as in the engine: «Contexto limpio» is said only when it did. `auto` counts the clears.
+let clears = 0
+
+const ADMITTED = ['objetivo', 'invariantes', 'paso actual', 'siguiente accion', 'comandos de verificacion', 'plan', 'pendientes', 'ficheros tocados']
+const cliKey = (t: string) => {
+  const n = t.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+  return /^(objetivo|encargo original)/.test(n) ? 'objetivo' : n.startsWith('invariantes') ? 'invariantes' : n === 'pendientes y riesgos' ? 'pendientes' : n
+}
+function cliVerdict(draft: string, isEstadoMd: boolean) {
+  // A «## » inside a ``` or ~~~ fence is content (the CLI toggles on every fence line).
+  let fenced = false
+  const heads = draft.split('\n').filter(l => {
+    if (/^[ \t]*(```|~~~)/.test(l)) fenced = !fenced
+    return !fenced && l.startsWith('## ')
+  }).map(l => l.slice(3))
+  if (!heads.length) return 'el borrador no trae ninguna sección «## »'
+  const seen = new Set<string>()
+  for (const h of heads) {
+    const k = cliKey(h)
+    if (!ADMITTED.includes(k) && !(isEstadoMd && ['decisiones', 'como se comprueba'].includes(k))) return `cabecera no admitida «${h}» (admitidas: Objetivo, Invariantes, Paso actual, Siguiente acción, Comandos de verificación, Plan, Pendientes, Ficheros tocados)`
+    if (seen.has(k)) return `cabecera repetida «${h}»`
+    seen.add(k)
+  }
+  return ''
+}
+
 type Run = { argv: readonly string[]; init?: { cwd?: string; env?: Record<string, string> } }
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '' } }) as never
 const no = () => ({ value: { exitCode: 1, stdout: '', stderr: '' } }) as never
@@ -27,6 +53,7 @@ function repo(
   files: Record<string, string>,
   opts: { root?: string; tops?: Record<string, string>; links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; autonomo?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
 ) {
+  clears = 0
   let stateReads = 0
   const runs: Run[] = []
   const writes: { path: string; text: string }[] = []
@@ -36,7 +63,7 @@ function repo(
   if (!opts.noBin) files[bin] = '#!/usr/bin/env bash\n'
   on('session.cwd', () => ({ value: opts.cwd ?? '/work/proyecto/sub' }))
   on('session.root', () => ({ value: opts.root ?? opts.cwd ?? '/work/proyecto/sub' }))
-  on('session.id', () => ({ value: opts.session?.() ?? 'sesion-1' }) as never)
+  on('session.id', () => ({ value: opts.session?.() ?? (clears > 0 ? 'sesion-2' : 'sesion-1') }) as never)
   on('process.run', async (_, e) => {
     runs.push(e)
     const a = e.argv.join(' ')
@@ -72,6 +99,10 @@ function repo(
       const draft = files[TMP] ?? ''
       calls.push({ argv: e.argv, draft })
       const seq = opts.cli ?? [0]
+      // Like the real CLI (kit/mods/cockpit/test_cockpit.sh runs it): headers outside the template, repeated ones and a draft with
+      // no «## » are rc 2 with the header named on stderr.
+      const bad = cliVerdict(draft, !!opts.estadoMd)
+      if (bad) return { value: { exitCode: 2, stdout: '', stderr: bad } } as never
       const code = seq[Math.min(calls.length - 1, seq.length - 1)] ?? 0
       if (code === 0) files[opts.estadoMd ?? opts.statePath ?? `${e.argv[e.argv.indexOf('--raiz') + 1]}/.claude/estado/nucleo.md`] = draft
       return { value: { exitCode: code, stdout: JSON.stringify({ nucleo: opts.estadoMd ?? opts.statePath ?? `${EST}/nucleo.md`, sha256: HASH, ...(opts.avisos ? { avisos: opts.avisos } : {}), ...opts.recibo }), stderr: opts.stderr ?? '' } } as never
@@ -371,7 +402,7 @@ for (const [name, o] of [
     expect(r.writes).toEqual([])
     expect(r.calls).toEqual([])
     expect(res.text).toContain('Handoff fallido')
-    expect(res.text).toContain('sin ranura')
+    expect(res.text).toContain('sin estado propio')
   })
 }
 
@@ -493,6 +524,7 @@ function auto(
   o: { tokens: number; window?: number; agents?: { id: string; status: string }[]; usageFailsAfter?: number; forkText?: string | ((prompt: string) => string); nothingToFork?: number; fill?: { isFilled: boolean; refusal?: 'dialog' } | 'throws'; clearFails?: boolean; draft?: string | (() => string); beforeFork?: () => Promise<void>; afterClear?: () => Promise<void> },
 ) {
   const seen = { forks: 0, cleared: 0, fills: [] as string[], toasts: [] as string[], logs: [] as string[], usageCalls: 0 }
+  clears = 0
   on('session.usage', () => {
     if (o.usageFailsAfter !== undefined && ++seen.usageCalls > o.usageFailsAfter) throw new Error('usage caído')
     return {
@@ -518,6 +550,7 @@ function auto(
     if (e.command === 'clear' && o.clearFails) throw new Error('rechazado')
     if (e.command === 'clear') {
       seen.cleared++
+      clears++
       await o.afterClear?.()
     }
     return { text: '' }
@@ -2079,3 +2112,45 @@ for (const code of [4, 5]) {
     expect(seen.cleared).toBe(0)
   })
 }
+
+// Contrato con el CLI: el mod solo manda cabeceras que el CLI admite (kit/mods/cockpit/test_cockpit.sh ejecuta el CLI real con estos borradores).
+test('contrato: una sección «## Notas» del fork no tumba el guardado: se descarta antes del CLI y el aviso la nombra', async ($, on) => {
+  fork(on, NEW + '## Notas\nalgo suelto\n')
+  const r = repo(on, {})
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(r.calls).toHaveLength(1)
+  expect(r.calls[0]?.draft).not.toContain('## Notas')
+  expect(r.calls[0]?.draft).toContain('## Plan')
+  expect(res.text).toContain(`Guardado en ${EST}/nucleo.md`)
+  expect(res.text).toContain('Notas')
+})
+
+test('contrato: una cabecera repetida y las familias (Encargo original, Pendientes y riesgos) pasan como el CLI las lee', async ($, on) => {
+  fork(on, '## Encargo original (literal)\nhaz X\n## Pendientes y riesgos\n- a\n## Plan\n- [ ] T1\n## Plan\n- [ ] T2\n')
+  const r = repo(on, {})
+  await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(r.calls).toHaveLength(1)
+  expect(r.calls[0]?.draft.match(/^## Plan/gm)).toHaveLength(1)
+  expect(r.calls[0]?.draft).toContain('## Encargo original (literal)')
+  expect(r.calls[0]?.draft).toContain('## Pendientes y riesgos')
+})
+
+test('contrato: si todas las secciones del fork están fuera de la plantilla no se llama al CLI y se dice por qué', async ($, on) => {
+  fork(on, '## Notas\nalgo\n## Ideas\notra\n')
+  const r = repo(on, {})
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(r.calls).toHaveLength(0)
+  expect(res.text).toContain('Handoff fallido')
+  expect(res.text).toContain('Notas')
+  expect(res.text).toContain('plantilla')
+})
+
+test('contrato: con rc 2 del CLI el mensaje dice que no se guardó nada y qué hacer', async ($, on) => {
+  fork(on, NEW)
+  repo(on, {}, { cli: [2], stderr: 'cabecera no admitida «Raro»' })
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(res.text).toContain('borrador inválido')
+  expect(res.text).toContain('cabecera no admitida «Raro»')
+  expect(res.text).toContain('no se guardó nada')
+  expect(res.text).toContain('repite /handoff')
+})

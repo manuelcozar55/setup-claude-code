@@ -17,7 +17,6 @@ SessionStart clear|9500
 SessionStart resume|9500
 SessionStart memoria|100
 PostToolUse nucleo-nudge|600
-Stop context-gauge|400
 write-guard (fichero nuevo|500
 write-guard (secretos|600
 stale-read-guard|800
@@ -54,8 +53,7 @@ TOPE_EVENTO=10000
 # evento | filas que disparan juntas (+) con alternativas (/): prefijos de TAB
 EVENTOS='SessionStart|SessionStart memoria+SessionStart compact/SessionStart startup/SessionStart clear/SessionStart resume
 PostToolUse|PostToolUse nucleo-nudge+narthex
-PreToolUse|write-guard (fichero nuevo/write-guard (secretos/stale-read-guard
-Stop|Stop context-gauge'
+PreToolUse|write-guard (fichero nuevo/write-guard (secretos/stale-read-guard'
 suma_evento() { # tabla spec -> suma de los hooks que disparan juntos
   local tab=$1 spec=$2 total=0 grupo alt m v
   while IFS= read -r grupo; do

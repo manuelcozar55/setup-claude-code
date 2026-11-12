@@ -719,7 +719,7 @@ expect "destructive: heredoc con ; y rm -rf en la cabecera denegado"    "$(run_d
 expect "destructive: heredoc sin comillas con \$( ) denegado"          "$(run_destructive_jq "cat > a.md <<EOF${NL}\$(rm -rf ~)${NL}EOF")" BLOCK
 expect "destructive: heredoc a un shell denegado"                       "$(run_destructive_jq "bash <<'EOF'${NL}rm -rf ~${NL}EOF")" BLOCK
 expect "destructive: heredoc con pipe a un shell denegado"              "$(run_destructive_jq "cat <<'EOF' | bash${NL}rm -rf ~${NL}EOF")" BLOCK
-expect "destructive: heredoc a stdout (sin fichero) denegado"           "$(run_destructive_jq "cat <<'EOF'${NL}rm -rf ~${NL}EOF")" BLOCK
+expect "destructive: heredoc a stdout (sin fichero) es dato, NO denegado"           "$(run_destructive_jq "cat <<'EOF'${NL}rm -rf ~${NL}EOF")" ALLOW
 expect "destructive: heredoc sin cierre denegado"                       "$(run_destructive_jq "cat > a.md <<'EOF'${NL}rm -rf ~${NL}")" BLOCK
 expect "destructive: heredoc a fichero con && bash denegado"            "$(run_destructive_jq "cat > a.sh <<'EOF' && bash a.sh${NL}rm -rf ~${NL}EOF")" BLOCK
 # Hueco `~` entre comillas: `~` o `..` pegados a la comilla de cierre (o a `;`, `)`...) no contaban como objetivo de rm.
@@ -1468,7 +1468,7 @@ $bwg_body
 $bwg_key
 EOF")" BLOCK
 # Esta suite fija ademas que el guard esta cableado: con timeout 5 en la cadena de Bash.
-bwg_to=$(jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | endswith("/bash-write-guard.sh")) | .timeout] | join(",")' "$KIT/claude/settings.json")
+bwg_to=$(jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | test("/bash-write-guard\\.sh\"?$")) | .timeout] | join(",")' "$KIT/claude/settings.json")
 if [ "$bwg_to" = 5 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: bash-write-guard no esta en la cadena PreToolUse/Bash del settings con timeout 5 (timeouts: '$bwg_to')"; fi
 
 # Tamano del comando (v3 W5). Claude Code mata el hook al pasar su timeout y la herramienta se

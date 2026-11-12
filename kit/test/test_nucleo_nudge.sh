@@ -4,7 +4,7 @@
 # nucleo rancio (> 10 min), ausente o por encima del tope, en ≤ 400 chars y con la ruta exacta; si no toca, nada.
 # Uso: test_nucleo_nudge.sh [ruta al hook]. Sin red; HOME falso en un mktemp que se borra.
 set -u
-H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-nudge.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT; export CC_NUCLEO_GATE=1
+H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-nudge.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT; export NUCLEO_COCKPIT=1
 export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
@@ -42,7 +42,7 @@ ok "otra sesión tiene sus propias bandas" "$(run s2 p60 | ctx | command grep -c
 run s5 p60 >/dev/null; run s5 p20 >/dev/null
 ok "bajo el 50 % se rearma: 60 % avisa otra vez" "$(run s5 p60 | ctx | command grep -c '60 % del airbag')" 1
 touch "$NUC"
-ok "60 % + nucleo fresco → vacío" "$(run s3 p60)" ""
+ok "60 % + nucleo fresco → el modelo no recibe nada" "$(run s3 p60 | ctx)" ""
 # Editado a mano por encima del tope: al retomar se omitirían secciones enteras; el aviso lo dice con su tamaño.
 # 6 000 B caben en 6 500, pero no junto al bloque de agentes: el tope es el que usa handoff (6 500 − 800).
 head -c 6000 /dev/zero | tr '\0' x >"$NUC"; touch -d '-30 minutes' "$NUC"
@@ -93,7 +93,7 @@ ok "K12: assistant a más de 40 líneas del final: el aviso mide igual" "$(run k
 # el nucleo de otra. Con el dueño caducado, o sin dueño, avisa cualquiera.
 echo x >"$NUC"; touch -d '-30 minutes' "$NUC"
 printf 'sesion=duena1\ndesde=%s\n' "$(date +%s)" >"$R/.claude/estado/.dueno"
-ok "dueño: otra sesión al 60 % calla" "$(run s70 p60)" ""
+ok "dueño: otra sesión al 60 % calla al modelo" "$(run s70 p60 | ctx)" ""
 ok "dueño: la dueña sí avisa" "$(run duena1 p60 | ctx | command grep -c '60 % del airbag')" 1
 ok "dueño: callar no gasta la banda (al ceder el dueño avisa)" "$(printf 'sesion=duena1\ndesde=1\n' >"$R/.claude/estado/.dueno"; run s70 p60 | ctx | command grep -c '60 % del airbag')" 1
 printf 'basura\n' >"$R/.claude/estado/.dueno"
@@ -130,19 +130,41 @@ touch -d '-30 minutes' "$NUC"
 WC=$(PATH=/usr/bin:/bin run s40 p72 | ctx); WP=$(sed -n 's/.*`\([^ ]*\) --desde.*/\1/p' <<<"$WC")
 ok "W2 nudge: sin handoff en el PATH enseña la ruta absoluta y existe" "$WP,$([ -x "$WP" ] && echo si)" "$HOME/.claude/bin/handoff,si"
 ok "W2 nudge 70 % con la ruta ≤ 600 chars" "$([ "$(largo "$WC")" -le 600 ] && echo si)" si
-# --- compuerta: el nudge deja la ruta del nucleo que miró (el mtime es la hora del aviso) y rearma la cuenta ---
-touch -d '-30 minutes' "$NUC"; run s50 p72 >/dev/null
-ok "nudge deja nudge-<sid>.nucleo con la ruta exacta" "$(cat "$HOME/.claude/session-logs/nudge-s50.nucleo" 2>/dev/null)" "$NUC"
-G=$(dirname "$H")/nucleo-gate.sh; GC='{"session_id":"s50","tool_name":"Bash","tool_input":{"command":"ls"}}'
-gate() { case $(bash "$G" <<<"$GC") in '') echo pasa;; *deny*) echo deny;; esac; }
-ok "nudge + compuerta de extremo a extremo: 1.ª a 3.ª pasan, 4.ª deniega" "$(for _ in 1 2 3 4; do gate; done | tr '\n' ' ')" "pasa pasa pasa deny "
-# Desde ~ con ranura (se sabe el pid de la sesión): la marca apunta al nucleo de la ranura, el que usa handoff, y la
-# compuerta actúa también ahí. Sin pid (K8) sigue sin marca.
-C=$(CLAUDE_PID=$$ runh s60 p72 | ctx); SN=$(cat "$HOME/.claude/session-logs/nudge-s60.nucleo" 2>/dev/null)
-ok "~ con ranura: nudge-<sid>.nucleo apunta a sesiones/*-<pid>/nucleo.md" "$(case $SN in "$HOME"/.claude/estado/sesiones/*-$$/nucleo.md) echo ranura;; *) echo "${SN:-nada}";; esac)" ranura
+# Desde ~ con ranura (se sabe el pid de la sesión): el aviso nombra el nucleo de la ranura, el que usa handoff.
+C=$(CLAUDE_PID=$$ runh s60 p72 | ctx); SN=$(find "$HOME/.claude/estado/sesiones" -maxdepth 1 -name "*-$$" 2>/dev/null | head -n 1)/nucleo.md
 ok "~ con ranura: el aviso nombra la ranura y no el nucleo de ~" "$(command grep -cF "${SN:-nada}" <<<"$C"),$(command grep -cF "$HN" <<<"$C")" 1,0
 ok "~ con ranura: el comando del nudge lleva --ranura con la ranura" "$(command grep -cF -- "--sesion s60 --ranura ${SN%/nucleo.md}" <<<"$C")" 1
-GC='{"session_id":"s60","tool_name":"Bash","tool_input":{"command":"ls"}}'
-ok "~ con ranura: nudge + compuerta, la 4.ª deniega" "$(for _ in 1 2 3 4; do gate; done | tr '\n' ' ')" "pasa pasa pasa deny "
+
+# --- D3 (cv2/estado): el nudge es el único emisor; avisa también a la persona, una vez por banda, con o sin cockpit ---
+R2=$T/repo2; mkdir -p "$R2/.claude/estado"; git -C "$R2" init -q; echo x >"$R2/.claude/estado/nucleo.md"; touch -d '-30 minutes' "$R2/.claude/estado/nucleo.md"
+runr() { jq -cn --arg c "$R2" --arg s "$1" --arg t "$T/$2.jsonl" '{session_id:$s,transcript_path:$t,cwd:$c,hook_event_name:"PostToolUse",tool_name:"Bash"}' | bash "$H"; }
+sysm() { jq -r '.systemMessage // empty' 2>/dev/null; }
+PC=$(NUCLEO_COCKPIT=1 runr d1 p60 | sysm); PN=$(NUCLEO_COCKPIT=0 runr d2 p60 | sysm)
+ok "persona al 60 %, con cockpit: /handoff" "$(command grep -c 'Fase cerrada: /handoff' <<<"$PC")" 1
+ok "persona al 60 %, sin cockpit: el CLI con la sesión y /clear, sin nombrar /handoff" "$(command grep -c 'handoff --desde <borrador> --sesion d2.* /clear' <<<"$PN"),$(command grep -c '/handoff' <<<"$PN")" 1,0
+ok "persona: una sola vez por banda" "$(NUCLEO_COCKPIT=0 runr d2 p60 | sysm)" ""
+ok "persona: la banda siguiente (85 %) vuelve a avisar" "$(NUCLEO_COCKPIT=0 runr d2 p90 | sysm | command grep -c 'compactará en breve')" 1
+ok "persona al 72 % (por debajo de la banda 85): sigue siendo el aviso del 60 %" "$(NUCLEO_COCKPIT=0 runr d3 p72 | sysm | command grep -c 'Fase cerrada')" 1
+ok "persona: -p/SDK no tiene a quién avisar" "$(CLAUDE_CODE_SESSION_ATTENDED=0 runr d4 p60 | sysm)" ""
+ok "persona: bajo el 50 % se rearma" "$(NUCLEO_COCKPIT=0 runr d2 p20 >/dev/null; NUCLEO_COCKPIT=0 runr d2 p60 | sysm | command grep -c 'Fase cerrada')" 1
+# Sin cockpit ningún aviso nombra comandos que no existen: ni al modelo ni a la persona, en ninguna banda.
+SIN=$(for b in p60 p72 p90; do NUCLEO_COCKPIT=0 runr d5$b $b; done | jq -r '.systemMessage // empty, .hookSpecificOutput.additionalContext // empty')
+ok "sin cockpit: ningún aviso nombra /handoff, /autonomo ni /nueva" "$(command grep -cE '/handoff|/autonomo|/nueva' <<<"$SIN")" 0
+CON=$(NUCLEO_COCKPIT=1 runr d6 p72 | jq -r '.hookSpecificOutput.additionalContext // empty')
+ok "con cockpit el aviso al modelo del 70 % sí cuenta lo de /autonomo" "$(command grep -c '/autonomo on' <<<"$CON")" 1
+# Una sesión que no es la dueña no recibe la orden de hacer un handoff que devolvería rc 5.
+printf 'sesion=otra-dueña\ndesde=%s\n' "$(date +%s)" >"$R2/.claude/estado/.dueno"; printf 'sesion=duena\ndesde=%s\n' "$(date +%s)" >"$R2/.claude/estado/.dueno"
+AJ=$(NUCLEO_COCKPIT=0 runr d7 p60)
+ok "no dueña: aviso a la persona sin orden de handoff, y nada para el modelo" "$(sysm <<<"$AJ" | command grep -c 'no es la dueña'),$(sysm <<<"$AJ" | command grep -c -- '--desde'),$(ctx <<<"$AJ")" "1,0,"
+rm -f "$R2/.claude/estado/.dueno"
+# Agentes en vuelo: limpiar la sesión los perdería.
+jq -cn '{sid:"d8",t:"2099-01-01T00:00:00Z",vivos:[{id:"a1",type:"subagent"}]}' >"$R2/.claude/estado/agentes-vivos-d8.json"
+ok "agentes en vuelo: guarda sin /clear" "$(NUCLEO_COCKPIT=0 runr d8 p60 | sysm | command grep -c '1 agente(s) en vuelo: guarda el estado con .* y no hagas /clear')" 1
+# Detección del cockpit: plugin activo en settings.json de usuario (NUCLEO_COCKPIT manda si está).
+mkdir -p "$HOME/.claude"; printf '{"enabledPlugins":{"cockpit@setup-claude-code":true}}' >"$HOME/.claude/settings.json"
+ok "cockpit detectado por enabledPlugins" "$(unset NUCLEO_COCKPIT; runr d9 p60 | sysm | command grep -c '/handoff')" 1
+printf '{"enabledPlugins":{"cockpit@setup-claude-code":false}}' >"$HOME/.claude/settings.json"
+ok "cockpit desactivado en settings: se habla del CLI" "$(unset NUCLEO_COCKPIT; runr d10 p60 | sysm | command grep -c 'handoff --desde')" 1
+rm -f "$HOME/.claude/settings.json"
 
 exit $FAIL

@@ -16,12 +16,22 @@ es un proyecto personal en abierto).
 
 ## Qué protege este kit, y qué no
 
-Los guards de `kit/claude/hooks/` y `kit/sentinel/` son **defensa en
-profundidad, no un límite de seguridad duro**. Están pensados para acotar el
-radio de impacto de un fallo o un comando destructivo generado por el agente,
-no para contener a un adversario activo que controle el prompt o el entorno.
-Documentamos sus límites conocidos en vez de esconderlos: un proyecto de
-seguridad que declara dónde se rompe es más creíble, no menos.
+Los guards de `kit/claude/hooks/` y `kit/sentinel/` son **una red contra errores honestos, no una barrera contra un
+adversario**. Frenan lo que un agente (o una persona con prisa) hace por equivocación: un `rm -rf` sobre el directorio
+equivocado, un `git push` a `main`, un `git add` del fichero de entorno, una clave pegada en un fichero. No contienen a
+quien controla el prompt o el entorno y busca esquivarlos a propósito: un comando se puede construir en el shell de mil
+formas que un hook, que ve texto antes de la expansión, no puede resolver. Cuando no puede resolver algo que decide el
+peligro (una variable en el destino de un borrado, una sustitución donde iría la rama), **pregunta** en vez de adivinar.
+Y documentamos sus límites en vez de esconderlos: un proyecto de seguridad que declara dónde se rompe es más creíble.
+
+Lo que cada capa protege y lo que no, de un vistazo:
+
+| Capa | Protege | No protege |
+|---|---|---|
+| `permissions.deny` (Capa 0) | Borrados de la raíz y de `$HOME`, `git push --force`, la config del kit, antes de que corra ningún hook. | A `Bash` frente a lo que no reconoce como comando de fichero (un script que borra, `rsync --delete`). |
+| Guards de Bash (Capa 1, 5 hooks) | Comandos destructivos, pipe-a-shell, push a ramas protegidas, `git add` de credenciales, secretos escritos desde Bash, **decididos sobre el comando parseado** (no sobre el texto crudo). | Lo que solo existe tras la expansión del shell y el código dentro de un intérprete (`python -c`, `perl -e`). |
+| `gitleaks` en `pre-commit` (Capa 2) | Credenciales con firma textual que llegan al índice por cualquier vía. | Contenido binario sin firma; repos que no activaron `core.hooksPath`. |
+| Sentinel | Rutas sensibles, comandos y redes sospechosas, escrituras sobre la config del kit, en cualquier herramienta. | Un comando que construye el nombre del fichero en el shell; el contenido de `python -c`/`node -e`. |
 
 ### Capa 0 — `permissions.deny` de `settings.json` (antes de que corra un hook)
 
@@ -62,28 +72,37 @@ comprobarlos, y `bash-write-guard.sh`, que mira lo que Bash escribe. Las dos mit
 fichero queda protegido por un lado y abierto por el otro. Detalle operativo en
 [`kit/docs/05-security.md`](kit/docs/05-security.md).
 
-### Capa 1 — guards por nombre de fichero/comando (`secret-guard.sh` y afines)
+### Capa 1 — guards de Bash (`block-dangerous-commands.sh`, `branch-guard.sh`, `destructive-guard.sh`, `secret-guard.sh`, `bash-write-guard.sh`)
 
-Estos hooks `PreToolUse` inspeccionan el **texto del comando `Bash`** antes de
-ejecutarlo. No son un tokenizador de shell ni un intérprete de `git`: miran
-patrones de texto, no el efecto real del comando. Formas conocidas de
-esquivarlos:
+Estos hooks `PreToolUse` inspeccionan el comando `Bash` antes de ejecutarlo. Los cuatro primeros comparten
+`hooks/lib/cmdnorm.sh`, un analizador en awk POSIX (compatible con mawk) que parte el comando en **órdenes simples con su
+separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce los prefijos (`sudo`, `env`, `command`,
+`timeout N`), la ruta del ejecutable y las opciones globales de git (`-C`, `-c`, `--git-dir`). Sobre eso:
 
-- `git -C otra/ruta add secreto.env` — el flag `-C` cambia el directorio de
-  trabajo antes del patrón que el guard busca.
-- `xargs git add secreto.env` — el nombre del fichero llega por `xargs`, no
-  aparece literal en el comando que ve el hook.
-- Prefijos de entorno: `FOO=bar git add secreto.env`.
-- `command git add secreto.env` — el builtin `command` es semánticamente
-  idéntico a `git add` pero no matchea el patrón literal.
-- Alias, funciones de shell, subshells y expansión de pathspecs en general:
-  adivinar con certeza el efecto de una cadena de shell arbitraria exigiría,
-  en el límite, un tokenizador de shell completo y un resolvedor de
-  pathspecs de git corriendo dentro del presupuesto de tiempo de un hook; y
-  aun logrado, seguiría mirando el árbol de trabajo declarado en el comando,
-  no lo que de verdad queda en el índice al hacer commit.
+- **La prosa no es una orden.** Un mensaje de commit (`git commit -m "no uses rm -rf"`), un patrón de `grep`, el
+  argumento de `echo`/`printf`, un cuerpo de `gh pr create --body` o un heredoc que solo guarda texto
+  (`cat > notas.md <<'EOF'`) ya no se leen como el comando que nombran. Si algún segmento lee su programa de la entrada
+  (un shell sin `-c`, `ssh`, `xargs`, `. /dev/stdin`) o el heredoc se guarda y se ejecuta en la misma orden
+  (`cat > a.sh <<EOF … EOF && bash a.sh`), el texto vuelve a contar como código.
+- **El borrado recursivo se decide por operandos**, no por la palabra: `rm -rf node_modules` o `rm -rf build` pasan,
+  `rm -rf ~/Documentos` o `rm -rf /` se deniegan, y un `cd /` seguido de `rm -rf *` también. `git clean -n` pasa.
+- **Lo que no se puede resolver, se pregunta (`ask`)**: una variable o una sustitución en la orden que recibe un pipe
+  (`curl … | $X`), en el subcomando de git (`git $X`), en un refspec o en el operando de `rm`, `reset` o `clean`
+  (`rm -rf $D`, `git push origin $B`, `git reset $H`), `git config alias.*` (los guards no ven lo que hace un alias) y un
+  fichero que el propio comando escribe y ejecuta (`echo … > x.sh; bash x.sh`). Preguntar de más es el lado seguro.
+- **Lo que es peligroso de verdad, se deniega.** El corpus de 25 comandos peligrosos de la auditoría se bloquea entero y
+  `test_guards_veredictos.sh` lo comprueba en cada `make test`, junto a 34 legítimos que pasan, 12 bypasses y los casos
+  que parecen prosa y no lo son.
 
-Un hook `PreToolUse` no es eso, y esta capa no pretende serlo.
+**Lo que sigue sin ver ningún guard** (límites declarados, fijados en `test/fixtures/guards-bypass.jsonl`): el código de
+un intérprete (`python3 -c "import shutil; shutil.rmtree('/home/u')"`, `perl -e "unlink glob q(/home/*/*)"`: el hook ve
+texto, no lo que ejecutará Python o Perl), `eval "$X"` y `bash -c "$X"` con el valor construido antes, un nombre armado
+con comillas (`cur''l`, `b""ash`), `rsync --delete` y cualquier cosa que borre sin nombrar una ruta. La barrera real es
+la capa de permisos de Claude Code y, para lo catastrófico, que el agente no corra con permisos que no necesita.
+
+`secret-guard.sh` y `bash-write-guard.sh` miran cosas distintas: el primero el nombre de lo que se añade al índice
+(`git add .env`, `*.pem`), el segundo el contenido que un comando escribe. El chequeo de `git add -A` trabaja sobre el
+árbol de trabajo declarado, no sobre el índice final; por eso existe la Capa 2.
 
 ### Capa 2 — `gitleaks` en `pre-commit` (contenido real)
 
@@ -106,12 +125,23 @@ de ahí, con los límites de "por nombre" ya descritos arriba — no de la Capa
 
 ### Sentinel (`sentinel/sentinel_preflight.py`)
 
-Es **fail-open** por diseño: si el hook crashea o no encuentra su fichero de
-IOCs (`kit/sentinel/iocs.json`, que el kit **sí** distribuye, así que en una
-instalación normal está), `decide()` resuelve "allow" en vez de bloquear.
-Esto es una decisión consciente de disponibilidad sobre seguridad — ver
-`kit/docs/05-security.md` para el razonamiento completo — y significa que
-Sentinel es opcional y aditivo, no la barrera principal.
+Corre antes de **cualquier** herramienta, no solo `Bash`. Un error interno **falla cerrado** (`exit 2`); si falta su
+`iocs.json` (`kit/sentinel/iocs.json`, que el kit **sí** distribuye, así que en una instalación normal está), `decide()` resuelve «allow»; si falta
+`python3`, `optional-hook.sh` no bloquea pero **avisa una vez por sesión** de que Sentinel no está activo; y un hook que
+agota su `timeout` deja ejecutar la herramienta (Sentinel no lleva `onFailure`), por eso se da un presupuesto de 1,5 s y
+pregunta (`ask`) si no le cabe. La tabla completa, más abajo.
+
+**Qué mira en un comando de `Bash`**: las rutas sensibles y los patrones de comando peligroso se juzgan sobre el comando
+**sin su prosa** (mensaje de commit, patrón de `grep`, palabras de `echo`/`printf` sin pipe, cuerpos de heredoc que solo
+van a un fichero), así que `git commit -m "ya no lee ~/.ssh/id_rsa"`, `echo ".env" >> .gitignore` o
+`git rm --cached .env` pasan. Lo que **no** es prosa sigue bloqueado: la misma ruta como argumento de `grep`, `echo` con
+la ruta por un pipe (`echo ~/.ssh/id_rsa | xargs cat`), cualquier sustitución (`git commit -m "$(cat ~/.ssh/id_rsa)"`) y
+un heredoc que va a un shell. Límite nuevo y aceptado: un nombre guardado como texto en un fichero y leído después por
+otro comando no se sigue.
+
+**La allowlist no levanta un bloqueo sobre un comando.** Una entrada de `paths` exime un campo que es una ruta (`Read`,
+`Edit`…), nunca un comando de `Bash`; antes el mensaje de bloqueo ofrecía la allowlist para un comando, y era mentira.
+Ahora cada bloqueo de Sentinel acaba con `Que hacer:` y la salida que de verdad funciona.
 
 **El allowlist solo se lee de tu `$HOME`.** `load_user_allowlist()` abre
 `$HOME/.claude/sentinel-allowlist.json` y nada más: el
@@ -125,6 +155,60 @@ incluido). Hoy un fichero que no sea un objeto JSON válido se ignora y cada
 lista ausente o `null` cuenta como vacía. Lo que ningún allowlist puede levantar
 es el suelo en código (`ALWAYS_DENY_PATHS`: el fichero de credenciales de Claude
 Code, la clave privada de SSH y las credenciales de AWS), que se consulta antes.
+
+## Cómo falla cada pieza
+
+Un guard puede no poder decidir. Qué hace entonces está decidido, probado y es lo que sigue (la misma tabla está en
+[`kit/docs/05-security.md`](kit/docs/05-security.md)):
+
+| Fallo | Los 5 guards de Bash | Sentinel (`sentinel_preflight.py`) | `write-guard.py` |
+|---|---|---|---|
+| Falta `jq` | **Bloquean** (`exit 2` o `deny`): sin `jq` no pueden leer el comando. | No usa `jq`: funciona. | No usa `jq`: funciona. |
+| Falta `python3` | No lo usan: funcionan. | **No bloquea y lo dice**: `optional-hook.sh` avisa una vez por sesión (`additionalContext`) de que Sentinel no está activo. | Igual: no bloquea y avisa una vez por sesión. |
+| Falta su script o su librería | **Bloquean** (`exit 2`) si falta `lib/cmdnorm.sh`; `bash-write-guard.sh` deniega si falta `lib/secret-patterns`. | `exit 2` (con `python3` presente). | `exit 2`, como Sentinel. |
+| JSON roto o ilegible | **Bloquean**. `bash-write-guard.sh` solo si el texto trae `>`, `<<`, `tee` o `sed` (su prefiltro lee texto, no JSON). | `exit 2`. | `exit 2`. |
+| Entrada vacía | Permiten: no hay nada que juzgar. | Permite. | `exit 2`. |
+| Caída interna (excepción) | Un fallo inesperado de shell sale con un código que no es 0 ni 2: lo bloquea `"onFailure": "block"` (Claude Code ≥ 2.1.295; `doctor.sh` avisa si es anterior). | `exit 2` (`try/except` de `__main__`). | `exit 2`. |
+| Timeout del hook | `"onFailure": "block"` bloquea. Antes de llegar ahí, el tope de 128 KB y el de 16 cadenas anidadas preguntan o bloquean. | **Fail-open**: Sentinel no lleva `onFailure`. Lo acota con su presupuesto de 1,5 s (`ask`) y el tope de 128 KB (`ask`). | Sin `onFailure`: un timeout deja escribir. |
+
+Cada fila está fijada por `kit/test/test_guards_degradacion.sh`: si esta tabla y esa suite discrepan, manda la suite y la tabla está mal.
+
+Un bloqueo no es una pared: **cada mensaje de bloqueo de cada guard acaba con `Que hacer:`** y la salida que funciona
+(reformular, usar una ruta concreta, `git stash`, o ejecutarlo la persona con `!`). `test/test_guards_mensajes.sh` lo
+exige para los cinco guards, Sentinel y `write-guard.py`.
+
+## Guard, interruptor y consecuencia
+
+Qué variable cambia qué guard, y qué se pierde al usarla (las variables son las que lee el código, no las que sugiere
+este texto):
+
+| Guard | Interruptor (variable real) | Efecto de usarlo | Quién y dónde |
+|---|---|---|---|
+| `destructive-guard.sh` | `CC_ALLOW_DESTRUCTIVE=1` | Apaga el guard entero: pasan `rm` sobre rutas sensibles, `git reset --hard`, `git clean -fd` y `find … -delete`. Se atiende antes del fail-closed, así que no hace falta `jq`. `block-dangerous-commands.sh` y Sentinel siguen activos y **pueden seguir bloqueando** lo mismo. | La persona, en el entorno de la sesión (`env` de `settings.json` o `export`), nunca el agente. |
+| `destructive-guard.sh` y `block-dangerous-commands.sh` | `CC_SAFE_DELETE_DIRS=node_modules:dist:…` | Lista (separada por `:`) de directorios de build que `rm -rf` puede borrar aunque cuelguen de una ruta sensible. Por defecto `node_modules:dist:build:.cache:__pycache__:coverage:.next:.nuxt:tmp`. Ampliarla amplía lo que se borra sin preguntar. | La persona, en el entorno. La lee `lib/cmdnorm.sh`. |
+| `destructive-guard.sh` | `CC_BLOCK_LOG=ruta` | Dónde se registran sus bloqueos (por defecto `~/.claude/audit-logs/blocked-commands.log`). No cambia ninguna decisión. | Quien depura; los tests lo apuntan a un temporal. |
+| `branch-guard.sh` | `CC_PROTECT_BRANCHES=main:master:production` | Ramas cuyo `git push` se bloquea (separadas por `:`). Vaciarla o quitar `main` deja empujar ahí. | La persona, en el entorno. |
+| `block-dangerous-commands.sh` | ninguno | Sus reglas están en el script. Se cambia el script (`DENY_RULES`, `ASK_RULES`) o se quita el hook de `settings.json`. | La persona. |
+| `secret-guard.sh` | ninguno (`SECRET_GUARD_BIN` solo lo usan los tests) | Se cambia el script o se quita el hook. | La persona. |
+| `bash-write-guard.sh` y `write-guard.py` | ninguno | Los patrones están en `hooks/lib/secret-patterns` (una fila por patrón; solo cuentan las filas `block`). Quitar una fila deja de detectarla. | La persona. |
+| Sentinel | `~/.claude/sentinel-allowlist.json` (`paths`, `commands`, `domains`, `env_vars`) | `paths` exime un campo que es **una ruta** (`Read`, `Edit`, `Write`…) y **nunca** un comando de `Bash`; `commands` exime un comando entero de los patrones de comando peligroso, por igualdad exacta. Lo que hay en `ALWAYS_DENY_PATHS` y `PROTECTED_CONFIG` no lo levanta ninguna entrada. | La persona; el kit protege el fichero de ediciones de la sesión. |
+| `optional-hook.sh` | `PYTHON_HOOK_BIN=ruta` (intérprete) y `CC_WARN_DIR=dir` (dónde guarda el aviso de «una vez por sesión») | Fija el `python3` que usan Sentinel y `write-guard.py`; con una ruta que no existe se comporta como sin `python3`. | Tests y quien depura. |
+
+Un interruptor es una decisión de la persona sobre su máquina: un agente que lo propone para «salir del paso» está pidiendo desarmar la barrera, y la respuesta es reformular el comando (cada bloqueo acaba con `Que hacer:` por eso).
+
+## Cuánto cuesta
+
+Una llamada a `Bash` pasa por los cinco guards y Sentinel **en paralelo** (los hooks de un mismo evento corren a la vez):
+el coste medido es de **62 a 67 ms** de reloj, el del más lento, no la suma (≈ 270 ms si se encadenaran). Es una
+medida de esta máquina: la tuya variará, pero el orden de magnitud sirve para decidir si merece la pena añadir un hook más.
+
+## Lo que este documento no promete
+
+Que ningún comando peligroso pase. Un adversario con control del prompt puede construir el nombre de un fichero o el
+código de un intérprete de forma que ningún guard lo vea (límites arriba); un hook que se pasa de su `timeout` (Sentinel,
+`write-guard.py`) deja ejecutar; un guard apagado con `CC_ALLOW_DESTRUCTIVE=1` está apagado. La política es que la
+configuración del kit la cambia la persona, que los guards frenan lo evidente y los errores honestos, y que cuando dudan
+preguntan.
 
 ## En resumen
 

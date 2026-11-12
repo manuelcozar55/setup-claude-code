@@ -121,7 +121,7 @@ def main() -> None:
                 "permissionDecisionReason": (
                     f"WRITE-GUARD BLOCKED: file '{path}' appears to contain "
                     f"hardcoded secrets: {', '.join(labels)}. "
-                    "Use environment variables or a secrets manager instead."
+                    "Que hacer: usa variables de entorno o un gestor de secretos; si es un falso positivo, ejecuta tu la escritura con ! en la sesion."
                 ),
             }
         }))
@@ -144,5 +144,5 @@ try:
     main()
 except Exception as exc:
     print(f"WRITE-GUARD ERROR: no se pudo analizar la escritura ({type(exc).__name__}: {exc}); "
-          "se bloquea por seguridad (fail-closed).", file=sys.stderr)
+          "se bloquea por seguridad (fail-closed). Que hacer: reintenta; si se repite, comprueba que python3 y lib/secret-patterns funcionan (python3 write-guard.py --help).", file=sys.stderr)
     sys.exit(2)

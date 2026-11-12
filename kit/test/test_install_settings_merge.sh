@@ -121,7 +121,7 @@ ck "$(jq -c '[.hooks.PreToolUse[] | select(any(.hooks[]; .command // "" | test("
 ck "$(cmds PreToolUse | tr '|' '\n' | grep -c -e 'block-dangerous' -e 'write-guard.py')" "2" "hooks: los guards del kit no se duplican (ni con su forma antigua)"
 ck "$(jq '[.hooks | .. | strings | select(test("smart_approve|preflight\\.sh|stop-session-summary"))] | length' "$S")" "0" "hooks: los que el kit retiro se van (stop-session-summary en 1.8.0)"
 # shellcheck disable=SC2016 # $HOME literal del settings, no del shell
-ck "$(cmds PreCompact)" '$HOME/.claude/hooks/pre-compact.sh|$HOME/.claude/hooks/circe-pre-compact.sh' "hooks: en un evento compartido van los del kit y detras los tuyos"
+ck "$(cmds PreCompact)" '"$HOME/.claude/hooks/pre-compact.sh"|$HOME/.claude/hooks/circe-pre-compact.sh' "hooks: en un evento compartido van los del kit y detras los tuyos"
 ck "$(cmds Stop | tr '|' '\n' | grep -c 'mi revision')" "1" "hooks: uno sin command (type prompt) es tuyo"
 ck "$(jq -c '[.hooks[][]? | select((.hooks | length) == 0)] | length' "$S")" "0" "hooks: no quedan grupos vacios"
 plantilla="$(jq -c '[.hooks[][].hooks[].command] | sort' "$KIT/claude/settings.json")"

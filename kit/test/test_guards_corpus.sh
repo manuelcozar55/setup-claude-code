@@ -23,15 +23,14 @@
 #   - esperado ASK (o veredicto OK-ask de E5): block-dangerous-commands pregunta.
 #   - esperado ?: sin expectativa, skip.
 #
-# DISENO, no error: los 3 «falsos positivos» de E5 son el borrado recursivo FORZADO de build/ (rm -rf build/,
-# rm -rf ./build), que block-dangerous-commands.sh deniega a proposito y documenta (rm -rf se bloquea
-# siempre; rm -r sin forzar pasa). La suite los fija como BLOCK. Para convertirlos en ALLOW hay que
-# cambiar esa decision en el hook y poner DISENO_FP=allow aqui.
+# CAMBIO DE ESPECIFICACION (W1, guards honestos): los 3 «falsos positivos» de E5 (borrado recursivo forzado de build/ y
+# ./build) eran DISENO v1: se bloqueaba siempre. Desde W1 el borrado recursivo se decide por operandos y una ruta relativa
+# no sensible pasa. DISENO_FP=allow es ahora el valor por defecto; DISENO_FP=block fija el diseno antiguo.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 H="${CORPUS_HOOKS_DIR:-$KIT/claude/hooks}"
 FIXTURE="${CORPUS_FIXTURE:-$HERE/fixtures/guards-corpus.tsv}"
-DISENO_FP="${DISENO_FP:-block}"
+DISENO_FP="${DISENO_FP:-allow}"
 pass=0; fail=0; skip_otra=0; skip_sentinel=0; skip_sin=0; ran=0; blocks_checked=0
 
 T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT

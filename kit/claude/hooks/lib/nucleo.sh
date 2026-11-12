@@ -94,10 +94,14 @@ nucleo_estado_leer() {
   printf '%s\n' "$d"
 }
 
+# nucleo_bloquear <estado> [segundos]: toma el lock del estado; sin espera (rc 4 si está ocupado) salvo que se pida
+# esperar: SessionEnd lo hace, porque su liberación del dueño no puede perderse por un autosave que acaba de empezar.
 nucleo_bloquear() {
   nucleo_estado_seguro "$1" || return 3
   exec {NUCLEO_LOCK_FD}>>"$1/.handoff.lock" || return 1
-  flock -n "$NUCLEO_LOCK_FD" || return 4
+  if [ -n "${2:-}" ]; then flock -w "$2" "$NUCLEO_LOCK_FD" || return 4
+  else flock -n "$NUCLEO_LOCK_FD" || return 4
+  fi
 }
 
 # nucleo_estado_dir <raíz>: imprime el directorio donde se escribe el estado de <raíz> y lo deja listo: crea al vuelo
@@ -132,9 +136,11 @@ nucleo_estado_dir() {
   printf '%s\n' "$d"
 }
 
-# Una tarea = una sesión dueña. <raíz>/.claude/estado/.dueno: «sesion=<session_id>» y «desde=<epoch>»; vigente
-# mientras vive el proceso identificado, o durante NUCLEO_DUENO_TTL (14 400 s) sin identidad verificable.
-# Lo reclama SessionStart y lo liberan `handoff` y SessionEnd de la sesión propietaria.
+# Una tarea = una sesión dueña. <raíz>/.claude/estado/.dueno: «sesion=<session_id>» y «desde=<epoch>», más «pid=» y
+# «proceso=» (identidad del proceso claude) si se conocen. Vigente mientras vive ese proceso, y deja de serlo en el acto
+# cuando muere; solo sin identidad registrada vale el TTL (NUCLEO_DUENO_TTL, 14 400 s). El mismo proceso conserva la tarea
+# aunque cambie el session_id (/clear, resume). Lo reclama SessionStart (si ya hay nucleo.md) o la primera escritura de
+# `handoff --auto`, y lo liberan `handoff` y SessionEnd de la sesión propietaria.
 
 # nucleo_dueno <raíz>: «<sesión> <desde>» si hay un dueño legible (vigente o no); rc 1 si no.
 nucleo_dueno() {
@@ -149,46 +155,66 @@ nucleo_dueno() {
   printf '%s %s\n' "$s" "$d"
 }
 
-# nucleo_dueno_vigente <raíz>: imprime «<sesión> <desde>» y rc 0 si el dueño no ha caducado.
-nucleo_dueno_vigente() {
-  local d e k v pid="" proceso="" ttl=${NUCLEO_DUENO_TTL:-14400}
-  d=$(nucleo_dueno "$1") || return 1
+# _nucleo_dueno_proceso <raíz>: imprime «<pid> <proceso>» del .dueno si registra identidad de proceso; rc 1 si no.
+_nucleo_dueno_proceso() {
+  local e k v pid="" proceso=""
   e=$(nucleo_estado_leer "$1") || return 1
-  while IFS='=' read -r k v; do
+  [ -f "$e/.dueno" ] || return 1
+  while IFS='=' read -r k v || [ -n "$k" ]; do
     case $k in pid) pid=$v ;; proceso) proceso=$v ;; esac
   done <"$e/.dueno"
-  case $pid in '' | *[!0-9]*) ;; *)
-    if [ -n "$proceso" ] && [ "$(_nucleo_proceso_id "$pid")" = "$proceso" ]; then
-      printf '%s\n' "$d"; return 0
-    fi ;;
-  esac
+  case $pid in '' | *[!0-9]*) return 1 ;; esac
+  [ -n "$proceso" ] || return 1
+  printf '%s %s\n' "$pid" "$proceso"
+}
+
+# nucleo_dueno_vigente <raíz>: imprime «<sesión> <desde>» y rc 0 si hay dueño vigente.
+nucleo_dueno_vigente() {
+  local d pp ttl=${NUCLEO_DUENO_TTL:-14400}
+  d=$(nucleo_dueno "$1") || return 1
+  if pp=$(_nucleo_dueno_proceso "$1"); then
+    [ "$(_nucleo_proceso_id "${pp% *}")" = "${pp#* }" ] || return 1
+    printf '%s\n' "$d"; return 0
+  fi
   case $ttl in '' | *[!0-9]*) ttl=14400 ;; esac
   [ $(( $(date +%s) - ${d#* } )) -lt "$ttl" ] || return 1
   printf '%s\n' "$d"
 }
 
-# nucleo_dueno_ajeno <raíz> <sesión>: rc 0 si hay un dueño vigente y no es <sesión>; imprime su id.
+# nucleo_dueno_ajeno <raíz> <sesión>: rc 0 si hay un dueño vigente y no es <sesión> ni el proceso de esta sesión (que
+# tras /clear o resume trae otro session_id); imprime su id.
 nucleo_dueno_ajeno() {
-  local d
+  local d pp pid
   d=$(nucleo_dueno_vigente "$1") || return 1
   [ "${d% *}" != "$2" ] || return 1
+  if pp=$(_nucleo_dueno_proceso "$1") && pid=$(nucleo_sesion_pid) && [ "$pid" = "${pp% *}" ] \
+    && [ "$(_nucleo_proceso_id "$pid")" = "${pp#* }" ]; then return 1; fi
   printf '%s\n' "${d% *}"
 }
 
-# nucleo_dueno_reclamar <raíz> <sesión>: reclama bajo lock, sin sustituir un dueño ajeno vigente.
-# Solo si el estado ya existe: no se crean directorios en repos que no usan estado.
-nucleo_dueno_reclamar() (
-  local d tmp pid proceso
-  d=$(nucleo_estado_leer "$1") || return 3
-  [ -d "$d" ] || return 0
-  nucleo_bloquear "$d" || return "$?"
-  nucleo_dueno_ajeno "$1" "$2" >/dev/null && return 5
-  tmp=$(mktemp "$d/.dueno.XXXXXX" 2>/dev/null) || return 1
-  printf 'sesion=%s\ndesde=%s\n' "$2" "$(date +%s)" >"$tmp"
+# nucleo_dueno_tomar <raíz> <estado> <sesión>: escribe .dueno a nombre de <sesión> sin sustituir a un dueño ajeno vigente
+# (rc 5). El llamador ya tiene el lock del estado (nucleo_bloquear).
+nucleo_dueno_tomar() {
+  local tmp pid proceso
+  nucleo_dueno_ajeno "$1" "$3" >/dev/null && return 5
+  tmp=$(mktemp "$2/.dueno.XXXXXX" 2>/dev/null) || return 1
+  printf 'sesion=%s\ndesde=%s\n' "$3" "$(date +%s)" >"$tmp"
   if pid=$(nucleo_sesion_pid) && proceso=$(_nucleo_proceso_id "$pid"); then
     printf 'pid=%s\nproceso=%s\n' "$pid" "$proceso" >>"$tmp"
   fi
-  mv -f "$tmp" "$d/.dueno" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  mv -f "$tmp" "$2/.dueno" 2>/dev/null || { rm -f "$tmp"; return 1; }
+}
+
+# nucleo_dueno_reclamar <raíz> <sesión>: reclama bajo lock, sin sustituir un dueño ajeno vigente. Solo si el proyecto ya
+# tiene estado con nucleo.md (o ESTADO.md): un estado/ vacío lo crean subagentes y PreCompact sin que nadie haya escrito
+# nada, y reclamar ahí le quitaba la tarea a la sesión que ya trabajaba.
+nucleo_dueno_reclamar() (
+  local d
+  d=$(nucleo_estado_leer "$1") || return 3
+  [ -d "$d" ] || return 0
+  [ -f "$d/nucleo.md" ] || nucleo_modo_estado_md "$1" || return 0
+  nucleo_bloquear "$d" || return "$?"
+  nucleo_dueno_tomar "$1" "$d" "$2"
 )
 
 # Estado de sesión en ~ (sin proyecto): una ranura por proceso claude, ~/.claude/estado/sesiones/<AAAAMMDD-HHMM de
@@ -841,4 +867,87 @@ _nucleo_emitir_awk() {
       if (fuera || kb > 12) print "[fuera de forma: " fuera + 0 " secciones / " kb " KB → muévelas a diario.md, que nunca se inyecta" \
         (cerradas ? " (un ### sin nombre de plantilla cerró una sección: si era un subapartado, escríbelo con ####)" : "") "]"
     }' "${5:-$1}" "${5:-$1}"
+}
+
+# nucleo_cockpit: ¿hay cockpit instalado? Los avisos nombran /handoff, /autonomo y /nueva solo si lo hay; sin él dan el CLI.
+# NUCLEO_COCKPIT=1|0 manda; si no, el plugin cockpit@… activo en settings.json de usuario.
+nucleo_cockpit() {
+  case ${NUCLEO_COCKPIT:-} in 1) return 0 ;; 0) return 1 ;; esac
+  jq -e '(.enabledPlugins // {}) | to_entries | any((.key | startswith("cockpit@")) and .value == true)' \
+    "${CLAUDE_HOME:-$HOME/.claude}/settings.json" >/dev/null 2>&1
+}
+
+# nucleo_puerta_commit <JSON del Stop> <transcript> <sesión> <raíz>: la compuerta del Stop (antes en stop-context-gauge.sh, ahora
+# la llama agentes.sh). Imprime el motivo si NUCLEO_GATE=block y hay que bloquear; en observe solo anota en gate-nucleo.log.
+nucleo_puerta_commit() {
+  local pc_in=$1 pc_tp=$2 pc_sid=$3 pc_raiz=$4 pc_motivo="" pc_estado pc_nuc pc_mt pc_com pc_modo pc_log
+  # Un `git commit` lanzado EN ESTE transcript es posterior a nucleo.md. No vale «HEAD es
+  # reciente»: commits ajenos, rebase y amend lo disparaban. Un disparo por (sesión, commit), así
+  # que no hay bucle aunque la persona decida no tocar nucleo. NUCLEO_GATE=observe (defecto) solo
+  # registra en el log; block devuelve decision. Ante cualquier dato que falte: no hace nada.
+  pc_estado=$(nucleo_estado_leer "$pc_raiz") || pc_estado=""
+  pc_nuc=${pc_estado:+$pc_estado/nucleo.md}
+  # D1: desde ~ el nucleo compartido no es el de esta sesión: sin puerta (en block mandaría actualizar el de otra tarea).
+  if [ "$pc_raiz" != "$HOME" ] && [ "$(jq -r '.stop_hook_active // false' <<<"$pc_in" 2>/dev/null)" != true ] && [ -f "$pc_nuc" ] && ! nucleo_enlazado "$pc_raiz"; then
+    pc_mt=$(stat -c %Y "$pc_nuc" 2>/dev/null || stat -f %m "$pc_nuc" 2>/dev/null)
+    # shortcut: el commit puede ir a otro repo (`cd x && git commit`); el modo observe mide si pasa.
+    pc_com=$(tail -n 3000 "$pc_tp" | timeout 5 jq -rR 'fromjson? | select(.type=="assistant" and (.timestamp|type)=="string")
+        | select(any(.message.content[]?; .type=="tool_use" and .name=="Bash"
+            and ((.input.command // "") | test("\\bgit\\b[^;&|\\n]*\\bcommit\\b") and (test("--amend")|not))))
+        | .timestamp | sub("\\.[0-9]+"; "") | fromdateiso8601' 2>/dev/null | tail -1)
+    # shortcut: 300 s de margen porque lo normal es actualizar nucleo y luego commitear.
+    case "$pc_mt,$pc_com" in *[!0-9,]*|,*|*,) ;; *)
+      if [ "$pc_mt" -gt 0 ] && [ "$pc_com" -gt $((pc_mt + 300)) ]; then
+        pc_modo=${NUCLEO_GATE:-observe}; [ "$pc_modo" = block ] || pc_modo=observe
+        pc_log=$HOME/.claude/session-logs/gate-nucleo.log
+        if ! command grep -qF "	$pc_com	$pc_sid	$pc_raiz	" "$pc_log" 2>/dev/null; then
+          mkdir -p "$(dirname "$pc_log")"
+          printf '%s\t%s\t%s\t%s\t%s\n' "$(date +%FT%T%z)" "$pc_com" "$pc_sid" "$pc_raiz" "$pc_modo" >>"$pc_log"
+          [ "$pc_modo" = block ] && pc_motivo="Hubo un git commit en esta sesión y $pc_nuc no se ha tocado desde antes. Marca en Plan lo hecho, actualiza Paso actual, Siguiente acción, Pendientes y Ficheros tocados (con el comando que lo verificó). Si de verdad no cambia nada, di por qué en una línea y termina."
+        fi
+      fi;;
+    esac
+  fi
+  printf '%s' "$pc_motivo"
+}
+
+# ¿Sobrevivieron al resumen las anclas del checkpoint? (PostCompact, solo log: autosave.sh lo llama y no emite nada.)
+# Anclas = ficheros que el checkpoint de pre-compact.sh declara tocados (su sección «## git», el `git status --short`;
+# un fichero que la persona solo nombra en un prompt no es ancla). Los que el resumen no nombra van a
+# session-logs/compact-AAAA-MM.log (anclas_perdidas=, que lee scripts/compact-audit.py). medida= distingue «0 perdidas»
+# de «no se pudo medir». Uso: nucleo_compact_medir <JSON del evento>. Siempre rc 0.
+nucleo_compact_medir() {
+  local cm_in=$1 cm_trig cm_sum cm_sid cm_cwd cm_raiz cm_ck="" cm_estado cm_logd cm_miss="" cm_n=0 cm_medida=ok cm_f cm_nm
+  cm_trig=$(jq -r '.trigger // "unknown"' <<<"$cm_in" 2>/dev/null) || return 0
+  cm_sum=$(jq -r '.compact_summary // ""' <<<"$cm_in" 2>/dev/null) || return 0
+  cm_sid=$(jq -r '.session_id // empty' <<<"$cm_in" 2>/dev/null)
+  cm_cwd=$(jq -r '.cwd // empty' <<<"$cm_in" 2>/dev/null); cm_cwd=${cm_cwd:-$PWD}
+  cm_raiz=$(nucleo_raiz "$cm_cwd" 2)
+  nucleo_enlazado "$cm_raiz" && return 0
+  if [ "$cm_raiz" != "$HOME" ] && cm_estado=$(nucleo_estado_leer "$cm_raiz"); then
+    cm_ck="$cm_estado/checkpoints/checkpoint-compact.md"
+    [ -n "$cm_sid" ] && cm_ck="$cm_estado/checkpoints/checkpoint-compact-$(printf '%s' "$cm_sid" | sha256sum | cut -d' ' -f1).md"
+  fi
+  cm_logd="${CLAUDE_HOME:-$HOME/.claude}/session-logs"; mkdir -p "$cm_logd" 2>/dev/null || return 0
+  if [ "$cm_raiz" = "$HOME" ]; then cm_medida=home
+  elif [ -z "$cm_ck" ] || [ ! -f "$cm_ck" ] || [ -L "$cm_ck" ]; then cm_medida=sin_checkpoint
+  else
+    # Se excluye el propio estado (.claude/estado/*): lo reinyecta session-start-compact.sh. Un «??» tampoco cuenta: el
+    # git status lista todo lo no seguido, lo haya tocado la sesión o no (medido: 12 de 12 anclas falsas).
+    while read -r cm_f; do
+      [ -n "$cm_f" ] || continue
+      cm_n=$((cm_n + 1))
+      cm_nm=${cm_f##*/}
+      [[ $cm_sum == *"$cm_nm"* ]] || cm_miss="$cm_miss $cm_f"
+    done < <(awk '/^## /{g=($0=="## git");next} g && !/^rama: / && !/^\?\? /' "$cm_ck" 2>/dev/null \
+      | command grep -oE '[A-Za-z0-9_./-]+\.(py|ts|tsx|js|md|sh|json|sql|toml|ya?ml)' | command grep -v '/estado/' | sort -u | head -40)
+    [ "$cm_n" -gt 0 ] || cm_medida=sin_anclas
+  fi
+  cm_miss=${cm_miss# }
+  local cm_nmiss
+  # shellcheck disable=SC2086  # contar palabras
+  cm_nmiss=$(set -- $cm_miss; echo $#)
+  printf '%s\t%s\tresumen_chars=%s\tanclas_perdidas=%s\t%s\tmedida=%s\tanclas_total=%s\n' \
+    "$(date -Is)" "$cm_trig" "${#cm_sum}" "$cm_nmiss" "${cm_miss:0:300}" "$cm_medida" "$cm_n" >>"$cm_logd/compact-$(date +%Y-%m).log" 2>/dev/null
+  return 0
 }
