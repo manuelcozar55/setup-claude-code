@@ -4,7 +4,7 @@
 #     sea un diario de 78 KB, contenido envuelto en <nucleo-datos> tras una línea de «datos»,
 #     checkpoint ≤ 1 500, sin *-cambios.md;
 #   - pre-compact.sh: checkpoint en .claude/estado con su .gitignore y línea de KPI;
-#   - stop-context-gauge.sh: aviso de contexto y gate de commit (observe por defecto);
+#   - agentes.sh (Stop): gate de commit (observe por defecto); aviso de contexto a la persona: nucleo-nudge.sh;
 #   - statusline y pre-compact no ejecutan el core.fsmonitor del repo;
 #   - la plantilla de settings registra un solo PreCompact.
 # Sin red; HOME falso en un mktemp que se borra.
@@ -15,6 +15,8 @@ export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PID 
 mkdir -p "$HOME"
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
+dec() { local o; o=$(cat); if [ -n "$o" ]; then jq -r '.decision // "nada"' <<<"$o"; else echo nada; fi; }
+evs() { ev "$@" | jq -c '.hook_event_name = "Stop"'; }
 nent() { find "$1" -mindepth 1 -maxdepth 1 "${@:2}" | wc -l | tr -d ' '; }
 ctx() { jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null; }
 ev() { jq -cn --arg c "$1" --arg s "$2" --arg t "${3:-}" --arg src "${4:-}" \
@@ -74,17 +76,17 @@ ok "clear: el oráculo se propone y espera confirmación" "$(command grep -c 'Pr
 ok "clear: nada del nucleo corre sin preguntar" "$(command grep -ci 'sin preguntar' <<<"$C")" 0
 ok "compact: nada del nucleo corre sin preguntar" "$(ev "$R/sub" s1 | bash "$H/session-start-compact.sh" | ctx | command grep -ci 'sin preguntar')" 0
 
-# --- gauge ---
-G=$(ev "$R" s1 "$TP" | bash "$H/stop-context-gauge.sh")
-ok "gauge: aviso al 71 % del airbag" "$(jq -r '.systemMessage // empty' <<<"$G" | command grep -c '71 % del airbag')" 1
+# --- aviso a la persona (nudge) y gate de commit (Stop de agentes.sh) ---
+G=$(ev "$R" s1 "$TP" | bash "$H/nucleo-nudge.sh")
+ok "nudge: aviso a la persona al 71 % del airbag" "$(jq -r '.systemMessage // empty' <<<"$G" | command grep -c '71 % del airbag')" 1
 touch -d '2026-01-01 00:00:00' "$NUC"
 jq -cn '{type:"assistant",timestamp:"2026-01-01T01:00:00.000Z",message:{content:[{type:"tool_use",name:"Bash",input:{command:"git commit -m x"}}]}}' >>"$TP"
-G=$(ev "$R" s2 "$TP" | bash "$H/stop-context-gauge.sh")
-ok "gauge: gate en observe no bloquea" "$(jq -r '.decision // "nada"' <<<"$G")" nada
-ok "gauge: gate en observe registra" "$(command grep -c "	s2	$R	observe" "$HOME/.claude/session-logs/gate-nucleo.log")" 1
-G=$(ev "$R" s3 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh")
-ok "gauge: NUCLEO_GATE=block bloquea" "$(jq -r '.decision // "nada"' <<<"$G")" block
-ok "gauge: sin transcript, nada" "$(ev "$R" s4 | bash "$H/stop-context-gauge.sh")" ""
+G=$(evs "$R" s2 "$TP" | bash "$H/agentes.sh")
+ok "gate: en observe no bloquea" "$(dec <<<"$G")" nada
+ok "gate: en observe registra" "$(command grep -c "	s2	$R	observe" "$HOME/.claude/session-logs/gate-nucleo.log")" 1
+G=$(evs "$R" s3 "$TP" | NUCLEO_GATE=block bash "$H/agentes.sh")
+ok "gate: NUCLEO_GATE=block bloquea" "$(jq -r '.decision // "nada"' <<<"$G")" block
+ok "gate: sin transcript, nada" "$(evs "$R" s4 | bash "$H/agentes.sh")" ""
 
 # --- fsmonitor: el del repo no se ejecuta ---
 printf '#!/bin/sh\ntouch "%s/fsmonitor-ejecutado"\n' "$T" >"$T/fsm.sh"; chmod +x "$T/fsm.sh"
@@ -167,12 +169,12 @@ for M in clear compact; do
   ok "K8 $M interactivo: sigue esperando la confirmación" "$(command grep -c 'solo si encajan' <<<"$C"),$(command grep -c 'hasta que la persona' <<<"$C")" 0,1
 done
 # v1.5 K3: en -p no hay quien lea el aviso del Stop ni de resume («/handoff»): no se emite.
-G=$(ev "$R" s-k3 "$TP" | CLAUDE_CODE_SESSION_ATTENDED=0 bash "$H/stop-context-gauge.sh")
-ok "K3 gauge -p al 71 %: sin systemMessage de cierre" "$(jq -r '.systemMessage // empty' <<<"$G")" ""
+G=$(ev "$R" s-k3 "$TP" | CLAUDE_CODE_SESSION_ATTENDED=0 bash "$H/nucleo-nudge.sh")
+ok "K3 nudge -p al 71 %: sin systemMessage de cierre" "$(jq -r '.systemMessage // empty' <<<"$G")" ""
 ok "K3 resume caducado -p: sin aviso de /handoff" "$(ev "$T/sin-nucleo" s-k3r resume | jq -c '.prompt_cache_likely_expired=true | .context_tokens=150000' | CLAUDE_CODE_ENTRYPOINT=sdk-cli bash "$H/session-start-clear.sh" | jq -r '.systemMessage // empty')" ""
 ok "symlink: compact no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/session-start-compact.sh" | ctx | command grep -c SECRETO-FUERA)" 0
 ok "symlink: nudge calla" "$(jq -cn --arg c "$R3" --arg t "$TP" '{session_id:"s6",transcript_path:$t,cwd:$c}' | bash "$H/nucleo-nudge.sh")" ""
-ok "symlink: el gate no mira el nucleo enlazado" "$(ev "$R3" s6 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh" | jq -r '.decision // "nada"')" nada
+ok "symlink: el gate no mira el nucleo enlazado" "$(ev "$R3" s6 "$TP" | NUCLEO_GATE=block bash "$H/agentes.sh" | dec)" nada
 R4=$T/r4; mkdir -p "$R4/.claude" "$T/destino"; git -C "$R4" init -q; ln -s "$T/destino" "$R4/.claude/estado"
 ev "$R4" s6 "$TP" | bash "$H/pre-compact.sh" 2>/dev/null
 ok "symlink: pre-compact no escribe en el destino de .claude/estado" "$(ls -A "$T/destino")" ""
@@ -357,9 +359,10 @@ ok "K8 compact en ~ sin nucleo ni raíces: nunca «escríbelo» ni índice" "$(c
 ok "K8 compact en proyecto: igual que antes (nucleo-datos del proyecto)" "$(ev "$R/sub" s43 | bash "$H/session-start-compact.sh" | ctx | command grep -c "<nucleo-datos fuente=\"$NUC\"")" 1
 printf '## Objetivo\nOBJ-AJENO\n' >"$HN"; touch -d '2026-01-01 00:00:00' "$HN"
 : >"$HOME/.claude/session-logs/gate-nucleo.log"
-G=$(ev "$HOME" s44 "$TP" | NUCLEO_GATE=block bash "$H/stop-context-gauge.sh")
-ok "K8 gauge en ~: la puerta de commit no se evalúa (ni fila ni bloqueo)" "$(jq -r '.decision // "nada"' <<<"$G"),$(wc -l <"$HOME/.claude/session-logs/gate-nucleo.log")" nada,0
-ok "K8 gauge en ~: el aviso de contexto sigue saliendo" "$(jq -r '.systemMessage // empty' <<<"$G" | command grep -c '% del airbag')" 1
+G=$(evs "$HOME" s44 "$TP" | NUCLEO_GATE=block bash "$H/agentes.sh")
+ok "K8 gate en ~: la puerta de commit no se evalúa (ni fila ni bloqueo)" "$(dec <<<"$G"),$(wc -l <"$HOME/.claude/session-logs/gate-nucleo.log")" nada,0
+GN=$(ev "$HOME" s44 "$TP" | bash "$H/nucleo-nudge.sh")
+ok "K8 nudge en ~: el aviso de contexto a la persona sigue saliendo" "$(jq -r '.systemMessage // empty' <<<"$GN" | command grep -c '% del airbag')" 1
 unlink "$HN"
 
 # --- v3: una tarea = una sesión dueña (.claude/estado/.dueno: sesion=, desde=<epoch>) ---
@@ -1015,11 +1018,12 @@ ok "W2 compact: el aviso con handoff fuera del PATH lleva la ruta del kit" "$(ev
 { echo '## Objetivo'; head -c 12000 /dev/zero | tr '\0' o; echo; } >"$WN"; touch -d '-30 minutes' "$WN"
 WO=$(ev "$W" w5 | bash "$H/session-start-compact.sh"); WC=$(ctx <<<"$WO")
 ok "W2 compact: con aviso y nucleo enorme sigue ≤ 9 500 y el aviso sobrevive" "$([ "${#WC}" -le 9500 ] && echo si),$(command grep -c 'Aviso del hook' <<<"$WC")" "si,1"
-# gauge y nudge sin handoff en el PATH: ruta del kit (y existe en la instalación de prueba)
+# nudge sin handoff en el PATH: ruta del kit (y existe en la instalación de prueba)
 mkdir -p "$HOME/.claude/bin"; : >"$HOME/.claude/bin/handoff"; chmod +x "$HOME/.claude/bin/handoff"
-WG=$(ev "$R" w6 "$TP" | PATH=/usr/bin:/bin bash "$H/stop-context-gauge.sh" | jq -r '.systemMessage // empty')
+rm -f "$R/.claude/estado/.dueno"
+WG=$(ev "$R" w6 "$TP" | NUCLEO_COCKPIT=0 PATH=/usr/bin:/bin bash "$H/nucleo-nudge.sh" | jq -r '.systemMessage // empty')
 WP=$(sed -n 's/.*`\([^ ]*\) --desde.*/\1/p' <<<"$WG")
-ok "W2 gauge: sin handoff en el PATH enseña una ruta absoluta que existe" "$WP,$([ -x "$WP" ] && echo si)" "$HOME/.claude/bin/handoff,si"
+ok "W2 nudge: sin handoff en el PATH enseña una ruta absoluta que existe" "$WP,$([ -x "$WP" ] && echo si)" "$HOME/.claude/bin/handoff,si"
 # --desde: «Ficheros tocados» sobrevive junto a Paso actual, Siguiente acción y Comandos
 WT=$T/w2t; mkdir -p "$WT"; git -C "$WT" init -q
 { cat <<'BORRADOR'

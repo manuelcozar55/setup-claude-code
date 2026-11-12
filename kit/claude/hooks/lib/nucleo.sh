@@ -868,3 +868,45 @@ _nucleo_emitir_awk() {
         (cerradas ? " (un ### sin nombre de plantilla cerró una sección: si era un subapartado, escríbelo con ####)" : "") "]"
     }' "${5:-$1}" "${5:-$1}"
 }
+
+# nucleo_cockpit: ¿hay cockpit instalado? Los avisos nombran /handoff, /autonomo y /nueva solo si lo hay; sin él dan el CLI.
+# NUCLEO_COCKPIT=1|0 manda; si no, el plugin cockpit@… activo en settings.json de usuario.
+nucleo_cockpit() {
+  case ${NUCLEO_COCKPIT:-} in 1) return 0 ;; 0) return 1 ;; esac
+  jq -e '(.enabledPlugins // {}) | to_entries | any((.key | startswith("cockpit@")) and .value == true)' \
+    "${CLAUDE_HOME:-$HOME/.claude}/settings.json" >/dev/null 2>&1
+}
+
+# nucleo_puerta_commit <JSON del Stop> <transcript> <sesión> <raíz>: la compuerta del Stop (antes en stop-context-gauge.sh, ahora
+# la llama agentes.sh). Imprime el motivo si NUCLEO_GATE=block y hay que bloquear; en observe solo anota en gate-nucleo.log.
+nucleo_puerta_commit() {
+  local pc_in=$1 pc_tp=$2 pc_sid=$3 pc_raiz=$4 pc_motivo="" pc_estado pc_nuc pc_mt pc_com pc_modo pc_log
+  # Un `git commit` lanzado EN ESTE transcript es posterior a nucleo.md. No vale «HEAD es
+  # reciente»: commits ajenos, rebase y amend lo disparaban. Un disparo por (sesión, commit), así
+  # que no hay bucle aunque la persona decida no tocar nucleo. NUCLEO_GATE=observe (defecto) solo
+  # registra en el log; block devuelve decision. Ante cualquier dato que falte: no hace nada.
+  pc_estado=$(nucleo_estado_leer "$pc_raiz") || pc_estado=""
+  pc_nuc=${pc_estado:+$pc_estado/nucleo.md}
+  # D1: desde ~ el nucleo compartido no es el de esta sesión: sin puerta (en block mandaría actualizar el de otra tarea).
+  if [ "$pc_raiz" != "$HOME" ] && [ "$(jq -r '.stop_hook_active // false' <<<"$pc_in" 2>/dev/null)" != true ] && [ -f "$pc_nuc" ] && ! nucleo_enlazado "$pc_raiz"; then
+    pc_mt=$(stat -c %Y "$pc_nuc" 2>/dev/null || stat -f %m "$pc_nuc" 2>/dev/null)
+    # shortcut: el commit puede ir a otro repo (`cd x && git commit`); el modo observe mide si pasa.
+    pc_com=$(tail -n 3000 "$pc_tp" | timeout 5 jq -rR 'fromjson? | select(.type=="assistant" and (.timestamp|type)=="string")
+        | select(any(.message.content[]?; .type=="tool_use" and .name=="Bash"
+            and ((.input.command // "") | test("\\bgit\\b[^;&|\\n]*\\bcommit\\b") and (test("--amend")|not))))
+        | .timestamp | sub("\\.[0-9]+"; "") | fromdateiso8601' 2>/dev/null | tail -1)
+    # shortcut: 300 s de margen porque lo normal es actualizar nucleo y luego commitear.
+    case "$pc_mt,$pc_com" in *[!0-9,]*|,*|*,) ;; *)
+      if [ "$pc_mt" -gt 0 ] && [ "$pc_com" -gt $((pc_mt + 300)) ]; then
+        pc_modo=${NUCLEO_GATE:-observe}; [ "$pc_modo" = block ] || pc_modo=observe
+        pc_log=$HOME/.claude/session-logs/gate-nucleo.log
+        if ! command grep -qF "	$pc_com	$pc_sid	$pc_raiz	" "$pc_log" 2>/dev/null; then
+          mkdir -p "$(dirname "$pc_log")"
+          printf '%s\t%s\t%s\t%s\t%s\n' "$(date +%FT%T%z)" "$pc_com" "$pc_sid" "$pc_raiz" "$pc_modo" >>"$pc_log"
+          [ "$pc_modo" = block ] && pc_motivo="Hubo un git commit en esta sesión y $pc_nuc no se ha tocado desde antes. Marca en Plan lo hecho, actualiza Paso actual, Siguiente acción, Pendientes y Ficheros tocados (con el comando que lo verificó). Si de verdad no cambia nada, di por qué en una línea y termina."
+        fi
+      fi;;
+    esac
+  fi
+  printf '%s' "$pc_motivo"
+}

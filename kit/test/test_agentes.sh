@@ -75,6 +75,13 @@ ok 'foto propia conserva solo running' "$(nucleo_agentes_vivos "$E" capture | jq
 ok 'captura viva vence informe completado' "$(row agent1)" 'en vuelo'
 capture SessionEnd
 ok 'SessionEnd lee foto propia' "$(row agent1)" 'cortado al cerrar'
+# D3: la foto sale del Stop real (antes la dejaba stop-context-gauge.sh y retirarlo no rompía ningún test).
+capture SubagentStart
+jq -cn --arg r "$R" '{hook_event_name:"Stop",cwd:$r,session_id:"capture",background_tasks:[{type:"subagent",id:"agent1",status:"running"}]}' | bash "$H/agentes.sh"
+ok 'Stop real: la foto de agentes vivos la deja agentes.sh' "$(nucleo_agentes_vivos "$E" capture | jq -r 'map(.id)|join(",")')" agent1
+jq -cn --arg r "$R" '{hook_event_name:"SessionEnd",cwd:$r,session_id:"capture",reason:"clear"}' | bash "$H/agentes.sh"
+ok 'Stop real + SessionEnd: cortado al cerrar, de extremo a extremo' "$(row agent1)" 'cortado al cerrar'
+ok 'el Stop de un subagente (agent_id) no pisa la foto del hilo principal' "$(jq -cn --arg r "$R" '{hook_event_name:"Stop",cwd:$r,session_id:"capture",agent_id:"x",background_tasks:[]}' | bash "$H/agentes.sh"; nucleo_agentes_vivos "$E" capture | jq -r 'map(.id)|join(",")')" agent1
 nucleo_agentes_foto "$R" capture '[]'
 ok 'foto vacía posterior conserva cierre' "$(row agent1)" 'cortado al cerrar'
 capture SubagentStart

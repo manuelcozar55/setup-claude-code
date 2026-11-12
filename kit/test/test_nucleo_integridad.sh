@@ -121,7 +121,7 @@ HINT_NUC=$HINT_ROOT/.claude/estado/nucleo.md
 HINT_HOME=$T/hint-install; mkdir -p "$HINT_HOME/bin"
 ln -s "$BIN" "$HINT_HOME/bin/handoff"
 printf '%s\n' '{"type":"assistant","message":{"model":"claude-opus-4-6","usage":{"input_tokens":120000}}}' >"$T/hint-transcript"
-for HINT_HOOK in nucleo-nudge session-start-compact stop-context-gauge; do
+for HINT_HOOK in nucleo-nudge session-start-compact; do
   SID=hint-${HINT_HOOK}
   printf '## Paso actual\nANTES-HINT\n' >"$HINT_NUC"; touch -d '-30 minutes' "$HINT_NUC"
   printf 'sesion=%s\ndesde=%s\n' "$SID" "$(date +%s)" >"$HINT_ROOT/.claude/estado/.dueno"
@@ -287,7 +287,7 @@ ok "handoff --desde en modo ESTADO.md: sin línea de transcript en ESTADO.md; el
 # shellcheck disable=SC2016  # los acentos graves son markdown, no sustituciones
 for i in 1 2 3; do printf '## Paso actual\nP%s\n## Plan\n- [x] cerrado-E — `make test`\n' "$i" >"$T/bx.md"; bash "$HO" --desde "$T/bx.md" --raiz "$E" >/dev/null 2>&1; done
 ok "handoff --desde en modo ESTADO.md: el mismo [x] tres veces queda una vez en diario.md" "$(command grep -c 'cerrado-E' "$E/.claude/estado/diario.md")" 1
-# El comando que dictan stop-context-gauge.sh y session-start-compact.sh: --desde con --sesion y sin --ranura, desde un cwd dentro del repo.
+# El comando que dictan nucleo-nudge.sh y session-start-compact.sh: --desde con --sesion y sin --ranura, desde un cwd dentro del repo.
 estado "$E/ESTADO.md"
 ok "handoff --desde --sesion sin --ranura (el que dictan los hooks) funciona en modo ESTADO.md" "$(cd "$E" && bash "$HO" --desde "$T/b.md" --sesion s-h5 >/dev/null 2>&1; echo $?),$(command grep -c 'PASO-NUEVO' "$E/ESTADO.md"),$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" 0,1,no
 printf '# Estado\n## Cosa rara\nX\n' >"$T/mala.md"

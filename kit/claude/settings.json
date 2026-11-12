@@ -227,7 +227,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/stop-context-gauge.sh",
+            "command": "$HOME/.claude/hooks/agentes.sh",
             "timeout": 15
           }
         ]
