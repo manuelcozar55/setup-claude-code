@@ -104,8 +104,26 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   # Un hook que la persona quito a proposito consta, una linea por script, en $CLAUDE_HOME/.kit-desactivados
   # (kit/docs/OPERAR.md): eso es INFO, no FAIL. FAIL queda para lo que falta sin constar ahi.
   desactivados="$CLAUDE_HOME/.kit-desactivados"; rotos=""; apagados=""
+  # Un nombre se compara sin el prefijo hooks/ o sentinel/ (`hooks/x.sh` y `x.sh` son lo mismo), como en install.sh.
+  desact_consta() {
+    local n="${1#hooks/}" l; n="${n#sentinel/}"
+    [ -f "$desactivados" ] || return 1
+    while IFS= read -r l || [ -n "$l" ]; do
+      case "$l" in ''|'#'*) continue ;; esac
+      l="${l#hooks/}"; l="${l#sentinel/}"
+      [ "$l" = "$n" ] && return 0
+    done < "$desactivados"
+    return 1
+  }
+  # Guards de seguridad = los scripts de los PreToolUse de la plantilla: apagarlos deja de proteger, no es un simple INFO.
+  # shellcheck disable=SC2016 # filtro jq
+  guards="$(jq -r '[.hooks.PreToolUse // [] | .[].hooks[].command | strings | scan("\\.claude/(?:hooks|sentinel)/[^ \"\u0027]+") | sub(".*/"; "")] | unique | join(" ")' "$KIT/claude/settings.json" 2>/dev/null)"
+  guard_apagado() { # nombre -> avisa y sale 0 si es un guard de seguridad
+    case " $guards " in *" ${1##*/} "*) warn "guard de seguridad desactivado por ti: ${1##*/} (consta en .kit-desactivados). Mientras siga apagado deja de proteger lo que ese guard bloquea; si no lo apagaste tu, restaura su entrada en settings.json y borra la linea de $desactivados"; return 0 ;; esac
+    return 1
+  }
   for s in $faltan; do
-    if [ -f "$desactivados" ] && grep -qxF -- "$s" "$desactivados"; then apagados="$apagados $s"; else rotos="$rotos $s"; fi
+    if desact_consta "$s"; then guard_apagado "$s" || apagados="$apagados $s"; else rotos="$rotos $s"; fi
   done
   if [ -n "$rotos" ]; then
     fail "settings.json no cablea hook(s) del kit:${rotos}. Sin ellos no hay guard. Reinstala (install.sh), restaura tu settings.json o, si los quitaste tu, anota el script en $desactivados (kit/docs/OPERAR.md)"
@@ -117,6 +135,8 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   if [ -f "$desactivados" ]; then
     while IFS= read -r s; do
       case "$s" in ''|'#'*) continue ;; esac
+      s="${s#hooks/}"; s="${s#sentinel/}"
+      case "$s" in */*) continue ;; esac
       case " $faltan " in *" $s "*) continue ;; esac
       warn ".kit-desactivados lista $s pero settings.json lo cablea: quitalo de settings.json otra vez o borra la linea de $desactivados"
     done < "$desactivados"
@@ -186,7 +206,8 @@ for tree in claude sentinel; do
         case "$rel" in *.py) comparar=1 ;; esac ;;
     esac
     if [ ! -f "$dst" ]; then
-      if [ -f "$CLAUDE_HOME/.kit-desactivados" ] && grep -qxF -- "$nombre" "$CLAUDE_HOME/.kit-desactivados"; then
+      if desact_consta "$nombre"; then
+        case "$nombre" in hooks/*|sentinel/*) guard_apagado "$nombre" && continue ;; esac
         echo "INFO · desactivado por ti (consta en .kit-desactivados): $nombre"
         continue
       fi
