@@ -31,6 +31,7 @@ ck "$rc" "0" "--kit --apply sale 0"
 listado "$HOME" > "$tmp/despues1"
 ck "$(diff "$tmp/antes1" "$tmp/despues1" | wc -l | tr -d ' ')" "0" "HOME vacio: el listado de ficheros y enlaces vuelve a ser el de antes (salvo backups/)"
 ck "$(find "$CLAUDE_HOME/backups" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" "1" "deja una copia previa en backups/"
+ck "$(tail -n 1 "$tmp/ap1" | grep -c '<repo>/.claude/estado/.*session-logs')" "1" "la ultima linea dice que no toca el estado de proyectos ni session-logs"
 ck "$(find "$CLAUDE_HOME" -mindepth 1 -maxdepth 1 ! -name backups | wc -l | tr -d ' ')" "0" "no quedan directorios vacios del kit"
 
 # ---- 2. HOME con settings.json y CLAUDE.md propios (formato a mano, a proposito)
@@ -75,10 +76,23 @@ ck "$(readlink "$HOME/.local/bin/oraculo")" "/bin/true" "un enlace del bindir qu
 
 # ---- 5. sin manifiesto y manifiesto sin sumas validas
 nuevo_home h5
-mkdir -p "$CLAUDE_HOME"
+mkdir -p "$CLAUDE_HOME/hooks"
+: > "$CLAUDE_HOME/hooks/branch-guard.sh"
 bash "$UN" --kit >"$tmp/o5" 2>&1; rc=$?
-ck "$rc" "1" "sin manifiesto: rc 1"
+ck "$rc" "1" "kit sin manifiesto (quedan ficheros del kit): rc 1"
 ck "$(grep -c 'install.sh --apply' "$tmp/o5")" "1" "y dice que reinstalar"
+nuevo_home h5b
+mkdir -p "$CLAUDE_HOME"
+bash "$UN" --kit --apply >"$tmp/o5b" 2>&1; rc=$?
+ck "$rc" "0" "sin kit instalado (ni manifiesto ni ficheros): rc 0, nada que hacer"
+ck "$(grep -c 'no hay kit instalado' "$tmp/o5b")" "1" "y lo dice sin hablar de versiones"
+ck "$(grep -c 'version que lo escriba' "$tmp/o5b")" "0" "sin el mensaje del manifiesto"
+nuevo_home h5c
+bash "$INST" --apply >/dev/null 2>&1
+bash "$UN" --kit --apply >/dev/null 2>&1
+bash "$UN" --kit --apply >"$tmp/o5c" 2>&1; rc=$?
+ck "$rc" "0" "segunda desinstalacion seguida: rc 0"
+ck "$(grep -c 'no hay kit instalado' "$tmp/o5c")" "1" "y dice que no hay kit instalado"
 nuevo_home h6
 bash "$INST" --apply >/dev/null 2>&1
 sed -i 's/^[0-9a-f]\{64\}/0000000000000000000000000000000000000000000000000000000000000000/' "$CLAUDE_HOME/.kit-manifest"
@@ -91,6 +105,41 @@ mkdir -p "$CLAUDE_HOME"
 bash "$UN" >"$tmp/o7" 2>&1; rc=$?
 ck "$rc" "1" "sin backup y sin --kit: sigue fallando"
 ck "$(grep -c -- '--kit' "$tmp/o7")" "1" "y el mensaje remite a --kit"
+
+# ---- 7. actualizar desde una version sin .kit-settings-pre.json y desinstalar: lo que queda igual a la plantilla se
+# avisa (no se sabe si era de la persona) y solo se quita con --settings-plantilla, con copia previa.
+KSET="$REPO/kit/claude/settings.json"
+ndeny="$(jq '.permissions.deny | length' "$KSET")"
+actualizado() {
+  nuevo_home "$1"
+  bash "$INST" --apply >/dev/null 2>&1
+  rm -f "$CLAUDE_HOME/.kit-settings-pre.json"
+  jq '.permissions.allow += ["Bash(mio:*)"] | .theme = "dark" | .autoUpdatesChannel = "beta"' "$CLAUDE_HOME/settings.json" > "$tmp/s.$1"
+  cat "$tmp/s.$1" > "$CLAUDE_HOME/settings.json"
+}
+actualizado h8
+ck "$(jq '.permissions.deny | length' "$CLAUDE_HOME/settings.json")" "$ndeny" "actualizado: settings.json trae las reglas deny de la plantilla"
+bash "$UN" --kit >"$tmp/dry8" 2>&1
+ck "$(grep -c -- '--settings-plantilla' "$tmp/dry8")" "1" "el plan dice como quitar lo que coincide con la plantilla"
+ck "$(grep -c 'copia previa' "$tmp/dry8")" "1" "el plan explica por que se conserva (no hay copia previa a la instalacion)"
+ck "$(grep -c 'permissions.deny: Edit(/settings.json)' "$tmp/dry8")" "1" "el plan enumera las reglas deny que quedan"
+bash "$UN" --kit --apply >"$tmp/ap8" 2>&1; rc=$?
+ck "$rc" "0" "actualizado: --kit --apply sale 0"
+ck "$(grep -c ' 0 conservados' "$tmp/ap8")" "0" "el resumen no dice 0 conservados si queda algo del kit en settings.json"
+ck "$(sed -n '/kit desinstalado/,$p' "$tmp/ap8" | grep -c -- '--settings-plantilla')" "1" "el resumen final repite la orden para quitarlo"
+ck "$(jq '.permissions.deny | length' "$CLAUDE_HOME/settings.json")" "$ndeny" "sin el interruptor las reglas deny siguen en settings.json"
+actualizado h9
+bash "$UN" --kit --settings-plantilla >"$tmp/dry9" 2>&1
+ck "$(jq '.permissions.deny | length' "$CLAUDE_HOME/settings.json")" "$ndeny" "--settings-plantilla en simulacro no cambia settings.json"
+bash "$UN" --kit --settings-plantilla --apply >"$tmp/ap9" 2>&1; rc=$?
+ck "$rc" "0" "--settings-plantilla --apply sale 0"
+ck "$(jq '(.permissions.deny // []) | length' "$CLAUDE_HOME/settings.json")" "0" "con el interruptor se quitan las reglas deny iguales a la plantilla"
+ck "$(jq -r '.permissions.allow | join(",")' "$CLAUDE_HOME/settings.json")" "Bash(mio:*)" "y la regla propia se conserva"
+ck "$(jq -r '.theme + "/" + .autoUpdatesChannel' "$CLAUDE_HOME/settings.json")" "dark/beta" "lo que difiere de la plantilla (o no esta en ella) no se toca"
+ck "$(jq 'has("cleanupPeriodDays")' "$CLAUDE_HOME/settings.json")" "false" "la clave escalar con el valor de la plantilla se quita"
+bk9="$(find "$CLAUDE_HOME/backups" -mindepth 1 -maxdepth 1 -name 'uninstall-*')"
+ck "$(jq '.permissions.deny | length' "$bk9/settings.json")" "$ndeny" "la copia previa de settings.json conserva el original"
+ck "$(grep -qF "$bk9" "$tmp/ap9" && echo y)" "y" "y su ruta sale en la salida"
 
 echo "== $pass ok, $fail fallos =="
 [ "$fail" -eq 0 ]

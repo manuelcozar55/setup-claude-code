@@ -48,9 +48,8 @@ rm ~/.claude/agents/code-reviewer.md
 echo agents/code-reviewer.md >> ~/.claude/.kit-desactivados
 ```
 
-Limitación: `install.sh --apply` vuelve a cablear los hooks y a copiar los agentes del kit, y no lee `.kit-desactivados`.
-Después de cada actualización repite el borrado. Hasta entonces `doctor.sh` te avisa con un WARN («lista X pero
-settings.json lo cablea»).
+`install.sh --apply` lee `.kit-desactivados`: un nombre de hook no se vuelve a cablear y una ruta (`agents/…`) no se
+vuelve a copiar; el plan y el resumen dicen qué se deja apagado. Para encender algo de nuevo, borra su línea y reinstala.
 
 ## El aviso de contexto me molesta
 
@@ -108,7 +107,9 @@ bash uninstall.sh --kit --apply    # borra lo que el kit instaló, con copia pre
 ```
 
 Conserva y lista lo que modificaste, quita los enlaces de `~/.local/bin` solo si apuntan al kit y deshace en
-`settings.json` solo lo que el kit añadió. Para restaurar un backup anterior a la instalación: `bash uninstall.sh --list` y después `--apply`.
+`settings.json` solo lo que el kit añadió. Si actualizaste desde una versión anterior (sin copia previa de tu
+`settings.json`), lo que queda igual a la plantilla del kit se enumera y se conserva; para quitarlo:
+`bash uninstall.sh --kit --settings-plantilla --apply` (solo lo idéntico a la plantilla, con copia previa). Para restaurar un backup anterior a la instalación: `bash uninstall.sh --list` y después `--apply`.
 
 ## Diagnosticar
 

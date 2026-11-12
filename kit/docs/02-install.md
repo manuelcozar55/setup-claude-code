@@ -237,7 +237,13 @@ plugins y las claves de `env` que conservan el valor del kit) sin tocar lo tuyo.
 
 Si actualizaste desde una versión anterior, `settings.json` puede conservar reglas o claves que puso aquella versión y que
 el desinstalador no puede atribuir al kit actual (no hay copia previa con la que compararlas). El desinstalador enumera lo
-que conserva en `settings.json` y por qué: léelo y quita a mano lo que ya no quieras.
+que conserva en `settings.json` y por qué. Para quitar solo lo que es idéntico, valor a valor, a la plantilla del kit
+(reglas de permisos iguales y claves con el valor de la plantilla; lo que difiera no se toca):
+
+```bash
+bash uninstall.sh --kit --settings-plantilla          # simulacro: lista lo que quitaría
+bash uninstall.sh --kit --settings-plantilla --apply  # lo quita; la copia previa de settings.json sale en la salida
+```
 
 El estado de tus proyectos (`<proyecto>/.claude/estado/`) es tuyo: el desinstalador no lo borra.
 

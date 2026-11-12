@@ -52,8 +52,15 @@ ck "$rc" "0" "3b: comentarios y lineas vacias de la lista se ignoran; con los do
 
 HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
 out="$(doc)"; rc=$?
-ck "$rc" "0" "4: tras reinstalar el hook vuelve y una lista obsoleta no es FAIL"
-ck "$(grep -c '^WARN · .kit-desactivados lista branch-guard.sh pero settings.json lo cablea' <<<"$out")" "1" "4: WARN por la lista obsoleta"
+ck "$rc" "0" "4: tras reinstalar el hook apagado sigue apagado y doctor sale 0"
+ck "$(grep -c '^INFO · desactivado por ti.*branch-guard.sh' <<<"$out")" "1" "4: y sigue contando como desactivado por ti"
+grep -v '^branch-guard.sh$' "$CLAUDE_HOME/.kit-desactivados" > "$tmp/lista.new"; cat "$tmp/lista.new" > "$CLAUDE_HOME/.kit-desactivados"
+HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
+out="$(doc)"; rc=$?
+ck "$(grep -c '^WARN · .kit-desactivados lista' <<<"$out")" "0" "4: quitado de la lista, el hook se vuelve a cablear en la siguiente instalacion"
+printf 'branch-guard.sh\n' >> "$CLAUDE_HOME/.kit-desactivados"
+out="$(doc)"
+ck "$(grep -c '^WARN · .kit-desactivados lista branch-guard.sh pero settings.json lo cablea' <<<"$out")" "1" "4: WARN si la lista y settings.json se contradicen (lo cablea tras un edit a mano)"
 
 rm "$CLAUDE_HOME/agents/code-reviewer.md"
 out="$(doc)"; rc=$?
@@ -64,7 +71,7 @@ out="$(doc)"; rc=$?
 ck "$rc" "0" "5: anotado en .kit-desactivados, doctor sale 0"
 ck "$(grep -c '^INFO · desactivado por ti (consta en .kit-desactivados): agents/code-reviewer.md' <<<"$out")" "1" "5: INFO por el agente"
 HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
-ck "$([ -f "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo vuelve)" "vuelve" "5: install --apply devuelve el agente (la baja se repite tras actualizar)"
+ck "$([ -f "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo vuelve)" "" "5: install --apply no devuelve el agente anotado"
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1

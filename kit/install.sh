@@ -181,8 +181,23 @@ esac
 
 # Lo que el kit escribe de verdad (no los symlinks omitidos): de ahi sale .kit-manifest, que uninstall.sh --kit usa.
 INSTALLED=()
+# Lo que la persona apago a proposito consta en $CLAUDE_HOME/.kit-desactivados (una linea por script o ruta, como lo ve
+# doctor.sh): actualizar no lo vuelve a encender. Un nombre suelto de hook solo des-cablea su entrada; una ruta
+# (agents/x.md) tampoco se copia.
+KIT_BASE=""
+desactivados_lista() { [ -f "$CLAUDE_HOME/.kit-desactivados" ] && grep -v '^[[:space:]]*\(#\|$\)' "$CLAUDE_HOME/.kit-desactivados"; return 0; }
+desactivado() { [ -f "$CLAUDE_HOME/.kit-desactivados" ] && grep -qxF -- "$1" "$CLAUDE_HOME/.kit-desactivados"; }
+aviso_desactivados() {
+  local d; d="$(desactivados_lista)"; d="${d//$'\n'/ }"
+  [ -n "$d" ] || return 0
+  echo "==> desactivado por ti (consta en .kit-desactivados), no se recablea ni se recopia: $d"
+}
 install_file() {  # src dst
   local src="$1" dst="$2"
+  if desactivado "${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}"; then
+    echo "   no se copia (desactivado por ti): ${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}"
+    return 0
+  fi
   # Un symlink suele apuntar a otro repo (skills proyectadas): cp escribiria a traves de el.
   if [ -L "$dst" ]; then
     echo "   omitido (symlink, no se toca): ${dst#"$CLAUDE_HOME"/}"
@@ -216,8 +231,19 @@ install_file() {  # src dst
 # contexto por sesion), ANTHROPIC_MODEL con el sufijo de la ventana de 1M,
 # CLAUDE_CODE_AUTO_COMPACT_WINDOW y tres limites mas. Habia backup, pero un backup que hay que
 # descubrir no es una salvaguarda: es una autopsia.
+RETIRADOS="nucleo-gate.sh stop-context-gauge.sh post-compact-check.sh"
+retirado_publicado() {  # fichero nombre: su suma es la de una version publicada del hook
+  grep -q "^$(sha256sum < "$1" | cut -d' ' -f1)  $2\$" "$KIT/hooks-retirados.sha256"
+}
 install_settings() {  # src dst
-  local src="$1" dst="$2" tmp real name
+  local src="$1" dst="$2" tmp real name conserva=() r off=() l
+  while IFS= read -r l; do off+=("${l##*/}"); done < <(desactivados_lista)
+  # Un retirado cuyo script existe y no es una version publicada lo editó la persona o es suyo: su entrada se queda.
+  for r in $RETIRADOS; do
+    if [ -f "$(dirname "$dst")/hooks/$r" ] && ! retirado_publicado "$(dirname "$dst")/hooks/$r" "$r"; then
+      conserva+=("$r"); echo "   AVISO: se conserva la entrada de settings.json de hooks/$r: el script no es una version publicada del kit (editado o tuyo)" >&2
+    fi
+  done
   # Sin fichero previo no hay nada que fusionar. El caso "sin jq" ya no llega hasta aqui:
   # la puerta de dependencia del principio aborta antes, sin tocar tu settings.json.
   if [ ! -f "$dst" ]; then
@@ -240,16 +266,22 @@ install_settings() {  # src dst
   # optional-hook.sh con sus flags. Asi caen las formas antiguas de sus guards; un comando con algo mas
   # (`mio.sh && ...guard.sh`) es tuyo y se queda: un duplicado se ve en doctor, una perdida no. Lo que
   # no tiene forma de hook (un evento que no es lista, un grupo sin `hooks`) se descarta y queda en el backup.
-  if jq -s '
+  if jq -s --argjson conserva "$(jq -nc '$ARGS.positional' --args "${conserva[@]}")" \
+         --argjson off "$(jq -nc '$ARGS.positional' --args "${off[@]}")" '
       .[0] as $kit | .[1] as $old |
-      ([$kit.hooks // {} | .. | .command? // empty | splits(" +") | gsub("[\"\u0027]"; "") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")]
-        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh", "nucleo-gate.sh", "stop-context-gauge.sh", "post-compact-check.sh"] | unique) as $suyos |
+      def quitar_off: with_entries(.value |= (if type == "array" then [.[] | if (type == "object" and (.hooks | type) == "array")
+          then (.hooks |= map(select((type == "object" and ([(.command | strings // "") | splits(" +") | gsub("[\"]"; "") | sub(".*/"; "")]
+                                       | any(.[]; . as $t | $off | index($t) != null))) | not))) | select(.hooks | length > 0)
+          else . end] else . end))
+        | with_entries(select((.value | type) != "array" or (.value | length) > 0));
+      (([$kit.hooks // {} | .. | .command? // empty | splits(" +") | gsub("[\"\u0027]"; "") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")]
+        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh", "nucleo-gate.sh", "stop-context-gauge.sh", "post-compact-check.sh"] | unique) - $conserva) as $suyos |
       def propio: ("/" + .) as $t | any($suyos[]; . as $s | $t | endswith("/.claude/hooks/" + $s) or endswith("/.claude/sentinel/" + $s));
       def del_kit: [(.command | strings // "") | splits(" +") | gsub("[\"\u0027]"; "") | select(length > 0)]
         | any(.[]; propio) and all(.[]; propio or startswith("-") or (sub(".*/"; "") | test("^(optional-hook\\.sh|python[0-9.]*|bash|sh)$")));
       ($kit + $old)
       | .env = (($kit.env // {}) + ($old.env // {}))
-      | .hooks = (reduce (($old.hooks | objects) // {} | to_entries[] | select(.value | type == "array")) as $e ($kit.hooks // {};
+      | .hooks = (reduce (($old.hooks | objects) // {} | to_entries[] | select(.value | type == "array")) as $e (($kit.hooks // {} | quitar_off);
             .[$e.key] = ((.[$e.key] // []) + [$e.value[] | objects | select(.hooks | type == "array")
               | .hooks |= map(select(type == "object" and (del_kit | not))) | select(.hooks | length > 0)]))
           | with_entries(select(.value | length > 0)))
@@ -371,6 +403,7 @@ aviso_claude_md() {
 
 install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   local base="$1" f rel
+  KIT_BASE="$base"
   mkdir -p "$base/hooks/lib" "$base/agents" "$base/sentinel" "$base/templates" "$base/bin"
   install_claude_md "$KIT/claude/CLAUDE.md"       "$base/CLAUDE.md"
   install_claude_md "$KIT/claude/AGENTS.md"       "$base/AGENTS.md"
@@ -599,6 +632,7 @@ run_diff_first() {
     echo "==> cockpit y plugins del kit: se copiarian a $CLAUDE_HOME/scc (lanzador: scc; omitir con --sin-cockpit)."
   fi
   aviso_claude_md
+  aviso_desactivados
   avisos_settings "$CLAUDE_HOME/settings.json"
 
   if is_git_repo_with_remote; then
@@ -654,10 +688,10 @@ install_kit_files "$CLAUDE_HOME"
 
 # Hooks que el kit ya no trae (settings.json ya no los cablea): se borra el script solo si su suma es la de una
 # version publicada; uno modificado por la persona se conserva y se dice.
-for name in nucleo-gate.sh stop-context-gauge.sh post-compact-check.sh; do
+for name in $RETIRADOS; do
   f="$CLAUDE_HOME/hooks/$name"
   [ -f "$f" ] || continue
-  if grep -q "^$(sha256sum < "$f" | cut -d' ' -f1)  $name\$" "$KIT/hooks-retirados.sha256"; then
+  if retirado_publicado "$f" "$name"; then
     rm -f -- "$f"; echo "==> hook retirado del kit, borrado: hooks/$name"
   else
     echo "==> hook retirado del kit y modificado por ti, se conserva: hooks/$name (ya no esta cableado; borralo si no lo usas)"
@@ -775,6 +809,7 @@ echo "    o el one-liner manual:  git config core.hooksPath \"$CLAUDE_HOME/hooks
 echo "==> Verifica:            bash $KIT/doctor.sh"
 echo "==> Reinicia las sesiones abiertas de Claude Code: no recargan el cockpit ni los hooks del kit."
 aviso_claude_md
+aviso_desactivados
 avisos_settings "$CLAUDE_HOME/settings.json"
 aviso_path
 if [ -n "${LINK_AJENOS:-}" ]; then

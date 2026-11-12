@@ -286,10 +286,33 @@ mkdir -p "$CLAUDE_HOME/hooks"
 cp "$HERE/fixtures/nucleo-gate.retirado.sh" "$CLAUDE_HOME/hooks/nucleo-gate.sh"   # una version publicada, sin tocar
 echo "# editado por la persona" > "$CLAUDE_HOME/hooks/stop-context-gauge.sh"
 run
-ck "$(jq '[.hooks | .. | strings | select(test("nucleo-gate|stop-context-gauge|post-compact-check"))] | length' "$S")" "0" "retirados: sus entradas de settings.json se van, con y sin comillas"
+ck "$(jq '[.hooks | .. | strings | select(test("nucleo-gate|post-compact-check"))] | length' "$S")" "0" "retirados: las entradas de una version publicada (o sin script) se van, con y sin comillas"
+ck "$(jq '[.hooks | .. | strings | select(test("stop-context-gauge"))] | length' "$S")" "1" "retirados: la entrada cuyo script la persona modifico se conserva (puede ser un hook suyo)"
+ck "$(dice 'entrada de settings.json de hooks/stop-context-gauge.sh')" "y" "retirados: y el instalador avisa de que conserva esa entrada"
 ck "$(jq -r '[.hooks.Stop[].hooks[].command] | map(select(test("mi-stop"))) | length' "$S")" "1" "retirados: el hook de la persona en el mismo grupo se queda"
 ck "$([ -e "$CLAUDE_HOME/hooks/nucleo-gate.sh" ] && echo y || echo n)" "n" "retirados: el script intacto se borra de hooks/"
 ck "$([ -e "$CLAUDE_HOME/hooks/stop-context-gauge.sh" ] && echo y || echo n)" "y" "retirados: el script que la persona modifico se conserva"
 ck "$(dice 'stop-context-gauge.sh')" "y" "retirados: y el instalador lo dice"
+
+# Caso s: lo que la persona apago a proposito (.kit-desactivados, una linea por script o ruta) sigue apagado tras
+# actualizar: ni se recablea el hook, ni se recopia el agente, y el plan y el resumen lo dicen.
+seed s <<'EOF'
+{}
+EOF
+run --apply
+ck "$(jq '[.hooks | .. | strings | select(test("stale-read-guard"))] | length' "$S")" "1" "desactivados: instalacion limpia cablea stale-read-guard"
+jq '.hooks |= with_entries(.value |= map(select(.hooks | map(.command | contains("stale-read-guard")) | any | not)))' "$S" > "$tmp/s.new"; cat "$tmp/s.new" > "$S"
+rm -f "$CLAUDE_HOME/agents/code-reviewer.md"
+printf '%s\n' stale-read-guard.py agents/code-reviewer.md > "$CLAUDE_HOME/.kit-desactivados"
+nhooks="$(jq '[.hooks | .. | .command? | strings] | length' "$S")"
+run --plan
+ck "$(dice 'desactivado por ti.*stale-read-guard.py')" "y" "desactivados: el plan lo dice"
+run --apply
+ck "$(jq '[.hooks | .. | strings | select(test("stale-read-guard"))] | length' "$S")" "0" "desactivados: actualizar no vuelve a cablear el hook apagado"
+ck "$(jq '[.hooks | .. | .command? | strings] | length' "$S")" "$nhooks" "desactivados: y el resto de hooks del kit sigue cableado"
+ck "$([ -e "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo y || echo n)" "n" "desactivados: actualizar no vuelve a copiar el agente apagado"
+ck "$([ -e "$CLAUDE_HOME/agents/code-explorer.md" ] && echo y || echo n)" "y" "desactivados: los demas agentes se instalan"
+ck "$(dice 'desactivado por ti.*stale-read-guard.py')" "y" "desactivados: el resumen de --apply lo dice"
+ck "$(dice 'desactivado por ti.*agents/code-reviewer.md')" "y" "desactivados: y nombra tambien el agente"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

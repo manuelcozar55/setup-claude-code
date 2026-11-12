@@ -69,15 +69,17 @@ fmt_date() {
 usage() {
   echo "uso: $0 [--list|--dry-run|--apply] [--from FICHERO]   (restaura un backup; no desinstala el kit)"
   echo "     $0 --kit [--dry-run|--apply]                      (desinstala el kit segun .kit-manifest)"
+  echo "     $0 --kit --settings-plantilla [--apply]           (sin copia previa a la instalacion: quita de settings.json lo igual a la plantilla del kit)"
 }
-MODE="dry-run"; FROM=""; KIT_MODE=0
+MODE="dry-run"; FROM=""; KIT_MODE=0; SETTINGS_PLANTILLA=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --list)    MODE="list" ;;
     --dry-run) MODE="dry-run" ;;
     --apply)   MODE="apply" ;;
     --kit)     KIT_MODE=1 ;;
-    --from)    [ -n "${2:-}" ] || die "--from exige un fichero ZIP o un directorio de backup"; FROM="$2"; shift ;;
+    --settings-plantilla) SETTINGS_PLANTILLA=1 ;;
+    --from)   [ -n "${2:-}" ] || die "--from exige un fichero ZIP o un directorio de backup"; FROM="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "argumento no reconocido: $1" ;;
   esac
@@ -369,13 +371,45 @@ undo_hooks
 | undo_mkt | undo_map("enabledPlugins") | undo_map("env") | undo_perm | undo_resto
 JQ
 
+# Sin copia previa a la instalacion no se sabe que era de la persona. Lo que queda igual, valor a valor, a la
+# plantilla: reglas de permisos identicas y claves escalares con el valor de la plantilla. Entrada: settings.json
+# ya des-fusionado; $kit: la plantilla. LEFT_JQ lo enumera; STRIP_JQ lo quita.
+read -r -d '' PLANT_DEFS <<'JQ' || true
+def scal: type as $t | $t == "string" or $t == "number" or $t == "boolean";
+def lista($o; $l): ($o.permissions // {}) | if type == "object" then (.[$l] // []) else [] end | if type == "array" then . else [] end;
+def claves: $kit | to_entries[] | select(.key != "permissions" and (.value | scal)) | .key;
+JQ
+read -r -d '' PLANT_LEFT_JQ <<'JQ' || true
+. as $cur | [
+  (("allow", "deny") as $l | lista($kit; $l)[] as $r | select(lista($cur; $l) | index($r) != null) | "permissions.\($l): \($r)"),
+  (claves as $k | select($cur[$k] == $kit[$k]) | "\($k): \($kit[$k])"),
+  (select($kit.permissions.disableBypassPermissionsMode != null and $cur.permissions.disableBypassPermissionsMode == $kit.permissions.disableBypassPermissionsMode) | "permissions.disableBypassPermissionsMode: \($kit.permissions.disableBypassPermissionsMode)")
+] | .[]
+JQ
+read -r -d '' PLANT_STRIP_JQ <<'JQ' || true
+reduce ("allow", "deny") as $l (.;
+  if (.permissions | type) == "object" and (.permissions[$l] | type) == "array"
+  then .permissions[$l] -= lista($kit; $l) | if .permissions[$l] == [] then del(.permissions[$l]) else . end
+  else . end)
+| reduce claves as $k (.; if .[$k] == $kit[$k] then del(.[$k]) else . end)
+| if (.permissions | type) == "object" and $kit.permissions.disableBypassPermissionsMode != null
+     and .permissions.disableBypassPermissionsMode == $kit.permissions.disableBypassPermissionsMode
+  then del(.permissions.disableBypassPermissionsMode) else . end
+| if .permissions == {} then del(.permissions) else . end
+JQ
+
 kit_uninstall() {
   local apply=0 man="$CLAUDE_HOME/.kit-manifest" line sha rel p n real="" bk stamp tmpj newj names kitjson prejson
-  local rm_list=() keep_list=() lk_rm=() lk_keep=() settings_unmerge=0 d
+  local rm_list=() keep_list=() lk_rm=() lk_keep=() settings_unmerge=0 d plant=() plant_hint=""
   [ "$MODE" = apply ] && apply=1
   [ "$MODE" != list ] || die "--kit no se combina con --list"
   [ -z "$FROM" ] || die "--kit no se combina con --from"
-  [ -f "$man" ] || die "no hay $man: el kit no se instalo con una version que lo escriba (1.11 o posterior). Reinstala con bash $HERE/kit/install.sh --apply y repite, o restaura un backup con uninstall.sh (sin --kit)"
+  if [ ! -f "$man" ] && [ ! -e "$CLAUDE_HOME/.kit-version" ] && [ ! -e "$CLAUDE_HOME/.kit-settings-pre.json" ] \
+     && [ ! -e "$CLAUDE_HOME/.kit-docs.sha256" ] && [ ! -e "$CLAUDE_HOME/hooks/branch-guard.sh" ] && [ ! -e "$CLAUDE_HOME/bin/handoff" ]; then
+    echo "no hay kit instalado en $CLAUDE_HOME (ni manifiesto ni ficheros del kit): nada que desinstalar"
+    return 0
+  fi
+  [ -f "$man" ] || die "hay ficheros del kit en $CLAUDE_HOME pero no $man: el kit no se instalo con una version que lo escriba (1.11 o posterior). Reinstala con bash $HERE/kit/install.sh --apply y repite, o restaura un backup con uninstall.sh (sin --kit)"
   command -v jq >/dev/null 2>&1 || die "uninstall --kit necesita jq"
   local localbin="$HOME/.local/bin"
   while IFS= read -r line; do
@@ -416,6 +450,13 @@ kit_uninstall() {
          --slurpfile pr <(if [ -n "$prejson" ]; then cat "$prejson"; else echo null; fi) \
          '$k[0] as $kit | $pr[0] as $pre | '"$UNMERGE_JQ" "$real" > "$newj"; then
       if [ -n "$prejson" ] && [ "$(jq -S . "$newj")" = "$(jq -S . "$prejson")" ]; then cp "$prejson" "$newj"; fi
+      if [ -z "$prejson" ] && [ -n "$kitjson" ]; then
+        mapfile -t plant < <(jq -r --slurpfile k "$kitjson" '$k[0] as $kit | '"$PLANT_DEFS $PLANT_LEFT_JQ" "$newj")
+        if [ "${#plant[@]}" -gt 0 ] && [ "$SETTINGS_PLANTILLA" -eq 1 ]; then
+          if jq --slurpfile k "$kitjson" '$k[0] as $kit | '"$PLANT_DEFS $PLANT_STRIP_JQ" "$newj" > "$tmpj/s2.json"; then cp "$tmpj/s2.json" "$newj"
+          else plant=(); keep_list+=("settings.json (--settings-plantilla fallo: no se toca)"); fi
+        fi
+      fi
     else
       settings_unmerge=0; keep_list+=("settings.json (la des-fusion fallo: no se toca)")
     fi
@@ -428,6 +469,17 @@ kit_uninstall() {
   if [ "$settings_unmerge" -eq 1 ]; then
     echo "  settings.json: se des-fusiona lo del kit; cambios:"
     diff <(jq -S . "$real") <(jq -S . "$newj") | sed -n '1,40p' | sed 's/^/    /' || true
+    if [ "${#plant[@]}" -gt 0 ] && [ "$SETTINGS_PLANTILLA" -eq 1 ]; then
+      echo "  settings.json: --settings-plantilla quita ${#plant[@]} entradas iguales a la plantilla del kit:"
+      printf '    %s\n' "${plant[@]}"
+    elif [ "${#plant[@]}" -gt 0 ]; then
+      echo "  settings.json: quedan ${#plant[@]} entradas iguales a la plantilla del kit; se conservan porque no hay copia previa"
+      echo "  a la instalacion (.kit-settings-pre.json) y no se sabe si eran tuyas:"
+      printf '    %s\n' "${plant[@]}"
+      plant_hint="$(printf 'Para quitar de settings.json lo igual a la plantilla del kit:  bash %q --kit --settings-plantilla --apply' "$HERE/uninstall.sh")"
+      echo "  $plant_hint"
+      keep_list+=("settings.json: ${#plant[@]} entradas iguales a la plantilla del kit (ver arriba)")
+    fi
   fi
   if [ "${#keep_list[@]}" -gt 0 ]; then
     echo "  se CONSERVAN (no coinciden con lo que instalo el kit):"
@@ -455,6 +507,11 @@ kit_uninstall() {
   rm -f -- "$man" "$CLAUDE_HOME/.kit-version" "$CLAUDE_HOME/.kit-settings-pre.json" "$CLAUDE_HOME/.kit-docs.sha256"
   ok "kit desinstalado: ${#rm_list[@]} ficheros borrados, ${#keep_list[@]} conservados"
   echo "  La copia de settings.json y del manifiesto esta en $bk"
+  if [ -n "$plant_hint" ]; then
+    echo "  settings.json conserva ${#plant[@]} entradas iguales a la plantilla del kit (sin copia previa no se sabe si eran tuyas)."
+    echo "  $plant_hint"
+  fi
+  echo "  No se toca lo tuyo: el estado de tus proyectos (<repo>/.claude/estado/, lo crea el autoinicio) y $CLAUDE_HOME/session-logs."
 }
 
 if [ "$KIT_MODE" -eq 1 ]; then
