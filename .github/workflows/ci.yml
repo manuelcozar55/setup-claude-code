@@ -123,6 +123,15 @@ jobs:
       - name: test_guards_corpus.sh (corpus adversario de E5 contra los guards bash)
         run: bash kit/test/test_guards_corpus.sh
 
+      - name: test_guards_veredictos.sh (corpus de la auditoria A: peligrosos, legitimos, bypasses)
+        run: bash kit/test/test_guards_veredictos.sh
+
+      - name: test_guards_mensajes.sh (todo bloqueo acaba con la salida que funciona)
+        run: bash kit/test/test_guards_mensajes.sh
+
+      - name: test_guards_degradacion.sh (la tabla de fallos de SECURITY.md)
+        run: bash kit/test/test_guards_degradacion.sh
+
       - name: test_secret_content_gitleaks.sh (Capa 2, por contenido)
         run: bash kit/test/test_secret_content_gitleaks.sh
 
