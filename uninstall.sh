@@ -511,6 +511,7 @@ kit_uninstall() {
     echo "  settings.json conserva ${#plant[@]} entradas iguales a la plantilla del kit (sin copia previa no se sabe si eran tuyas)."
     echo "  $plant_hint"
   fi
+  echo "  No se toca lo tuyo: el estado de tus proyectos (<repo>/.claude/estado/, lo crea el autoinicio) y $CLAUDE_HOME/session-logs."
 }
 
 if [ "$KIT_MODE" -eq 1 ]; then

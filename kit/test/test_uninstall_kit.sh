@@ -31,6 +31,7 @@ ck "$rc" "0" "--kit --apply sale 0"
 listado "$HOME" > "$tmp/despues1"
 ck "$(diff "$tmp/antes1" "$tmp/despues1" | wc -l | tr -d ' ')" "0" "HOME vacio: el listado de ficheros y enlaces vuelve a ser el de antes (salvo backups/)"
 ck "$(find "$CLAUDE_HOME/backups" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" "1" "deja una copia previa en backups/"
+ck "$(tail -n 1 "$tmp/ap1" | grep -c '<repo>/.claude/estado/.*session-logs')" "1" "la ultima linea dice que no toca el estado de proyectos ni session-logs"
 ck "$(find "$CLAUDE_HOME" -mindepth 1 -maxdepth 1 ! -name backups | wc -l | tr -d ' ')" "0" "no quedan directorios vacios del kit"
 
 # ---- 2. HOME con settings.json y CLAUDE.md propios (formato a mano, a proposito)
