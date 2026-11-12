@@ -116,7 +116,8 @@ ok "symlink: clear no inyecta el nucleo enlazado" "$(ev "$R3" s6 | bash "$H/sess
 # --- resume con la caché caducada: aviso a la persona; sin caducar o con poco contexto, nada ---
 rs() { ev "$1" s7 "" resume | jq -c --argjson e "$2" --argjson k "$3" '.prompt_cache_likely_expired=$e | .context_tokens=$k' \
   | NUCLEO_DUENO_TTL=0 bash "$H/session-start-clear.sh"; }  # TTL 0: aquí no se prueba el dueño
-ok "resume caducado: aviso de /handoff" "$(rs "$R/sub" true 150000 | jq -r '.systemMessage // ""' | command grep -c '/handoff')" 1
+ok "resume caducado con cockpit: aviso de /handoff" "$(NUCLEO_COCKPIT=1 rs "$R/sub" true 150000 | jq -r '.systemMessage // ""' | command grep -c ' /handoff ahora')" 1
+ok "resume caducado sin cockpit: nombra el CLI, no /handoff" "$(NUCLEO_COCKPIT=0 rs "$R/sub" true 150000 | jq -r '.systemMessage // ""' | command grep -c 'handoff --desde <borrador>')" 1
 ok "resume caducado: el nucleo se sigue inyectando" "$(rs "$R/sub" true 150000 | ctx | command grep -c PASO-VIVO)" 1
 ok "resume caducado sin nucleo: solo el aviso" "$(rs "$T/sin-nucleo" true 150000 | jq -r 'keys|join(",")')" systemMessage
 ok "resume con caché viva: sin aviso" "$(rs "$R/sub" false 150000 | jq -r '.systemMessage // "nada"')" nada
