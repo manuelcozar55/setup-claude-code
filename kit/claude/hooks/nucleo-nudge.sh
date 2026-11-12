@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# QUE-HACE: avisa del consumo de contexto: al modelo al 50, 70 y 85 % del airbag (que guarde el estado) y a la persona al 60 y 85 % (que cierre fase), una vez por banda y sesión.
 # PostToolUse (todas las herramientas) — único emisor de avisos de contexto (antes los repartía con stop-context-gauge.sh).
 # Al MODELO (additionalContext) le pide que actualice nucleo.md antes de que el airbag compacte; a la PERSONA
 # (systemMessage, una vez por banda) le dice cuándo cerrar fase, con /handoff si hay cockpit y con el CLI si no.

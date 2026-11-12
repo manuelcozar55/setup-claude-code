@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# QUE-HACE: deja un checkpoint determinista en .claude/estado/checkpoints/ antes de compactar y anota si nucleo.md llegaba fresco a la compactación.
 # PreCompact — checkpoint determinista ANTES de que el resumen del modelo destruya el contexto, y
 # una línea de KPI: ¿llega nucleo.md fresco a la compactación?
 # stdin: {"trigger":"manual|auto","session_id":"...","transcript_path":"...","cwd":"..."}

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# QUE-HACE: revisa lo que devuelve una herramienta MCP de terceros en busca de inyección de instrucciones (Unicode invisible, frases de jailbreak) y avisa al modelo, sin bloquear; anota en audit-logs/narthex.jsonl.
 """
 narthex-post-mcp.py — PostToolUse MCP prompt injection scanner.
 Inspired by fitz2882/narthex (MIT). Scans third-party MCP responses for:

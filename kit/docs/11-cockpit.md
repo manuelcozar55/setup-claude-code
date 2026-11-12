@@ -15,7 +15,7 @@
 ## Cómo se carga
 
 La versión 1.10.1 del kit incluye cockpit 0.9.0.
-`scripts/scc.sh` carga la copia de tu checkout mediante `--plugin-dir`, sin instalar
+`scc` carga la copia que `install.sh` deja en `~/.claude/scc/` mediante `--plugin-dir`, sin instalar
 nada; las órdenes de marketplace de abajo instalan esa misma versión desde el tag
 publicado, para todas tus sesiones. En un paquete transferido, `VERSION` identifica
 la publicación, y `BUILD_ID` con el manifiesto SHA-256 identifican el contenido.

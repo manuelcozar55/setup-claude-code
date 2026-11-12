@@ -2,7 +2,7 @@
 
 La base incluye aspecto, continuidad de contexto, guards, agentes y skills del método.
 La [matriz de instalación](10-onboarding.md#0--qué-vas-a-levantar) distingue lo instalado,
-lo cargado por `scripts/scc.sh` y los extras. Esta página documenta las opciones externas;
+lo cargado por `scc` y los extras. Esta página documenta las opciones externas;
 no hace falta activarlas todas para usar el kit. **Los terceros se documentan, no se redistribuyen.**
 
 ## Plugins de Claude Code
@@ -141,11 +141,10 @@ Las siguientes herramientas amplían esa base; su presencia se comprueba por sep
 | Skill | Trigger | Para qué |
 |---|---|---|
 | `deep-change` (incluida) | `/deep-change` | el bucle operativo brainstorm → plan → execute → verify para cambios sustanciales |
-| `ultrawork` | `/ultrawork` | modo de máxima potencia: todos los agentes, en paralelo, sin paradas |
 | `agent-browser` | se carga antes de cualquier tarea de navegador | estándar de automatización de navegador (ya cubierta en `04-superpowers.md`) |
 
 Instala las externas desde su origen o adáptalas a tu entorno. La disponibilidad de
-`ultrawork` depende del agente que utilices: no equivale a instalar el kit de Claude Code.
+una skill externa depende del agente que utilices: no equivale a instalar el kit de Claude Code.
 Una skill externa ausente no desactiva los guards ni el estado del kit.
 
 Verifica qué tienes instalado con:

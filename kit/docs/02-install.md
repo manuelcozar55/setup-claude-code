@@ -4,7 +4,7 @@ Este documento cubre la configuración que el kit redistribuye en `~/.claude` y 
 extras opcionales. La matriz de lo instalado, lo cargado por el lanzador y lo externo
 está en [`10-onboarding.md`](10-onboarding.md#0--qué-vas-a-levantar).
 Si recibiste una consolidación con `BUILD_ID`, sigue también [`ENTREGA.md`](../../ENTREGA.md):
-`scripts/scc.sh` carga los plugins incluidos; `install-plugins.sh` es la alternativa global.
+`scc` carga los plugins incluidos; `install-plugins.sh` es la alternativa global.
 
 ## Prerrequisitos
 
@@ -121,11 +121,13 @@ Las claves y los archivos privados quedan fuera del paquete y de Git.
 
 ## Paso 3b · CLIs `handoff`, `oraculo`, `cupo` y `efectividad`
 
-`install.sh` copia `bin/handoff`, `bin/oraculo` y `bin/cupo` a `$CLAUDE_HOME/bin/` (ejecutables) y crea tres enlaces en `~/.local/bin/`:
+`install.sh` copia `bin/handoff`, `bin/oraculo`, `bin/cupo`, `bin/efectividad` y `bin/scc` a `$CLAUDE_HOME/bin/` (ejecutables) y crea cinco enlaces en `~/.local/bin/`:
 
 - `~/.local/bin/handoff` → `$CLAUDE_HOME/bin/handoff`
 - `~/.local/bin/oraculo` → `$CLAUDE_HOME/bin/oraculo`
 - `~/.local/bin/cupo` → `$CLAUDE_HOME/bin/cupo`
+- `~/.local/bin/efectividad` → `$CLAUDE_HOME/bin/efectividad`
+- `~/.local/bin/scc` → `$CLAUDE_HOME/bin/scc`
 
 Reglas del enlace: solo se crea si `CLAUDE_HOME` es `$HOME/.claude` y además no existe nada con ese nombre, o ya era un enlace a `$CLAUDE_HOME/bin`. Con otro `CLAUDE_HOME` (una ruta de prueba, la CI) no escribe en `~/.local/bin`, porque al borrar esa ruta los enlaces quedarían colgando: imprime las órdenes `ln -s` y las ejecutas tú si quieres. Nunca pisa un fichero tuyo ni un enlace a otro sitio: en ese caso te avisa y lo dejas tú como prefieras. En modo diff-first no escribe nada y lo anota en el plan.
 
@@ -153,13 +155,13 @@ ln -sf $HOME/.venvs/tools/bin/ruff $HOME/.local/bin/ruff
 El kit no instala esto por ti; solo lo documenta:
 
 - **Los 7 agentes y las skills del método** ya están instalados con la base.
-- **esenciales** está incluido en el repo y `scripts/scc.sh` lo carga localmente; la
+- **esenciales** está incluido en el repo y `scc` lo carga localmente; la
   instalación global se hace con `bash install-plugins.sh` (diff-first).
   Que un plugin figure en `enabledPlugins` no demuestra que esté cargado: comprueba `/plugin`.
 - **agent-browser** es una herramienta externa: ver `docs/04-superpowers.md`.
 - **El mod `cockpit`** (opcional): da `/handoff` y `/nueva` dentro de Claude Code. Instálalo con `claude plugin install cockpit@setup-claude-code` después de registrar el marketplace en el tag del kit (las dos órdenes, en [`11-cockpit.md`](11-cockpit.md)). Sin él, `handoff --desde` hace lo mismo desde la terminal.
 
-Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, servidores MCP, skills adicionales como `ultrawork` o `agent-browser`), ver `docs/08-plugins-mcp-y-skills.md`.
+Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, servidores MCP, skills adicionales como `agent-browser`), ver [`08-plugins-mcp-y-skills.md`](08-plugins-mcp-y-skills.md).
 
 ## Paso 6 · Verificar
 
@@ -232,6 +234,12 @@ modificaste se conserva y se enumera), quita los enlaces de `~/.local/bin` solo 
 `$CLAUDE_HOME/bin`, y saca de `settings.json` lo que el kit añadió (sus hooks, `statusLine`, marketplace,
 plugins y las claves de `env` que conservan el valor del kit) sin tocar lo tuyo. Sin manifiesto
 (instalación anterior a 1.11), usa el modo de restaurar de abajo.
+
+Si actualizaste desde una versión anterior, `settings.json` puede conservar reglas o claves que puso aquella versión y que
+el desinstalador no puede atribuir al kit actual (no hay copia previa con la que compararlas). El desinstalador enumera lo
+que conserva en `settings.json` y por qué: léelo y quita a mano lo que ya no quieras.
+
+El estado de tus proyectos (`<proyecto>/.claude/estado/`) es tuyo: el desinstalador no lo borra.
 
 Para volver al estado anterior desde un backup:
 

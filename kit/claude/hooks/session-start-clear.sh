@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# QUE-HACE: al arrancar, limpiar o reanudar inyecta nucleo.md como dato para retomar el trabajo, y avisa si la caché caducó o si otra sesión es dueña del estado.
 # SessionStart(startup|clear|resume): retoma el trabajo desde <raíz>/.claude/estado/nucleo.md
 # (raíz y forma: lib/nucleo.sh).
 # Por qué aquí y no en el mod cockpit: es nativo (additionalContext), funciona sin cockpit y no

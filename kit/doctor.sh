@@ -38,11 +38,15 @@ if jq -e '(.env.CC_ALLOW_DESTRUCTIVE // "" | tostring) == "1"' "$CLAUDE_HOME/set
   warn "settings.json tiene env.CC_ALLOW_DESTRUCTIVE=1: destructive-guard.sh esta apagado. Quita la clave para recuperar esa proteccion"
 fi
 
-# 1d. Version de claude. CLAUDE_PROBADA es la version con la que se probo el kit, la misma que cita
-# docs/10-onboarding.md (test_doctor.sh lo comprueba); no hay minima comprobada. WARN y no FAIL: con otra
-# puede funcionar, pero no esta probado. Comparacion por version (sort -V).
-CLAUDE_PROBADA="2.1.292"
-if ! command -v claude >/dev/null 2>&1; then
+# 1d. Version de claude. CLAUDE_PROBADA es la version minima con la que se probo el kit. WARN y no FAIL: con
+# otra puede funcionar, pero no esta probado. Comparacion por version (sort -V).
+# Una sola fuente: MIN_CLAUDE_CODE del cockpit (lo que el codigo exige; scc la lee igual). test_doc_claims y
+# test_docs_enlaces comprueban que ningun documento diga otra.
+CLAUDE_PROBADA="$(grep -Eo "MIN_CLAUDE_CODE = '[0-9.]+'" "$KIT/mods/cockpit/hooks/register.tsx" 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+if [ -z "$CLAUDE_PROBADA" ]; then
+  warn "no se pudo leer la version minima de Claude Code de kit/mods/cockpit/hooks/register.tsx: no se compara la de claude"
+  claude_v=""
+elif ! command -v claude >/dev/null 2>&1; then
   warn "claude no se encuentra en el PATH: instala Claude Code (el kit se probo con $CLAUDE_PROBADA) y comprueba con claude --version"
 else
   claude_v="$(timeout 10 claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
@@ -97,10 +101,25 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
       def scripts: [.hooks // {} | .. | .command? | strings | split($ch + "/") | join(".claude/")
                     | scan("\\.claude/(?:hooks|sentinel)/[^ \"\u0027]+") | sub(".*/"; "")] | unique;
       ($k[0] | scripts) - scripts | join(" ")' "$CLAUDE_HOME/settings.json" 2>/dev/null)"
-  if [ -n "$faltan" ]; then
-    fail "settings.json no cablea hook(s) del kit: $faltan. Sin ellos no hay guard. Reinstala (install.sh) o restaura tu settings.json"
+  # Un hook que la persona quito a proposito consta, una linea por script, en $CLAUDE_HOME/.kit-desactivados
+  # (kit/docs/OPERAR.md): eso es INFO, no FAIL. FAIL queda para lo que falta sin constar ahi.
+  desactivados="$CLAUDE_HOME/.kit-desactivados"; rotos=""; apagados=""
+  for s in $faltan; do
+    if [ -f "$desactivados" ] && grep -qxF -- "$s" "$desactivados"; then apagados="$apagados $s"; else rotos="$rotos $s"; fi
+  done
+  if [ -n "$rotos" ]; then
+    fail "settings.json no cablea hook(s) del kit:${rotos}. Sin ellos no hay guard. Reinstala (install.sh), restaura tu settings.json o, si los quitaste tu, anota el script en $desactivados (kit/docs/OPERAR.md)"
   else
-    pass "settings.json cablea todos los hooks del kit  (fuente: jq .hooks contra kit/claude/settings.json)"
+    pass "settings.json cablea todos los hooks del kit salvo los que desactivaste  (fuente: jq .hooks contra kit/claude/settings.json)"
+  fi
+  [ -n "$apagados" ] && echo "INFO · desactivado por ti (consta en .kit-desactivados):$apagados"
+  # Lo contrario: consta como apagado y esta cableado (lo suele devolver install.sh --apply al actualizar).
+  if [ -f "$desactivados" ]; then
+    while IFS= read -r s; do
+      case "$s" in ''|'#'*) continue ;; esac
+      case " $faltan " in *" $s "*) continue ;; esac
+      warn ".kit-desactivados lista $s pero settings.json lo cablea: quitalo de settings.json otra vez o borra la linea de $desactivados"
+    done < "$desactivados"
   fi
   # install.sh conserva los hooks que no son del kit (fusion por propietario). Se listan para que uno
   # tuyo muerto o duplicado se vea: el 21-oct la reinstalacion se llevo un sensor y nada lo dijo.
@@ -167,6 +186,10 @@ for tree in claude sentinel; do
         case "$rel" in *.py) comparar=1 ;; esac ;;
     esac
     if [ ! -f "$dst" ]; then
+      if [ -f "$CLAUDE_HOME/.kit-desactivados" ] && grep -qxF -- "$nombre" "$CLAUDE_HOME/.kit-desactivados"; then
+        echo "INFO · desactivado por ti (consta en .kit-desactivados): $nombre"
+        continue
+      fi
       ausentes=$((ausentes + 1))
       if [ "$tree" = sentinel ] && [ "$comparar" -eq 0 ]; then continue; fi
       fail "componente obligatorio del kit ausente: $nombre"
