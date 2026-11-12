@@ -1,7 +1,7 @@
-# mcharness
+# mcharness (andamiaje de desarrollo de SCC)
 
-Harness personal para Claude Code: **guías** (antes de actuar) y **sensores** (miden
-después). Mapa para agentes: `AGENTS.md`. Dos capas:
+`mcharness` es solo el nombre de este andamiaje; el producto es SCC (setup-claude-code). Para usar el
+kit, `README.md`. Aquí: **guías** (antes de actuar) y **sensores** (después). Mapa: `AGENTS.md`. Dos capas:
 
 - `kit/` — **capa de instalación**, v1.10.1, estable. Guards, hooks, Sentinel, `install.sh`,
   59 suites de test. No se toca sin ejecutar `make test`.

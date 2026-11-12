@@ -44,3 +44,8 @@ Medida con `frescura.py` y `nudge.py` de la base, tras dos semanas de uso:
 Si no se alcanzan, o si genera denegaciones que la persona sufre sin ganancia: quitar la entrada de `PreToolUse` en
 `kit/claude/settings.json` y borrar `nucleo-gate.sh`; el nudge sigue valiendo solo (el fichero `.nucleo` es inocuo).
 Apagado sin código: es el valor por defecto; se activa con `env.CC_NUCLEO_GATE=1` (v1.6.1).
+
+**Retirado en la versión que sigue a la 1.10.1** (commit `bb46e28`, 12-nov-2026; la versión exacta la fija el bump, ver
+`CHANGELOG.md`). `nucleo-gate.sh` ya no existe y `CC_NUCLEO_GATE` ya no lo lee nadie. Lo que queda es otra cosa: la
+variable `NUCLEO_GATE` (`observe` por defecto, `block` para bloquear el `Stop` tras un commit sin tocar el nucleo), que
+documenta `kit/docs/12-metodologia.md`. El texto de arriba se deja como estaba: es la historia de por qué se probó.

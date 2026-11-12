@@ -3,7 +3,7 @@
 Guía para quien llega nuevo y solo quiere usar el kit. Está pensada para **WSL2 con Ubuntu o Debian**. Dura unos diez minutos. El procedimiento completo y lo opcional está en [`02-install.md`](02-install.md).
 
 **Si recibiste una consolidación local**, empieza por [`ENTREGA.md`](../../ENTREGA.md).
-Instala la base como se explica aquí y arranca con `bash /ruta/a/scc/scripts/scc.sh`.
+Instala la base como se explica aquí y arranca con `scc`.
 Ese lanzador carga las copias incluidas de cockpit y esenciales; no necesitas instalarlas
 desde el marketplace. El paso 4 de esta guía es la alternativa para una release publicada.
 
@@ -26,7 +26,7 @@ Si eres Claude Code leyendo esto en una máquina nueva: los pasos 2 a 4 son el a
 |---|---|---|
 | Base `kit/` | Guards, Sentinel, 7 agentes, skills del método, `handoff`, `oraculo` y plantilla de estado | `bash kit/install.sh` |
 | Aspecto y continuidad | Pantalla completa, tema oscuro, statusline, ventana de autocompactación, checkpoint y reinyección del estado | Se instalan con la base; se conservan los ajustes visuales propios |
-| Cockpit y esenciales incluidos | Dock de agentes, vigía, `/handoff`, `/nueva`, `/simple`, `/autonomo` y skills del plugin | `scripts/scc.sh` en la consolidación; marketplace como alternativa |
+| Cockpit y esenciales incluidos | Dock de agentes, vigía, `/handoff`, `/nueva`, `/simple`, `/autonomo` y skills del plugin | `scc` (lo instala `install.sh`); marketplace como alternativa |
 | Harness y memoria del repo | `/work`, sensores del repo, `knowledge/` y `scripts/recuerda` | Solo al trabajar en este repo; `recuerda` requiere enlace manual |
 | Herramientas externas | `gitleaks`, venv de tools, agent-browser, MCP y plugins de terceros | Opcionales; ver [`08-plugins-mcp-y-skills.md`](08-plugins-mcp-y-skills.md) |
 
@@ -54,7 +54,7 @@ sudo apt install git jq make curl ca-certificates python3 python3-venv zip unzip
 git --version && jq --version && make --version && python3 --version
 ```
 
-También necesitas Claude Code instalado y con sesión iniciada: `claude --version`. El kit se probó con la versión 2.1.292. No hay una versión mínima comprobada: si algo falla con otra, indícalo al abrir el problema.
+También necesitas Claude Code instalado y con sesión iniciada: `claude --version`. La versión mínima probada figura en [`OPERAR.md`](OPERAR.md) y en el README; con una anterior, `doctor.sh` avisa. Si algo falla con otra, indícalo al abrir el problema.
 
 ## 2 · Instalar
 
@@ -115,7 +115,7 @@ git init              # solo si aún no es un repo
 handoff --iniciar     # crea .claude/estado/nucleo.md desde la plantilla
 ```
 
-Abre `nucleo.md` y rellena **Objetivo** (las palabras de quien pidió la tarea) e **Invariantes** (lo que no se toca y por qué). Después abre `bash /ruta/a/scc/scripts/scc.sh` en la raíz del proyecto si usas la consolidación, o `claude` si instalaste los plugins globalmente. El hook de arranque te reclama como dueño del estado y se lo entrega al modelo.
+Abre `nucleo.md` y rellena **Objetivo** (las palabras de quien pidió la tarea) e **Invariantes** (lo que no se toca y por qué). Después abre `scc` en la raíz del proyecto, o `claude` si instalaste los plugins globalmente. El hook de arranque te reclama como dueño del estado y se lo entrega al modelo.
 
 `handoff --iniciar` nunca sobrescribe: si el fichero existe, lo dice y sale sin tocarlo.
 
