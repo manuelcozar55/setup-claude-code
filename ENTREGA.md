@@ -9,9 +9,9 @@ No se distribuyen credenciales ni configuración personal. Instalar, usar y desi
 Una carpeta `scc-v2.0.0/` con lo que necesita quien usa el kit: `kit/` (sin tests ni evaluaciones), `uninstall.sh`,
 `scripts/{backup,scc,aceptacion-local}.sh`, `README.md`, `SECURITY.md`, `CHANGELOG.md`, `THIRD-PARTY.md`, `LICENSE`,
 `NOTICE`, `VERSION` y `BUILD_ID`. Junto a la carpeta llegan el manifiesto `SHA256SUMS`, el archivo ZIP, el bundle de
-Git `scc-v2.0.0.bundle`, `PROCEDENCIA.json` (commit, fecha y si el árbol estaba limpio) y `VALIDACION-DEBIAN.md`
-(qué se ejecutó en Debian, con sus códigos de salida). Esos recibos se generan al preparar la entrega y no forman
-parte del árbol de Git.
+Git `scc-v2.0.0.bundle` y `PROCEDENCIA.json` (commit, fecha y si el árbol estaba limpio). Esos recibos se generan al
+preparar la entrega y no forman parte del árbol de Git. Si quien te entrega el paquete añade un informe de validación
+(por ejemplo, qué se ejecutó en Debian, con sus códigos de salida), llega aparte: no es parte de este paquete.
 
 ## Verificar la integridad
 
@@ -21,6 +21,10 @@ Antes de abrir nada, en la carpeta recibida:
 sha256sum -c SHA256SUMS                       # cubre el paquete y el bundle; todo debe decir OK
 cd scc-v2.0.0 && cat VERSION BUILD_ID        # 2.0.0 y scc-v2.0.0
 ```
+
+`SHA256SUMS` lista cada fichero de la carpeta `scc-v2.0.0/`, el ZIP, el bundle y `PROCEDENCIA.json`. Si solo has
+recibido o conservado parte (por ejemplo, el ZIP y el bundle sin la carpeta descomprimida), comprueba lo que tengas con
+`sha256sum -c --ignore-missing SHA256SUMS`: las filas de los ficheros que no están se omiten y las presentes deben decir OK.
 
 La suma del ZIP exterior se entrega aparte, por otro canal, para comprobar primero la transferencia. No ejecutes una
 entrega con sumas incorrectas. Conserva la identificación del origen (commit y suma) para soporte.
@@ -32,6 +36,8 @@ git clone --branch release/scc-v2.0.0-debian scc-v2.0.0.bundle ~/scc
 git -C ~/scc rev-parse HEAD                   # debe coincidir con el commit de PROCEDENCIA.json
 ```
 
+`--branch release/scc-v2.0.0-debian` es obligatorio: el bundle no tiene `HEAD`, y un `git clone scc-v2.0.0.bundle` a
+secas termina con «remote HEAD refers to nonexistent ref, unable to checkout» y un árbol vacío (`kit/` no aparece).
 El bundle permite clonar y consultar el historial; no implica que exista una etiqueta publicada. No sustituyas esta
 versión por `main`. Mantén la carpeta (`~/scc`) en su sitio: `scc` carga los plugins de la copia que `install.sh`
 hace en `~/.claude/scc/`, y `uninstall.sh` y `scripts/backup.sh` se ejecutan desde ella.
