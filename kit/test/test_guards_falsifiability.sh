@@ -343,6 +343,27 @@ for g in block-dangerous-commands branch-guard destructive-guard secret-guard ba
     bypass_fail=$((bypass_fail+1)); echo "FAIL: $g neutralizado deberia hacer caer al menos $((rows + 1)) casos de test_guards_mensajes.sh (base=$base_f, stub=$stub_f)"
   fi
 done
+# El corpus R1 (test_guards_r1.sh) y su sensor de monotonia tambien son falsables. 1) Sin block-dangerous-commands (stub «permitir
+# siempre») la suite cae en cientos de filas. 2) El sensor: una fila que la base bloqueaba y ahora pasa, sin `ex`, es un fallo
+# de MONOTONIA; una `ex` sobre una fila que no baja de BLOCK a ALLOW es otro; con las dos bien puestas la suite pasa.
+FD=$(mktemp -d); cp -R "$HERE/../claude/hooks/." "$FD/"
+printf '#!/bin/bash\nexit 0\n' > "$FD/block-dangerous-commands.sh"; chmod +x "$FD/block-dangerous-commands.sh"
+r1_stub=$(R1_HOOKS_DIR="$FD" bash "$HERE/test_guards_r1.sh" 2>&1 | grep -oE 'FAIL=[0-9]+' | tail -n 1 | cut -d= -f2)
+rm -rf "$FD"
+echo "FALSABLE: corpus R1 sin block-dangerous-commands: caen ${r1_stub:-?} filas"
+if [ "${r1_stub:-0}" -lt 100 ]; then
+  bypass_fail=$((bypass_fail+1)); echo "FAIL: el corpus R1 deberia caer en al menos 100 filas sin block-dangerous-commands (cayeron ${r1_stub:-?})"
+fi
+MF=$(mktemp)
+sensor() { # fila-json esperado(0=pasa,1=falla) etiqueta
+  printf '%s\n' "$1" > "$MF"
+  R1_FIXTURE="$MF" bash "$HERE/test_guards_r1.sh" >/dev/null 2>&1; local rc=$?
+  if [ "$rc" -ne "$2" ]; then bypass_fail=$((bypass_fail+1)); echo "FAIL: sensor de monotonia: $3 (rc=$rc, esperado $2)"; fi
+}
+sensor '{"id":"M1","cmd":"echo hola","exp":"ALLOW","base":"BLOCK"}' 1 "BLOCK->ALLOW sin exencion deberia fallar"
+sensor '{"id":"M2","cmd":"echo hola","exp":"ALLOW","base":"BLOCK","ex":"prosa: texto de un echo"}' 0 "BLOCK->ALLOW con exencion deberia pasar"
+sensor '{"id":"M3","cmd":"echo hola","exp":"ALLOW","base":"ALLOW","ex":"una exencion de mas"}' 1 "exencion sobre una fila que no baja deberia fallar"
+rm -f "$MF"
 if [ "$bypass_fail" -ne 0 ]; then
   echo "FAIL: $bypass_fail casos de bypass/negativos incorrectos."
   exit 1

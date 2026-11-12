@@ -159,7 +159,11 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
       t = toks[j]
       if (keepnext) { keepnext = 0; out = out " " t; continue }
       if (redir(t)) { out = out " " t; if (redir_alone(t)) keepnext = 1; continue }
-      if (b == "sed" || b == "awk" || b == "gawk" || b == "mawk" || b == "nawk") { if (t !~ /[ \t\n]/) out = out " " t; continue }
+      if (b == "sed" || b == "awk" || b == "gawk" || b == "mawk" || b == "nawk") {
+        # Un programa de awk con system/getline/pipe y un script de sed con el comando `e` o la bandera `e` EJECUTAN: no son prosa.
+        if (t !~ /[ \t\n]/ || (b == "sed" ? t ~ /(^|[^A-Za-z_])e([ \t;}]|$)|\/[A-Za-z]*e[A-Za-z]*([ \t;}]|$)/ : t ~ /system|getline|popen|[|]/)) out = out " " t
+        continue
+      }
       if (clean_opt(t)) out = out " " t
     }
     return out
@@ -202,7 +206,7 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl) {
   shl = (b in shells) || b == "ssh"
   ok = 1
   for (j = k + 1; j <= nt; j++) { a = toks[j]; if (b in shells) { if (!(a == "-" || (a ~ /^-/ && a !~ /^-.*c/))) ok = 0 } if (a in shells) shl = 1 }
-  psh = ((b in shells) && ok) || b == "ssh" || b == "xargs" || ((b == "source" || b == ".") && toks[k + 1] == "/dev/stdin")
+  psh = ((b in shells) && ok) || b == "ssh" || b == "xargs" || b == "at" || b == "batch" || b == "crontab" || ((b == "source" || b == ".") && toks[k + 1] == "/dev/stdin")
   segshell[nseg] = shl; segpsh[nseg] = psh
   k++
   if (b == "git") {
@@ -413,6 +417,9 @@ cmdn_oversize() {
 cmdn_parse() {
   local out rest
   CMDN_SEGS=(); CMDN_CWD=""; CMDN_EXEC=""
+  # Los cuatro bytes de control con los que el parser separa sus salidas (\034-\037) no pueden ir en el comando: un \036 propio
+  # desplazaria texto, EXEC y segmentos. Bash no los trata como separador, asi que pasan a espacio.
+  set -- "${1//[$'\034\035\036\037']/ }"
   if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]]; then
     CMDN_TEXT=$1; CMDN_EXEC=$1; return 1
   fi
@@ -484,24 +491,41 @@ cmdn_track_cd() {
 CMDN_SAFE_DIRS=${CC_SAFE_DELETE_DIRS:-node_modules:dist:build:.cache:__pycache__:coverage:.next:.nuxt:tmp}
 IFS=':' read -ra CMDN_DIRS <<< "$CMDN_SAFE_DIRS"
 
+# cmdn_path_norm "$ruta": en REPLY, la ruta sin `//`, sin `/./` y sin `/` ni `/.` finales (`/tmp//`, `/tmp/.` son `/tmp`).
+cmdn_path_norm() {
+  local p=$1
+  while [[ $p == *//* ]]; do p=${p//\/\//\/}; done
+  while [[ $p == */./* ]]; do p=${p//\/.\//\/}; done
+  while [[ ${#p} -gt 1 && ( $p == */ || $p == */. ) ]]; do
+    if [[ $p == */. ]]; then p=${p%.}; else p=${p%/}; fi
+  done
+  REPLY=$p
+}
+
 # shellcheck disable=SC2088,SC2016  # `~` y `$HOME` son el TEXTO del operando, no se expanden.
 cmdn_sensitive_operand() {
-  local p=${1%/}
-  case $1 in
+  cmdn_path_norm "$1"; local p=$REPLY
+  case $p in
     /|/[!a-z]*|/home*|/etc*|/usr*|/var*|/root*|/boot*|/lib*|/bin*|/sbin*|/dev*|/proc*|/sys*|/mnt*|/media*|/opt*|/srv*) return 0 ;;
-    '~'|'~/'*|..|../*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*|*/..|*/../*) return 0 ;;
+    '~'*|..|../*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*|*/..|*/../*) return 0 ;;
   esac
-  # Un solo componente absoluto (`/tmp`, `/data`): es el directorio entero, no un hijo suyo.
+  # Un solo componente absoluto (`/tmp`, `/data`) es el directorio entero, no un hijo suyo; igual `/tmp/*` y `/tmp/.*`: lo vacian.
   [[ $p == /* && ${p:1} != */* ]] && return 0
+  [[ ( $p == /*/'*' || $p == /*/'.*' || $p == /*/'**' ) && ${p:1} != */*/* ]] && return 0
   return 1
 }
 
 # El directorio seguro tiene que ser un componente REAL de la ruta y no puede haber un `..` después (`dist/../Documents`).
-# Bajo las raíces del sistema (/home, /etc, /usr, /var, /root, /boot, /lib, /bin, /sbin) no hay exención.
+# Bajo las raíces del sistema (/home, /etc, /usr, /var, /root, /boot, /lib, /bin, /sbin, /mnt, /media, /opt, /srv, /dev, /proc, /sys)
+# no hay exención, ni para otro usuario (`~root/build`: solo vale la tilde sola con barra), ni para el directorio temporal entero.
 cmdn_safe_operand() {
   local d p tail
-  case $1 in /home*|/etc*|/usr*|/var*|/root*|/boot*|/lib*|/bin*|/sbin*) return 1 ;; esac
-  p="/$1/"
+  cmdn_path_norm "$1"; p=$REPLY
+  case $p in /home*|/etc*|/usr*|/var*|/root*|/boot*|/lib*|/bin*|/sbin*|/mnt*|/media*|/opt*|/srv*|/dev*|/proc*|/sys*) return 1 ;; esac
+  case $p in '~'|'~'[!/]*) return 1 ;; esac
+  [[ $p == /* && ${p:1} != */* ]] && return 1
+  [[ ( $p == /*/'*' || $p == /*/'.*' || $p == /*/'**' ) && ${p:1} != */*/* ]] && return 1
+  p="/$p/"
   for d in "${CMDN_DIRS[@]}"; do
     [[ $p == *"/$d/"* ]] || continue
     tail="/${p#*"/$d/"}"

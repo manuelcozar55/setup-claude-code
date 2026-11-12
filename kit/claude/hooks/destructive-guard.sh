@@ -31,8 +31,6 @@ log_block() {
   echo "[$(date -Iseconds)] BLOCKED: $1 | cmd: $COMMAND" >> "$logfile" 2>/dev/null
 }
 
-SAFE_DIRS="${CC_SAFE_DELETE_DIRS:-node_modules:dist:build:.cache:__pycache__:coverage:.next:.nuxt:tmp}"
-
 # El texto se normaliza con la lib comun: continuaciones unidas y comentarios quitados SOLO fuera
 # de comillas (el sed anterior cortaba en el `#` de `git commit -m "fix #12" && git reset --hard`).
 # Un comentario de verdad sigue sin poder voltear la exencion de directorio seguro ni esconderse
@@ -54,19 +52,22 @@ COMMAND_SCAN=$CMDN_EXEC
 # Las formas largas (--recursive/--force) van en la clase de opciones: solo se aceptaban
 # grupos de flags cortos, asi que `rm --recursive --force /home/usuario/docs` no
 # emparejaba la ruta sensible y salia limpio de los cinco guards.
-if echo "$COMMAND_SCAN" | grep -qE 'rm\s+((-[rf]+|--recursive|--force)\s+)*(\/$|\/\s|\/[^a-z]|\/home|\/etc|\/usr|\/var|\/root|\/boot|~($|[^[:alnum:]_.+-])|\.\.($|[^[:alnum:]_.-]))'; then
-  SAFE=0
-  IFS=':' read -ra DIRS <<< "$SAFE_DIRS"
-  for dir in "${DIRS[@]}"; do
-    # Exempt only when a safe dir is a real path token of the target AND the
-    # command is not also touching an absolute sensitive path. Un `..` tras el directorio seguro
-    # (`~/dist/../Documents`) escapa de el: no cuenta como exencion.
-    if echo "$COMMAND_SCAN" | grep -qE "(^|[[:space:]/])${dir}(/|[[:space:]]|$)" \
-       && ! echo "$COMMAND_SCAN" | grep -qE "(^|[[:space:]/])${dir}/([^[:space:]]*/)?\.\.(/|[[:space:]]|$)" \
-       && ! echo "$COMMAND_SCAN" | grep -qE '(^|[[:space:]])(/home|/etc|/usr|/var|/root|/boot|/lib|/bin|/sbin)'; then
-      SAFE=1; break
-    fi
-  done
+RM_SENS_RX='rm\s+((-[rf]+|--recursive|--force)\s+)*(\/$|\/\s|\/[^a-z]|\/home|\/etc|\/usr|\/var|\/root|\/boot|~|\.\.($|[^[:alnum:]_.-]))'
+if echo "$COMMAND_SCAN" | grep -qE "$RM_SENS_RX"; then
+  # La exencion de un directorio de build es del OPERANDO de ese rm, no de una palabra `build`/`dist`/`tmp` en cualquier otra
+  # parte de la orden (`flock l rm -rf ~/x; ls build/`). Si el regex salta y no se logra atribuir a ningun operando, se bloquea.
+  SAFE=1; HIT=0
+  while IFS= read -r m; do
+    m=${m//[\'\"\`]/}
+    read -ra W <<<"$m"
+    for a in "${W[@]:1}"; do
+      [[ $a == -* ]] && continue
+      echo "rm $a" | grep -qE "$RM_SENS_RX" || continue
+      HIT=1
+      cmdn_safe_operand "$a" || SAFE=0
+    done
+  done < <(echo "$COMMAND_SCAN" | grep -oE '(^|[^[:alnum:]_.-])rm[[:space:]][^;&|]*')
+  (( HIT )) || SAFE=0
   if (( SAFE == 0 )); then
     log_block "rm on sensitive path"
     echo "BLOCKED: rm on sensitive path (WSL2 risk: NTFS junctions can delete beyond target)." >&2
@@ -290,7 +291,6 @@ fi
 # Los checks de arriba siguen mirando el texto porque su patron no esta anclado y por eso ven
 # tambien lo que va dentro de un `bash -c "..."`; este cubre las grafias que sacaban el comando del
 # patron: `git -C dir reset --hard`, `sudo git clean --force -d`, `rm -rv`, `rm -R`, `rm -rf --`.
-IFS=':' read -ra DIRS <<< "$SAFE_DIRS"
 for seg in "${CMDN_SEGS[@]}"; do
   [[ $seg == *rm* || $seg == *git* ]] || continue
   cmdn_fields "$seg"

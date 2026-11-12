@@ -875,7 +875,7 @@ def _executes(cmd: list, depth: int = 0) -> bool:
                              for c in _simple_commands(_lex(body)))
 
 
-def _word_roles(toks: list, sink: str = "data") -> list:
+def _word_roles(toks: list, sink: str = "data", out_read: bool = False) -> list:
     """(word, role) per word, role path, code, qcode or skip; and (heredoc, role) per body,
     role shell, code, qcode or data. A body is read by the command that carries its <<
     (_stdin_role) and by the rest of its pipeline: the worst of them counts, and if all
@@ -883,7 +883,8 @@ def _word_roles(toks: list, sink: str = "data") -> list:
     group, loop or condition, on its closing word, or with a group down its pipeline, the
     worst reader of the whole text counts: the output may go anywhere. Any executor
     (_executes) after its pipeline makes the body commands, whether its readers wrote a file
-    or not: writers and names are not followed."""
+    or not: writers and names are not followed. out_read: the text is the body of a $( ) whose output
+    lands in a word another command reads, so an echo in it is not prose (`cat $(echo NAME)`)."""
     out, cmd, redirect, docs, stages, cmds = [], [], False, [], [], []
     pipe, pdepth, kdepth, closed, prev = 0, 0, 0, False, None
     for t in toks + ["\n"]:
@@ -904,7 +905,7 @@ def _word_roles(toks: list, sink: str = "data") -> list:
             if t == "\n" and prev in ("|", "|&"):
                 t = prev
             pipe += t not in ("|", "|&", "(", ")")
-            out += _command_roles(cmd, t in ("|", "|&"))
+            out += _command_roles(cmd, out_read or t in ("|", "|&"))
             cmd, redirect, prev = [], False, t
         elif redirect:
             out.append((t, "path"))
@@ -1054,17 +1055,18 @@ def _expanded_hit(form: str, rx, real: bool, budget: list, code: bool) -> str | 
 
 
 def key_file_hit(text: str, rx, real: bool = True, depth: int = 0, budget: list | None = None,
-                 code: bool = False, sink: str = "data") -> str | None:
+                 code: bool = False, sink: str = "data", out_read: bool = False) -> str | None:
     """Why text names a key file, or None. real: text the shell runs as is (not a quoted
     string read again as a command), where an expansion past the cap denies; read again,
     the expansion goes group by group and only past that cap denies. budget: brace
     expansions spent by the whole command, substitutions and strings read again included.
     code: text from an interpreter's literals, checked unexpanded past the caps. sink: who
-    reads the output of a heredoc that only goes through data sinks (_word_roles)."""
+    reads the output of a heredoc that only goes through data sinks (_word_roles). out_read: the
+    text is the body of a substitution whose output another command reads (_word_roles)."""
     budget = [0] if budget is None else budget
     if depth > 4:
         return "key file name" if _key_file_word(text, rx) else None
-    for item, role in _word_roles(_lex(text, real), sink):
+    for item, role in _word_roles(_lex(text, real), sink, out_read):
         reason = None
         if isinstance(item, dict):
             body, unquoted = item["body"], not item["quoted"]
@@ -1079,7 +1081,7 @@ def key_file_hit(text: str, rx, real: bool = True, depth: int = 0, budget: list 
             for body in subs:
                 # The output lands in this word: a skipped one is data, any other is read.
                 out_role = "data" if role == "skip" else role if role in ("code", "qcode") else "shell"
-                reason = reason or key_file_hit(body, rx, real, depth + 1, budget, code, out_role)
+                reason = reason or key_file_hit(body, rx, real, depth + 1, budget, code, out_role, out_role != "data")
             if role in ("code", "qcode"):
                 for s in _code_strings(word, role == "qcode"):
                     reason = reason or key_file_hit(s, rx, False, depth + 1, budget, True)

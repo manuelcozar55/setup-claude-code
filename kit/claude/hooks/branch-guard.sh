@@ -93,6 +93,11 @@ scan() {
     case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') (( PIPED )) || continue ;; esac
     for (( i = 2; i < ${#T[@]}; i++ )); do
       a=${T[i]}
+      # El texto de un PR, un issue o un comentario de gh es prosa; una `$( )` dentro ya es un segmento propio.
+      if [[ ${T[1]:-} == gh ]]; then
+        case ${T[i-1]} in -b|--body|-t|--title|-m|--message|--notes|--description) continue ;; esac
+        case $a in --body=*|--title=*|--message=*|--notes=*|--description=*) continue ;; esac
+      fi
       [[ $a == *git* ]] || continue
       inner=$a
       [[ $a == git || $a == */git ]] && printf -v inner '%s ' "${T[@]:i}"

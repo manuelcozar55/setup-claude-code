@@ -515,7 +515,12 @@ expect "guard: -C antes de push denegado"         "$(run_blockdc 'git -C /home/u
 expect "guard: refspec + forzado denegado"        "$(run_blockdc 'git push origin +release:release')"            BLOCK
 expect "guard: --mirror denegado"                 "$(run_blockdc 'git push --mirror origin')"                    BLOCK
 expect "guard: --delete de rama remota denegado"  "$(run_blockdc 'git push origin --delete release')"            BLOCK
-expect "guard: --force-with-lease sigue denegado" "$(run_blockdc 'git push --force-with-lease origin feature')"  BLOCK
+# --force-with-lease y --force-if-includes pisan la rama solo si nadie la ha tocado: pasan a una rama que no es main/master.
+expect "guard: --force-with-lease a una rama de trabajo NO denegado" "$(run_blockdc 'git push --force-with-lease origin feature')"  ALLOW
+expect "guard: --force-with-lease a main sigue denegado" "$(run_blockdc 'git push --force-with-lease origin main')"  BLOCK
+expect "guard: --force-with-lease=main sigue denegado"   "$(run_blockdc 'git push origin --force-with-lease=main')"  BLOCK
+expect "guard: --force-with-lease junto a --force denegado" "$(run_blockdc 'git push --force-with-lease --force origin feature')"  BLOCK
+expect "guard: --force-with-lease con +refspec denegado" "$(run_blockdc 'git push --force-with-lease origin +feature')"  BLOCK
 expect "guard: -C sin forzar NO denegado"         "$(run_blockdc 'git -C /home/user/repo push origin feature')"  ALLOW
 # El flag entrecomillado es el mismo flag para git: `'-f'`, `--"force"` y `"-"f` fuerzan igual. Se decide
 # sobre tokens descomillados de la sentencia `git push`, no sobre el texto; el mensaje de un commit
@@ -526,7 +531,7 @@ expect "guard: flag corto entre comillas simples denegado"  "$(run_blockjq "git 
 expect "guard: flag largo con comillas parciales denegado"  "$(run_blockjq "git push --\"force\" origin rama-x")"    BLOCK
 expect "guard: guion y letra separados por comillas denegado" "$(run_blockjq "git push \"-\"f origin rama-x")"       BLOCK
 expect "guard: flag largo entrecomillado denegado"          "$(run_blockjq "git push '$FF' origin rama-x")"          BLOCK
-expect "guard: --force-with-lease entrecomillado denegado"  "$(run_blockjq "git push '$FF-with-lease' origin rama-x")" BLOCK
+expect "guard: --force-with-lease entrecomillado NO denegado" "$(run_blockjq "git push '$FF-with-lease' origin rama-x")" ALLOW
 expect "guard: -uf entrecomillado denegado"                 "$(run_blockjq "git push '-uf' origin rama-x")"          BLOCK
 expect "guard: flag entrecomillado tras el refspec denegado" "$(run_blockjq "git push origin rama-x '-f'")"          BLOCK
 expect "guard: flag entrecomillado tras -C denegado"        "$(run_blockjq "git -C /r push '-f' origin rama-x")"     BLOCK
@@ -543,7 +548,7 @@ expect "guard: \$'-f' tras -C denegado"                     "$(run_blockjq "git 
 expect "guard: \$'+rama' denegado"                          "$(run_blockjq "git push origin \$'+rama-x'")"           BLOCK
 expect "guard: \$'\\x2df' (escape sin resolver) denegado"   "$(run_blockjq "git push \$'\\x2df' origin rama-x")"      BLOCK
 expect "guard: \$'\\x2bmain' (refspec con escape) denegado" "$(run_blockjq "git push origin \$'\\x2bmain'")"           BLOCK
-expect "guard: --force-if-includes denegado"                "$(run_blockjq "git push $FF-if-includes origin rama-x")" BLOCK
+expect "guard: --force-if-includes NO denegado"             "$(run_blockjq "git push $FF-if-includes origin rama-x")" ALLOW
 expect "guard: refspec +HEAD:main denegado"                 "$(run_blockjq "git push origin +HEAD:main")"            BLOCK
 expect "guard: -C dir con +main denegado"                   "$(run_blockjq "git -C /r push origin +main")"           BLOCK
 expect "guard: \$'rama-x' NO denegado"                      "$(run_blockjq "git push origin \$'rama-x'")"            ALLOW
