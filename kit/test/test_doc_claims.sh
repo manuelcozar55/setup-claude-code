@@ -1269,7 +1269,7 @@ GUARDS=$(jq -r '[.hooks.PreToolUse[] | . as $h
 GUARDS_JQ=$(jq -r '.hooks.PreToolUse[] | . as $h
                    | select((($h.matcher // "") != "") and ("Bash" | test("^(" + $h.matcher + ")$")))
                    | .hooks[].command | select(test("optional-hook") | not)' "$SETTINGS" \
-            | sed 's|.*/hooks/|kit/claude/hooks/|; s| .*||' | xargs grep -lE '\bjq\b' 2>/dev/null | wc -l | tr -d ' ')
+            | sed 's|"||g; s|.*/hooks/|kit/claude/hooks/|; s| .*||' | xargs grep -lE '\bjq\b' 2>/dev/null | wc -l | tr -d ' ')
 if [ "$GUARDS" = "$GUARDS_JQ" ]; then
   claim "$GUARDS" guards "$SECDOC" "$ONBDOC"
 else

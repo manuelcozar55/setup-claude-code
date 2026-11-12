@@ -1468,7 +1468,7 @@ $bwg_body
 $bwg_key
 EOF")" BLOCK
 # Esta suite fija ademas que el guard esta cableado: con timeout 5 en la cadena de Bash.
-bwg_to=$(jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | endswith("/bash-write-guard.sh")) | .timeout] | join(",")' "$KIT/claude/settings.json")
+bwg_to=$(jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | test("/bash-write-guard\\.sh\"?$")) | .timeout] | join(",")' "$KIT/claude/settings.json")
 if [ "$bwg_to" = 5 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: bash-write-guard no esta en la cadena PreToolUse/Bash del settings con timeout 5 (timeouts: '$bwg_to')"; fi
 
 # Tamano del comando (v3 W5). Claude Code mata el hook al pasar su timeout y la herramienta se

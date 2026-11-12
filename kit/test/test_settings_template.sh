@@ -49,4 +49,23 @@ ok "sin plugins personales ni de contexto caro (codex, understand-anything, fron
 V="$(cat "$(dirname "$S")/../../VERSION" 2>/dev/null)"
 ok "marketplace setup-claude-code: source github" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.source')" github
 ok "marketplace setup-claude-code: ref = v<VERSION> (hoy v$V)" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.ref')" "v$V"
+
+# D7: con un HOME con espacios cada comando registrado se resuelve y arranca. Sin comillas en el JSON, el shell partía la
+# ruta y salía 127 en silencio (los hooks fallan en abierto: nadie lo notaba). Se ejecuta cada comando tal cual, con el
+# JSON mínimo de un evento, y solo se exige que no salga 126/127 ni «No such file».
+KITC=$(cd "$(dirname "$S")" && pwd)
+TH=$(mktemp -d); trap 'find "$TH" -depth -delete' EXIT
+HX="$TH/casa con espacios"; mkdir -p "$HX/.claude" "$TH/proy"
+ln -s "$KITC/hooks" "$HX/.claude/hooks"; [ ! -d "$KITC/../sentinel" ] || ln -s "$KITC/../sentinel" "$HX/.claude/sentinel"
+git -C "$TH/proy" init -q 2>/dev/null
+N=0; MAL=""
+while IFS=$'\t' read -r ev c; do
+  N=$((N + 1))
+  J=$(jq -cn --arg e "$ev" --arg d "$TH/proy" '{hook_event_name:$e,session_id:"smoke",cwd:$d,transcript_path:($d+"/t.jsonl"),tool_name:"Bash",tool_input:{command:"true"},prompt:"hola",source:"startup",trigger:"auto",compact_summary:"x"}')
+  out=$(cd "$TH/proy" && printf '%s' "$J" | HOME="$HX" CLAUDE_HOME="$HX/.claude" timeout 20 bash -c "$c" 2>&1 >/dev/null); rc=$?
+  case "$rc:$out" in 126:*|127:*|*"No such file"*|*"command not found"*) MAL="$MAL [$ev rc=$rc: $c]";; esac
+done < <(jq -r '.hooks | to_entries[] | .key as $e | .value[].hooks[] | [$e, .command] | @tsv' "$S")
+ok "smoke: $N comandos registrados arrancan con un HOME con espacios${MAL:+ (fallan:$MAL)}" "${MAL:-}" ""
+# shellcheck disable=SC2016  # filtro jq
+ok "smoke: todo comando cita \$HOME entre comillas" "$(q '[.hooks[][].hooks[].command | select(test("(^|[ ])\\$HOME"))] | length')" 0
 exit $FAIL
