@@ -11,14 +11,16 @@ pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
 read -r ORIG < "$REPO/kit/ORIGEN"
 
-# En el repo real, fuera de la historia y de los tests, las apariciones estan donde el script las reescribe.
-ck "$(git -C "$REPO" grep -lF "$ORIG" -- . ':!CHANGELOG.md' ':!knowledge' ':!kit/test' ':!kit/ORIGEN' | grep -c .)" "$(cd "$REPO" && grep -rlF "$ORIG" . --exclude-dir=.git --exclude-dir=knowledge --exclude-dir=test --exclude=CHANGELOG.md --exclude=ORIGEN | grep -c .)" "git grep y grep ven las mismas apariciones (ninguna escondida en un ignorado)"
 ck "$(grep -c "$ORIG" "$REPO/kit/install-plugins.sh")" "1" "install-plugins.sh solo cita el origen como valor por defecto de su lectura de kit/ORIGEN"
 ck "$(grep -c 'ORIGEN' "$REPO/kit/install-plugins.sh")" "3" "y lee kit/ORIGEN"
 
 R="$tmp/r"; mkdir -p "$R"
 git -C "$REPO" ls-files -z --cached --others --exclude-standard | (cd "$REPO" && xargs -0 -I{} cp --parents -p {} "$R" 2>/dev/null)
 git -C "$R" init -q && git -C "$R" add -A
+# Las dos ramas de cambiar-origen.sh (con git y sin git) ven las mismas apariciones. Se mide sobre la copia de
+# lo versionable y no sobre el arbol de trabajo: el estado local ignorado (.claude/estado, release/) puede citar
+# el origen y no es producto.
+ck "$(cd "$R" && git grep -lF "$ORIG" -- . ':!CHANGELOG.md' ':!knowledge' ':!kit/test' ':!kit/ORIGEN' | grep -c .)" "$(cd "$R" && grep -rlF "$ORIG" . --exclude-dir=.git --exclude-dir=knowledge --exclude-dir=test --exclude=CHANGELOG.md --exclude=ORIGEN | grep -c .)" "git grep y grep ven las mismas apariciones en lo versionable"
 NEW="otra-org/mi-fork"
 out="$(cd "$R" && bash scripts/cambiar-origen.sh "$NEW" 2>&1)"; rc=$?
 ck "$rc" "0" "cambiar-origen.sh $NEW sale 0"
