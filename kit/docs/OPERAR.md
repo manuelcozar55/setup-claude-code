@@ -48,8 +48,9 @@ rm ~/.claude/agents/code-reviewer.md
 echo agents/code-reviewer.md >> ~/.claude/.kit-desactivados
 ```
 
-`install.sh --apply` lee `.kit-desactivados`: un nombre de hook no se vuelve a cablear y una ruta (`agents/…`) no se
-vuelve a copiar; el plan y el resumen dicen qué se deja apagado. Para encender algo de nuevo, borra su línea y reinstala.
+`install.sh --apply` lee `.kit-desactivados` solo para no recrear lo que falta: un hook que ya está cableado o un fichero
+que existe se tratan como siempre (la lista no quita nada), y `hooks/x.sh` equivale a `x.sh`. Apagar un guard de seguridad
+(los hooks `PreToolUse`) deja un WARN en `doctor.sh`, no un INFO. Para encender algo de nuevo, borra su línea y reinstala.
 
 ## El aviso de contexto me molesta
 
