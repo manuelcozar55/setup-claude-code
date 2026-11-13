@@ -72,6 +72,7 @@ expect "symlink: Read de un enlace a una credencial denegado"  "$(run_sentinel_r
 expect "symlink: cat de un enlace a una credencial denegado"   "$(run_sentinel "cat $SYM_D/notas.txt")"      BLOCK
 expect "symlink: Read a traves de un enlace a directorio denegado" "$(run_sentinel_read "$SYM_D/dir-enlace/id_rsa")" BLOCK
 expect "symlink: Read de un enlace a un fichero inocuo permitido" "$(run_sentinel_read "$SYM_D/enlace-inocuo.txt")" ALLOW
+rm -r "$SYM_D"
 # Formas de leer o copiar una clave que la primera version de la valla dejo pasar (revision del
 # 15-oct): glob, acento grave, sufijo de copia, directorio, llaves, y el oculto tras una barra.
 expect "clave: glob con ruta denegado"           "$(run_sentinel 'cat /etc/ssl/private/*.key')"            "$IOCS_WANT"
