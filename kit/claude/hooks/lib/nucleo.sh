@@ -205,7 +205,7 @@ nucleo_dueno_tomar() {
   mv -f "$tmp" "$2/.dueno" 2>/dev/null || { rm -f "$tmp"; return 1; }
 }
 
-# nucleo_dueno_reclamar <raíz> <sesión>: reclama bajo lock, sin sustituir un dueño ajeno vigente. Solo si el proyecto ya
+# nucleo_dueno_reclamar <raíz> <sesión>: reclama bajo lock (espera hasta 1 s: la perdedora de la carrera debe ver al dueño), sin sustituir un dueño ajeno vigente. Solo si el proyecto ya
 # tiene estado con nucleo.md (o ESTADO.md): un estado/ vacío lo crean subagentes y PreCompact sin que nadie haya escrito
 # nada, y reclamar ahí le quitaba la tarea a la sesión que ya trabajaba.
 nucleo_dueno_reclamar() (
@@ -213,7 +213,7 @@ nucleo_dueno_reclamar() (
   d=$(nucleo_estado_leer "$1") || return 3
   [ -d "$d" ] || return 0
   [ -f "$d/nucleo.md" ] || nucleo_modo_estado_md "$1" || return 0
-  nucleo_bloquear "$d" || return "$?"
+  nucleo_bloquear "$d" 1 || return "$?"
   nucleo_dueno_tomar "$1" "$d" "$2"
 )
 
