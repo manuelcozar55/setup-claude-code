@@ -260,7 +260,7 @@ DENY_RULES=(
   '\bmkfs\b'                           "BLOCKED: mkfs (format filesystem)"
   '\bfdisk\b'                          "BLOCKED: fdisk (partition table editor)"
   '\bwipefs\b'                         "BLOCKED: wipefs (wipe filesystem signatures)"
-  '>[|&]?\s*/dev/sd'                   "BLOCKED: redirect to block device"
+  '>[|&]?\s*/dev/(sd|nvme|vd|mmcblk)'  "BLOCKED: redirect to block device"
 
   # ── SYSTEM SHUTDOWN/REBOOT ─────────────────────────────────────────────────
   '(^|[;&|]\s*)(sudo\s+)?reboot\b'    "BLOCKED: reboot"
@@ -736,8 +736,9 @@ token_checks() {
         # `bash x.sh`, `source x.sh`, `./x.sh`: el segmento que lo ejecuta es posterior al que lo escribio.
         if [[ -n $w ]]; then
           for a in "${T[@]:2}"; do
-            # Por nombre base: `././x.sh`, `$PWD/x.sh` y `d/../d/x.sh` son el mismo fichero.
-            [[ ${a##*/} == "${tgt##*/}" ]] && { WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."; }
+            # Por nombre base: `././x.sh`, `$PWD/x.sh` y `d/../d/x.sh` son el mismo fichero. El operando va como patron: `bash x.*`.
+            # shellcheck disable=SC2053
+            [[ ${tgt##*/} == ${a##*/} ]] && { WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."; }
           done
         elif [[ ${T[1]:-} == "${tgt##*/}" && ${tgt##*/} == *.* ]]; then
           WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."

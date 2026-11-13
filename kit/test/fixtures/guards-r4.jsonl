@@ -1161,3 +1161,12 @@
 {"id": "F13-x015", "cmd": "echo 'id' > x.sh; bash $PWD/x.sh", "base": "ALLOW", "exp": "ASK"}
 {"id": "F13-x016", "cmd": "echo 'id' > d/x.sh; bash d/../d/x.sh", "base": "ALLOW", "exp": "ASK"}
 {"id": "F13-x017", "cmd": "echo hecho > build.log; bash build.sh build.txt", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-x018", "cmd": "echo x > a.sh; bash a.*", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x019", "cmd": "echo x > a.sh; bash a.s?", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x020", "cmd": "echo x > /tmp/q/a.sh; cd /tmp/q; bash a.sh", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x021", "cmd": "echo x > ~/a.sh; bash $HOME/a.sh", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x022", "cmd": "echo hecho > notas.txt; bash kit/test/test_*.sh", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-d011", "cmd": "echo x > /dev/nvme0n1", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d012", "cmd": "echo x>/dev/vda", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d013", "cmd": "echo x >| /dev/mmcblk0", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d014", "cmd": "ls -l /dev/nvme0n1 > discos.txt", "base": "ALLOW", "exp": "ALLOW"}
