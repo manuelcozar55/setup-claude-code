@@ -722,7 +722,7 @@ for name in $RETIRADOS; do
   f="$CLAUDE_HOME/hooks/$name"
   [ -f "$f" ] || continue
   if retirado_publicado "$f" "$name"; then
-    mkdir -p "$BK/hooks" && mv -- "$f" "$BK/hooks/$name"; echo "==> hook retirado del kit, movido a $BK/hooks/$name"
+    mkdir -p "$BK/hooks"; mv -- "$f" "$BK/hooks/$name"; echo "==> hook retirado del kit, movido a $BK/hooks/$name"
   else
     echo "==> hook retirado del kit y modificado por ti, se conserva: hooks/$name (ya no esta cableado; borralo si no lo usas)"
   fi
@@ -733,7 +733,7 @@ while IFS= read -r rel; do
   f="$CLAUDE_HOME/$rel"
   { [ -f "$f" ] && [ ! -L "$f" ] && ruta_propia "$rel"; } || continue
   if retirado_publicado "$f" "$rel"; then
-    mkdir -p "$BK/$(dirname "$rel")" && mv -- "$f" "$BK/$rel"; echo "==> retirado del kit, movido a $BK/$rel"
+    mkdir -p "$BK/$(dirname "$rel")"; mv -- "$f" "$BK/$rel"; echo "==> retirado del kit, movido a $BK/$rel"
     d="$(dirname "$rel")"
     while [ "$d" != . ] && rmdir -- "$CLAUDE_HOME/$d" 2>/dev/null; do d="$(dirname "$d")"; done
   else
