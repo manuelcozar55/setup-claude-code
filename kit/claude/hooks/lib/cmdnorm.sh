@@ -340,19 +340,21 @@ function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e,
     c = substr(s, i, 1)
     if (c == "\\") {
       nx = substr(s, i + 1, 1)
-      if (nx == "\n") { i += 2; continue }
+      # Bash quita la continuacion de linea antes de leer nada: un `$` sigue pegado a lo que venga tras ella.
+      if (nx == "\n") { if (dl == i - 1) dl = i + 1; i += 2; continue }
       if (i == n) { tok = tok c; txt = txt c; have = 1; i++; continue }
       tok = tok nx; have = 1; txt = txt c nx; i += 2; continue
     }
     if (c == "$") {
-      nx = substr(s, i + 1, 1)
+      for (k = i + 1; substr(s, k, 2) == "\\\n"; k += 2) ;
+      nx = substr(s, k, 1)
       # `$$` es el PID: la segunda `$` ya no abre una forma $-comilla (bash la lee como comilla simple normal).
       if (dl == i - 1) { dl = -9; tok = tok c; have = 1; txt = txt c; i++; continue }
-      if ((nx == "\047" || nx == "\"") && !((i + 1) in skip)) {
+      if ((nx == "\047" || nx == "\"") && !(k in skip)) {
         # Formas $-comilla (ANSI-C y locale): bash quita el `$` y las comillas. Si lleva una barra invertida dentro, el valor
         # real no se puede calcular aqui: el `$` se queda en el token y el guard de git push lo trata como sospechoso.
         pv = 0
-        if (nx == "\047") for (j = i + 2; j <= n && substr(s, j, 1) != nx; j++) if (substr(s, j, 1) == "\\") { pv = 1; break }
+        if (nx == "\047") for (j = k + 1; j <= n && substr(s, j, 1) != nx; j++) if (substr(s, j, 1) == "\\") { pv = 1; break }
         if (pv) tok = tok c
         ansic = (nx == "\047")
         txt = txt c; i++; continue

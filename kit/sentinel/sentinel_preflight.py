@@ -633,6 +633,8 @@ def _lex(text: str, comments: bool = True) -> list:
         else:
             if c == "$" and not text.startswith("$(", i):
                 dl = -9 if dl == i - 1 else i
+            elif dl == i - 1 and text.startswith("\\\n", i):  # bash drops the line continuation first: the `$` still touches what follows
+                dl = i + 1
             cur, i = _lex_char(text, i, False, cur, subs)
     if cur is not None:
         toks.append((cur.translate(_UNMASK), cur, subs))

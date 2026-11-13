@@ -1141,3 +1141,9 @@
 {"id": "F13-x011", "cmd": "bash install.sh --plan > plan.txt", "base": "ALLOW", "exp": "ALLOW"}
 {"id": "F13-x012", "cmd": "bash run.sh | tee run.log", "base": "ALLOW", "exp": "ALLOW"}
 {"id": "F13-x013", "cmd": "sh ./configure > config.log && make", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-r011", "cmd": "echo $\\\n'a\\'b' ; rm -rf ~/x ; echo $'c\\'d'", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-r012", "cmd": "echo $\\\n'a\\'b' ; git push -f origin main ; echo $'c\\'d'", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-r013", "cmd": "echo $\\\n'a\\'b' ; git add .env ; echo $'c\\'d'", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-r014", "cmd": "echo $\\\n'a\\'b' ; truncate -s0 ~/.claude/settings.json ; echo $'c\\'d'", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-r015", "cmd": "echo $\\\n$'a\\' ; rm -rf ~/x ; echo 'b'", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-r016", "cmd": "echo $\\\n$'a\\' ; truncate -s0 ~/.claude/settings.json ; echo 'b'", "base": "BLOCK", "exp": "BLOCK"}
