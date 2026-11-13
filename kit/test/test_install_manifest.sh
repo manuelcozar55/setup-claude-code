@@ -90,5 +90,24 @@ ln -s "$O" "$CLAUDE_HOME/skills/grilling"
 bash "$KIT/install.sh" --apply >/dev/null 2>&1
 ck "$([ -f "$O/SKILL.md" ] && [ -f "$O/agents/openai.yaml" ] && echo y || echo n)" "y" "install no borra a traves de una carpeta de skill enlazada"
 
+
+# Cada ruta retirada que publico una etiqueta v* tiene su suma en hooks-retirados.sha256 (si no, quien actualiza
+# desde esa version conserva el fichero y el kit lo da por modificado). Sin etiquetas en el clon: SKIP.
+RET="$KIT/hooks-retirados.sha256"
+tags="$(git -C "$REPO" tag -l 'v*' 2>/dev/null)"
+if [ -z "$tags" ]; then echo "SKIP - el clon no tiene etiquetas v*: no se comparan las sumas retiradas con lo publicado"
+else
+  falta=""
+  nombres="$(awk -F'  ' '$0 !~ /^#/ {print $2}' "$RET" | LC_ALL=C sort -u)"
+  for t in $tags; do
+    while IFS= read -r rel; do
+      case "$rel" in */*) ;; *) rel="hooks/$rel" ;; esac
+      s="$(git -C "$REPO" show "$t:kit/claude/$rel" 2>/dev/null | sha256sum | cut -d' ' -f1)" || continue
+      git -C "$REPO" cat-file -e "$t:kit/claude/$rel" 2>/dev/null || continue
+      grep -qxF "$s  ${rel#hooks/}" "$RET" || grep -qxF "$s  $rel" "$RET" || falta="$falta $t:$rel"
+    done <<< "$nombres"
+  done
+  ck "$falta" "" "toda ruta retirada publicada en una etiqueta v* tiene su suma en hooks-retirados.sha256"
+fi
 echo "== $pass ok, $fail fallos =="
 [ "$fail" -eq 0 ]
