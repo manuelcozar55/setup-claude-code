@@ -1575,6 +1575,10 @@ for nh_g in block-dangerous-commands.sh bash-write-guard.sh branch-guard.sh dest
   jq -nc '{tool_name:"Bash",tool_input:{command:"git status; ls ~/x"}}' | env -u HOME bash "$KIT/claude/hooks/$nh_g" >/dev/null 2>&1; nh_rc=$?
   if [ "$nh_rc" -eq 0 ] || [ "$nh_rc" -eq 2 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [F-09] $nh_g sin HOME salio con rc $nh_rc (se esperaba 0 o 2)"; fi
 done
+# F2-02: si el here-string de cmdn_parse no puede crear su temporal (aqui, limite de tamano de fichero a 0), el guard cierra.
+f202_pad=$(printf '%*s' 25000 '' | tr ' ' x)
+f202_rc=$(cd "$V151_REPO" && trap '' XFSZ && ulimit -f 0 && jq -nc --arg c "echo $f202_pad; git push origin main" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/branch-guard.sh" >/dev/null 2>&1; echo $?)
+if [ "$f202_rc" -eq 2 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [F2-02] branch-guard sin temporal para el here-string salio con rc $f202_rc (se esperaba 2)"; fi
 [ "$v151_rows" -ge 100 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: guards-v151.tsv ejecuto solo $v151_rows filas (se esperaban >=100)"; }
 
 # v1.6.1: cp/mv/install/ln hacia un directorio escriben dir/basename(origen); se juzga ese fichero, no el operando.

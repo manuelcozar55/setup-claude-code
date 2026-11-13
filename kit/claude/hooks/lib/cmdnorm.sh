@@ -543,16 +543,18 @@ cmdn_parse() {
   # Los cuatro bytes de control con los que el parser separa sus salidas (\034-\037) no pueden ir en el comando: un \036 propio
   # desplazaria texto, EXEC y segmentos. Bash no los trata como separador, asi que pasan a espacio.
   set -- "${1//[$'\034\035\036\037']/ }"
-  if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]]; then
-    CMDN_TEXT=$1; CMDN_EXEC=$1; [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=0; CMDN_LINE_SET=1; }; return 1
-  fi
   # `${out%%…*}` y `${out#*…}` prueban cada longitud de prefijo: cuadráticos (64 KB ≈ 1,5 s de CPU,
   # el timeout del hook corre en abierto). `read` parte en el primer separador en una pasada.
-  IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC CMDN_PSH CMDN_SIMPLE rest <<<"$out"
+  # Un here-string que no puede crear su temporal (disco lleno, /tmp de solo lectura) no lee nada: tambien es un fallo.
+  if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]] \
+    || ! { CMDN_SIMPLE=; IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC CMDN_PSH CMDN_SIMPLE rest <<<"$out"; [[ -n $CMDN_SIMPLE ]]; } \
+    || ! mapfile -t CMDN_SEGS <<<"$rest"; then
+    CMDN_SEGS=(); CMDN_PSH=1; CMDN_SIMPLE=0
+    CMDN_TEXT=$1; CMDN_EXEC=$1; [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=0; CMDN_LINE_SET=1; }; return 1
+  fi
   # CMDN_LINE_SIMPLE: el contexto cerrado de la orden PRINCIPAL (la primera que se analiza); los analisis de ordenes anidadas
   # (bash -c, ssh...) no lo cambian y por tanto nunca lo heredan.
   [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=$CMDN_SIMPLE; CMDN_LINE_SET=1; }
-  mapfile -t CMDN_SEGS <<<"$rest"
   while (( ${#CMDN_SEGS[@]} )) && [[ -z ${CMDN_SEGS[-1]} ]]; do
     unset 'CMDN_SEGS[-1]'
   done
