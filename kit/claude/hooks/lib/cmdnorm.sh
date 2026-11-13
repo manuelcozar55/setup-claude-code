@@ -332,7 +332,7 @@ function heredocs(s, i, n,   h, o, m, body, rest, p, e, w, isdata, bs, lt, L) {
 }
 
 function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e, w) {
-  txt = ""; nt = 0; tok = ""; have = 0; rd = 0; openq = 0; hdn = 0; subdepth = 0; btick = 0
+  txt = ""; nt = 0; tok = ""; have = 0; rd = 0; dl = -9; ansic = 0; openq = 0; hdn = 0; subdepth = 0; btick = 0
   pend = ismain ? "" : ";"
   forceS = !ismain
   n = length(s); i = 1
@@ -346,19 +346,26 @@ function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e,
     }
     if (c == "$") {
       nx = substr(s, i + 1, 1)
+      # `$$` es el PID: la segunda `$` ya no abre una forma $-comilla (bash la lee como comilla simple normal).
+      if (dl == i - 1) { dl = -9; tok = tok c; have = 1; txt = txt c; i++; continue }
       if ((nx == "\047" || nx == "\"") && !((i + 1) in skip)) {
         # Formas $-comilla (ANSI-C y locale): bash quita el `$` y las comillas. Si lleva una barra invertida dentro, el valor
         # real no se puede calcular aqui: el `$` se queda en el token y el guard de git push lo trata como sospechoso.
         pv = 0
         if (nx == "\047") for (j = i + 2; j <= n && substr(s, j, 1) != nx; j++) if (substr(s, j, 1) == "\\") { pv = 1; break }
         if (pv) tok = tok c
+        ansic = (nx == "\047")
         txt = txt c; i++; continue
       }
+      dl = i
     }
     if ((c == "\047" || c == "\"") && !(i in skip)) {
       start = i; q = c; txt = txt c; i++; have = 1; closed = 0
+      isansi = ansic; ansic = 0
       while (i <= n) {
         d = substr(s, i, 1)
+        # En una cadena ANSI-C la barra escapa el caracter siguiente, tambien la comilla simple: no cierra la cadena.
+        if (isansi && d == "\\") { tok = tok d substr(s, i + 1, 1); txt = txt d substr(s, i + 1, 1); i += 2; continue }
         if (d == q) { closed = 1; txt = txt d; i++; break }
         if (q == "\"" && d == "\\") {
           nx = substr(s, i + 1, 1)

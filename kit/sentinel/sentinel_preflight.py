@@ -585,6 +585,7 @@ def _lex(text: str, comments: bool = True) -> list:
     comments: a # that starts a word comments to the end of the line, as in bash;
     off for a quoted string read again as a command, where it would hide a name."""
     toks, cur, subs, docs, i, n = [], None, [], [], 0, len(text)
+    dl = -9  # index of the last bare `$` not yet paired (`$$` is the PID, its second `$` opens no $'...')
     while i < n:
         c = text[i]
         if c == "#" and cur is None and comments:
@@ -616,6 +617,10 @@ def _lex(text: str, comments: bool = True) -> list:
         cur = cur or ""
         if c == "'":
             j = text.find("'", i + 1)
+            if dl == i - 1:  # $'...': ANSI-C, \' does not close it
+                j = i + 1
+                while j < n and text[j] != "'":
+                    j += 2 if text[j] == "\\" else 1
             j = n if j < 0 else j
             cur, i = cur + text[i + 1:j].translate(_MASK), j + 1
         elif c == '"':
@@ -626,6 +631,8 @@ def _lex(text: str, comments: bool = True) -> list:
         elif m := _PLAIN.match(text, i):
             cur, i = cur + m.group(), m.end()
         else:
+            if c == "$" and not text.startswith("$(", i):
+                dl = -9 if dl == i - 1 else i
             cur, i = _lex_char(text, i, False, cur, subs)
     if cur is not None:
         toks.append((cur.translate(_UNMASK), cur, subs))
