@@ -36,7 +36,7 @@ Con ella, `doctor.sh` lo cuenta como «desactivado por ti» y sale con 0.
 S=~/.claude/settings.json
 jq --arg s stale-read-guard.py '.hooks |= with_entries(.value |= map(select(.hooks | map(.command | contains("/" + $s + "\"")) | any | not)))' "$S" > "$S.new" && mv "$S.new" "$S"
 echo stale-read-guard.py >> ~/.claude/.kit-desactivados
-bash kit/doctor.sh      # desde el clon: INFO · desactivado por ti … ; == OK (0 FAIL) ==
+bash kit/doctor.sh      # desde el clon: WARN · guard de seguridad desactivado por ti … ; == OK (0 FAIL) ==
 ```
 
 Cambia `stale-read-guard.py` por el nombre que aparece en [MAPA.md](MAPA.md). Reinicia las sesiones abiertas.
@@ -87,7 +87,7 @@ lanzas `scc`.
 
 ## Actualizar a una versión nueva
 
-Una sola receta, desde el clon:
+Una sola receta, desde un clon de GitHub (con el paquete de entrega, ver [`ENTREGA.md`](../../ENTREGA.md#actualizar)):
 
 ```bash
 git pull
@@ -96,12 +96,12 @@ bash kit/install.sh --apply    # aplica, con copia de lo que sobrescribe en ~/.c
 bash kit/doctor.sh             # debe terminar en == OK (0 FAIL) ==
 ```
 
-Reinicia las sesiones abiertas de Claude Code: no recargan los hooks ni el cockpit. Si quitaste algún hook, repite su
-borrado (ver arriba). `~/.claude/.kit-version` dice qué versión tienes; `scc --version` imprime la del kit, la del
+Reinicia las sesiones abiertas de Claude Code: no recargan los hooks ni el cockpit. Lo que anotaste en
+`.kit-desactivados` no vuelve; lo que quitaste sin anotarlo, sí (ver arriba). `~/.claude/.kit-version` dice qué versión tienes; `scc --version` imprime la del kit, la del
 cockpit y la de Claude Code.
 
 Lo que una versión retira del kit (en la 2.0: el agente `strategist` y las skills `domain-modeling`, `grilling`,
-`to-questionnaire` y `writing-for-agents`) lo borra `install.sh --apply` solo si es idéntico a una versión que el kit
+`to-questionnaire` y `writing-for-agents`) lo retira `install.sh --apply` (lo mueve a `~/.claude/backups/<fecha>-…/`, no lo borra) solo si es idéntico a una versión que el kit
 publicó; si lo modificaste lo conserva y lo dice, y `doctor` lo avisa mientras siga ahí.
 
 ## Desinstalar
@@ -130,7 +130,7 @@ Conserva y lista lo que modificaste, quita los enlaces de `~/.local/bin` solo si
 | Estado de cada proyecto | `<proyecto>/.claude/estado/nucleo.md` y su carpeta |
 | Qué instaló el kit y con qué suma | `~/.claude/.kit-manifest`, `~/.claude/.kit-version` |
 
-3. Un hook que falla por su cuenta no rompe la sesión salvo los guards, que cierran en falso (bloquean) a propósito.
+3. Un hook que falla por su cuenta no rompe la sesión salvo los guards, que fallan cerrados (bloquean) a propósito.
    Si un hook que no es guard te estorba, quítalo; si es un guard, abre una incidencia con su mensaje.
 
 ## Si Claude Code se actualiza y algo se rompe
@@ -146,7 +146,7 @@ Conserva y lista lo que modificaste, quita los enlaces de `~/.local/bin` solo si
 `CLAUDE_HOME=/otra/ruta bash kit/install.sh --apply` copia el kit a esa ruta, pero los comandos de hooks que escribe en
 `settings.json` siguen apuntando a `"$HOME/.claude/hooks/…"` (lo comprobado: instalado con un `HOME` limpio y otro
 `CLAUDE_HOME`, `settings.json` cita `$HOME/.claude/hooks/agentes.sh` y esa ruta no existe). Fuera de `~/.claude` los hooks no
-se ejecutan: usa `CLAUDE_HOME` solo para ensayar (con `doctor.sh`) y para instalar de verdad deja el valor por defecto.
+se ejecutan: usa `CLAUDE_HOME` solo para ensayar (con `doctor.sh`) y para instalar de verdad deja el valor por defecto. Con otro directorio, `install.sh --apply` imprime «AVISO: los hooks cablean $HOME/.claude/…» y `doctor.sh` da un `WARN` con el mismo motivo.
 
 ## Ver también
 

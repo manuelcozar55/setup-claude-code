@@ -38,9 +38,8 @@ Lo que cada capa protege y lo que no, de un vistazo:
 Antes de los guards y de Sentinel hay una capa que no es un hook: las reglas
 `permissions.deny` que el kit distribuye en `settings.json`. Las evalúa Claude
 Code, así que deniegan la llamada a la herramienta **antes** de que ningún hook
-la vea. Cubren tres familias: los borrados de la raíz y de `$HOME` y el `git
-push --force` en sus distintas escrituras (reglas `Bash(...)`), los dos métodos
-del MCP de LinkedIn que escriben a terceros, y la configuración del propio kit
+la vea. Cubren dos familias: los borrados de la raíz y de `$HOME` y el `git
+push --force` en sus distintas escrituras (reglas `Bash(...)`), y la configuración del propio kit
 —`Edit(/hooks/**)`, `Edit(/settings.json)`, `Edit(/settings.local.json)`,
 `Edit(/sentinel-allowlist.json)` y `Edit(/sentinel/**)`— para que una sesión no
 pueda desarmar sus propias barreras editándolas. Del lado de Sentinel, esas
@@ -84,8 +83,8 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
   (`cat > notas.md <<'EOF'`) ya no se leen como el comando que nombran. Si algún segmento lee su programa de la entrada
   (un shell sin `-c`, `ssh`, `xargs`, `. /dev/stdin`) o el heredoc se guarda y se ejecuta en la misma orden
   (`cat > a.sh <<EOF … EOF && bash a.sh`), el texto vuelve a contar como código.
-- **El borrado recursivo se decide por operandos**, no por la palabra: `rm -rf node_modules` o `rm -rf build` pasan,
-  `rm -rf ~/Documentos` o `rm -rf /` se deniegan, y `rm -rf .`, `*`, `./*` o `.git` también (vacían el repo). La exención es una
+- **El borrado recursivo se decide por operandos**, no por la palabra: `rm -rf node_modules` o `rm -rf build` preguntan
+  con la ruta resuelta, `rm -rf ~/Documentos` o `rm -rf /` se deniegan, y `rm -rf .`, `*`, `./*` o `.git` también (vacían el repo). La exención es una
   **prueba positiva** (lista cerrada, abajo): una ruta relativa de build **dentro del proyecto** sin `..` (`build`, `./dist/x`),
   `~/proyecto/…/build` o una subruta concreta de `/tmp` (`/tmp/prueba-123`). Todo lo demás se deniega como en la versión anterior:
   `~/build`, `~/dist`, `~/.cache` (bajo `~` el nombre del directorio no basta), `../node_modules`, `/tmp` o `/tmp/*`, `~root`, `/run`,
@@ -144,9 +143,9 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
   (`curl … | $X`), en la propia orden (`$X -rf ~`, `$(echo rm) -rf ~`, `{rm,-rf,~}`), en el subcomando de git (`git $X`), en
   un refspec o en el operando de `rm`, `reset` o `clean`
   (`rm -rf $D`, `git push origin $B`, `git reset $H`), `git config alias.*` (los guards no ven lo que hace un alias) y un
-  fichero que el propio comando escribe y ejecuta (`echo … > x.sh; bash x.sh`). Preguntar de más es el lado seguro.
+  fichero que el propio comando escribe y ejecuta (`echo … > x.sh; bash x.sh`; solo si el destino se escribió en una orden anterior de la misma línea: `./run.sh > out.log` ya no pregunta). Preguntar de más es el lado seguro.
 - **Lo que es peligroso de verdad, se deniega.** El corpus de 25 comandos peligrosos de la auditoría se bloquea entero y
-  `test_guards_veredictos.sh` lo comprueba en cada `make test`, junto a 34 legítimos: 22 pasan, 3 preguntan (`rm -rf node_modules`, `./build dist`, `/tmp/build-123`: la exención de build se retiró) y 9 son falsos positivos declarados que ya daba la versión anterior (el borrado de `../otro-proyecto/node_modules`, un heredoc a `python3` con el literal `rm -rf /`, y escribir un texto a un fichero: `cat > f <<EOF`, `echo … >> README.md`), 12 bypasses y los casos
+  `test_guards_veredictos.sh` lo comprueba en cada `make test`, junto a 34 legítimos: 22 pasan, 3 preguntan (`rm -rf node_modules`, `./build dist`, `/tmp/build-123`: la exención de build se retiró) y 9 son falsos positivos declarados que ya daba la versión anterior (el borrado de `../otro-proyecto/node_modules`, un heredoc a `python3` con el literal `rm -rf /`, y escribir un texto a un fichero: `cat > f <<EOF`, `echo … >> README.md`); comprueba además 12 bypasses y los casos
   que parecen prosa y no lo son.
 
 **Lo que sigue sin ver ningún guard** (límites declarados, fijados en `test/fixtures/guards-bypass.jsonl`): el código de
@@ -161,13 +160,13 @@ rama que no es `main`/`master`, `git stash clear`, `git filter-branch`, `git ref
 `git reset --merge|--keep`, `git checkout -f`, `git switch -f`, `mv ~ …`, `truncate` de un dotfile, `kill -9 -1`, `pkill -9 -u`,
 `printenv`, `cat /proc/self/environ`, `cat` de ficheros de credenciales que no están en la lista cerrada
 (`~/.git-credentials`, la config de gcloud), un nombre armado con `printf` o con `${X:-…}` (`cat $(printf .en%s v)`), el
-nombre por glob (`cat .en*`), `rm${IFS}-rf${IFS}~/x`, la expansión de llaves `{rm,-rf,~/x}` y `$'\x72m' -rf ~`
-(esta última sí pregunta: lleva un `$` en la orden). La barrera real es la capa de permisos de Claude Code y, para lo
+nombre por glob (`cat .en*`), `rm${IFS}-rf${IFS}~/x` y `$'\x72m' -rf ~`
+(esta última sí pregunta: lleva un `$` en la orden; la expansión de llaves `{rm,-rf,~/x}` también pregunta). La barrera real es la capa de permisos de Claude Code y, para lo
 catastrófico, que el agente no corra con permisos que no necesita.
 
 `git push --force-with-lease` y `--force-if-includes` a una rama de trabajo (prefijo `feat/`, `fix/`, `release/`… o la rama actual si lo
-lleva) **pasan** (solo pisan la rama si nadie la ha tocado); a `main`/`master`, con `--all` o `--mirror`, con `--force` junto a ellos o
-con un `+refspec`, se deniegan, y a una rama sin prefijo de trabajo (`develop`, `trunk`) o con `--tags` se pregunta. El texto de
+lleva) **preguntan** (solo pisan la rama si nadie la ha tocado); a `main`/`master`, a una rama sin prefijo de trabajo (`develop`,
+`trunk`), con `--tags`, `--all` o `--mirror`, con `--force` junto a ellos o con un `+refspec`, se deniegan. El texto de
 `gh pr create|issue comment --body|--title` es prosa. Un intérprete con su propio código es un límite real: `python3 -c "print('hola')"`
 pasa (como en la versión anterior) y también `python3 - <<EOF … shutil.rmtree('/home/u') … EOF`, porque el guard ve texto, no lo
 que ejecutará Python; `python3 -c "print('rm -rf ~')"` sigue bloqueado por el literal (falso positivo preexistente, L36).
@@ -236,6 +235,7 @@ Un guard puede no poder decidir. Qué hace entonces está decidido, probado y es
 | Fallo | Los 5 guards de Bash | Sentinel (`sentinel_preflight.py`) | `write-guard.py` |
 |---|---|---|---|
 | Falta `jq` | **Bloquean** (`exit 2` o `deny`): sin `jq` no pueden leer el comando. | No usa `jq`: funciona. | No usa `jq`: funciona. |
+| No pueden leer el comando normalizado o emitir el veredicto | **Bloquean** (`exit 2`): un fallo de `cmdn_parse`, o de `jq` al escribir el `deny`/`ask` de `block-dangerous-commands.sh`, ya no deja pasar. | No lo usa. | No lo usa. |
 | Falta `python3` | No lo usan: funcionan. | **No bloquea y lo dice**: `optional-hook.sh` avisa una vez por sesión (`additionalContext`) de que Sentinel no está activo. | Igual: no bloquea y avisa una vez por sesión. |
 | Falta su script o su librería | **Bloquean** (`exit 2`) si falta `lib/cmdnorm.sh`; `bash-write-guard.sh` deniega si falta `lib/secret-patterns`. | `exit 2` (con `python3` presente). | `exit 2`, como Sentinel. |
 | JSON roto o ilegible | **Bloquean**. `bash-write-guard.sh` solo si el texto trae `>`, `<<`, `tee` o `sed` (su prefiltro lee texto, no JSON). | `exit 2`. | `exit 2`. |

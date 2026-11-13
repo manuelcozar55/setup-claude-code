@@ -76,7 +76,7 @@ Capacidades externas que Claude Code invoca vía el protocolo MCP. Conocidos en 
 
 - **firecrawl**: scraping y búsqueda web. Requiere su propia clave en `$HOME/.claude/.env`.
 - **perplexity**: búsqueda web. Dado de baja en este setup el 2026-08-17 (llegó sin `PERPLEXITY_API_KEY` tras una migración de máquina y nunca se repuso). Se documenta porque el `.env.example` todavía la nombra: si no la usas, no la des de alta.
-- **linkedin**: mensajería. Retirado del ámbito global el 2026-08-25 por coste de arranque (`uvx …@latest` consulta PyPI en **cada** lanzamiento: 1,43 s medidos). Si lo repones, píneale la versión y **no toques** las dos denegaciones que `settings.json` mantiene en `permissions.deny` — `mcp__linkedin__send_message` y `mcp__linkedin__connect_with_person` —: siguen ahí a propósito, para que reinstalarlo no reabra en silencio la puerta a escribir a terceros.
+- **linkedin**: mensajería. Retirado del ámbito global el 2026-08-25 por coste de arranque (`uvx …@latest` consulta PyPI en **cada** lanzamiento: 1,43 s medidos). Si lo repones, píneale la versión y añade tú en `permissions.deny` `mcp__linkedin__send_message` y `mcp__linkedin__connect_with_person`: la plantilla del kit ya no las lleva, y sin ellas reinstalarlo abre la puerta a escribir a terceros.
 - **serena**: navegación por símbolos vía LSP. **Por proyecto, nunca en global** (ver abajo).
 
 ### Un MCP en ámbito global es un impuesto fijo, y casi nunca se mide

@@ -56,7 +56,7 @@ bash kit/install.sh
 bash kit/doctor.sh
 ```
 
-Esta es la vía para quien solo quiere usar el kit. Instala la config en `~/.claude`, enlaza `handoff` y `oraculo` en tu `PATH` y no ejecuta la suite de tests. Para el primer día completo (prerrequisitos, primer proyecto, bucle diario) sigue [`10-onboarding.md`](10-onboarding.md).
+Esta es la vía para quien solo quiere usar el kit. Instala la config en `~/.claude`, enlaza los CLIs del kit (`handoff`, `oraculo`, `cupo`, `efectividad` y `scc`) en tu `PATH` y no ejecuta la suite de tests. Para el primer día completo (prerrequisitos, primer proyecto, bucle diario) sigue [`10-onboarding.md`](10-onboarding.md).
 
 `make bootstrap` **no** es la vía de quien solo usa el kit. Está pensado para quien trabaja en este repo: crea `config/profile.yaml` (tu perfil del harness de la raíz), instala, ejecuta `make test` (más de un minuto) y corre `doctor.sh`. Si lo usas, los avisos de `install.sh` quedan tapados bajo la salida de los tests: repásalos con `bash kit/install.sh`.
 
@@ -81,7 +81,7 @@ Por defecto instala en `$HOME/.claude`. Si quieres probarlo primero en una ruta 
 CLAUDE_HOME=/ruta/alternativa bash install.sh
 ```
 
-Con un `CLAUDE_HOME` que no es `$HOME/.claude` el instalador no toca `~/.local/bin`: imprime las órdenes `ln -s` de `handoff` y `oraculo` por si quieres enlazarlos tú (Paso 3b).
+Con un `CLAUDE_HOME` que no es `$HOME/.claude` el instalador no toca `~/.local/bin`: imprime las órdenes `ln -s` de los CLIs del kit por si quieres enlazarlos tú (Paso 3b), y avisa de que los hooks cablean `$HOME/.claude` (con otro directorio no se ejecutan; `doctor.sh` da un `WARN`).
 Esta variable selecciona el destino de los archivos, no el perfil que Claude Code carga
 automáticamente. Los comandos de la plantilla usan `$HOME/.claude`. Para una inspección
 sin activar nada, usa `bash install.sh --plan`; para probar la instalación completa,
@@ -91,7 +91,7 @@ usa un HOME de prueba o el ensayo `scripts/aceptacion-local.sh` de la entrega.
 
 **Si ya tenías un `CLAUDE.md`.** El instalador no lo toca y deja la plantilla del kit en `CLAUDE.kit.md`. Al terminar te avisa de lo que falta: añade la línea `@AGENTS.md` a tu `CLAUDE.md` para que Claude Code cargue las reglas del kit (`AGENTS.md` sí se instala). Sin esa línea los hooks funcionan, pero el modelo no conoce la convención de `nucleo.md` ni los comandos `handoff` y `oraculo`. `doctor.sh` lo marca con un `WARN`. Para el resto de la plantilla (sección «Contexto»), copia lo que quieras de `CLAUDE.kit.md`.
 
-**Diff-first.** Si tu `$CLAUDE_HOME` es un repo git con remoto (un repo de configuración propio), el instalador **no escribe nada**: genera aparte el árbol que instalaría y te muestra el diff (nuevos, idénticos, modificados) para que copies lo que quieras ([ADR 008](../../knowledge/DECISIONS/008-install-diff-first.md)). El plan parte de lo que tienes instalado y enseña lo que haría `--apply`: `settings.json` sale fusionado, y un `CLAUDE.md` o `AGENTS.md` tuyo sale intacto, con la versión del kit en `*.kit.md`. Hasta la 1.5.0 partía de un árbol vacío y daba por borrados tu `env`, tus permisos, tus hooks y tu `CLAUDE.md`, aunque `--apply` los conservase. `--apply` fuerza la escritura real, siempre con backup; `--plan` fuerza el modo diff aunque no sea un repo git. El árbol del plan queda en `${TMPDIR:-/tmp}/mcharness-plan.XXXXXX` y no se borra solo (lo necesitas para el diff y para copiar lo que quieras); bórralo con `rm -r` cuando termines.
+**Diff-first.** Si tu `$CLAUDE_HOME` es un repo git con remoto (un repo de configuración propio), el instalador **no escribe nada**: genera aparte el árbol que instalaría y te muestra el diff (nuevos, idénticos, modificados) para que copies lo que quieras ([ADR 008](../../knowledge/DECISIONS/008-install-diff-first.md)). El plan parte de lo que tienes instalado y enseña lo que haría `--apply`: `settings.json` sale fusionado, y un `CLAUDE.md` o `AGENTS.md` tuyo sale intacto, con la versión del kit en `*.kit.md`. Hasta la 1.5.0 partía de un árbol vacío y daba por borrados tu `env`, tus permisos, tus hooks y tu `CLAUDE.md`, aunque `--apply` los conservase. `--apply` fuerza la escritura real, siempre con backup; `--plan` fuerza el modo diff aunque no sea un repo git. El árbol del plan se crea en un temporal que se borra al terminar; para conservarlo (copiar lo que quieras del diff), usa `SCC_OUT=<directorio>`.
 
 ### Modelo, ventana y esfuerzo: una sola fuente (medido)
 
@@ -119,7 +119,7 @@ Las claves y los archivos privados quedan fuera del paquete y de Git.
 - **`CLAUDE_CONFIG_DIR` vacía no es lo mismo que sin definir**: `CLAUDE_CONFIG_DIR="" claude auth status`
   da `loggedIn:false`. Quítala con `unset CLAUDE_CONFIG_DIR`; `doctor.sh` avisa (WARN) si la encuentra vacía.
 
-## Paso 3b · CLIs `handoff`, `oraculo`, `cupo` y `efectividad`
+## Paso 3b · CLIs `handoff`, `oraculo`, `cupo`, `efectividad` y `scc`
 
 `install.sh` copia `bin/handoff`, `bin/oraculo`, `bin/cupo`, `bin/efectividad` y `bin/scc` a `$CLAUDE_HOME/bin/` (ejecutables) y crea cinco enlaces en `~/.local/bin/`:
 
@@ -131,7 +131,7 @@ Las claves y los archivos privados quedan fuera del paquete y de Git.
 
 Reglas del enlace: solo se crea si `CLAUDE_HOME` es `$HOME/.claude` y además no existe nada con ese nombre, o ya era un enlace a `$CLAUDE_HOME/bin`. Con otro `CLAUDE_HOME` (una ruta de prueba, la CI) no escribe en `~/.local/bin`, porque al borrar esa ruta los enlaces quedarían colgando: imprime las órdenes `ln -s` y las ejecutas tú si quieres. Nunca pisa un fichero tuyo ni un enlace a otro sitio: en ese caso te avisa y lo dejas tú como prefieras. En modo diff-first no escribe nada y lo anota en el plan.
 
-Si `~/.local/bin` no está en tu `PATH`, el instalador lo dice al final. En Debian y Ubuntu esa carpeta entra en el `PATH` al iniciar sesión **solo si ya existía**: si la acaba de crear el instalador, **abre una terminal nueva** antes de usar los comandos. Compruébalo con `command -v handoff oraculo cupo`.
+Si `~/.local/bin` no está en tu `PATH`, el instalador lo dice al final. En Debian y Ubuntu esa carpeta entra en el `PATH` al iniciar sesión **solo si ya existía**: si la acaba de crear el instalador, **abre una terminal nueva** antes de usar los comandos. Compruébalo con `command -v handoff oraculo cupo efectividad scc`.
 
 `handoff` y `oraculo` son bash + `jq`, sin red, y valen igual en Claude Code, Codex y opencode (`handoff --help`, `oraculo --help`). `cupo` hace un turno mínimo de `claude -p` (consume un turno, no es offline): ver [`06-routine.md`](06-routine.md#sesiones-autónomas-largas). El camino absoluto (`$CLAUDE_HOME/bin/handoff`) funciona siempre, aunque el `PATH` no esté listo. `efectividad` (python3, sin red) calcula las cuatro cifras de uso real del kit a partir de tus transcripts: ver la [guía · mide tu setup](guia/04-mide-tu-setup.md).
 
@@ -202,11 +202,11 @@ Dónde va cada cosa: lo temporal, en un `mktemp`; el estado, los informes y los 
 cd tu-repo && bash /ruta/al/kit/install.sh --enable-secrets-layer2
 ```
 
-Para falsos positivos de los guards, usa `sentinel-allowlist.json` en vez de desactivarlos. Detalle en `05-security.md`.
+Para falsos positivos de los guards, reformula la orden; si crees que es un fallo del guard, abre una incidencia. La allowlist de Sentinel exime rutas de `Read`/`Edit`, nunca un comando de `Bash`. Detalle en `05-security.md`.
 
 ## Actualizar
 
-Desde el clon, pasa a la versión que quieras (`vX.Y.Z` es el tag) y reinstala:
+Con el paquete de entrega, sigue [`ENTREGA.md`](../../ENTREGA.md#actualizar). Desde un clon de GitHub, pasa a la versión que quieras (`vX.Y.Z` es el tag) y reinstala:
 
 ```bash
 git fetch --tags
@@ -287,11 +287,11 @@ Usa el restaurador de esta entrega para deshacer una sustitución de entrada;
 las versiones anteriores no interpretan ese registro.
 **No borra** lo que el instalador creó en limpio ni elimina entradas nuevas
 al restaurar un snapshot. Sin backup interno, la operación por defecto falla;
-no elige un ZIP automáticamente. Detalle y rollback en [`ENTREGA.md`](../../ENTREGA.md#restaurar).
+no elige un ZIP automáticamente. Detalle y rollback en «Desinstalar y volver atrás» (arriba) y en `uninstall.sh --from`.
 
-Para quitar el kit del todo, a mano:
+Para quitar el kit del todo, a mano (lo normal es `bash uninstall.sh --kit --apply`, que lo hace por ti):
 
-- Los enlaces `~/.local/bin/handoff`, `~/.local/bin/oraculo` y `~/.local/bin/cupo`.
+- Los enlaces de `~/.local/bin` (`handoff`, `oraculo`, `cupo`, `efectividad` y `scc`).
 - Los ficheros del kit en `~/.claude` que no quieras conservar (`bin/`, `hooks/`, `agents/`, las skills del método, `templates/nucleo.md`, `AGENTS.md`) y las entradas de `hooks` del `settings.json`. Si ya tenías una config tuya, `bash uninstall.sh --apply` te devuelve su versión anterior.
 - El cockpit, si lo instalaste: `claude plugin uninstall cockpit@setup-claude-code`.
 - La política gestionada de `/etc/claude-code/`, si tu organización la instaló: la quita quien tenga permisos de administrador, no el kit.

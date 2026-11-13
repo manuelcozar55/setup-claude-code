@@ -46,9 +46,7 @@ sudo apt update
 sudo apt install git jq make curl ca-certificates python3 python3-venv zip unzip
 ```
 
-`curl` lo usa el instalador para descargar `gitleaks` (opcional). Comprueba que están:
-
-`zip` y `unzip` permiten crear la copia de seguridad que exige la restauración.
+`curl` lo usa el instalador para descargar `gitleaks` (opcional). `zip` y `unzip` permiten crear la copia de seguridad que exige la restauración. Comprueba que están:
 
 ```bash
 git --version && jq --version && make --version && python3 --version
@@ -67,9 +65,7 @@ bash kit/install.sh
 No uses `make bootstrap`: ejecuta además la suite de tests y crea un perfil que no necesitas. Lee la salida del instalador hasta el final. Te puede avisar de dos cosas:
 
 - **Ya tenías un `CLAUDE.md`.** No lo toca. Añade la línea `@AGENTS.md` a tu `CLAUDE.md`; la plantilla del kit quedó en `CLAUDE.kit.md`.
-- **`~/.local/bin` no está en tu `PATH`.** El instalador enlaza `handoff`, `oraculo`, `cupo` y `efectividad` ahí. Abre una terminal nueva antes de seguir.
-
-Al final el instalador imprime «Rellena tus claves: cp … .env.example …». Es **opcional**: solo hace falta si vas a usar servicios externos con clave; el kit funciona sin ese fichero.
+- **`~/.local/bin` no está en tu `PATH`.** El instalador enlaza los CLIs del kit (`handoff`, `oraculo`, `cupo`, `efectividad` y `scc`) ahí. Abre una terminal nueva antes de seguir.
 
 Si ya tenías hooks propios en `settings.json`, se conservan junto a los del kit y `doctor.sh` los lista. Hasta la 1.5.0 el kit los sustituía.
 
@@ -77,7 +73,7 @@ Si ya tenías hooks propios en `settings.json`, se conservan junto a los del kit
 
 ```bash
 bash kit/doctor.sh
-command -v handoff oraculo cupo   # deben salir tres rutas
+command -v handoff oraculo cupo efectividad scc   # deben salir cinco rutas
 ```
 
 Cómo leer `doctor.sh`:
@@ -132,7 +128,7 @@ Abre `nucleo.md` y rellena **Objetivo** (las palabras de quien pidió la tarea) 
    Claude Code te pedirá permiso en cada `oraculo --`. Apruébalo cada vez (solo esta vez) y no elijas «permitir siempre»: una regla permanente sobre `oraculo` dejaría pasar sin preguntar cualquier orden que se ejecute a través de él.
 
    Imprime las últimas 40 líneas y `rc=N`, sale con ese código y lo anota en `.claude/estado/verificaciones.log`. Así el estado guarda qué se verificó y con qué resultado.
-2. **El estado se guarda solo.** Tras cada turno el hook `autosave.sh` anota el último turno en `nucleo.md` (sin modelo); con el mod, el cockpit sintetiza el resto en silencio por hitos y turnos (`/autosave on|off|status`). `/handoff` es opcional: úsalo para fijar un foco o antes de un `/clear`; sin el mod, pide al modelo un borrador de las secciones que cambian y ejecuta `handoff --desde borrador.md`. `handoff --estado` te dice cuánto del tope ocupa el estado.
+2. **El estado se guarda solo.** Tras cada turno el hook `autosave.sh` anota el último turno en `nucleo.md` (sin modelo); con el mod, si lo enciendes (`/autosave on|off|status`; gasta tokens), el cockpit sintetiza el resto en silencio por hitos y turnos. `/handoff` es opcional: úsalo para fijar un foco o antes de un `/clear`; sin el mod, pide al modelo un borrador de las secciones que cambian y ejecuta `handoff --desde borrador.md`. `handoff --estado` te dice cuánto del tope ocupa el estado.
 3. **Retoma el trabajo.** Un `/handoff` manual ya hace el clear y prepara la continuación:
    revísala y pulsa Enter; no hagas otro `/clear` detrás. Si guardaste con la CLI o
    con `/handoff solo`, puedes ejecutar `/clear` cuando quieras relevar el contexto.
@@ -165,6 +161,6 @@ shellcheck -x <tus .sh>
 
 Si `make test` termina con el bloque «verde, pero con capas SALTADAS» (sin `gitleaks`, sin `claude` en el PATH, sin `kit/evals/runs.jsonl`), el rc es 0 pero esa capa **no se ha verificado**: instala la herramienta y repite antes de darlo por hecho. No lances dos `make test` a la vez: las pruebas de rendimiento miden tiempo de CPU y fallan por carga.
 
-Los guards no se prueban solo con leer el README: `bash kit/test/test_guards_falsifiability.sh` desactiva un guard real y exige que eso rompa exactamente 28 casos `BLOCK` conocidos. Si desactivarlo no rompiera nada, la suite no estaría midiendo nada.
+Los guards no se prueban solo con leer el README: `bash kit/test/test_guards_falsifiability.sh` desactiva un guard real y exige que eso rompa exactamente 52 casos `BLOCK` conocidos. Si desactivarlo no rompiera nada, la suite no estaría midiendo nada.
 
 Rama y PR, nunca directo a `main`. Y si tu cambio toca una cifra que la documentación afirma, `kit/test/test_doc_claims.sh` te pondrá en rojo: eso no es un obstáculo, es el punto.
