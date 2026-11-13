@@ -726,7 +726,7 @@ async function resolveState($: $) {
   // The CLI's tope already leaves room for the agents block the next SessionStart injects; 6500 is the pre-reserve contract.
   const tope = 'tope' in state && typeof state.tope === 'number' && Number.isSafeInteger(state.tope) && state.tope > 0 ? state.tope : 6500
   const estadoMd = 'modo' in state && state.modo === 'estado-md' && 'estado' in state && typeof state.estado === 'string' && state.estado.startsWith('/') ? state.estado : null
-  return { ...location, path: state.nucleo, estadoMd, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active, tope, foreignOwner: owner }
+  return { ...location, path: state.nucleo, estadoMd, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active, tope, foreignOwner: owner, sha: 'sha256' in state && typeof state.sha256 === 'string' ? state.sha256 : null }
 }
 
 const readState = async ($: $, path: string) => ((await $.fs.exists(path)) ? await $.fs.read(path) : '')
@@ -768,7 +768,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
   let tmp = ''
   try {
     if (!silent) await update($, handoff, (): Handoff => ({ phase: 'working' }))
-    const { root, start, dir, path, estadoMd, bin, active, tope, foreignOwner } = await resolveState($)
+    const { root, start, dir, path, estadoMd, bin, active, tope, foreignOwner, sha } = await resolveState($)
     // The CLI would refuse with rc 5 after the fork has been paid: ask first (the state's owner is in `--estado`).
     if (foreignOwner !== null) throw new Error(`el estado de este proyecto lo tiene otra sesión (${foreignOwner.slice(0, 8)}): no guardo ni limpio; cierra esa sesión o trabaja con ella`)
     if (andClear && (active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) throw new Error('hay agentes o shells vivos: no limpio; espera o usa /handoff solo')
@@ -839,6 +839,9 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
     await $.process.run(['chmod', '600', '--', tmp])
     await $.fs.write(tmp, draft)
     const sesion = await $.session.id().catch(() => '')
+    sameSession()
+    // The CLI only sees edits inside its own merge window: one made while the fork thought would be overwritten (and /clear follows).
+    if (!silent && (await resolveState($)).sha !== sha) throw new Error('nucleo.md cambió durante la consulta; repite /handoff')
     sameSession()
     const argv = [bin, '--desde', tmp, ...(root === null ? [] : ['--raiz', root]), ...(sesion ? ['--sesion', sesion] : []), '--json']
     let res = await $.process.run(argv, viaStart(start))

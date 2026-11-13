@@ -85,7 +85,8 @@ function repo(
     if (e.argv[0] === bin && e.argv[1] === '--estado') {
       await opts.beforeState?.(++stateReads)
       if (!e.argv.includes('--raiz') && !opts.statePath) return { value: { exitCode: 3, stdout: '', stderr: '' } } as never
-      return ok(JSON.stringify({ nucleo: opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`, pct: 1, bytes: 10, tope: opts.tope ?? 5700, dueno: null, agentes_vivos: opts.live ?? 0, ...(opts.estadoMd ? { modo: 'estado-md', estado: opts.estadoMd } : {}) }))
+      const at = opts.estadoMd ?? opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`
+      return ok(JSON.stringify({ nucleo: opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`, sha256: (() => { try { return at in files ? `h:${files[at]}` : null } catch { return null } })(), pct: 1, bytes: 10, tope: opts.tope ?? 5700, dueno: null, agentes_vivos: opts.live ?? 0, ...(opts.estadoMd ? { modo: 'estado-md', estado: opts.estadoMd } : {}) }))
     }
     if (e.argv[0] === bin && e.argv[1] === '--migrar') {
       const path = opts.statePath ?? `${EST}/nucleo.md`
@@ -2153,4 +2154,37 @@ test('contrato: con rc 2 del CLI el mensaje dice que no se guardó nada y qué h
   expect(res.text).toContain('cabecera no admitida «Raro»')
   expect(res.text).toContain('no se guardó nada')
   expect(res.text).toContain('repite /handoff')
+})
+
+// F6-1: el CLI solo ve cambios dentro de su ventana de fusión; el mod compara la suma de --estado antes y después del fork.
+test('handoff: nucleo.md editado mientras el fork pensaba: no guarda, no limpia y pide repetir', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1, beforeFork: async () => { r.files[`${EST}/nucleo.md`] += '- edición manual\n' } })
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  const res = await $.command.run({ ...RUN, command: 'handoff' })
+  await settle(clock)
+  expect(r.calls).toHaveLength(0)
+  expect(seen.cleared).toBe(0)
+  expect(r.files[`${EST}/nucleo.md`]).toContain('edición manual')
+  expect(res.text).toContain('nucleo.md cambió durante la consulta; repite /handoff')
+})
+
+test('handoff automático: nucleo.md editado durante el fork: error, sin /clear y sin segundo disparo', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000, beforeFork: async () => { r.files[`${EST}/nucleo.md`] += '- edición manual\n' } })
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(400)
+  await clock.advance(400)
+  expect(seen.forks).toBe(1)
+  expect(r.calls).toHaveLength(0)
+  expect(seen.cleared).toBe(0)
+})
+
+test('handoff: sin cambios durante el fork guarda una sola vez (la segunda consulta no lo rompe)', async ($, on) => {
+  fork(on, NEW)
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV })
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(r.calls).toHaveLength(1)
+  expect(res.text).toContain('Guardado en')
 })
