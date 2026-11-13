@@ -3,6 +3,7 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 H=$HERE/../claude/hooks
 T=$(mktemp -d)
+trap 'rm -r "$T"' EXIT
 export HOME=$T/home
 unset CLAUDE_PROJECT_DIR
 mkdir -p "$HOME" "$T/repo"

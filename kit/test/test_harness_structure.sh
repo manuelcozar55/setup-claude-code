@@ -353,6 +353,9 @@ if [ -f "$WF" ] && [ -d kit/test ]; then
     <(grep -oE 'bash kit/test/[A-Za-z0-9_]+\.sh' "$WF" | sed 's/^bash //' | sort -u) \
     <(find kit/test -maxdepth 1 -name 'test_*.sh' | sort -u) | grep -c . || true)
   ck "$huerfanas" "0" "todo kit/test/test_*.sh corre en ci.yml (huerfanas: $huerfanas)"
+  # Un job sin timeout-minutes cuelga 6 h si una suite se queda parada.
+  sintimeout=$(awk '/^jobs:/{j=1;next} j&&/^  [a-z0-9-]+:$/{if(n&&!t)c++;n=1;t=0;next} j&&/^    timeout-minutes:/{t=1} END{if(n&&!t)c++; print c+0}' "$WF")
+  ck "$sintimeout" "0" "todo job de ci.yml lleva timeout-minutes (sin: $sintimeout)"
 fi
 
 echo "== 10) test_diagramas_mermaid =="
