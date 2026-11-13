@@ -9,6 +9,7 @@
 #   SHA256SUMS             suma de todo lo anterior (cd DIR && sha256sum -c SHA256SUMS)
 # Necesita git, jq, sha256sum y zip (o python3 como alternativa a zip).
 set -euo pipefail
+export TZ=UTC0; umask 022
 usage() { echo "Uso: bash scripts/empaquetar-entrega.sh [--out DIR] [REF]" >&2; exit 64; }
 
 OUT="./entrega"; REF="HEAD"; ref_dado=0
