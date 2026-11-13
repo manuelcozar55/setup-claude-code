@@ -109,8 +109,8 @@ arreglo vuelve a tocar los tres.
 
 **Fecha:** 2026-11-13
 **Propuesta:** no añade nada al kit: recoge lo que la auditoría final dejó sin arreglar en 2.0.0, una línea
-por hallazgo. Informes en `.claude/estado/informes/2026-11-13-auditoria-final/` (fuera de git). Ninguno cambia el
-veredicto de un guard ni la integridad del estado; los de código se hacen después de publicar.
+por hallazgo. Informes en `.claude/estado/informes/2026-11-13-auditoria-final/` (fuera de git). Ninguno es una
+regresión frente a `main` ni toca la integridad del estado; los de código se hacen después de publicar.
 **Decisión:** pospuesto (2026-11-13). Entradas:
 
 Release y scripts (`F5-sumas-release.md`):
@@ -138,6 +138,14 @@ Guards (`W-guards.md`, «Límites y cosas vistas sin tocar»):
 - `bash-write-guard.sh:27-38`: su `deny()` no comprueba que `jq` funcione y sale con 0 (el mismo patrón que se cerró en `block-dangerous-commands.sh`).
 - El muestreo de semillas de composición de `test_guards_monotonia.sh` depende de la posición: un caso nuevo con prueba puede dejar sin detectar una mutación; lo vigila `test_guards_falsifiability.sh`.
 - `python3 <<'EOF'` con texto que no es Python pasa Sentinel igual que en la base; sin estudiar.
+- Las reglas de destino miran el literal: `echo x>"/dev/sda"` y `echo x>"$HOME"/.bashrc` (destino entre comillas) pasan, igual que en `main`.
+- «Escribe y ejecuta» compara nombres base: no ve `bash a.sh$X`, `F=a.sh; echo x > $F; bash a.sh` ni `bash -c ". a.sh"`; `main` no pregunta en ninguno.
+- `mv ~/.claude/settings.ba* /tmp/x` pasa aunque el glob alcance `settings.bak.json`: con glob solo se comparan `settings.json` y `settings.local.json`.
+- Falsos positivos aceptados: `touch "$HOME/.claude/settings*"` (el glob va entre comillas y bash no lo expande), `mv ~/*/settings.json` y `rm ~/.claude/*/x` (el `*` podría ser `.claude` o `hooks`).
+- La muestra por defecto de `test_guards_monotonia.sh` incluye 3 de los 181 casos de cadena ANSI-C; los cubren de forma fija las filas `F13-r006` a `F13-r016` de `guards-r4.jsonl`.
+
+Cockpit (revisión del diff):
+- `register.tsx`: el toast de «no se pudo guardar» sale también cuando la sesión no tiene ranura de estado; discutible, sin tocar.
 
 Documentación, lo que exige código o tests (`F8-docs.md`):
 - F8-01, F8-04, F8-06, F8-20: los textos están corregidos; falta el sensor en `test_doc_claims.sh` / `test_docs_enlaces.sh` (veredicto citado frente a `test_guards_veredictos.sh`, ancla `ENTREGA.md#actualizar`, fila «apagar» del cockpit, un enlace `[X.Y.Z]:` por cada entrada del CHANGELOG).
