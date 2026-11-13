@@ -572,8 +572,8 @@
 572	destruct	git clean -fdx	B	BLOCK	destructive-guard.sh	OK
 573	destruct-fuera-alcance	git checkout -- .	?	ALLOW		OBS
 574	destruct-fuera-alcance	git branch -D main	?	ALLOW		OBS
-575	fp-destruct	rm -rf build/	A	BLOCK	block-dangerous-commands.sh	FALSO POSITIVO
-576	fp-destruct	rm -rf ./build	A	BLOCK	block-dangerous-commands.sh	FALSO POSITIVO
+575	fp-destruct	rm -rf build/	ASK	BLOCK	block-dangerous-commands.sh	FALSO POSITIVO
+576	fp-destruct	rm -rf ./build	ASK	BLOCK	block-dangerous-commands.sh	FALSO POSITIVO
 577	fp-destruct	rm -f src/old.txt	A	ALLOW		OK
 578	fp-destruct	git push origin feature	A	ALLOW		OK
 579	fp-destruct	git push -u origin feature/x	A	ALLOW		OK
@@ -589,7 +589,7 @@
 589	fp-spec	echo turnkey	A	ALLOW		OK
 590	fp-spec	python3 -c "print(1)"	A	ALLOW		OK
 591	fp-spec	git push origin feature	A	ALLOW		OK
-592	fp-spec	rm -rf build/	A	BLOCK	block-dangerous-commands.sh	FALSO POSITIVO
+592	fp-spec	rm -rf build/	ASK	BLOCK	block-dangerous-commands.sh	FALSO POSITIVO
 593	fp-spec	ls -la	A	ALLOW		OK
 594	fp-spec	git diff --stat	A	ALLOW		OK
 595	fp-spec	sed -n 1,5p src/app.py	A	ALLOW		OK

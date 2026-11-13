@@ -31,6 +31,11 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_guards.sh
 	bash kit/test/test_guards_falsifiability.sh
 	bash kit/test/test_guards_corpus.sh
+	bash kit/test/test_guards_veredictos.sh
+	bash kit/test/test_guards_mensajes.sh
+	bash kit/test/test_guards_r1.sh
+	bash kit/test/test_guards_monotonia.sh
+	bash kit/test/test_guards_degradacion.sh
 	bash kit/test/test_secret_content_gitleaks.sh
 	bash kit/test/test_scan_secrets.sh
 	bash kit/test/test_install.sh
@@ -52,11 +57,23 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_harness_structure.sh
 	bash kit/test/test_install_diff_first.sh
 	bash kit/test/test_uninstall.sh
+	bash kit/test/test_install_manifest.sh
+	bash kit/test/test_install_plan.sh
+	bash kit/test/test_install_scc_deps.sh
+	bash kit/test/test_uninstall_kit.sh
+	bash kit/test/test_bump.sh
+	bash kit/test/test_empaquetar_entrega.sh
+	bash kit/test/test_origen.sh
+	bash kit/test/test_doctor_desactivados.sh
+	bash kit/test/test_mapa.sh
+	bash kit/test/test_adaptar.sh
+	bash kit/test/test_docs_enlaces.sh
 	bash kit/test/test_doc_claims.sh
 	bash kit/test/test_permisos_efectivos.sh
 	bash kit/test/test_evals.sh
 	bash kit/test/test_skills.sh
 	bash kit/test/test_mod_cockpit.sh
+	bash kit/mods/cockpit/test_cockpit.sh
 	bash kit/test/test_statusline.sh
 	bash kit/test/test_session_start_clear.sh
 	bash kit/test/test_nucleo_lib.sh
@@ -65,7 +82,6 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_agentes.sh
 	bash kit/test/test_nucleo_hooks.sh
 	bash kit/test/test_nucleo_nudge.sh
-	bash kit/test/test_nucleo_gate.sh
 	bash kit/test/test_settings_template.sh
 	bash kit/test/test_install_plugins.sh
 	bash kit/test/test_claude_md_template.sh
@@ -79,8 +95,8 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_changelog_cifras.sh
 	@if [ -s "$(SCC_SKIP_LOG)" ]; then echo; echo "== make test: verde, pero con capas SALTADAS (no cuentan como verificadas) =="; sort -u "$(SCC_SKIP_LOG)"; fi; rm -f "$(SCC_SKIP_LOG)"
 
-test-cockpit: ## Tests funcionales del cockpit; requiere Claude Code con soporte de mods
-	claude plugin test kit/mods/cockpit
+test-cockpit: ## tsc en clon limpio + contrato con el CLI real + claude plugin validate/test del cockpit (lo que falte se anuncia SKIP)
+	bash kit/mods/cockpit/test_cockpit.sh
 
 # bateria: los cuatro oraculos de cierre, cada uno con su .rc y su .log. Corren todos aunque uno falle; rc != 0 si
 # alguno falla. Una herramienta ausente da rc 127 (el shell lo da solo), nunca un SKIP. Los BATERIA_* se pueden

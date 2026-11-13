@@ -1,5 +1,6 @@
 #!/bin/bash
 # branch-guard.sh — Blocks git push to protected branches
+# QUE-HACE: Deniega git push a las ramas protegidas (main, master, production; CC_PROTECT_BRANCHES) aunque vaya con refspec, HEAD, +rama o dentro de bash -c; falla cerrado si no puede analizar la orden; deja pasar los push a ramas de trabajo y todo lo que no sea git push.
 # Source: yurukusa/claude-code-hooks (MIT)
 # Protocol: exit 2 = block with stderr reason
 
@@ -11,10 +12,12 @@ INPUT=$(cat)
 if ! command -v jq >/dev/null 2>&1; then
   echo "BLOCKED (fail-closed): falta jq en el PATH, asi que branch-guard no puede leer el comando." >&2
   echo "Instala jq (apt install jq) y reintenta." >&2
+  echo "Que hacer: instala jq (sudo apt install jq / brew install jq) y reintenta." >&2
   exit 2
 fi
 if ! COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null); then
   echo "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable; branch-guard no puede leer el comando." >&2
+  echo "Que hacer: reintenta; si se repite es un fallo de Claude Code, no de tu comando." >&2
   exit 2
 fi
 [[ -z "$COMMAND" ]] && exit 0
@@ -28,10 +31,11 @@ fi
 # Fuera de un repo, o con HEAD suelto, la rama actual no existe y se conserva el comportamiento
 # anterior: solo cuenta lo que el comando nombra.
 # shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit." >&2; exit 2; }
+. "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit. Que hacer: reinstala el kit (./install.sh --apply)." >&2; exit 2; }
 cmdn_oversize "$COMMAND" && exit 0
 if ! cmdn_parse "$COMMAND"; then
   echo "BLOCKED (fail-closed): awk no pudo normalizar el comando; branch-guard no puede evaluarlo." >&2
+  echo "Que hacer: comprueba que awk (mawk o gawk) esta instalado y reintenta con un comando mas corto." >&2
   exit 2
 fi
 
@@ -47,7 +51,7 @@ is_protected() {
 block() {
   echo "BLOCKED: Attempted push to protected branch '$1'." >&2
   echo "Command: $COMMAND" >&2
-  echo "Push to a feature/staging branch first, then open a PR." >&2
+  echo "Que hacer: empuja a una rama de feature y abre un PR; si de verdad quieres empujar ahi, ejecutalo tu con ! en la sesion." >&2
   exit 2
 }
 
@@ -81,7 +85,7 @@ scan() {
   local -a T segs ops targets gopts
   segs=("${CMDN_SEGS[@]}")
   for seg in "${segs[@]}"; do
-  [[ $seg == *push* || $seg == "$CMDN_US"cd"$CMDN_US"* ]] || continue
+  [[ $seg == *push* || $seg == *"$CMDN_US"cd"$CMDN_US"* ]] || continue
   [[ $seg == "$lastseg" && $CMDN_CWD == "$lastcwd" ]] && continue
   cmdn_fields "$seg"
   cmdn_track_cd
@@ -90,6 +94,11 @@ scan() {
     case ${T[1]:-} in echo|printf|grep|egrep|fgrep|rg|sed|awk|cat|man|type|which|less|head|tail|test|'[') (( PIPED )) || continue ;; esac
     for (( i = 2; i < ${#T[@]}; i++ )); do
       a=${T[i]}
+      # El texto de un PR, un issue o un comentario de gh es prosa; una `$( )` dentro ya es un segmento propio.
+      if [[ ${T[1]:-} == gh ]]; then
+        case ${T[i-1]} in -b|--body|-t|--title|-m|--message|--notes|--description) continue ;; esac
+        case $a in --body=*|--title=*|--message=*|--notes=*|--description=*) continue ;; esac
+      fi
       [[ $a == *git* ]] || continue
       inner=$a
       [[ $a == git || $a == */git ]] && printf -v inner '%s ' "${T[@]:i}"
@@ -157,6 +166,7 @@ PIPED=0; cmdn_pipes_to_shell && PIPED=1
 scan 0; rc=$?
 if (( rc == 2 )); then
   echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) o repos distintos con git push: no caben en el timeout del guard; dividelo en comandos cortos." >&2
+  echo "Que hacer: parte el comando en pasos mas cortos y ejecutalos por separado." >&2
   exit 2
 fi
 exit 0

@@ -255,15 +255,18 @@ cp "$tmp/s.bak" "$CLAUDE_HOME/settings.json"
 
 # Version de claude (rev-B IMPORTANTE 6): WARN si falta o es anterior a la version con la que se probo el kit.
 # Es la que cita docs/10-onboarding.md, no la de ninguna politica gestionada: las dos no pueden divergir.
-ck "$(grep -cF "se probó con la versión $(sed -n 's/^CLAUDE_PROBADA="\(.*\)"$/\1/p' "$KIT/doctor.sh")." "$KIT/docs/10-onboarding.md")" "1" "doctor.sh y docs/10-onboarding.md citan la misma version probada"
+# Fuente unica (cambio de especificacion declarado): la version minima es MIN_CLAUDE_CODE del cockpit; doctor la lee de ahi
+# y el README la cita (lo vigila scripts/verificar-docs.py). Antes estaba escrita a mano en doctor.sh y en 10-onboarding.
+MINV="$(grep -Eo "MIN_CLAUDE_CODE = '[0-9.]+'" "$KIT/mods/cockpit/hooks/register.tsx" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+ck "$(grep -cF "$MINV" "$KIT/../README.md")" "1" "doctor.sh y README citan la misma version minima (MIN_CLAUDE_CODE)"
 fake_claude() {  # $1 = version que imprime
   mkdir -p "$tmp/fk-$1"; printf '#!/bin/sh\necho "%s (Claude Code)"\n' "$1" > "$tmp/fk-$1/claude"; chmod +x "$tmp/fk-$1/claude"
 }
-fake_claude 2.1.100; fake_claude 2.1.292; fake_claude 2.2.0
+fake_claude 2.1.100; fake_claude "$MINV"; fake_claude 2.2.0; fake_claude 2.1.292
 set +e; out="$(PATH="$tmp/fk-2.1.100:$PATH" dr)"; set -e
-ck "$(echo "$out" | grep -c '^WARN .*claude.*2\.1\.100.*2\.1\.292')" "1" "doctor WARN con claude 2.1.100 (< 2.1.292)"
-set +e; out="$(PATH="$tmp/fk-2.1.292:$PATH" dr)"; set -e
-ck "$(echo "$out" | grep -c '^PASS .*claude 2\.1\.292')" "1" "claude 2.1.292 (la probada justa) es PASS"
+ck "$(echo "$out" | grep -c "^WARN .*claude.*2\.1\.100.*${MINV//./\\.}")" "1" "doctor WARN con claude 2.1.100 (< $MINV)"
+set +e; out="$(PATH="$tmp/fk-$MINV:$PATH" dr)"; set -e
+ck "$(echo "$out" | grep -c "^PASS .*claude ${MINV//./\\.}")" "1" "claude $MINV (la minima justa) es PASS"
 set +e; out="$(PATH="$tmp/fk-2.2.0:$PATH" dr)"; set -e
 ck "$(echo "$out" | grep -c '^PASS .*claude 2\.2\.0')" "1" "claude 2.2.0 es PASS (comparacion por version, no por texto)"
 # C-02: los guards de Bash llevan onFailure:"block" (claude >= 2.1.295); con uno anterior el doctor avisa.
@@ -426,6 +429,7 @@ HOME="$tmp/home8" bash "$KIT/install.sh" >/dev/null 2>&1
 set +e; out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home8" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; set -e
 ck "$(echo "$out" | grep -c '^FAIL · statusLine')" "0" "statusLine: CLAUDE_HOME distinto de \$HOME/.claude no da FAIL"
 ck "$(echo "$out" | grep -c "^PASS · statusLine resuelve a $CLAUDE_HOME/")" "1" "statusLine: con otro CLAUDE_HOME resuelve al script instalado en CLAUDE_HOME"
+ck "$(echo "$out" | grep -c '^WARN · .*hooks cablean .HOME/.claude')" "1" "doctor avisa si CLAUDE_HOME no es \$HOME/.claude (los hooks no se ejecutan)"
 export CLAUDE_HOME="$CH_SAVE"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

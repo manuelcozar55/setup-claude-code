@@ -241,8 +241,8 @@ const ESTADO = { raiz: '/w/p', nucleo: '/w/p/.claude/estado/nucleo.md', bytes: 4
 test('dock: muestra el % del tope y el dueño de esta sesión, leídos de handoff --estado', async ($, on) => {
   const runs = estadoCli(on as never, { ...ESTADO, dueno: { sesion: 'sesion-1', desde: '2026-10-19T10:00:00Z', vigente: true } })
   const { ui } = await mountDock($ as never, on as never, 56)
-  expect(await ui.find({ type: 'Text', text: /nucleo 62% del tope/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /dueño: esta sesión/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /estado guardado al 62% de su tamaño máximo/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /lo escribe: esta sesión/ })).toBeTruthy()
   const cli = runs.find(r => r.argv[0] === `${HOME}/.claude/bin/handoff`)
   expect(cli?.argv).toEqual([`${HOME}/.claude/bin/handoff`, '--estado', '--raiz', '/w/p', '--sesion', 'sesion-1'])
   expect(cli?.init?.timeoutMs).toBeLessThanOrEqual(5000)
@@ -251,7 +251,7 @@ test('dock: muestra el % del tope y el dueño de esta sesión, leídos de handof
 test('dock: un dueño vigente de otra sesión se nombra', async ($, on) => {
   estadoCli(on as never, { ...ESTADO, dueno: { sesion: 'abcdef12-0000', desde: '2026-10-19T10:00:00Z', vigente: true } })
   const { ui } = await mountDock($ as never, on as never, 56)
-  expect(await ui.find({ type: 'Text', text: /dueño: otra sesión \(abcdef12\)/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /lo escribe: otra sesión \(abcdef12\)/ })).toBeTruthy()
 })
 
 test('dock: un dueño incompleto degrada la continuidad sin romper el render', async ($, on) => {
@@ -259,25 +259,25 @@ test('dock: un dueño incompleto degrada la continuidad sin romper el render', a
   const { ui } = await mountDock($ as never, on as never, 56)
   expect(await ui.find({ text: /Continuidad degradada/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: 'Hechos · 1' })).toBeTruthy()
-  expect(await ui.find({ text: /dueño:/ })).toBeFalsy()
+  expect(await ui.find({ text: /lo escribe:/ })).toBeFalsy()
 })
 
 test('dock: sin dueño lo dice', async ($, on) => {
   estadoCli(on as never, { ...ESTADO, dueno: null })
   const { ui } = await mountDock($ as never, on as never, 56)
-  expect(await ui.find({ type: 'Text', text: /dueño: ninguno/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /lo escribe: nadie aún/ })).toBeTruthy()
 })
 
 test('dock: un dueño vencido de otra sesión se nombra como vencido', async ($, on) => {
   estadoCli(on as never, { ...ESTADO, dueno: { sesion: 'abcdef12-0000', desde: '2026-10-19T10:00:00Z', vigente: false } })
   const { ui } = await mountDock($ as never, on as never, 56)
-  expect(await ui.find({ type: 'Text', text: /dueño: otra sesión \(abcdef12\) vencido/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /lo escribe: otra sesión \(abcdef12\) vencido/ })).toBeTruthy()
 })
 
 test('dock: sin proyecto (exit 3) o con el CLI caído no dibuja la fila de estado', async ($, on) => {
   estadoCli(on as never, { raiz: null }, { exitCode: 3 })
   const { ui } = await mountDock($ as never, on as never, 56)
-  expect(await ui.find({ type: 'Text', text: /del tope/ })).toBeFalsy()
+  expect(await ui.find({ type: 'Text', text: /tamaño máximo/ })).toBeFalsy()
   expect(await ui.find({ type: 'Text', text: 'Hechos · 1' })).toBeTruthy()
 })
 
@@ -285,7 +285,7 @@ test('dock: un CLI que no responde no bloquea el dibujo', async ($, on) => {
   estadoCli(on as never, ESTADO, { hangs: true })
   const { ui } = await mountDock($ as never, on as never, 56)
   expect(await ui.find({ type: 'Text', text: 'Hechos · 1' })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /del tope/ })).toBeFalsy()
+  expect(await ui.find({ type: 'Text', text: /tamaño máximo/ })).toBeFalsy()
 })
 
 

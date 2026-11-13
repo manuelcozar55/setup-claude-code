@@ -38,6 +38,7 @@ fi
 
 # Todo ocurre en un HOME temporal: esta suite no puede acercarse al ~/.claude real.
 export HOME="$tmp/home"; mkdir -p "$HOME"
+read -r ORIG < "$KIT/ORIGEN"   # owner/repo de origen: un fork lo cambia en un solo sitio (scripts/cambiar-origen.sh)
 S=""
 seed(){  # $1 = caso; stdin = el settings.json que ya tenias. Deja $CLAUDE_HOME y $S puestos.
   export CLAUDE_HOME="$tmp/$1"; mkdir -p "$CLAUDE_HOME"
@@ -121,7 +122,7 @@ ck "$(jq -c '[.hooks.PreToolUse[] | select(any(.hooks[]; .command // "" | test("
 ck "$(cmds PreToolUse | tr '|' '\n' | grep -c -e 'block-dangerous' -e 'write-guard.py')" "2" "hooks: los guards del kit no se duplican (ni con su forma antigua)"
 ck "$(jq '[.hooks | .. | strings | select(test("smart_approve|preflight\\.sh|stop-session-summary"))] | length' "$S")" "0" "hooks: los que el kit retiro se van (stop-session-summary en 1.8.0)"
 # shellcheck disable=SC2016 # $HOME literal del settings, no del shell
-ck "$(cmds PreCompact)" '$HOME/.claude/hooks/pre-compact.sh|$HOME/.claude/hooks/circe-pre-compact.sh' "hooks: en un evento compartido van los del kit y detras los tuyos"
+ck "$(cmds PreCompact)" '"$HOME/.claude/hooks/pre-compact.sh"|$HOME/.claude/hooks/circe-pre-compact.sh' "hooks: en un evento compartido van los del kit y detras los tuyos"
 ck "$(cmds Stop | tr '|' '\n' | grep -c 'mi revision')" "1" "hooks: uno sin command (type prompt) es tuyo"
 ck "$(jq -c '[.hooks[][]? | select((.hooks | length) == 0)] | length' "$S")" "0" "hooks: no quedan grupos vacios"
 plantilla="$(jq -c '[.hooks[][].hooks[].command] | sort' "$KIT/claude/settings.json")"
@@ -215,7 +216,7 @@ seed j <<'EOF'
   "permissions": { "disableBypassPermissionsMode": "", "defaultMode": "bypassPermissions" } }
 EOF
 sha_j="$(sha256sum "$S" | cut -d' ' -f1)"
-MCHARNESS_OUT="$tmp/plan-j" run --plan
+SCC_OUT="$tmp/plan-j" run --plan
 ck "$(jq -r '.permissions.disableBypassPermissionsMode' "$tmp/plan-j/settings.json")" "disable" "plan: el settings.json del plan lleva disable"
 ck "$(sha256sum "$S" | cut -d' ' -f1)" "$sha_j" "plan: tu settings.json queda intacto"
 ck "$(dice 'AVISO.*disableAllHooks')" "y" "plan: aviso de disableAllHooks"
@@ -252,7 +253,7 @@ ck "$(jq -r '.extraKnownMarketplaces["setup-claude-code"].source.ref' "$KIT/clau
 for previo in '' '"ref": "v0.0.1",'; do
 seed k <<EOF
 { "extraKnownMarketplaces": {
-    "setup-claude-code": { "source": { $previo "source": "github", "repo": "manuelcozar55/setup-claude-code" } },
+    "setup-claude-code": { "source": { $previo "source": "github", "repo": "$ORIG" } },
     "otro": { "source": { "source": "github", "repo": "alguien/otro", "ref": "main" } } } }
 EOF
 run
@@ -262,13 +263,84 @@ ck "$(jq -c '.extraKnownMarketplaces.otro' "$S")" '{"source":{"source":"github",
 done
 # Caso k2: la entrada del kit llevaba ademas `autoUpdate` (tuyo). Hasta la 1.9.0 la fusion sustituia la
 # entrada entera y lo perdia en cada --apply: solo el `source` es del kit.
-seed k2 <<'EOF'
+seed k2 <<EOF
 { "extraKnownMarketplaces": {
-    "setup-claude-code": { "source": { "source": "github", "repo": "manuelcozar55/setup-claude-code", "ref": "v0.0.1" }, "autoUpdate": true } } }
+    "setup-claude-code": { "source": { "source": "github", "repo": "$ORIG", "ref": "v0.0.1" }, "autoUpdate": true } } }
 EOF
 run
-ck "$(jq -Sc '.extraKnownMarketplaces["setup-claude-code"]' "$S")" "{\"autoUpdate\":true,\"source\":{\"ref\":\"$ref\",\"repo\":\"manuelcozar55/setup-claude-code\",\"source\":\"github\"}}" "marketplace del kit con autoUpdate tuyo: el ref sigue a $ref y autoUpdate se conserva"
+ck "$(jq -Sc '.extraKnownMarketplaces["setup-claude-code"]' "$S")" "{\"autoUpdate\":true,\"source\":{\"ref\":\"$ref\",\"repo\":\"$ORIG\",\"source\":\"github\"}}" "marketplace del kit con autoUpdate tuyo: el ref sigue a $ref y autoUpdate se conserva"
 # Por la misma razon, `plugin install cockpit --marketplace <repo>` sin ref falla con el marketplace ya fijado.
-ck "$(grep -rl -- '--marketplace manuelcozar55' "$KIT/docs" "$KIT/../README.md" | wc -l)" "0" "ninguna doc instala el cockpit con --marketplace <repo> sin ref"
+ck "$(grep -rl -- "--marketplace $ORIG" "$KIT/docs" "$KIT/../README.md" | wc -l)" "0" "ninguna doc instala el cockpit con --marketplace <repo> sin ref"
+
+# Caso r: actualizar una instalacion 1.9.x/1.10.x. Los hooks nucleo-gate, stop-context-gauge y post-compact-check
+# se retiraron: sus entradas de settings.json (con y sin comillas) y sus scripts deben irse, salvo el script que
+# la persona haya modificado, que se conserva. Los hooks de la persona no se tocan.
+seed r <<'EOF'
+{ "hooks": {
+    "Stop": [ { "hooks": [ { "type": "command", "command": "\"$HOME/.claude/hooks/nucleo-gate.sh\"" },
+                           { "type": "command", "command": "$HOME/.claude/hooks/stop-context-gauge.sh" },
+                           { "type": "command", "command": "~/.local/bin/mi-stop" } ] } ],
+    "PostCompact": [ { "hooks": [ { "type": "command", "command": "\"$HOME/.claude/hooks/post-compact-check.sh\"" } ] } ] } }
+EOF
+mkdir -p "$CLAUDE_HOME/hooks"
+cp "$HERE/fixtures/nucleo-gate.retirado.sh" "$CLAUDE_HOME/hooks/nucleo-gate.sh"   # una version publicada, sin tocar
+echo "# editado por la persona" > "$CLAUDE_HOME/hooks/stop-context-gauge.sh"
+run
+ck "$(jq '[.hooks | .. | strings | select(test("nucleo-gate|post-compact-check"))] | length' "$S")" "0" "retirados: las entradas de una version publicada (o sin script) se van, con y sin comillas"
+ck "$(jq '[.hooks | .. | strings | select(test("stop-context-gauge"))] | length' "$S")" "1" "retirados: la entrada cuyo script la persona modifico se conserva (puede ser un hook suyo)"
+ck "$(dice 'entrada de settings.json de hooks/stop-context-gauge.sh')" "y" "retirados: y el instalador avisa de que conserva esa entrada"
+ck "$(jq -r '[.hooks.Stop[].hooks[].command] | map(select(test("mi-stop"))) | length' "$S")" "1" "retirados: el hook de la persona en el mismo grupo se queda"
+ck "$([ -e "$CLAUDE_HOME/hooks/nucleo-gate.sh" ] && echo y || echo n)" "n" "retirados: el script intacto se borra de hooks/"
+ck "$([ -e "$CLAUDE_HOME/hooks/stop-context-gauge.sh" ] && echo y || echo n)" "y" "retirados: el script que la persona modifico se conserva"
+ck "$(dice 'stop-context-gauge.sh')" "y" "retirados: y el instalador lo dice"
+
+# Caso s: lo que la persona apago a proposito (.kit-desactivados, una linea por script o ruta) sigue apagado tras
+# actualizar: ni se recablea el hook, ni se recopia el agente, y el plan y el resumen lo dicen.
+seed s <<'EOF'
+{}
+EOF
+run --apply
+ck "$(jq '[.hooks | .. | strings | select(test("stale-read-guard"))] | length' "$S")" "1" "desactivados: instalacion limpia cablea stale-read-guard"
+jq '.hooks |= with_entries(.value |= map(select(.hooks | map(.command | contains("stale-read-guard")) | any | not)))' "$S" > "$tmp/s.new"; cat "$tmp/s.new" > "$S"
+rm -f "$CLAUDE_HOME/agents/code-reviewer.md"
+printf '%s\n' stale-read-guard.py agents/code-reviewer.md > "$CLAUDE_HOME/.kit-desactivados"
+nhooks="$(jq '[.hooks | .. | .command? | strings] | length' "$S")"
+run --plan
+ck "$(dice 'desactivado por ti.*stale-read-guard.py')" "y" "desactivados: el plan lo dice"
+run --apply
+ck "$(jq '[.hooks | .. | strings | select(test("stale-read-guard"))] | length' "$S")" "0" "desactivados: actualizar no vuelve a cablear el hook apagado"
+ck "$(jq '[.hooks | .. | .command? | strings] | length' "$S")" "$nhooks" "desactivados: y el resto de hooks del kit sigue cableado"
+ck "$([ -e "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo y || echo n)" "n" "desactivados: actualizar no vuelve a copiar el agente apagado"
+ck "$([ -e "$CLAUDE_HOME/agents/code-explorer.md" ] && echo y || echo n)" "y" "desactivados: los demas agentes se instalan"
+ck "$(dice 'desactivado por ti.*stale-read-guard.py')" "y" "desactivados: el resumen de --apply lo dice"
+ck "$(dice 'desactivado por ti.*agents/code-reviewer.md')" "y" "desactivados: y nombra tambien el agente"
+
+# Caso t: la lista nunca descablea. Un guard cableado se queda aunque conste en .kit-desactivados (basta una linea en
+# un fichero sin proteger para apagarlo en la siguiente actualizacion), y un fichero que existe se actualiza como siempre;
+# la lista solo evita recrear lo que no esta. `hooks/x.sh` y `x.sh` son lo mismo.
+seed t <<'EOF'
+{}
+EOF
+run --apply
+cuenta(){ jq --arg s "$1" '[.hooks | .. | .command? | strings | select(contains($s))] | length' "$S"; }
+b0="$(cuenta block-dangerous-commands.sh)"; d0="$(cuenta destructive-guard.sh)"
+ck "$b0$d0" "11" "lista-no-descablea: la instalacion limpia cablea block-dangerous-commands y destructive-guard"
+printf '%s\n' block-dangerous-commands.sh hooks/destructive-guard.sh hooks/branch-guard.sh > "$CLAUDE_HOME/.kit-desactivados"
+echo "# manipulado" >> "$CLAUDE_HOME/hooks/branch-guard.sh"
+run --apply
+ck "$(cuenta block-dangerous-commands.sh)" "$b0" "lista-no-descablea: un guard cableado y anotado por nombre se queda cableado"
+ck "$(cuenta destructive-guard.sh)" "$d0" "lista-no-descablea: y anotado como hooks/x.sh tambien"
+ck "$(dice 'block-dangerous-commands.sh.*sigue cableado: no se toca')" "y" "lista-no-descablea: el instalador dice que sigue cableado"
+ck "$(dice 'destructive-guard.sh.*sigue cableado: no se toca')" "y" "lista-no-descablea: con la misma frase para hooks/x.sh"
+ck "$(cmp -s "$CLAUDE_HOME/hooks/branch-guard.sh" "$KIT/claude/hooks/branch-guard.sh" && echo y)" "y" "lista-no-descablea: un fichero que existe se actualiza aunque conste en la lista"
+ck "$(dice 'no se copia.*branch-guard')" "n" "lista-no-descablea: y no dice que no lo copia"
+# lo que falta y consta, sigue sin recrearse, con las dos formas del nombre
+rm -f "$CLAUDE_HOME/agents/code-reviewer.md" "$CLAUDE_HOME/hooks/stale-read-guard.py"
+printf '%s\n' agents/code-reviewer.md hooks/stale-read-guard.py > "$CLAUDE_HOME/.kit-desactivados"
+jq '.hooks |= with_entries(.value |= map(select(.hooks | map(.command | contains("stale-read-guard")) | any | not)))' "$S" > "$tmp/t.new"; cat "$tmp/t.new" > "$S"
+run --apply
+ck "$(cuenta stale-read-guard.py)" "0" "lista-no-descablea: lo anotado como hooks/x.py y no cableado sigue sin cablearse"
+ck "$([ -e "$CLAUDE_HOME/hooks/stale-read-guard.py" ] && echo y || echo n)" "n" "lista-no-descablea: y su fichero ausente no se recrea"
+ck "$([ -e "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo y || echo n)" "n" "lista-no-descablea: ni el agente ausente"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

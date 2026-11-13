@@ -1,5 +1,6 @@
 #!/bin/bash
 # bash-write-guard.sh — PreToolUse Bash: secretos en el contenido que un comando ESCRIBE.
+# QUE-HACE: Deniega una orden que ESCRIBE un secreto (clave privada, token, clave de API) con cat > f <<EOF, echo >>, tee o sed -i; deja pasar las que no escriben (no hay > ni << ni tee ni sed) y el texto sin patron de secreto.
 # write-guard.py escanea Write/Edit/MultiEdit/NotebookEdit, pero `Edit(...)` y ese guard no frenan a
 # Bash: `cat > f <<EOF`, `echo ... >> f`, `tee f` y `sed -i` escriben igual y pasaban sin mirar. Aqui
 # se escanea el comando con las filas `block` de lib/secret-patterns, la MISMA lista que write-guard.py
@@ -19,12 +20,14 @@ esac
 
 # Fail-closed, como el resto de guards: sin jq no se puede leer el comando de una escritura.
 if ! command -v jq >/dev/null 2>&1; then
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (fail-closed): falta jq en el PATH, asi que bash-write-guard no puede evaluar este comando que escribe. Instala jq (apt install jq) y reintenta."}}'
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (fail-closed): falta jq en el PATH, asi que bash-write-guard no puede evaluar este comando que escribe. Que hacer: instala jq (apt install jq) y reintenta."}}'
   exit 0
 fi
 
 deny() {
-  jq -n --arg r "$1" '{
+  local r=$1
+  [[ $r == *"Que hacer:"* ]] || r+=" Que hacer: reinstala el kit (./install.sh --apply)."
+  jq -n --arg r "$r" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -35,7 +38,7 @@ deny() {
 }
 
 COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) \
-  || deny "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable, asi que bash-write-guard no puede evaluar el comando."
+  || deny "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable, asi que bash-write-guard no puede evaluar el comando. Que hacer: reintenta; si se repite es un fallo de Claude Code, no de tu comando."
 [[ -z "$COMMAND" ]] && exit 0
 
 # Mismo criterio que la salida temprana pero sobre el comando ya decodificado: `sed` solo cuenta con -i
@@ -69,4 +72,4 @@ HITS=()
 for i in "${!ERES[@]}"; do
   printf '%s' "$COMMAND" | grep -qE -e "${ERES[i]}" && HITS+=("${LABELS[i]}")
 done
-deny "BASH-WRITE-GUARD BLOCKED: el comando escribe contenido que parece un secreto ($(IFS=,; echo "${HITS[*]}")). Usa variables de entorno o un gestor de secretos."
+deny "BASH-WRITE-GUARD BLOCKED: el comando escribe contenido que parece un secreto ($(IFS=,; echo "${HITS[*]}")). Que hacer: usa variables de entorno o un gestor de secretos; si es un falso positivo, escribe el fichero con la herramienta Write o ejecutalo tu con ! en la sesion."

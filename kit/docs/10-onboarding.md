@@ -3,7 +3,7 @@
 Guía para quien llega nuevo y solo quiere usar el kit. Está pensada para **WSL2 con Ubuntu o Debian**. Dura unos diez minutos. El procedimiento completo y lo opcional está en [`02-install.md`](02-install.md).
 
 **Si recibiste una consolidación local**, empieza por [`ENTREGA.md`](../../ENTREGA.md).
-Instala la base como se explica aquí y arranca con `bash /ruta/a/scc/scripts/scc.sh`.
+Instala la base como se explica aquí y arranca con `scc`.
 Ese lanzador carga las copias incluidas de cockpit y esenciales; no necesitas instalarlas
 desde el marketplace. El paso 4 de esta guía es la alternativa para una release publicada.
 
@@ -24,9 +24,9 @@ Si eres Claude Code leyendo esto en una máquina nueva: los pasos 2 a 4 son el a
 
 | Capa | Qué recibes | Cómo se activa |
 |---|---|---|
-| Base `kit/` | Guards, Sentinel, 5 agentes, skills del método, `handoff`, `oraculo` y plantilla de estado | `bash kit/install.sh` |
+| Base `kit/` | Guards, Sentinel, 7 agentes, skills del método, `handoff`, `oraculo` y plantilla de estado | `bash kit/install.sh` |
 | Aspecto y continuidad | Pantalla completa, tema oscuro, statusline, ventana de autocompactación, checkpoint y reinyección del estado | Se instalan con la base; se conservan los ajustes visuales propios |
-| Cockpit y esenciales incluidos | Dock de agentes, vigía, `/handoff`, `/nueva`, `/simple`, `/autonomo` y skills del plugin | `scripts/scc.sh` en la consolidación; marketplace como alternativa |
+| Cockpit y esenciales incluidos | Dock de agentes, vigía, `/handoff`, `/nueva`, `/simple`, `/autonomo` y skills del plugin | `scc` (lo instala `install.sh`); marketplace como alternativa |
 | Harness y memoria del repo | `/work`, sensores del repo, `knowledge/` y `scripts/recuerda` | Solo al trabajar en este repo; `recuerda` requiere enlace manual |
 | Herramientas externas | `gitleaks`, venv de tools, agent-browser, MCP y plugins de terceros | Opcionales; ver [`08-plugins-mcp-y-skills.md`](08-plugins-mcp-y-skills.md) |
 
@@ -46,15 +46,13 @@ sudo apt update
 sudo apt install git jq make curl ca-certificates python3 python3-venv zip unzip
 ```
 
-`curl` lo usa el instalador para descargar `gitleaks` (opcional). Comprueba que están:
-
-`zip` y `unzip` permiten crear la copia de seguridad que exige la restauración.
+`curl` lo usa el instalador para descargar `gitleaks` (opcional). `zip` y `unzip` permiten crear la copia de seguridad que exige la restauración. Comprueba que están:
 
 ```bash
 git --version && jq --version && make --version && python3 --version
 ```
 
-También necesitas Claude Code instalado y con sesión iniciada: `claude --version`. El kit se probó con la versión 2.1.292. No hay una versión mínima comprobada: si algo falla con otra, indícalo al abrir el problema.
+También necesitas Claude Code instalado y con sesión iniciada: `claude --version`. La versión mínima probada figura en [`OPERAR.md`](OPERAR.md) y en el README; con una anterior, `doctor.sh` avisa. Si algo falla con otra, indícalo al abrir el problema.
 
 ## 2 · Instalar
 
@@ -67,9 +65,7 @@ bash kit/install.sh
 No uses `make bootstrap`: ejecuta además la suite de tests y crea un perfil que no necesitas. Lee la salida del instalador hasta el final. Te puede avisar de dos cosas:
 
 - **Ya tenías un `CLAUDE.md`.** No lo toca. Añade la línea `@AGENTS.md` a tu `CLAUDE.md`; la plantilla del kit quedó en `CLAUDE.kit.md`.
-- **`~/.local/bin` no está en tu `PATH`.** El instalador enlaza `handoff`, `oraculo`, `cupo` y `efectividad` ahí. Abre una terminal nueva antes de seguir.
-
-Al final el instalador imprime «Rellena tus claves: cp … .env.example …». Es **opcional**: solo hace falta si vas a usar servicios externos con clave; el kit funciona sin ese fichero.
+- **`~/.local/bin` no está en tu `PATH`.** El instalador enlaza los CLIs del kit (`handoff`, `oraculo`, `cupo`, `efectividad` y `scc`) ahí. Abre una terminal nueva antes de seguir.
 
 Si ya tenías hooks propios en `settings.json`, se conservan junto a los del kit y `doctor.sh` los lista. Hasta la 1.5.0 el kit los sustituía.
 
@@ -77,7 +73,7 @@ Si ya tenías hooks propios en `settings.json`, se conservan junto a los del kit
 
 ```bash
 bash kit/doctor.sh
-command -v handoff oraculo cupo   # deben salir tres rutas
+command -v handoff oraculo cupo efectividad scc   # deben salir cinco rutas
 ```
 
 Cómo leer `doctor.sh`:
@@ -115,7 +111,7 @@ git init              # solo si aún no es un repo
 handoff --iniciar     # crea .claude/estado/nucleo.md desde la plantilla
 ```
 
-Abre `nucleo.md` y rellena **Objetivo** (las palabras de quien pidió la tarea) e **Invariantes** (lo que no se toca y por qué). Después abre `bash /ruta/a/scc/scripts/scc.sh` en la raíz del proyecto si usas la consolidación, o `claude` si instalaste los plugins globalmente. El hook de arranque te reclama como dueño del estado y se lo entrega al modelo.
+Abre `nucleo.md` y rellena **Objetivo** (las palabras de quien pidió la tarea) e **Invariantes** (lo que no se toca y por qué). Después abre `scc` en la raíz del proyecto, o `claude` si instalaste los plugins globalmente. El hook de arranque te reclama como dueño del estado y se lo entrega al modelo.
 
 `handoff --iniciar` nunca sobrescribe: si el fichero existe, lo dice y sale sin tocarlo.
 
@@ -132,7 +128,7 @@ Abre `nucleo.md` y rellena **Objetivo** (las palabras de quien pidió la tarea) 
    Claude Code te pedirá permiso en cada `oraculo --`. Apruébalo cada vez (solo esta vez) y no elijas «permitir siempre»: una regla permanente sobre `oraculo` dejaría pasar sin preguntar cualquier orden que se ejecute a través de él.
 
    Imprime las últimas 40 líneas y `rc=N`, sale con ese código y lo anota en `.claude/estado/verificaciones.log`. Así el estado guarda qué se verificó y con qué resultado.
-2. **El estado se guarda solo.** Tras cada turno el hook `autosave.sh` anota el último turno en `nucleo.md` (sin modelo); con el mod, el cockpit sintetiza el resto en silencio por hitos y turnos (`/autosave on|off|status`). `/handoff` es opcional: úsalo para fijar un foco o antes de un `/clear`; sin el mod, pide al modelo un borrador de las secciones que cambian y ejecuta `handoff --desde borrador.md`. `handoff --estado` te dice cuánto del tope ocupa el estado.
+2. **El estado se guarda solo.** Tras cada turno el hook `autosave.sh` anota el último turno en `nucleo.md` (sin modelo); con el mod, si lo enciendes (`/autosave on|off|status`; gasta tokens), el cockpit sintetiza el resto en silencio por hitos y turnos. `/handoff` es opcional: úsalo para fijar un foco o antes de un `/clear`; sin el mod, pide al modelo un borrador de las secciones que cambian y ejecuta `handoff --desde borrador.md`. `handoff --estado` te dice cuánto del tope ocupa el estado.
 3. **Retoma el trabajo.** Un `/handoff` manual ya hace el clear y prepara la continuación:
    revísala y pulsa Enter; no hagas otro `/clear` detrás. Si guardaste con la CLI o
    con `/handoff solo`, puedes ejecutar `/clear` cuando quieras relevar el contexto.
@@ -158,13 +154,13 @@ Una sesión por tarea. Esperar a la compactación automática pierde contexto; e
 Esto es solo para quien cambia el propio kit. Antes de tu primer commit:
 
 ```bash
-make test                  # 49 suites en bash puro, sin red, unos 7 min. exit 0 o no está hecho.
+make test                  # 64 suites en bash puro, sin red, unos 7 min. exit 0 o no está hecho.
 bash kit/scan-secrets.sh   # secretos y PII en el árbol
 shellcheck -x <tus .sh>
 ```
 
 Si `make test` termina con el bloque «verde, pero con capas SALTADAS» (sin `gitleaks`, sin `claude` en el PATH, sin `kit/evals/runs.jsonl`), el rc es 0 pero esa capa **no se ha verificado**: instala la herramienta y repite antes de darlo por hecho. No lances dos `make test` a la vez: las pruebas de rendimiento miden tiempo de CPU y fallan por carga.
 
-Los guards no se prueban solo con leer el README: `bash kit/test/test_guards_falsifiability.sh` desactiva un guard real y exige que eso rompa exactamente 28 casos `BLOCK` conocidos. Si desactivarlo no rompiera nada, la suite no estaría midiendo nada.
+Los guards no se prueban solo con leer el README: `bash kit/test/test_guards_falsifiability.sh` desactiva un guard real y exige que eso rompa exactamente 52 casos `BLOCK` conocidos. Si desactivarlo no rompiera nada, la suite no estaría midiendo nada.
 
 Rama y PR, nunca directo a `main`. Y si tu cambio toca una cifra que la documentación afirma, `kit/test/test_doc_claims.sh` te pondrá en rojo: eso no es un obstáculo, es el punto.

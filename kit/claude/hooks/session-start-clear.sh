@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# QUE-HACE: al arrancar, limpiar o reanudar inyecta nucleo.md como dato para retomar el trabajo, y avisa si la caché caducó o si otra sesión es dueña del estado.
 # SessionStart(startup|clear|resume): retoma el trabajo desde <raíz>/.claude/estado/nucleo.md
 # (raíz y forma: lib/nucleo.sh).
 # Por qué aquí y no en el mod cockpit: es nativo (additionalContext), funciona sin cockpit y no
@@ -22,8 +23,10 @@ CWD=${CWD:-$PWD}
 # (y fork, que aquí no se filtra) y alguna respuesta en el transcript llegan context_tokens (entero) y prompt_cache_likely_expired
 # (booleano), desde Claude Code v2.1.251; antes faltan y el aviso no sale. `numbers`: en jq una cadena
 # ordena por encima de cualquier número y «>= 100000» sería siempre cierto.
-AVISO=$(jq -r 'select(.source=="resume" and .prompt_cache_likely_expired==true and ((.context_tokens | numbers) // 0) >= 100000)
-  | "Retomas con \(.context_tokens) tok y la caché caducada: el próximo turno reescribe todo el contexto. Si la fase está cerrada, /handoff ahora cuesta casi lo mismo y retoma limpio."' <<<"$IN" 2>/dev/null)
+# Sin cockpit no existe /handoff: se nombra el CLI.
+HOC=/handoff; nucleo_cockpit || HOC="\`handoff --desde <borrador>\`"
+AVISO=$(jq -r --arg h "$HOC" 'select(.source=="resume" and .prompt_cache_likely_expired==true and ((.context_tokens | numbers) // 0) >= 100000)
+  | "Retomas con \(.context_tokens) tok y la caché caducada: el próximo turno reescribe todo el contexto. Si la fase está cerrada, \($h) ahora cuesta casi lo mismo y retoma limpio."' <<<"$IN" 2>/dev/null)
 # Sin persona delante (-p/SDK) no hay quien lea un systemMessage ni quien pulse /handoff.
 ! nucleo_desatendido || AVISO=""
 sale() { jq -cn --arg c "$1" --arg m "$AVISO" \
@@ -75,7 +78,7 @@ case ${SID:-} in
      } ;;
 esac
 DAVISO=""
-[ -z "$AJENO" ] || { DAVISO="Esta tarea ya tiene otra sesión dueña (${AJENO}); no pisará su $NOM. Si está abandonada, usa handoff --liberar ${AJENO}."
+[ -z "$AJENO" ] || { DAVISO="Esta tarea ya tiene otra sesión dueña (${AJENO}); no pisará su $NOM. Si está abandonada, usa handoff --liberar ${AJENO}; si no, trabaja en otra carpeta (otro worktree)."
   AVISO="${AVISO:+$AVISO
 }$DAVISO"; }
 AGENTES=$(nucleo_agentes_ctx "$RAIZ")

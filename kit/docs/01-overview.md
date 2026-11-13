@@ -77,9 +77,9 @@ flowchart LR
 ## Qué documenta cada doc siguiente
 
 - **`02-install.md`**: prerrequisitos y los pasos exactos para instalar la config saneada de este kit en `CLAUDE_HOME`.
-- **`04-superpowers.md`**: el plugin esenciales, sus seis skills, los 5 agentes con tiering, y agent-browser.
+- **`04-superpowers.md`**: el plugin esenciales, sus seis skills, los 7 agentes con tiering, y agent-browser.
 - **`05-security.md`**: Sentinel, los guards de Bash/git, y el manejo de secretos.
-- **`06-routine.md`**: la rutina diaria (tiering, ping de las 6:00, `/compact`, opus[1m], worktrees).
+- **`06-routine.md`**: la rutina diaria (tiering de modelos, cuotas y coste, `/compact`, modelo y ventana, sesiones autónomas largas, worktrees, handoffs).
 - **`07-verify.md`**: cómo comprobar, con evidencia, que todo lo anterior funciona de verdad.
 - **`08-plugins-mcp-y-skills.md`**: el stack completo para replicar el sistema (plugins de Claude Code + marketplaces, servidores MCP, skills propias y prerequisitos).
 - **`09-ssh-y-gitlab-privado.md`**: generar una clave SSH desde WSL2 y darla de alta en un GitLab autoalojado, hasta clonar y hacer `push` sin contraseña y usar un marketplace de plugins privado.

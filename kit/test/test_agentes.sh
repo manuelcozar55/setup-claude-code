@@ -3,6 +3,7 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 H=$HERE/../claude/hooks
 T=$(mktemp -d)
+trap 'rm -r "$T"' EXIT
 export HOME=$T/home
 unset CLAUDE_PROJECT_DIR
 mkdir -p "$HOME" "$T/repo"
@@ -75,6 +76,13 @@ ok 'foto propia conserva solo running' "$(nucleo_agentes_vivos "$E" capture | jq
 ok 'captura viva vence informe completado' "$(row agent1)" 'en vuelo'
 capture SessionEnd
 ok 'SessionEnd lee foto propia' "$(row agent1)" 'cortado al cerrar'
+# D3: la foto sale del Stop real (antes la dejaba stop-context-gauge.sh y retirarlo no rompía ningún test).
+capture SubagentStart
+jq -cn --arg r "$R" '{hook_event_name:"Stop",cwd:$r,session_id:"capture",background_tasks:[{type:"subagent",id:"agent1",status:"running"}]}' | bash "$H/agentes.sh"
+ok 'Stop real: la foto de agentes vivos la deja agentes.sh' "$(nucleo_agentes_vivos "$E" capture | jq -r 'map(.id)|join(",")')" agent1
+jq -cn --arg r "$R" '{hook_event_name:"SessionEnd",cwd:$r,session_id:"capture",reason:"clear"}' | bash "$H/agentes.sh"
+ok 'Stop real + SessionEnd: cortado al cerrar, de extremo a extremo' "$(row agent1)" 'cortado al cerrar'
+ok 'el Stop de un subagente (agent_id) no pisa la foto del hilo principal' "$(jq -cn --arg r "$R" '{hook_event_name:"Stop",cwd:$r,session_id:"capture",agent_id:"x",background_tasks:[]}' | bash "$H/agentes.sh"; nucleo_agentes_vivos "$E" capture | jq -r 'map(.id)|join(",")')" agent1
 nucleo_agentes_foto "$R" capture '[]'
 ok 'foto vacía posterior conserva cierre' "$(row agent1)" 'cortado al cerrar'
 capture SubagentStart
@@ -154,6 +162,12 @@ flock -u "$LOCK"; exec {LOCK}>&-
 ok 'SessionEnd con lock ocupado falla abierto y conserva dueño' "$RC,$OUT,$(sed -n 's/^sesion=//p' "$E/.dueno")" '0,,rival'
 end_session rival
 ok 'SessionEnd puede liberar al reintentar sin lock' "$([ -e "$E/.dueno" ] && echo ocupado || echo libre)" libre
+# D1: un autosave que suelta el lock a los pocos instantes no debe dejar el dueño sin liberar.
+printf 'sesion=rival\ndesde=%s\n' "$(date +%s)" >"$E/.dueno"
+( exec {LK}>>"$E/.handoff.lock"; flock "$LK"; sleep 1 ) & LKPID=$!
+sleep 0.3
+end_session rival; wait "$LKPID"
+ok 'SessionEnd espera un lock breve y libera al dueño' "$([ -e "$E/.dueno" ] && echo ocupado || echo libre)" libre
 for CYCLE in 1 2; do
   jq -cn --arg r "$R" --arg s "cycle-$CYCLE" '{cwd:$r,session_id:$s,source:"clear"}' | bash "$H/session-start-clear.sh" >/dev/null
   ok "clear ciclo$CYCLE reclama nueva sesión" "$(sed -n 's/^sesion=//p' "$E/.dueno")" "cycle-$CYCLE"
@@ -223,7 +237,7 @@ ok 'K9 fecha original: un núcleo sin marcador incluye el commit posterior a su 
 SR=$HERE/../claude/agents/security-reviewer.md
 ok 'M6 security-reviewer es de solo lectura (tools sin Write ni Edit)' "$(grep '^tools:' "$SR" | grep -c 'Write\|Edit')" 0
 ok 'M6 security-reviewer no promete remediación' "$(grep -ci 'remediat' "$SR")" 0
-ok 'M13 el kit trae 5 agentes' "$(find "$HERE/../claude/agents" -name "*.md" | wc -l | tr -d ' ')" 5
+ok 'M13 el kit trae 7 agentes' "$(find "$HERE/../claude/agents" -name "*.md" | wc -l | tr -d ' ')" 7
 ok 'M13 ningún agente del kit es orchestrator' "$(find "$HERE/../claude/agents" -name orchestrator.md | wc -l | tr -d ' ')" 0
 ok 'M13 sin menciones de orchestrator en agentes, READMEs y docs' "$(cd "$HERE/../.." && grep -rli orchestrator kit/claude README.md kit/README.md kit/docs | wc -l | tr -d ' ')" 0
 # Una `description:` sin comillas con «: » dentro la tolera Claude Code, pero no otros lectores YAML (Codex, opencode).

@@ -1,259 +1,102 @@
-# SCC 1.10.1 — guía de entrega
+# SCC 2.0.0 — guía de entrega
 
-Para quien recibe el paquete. La versión es la de `VERSION` (1.10.1); `BUILD_ID` identifica
-esta entrega. No se distribuyen credenciales ni configuración personal.
+Para quien recibe el paquete. La versión es la de `VERSION` (2.0.0); `BUILD_ID` identifica esta entrega.
+No se distribuyen credenciales ni configuración personal. Instalar, usar y desinstalar se explica en
+[`README.md`](README.md); este documento solo cubre lo que es propio de una entrega transferida.
 
-## Requisitos
+## Qué se entrega
 
-Linux o WSL2, Bash, Git, jq, Python 3, coreutils, util-linux (`flock`) y Claude Code autenticado. Para respaldos y
-restauraciones, también `zip` y `unzip` (`sudo apt install zip unzip` en Debian).
-La instalación admite Linux/WSL2; Windows nativo y macOS no están soportados.
-La versión de Claude Code probada figura en [Cockpit](kit/docs/11-cockpit.md): registra
-`claude --version` y comprueba su carga; no hay una versión mínima verificada. Este procedimiento
-no instala hooks, cockpit ni continuidad automática para Codex u opencode.
+Una carpeta `scc-v2.0.0/` con lo que necesita quien usa el kit: `kit/` (sin tests ni evaluaciones), `uninstall.sh`,
+`scripts/{backup,scc,aceptacion-local}.sh`, `README.md`, `SECURITY.md`, `CHANGELOG.md`, `THIRD-PARTY.md`, `LICENSE`,
+`NOTICE`, `VERSION` y `BUILD_ID`. Junto a la carpeta llegan el manifiesto `SHA256SUMS`, el archivo ZIP, el bundle de
+Git `scc-v2.0.0.bundle` y `PROCEDENCIA.json` (commit, fecha y si el árbol estaba limpio). Esos recibos se generan al
+preparar la entrega y no forman parte del árbol de Git. Si quien te entrega el paquete añade un informe de validación
+(por ejemplo, qué se ejecutó en Debian, con sus códigos de salida), llega aparte: no es parte de este paquete.
 
-## Obtener la entrega
+## Verificar la integridad
 
-Recibe del responsable el paquete de **1.10.1**, su manifiesto `SHA256SUMS` y la
-identificación del origen (commit y suma del archivo transferido). Conserva esa
-identificación para soporte: `BUILD_ID` es una etiqueta de entrega, no un hash.
-Si prefieres Git y el tag ya está publicado, puedes obtener la versión así:
+Antes de abrir nada, en la carpeta recibida:
 
 ```bash
-git clone --branch v1.10.1 --single-branch https://github.com/manuelcozar55/setup-claude-code.git ~/scc
-git -C ~/scc rev-parse HEAD
+sha256sum -c SHA256SUMS                       # cubre el paquete y el bundle; todo debe decir OK
+cd scc-v2.0.0 && cat VERSION BUILD_ID        # 2.0.0 y scc-v2.0.0
 ```
 
-Contrasta ese commit con el facilitado por el responsable. Si el tag todavía no
-existe, usa el paquete transferido; no sustituyas esta versión por `main`.
-En ambos casos comprueba `cat VERSION BUILD_ID` desde `~/scc`: deben indicar
-`1.10.1` y `scc-v1.10.1`. No ejecutes una entrega con sumas incorrectas.
+`SHA256SUMS` lista cada fichero de la carpeta `scc-v2.0.0/`, el ZIP, el bundle y `PROCEDENCIA.json`. Si solo has
+recibido o conservado parte (por ejemplo, el ZIP y el bundle sin la carpeta descomprimida), comprueba lo que tengas con
+`sha256sum -c --ignore-missing SHA256SUMS`: las filas de los ficheros que no están se omiten y las presentes deben decir OK.
 
-### Copia de Git sin acceso a la red
+La suma del ZIP exterior se entrega aparte, por otro canal, para comprobar primero la transferencia. No ejecutes una
+entrega con sumas incorrectas. Conserva la identificación del origen (commit y suma) para soporte.
 
-La entrega incluye `scc-v1.10.1.bundle`, con la rama verificada y su historial,
-y un manifiesto exterior que cubre tanto el bundle como el paquete. Comprueba
-ese manifiesto en la carpeta recibida antes de abrir ninguno:
+Si prefieres un clon con historial, sin red ni GitHub:
 
 ```bash
-sha256sum -c SHA256SUMS
-git clone --branch release/scc-v1.10.1-debian scc-v1.10.1.bundle ~/scc
-git -C ~/scc rev-parse HEAD
+git clone --branch release/scc-v2.0.0-debian scc-v2.0.0.bundle ~/scc
+git -C ~/scc rev-parse HEAD                   # debe coincidir con el commit de PROCEDENCIA.json
 ```
 
-El commit debe coincidir con el origen indicado en la entrega. El bundle permite
-clonar y consultar el historial sin GitHub; no implica que exista un tag publicado.
-Los resultados de Debian deben identificar ese mismo commit, las versiones del
-sistema y de Claude Code, los comandos ejecutados y sus códigos de salida.
-El paquete incluye `PROCEDENCIA.json` y `VALIDACION-DEBIAN.md` junto al bundle
-y al archivo fuente. La suma del ZIP exterior se entrega por separado para
-comprobar primero la transferencia; el manifiesto interior verifica sus contenidos.
-Esos recibos se generan al preparar la entrega y no forman parte del árbol Git.
-En un clon, identifica el origen con `git rev-parse HEAD`.
+El `--branch` de arriba es obligatorio: el bundle no tiene `HEAD`, y un `git clone scc-v2.0.0.bundle` a
+secas termina con «remote HEAD refers to nonexistent ref, unable to checkout» y un árbol vacío (`kit/` no aparece).
+El bundle permite clonar y consultar el historial; no implica que exista una etiqueta publicada. No sustituyas esta
+versión por `main`. Mantén la carpeta (`~/scc`) en su sitio: `scc` carga los plugins de la copia que `install.sh`
+hace en `~/.claude/scc/`, y `uninstall.sh` y `scripts/backup.sh` se ejecutan desde ella.
 
-## Instalar
+## Instalar y comprobar
 
-Extrae el paquete en una carpeta permanente (por ejemplo `~/scc`) y, desde ella:
-
-```
-sha256sum -c SHA256SUMS      # si el paquete trae ese fichero de sumas
-bash kit/install.sh --plan   # muestra lo que haría, sin tocar ~/.claude
-bash kit/install.sh --apply  # instala; lo que pisa va a ~/.claude/backups/<fecha>/
-```
-
-## Comprobar
-
-```
-bash kit/doctor.sh
-```
-
-Resuelve cualquier `FAIL` antes de empezar. Un `WARN` pide lectura; no es un fallo de
-instalación. Para probar instalación y continuidad en una carpeta aislada, sin tocar tu
-`~/.claude`: `bash scripts/aceptacion-local.sh /ruta/nueva` (la carpeta no debe existir).
-El resultado esperado es `PASS aceptación local` y `exit=0` en `aceptacion.log`;
-conserva esa carpeta. Prueba los scripts y eventos sintéticos, no la interfaz ni una
-respuesta real de Claude Code. La comprobación de sesión siguiente cubre esa parte.
-
-## Empezar
-
-```
-cd /ruta/al/proyecto
-~/.claude/bin/handoff --iniciar   # una vez por proyecto
-bash ~/scc/scripts/scc.sh
-```
-
-**En una instalación nueva, `handoff --iniciar` no es opcional.** Crea
-`.claude/estado/nucleo.md`; sin él, el autosave no escribe nada en ese proyecto
-(responde `{"omitido":"sin estado"}`, por contrato) y no hay estado que retomar.
-Hazlo una vez en cada proyecto, antes de la primera sesión.
-
-`scc.sh` carga el cockpit y las skills esenciales de esta carpeta, sin descargas. Con
-`claude` a secas no se cargan. Tras el primer arranque comprueba `/plugin`, `/status` y
-`/context`.
-
-Mantén `~/scc` en su ruta permanente: el lanzador carga los plugins desde ella.
-Tu trabajo va en **otro repositorio**, no dentro del kit. Las órdenes `/work`,
-`/spec` y `/verify` del harness raíz son para desarrollar este repo; no presupongas
-que existen en un proyecto ajeno. La referencia de instalación es
-[`10-onboarding.md`](kit/docs/10-onboarding.md).
-
-## Primera tarea y relevo (sin datos reales)
-
-Crea una carpeta nueva fuera del kit; `mkdir` debe fallar si ya existe:
+Los mismos pasos que el README, desde la carpeta extraída: `bash kit/install.sh --plan`, `--apply` y
+`bash kit/doctor.sh`. Para probar instalación y continuidad en una carpeta aislada, sin tocar tu `~/.claude`:
 
 ```bash
-mkdir ~/scc-primer-dia
-cd ~/scc-primer-dia
-git init
-~/.claude/bin/handoff --iniciar
-bash ~/scc/scripts/scc.sh
+bash scripts/aceptacion-local.sh /ruta/nueva     # la carpeta no debe existir
 ```
 
-Comprueba `/plugin`, `/status` y `/context`, y pide esta tarea en Claude Code:
+Esperado: `PASS aceptación local` y `exit=0` en `aceptacion.log`. Prueba scripts y eventos sintéticos, no la
+interfaz ni una respuesta real de Claude Code; para eso, el ejercicio siguiente.
 
-> Trabaja solo en este proyecto sintético. Crea `saluda.sh` que imprima exactamente
-> `Hola equipo` y un `test.sh` que compruebe esa salida y falle si cambia. No hagas
-> commits, pushes, instalaciones ni llamadas externas. Ejecuta la prueba con
-> `~/.claude/bin/oraculo -- bash "$PWD/test.sh"`. Guarda en el estado el objetivo,
-> la restricción de datos sintéticos, el resultado y como siguiente acción «Repetir
-> la prueba de saludo al retomar». Detente para comprobar el relevo.
+## Actualizar
 
-Antes de dar la prueba por válida, ejecútala también desde la terminal:
+Cuando llegue un paquete nuevo (`scc-vX.Y.Z.zip`), no uses `git pull` en la carpeta vieja: su `origin` es el fichero
+`.bundle`, no trae nada. Verifica las sumas del paquete nuevo (ver «Verificar la integridad») y, desde su carpeta
+extraída, ejecuta `bash kit/install.sh --plan`, `bash kit/install.sh --apply` y `bash kit/doctor.sh` (debe terminar en
+`== OK (0 FAIL) ==`). Conserva la carpeta nueva y retira la vieja: `uninstall.sh` y `scripts/backup.sh` se ejecutan
+desde ella. Reinicia las sesiones abiertas de Claude Code.
+
+## Primera tarea y relevo, con datos sintéticos
 
 ```bash
-bash test.sh
-test "$(bash saluda.sh)" = 'Hola equipo'
-~/.claude/bin/handoff --estado
+mkdir ~/scc-primer-dia && cd ~/scc-primer-dia && git init
+~/.claude/bin/handoff --iniciar     # crea .claude/estado/nucleo.md
+scc
 ```
 
-Ambas pruebas deben devolver 0; el oráculo debe imprimir `rc=0` y registrar un `0`
-en la segunda columna de `.claude/estado/verificaciones.log`. Pide `/handoff solo`,
-comprueba que el estado contiene el objetivo y la siguiente acción, y sal de Claude
-Code. Vuelve a abrirlo desde esta
-misma carpeta con `bash ~/scc/scripts/scc.sh`. Sin pegar la conversación anterior,
-pídele que identifique objetivo, restricciones y siguiente acción y repita el
-oráculo. El ejercicio pasa cuando recupera esos tres datos y la prueba sigue en
-verde. Si no los recupera, conserva la sesión y diagnostica antes de usar datos reales.
+En Claude Code pide: «Trabaja solo en este proyecto sintético. Crea `saluda.sh` que imprima exactamente `Hola equipo` y
+un `test.sh` que lo compruebe y falle si cambia. Sin commits, pushes ni llamadas externas. Ejecuta la prueba con
+`~/.claude/bin/oraculo -- bash "$PWD/test.sh"`. Guarda en el estado el objetivo, la restricción de datos sintéticos,
+el resultado y como siguiente acción «Repetir la prueba de saludo al retomar»».
 
-Para el relevo habitual, `/handoff` guarda y hace `/clear`: revisa el prompt preparado
-y pulsa Enter; no añadas otro `/clear`. En el ejercicio dejamos la autonomía apagada.
+Comprueba desde la terminal que `bash test.sh` y `test "$(bash saluda.sh)" = 'Hola equipo'` devuelven 0, y que el oráculo
+imprimió `rc=0`. Pide `/handoff solo`, sal, vuelve a abrir `scc` en la misma carpeta y, sin pegar la conversación
+anterior, pídele objetivo, restricciones y siguiente acción. Pasa si los recupera y la prueba sigue en verde. Si no,
+conserva la sesión y diagnostica antes de usar datos reales.
 
-### Un único estado oficial
+## Soporte
 
-Por defecto es `.claude/estado/nucleo.md`. Si tu proyecto ya tiene `ESTADO.md` en
-la raíz **y no existe `nucleo.md`**, el adaptador lo usa como estado: `--iniciar`
-no crea otro y `handoff --estado` devuelve `modo: "estado-md"` y su ruta `estado`.
-El handoff fusiona allí los avances; `ESTADO.md` puede estar versionado, así que
-revisa su diff antes de un commit. Si existen ambos, tiene prioridad `nucleo.md`:
-no borres ninguno para forzar el cambio; acuerda la migración conservando su contenido.
-Consulta el contrato con `~/.claude/bin/handoff --help`.
+Para pedir ayuda al responsable de la entrega, adjunta: `VERSION`, `BUILD_ID`, commit o suma recibida, sistema o WSL,
+`scc --version`, el comando exacto, su código de salida, lo esperado y lo observado, y la salida de `bash kit/doctor.sh`.
+Revisa y redacta rutas personales antes de compartir nada: no adjuntes configuración completa, credenciales, cookies ni
+transcripts de trabajo real. Los fallos de seguridad siguen [`SECURITY.md`](SECURITY.md). Qué hacer si algo se rompe
+tras actualizar Claude Code o el kit: [`kit/docs/OPERAR.md`](kit/docs/OPERAR.md).
 
-## Actualizar desde 1.7.x
+## Límites
 
-1. Cierra las sesiones abiertas de Claude Code: el cockpit y los hooks que ya cargó una
-   sesión no se recargan, y seguiría con los de la versión anterior.
-2. Guarda un respaldo: `bash scripts/backup.sh` (ZIP en `~/backups/`).
-3. `bash kit/install.sh --plan` para ver el plan, `bash kit/install.sh --apply` para
-   aplicarlo, y `bash kit/doctor.sh`.
-4. Abre sesiones nuevas.
-
-`CLAUDE.md` y `AGENTS.md` no se pisan si los has tocado. 1.7.x no guardaba qué escribió,
-así que, si instalas desde un clon de Git, el instalador compara los tuyos con las
-versiones de la historia del kit: si coinciden con una, no son tuyos y se actualizan con
-copia de seguridad. Si no coinciden, o el paquete no trae historia (ZIP, clon superficial),
-los trata como tuyos y deja la versión nueva al lado como `~/.claude/CLAUDE.kit.md` y
-`~/.claude/AGENTS.kit.md`; `doctor` lo marca como `WARN` hasta que lo resuelvas.
-Compáralas con las tuyas; para aceptar la del kit tal cual, cópiala sobre la tuya
-(`cp ~/.claude/CLAUDE.kit.md ~/.claude/CLAUDE.md`) y borra el `.kit.md`.
-El instalador recuerda lo que escribió y actualiza solo lo que no hayas cambiado.
-
-Se conservan tu tema, statusline, modelo y variables propios.
-
-## Restaurar
-
-```
-bash uninstall.sh --list                  # backups internos y ZIP disponibles
-bash uninstall.sh                         # dry-run: muestra qué se restauraría
-bash uninstall.sh --apply                 # restaura el backup interno más reciente
-bash uninstall.sh --apply --from FICHERO  # restaura un ZIP de scripts/backup.sh o un backup concreto
-```
-
-Esto restaura archivos de un respaldo; no desinstala el kit. Cierra las sesiones antes.
-Antes de restaurar guarda el estado actual en `~/backups/claude-safety-*.zip`; ese ZIP
-no entra en la elección del «más reciente», así que repetir `--apply` no deshace lo
-restaurado. Para volver a él, `--from`.
-La orden que muestra `--dry-run --from FICHERO` conserva ese origen, aunque haya
-otro backup interno más reciente, y escapa espacios y comillas para Bash.
-
-Dentro de `CLAUDE_HOME` se restauran entradas del snapshot. Si un fichero elegido ocupa una ruta que
-ahora es un enlace, se sustituye el enlace y su destino externo queda intacto;
-el ZIP de seguridad conserva el enlace anterior para recuperarlo. También se
-respalda el JSON global aunque el directorio `.claude/` esté vacío o no exista.
-Un JSON global enlazado a un fichero se guarda por sus bytes, para poder
-recuperarlo en otra máquina. Al restaurar contenido, su alias válido se conserva
-y se respalda el destino físico antes de escribir. Al restaurar un enlace
-archivado se sustituye la entrada global sin escribir a través de él; el respaldo
-de seguridad registra el tipo y el enlace anteriores para poder deshacerlo.
-La raíz `CLAUDE_HOME` y sus ancestros pueden ser enlaces: se conserva el alias
-y se restaura su contenido. El JSON global permanece junto a la ruta elegida.
-Un recorrido por un directorio interno enlazado o un conflicto entre directorio
-y fichero se rechaza antes de escribir: resuelve esa topología y vuelve a revisar
-el plan. Si hay estado previo y falta `scripts/backup.sh`, se rechaza la operación;
-conserva el repo completo. El snapshot es filtrado y aditivo; no es una imagen de toda la máquina
-ni elimina entradas nuevas al restaurarlo.
-Reinstalar un tag antiguo no devuelve su árbol exacto: conserva archivos de versiones
-posteriores. No borres el directorio `.claude/estado/` de tus proyectos: contiene la
-continuidad.
-
-## Qué cambia en 1.10.1
-
-El detalle está en `CHANGELOG.md`. En resumen, para quien usa el kit:
-
-- Es un parche: arreglos y documentación, nada nuevo. Hasta el 2026-12-09 el kit está
-  congelado (`knowledge/BACKLOG.md`).
-- En cada proyecto nuevo, `handoff --iniciar` antes de la primera sesión (ver «Empezar»).
-- Con el cockpit desde el marketplace, tras `marketplace add …@tag` ejecuta
-  `claude plugin update cockpit@setup-claude-code` y repón `autoUpdate` si lo usabas
-  ([`11-cockpit.md`](kit/docs/11-cockpit.md)).
-- `doctor` ya no da FAIL de statusLine con `CLAUDE_HOME` fuera de `~/.claude`, y `make test`
-  dice por stderr qué capas se salta.
-- Lo de las entregas anteriores sigue igual: `efectividad` y las cifras de cada release, el
-  estado que se guarda solo tras cada turno (`autosave.sh`), `install.sh --apply` respetando la
-  configuración viva y `COCKPIT_AUTONOMO=on`.
-## Continuidad entre sesiones
-
-- `/handoff` (opcional: el estado ya se guarda solo) guarda el estado y prepara el siguiente contexto; `/handoff solo` guarda sin
-  limpiar; `/nueva` separa una tarea distinta.
-- `/autonomo on` deja que la sesión continúe sola tras un handoff válido; `/autonomo off`
-  lo retira. Por defecto sigue `COCKPIT_AUTONOMO` del `env` de `settings.json`; `/nueva` y un
-  `/clear` manual vuelven a ese valor. Antes de activarlo,
-  acuerda alcance, prueba de salida y límite de tiempo o gasto; el interruptor del
-  cockpit no impone esos presupuestos. No amplía permisos ni autoriza acciones externas.
-- Un mensaje nuevo, agentes vivos, un fallo de guardado o un dueño ajeno impiden la
-  continuación automática: atiende el aviso, no fuerces un `/clear`.
-- Usa una sesión escritora por tarea. Si otra sesión reclama el estado, el guardado se
-  rechaza con código 5 en lugar de pisar el trabajo.
-
-## Recuperación y soporte
-
-Si falta el Dock o `/handoff`, cierra la sesión y vuelve a abrirla con el lanzador
-desde tu proyecto; valida el plugin desde `~/scc` con
-`claude plugin validate kit/mods/cockpit`. Si `doctor` falla, corrige el diagnóstico
-antes de continuar. Para un guardado rechazado por dueño ajeno, vuelve a la sesión
-escritora y cierra allí la fase; no copies su ID para escribir desde otra sesión.
-Un fallo al guardar exige conservar el contexto: no fuerces `/clear`.
-
-Si una actualización rompe la instalación, usa «Restaurar» arriba y conserva
-`.claude/estado/` del proyecto. Para pedir ayuda al responsable de la entrega,
-adjunta `VERSION`, `BUILD_ID`, commit o suma recibida, sistema/WSL, `claude --version`,
-comando exacto, código de salida, resultado esperado y observado. Añade el diagnóstico
-pertinente y, si reproduce el fallo, los logs de la aceptación sintética. Revisa y
-redacta rutas personales antes de compartirlos: no adjuntes configuración completa,
-credenciales, cookies ni transcripts de trabajo real. Los fallos de seguridad siguen
-[`SECURITY.md`](SECURITY.md); las contribuciones, [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-## Si trabajas sobre el propio repo del kit
-
-`make test` ejecuta las suites Bash (necesita Git y el historial del repo; un paquete sin
-`.git` se verifica con las sumas, `doctor.sh` y `aceptacion-local.sh`). `make test-cockpit`
-ejecuta las pruebas del cockpit.
+- Solo Linux y WSL2; Windows nativo y macOS no están soportados.
+- La versión mínima de Claude Code es la que figura en el README. Con una anterior, `doctor.sh` avisa; con una
+  posterior no hay garantía, solo la prueba de la CI.
+- Esta entrega no instala hooks, cockpit ni continuidad automática para Codex u opencode.
+- Un paquete sin `.git` no ejecuta `make test`: se verifica con las sumas, `doctor.sh` y `aceptacion-local.sh`.
+- El paquete no trae `Makefile`, `kit/test`, `kit/evals`, `knowledge/`, `CONTRIBUTING.md` ni la mayoría de `scripts/`
+  (`cost-report.sh`, `compact-audit.py`, `recuerda`…): `make …` (`bootstrap`, `evals-dryrun`, `doctor`), la guía de medición de `kit/docs/guia/04-mide-tu-setup.md`
+  y los enlaces a esos ficheros solo funcionan en el clon del repo o del bundle.
+- Restaurar un respaldo (`bash uninstall.sh --list` y `--apply`) devuelve archivos, no desinstala; para quitar el
+  kit, `uninstall.sh --kit`. No borres `.claude/estado/` de tus proyectos: contiene su continuidad.

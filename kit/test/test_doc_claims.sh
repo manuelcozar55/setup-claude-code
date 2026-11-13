@@ -215,7 +215,7 @@ rm -f "$OMTMP/sin.md" "$OMTMP/con.md"; rmdir "$OMTMP"
 # --- 2. Todo script citado en la doc existe --------------------------------
 # Asi es como sobrevivio 'session-brief.sh' en tres documentos despues de borrarlo.
 # Nombres generico de ejemplo: no son ficheros del repo y no deben existir.
-GENERICOS=" script.sh script-que-lo-contiene.sh "
+GENERICOS=" script.sh script-que-lo-contiene.sh mi-hook.sh "
 missing=""
 while IFS= read -r s; do
   case "$GENERICOS" in *" $s "*) continue;; esac
@@ -1269,7 +1269,7 @@ GUARDS=$(jq -r '[.hooks.PreToolUse[] | . as $h
 GUARDS_JQ=$(jq -r '.hooks.PreToolUse[] | . as $h
                    | select((($h.matcher // "") != "") and ("Bash" | test("^(" + $h.matcher + ")$")))
                    | .hooks[].command | select(test("optional-hook") | not)' "$SETTINGS" \
-            | sed 's|.*/hooks/|kit/claude/hooks/|; s| .*||' | xargs grep -lE '\bjq\b' 2>/dev/null | wc -l | tr -d ' ')
+            | sed 's|"||g; s|.*/hooks/|kit/claude/hooks/|; s| .*||' | xargs grep -lE '\bjq\b' 2>/dev/null | wc -l | tr -d ' ')
 if [ "$GUARDS" = "$GUARDS_JQ" ]; then
   claim "$GUARDS" guards "$SECDOC" "$ONBDOC"
 else
@@ -1355,7 +1355,7 @@ jq '.hooks.PreToolUse += [{"matcher":"Bash","hooks":[{"type":"command","command"
   "$SETTINGS" > "$NUTMP/s-mas-rtk.json"
 jq 'del(.enabledPlugins["skill-creator@claude-plugins-official"])' "$SETTINGS" > "$NUTMP/s-menos-plugin.json"
 # shellcheck disable=SC2016 # los backticks son los del markdown de 05-security.md, literales
-sed 's/7 hooks `PreToolUse`/9 hooks `PreToolUse`/' "$SECDOC"          > "$NUTMP/d-cadena.md"
+sed 's/6 hooks `PreToolUse`/9 hooks `PreToolUse`/' "$SECDOC"          > "$NUTMP/d-cadena.md"
 # shellcheck disable=SC2016 # idem
 sed 's/hooks `PreToolUse` en serie/hooks en serie/'  "$SECDOC"        > "$NUTMP/d-muda.md"
 # shellcheck disable=SC2016 # idem: es la fila fantasma, con sus backticks de markdown

@@ -7,6 +7,54 @@ etiquetado.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-12
+
+Versión mayor: los guards cambian de veredicto (órdenes que antes se bloqueaban ahora preguntan o pasan, y al
+revés), el estado de sesión y el cockpit cambian de comportamiento por defecto, y `.kit-desactivados` pasa a
+gobernar qué se instala. Quien adapte el kit debe leer este bloque antes de actualizar.
+
+Se levanta la congelación (2026-11-11, decisión del dueño): entran tres piezas de terceros con su entrada B-007 en `knowledge/BACKLOG.md`.
+
+### Consolidación: instalar, operar y adaptar el kit sin ser su autor
+
+- **Guards:** bloquean menos órdenes legítimas sin abrir nada: de 34 órdenes de uso normal pasan 22 (antes 15), 3 preguntan (borrar un directorio de build) y 9 siguen bloqueadas como antes, declaradas como límite (escribir por shell a un fichero un texto que cita una orden peligrosa, que se hace con la herramienta de edición, y borrados recursivos compuestos o fuera del proyecto). Siguen bloqueando las 25 peligrosas y cierran 10 de 12 rodeos conocidos; los otros 2 (código dentro de un intérprete) quedan documentados como límite. Regla nueva, comprobada en cada `make test` contra los guards de la 1.10.1: una orden que antes se bloqueaba solo pasa por una de cinco exenciones de lista cerrada. Cuatro rondas de revisión adversaria rompieron las demás (escritura a fichero como dato, `sed`/`awk` como prosa, borrado de build y `--force-with-lease` como permiso) y se retiraron en vez de parchearse: esas órdenes se bloquean como antes o preguntan. Alcance declarado en `SECURITY.md`: frenan accidentes de un agente, no a un adversario.
+- **Sentinel:** `~/.claude/.kit-desactivados` se protege frente a escrituras por Bash igual que `settings.json`.
+- **Estado y avisos:** un solo aviso de contexto, con o sin cockpit; el autosave funciona en un proyecto sin `nucleo.md`; `handoff --auto` oculta secretos; la compuerta de commit vive en `agentes.sh` y `nucleo-gate.sh` se retira.
+- **Instalación:** `install.sh --plan` enseña qué fusionará en `settings.json`; se instala el lanzador `scc` y la copia del cockpit; `uninstall.sh --kit` quita solo lo que instaló el kit; `doctor` avisa si la versión instalada no es la del repo.
+- **Cockpit:** ver la sección «cockpit 0.9.0» más abajo.
+- **Documentación:** `README.md` de una página (requisitos, coste, un solo camino de instalación); `kit/docs/OPERAR.md` (qué hacer ante un bloqueo, cómo quitar un hook, cuánto cuesta, cómo actualizar y desinstalar); `kit/docs/MAPA.md`, generado por `scripts/generar-mapa.sh` desde los hooks y `settings.json`, con cada hook, interruptor, agente, skill y comando; `kit/docs/guia/06-adaptar.md` reescrita con recetas que se ejecutan en un test. `mcharness` queda como nombre del andamiaje de desarrollo; el producto es SCC.
+- **doctor:** distingue «desactivado por ti» de «roto» con la lista `.kit-desactivados` (hooks, agentes y skills). `install.sh --apply` la respeta: no vuelve a cablear ni a copiar lo que tú quitaste, y nunca quita nada por estar en la lista (un hook que sigue en `settings.json` se queda). Un guard de seguridad apagado y anotado da WARN, no INFO; la plantilla deniega la edición de la lista por el agente. `uninstall.sh --kit --settings-plantilla` quita de `settings.json` lo que sea igual a la plantilla del kit cuando no hay copia previa a la instalación.
+- **Retirado:** `CC_NUCLEO_GATE`; el código solo lee `NUCLEO_GATE`.
+- Sensores nuevos: `test_mapa.sh`, `test_doctor_desactivados.sh`, `test_adaptar.sh` y `test_docs_enlaces.sh` (enlaces, rutas, versión mínima de Claude Code y versión del cockpit de README y ENTREGA frente al código).
+
+### Cifras
+
+| Cifra | Valor |
+|---|---|
+| Órdenes peligrosas bloqueadas | 25 de 25 (antes 25 de 25) |
+| Órdenes legítimas bloqueadas por error | 9 de 34, y 3 que preguntan (antes 19 de 34) |
+| Rodeos conocidos cerrados | 10 de 12, 2 documentados como límite (antes 0) |
+
+### Changed (cockpit 0.9.0)
+
+- **Cockpit 0.9.0, cambio de comportamiento por defecto:** el autosave con modelo pasa a **apagado** (opt-in con `/autosave on` o `COCKPIT_AUTOSAVE=on`): cada síntesis es un fork con todo el contexto y nadie lo había pedido. Con el estado en manos de otra sesión no hace fork; retroceso exponencial (10/20 min) y parada con un solo aviso tras 3 fallos; el log anota el `usage` del fork (la doc decía que no lo devolvía).
+- Cockpit: en `-p`/SDK (`isInteractive: false`) no arma temporizadores, dock, handoff automático ni autosave; el handoff automático guarda una vez por cruce del umbral; «Contexto limpio» solo si el id de sesión cambió tras el `/clear`; versión mínima 2.1.311 (por debajo se apaga con un aviso); el mod solo manda las cabeceras que admite `handoff` (`## Notas` daba rc 2 tras pagar el fork); fallos con mensaje y siguiente paso (sin `handoff`, sin `.claude/estado/`, fork vacío o con error, `/clear` no lanzado) y textos del dock sin jerga.
+- Cockpit: tipado reproducible en un clon limpio (`tsconfig.json` autocontenido contra los tipos que escribe el motor, sin versionarlos; sin ellos tsc se anuncia saltado), `make test-cockpit` y job de CI `cockpit`.
+
+### Added
+
+- Agentes `pr-test-analyzer` (¿cubren los tests del PR el comportamiento nuevo?) y `silent-failure-hunter` (errores tragados, fallbacks que enmascaran, `|| true`), adaptados de `anthropics/claude-plugins-official` (Apache-2.0). El kit pasa de 5 a 7 agentes.
+- Skill `verification-before-completion`, adaptada de `obra/superpowers` (MIT): antes de decir «hecho», correr el comando que lo prueba y leer su rc. El kit pasa de 2 a 3 skills.
+- `CLAUDE.md` del kit: sección «Interfaces». `/impeccable` es la entrada para UI y `ui-ux-pro-max` su fuente de datos, nunca quien elige la dirección visual.
+
+### Changed
+
+- **`code-reviewer` solo da BLOCK con evidencia producida en la revisión:** un hallazgo CRITICAL con `fichero:línea`, o un comando ejecutado (tests o reproducción) que falla por el cambio. Una nota baja en la rúbrica, la falta de evidencia o el estilo dan WARNING y dicen qué falta. Motivo: en 30 días, 4 de ~17 veredictos fueron BLOCK, y 3 solo por «Verificación» 3 < 4. Validado con 7 revisiones: 5 cambios limpios dan APPROVE y 2 defectos plantados (un bypass del guard y una inyección de comandos) dan BLOCK con su reproducción. Además contrasta el cambio con el plan o spec y, si la suite completa es lenta, corre las suites que cubren lo cambiado.
+
+### Documentation
+
+- `graphify` sale de `docs/08-plugins-mcp-y-skills.md` y `docs/02-install.md`: 0 usos medidos.
+
 ### Retirado
 
 - Agente `strategist`: 0 invocaciones en 30 días y en todo el histórico; solapa con el agente nativo `Plan`. El kit pasa de 6 a 5 agentes.
@@ -14,6 +62,34 @@ etiquetado.
 - Skill `grilling`: 0 invocaciones de Skill en todo el histórico de transcripts. `deep-change` ya no la nombra. El kit pasa de 5 a 4 skills.
 - Skill `writing-for-agents`: 0 invocaciones de Skill en todo el histórico de transcripts. `retro` ya no la invoca como primer paso. El kit pasa de 4 a 3 skills.
 - Skill `to-questionnaire`: 0 invocaciones de Skill en todo el histórico de transcripts. El kit pasa de 3 a 2 skills (`deep-change` y `retro`).
+
+### Fixed
+
+Tope del nucleo (caso real del 11-nov: una sesión con varios encargos apilados llegó al 121 % del tope sin aviso y, al retomar, perdía Pendientes y Plan):
+
+- `nucleo-nudge.sh` avisa del tamaño también con el nucleo recién editado. Antes callaba si tenía menos de 10 min, justo cuando se acababa de inflar a mano.
+- `handoff --auto` ya no se omite con el nucleo por encima del tope: escribe la sección mínima, de dos líneas. Antes dejaba la «Último turno (auto)» anterior, que tras compactar describía otro turno.
+- La inyección quita primero «Último turno (auto)», que es regenerable, antes que Pendientes, Plan y Ficheros tocados, como ya hacía `handoff`. Además dice cuántos pasos `[x]` del Plan omite: uno marcado a mano no pasó por `handoff` ni está en `diario.md`.
+- `deep-change`: «Encargo original» e «Invariantes» son de un solo encargo. Al abrir otro en el mismo nucleo, el cerrado pasa entero a `diario.md`. Apilados solo crecían: cinco encargos ocupaban el 43 % del tope.
+- **Validación en Debian 13 (12-nov, bash 5.2):**
+  - `test_guards_r1.sh` se interbloqueaba: el `wait` sin argumentos del bucle `done < <(cat fixtures)` esperaba también a la sustitución de proceso, que no termina hasta que se lee el pipe (los fixtures pesan más de 64 KB). `make test` no terminaba tampoco por `test_guards_falsifiability.sh`, que invoca r1. Ahora el corpus se vuelca a un fichero. Con bash 5.3 (Ubuntu) no ocurría.
+  - `test_install_manifest.sh`, `test_nucleo_nudge.sh` y `test_empaquetar_entrega.sh` fallaban según el PATH (sin `claude` ni `handoff`) o el locale (`en_US.UTF-8`) de la máquina. Ahora ponen sus propios sustitutos en el PATH y ordenan con `LC_ALL=C`; ninguna aserción se relaja. `empaquetar-entrega.sh` ya ordenaba con `LC_ALL=C`: el paquete no cambia con el locale.
+  - Actualizar desde 1.9.1 dejaba instalados `agents/strategist.md` y las skills `domain-modeling`, `grilling`, `to-questionnaire` y `writing-for-agents` (retirados en esta versión), y `uninstall.sh --kit` tampoco los quitaba, porque 1.9.1 no escribía manifiesto. `kit/hooks-retirados.sha256` lleva ahora las sumas de cada versión publicada de esos ficheros: `install.sh --apply` y `uninstall.sh --kit` retiran los que coinciden a `backups/` (y la carpeta de la skill si queda vacía) y conservan y listan los que modificaste; nunca borran a través de una carpeta enlazada (skill proyectada desde otro repo); `doctor` avisa de los que sigan instalados. Si ya actualizaste con 2.0.0 sin este arreglo, repite `install.sh --apply`, o borra a mano `~/.claude/agents/strategist.md` y `~/.claude/skills/{domain-modeling,grilling,to-questionnaire,writing-for-agents}`.
+  - `doctor` distingue «claude no instalado» de «claude instalado en `~/.local/bin` pero fuera del PATH».
+  - `ENTREGA.md` ya no cita un `VALIDACION-DEBIAN.md` que el paquete no trae; explica que el clon del bundle exige `--branch` y cómo comprobar `SHA256SUMS` con solo parte de los ficheros (`sha256sum -c --ignore-missing`).
+
+Auditoría final (13-nov):
+
+- **Guards:** `printf x>/dev/sda` (redirección pegada al texto) ya no se toma por prosa y se bloquea; una cadena ANSI-C con comilla escapada (`$'a\'b' ; rm -rf ~/x ; $'c\'d'`) ya no esconde lo que hay entre medias a los guards ni a Sentinel; un glob que alcance `~/.claude/settings*` o `.kit-desacti*` cuenta como ruta protegida.
+- **Guards:** si no pueden leer el comando normalizado, o `jq` falla al emitir el veredicto, cierran (bloquean) en vez de dejar pasar.
+- **Guards:** un script con la salida redirigida (`./run.sh > out.log`) ya no pregunta «escribe y ejecuta»; sigue preguntando si el destino se escribió antes en la misma línea. El mensaje de fallo de `write-guard.py` ya no sugiere un `--help` que no existe.
+- **Guards (revisión adversaria del diff):** `>&` y `>|` cuentan como redirección para las reglas de disco y de ficheros de arranque (`echo x >& ~/.bashrc` pasaba) y la de disco cubre también `/dev/nvme*`, `/dev/vd*` y `/dev/mmcblk*`; un comodín en el directorio (`~/.claude/h*/*.sh`) o unas llaves (`~/.claude/{settings.json,x}`) alcanzan la configuración protegida; una continuación de línea entre el `$` y la comilla no rompe la cadena ANSI-C; escribir un script y ejecutarlo por otra ruta o con comodín (`bash $PWD/x.sh`, `bash x.*`) pregunta.
+- **Estado:** el guardado automático (`handoff --auto`) se omite, y lo anota en `autosave.log`, si `nucleo.md` cambió mientras lo preparaba, en vez de pisar tu edición; la sesión que pierde la carrera por el dueño del estado ve el aviso de «otra sesión dueña»; el `.gitignore` de `handoff --commit` cubre los temporales `.dueno.*` y `.nucleo.*`.
+- **Cockpit:** `/handoff` aborta si `nucleo.md` cambió durante la consulta al modelo («repite /handoff»); el handoff automático avisa con un toast, una vez por sesión, cuando no puede guardar, y tras el segundo fallo dice que no reintentará; el aviso de cockpit apagado manda a arrancar con `claude` en vez de `scc` (ya no a `claude plugin uninstall`).
+- **Instalación:** `install.sh --apply` y `uninstall.sh --kit` mueven a `backups/` lo que el kit retira (agentes, skills y hooks) y `uninstall.sh --kit` guarda también `.kit-settings-pre.json`, en lugar de borrarlos; el simulacro de `uninstall.sh --kit` nombra lo retirado; `hooks-retirados.sha256` incluye la suma de `agents/strategist.md` de la 1.10.1, así que quien actualiza desde ella ya no recibe «modificado por ti».
+- **Instalación:** con un `CLAUDE_HOME` distinto de `~/.claude`, `install.sh --apply` imprime un AVISO y `doctor.sh` un WARN: los hooks cablean `$HOME/.claude` y no se ejecutan.
+- **Entrega:** `aceptacion-local.sh` pasa lanzado desde Claude Code (hereda `CLAUDE_PID`); el ZIP no cambia con la zona horaria ni el umask; `bump.sh` ya no reescribe las citas históricas «la 2.0» y sube 7 ficheros, no 11.
+- **Documentación:** `SECURITY.md` dice «preguntan» donde el veredicto es ask (borrar build, `--force-with-lease` a una rama de trabajo) y ya no promete reglas deny de LinkedIn que la plantilla retiró; `ENTREGA.md` gana la sección «Actualizar» y declara lo que el paquete no trae; correcciones en `02-install.md`, `10-onboarding.md`, `11-cockpit.md`, `OPERAR.md` y `README.md` (CLIs, versiones, anclas, textos que el instalador ya no imprime).
 
 ## [1.10.1] - 2026-11-11
 
@@ -2309,7 +2385,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.1...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.1...v2.0.0
 [1.10.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.0...v1.9.1

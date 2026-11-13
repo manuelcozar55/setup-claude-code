@@ -22,7 +22,9 @@ sin_cifras() {
       }
       next
     }
-    /^### Cifras/ { tiene = 1 }
+    /^### Cifras/ { en = 1; next }
+    /^#/ { en = 0 }
+    en && (/^\|/ || /^Sin cifras: *[^ ]/) { tiene = 1 }
     END { cierra() }
   ' "$1"
 }
@@ -36,8 +38,17 @@ ok "falsable: 1.10.0 sin bloque se detecta" "$(sin_cifras "$T/sin.md")" "1.10.0"
 printf '## [1.10.0] - 2026-11-10\n\n### Added\n\n- algo\n\n### Cifras (uso real, a → b, 2 sesiones)\n\n| Cifra | Valor |\n\n## [1.9.0] - 2026-11-09\n\n- otra\n' > "$T/con.md"
 ok "1.10.0 con bloque pasa" "$(sin_cifras "$T/con.md")" ""
 
-printf '## [2.0.0] - 2027-01-01\n\n- algo\n\n## [1.11.2] - 2026-12-01\n\n### Cifras\n\n## [1.9.5] - 2026-11-20\n\n- exenta\n' > "$T/mix.md"
+printf '## [2.0.0] - 2027-01-01\n\n- algo\n\n## [1.11.2] - 2026-12-01\n\n### Cifras\n\n| Cifra | Valor |\n\n## [1.9.5] - 2026-11-20\n\n- exenta\n' > "$T/mix.md"
 ok "2.0.0 sin bloque se detecta, 1.11.2 con bloque y 1.9.5 exenta no" "$(sin_cifras "$T/mix.md" | tr '\n' ' ')" "2.0.0 "
+
+printf '## [1.10.0] - 2026-11-10\n\n### Cifras\n\nSin cifras: release cortada por una persona sin serie propia de uso real.\n\n## [1.9.0] - 2026-11-09\n\n- otra\n' > "$T/motivo.md"
+ok "«### Cifras» con «Sin cifras: <motivo>» pasa" "$(sin_cifras "$T/motivo.md")" ""
+
+printf '## [1.10.0] - 2026-11-10\n\n### Cifras\n\nSin cifras:\n\n## [1.9.0] - 2026-11-09\n\n- otra\n' > "$T/vacio.md"
+ok "falsable: «Sin cifras:» sin motivo se detecta" "$(sin_cifras "$T/vacio.md")" "1.10.0"
+
+printf '## [1.10.0] - 2026-11-10\n\n### Cifras\n\n### Added\n\n- algo\n\n## [1.9.0] - 2026-11-09\n\n- otra\n' > "$T/hueco.md"
+ok "falsable: encabezado «### Cifras» vacio se detecta" "$(sin_cifras "$T/hueco.md")" "1.10.0"
 
 printf '## [Unreleased]\n\n- sin cifras y exento\n' > "$T/unrel.md"
 ok "[Unreleased] queda exento" "$(sin_cifras "$T/unrel.md")" ""

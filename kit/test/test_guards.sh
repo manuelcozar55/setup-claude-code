@@ -72,6 +72,7 @@ expect "symlink: Read de un enlace a una credencial denegado"  "$(run_sentinel_r
 expect "symlink: cat de un enlace a una credencial denegado"   "$(run_sentinel "cat $SYM_D/notas.txt")"      BLOCK
 expect "symlink: Read a traves de un enlace a directorio denegado" "$(run_sentinel_read "$SYM_D/dir-enlace/id_rsa")" BLOCK
 expect "symlink: Read de un enlace a un fichero inocuo permitido" "$(run_sentinel_read "$SYM_D/enlace-inocuo.txt")" ALLOW
+rm -r "$SYM_D"
 # Formas de leer o copiar una clave que la primera version de la valla dejo pasar (revision del
 # 15-oct): glob, acento grave, sufijo de copia, directorio, llaves, y el oculto tras una barra.
 expect "clave: glob con ruta denegado"           "$(run_sentinel 'cat /etc/ssl/private/*.key')"            "$IOCS_WANT"
@@ -515,7 +516,14 @@ expect "guard: -C antes de push denegado"         "$(run_blockdc 'git -C /home/u
 expect "guard: refspec + forzado denegado"        "$(run_blockdc 'git push origin +release:release')"            BLOCK
 expect "guard: --mirror denegado"                 "$(run_blockdc 'git push --mirror origin')"                    BLOCK
 expect "guard: --delete de rama remota denegado"  "$(run_blockdc 'git push origin --delete release')"            BLOCK
-expect "guard: --force-with-lease sigue denegado" "$(run_blockdc 'git push --force-with-lease origin feature')"  BLOCK
+# Quinta vuelta: --force-with-lease nunca es allow. Con prueba (remoto con nombre y rama feat/, fix/, chore/...) PREGUNTA (aqui «no
+# denegado»); sin prueba manda el veredicto de la base (deny).
+expect "guard: --force-with-lease a una rama de trabajo con prueba pregunta (no deniega)" "$(run_blockdc 'git push --force-with-lease origin feat/x')"  ALLOW
+expect "guard: --force-with-lease a una rama sin prueba vuelve a la base" "$(run_blockdc 'git push --force-with-lease origin feature')"  BLOCK
+expect "guard: --force-with-lease a main sigue denegado" "$(run_blockdc 'git push --force-with-lease origin main')"  BLOCK
+expect "guard: --force-with-lease=main sigue denegado"   "$(run_blockdc 'git push origin --force-with-lease=main')"  BLOCK
+expect "guard: --force-with-lease junto a --force denegado" "$(run_blockdc 'git push --force-with-lease --force origin feature')"  BLOCK
+expect "guard: --force-with-lease con +refspec denegado" "$(run_blockdc 'git push --force-with-lease origin +feature')"  BLOCK
 expect "guard: -C sin forzar NO denegado"         "$(run_blockdc 'git -C /home/user/repo push origin feature')"  ALLOW
 # El flag entrecomillado es el mismo flag para git: `'-f'`, `--"force"` y `"-"f` fuerzan igual. Se decide
 # sobre tokens descomillados de la sentencia `git push`, no sobre el texto; el mensaje de un commit
@@ -526,7 +534,7 @@ expect "guard: flag corto entre comillas simples denegado"  "$(run_blockjq "git 
 expect "guard: flag largo con comillas parciales denegado"  "$(run_blockjq "git push --\"force\" origin rama-x")"    BLOCK
 expect "guard: guion y letra separados por comillas denegado" "$(run_blockjq "git push \"-\"f origin rama-x")"       BLOCK
 expect "guard: flag largo entrecomillado denegado"          "$(run_blockjq "git push '$FF' origin rama-x")"          BLOCK
-expect "guard: --force-with-lease entrecomillado denegado"  "$(run_blockjq "git push '$FF-with-lease' origin rama-x")" BLOCK
+expect "guard: --force-with-lease entrecomillado, sin prueba de rama, vuelve a la base" "$(run_blockjq "git push '$FF-with-lease' origin rama-x")" BLOCK
 expect "guard: -uf entrecomillado denegado"                 "$(run_blockjq "git push '-uf' origin rama-x")"          BLOCK
 expect "guard: flag entrecomillado tras el refspec denegado" "$(run_blockjq "git push origin rama-x '-f'")"          BLOCK
 expect "guard: flag entrecomillado tras -C denegado"        "$(run_blockjq "git -C /r push '-f' origin rama-x")"     BLOCK
@@ -543,7 +551,7 @@ expect "guard: \$'-f' tras -C denegado"                     "$(run_blockjq "git 
 expect "guard: \$'+rama' denegado"                          "$(run_blockjq "git push origin \$'+rama-x'")"           BLOCK
 expect "guard: \$'\\x2df' (escape sin resolver) denegado"   "$(run_blockjq "git push \$'\\x2df' origin rama-x")"      BLOCK
 expect "guard: \$'\\x2bmain' (refspec con escape) denegado" "$(run_blockjq "git push origin \$'\\x2bmain'")"           BLOCK
-expect "guard: --force-if-includes denegado"                "$(run_blockjq "git push $FF-if-includes origin rama-x")" BLOCK
+expect "guard: --force-if-includes, sin prueba de rama, vuelve a la base" "$(run_blockjq "git push $FF-if-includes origin rama-x")" BLOCK
 expect "guard: refspec +HEAD:main denegado"                 "$(run_blockjq "git push origin +HEAD:main")"            BLOCK
 expect "guard: -C dir con +main denegado"                   "$(run_blockjq "git -C /r push origin +main")"           BLOCK
 expect "guard: \$'rama-x' NO denegado"                      "$(run_blockjq "git push origin \$'rama-x'")"            ALLOW
@@ -712,14 +720,17 @@ expect "destructive: rm forma larga en /home denegado" "$(run_destructive 'rm --
 # entrecomillado y sin pipe es texto; en cualquier otra forma (sin comillas, a un shell, con `;`/`&&`, sin cierre) sigue valiendo.
 run_destructive_jq() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" bash "$KIT/claude/hooks/destructive-guard.sh" 2>&1; }
 NL=$'\n'
-expect "destructive: prosa con rm -rf en heredoc a fichero NO denegada"  "$(run_destructive_jq "cat > informe.md <<'EOF'${NL}no usar rm -rf ~ ni find . -delete${NL}EOF")" ALLOW
-expect "destructive: heredoc a fichero y luego un comando normal NO denegado" "$(run_destructive_jq "cat >a.md <<\"FIN\"${NL}rm -rf /etc${NL}FIN${NL}ls")" ALLOW
+expect "destructive: heredoc a fichero con rm -rf: quinta vuelta, escribir un texto ya no se prueba como dato (base)"  "$(run_destructive_jq "cat > informe.md <<'EOF'${NL}no usar rm -rf ~ ni find . -delete${NL}EOF")" BLOCK
+expect "destructive: heredoc de texto sin fichero con rm -rf NO denegado"  "$(run_destructive_jq "cat <<'EOF'${NL}no usar rm -rf ~ ni find . -delete${NL}EOF")" ALLOW
+# Cuarta vuelta (cambio de especificacion declarado): la prueba de dato solo vale en contexto cerrado, una sola tuberia. Con una
+# orden mas en otra linea el texto escrito podria consumirla (`cat > a.sh <<EOF`...`sh a.sh`): vuelve el veredicto de la base.
+expect "destructive: heredoc a fichero y luego otra orden en otra linea: vuelve el veredicto de la base (cuarta vuelta)" "$(run_destructive_jq "cat >a.md <<\"FIN\"${NL}rm -rf /etc${NL}FIN${NL}ls")" BLOCK
 expect "destructive: heredoc a fichero, rm -rf real despues denegado"   "$(run_destructive_jq "cat > a.md <<'EOF'${NL}hola${NL}EOF${NL}rm -rf ~")" BLOCK
 expect "destructive: heredoc con ; y rm -rf en la cabecera denegado"    "$(run_destructive_jq "cat > a.md <<'EOF' ; rm -rf ~${NL}hola${NL}EOF")" BLOCK
 expect "destructive: heredoc sin comillas con \$( ) denegado"          "$(run_destructive_jq "cat > a.md <<EOF${NL}\$(rm -rf ~)${NL}EOF")" BLOCK
 expect "destructive: heredoc a un shell denegado"                       "$(run_destructive_jq "bash <<'EOF'${NL}rm -rf ~${NL}EOF")" BLOCK
 expect "destructive: heredoc con pipe a un shell denegado"              "$(run_destructive_jq "cat <<'EOF' | bash${NL}rm -rf ~${NL}EOF")" BLOCK
-expect "destructive: heredoc a stdout (sin fichero) denegado"           "$(run_destructive_jq "cat <<'EOF'${NL}rm -rf ~${NL}EOF")" BLOCK
+expect "destructive: heredoc a stdout (sin fichero) es dato, NO denegado"           "$(run_destructive_jq "cat <<'EOF'${NL}rm -rf ~${NL}EOF")" ALLOW
 expect "destructive: heredoc sin cierre denegado"                       "$(run_destructive_jq "cat > a.md <<'EOF'${NL}rm -rf ~${NL}")" BLOCK
 expect "destructive: heredoc a fichero con && bash denegado"            "$(run_destructive_jq "cat > a.sh <<'EOF' && bash a.sh${NL}rm -rf ~${NL}EOF")" BLOCK
 # Hueco `~` entre comillas: `~` o `..` pegados a la comilla de cierre (o a `;`, `)`...) no contaban como objetivo de rm.
@@ -787,10 +798,13 @@ done
 # shellcheck disable=SC2016  # el $HOME va literal: es el comando que se evalua
 for c in 'rm -rf ~/dist/../Documents' 'rm -rf ~/node_modules/../.ssh' 'rm -rf dist/..' \
          'rm -rf ./node_modules/x/../..' 'rm -rf $HOME/build/../Documents' 'rm -rf "$HOME/dist/../Documents"' \
-         'sudo rm -rf ~/tmp/../Documents' 'rm -rf ~/dist/foo/../../Documents'; do
+         'sudo rm -rf ~/tmp/../Documents' 'rm -rf ~/dist/foo/../../Documents' \
+         'rm -rf ~/node_modules/x' 'rm -rf ../node_modules' 'rm -rf ~/dist'; do
   expect "destructive (E7.3): $c denegado" "$(run_dg "$c")" BLOCK
 done
-for c in 'rm -rf ./node_modules/x' 'rm -rf ~/node_modules/x' 'rm -rf ../node_modules' 'rm -rf dist build' 'rm -rf ~/dist'; do
+# Tercera vuelta (cambio de especificacion declarado): un rm -rf solo pasa con una PRUEBA positiva (build relativo sin `..`, ~/proyecto/.../build,
+# /tmp/<subruta>). `~/dist`, `~/node_modules/x` y `../node_modules` no la tienen (el nombre no basta bajo ~ ni con `..`): manda la base, que los bloqueaba.
+for c in 'rm -rf ./node_modules/x' 'rm -rf dist build' 'rm -rf ~/proj/dist'; do
   expect "destructive (E7.3): $c NO denegado" "$(run_dg "$c")" ALLOW
 done
 
@@ -1468,7 +1482,7 @@ $bwg_body
 $bwg_key
 EOF")" BLOCK
 # Esta suite fija ademas que el guard esta cableado: con timeout 5 en la cadena de Bash.
-bwg_to=$(jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | endswith("/bash-write-guard.sh")) | .timeout] | join(",")' "$KIT/claude/settings.json")
+bwg_to=$(jq -r '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | test("/bash-write-guard\\.sh\"?$")) | .timeout] | join(",")' "$KIT/claude/settings.json")
 if [ "$bwg_to" = 5 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: bash-write-guard no esta en la cadena PreToolUse/Bash del settings con timeout 5 (timeouts: '$bwg_to')"; fi
 
 # Tamano del comando (v3 W5). Claude Code mata el hook al pasar su timeout y la herramienta se
@@ -1505,14 +1519,24 @@ big_over=$(head -c 140000 /dev/zero | tr '\0' 'a')
 big_ask() { # $1 etiqueta, resto = el guard (argv)
   local label=$1 payload out
   shift
-  printf 'echo %s; git push --force origin main' "$big_over" > "$GUARDS_TEST_HOME/big.cmd"  # jq --arg no admite >128 KB
+  printf 'echo %s; %s' "$big_over" "${BIG_TAIL:-git push --force origin main}" > "$GUARDS_TEST_HOME/big.cmd"  # jq --arg no admite >128 KB
   payload=$(jq -nc --rawfile c "$GUARDS_TEST_HOME/big.cmd" '{tool_name:"Bash",tool_input:{command:$c}}')
   out=$(cd "$SG_DIR" && printf '%s' "$payload" | HOME="$GUARDS_TEST_HOME" CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" "$@" 2>&1)
   if [ "$(jq -r '.hookSpecificOutput.permissionDecision' <<<"$out" 2>/dev/null)" = ask ] && grep -q 'herramienta Write' <<<"$out"; then
     pass=$((pass+1))
   else fail=$((fail+1)); echo "FAIL: $label: 140 KB no pide confirmacion con aviso de Write (salida: ${out:0:200})"; fi
 }
-big_ask "block-dangerous" bash "$KIT/claude/hooks/block-dangerous-commands.sh"
+# Tercera vuelta (hallazgo 7): sobre el tope block-dangerous aplica el criterio de la base al texto: lo que la base bloqueaba se DENIEGA
+# (antes se preguntaba, y un force push a main de 140 KB pasaba con un clic); lo que no, se pregunta.
+BIG_TAIL='ls' big_ask "block-dangerous" bash "$KIT/claude/hooks/block-dangerous-commands.sh"
+for tail_cmd in 'git push --force origin main' 'rm -rf ~/x' 'git push -f origin master'; do
+  printf 'echo %s; %s' "$big_over" "$tail_cmd" > "$GUARDS_TEST_HOME/big.cmd"
+  payload=$(jq -nc --rawfile c "$GUARDS_TEST_HOME/big.cmd" '{tool_name:"Bash",tool_input:{command:$c}}')
+  out=$(cd "$SG_DIR" && printf '%s' "$payload" | HOME="$GUARDS_TEST_HOME" CC_BLOCK_LOG="$GUARDS_TEST_HOME/blocked.log" bash "$KIT/claude/hooks/block-dangerous-commands.sh" 2>&1)
+  rc=$?
+  if [ "$rc" = 2 ] || [ "$(jq -r '.hookSpecificOutput.permissionDecision' <<<"$out" 2>/dev/null)" = deny ]; then pass=$((pass+1))
+  else fail=$((fail+1)); echo "FAIL: block-dangerous: 140 KB con '$tail_cmd' (la base lo bloqueaba) no se deniega (rc=$rc)"; fi
+done
 big_ask "branch-guard"    bash "$KIT/claude/hooks/branch-guard.sh"
 big_ask "destructive"     bash "$KIT/claude/hooks/destructive-guard.sh"
 big_ask "secret-guard"    bash "$KIT/claude/hooks/secret-guard.sh"
@@ -1552,6 +1576,14 @@ for nh_g in block-dangerous-commands.sh bash-write-guard.sh branch-guard.sh dest
   jq -nc '{tool_name:"Bash",tool_input:{command:"git status; ls ~/x"}}' | env -u HOME bash "$KIT/claude/hooks/$nh_g" >/dev/null 2>&1; nh_rc=$?
   if [ "$nh_rc" -eq 0 ] || [ "$nh_rc" -eq 2 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [F-09] $nh_g sin HOME salio con rc $nh_rc (se esperaba 0 o 2)"; fi
 done
+# F2-02: si el here-string de cmdn_parse no puede crear su temporal (aqui, limite de tamano de fichero a 0), el guard cierra.
+f202_pad=$(printf '%*s' 25000 '' | tr ' ' x)
+f202_rc=$(cd "$V151_REPO" && trap '' XFSZ && ulimit -f 0 && jq -nc --arg c "echo $f202_pad; git push origin main" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/branch-guard.sh" >/dev/null 2>&1; echo $?)
+if [ "$f202_rc" -eq 2 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [F2-02] branch-guard sin temporal para el here-string salio con rc $f202_rc (se esperaba 2)"; fi
+# F2-03: si jq falla al emitir la decision (aqui, un jq que siempre sale con 2), block-dangerous cierra en vez de salir con 0 y sin veredicto.
+mkdir -p "$GUARDS_TEST_HOME/f203bin"; printf '#!/bin/sh\nexit 2\n' > "$GUARDS_TEST_HOME/f203bin/jq"; chmod +x "$GUARDS_TEST_HOME/f203bin/jq"
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git status"}}' | PATH="$GUARDS_TEST_HOME/f203bin:$PATH" HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" >/dev/null 2>&1; f203_rc=$?
+if [ "$f203_rc" -eq 2 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [F2-03] block-dangerous con un jq que falla salio con rc $f203_rc (se esperaba 2)"; fi
 [ "$v151_rows" -ge 100 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: guards-v151.tsv ejecuto solo $v151_rows filas (se esperaban >=100)"; }
 
 # v1.6.1: cp/mv/install/ln hacia un directorio escriben dir/basename(origen); se juzga ese fichero, no el operando.

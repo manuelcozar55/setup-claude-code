@@ -1,5 +1,6 @@
 #!/bin/bash
 # destructive-guard.sh — Blocks rm-rf on sensitive paths, git reset --hard, git clean
+# QUE-HACE: Deniega rm -rf de rutas sensibles (home, /, .., comodines, enlaces), find -delete amplio, git reset --hard y git clean; deja pasar rm -rf de un directorio de build probado (CC_SAFE_DELETE_DIRS) y el texto que solo menciona esos comandos; CC_ALLOW_DESTRUCTIVE=1 lo apaga.
 # Source: yurukusa/claude-code-hooks (MIT)
 # WSL2 note: rm -rf follows NTFS junctions — can delete far beyond target directory
 # Protocol: exit 2 = block
@@ -15,10 +16,12 @@ INPUT=$(cat)
 if ! command -v jq >/dev/null 2>&1; then
   echo "BLOCKED (fail-closed): falta jq en el PATH, asi que destructive-guard no puede leer el comando." >&2
   echo "Instala jq (apt install jq) y reintenta." >&2
+  echo "Que hacer: instala jq (sudo apt install jq / brew install jq) y reintenta." >&2
   exit 2
 fi
 if ! COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null); then
   echo "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable; destructive-guard no puede leer el comando." >&2
+  echo "Que hacer: reintenta; si se repite es un fallo de Claude Code, no de tu comando." >&2
   exit 2
 fi
 [[ -z "$COMMAND" ]] && exit 0
@@ -29,46 +32,48 @@ log_block() {
   echo "[$(date -Iseconds)] BLOCKED: $1 | cmd: $COMMAND" >> "$logfile" 2>/dev/null
 }
 
-SAFE_DIRS="${CC_SAFE_DELETE_DIRS:-node_modules:dist:build:.cache:__pycache__:coverage:.next:.nuxt:tmp}"
-
 # El texto se normaliza con la lib comun: continuaciones unidas y comentarios quitados SOLO fuera
 # de comillas (el sed anterior cortaba en el `#` de `git commit -m "fix #12" && git reset --hard`).
 # Un comentario de verdad sigue sin poder voltear la exencion de directorio seguro ni esconderse
 # tras un ancla de final (un decoy `... # tmp` tras un rm sobre /etc).
 # shellcheck source=SCRIPTDIR/lib/cmdnorm.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit." >&2; exit 2; }
+. "$(dirname "${BASH_SOURCE[0]}")/lib/cmdnorm.sh" || { echo "BLOCKED (fail-closed): falta lib/cmdnorm.sh; reinstala el kit. Que hacer: reinstala el kit (./install.sh --apply)." >&2; exit 2; }
 cmdn_oversize "$COMMAND" && exit 0
-# El cuerpo de un `cat > fichero <<'FIN'` (delimitador entrecomillado, sin pipe) es texto, no una orden: la prosa de un
-# informe que cita `rm -rf` o `find -delete` no se evalua. Solo este guard lo salta (los demas ven el cuerpo entero).
-CMDN_SKIP_HEREDOC=1
+# Los Checks 1-3 miran el texto de las ORDENES (CMDN_EXEC): el mensaje de un commit, el patron de un grep, el argumento de un
+# echo y el cuerpo de un heredoc que solo guarda texto no son ordenes y ya no disparan el guard.
 if ! cmdn_parse "$COMMAND"; then
   echo "BLOCKED (fail-closed): awk no pudo normalizar el comando; destructive-guard no puede evaluarlo." >&2
+  echo "Que hacer: comprueba que awk (mawk o gawk) esta instalado y reintenta con un comando mas corto." >&2
   exit 2
 fi
-COMMAND_SCAN=$CMDN_TEXT
+COMMAND_SCAN=$CMDN_EXEC
 
 # Check 1: rm -rf on sensitive paths. ~ and .. are matched even when followed by
 # more text (previously end-anchored, so a trailing token defeated detection).
 # Las formas largas (--recursive/--force) van en la clase de opciones: solo se aceptaban
 # grupos de flags cortos, asi que `rm --recursive --force /home/usuario/docs` no
 # emparejaba la ruta sensible y salia limpio de los cinco guards.
-if echo "$COMMAND_SCAN" | grep -qE 'rm\s+((-[rf]+|--recursive|--force)\s+)*(\/$|\/\s|\/[^a-z]|\/home|\/etc|\/usr|\/var|\/root|\/boot|~($|[^[:alnum:]_.+-])|\.\.($|[^[:alnum:]_.-]))'; then
-  SAFE=0
-  IFS=':' read -ra DIRS <<< "$SAFE_DIRS"
-  for dir in "${DIRS[@]}"; do
-    # Exempt only when a safe dir is a real path token of the target AND the
-    # command is not also touching an absolute sensitive path. Un `..` tras el directorio seguro
-    # (`~/dist/../Documents`) escapa de el: no cuenta como exencion.
-    if echo "$COMMAND_SCAN" | grep -qE "(^|[[:space:]/])${dir}(/|[[:space:]]|$)" \
-       && ! echo "$COMMAND_SCAN" | grep -qE "(^|[[:space:]/])${dir}/([^[:space:]]*/)?\.\.(/|[[:space:]]|$)" \
-       && ! echo "$COMMAND_SCAN" | grep -qE '(^|[[:space:]])(/home|/etc|/usr|/var|/root|/boot|/lib|/bin|/sbin)'; then
-      SAFE=1; break
-    fi
-  done
+RM_SENS_RX='rm\s+((-[rf]+|--recursive|--force)\s+)*(\/$|\/\s|\/[^a-z]|\/home|\/etc|\/usr|\/var|\/root|\/boot|~|\.\.($|[^[:alnum:]_.-]))'
+if echo "$COMMAND_SCAN" | grep -qE "$RM_SENS_RX"; then
+  # La exencion de un directorio de build es del OPERANDO de ese rm, no de una palabra `build`/`dist`/`tmp` en cualquier otra
+  # parte de la orden (`flock l rm -rf ~/x; ls build/`). Si el regex salta y no se logra atribuir a ningun operando, se bloquea.
+  SAFE=1; HIT=0
+  while IFS= read -r m; do
+    m=${m//[\'\"\`]/}
+    read -ra W <<<"$m"
+    for a in "${W[@]:1}"; do
+      [[ $a == -* ]] && continue
+      echo "rm $a" | grep -qE "$RM_SENS_RX" || continue
+      HIT=1
+      cmdn_rm_proof "$a" || SAFE=0
+    done
+  done < <(echo "$COMMAND_SCAN" | grep -oE '(^|[^[:alnum:]_.-])rm[[:space:]][^;&|]*')
+  (( HIT )) || SAFE=0
   if (( SAFE == 0 )); then
     log_block "rm on sensitive path"
     echo "BLOCKED: rm on sensitive path (WSL2 risk: NTFS junctions can delete beyond target)." >&2
     echo "Command: $COMMAND" >&2
+    echo "Que hacer: borra una ruta concreta del proyecto (rm -rf build dist) o un directorio de build conocido; si de verdad quieres borrar esa ruta, ejecutalo tu con ! en la sesion." >&2
     exit 2
   fi
 fi
@@ -78,6 +83,7 @@ if echo "$COMMAND_SCAN" | grep -qE '^\s*git\s+reset\s+--hard|[;&|]\s*git\s+reset
   log_block "git reset --hard"
   echo "BLOCKED: git reset --hard discards all uncommitted changes." >&2
   echo "Consider: git stash, or git reset --soft" >&2
+  echo "Que hacer: git stash para guardar los cambios o git reset --soft; si quieres descartarlos de verdad, ejecutalo tu con ! en la sesion." >&2
   exit 2
 fi
 
@@ -86,6 +92,7 @@ if echo "$COMMAND_SCAN" | grep -qE '(^|[;&|])\s*git\s+clean\s+-[a-mo-z]*[fd][a-m
   log_block "git clean"
   echo "BLOCKED: git clean removes untracked files permanently." >&2
   echo "Run: git clean -n (dry run) first to verify what would be deleted." >&2
+  echo "Que hacer: git clean -n (simulacion) para ver que borraria; si quieres borrar de verdad, ejecutalo tu con ! en la sesion." >&2
   exit 2
 fi
 
@@ -258,6 +265,7 @@ if (( rc_xrm == 0 )); then
 elif (( rc_xrm == 2 )); then
   log_block "find deletion nested too deep"
   echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con find -delete: no caben en el timeout del guard; dividelo en comandos cortos." >&2
+  echo "Que hacer: parte el comando en pasos mas cortos y ejecutalos por separado." >&2
   exit 2
 fi
 if [[ $COMMAND_SCAN == *find* && ( $COMMAND_SCAN == *-delete* || $COMMAND_SCAN == *-exec* || $XRM == 1 ) ]]; then
@@ -267,11 +275,13 @@ if [[ $COMMAND_SCAN == *find* && ( $COMMAND_SCAN == *-delete* || $COMMAND_SCAN =
   if (( rc_find == 0 )); then
     log_block "find -delete on broad path"
     echo "BLOCKED: find -delete on broad path (WSL2 junction risk)." >&2
+    echo "Que hacer: acota find a un directorio del proyecto (find build -name '*.tmp' -delete) o ejecutalo tu con ! en la sesion." >&2
     exit 2
   fi
   if (( rc_find == 2 )); then
     log_block "find -delete nested too deep"
     echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) con find -delete: no caben en el timeout del guard; dividelo en comandos cortos." >&2
+    echo "Que hacer: parte el comando en pasos mas cortos y ejecutalos por separado." >&2
     exit 2
   fi
   CMDN_SEGS=("${segs0[@]}")
@@ -282,25 +292,6 @@ fi
 # Los checks de arriba siguen mirando el texto porque su patron no esta anclado y por eso ven
 # tambien lo que va dentro de un `bash -c "..."`; este cubre las grafias que sacaban el comando del
 # patron: `git -C dir reset --hard`, `sudo git clean --force -d`, `rm -rv`, `rm -R`, `rm -rf --`.
-# shellcheck disable=SC2088,SC2016  # `~` y `$HOME` son el TEXTO del operando, no se expanden.
-sensitive_operand() {
-  case $1 in
-    /|/[!a-z]*|/home*|/etc*|/usr*|/var*|/root*|/boot*|'~'|'~/'*|..|../*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*|*/..|*/../*) return 0 ;;
-  esac
-  return 1
-}
-safe_operand() {
-  local d p tail
-  case $1 in /home*|/etc*|/usr*|/var*|/root*|/boot*|/lib*|/bin*|/sbin*) return 1 ;; esac
-  p="/$1/"
-  for d in "${DIRS[@]}"; do
-    [[ $p == *"/$d/"* ]] || continue
-    tail="/${p#*"/$d/"}"
-    [[ $tail == *"/../"* ]] || return 0
-  done
-  return 1
-}
-IFS=':' read -ra DIRS <<< "$SAFE_DIRS"
 for seg in "${CMDN_SEGS[@]}"; do
   [[ $seg == *rm* || $seg == *git* ]] || continue
   cmdn_fields "$seg"
@@ -310,10 +301,11 @@ for seg in "${CMDN_SEGS[@]}"; do
       for a in "${T[@]:2}"; do
         if (( ! dd )) && [[ $a == -- ]]; then dd=1; continue; fi
         if (( ! dd )) && [[ $a == -* ]]; then continue; fi
-        if sensitive_operand "$a" && ! safe_operand "$a"; then
+        if cmdn_sensitive_operand "$a" && ! cmdn_rm_proof "$a"; then
           log_block "rm on sensitive path"
           echo "BLOCKED: rm on sensitive path (WSL2 risk: NTFS junctions can delete beyond target)." >&2
           echo "Command: $COMMAND" >&2
+          echo "Que hacer: borra una ruta concreta del proyecto (rm -rf build dist) o un directorio de build conocido; si de verdad quieres borrar esa ruta, ejecutalo tu con ! en la sesion." >&2
           exit 2
         fi
       done ;;
@@ -325,6 +317,7 @@ for seg in "${CMDN_SEGS[@]}"; do
               log_block "git reset --hard"
               echo "BLOCKED: git reset --hard discards all uncommitted changes." >&2
               echo "Consider: git stash, or git reset --soft" >&2
+              echo "Que hacer: git stash para guardar los cambios o git reset --soft; si quieres descartarlos de verdad, ejecutalo tu con ! en la sesion." >&2
               exit 2
             fi
           done ;;
@@ -345,6 +338,7 @@ for seg in "${CMDN_SEGS[@]}"; do
             log_block "git clean"
             echo "BLOCKED: git clean removes untracked files permanently." >&2
             echo "Run: git clean -n (dry run) first to verify what would be deleted." >&2
+            echo "Que hacer: git clean -n (simulacion) para ver que borraria; si quieres borrar de verdad, ejecutalo tu con ! en la sesion." >&2
             exit 2
           fi ;;
       esac ;;

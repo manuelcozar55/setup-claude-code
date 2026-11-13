@@ -117,6 +117,26 @@ C-04	sen	B	cd ~/.claude && sed -i s/a/b/ settings.json
 C-04	sen	B	mv x ~/.claude/sentinel-allowlist.json
 C-04	sen	B	truncate -s0 ~/.claude/settings.json
 C-04	sen	B	: > ~/.claude/settings.json
+C-04	sen	B	echo x > ~/.claude/.kit-desactivados
+C-04	sen	B	echo block-dangerous-commands.sh >> ~/.claude/.kit-desactivados
+C-04	sen	B	rm ~/.claude/settings*
+C-04	sen	B	rm ~/.claude/.kit-desacti*
+C-04	sen	B	echo x > ~/.claude/settings.j*
+C-04	sen	B	echo x >> ~/.claude/.kit-desacti*
+C-04	sen	B	tee ~/.claude/settings* < x
+C-04	sen	B	cp x ~/.claude/.kit-desact?vados
+C-04	sen	B	mv x ~/.claude/settings.l*
+C-04	sen	B	touch ~/.claude/.kit-d*
+C-04	sen	B	truncate -s0 ~/.claude/settings*
+C-04	sen	B	sed -i s/a/b/ ~/.claude/settings*
+C-04	sen	B	ln -sf /tmp/x ~/.claude/.kit-[d]esactivados
+C-04	sen	B	install -m 644 x ~/.claude/settings*
+C-04	sen	B	cd ~/.claude && rm .kit-desacti*
+C-04	sen	N	rm ~/.claude/session-logs/*.log
+C-04	sen	N	ls ~/.claude/settings*
+C-04	sen	B	echo x | tee -a ~/.claude/.kit-desactivados
+C-04	sen	B	cp x ~/.claude/.kit-desactivados
+C-04	sen	N	cat ~/.claude/.kit-desactivados
 C-04	sen	N	cat ~/.claude/settings.json
 C-04	sen	N	ls ~/.claude/hooks
 C-04	sen	N	jq . ~/.claude/settings.json

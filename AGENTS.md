@@ -1,4 +1,6 @@
-# AGENTS.md — mapa del repo para un agente
+# AGENTS.md — mapa de mcharness (andamiaje de desarrollo de SCC) para un agente
+
+`mcharness` es solo el nombre de este andamiaje; el producto es SCC. Para usar el kit, `README.md`.
 
 `CLAUDE.md` (raíz) son **las reglas**: léelo primero y obedécelo. Este fichero es el
 **mapa**, y existe porque `CLAUDE.md` vive a un token de su techo (`< 900` aprox-tokens,
@@ -10,7 +12,7 @@ vigilado por `kit/test/test_harness_structure.sh`) y ahí no cabe.
 make test
 ```
 
-49 suites bash, sin red. `exit 0` o el trabajo no está hecho. No declares nada terminado sin
+64 suites bash, sin red. `exit 0` o el trabajo no está hecho. No declares nada terminado sin
 esa salida delante. **Invócalo por ruta absoluta o con `make`**: el canal de Bash de este
 harness es reescribible y ya hubo un hook que sustituía el ejecutable en posición de comando
 (`knowledge/MISTAKES.md` · M-001).

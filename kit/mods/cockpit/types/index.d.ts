@@ -31,7 +31,8 @@ export type Handoff = { phase: 'idle' | 'confirm' | 'working' | 'waiting' | 'don
 export type Estado = { pct: number; bytes: number; tope: number; dueno: { sesion: string; vigente: boolean; isMine: boolean } | null; isSlot?: boolean }
 
 // The silent synthesis: when (ISO) and how many times it saved, and the dirty reason that asked for it.
-export type Autosave = { ultima: string; n: number; motivo: string }
+// `isOn` mirrors the switch (opt-in); `halted` is why it stopped by itself (after repeated failures), '' otherwise.
+export type Autosave = { ultima: string; n: number; motivo: string; isOn: boolean; halted: string }
 
 export type Turn = { isRunning: boolean; startedAt: number; activity: string; mission: string }
 

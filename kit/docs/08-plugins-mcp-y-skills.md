@@ -2,7 +2,7 @@
 
 La base incluye aspecto, continuidad de contexto, guards, agentes y skills del método.
 La [matriz de instalación](10-onboarding.md#0--qué-vas-a-levantar) distingue lo instalado,
-lo cargado por `scripts/scc.sh` y los extras. Esta página documenta las opciones externas;
+lo cargado por `scc` y los extras. Esta página documenta las opciones externas;
 no hace falta activarlas todas para usar el kit. **Los terceros se documentan, no se redistribuyen.**
 
 ## Plugins de Claude Code
@@ -76,7 +76,7 @@ Capacidades externas que Claude Code invoca vía el protocolo MCP. Conocidos en 
 
 - **firecrawl**: scraping y búsqueda web. Requiere su propia clave en `$HOME/.claude/.env`.
 - **perplexity**: búsqueda web. Dado de baja en este setup el 2026-08-17 (llegó sin `PERPLEXITY_API_KEY` tras una migración de máquina y nunca se repuso). Se documenta porque el `.env.example` todavía la nombra: si no la usas, no la des de alta.
-- **linkedin**: mensajería. Retirado del ámbito global el 2026-08-25 por coste de arranque (`uvx …@latest` consulta PyPI en **cada** lanzamiento: 1,43 s medidos). Si lo repones, píneale la versión y **no toques** las dos denegaciones que `settings.json` mantiene en `permissions.deny` — `mcp__linkedin__send_message` y `mcp__linkedin__connect_with_person` —: siguen ahí a propósito, para que reinstalarlo no reabra en silencio la puerta a escribir a terceros.
+- **linkedin**: mensajería. Retirado del ámbito global el 2026-08-25 por coste de arranque (`uvx …@latest` consulta PyPI en **cada** lanzamiento: 1,43 s medidos). Si lo repones, píneale la versión y añade tú en `permissions.deny` `mcp__linkedin__send_message` y `mcp__linkedin__connect_with_person`: la plantilla del kit ya no las lleva, y sin ellas reinstalarlo abre la puerta a escribir a terceros.
 - **serena**: navegación por símbolos vía LSP. **Por proyecto, nunca en global** (ver abajo).
 
 ### Un MCP en ámbito global es un impuesto fijo, y casi nunca se mide
@@ -140,13 +140,11 @@ Las siguientes herramientas amplían esa base; su presencia se comprueba por sep
 
 | Skill | Trigger | Para qué |
 |---|---|---|
-| `graphify` | `/graphify` | cualquier input a grafo de conocimiento |
 | `deep-change` (incluida) | `/deep-change` | el bucle operativo brainstorm → plan → execute → verify para cambios sustanciales |
-| `ultrawork` | `/ultrawork` | modo de máxima potencia: todos los agentes, en paralelo, sin paradas |
 | `agent-browser` | se carga antes de cualquier tarea de navegador | estándar de automatización de navegador (ya cubierta en `04-superpowers.md`) |
 
 Instala las externas desde su origen o adáptalas a tu entorno. La disponibilidad de
-`ultrawork` depende del agente que utilices: no equivale a instalar el kit de Claude Code.
+una skill externa depende del agente que utilices: no equivale a instalar el kit de Claude Code.
 Una skill externa ausente no desactiva los guards ni el estado del kit.
 
 Verifica qué tienes instalado con:

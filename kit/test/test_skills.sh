@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test_skills.sh — el kit distribuye 2 skills (kit/claude/skills): frontmatter valido,
+# test_skills.sh — el kit distribuye 3 skills (kit/claude/skills): frontmatter valido,
 # LICENSE MIT en la derivada de mattpocock/skills, ningun termino privado (el repo es
 # publico) e install.sh las copia. Falsable: plantar un termino privado debe poner rojo
 # el escaneo. Los terminos se construyen por concatenacion para que esta suite no los lleve literales.
@@ -13,7 +13,7 @@ ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT 
 PRIV="ci""rce|home/man""uel|mcoz""ar|manuelco""zar|recu""erda|compac""t-audit|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9._-]+@[A-Za-z0-9-]+\.[a-z]{2,}|/ho""me/"
 scan(){ grep -rIliE "$PRIV" "$1" 2>/dev/null | wc -l | tr -d ' '; }
 
-ck "$(find "$S" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" "2" "hay 2 skills en kit/claude/skills"
+ck "$(find "$S" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" "3" "hay 3 skills en kit/claude/skills"
 
 for d in "$S"/*/; do
   n="$(basename "$d")"; f="$d/SKILL.md"

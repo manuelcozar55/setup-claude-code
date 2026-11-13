@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# test_doctor_desactivados.sh — doctor distingue «apagado a proposito» de «roto»:
+#   1. Un hook del kit que falta en settings.json y NO consta en .kit-desactivados es FAIL (rc 1).
+#   2. Si consta (una linea por script), es INFO «desactivado por ti» y doctor sale 0.
+#   3. Constar no tapa otro hook roto: con dos quitados y uno solo anotado, sigue FAIL.
+#   4. Tras reinstalar (install.sh --apply devuelve el hook), la lista queda obsoleta: WARN, no FAIL.
+# Es el procedimiento que documenta kit/docs/OPERAR.md. HOME aislado, sin red.
+set -u
+HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
+tmp="$(mktemp -d)"; trap 'rm -r "$tmp"' EXIT
+pass=0; fail=0
+ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
+
+mkdir -p "$tmp/home/.config"
+export CLAUDE_HOME="$tmp/home/.claude"
+S="$CLAUDE_HOME/settings.json"
+doc() { env -u ANTHROPIC_BASE_URL -u CLAUDE_CONFIG_DIR HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1; }
+quitar() {  # script... -> los quita de settings.json (lo que haria la persona a mano)
+  local s
+  for s in "$@"; do
+    jq --arg s "$s" '.hooks |= with_entries(.value |= map(.hooks |= map(select(.command | contains("/" + $s + "\"") | not))) | .value |= map(select(.hooks | length > 0)))' \
+      "$S" > "$S.tmp" && mv "$S.tmp" "$S"
+  done
+}
+
+HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
+out="$(doc)"; rc=$?
+ck "$rc" "0" "linea base: doctor sale 0 sobre una instalacion limpia"
+ck "$(grep -c '^INFO ' <<<"$out")" "0" "linea base: sin .kit-desactivados no hay INFO"
+
+quitar branch-guard.sh
+out="$(doc)"; rc=$?
+ck "$rc" "1" "1: hook quitado y sin anotar es FAIL"
+ck "$(grep -c '^FAIL · settings.json no cablea hook(s) del kit: branch-guard.sh' <<<"$out")" "1" "1: el FAIL nombra el script"
+ck "$(grep -c '\.kit-desactivados' <<<"$out")" "1" "1: el FAIL dice donde anotarlo"
+
+printf 'branch-guard.sh\n' > "$CLAUDE_HOME/.kit-desactivados"
+out="$(doc)"; rc=$?
+ck "$rc" "0" "2: anotado en .kit-desactivados, doctor sale 0"
+ck "$(grep -c '^WARN · guard de seguridad desactivado por ti.*branch-guard.sh' <<<"$out")" "1" "2: un guard anotado sale WARN (no INFO) con el nombre"
+ck "$(grep -c '^INFO · desactivado por ti.*branch-guard.sh' <<<"$out")" "0" "2: y no como INFO"
+ck "$(grep -c 'deja de proteger' <<<"$out")" "1" "2: el WARN dice que deja de protegerse"
+ck "$(grep -c '^FAIL' <<<"$out")" "0" "2: ningun FAIL"
+quitar nucleo-nudge.sh; printf 'nucleo-nudge.sh\n' >> "$CLAUDE_HOME/.kit-desactivados"
+out="$(doc)"; rc=$?
+ck "$(grep -c '^INFO · desactivado por ti.*nucleo-nudge.sh' <<<"$out")" "1" "2: un hook que no es guard anotado sigue siendo INFO"
+ck "$(grep -c '^WARN .*nucleo-nudge.sh' <<<"$out")" "0" "2: sin WARN"
+
+quitar destructive-guard.sh
+out="$(doc)"; rc=$?
+ck "$rc" "1" "3: un segundo hook quitado sin anotar sigue siendo FAIL"
+ck "$(grep -c '^FAIL .*destructive-guard.sh' <<<"$out")" "1" "3: el FAIL nombra solo el que no consta"
+ck "$(grep -c '^FAIL .*branch-guard.sh' <<<"$out")" "0" "3: el anotado no sale en el FAIL"
+
+printf '# lo quite yo\n\nhooks/destructive-guard.sh\n' >> "$CLAUDE_HOME/.kit-desactivados"
+out="$(doc)"; rc=$?
+ck "$rc" "0" "3b: comentarios y lineas vacias de la lista se ignoran; con los dos anotados (uno como hooks/x.sh), rc 0"
+ck "$(grep -c '^FAIL' <<<"$out")" "0" "3b: hooks/x.sh y x.sh son el mismo nombre: ningun FAIL"
+ck "$(grep -c 'destructive-guard.sh' <<<"$out" | tr -d ' ')" "1" "3b: y ni FAIL ni WARN contradictorios: el guard sale una sola vez"
+
+HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
+out="$(doc)"; rc=$?
+ck "$rc" "0" "4: tras reinstalar el hook apagado sigue apagado y doctor sale 0"
+ck "$(grep -c '^WARN · guard de seguridad desactivado por ti.*branch-guard.sh' <<<"$out")" "1" "4: y sigue contando como guard desactivado por ti (WARN)"
+grep -v '^branch-guard.sh$' "$CLAUDE_HOME/.kit-desactivados" > "$tmp/lista.new"; cat "$tmp/lista.new" > "$CLAUDE_HOME/.kit-desactivados"
+HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
+out="$(doc)"; rc=$?
+ck "$(grep -c '^WARN · .kit-desactivados lista' <<<"$out")" "0" "4: quitado de la lista, el hook se vuelve a cablear en la siguiente instalacion"
+printf 'branch-guard.sh\n' >> "$CLAUDE_HOME/.kit-desactivados"
+out="$(doc)"
+ck "$(grep -c '^WARN · .kit-desactivados lista branch-guard.sh pero settings.json lo cablea' <<<"$out")" "1" "4: WARN si la lista y settings.json se contradicen (lo cablea tras un edit a mano)"
+
+rm "$CLAUDE_HOME/agents/code-reviewer.md"
+out="$(doc)"; rc=$?
+ck "$rc" "1" "5: un agente borrado sin anotar es FAIL"
+ck "$(grep -c '^FAIL · componente obligatorio del kit ausente: agents/code-reviewer.md' <<<"$out")" "1" "5: y dice cual"
+echo "agents/code-reviewer.md" >> "$CLAUDE_HOME/.kit-desactivados"
+out="$(doc)"; rc=$?
+ck "$rc" "0" "5: anotado en .kit-desactivados, doctor sale 0"
+ck "$(grep -c '^INFO · desactivado por ti (consta en .kit-desactivados): agents/code-reviewer.md' <<<"$out")" "1" "5: INFO por el agente"
+HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
+ck "$([ -f "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo vuelve)" "" "5: install --apply no devuelve el agente anotado"
+
+echo "== $pass passed, $fail failed =="
+[ "$fail" -eq 0 ] || exit 1

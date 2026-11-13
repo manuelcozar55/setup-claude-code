@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# QUE-HACE: Deniega leer o enviar ficheros de credenciales (.env, ~/.ssh, ~/.aws), patrones de exfiltracion y comandos peligrosos en CUALQUIER herramienta; pregunta si agota su presupuesto de analisis; deja pasar el texto que solo nombra un fichero como dato (echo, git rm --cached) en una linea de una sola orden.
 """
 sentinel_preflight.py — PreToolUse hook for ALL tools (matcher: "").
 
@@ -19,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import signal
 import sys
 from datetime import datetime, timezone
@@ -583,6 +585,7 @@ def _lex(text: str, comments: bool = True) -> list:
     comments: a # that starts a word comments to the end of the line, as in bash;
     off for a quoted string read again as a command, where it would hide a name."""
     toks, cur, subs, docs, i, n = [], None, [], [], 0, len(text)
+    dl = -9  # index of the last bare `$` not yet paired (`$$` is the PID, its second `$` opens no $'...')
     while i < n:
         c = text[i]
         if c == "#" and cur is None and comments:
@@ -614,6 +617,10 @@ def _lex(text: str, comments: bool = True) -> list:
         cur = cur or ""
         if c == "'":
             j = text.find("'", i + 1)
+            if dl == i - 1:  # $'...': ANSI-C, \' does not close it
+                j = i + 1
+                while j < n and text[j] != "'":
+                    j += 2 if text[j] == "\\" else 1
             j = n if j < 0 else j
             cur, i = cur + text[i + 1:j].translate(_MASK), j + 1
         elif c == '"':
@@ -624,6 +631,10 @@ def _lex(text: str, comments: bool = True) -> list:
         elif m := _PLAIN.match(text, i):
             cur, i = cur + m.group(), m.end()
         else:
+            if c == "$" and not text.startswith("$(", i):
+                dl = -9 if dl == i - 1 else i
+            elif dl == i - 1 and text.startswith("\\\n", i):  # bash drops the line continuation first: the `$` still touches what follows
+                dl = i + 1
             cur, i = _lex_char(text, i, False, cur, subs)
     if cur is not None:
         toks.append((cur.translate(_UNMASK), cur, subs))
@@ -657,8 +668,114 @@ def _parse(args: list[str], short: str, long: dict, stop: bool, ends: set) -> li
     return out
 
 
-def _command_roles(cmd: list) -> list:
-    """(word, role) for one simple command; role is path, code (qcode in perl/ruby) or skip."""
+# Closed context (the rule of the exemption proofs): a proof that a word is data (echo and printf words, git rm --cached, the prose
+# of _scrub_command) holds only when the whole line is ONE pipeline with no substitution, no separator, no prefix (env, cd...), no
+# global git option and no write to any file. Anything else gets the verdict the base gave. A text written to a file is never proved
+# to be data: the file is read later by an agent, make, git or a shell (four review rounds broke every list of safe targets).
+_CTX_PREFIXES = {"env", "sudo", "doas", "command", "nice", "nohup", "time", "exec", "builtin", "stdbuf", "ionice", "setsid",
+                 "timeout", "cd", "pushd", "popd"}
+_CLOSED = False
+# Plain text consumers (closed list): none runs what it reads and none writes a file named by an argument (uniq, xxd, sed, awk are out).
+_TEXT_READERS = {"cat", "tee", "head", "tail", "wc", "sort", "tr", "cut", "grep", "egrep", "fgrep", "rg", "ag", "ack", "jq", "base64",
+                 "md5sum", "sha1sum", "sha256sum", "git", "gh", "echo", "printf", "column", "nl", "fold", "tac", "rev", "paste", "diff",
+                 "cmp", "comm", "od", "hexdump", "expand", "unexpand", "cksum", "basename", "dirname", "true", ":"}
+
+
+def _null_target(w: str) -> bool:
+    """The only write targets of a closed context: /dev/null, the standard streams and file descriptors (2>&1)."""
+    return w in ("/dev/null", "/dev/stdout", "/dev/stderr") or bool(re.fullmatch(r"&?[0-9-]+", w))
+
+
+_GREP_NAMES = {"grep", "egrep", "fgrep", "zgrep", "rg", "ag", "ack"}
+_GREP_LONG = {"--color", "--colour", "--ignore-case", "--line-number", "--count", "--recursive", "--word-regexp", "--fixed-strings",
+              "--extended-regexp", "--files-with-matches", "--files-without-match", "--invert-match", "--quiet", "--silent",
+              "--no-filename", "--with-filename", "--null", "--text", "--max-count", "--regexp", "--include", "--exclude", "--type",
+              "--glob", "--after-context", "--before-context", "--context", "--only-matching", "--no-messages", "--hidden",
+              "--follow", "--smart-case", "--case-sensitive", "--no-ignore", "--"}
+_GIT_MSG_OPTS = {"--message", "--quiet", "--verbose", "--signoff", "--all", "--amend", "--no-edit", "--annotate"}
+
+
+def _opt_ok(name, prev: list, w: str) -> bool:
+    """Options of the commands whose words a proof reads as data come from a closed list: an unknown option may execute something
+    (rg --pre, ag --pager, git commit --template...), so the line then gets the verdict of the base."""
+    if "--" in prev or not w.startswith("-") or w == "--":
+        return True
+    if name == "echo":
+        return bool(re.fullmatch(r"-[neE]+", w)) if all(p.startswith("-") for p in prev) else True
+    if name == "printf":
+        return bool(prev)
+    if name in _GREP_NAMES or (name == "git" and prev[:1] == ["grep"]):
+        if prev and prev[-1] in ("-e", "-f", "--regexp"):
+            return True
+        return w in _GREP_LONG or w.split("=")[0] in _GREP_LONG or bool(re.fullmatch(r"-[A-Za-z0-9]+", w))
+    if name == "git" and prev[:1] in (["commit"], ["tag"]):
+        if prev[-1] in ("-m", "--message"):
+            return True
+        return w.split("=")[0] in _GIT_MSG_OPTS or bool(re.fullmatch(r"-[amqvsu]+", w))
+    return True
+
+
+def _closed_context(text: str) -> bool:
+    """Whether the line is one pipeline in a closed context; sets _CLOSED, which _command_roles reads."""
+    global _CLOSED
+    _CLOSED = False
+    try:
+        toks = _lex(text, True)
+    except Exception:
+        return False
+    start, newline, target, name, cmdargs = True, False, False, None, []
+    piped = False
+    for k, t in enumerate(toks):
+        if isinstance(t, dict):
+            # A heredoc body is data only for a plain text reader; ./run.sh, docker, an unknown command read it as input to run.
+            if name not in _TEXT_READERS:
+                return False
+            continue
+        if isinstance(t, str):
+            if t in ("|", "|&"):
+                start, name, piped = True, None, True
+            elif t == "\n":
+                newline = True
+            elif ">" in t:
+                target = True
+            elif "<" not in t:
+                return False
+            continue
+        if newline or t[2]:
+            return False
+        w = t[0]
+        if target:
+            target = False
+            if not _null_target(w):
+                return False
+            continue
+        if not start and not _opt_ok(name, cmdargs, w):
+            return False
+        cmdargs.append(w)
+        if start:
+            start = False
+            cmdargs = []
+            name = _cmd_name(w)
+            # What receives a pipe is a plain text consumer or the line proves nothing (docker run, python, a script...).
+            if piped and name not in _TEXT_READERS:
+                return False
+            nxt = toks[k + 1] if k + 1 < len(toks) else None
+            if re.match(r"\w+=", w) or name in _CTX_PREFIXES or name in _SHELLS or name in _INTERPRETERS \
+                    or name in ("xargs", "ssh", "find", "parallel", "watch", "at", "batch", "crontab", "source", ".", "busybox", "!"):
+                return False
+            if name == "git" and isinstance(nxt, tuple) and nxt[0].startswith("-"):
+                return False
+        elif name == "tee" and not w.startswith("-") and not _null_target(w):
+            return False
+        elif name == "sort" and re.match(r"-[A-Za-z]*o|--output", w):
+            return False
+    _CLOSED = True
+    return True
+
+
+def _command_roles(cmd: list, piped: bool = False) -> list:
+    """(word, role) for one simple command; role is path, code (qcode in perl/ruby) or skip.
+    piped: its output goes down a pipe, where a later command may read the words as names."""
     roles = []
     while cmd and re.match(r"\w+=", cmd[0][0]):
         roles.append((cmd.pop(0), "path"))
@@ -670,6 +787,19 @@ def _command_roles(cmd: list) -> list:
     if name == "git" and args and args[0][0] in ("grep", "commit", "tag", "merge"):
         name = "grep" if args[0][0] == "grep" else "git-message"
         roles.append((args.pop(0), "path"))
+    # echo and printf only print their words: `echo .env >> .gitignore` names no file. Down a pipe (`echo .env | xargs cat`)
+    # another command may read them as names, so there they stay paths. `git rm --cached` edits the index, it reads nothing.
+    if name in ("echo", "printf") and _CLOSED and not piped and not any("{" in a[0] for a in args):
+        return roles + [(a, "path" if a[0].startswith("-") else "skip") for a in args]
+    # After `--` every word is a file name, `--cached` included: `git rm -- --cached <file>` deletes <file>.
+    cut = next((i for i, a in enumerate(args) if a[0] == "--"), len(args))
+    if name == "git" and _CLOSED and not piped and args and args[0][0] == "rm" and any(a[0] == "--cached" for a in args[1:cut]):
+        # Closed form only: `git rm --cached [-r|-q|-n] [--] <relative paths>`; no -f, no option after `--`, no absolute or `..` operands.
+        ops = [a for a in args[1:cut] if not a[0].startswith("-")] + args[cut + 1:]
+        if (all(a[0] in ("--cached", "-r", "-q", "-n", "--quiet", "--dry-run", "--ignore-unmatch") for a in args[1:cut] if a[0].startswith("-"))
+                and not any(a[0] == "--" or a[0].startswith("-") for a in args[cut + 1:])
+                and not any(a[0].startswith(("/", "~")) or ".." in a[0] for a in ops)):
+            return roles + [(a, "path" if a[0].startswith("-") else "skip") for a in args]
     if name not in _OPTS:
         return roles + [(a, "path") for a in args]
     parsed = _parse([a[0] for a in args], *_OPTS[name])
@@ -689,6 +819,50 @@ def _command_roles(cmd: list) -> list:
             role, first = "skip", False
         roles.append((a, role))
     return roles
+
+
+_PROSE_COMMANDS = {"git", "grep", "egrep", "fgrep", "rg", "ag", "ack", "echo", "printf"}
+
+
+def _scrub_command(text: str) -> str | None:
+    """The command without its prose: words that name no file (commit message, grep pattern, echo
+    words) become `_` and the heredoc bodies that only reach a data sink go. Whole-text checks
+    (credential paths, dangerous patterns) judge this, so a rule that is quoted in a message or
+    a README does not block the command that writes it. None when there is nothing to scrub or
+    the command has a substitution ($( ) or backticks), which stays judged as written. None too
+    outside a closed context (_closed_context): then nothing is proved to be prose."""
+    if not _closed_context(text):
+        return None
+    try:
+        toks = _lex(text, True)
+        roles = {id(it): r for it, r in _word_roles(toks)}
+    except Exception:
+        return None
+    out, cut, name = [], False, None
+    # sed and awk are programs, not text consumers: what they read can run (e, system, getline), so with one of them
+    # in the command no body is scrubbed and the whole text is judged as the base did.
+    prog = any(c and _cmd_name(c[0][0]) in ("sed", "awk") for c in _simple_commands(toks))
+    for t in toks:
+        if isinstance(t, str):
+            out.append(t)
+            name = None
+        elif isinstance(t, dict):
+            if roles.get(id(t), "shell") == "data" and not prog:
+                cut = True
+            elif t["body"] is not None:
+                out.append("<<'" + t["delim"] + "'\n" + t["body"] + "\n" + t["delim"])
+        else:
+            if t[2]:
+                return None
+            if name is None and not re.match(r"\w+=", t[0]):
+                name = _cmd_name(t[0])
+            # Only prose commands: a jq or sed program is a word that skips as a name but decides what the command does.
+            if roles.get(id(t)) == "skip" and name in _PROSE_COMMANDS:
+                cut = True
+                out.append("_")
+            else:
+                out.append(shlex.quote(t[0]))
+    return " ".join(out) if cut else None
 
 
 def _cmd_name(word: str) -> str:
@@ -829,7 +1003,7 @@ def _executes(cmd: list, depth: int = 0) -> bool:
                              for c in _simple_commands(_lex(body)))
 
 
-def _word_roles(toks: list, sink: str = "data") -> list:
+def _word_roles(toks: list, sink: str = "data", out_read: bool = False) -> list:
     """(word, role) per word, role path, code, qcode or skip; and (heredoc, role) per body,
     role shell, code, qcode or data. A body is read by the command that carries its <<
     (_stdin_role) and by the rest of its pipeline: the worst of them counts, and if all
@@ -837,10 +1011,12 @@ def _word_roles(toks: list, sink: str = "data") -> list:
     group, loop or condition, on its closing word, or with a group down its pipeline, the
     worst reader of the whole text counts: the output may go anywhere. Any executor
     (_executes) after its pipeline makes the body commands, whether its readers wrote a file
-    or not: writers and names are not followed."""
+    or not: writers and names are not followed. out_read: the text is the body of a $( ) whose output
+    lands in a word another command reads, so an echo in it is not prose (`cat $(echo NAME)`)."""
     out, cmd, redirect, docs, stages, cmds = [], [], False, [], [], []
-    pipe, pdepth, kdepth, closed, prev = 0, 0, 0, False, None
+    pipe, pdepth, kdepth, closed, prev, last, psub = 0, 0, 0, False, None, None, []
     for t in toks + ["\n"]:
+        before, last = last, t
         if isinstance(t, dict):
             docs.append((t, len(stages)))
         elif isinstance(t, str) and ("<" in t or ">" in t):
@@ -858,7 +1034,12 @@ def _word_roles(toks: list, sink: str = "data") -> list:
             if t == "\n" and prev in ("|", "|&"):
                 t = prev
             pipe += t not in ("|", "|&", "(", ")")
-            out += _command_roles(cmd)
+            # Inside <( ) or >( ) the output goes to the command around it, which may read the words as names.
+            out += _command_roles(cmd, out_read or any(psub) or t in ("|", "|&"))
+            if t == "(":
+                psub.append(before in ("<", ">"))
+            elif t == ")" and psub:
+                psub.pop()
             cmd, redirect, prev = [], False, t
         elif redirect:
             out.append((t, "path"))
@@ -1008,17 +1189,20 @@ def _expanded_hit(form: str, rx, real: bool, budget: list, code: bool) -> str | 
 
 
 def key_file_hit(text: str, rx, real: bool = True, depth: int = 0, budget: list | None = None,
-                 code: bool = False, sink: str = "data") -> str | None:
+                 code: bool = False, sink: str = "data", out_read: bool = False) -> str | None:
     """Why text names a key file, or None. real: text the shell runs as is (not a quoted
     string read again as a command), where an expansion past the cap denies; read again,
     the expansion goes group by group and only past that cap denies. budget: brace
     expansions spent by the whole command, substitutions and strings read again included.
     code: text from an interpreter's literals, checked unexpanded past the caps. sink: who
-    reads the output of a heredoc that only goes through data sinks (_word_roles)."""
+    reads the output of a heredoc that only goes through data sinks (_word_roles). out_read: the
+    text is the body of a substitution whose output another command reads (_word_roles)."""
+    if depth == 0 and budget is None:
+        _closed_context(text)
     budget = [0] if budget is None else budget
     if depth > 4:
         return "key file name" if _key_file_word(text, rx) else None
-    for item, role in _word_roles(_lex(text, real), sink):
+    for item, role in _word_roles(_lex(text, real), sink, out_read):
         reason = None
         if isinstance(item, dict):
             body, unquoted = item["body"], not item["quoted"]
@@ -1033,7 +1217,7 @@ def key_file_hit(text: str, rx, real: bool = True, depth: int = 0, budget: list 
             for body in subs:
                 # The output lands in this word: a skipped one is data, any other is read.
                 out_role = "data" if role == "skip" else role if role in ("code", "qcode") else "shell"
-                reason = reason or key_file_hit(body, rx, real, depth + 1, budget, code, out_role)
+                reason = reason or key_file_hit(body, rx, real, depth + 1, budget, code, out_role, out_role != "data")
             if role in ("code", "qcode"):
                 for s in _code_strings(word, role == "qcode"):
                     reason = reason or key_file_hit(s, rx, False, depth + 1, budget, True)
@@ -1134,6 +1318,9 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
     key_note = "" if exts else " (default extensions: iocs.json has no valid key_file_extensions)"
 
     for key, text in collect_pairs(tool_input, PATH_FIELDS):
+        raw = text
+        if key == "command":
+            text = _scrub_command(text) or text
         for cand in _deny_candidates(text):
             for rx in ALWAYS_DENY_PATHS:
                 m = re.search(rx, cand)
@@ -1152,7 +1339,7 @@ def check_sensitive_paths(tool_input: dict, iocs: dict, allowlist: dict):
         for rx in regexes:
             if _search(rx, text):
                 return (f"sensitive path pattern", "critical")
-        key_reason = key_file_hit(text, key_rx)
+        key_reason = key_file_hit(raw, key_rx)
         if key_reason:
             return (f"sensitive {key_reason}{key_note}", "critical")
     return (None, None)
@@ -1408,7 +1595,7 @@ def fetch_safe_reader(text: str, fetch_patterns: list) -> bool:
 # Never exempt: the allowlist does not apply. Limit: code inside python -c / node -e is not read.
 _HOME_RX = r"(?:/home/[^/]+|/root|/Users/[^/]+)"
 _PROTECTED_CFG = re.compile(
-    rf"^(?:{_HOME_RX}/\.claude/(?:hooks|sentinel)(?:/.*)?|{_HOME_RX}/\.claude/settings[^/]*\.json|.*/sentinel-allowlist\.json)$")
+    rf"^(?:{_HOME_RX}/\.claude/(?:hooks|sentinel)(?:/.*)?|{_HOME_RX}/\.claude/settings[^/]*\.json|{_HOME_RX}/\.claude/\.kit-desactivados|.*/sentinel-allowlist\.json)$")
 _WRITE_ALL = {"rm", "unlink", "rmdir", "chmod", "chown", "chgrp", "touch", "truncate", "tee", "shred",
               "mv", "sponge", "patch", "ed", "curl", "wget"}
 _WRITE_DEST = {"cp", "install", "ln", "rsync"}
@@ -1423,11 +1610,13 @@ def _protected_path(word: str, cwd: str) -> bool:
     if not os.path.isabs(path):
         path = os.path.join(cwd, path)
     path = os.path.normpath(path)
+    if re.search(r"[*?\[]", path) and _hits_protected(path, cwd):  # `rm ~/.claude/settings*`
+        return True
     home = os.path.expanduser("~").rstrip("/")
     return bool(_PROTECTED_CFG.match(path)
                 or home and (path in (f"{home}/.claude/hooks", f"{home}/.claude/sentinel")
                              or path.startswith((f"{home}/.claude/hooks/", f"{home}/.claude/sentinel/"))
-                             or re.fullmatch(re.escape(home) + r"/\.claude/settings[^/]*\.json", path)))
+                             or re.fullmatch(re.escape(home) + r"/\.claude/(?:settings[^/]*\.json|\.kit-desactivados)", path)))
 
 
 def _is_claude_home(word: str, cwd: str) -> bool:
@@ -1496,13 +1685,18 @@ def _braces(word: str, limit: int = 64) -> list[str]:
 
 def _hits_protected(full: str, cwd: str) -> bool:
     """Ruta final del fichero escrito. Con glob se compara, componente a componente, con los nombres protegidos de
-    ~/.claude (settings.json, settings.local.json, hooks, sentinel y lo que cuelga de los dos ultimos)."""
+    ~/.claude (settings.json, settings.local.json, .kit-desactivados, sentinel-allowlist.json, hooks, sentinel y todo lo
+    que cuelga de los dos ultimos: ahi basta con que el glob alcance el directorio)."""
     if not re.search(r"[*?\[]", full):
         return _protected_path(full, cwd)
-    claude = os.path.expanduser("~").rstrip("/") + "/.claude"
-    cands = [f"{claude}/{n}" for n in ("settings.json", "settings.local.json", "hooks", "sentinel", "hooks/x", "sentinel/x")]
+    claude = (os.path.expanduser("~").rstrip("/") + "/.claude").split("/")
     parts = full.split("/")
-    return any(len(c.split("/")) == len(parts) and all(fnmatchcase(a, b) for a, b in zip(c.split("/"), parts)) for c in cands)
+
+    def reach(name: str) -> bool:
+        return all(fnmatchcase(a, b) for a, b in zip(claude + [name], parts))
+
+    return (len(parts) == len(claude) + 1 and any(reach(n) for n in ("settings.json", "settings.local.json", ".kit-desactivados", "sentinel-allowlist.json"))
+            or len(parts) > len(claude) and any(reach(n) for n in ("hooks", "sentinel")))
 
 
 def _effective_dest_hit(name: str, args: list[str], pos: list[str], tdir: list[str], flags: set[str], cwd: str) -> str | None:
@@ -1640,7 +1834,9 @@ def _writes_protected(words: list[str], cwd: str, depth: int) -> str | None:
         cand = []
     if name in ("mv", "cp", "install", "ln", "rsync") and (hit := _effective_dest_hit(name, args, pos, tdir, flags, cwd)):
         return hit
-    return next((c for c in cand if _protected_path(c, cwd)), None)
+    # `truncate -s0 ~/.claude/{settings.json,x}`: una alternativa por variante. Pasado el tope no se deniega aqui:
+    # sin comillas ya lo hace el tope de llaves, y entre comillas es un dato (el JSON de `curl -d`).
+    return next((c for c in cand if any(_protected_path(v, cwd) for v in _braces(c))), None)
 
 
 def _protected_write(text: str, cwd: str, depth: int = 0) -> str | None:
@@ -1698,6 +1894,7 @@ def check_dangerous_commands(tool_input: dict, iocs: dict, allowlist: dict):
             continue
         # A backslash-newline is a continuation: the shell reads it as one line, so must the regexes.
         text = re.sub(r"\\\r?\n[ \t]*", " ", text)
+        text = _scrub_command(text) or text
         safe_fetch = fetch_safe_reader(text, fetch_patterns)
         for rx in patterns:
             if safe_fetch and rx in fetch_patterns:
@@ -1811,7 +2008,7 @@ def main() -> None:
     try:
         payload = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError:
-        print("SENTINEL BLOCKED (fail-closed): payload de PreToolUse no es JSON.", file=sys.stderr)
+        print("SENTINEL BLOCKED (fail-closed): payload de PreToolUse no es JSON. Que hacer: reintenta; si se repite es un fallo de Claude Code, no de tu comando.", file=sys.stderr)
         sys.exit(2)
 
     tool_name = payload.get("tool_name") or payload.get("tool", "<unknown>")
@@ -1868,16 +2065,33 @@ def main() -> None:
         # A blocked command or a write to the kit's own config gets the way out instead: the
         # allowlist is no way past a command block (the policy says never widen it to get past one).
         if reason and "kit protects" in reason:
-            hint = "\nLa configuracion del kit (hooks, settings, sentinel) la cambia la persona, no una sesion."
+            hint = (
+                "\nLa configuracion del kit (hooks, settings, sentinel) la cambia la persona, no una sesion."
+                "\nQue hacer: pide a la persona que haga el cambio (a mano o con ! en la sesion)."
+            )
         elif reason and "dangerous command pattern" in reason:
             hint = (
                 "\nAlternativa: descarga a fichero (-o), revisalo y ejecutalo aparte; para JSON, jq o "
                 "python -c que solo lea e imprima (json, sys, print)."
+                "\nQue hacer: descarga a un fichero (curl -o), revisalo y ejecutalo aparte; si de verdad es lo que quieres, "
+                "ejecutalo tu con ! en la sesion."
+            )
+        elif always_deny_hit(tool_input):
+            hint = (
+                "\nQue hacer: ninguna allowlist levanta este bloqueo (es material de credenciales); "
+                "pide a la persona que lo lea o lo haga ella con ! en la sesion."
+            )
+        elif tool_name == "Bash":
+            # The allowlist `paths` only exempts a field that is one path (EXEMPTABLE_FIELDS): never a command.
+            hint = (
+                "\nQue hacer: la allowlist no levanta un bloqueo sobre un comando. Nombra la ruta solo donde el comando "
+                "la necesite (un mensaje de commit, un patron de grep o un echo no cuentan), usa Read/Edit sobre esa "
+                "ruta (ahi si vale la allowlist de paths) o ejecutalo tu con ! en la sesion."
             )
         else:
             hint = (
-                "" if always_deny_hit(tool_input)
-                else "\nTo allowlist a false positive: add to ~/.claude/sentinel-allowlist.json"
+                "\nQue hacer: si es un falso positivo, la persona anade la ruta a paths de "
+                "~/.claude/sentinel-allowlist.json."
             )
         print(json.dumps({
             "hookSpecificOutput": {
@@ -1904,5 +2118,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"SENTINEL BLOCKED (fail-closed): error interno del preflight: {e!r}", file=sys.stderr)
+        print(f"SENTINEL BLOCKED (fail-closed): error interno del preflight: {e!r}. Que hacer: reintenta con un comando mas corto; si se repite, avisa a quien mantiene el kit.", file=sys.stderr)
         sys.exit(2)

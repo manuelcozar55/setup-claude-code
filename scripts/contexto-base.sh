@@ -121,8 +121,7 @@ rm -f "$R/.claude/estado/.dueno"
 fila "SessionStart memoria (session-start.sh)" \
   "$(cd "$R" && HOME=$H bash "$H/.claude/hooks/session-start.sh" </dev/null 2>/dev/null | wc -m)" \
   "$(cd "$R" && HOME=$H bash "$H/.claude/hooks/session-start.sh" </dev/null 2>/dev/null | wc -c)"
-hook "PostToolUse nucleo-nudge (airbag 85 %)" nucleo-nudge.sh "$IN,\"tool_name\":\"Bash\"}"
-hook "Stop context-gauge (>= 60 %)" stop-context-gauge.sh "$IN,\"stop_hook_active\":false}"
+hook "PostToolUse nucleo-nudge (airbag 85 %)" nucleo-nudge.sh "$IN,\"tool_name\":\"Bash\"}" 1
 # guards: la entrada sintética que dispara cada aviso, con la ruta larga del peor caso
 LARGO=$R/$(printf 'n%.0s' $(seq 1 100)).txt
 TOK1="sk-ant-$(printf 'a%.0s' $(seq 1 30))"; TOK2="AKIA$(printf 'B%.0s' $(seq 1 16))"

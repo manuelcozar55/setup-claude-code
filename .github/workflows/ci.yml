@@ -39,6 +39,7 @@ jobs:
   shellcheck:
     name: shellcheck (kit/*.sh, hooks, tests, scripts de CI)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -70,6 +71,7 @@ jobs:
   test-suites:
     name: Suites de test (kit/test)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -122,6 +124,21 @@ jobs:
 
       - name: test_guards_corpus.sh (corpus adversario de E5 contra los guards bash)
         run: bash kit/test/test_guards_corpus.sh
+
+      - name: test_guards_veredictos.sh (corpus de la auditoria A, peligrosos legitimos y bypasses)
+        run: bash kit/test/test_guards_veredictos.sh
+
+      - name: test_guards_mensajes.sh (todo bloqueo acaba con la salida que funciona)
+        run: bash kit/test/test_guards_mensajes.sh
+
+      - name: test_guards_r1.sh (corpus de la revision R1 y sensor de monotonia frente a la version anterior)
+        run: bash kit/test/test_guards_r1.sh
+
+      - name: test_guards_monotonia.sh (sensor generativo, ninguna orden que la base bloqueaba pasa sin una prueba de la lista cerrada)
+        run: bash kit/test/test_guards_monotonia.sh
+
+      - name: test_guards_degradacion.sh (la tabla de fallos de SECURITY.md)
+        run: bash kit/test/test_guards_degradacion.sh
 
       - name: test_secret_content_gitleaks.sh (Capa 2, por contenido)
         run: bash kit/test/test_secret_content_gitleaks.sh
@@ -183,6 +200,36 @@ jobs:
       - name: "test_uninstall.sh (restaura el backup mas reciente: interno o ZIP, dry-run por defecto)"
         run: bash kit/test/test_uninstall.sh
 
+      - name: "test_install_manifest.sh (.kit-version y .kit-manifest: lo que instala el kit queda registrado)"
+        run: bash kit/test/test_install_manifest.sh
+
+      - name: "test_install_plan.sh (--plan ensena la fusion de settings.json y no deja restos)"
+        run: bash kit/test/test_install_plan.sh
+
+      - name: "test_install_scc_deps.sh (lanzador scc, copia del cockpit y puertas de dependencias)"
+        run: bash kit/test/test_install_scc_deps.sh
+
+      - name: "test_uninstall_kit.sh (uninstall --kit: quita lo del manifiesto y des-fusiona settings.json)"
+        run: bash kit/test/test_uninstall_kit.sh
+
+      - name: "test_bump.sh (bump.sh sube la version en todos los sitios y corre los sensores)"
+        run: bash kit/test/test_bump.sh
+
+      - name: "test_empaquetar_entrega.sh (el paquete de entrega se instala sin el resto del repo)"
+        run: bash kit/test/test_empaquetar_entrega.sh
+
+      - name: "test_origen.sh (el repo de origen vive en kit/ORIGEN y cambiar-origen.sh lo reescribe)"
+        run: bash kit/test/test_origen.sh
+
+      - name: "test_doctor_desactivados.sh (doctor distingue un hook apagado a proposito de uno roto)"
+        run: bash kit/test/test_doctor_desactivados.sh
+      - name: "test_mapa.sh (MAPA.md se regenera sin diff y cubre todos los interruptores)"
+        run: bash kit/test/test_mapa.sh
+      - name: "test_adaptar.sh (cada orden de la guia 06-adaptar se ejecuta en un HOME aislado)"
+        run: bash kit/test/test_adaptar.sh
+      - name: "test_docs_enlaces.sh (la documentacion cita solo rutas, ordenes y versiones que existen)"
+        run: bash kit/test/test_docs_enlaces.sh
+
       # Estas dos corrian en `make test` pero NO en CI, y nada lo declaraba: un PR que
       # rompiera una cifra del README pasaba en verde. Son el sensor anti-mentira.
       - name: "test_doc_claims.sh (toda cifra que la doc afirma sobre el repo tiene sensor)"
@@ -216,8 +263,6 @@ jobs:
         run: bash kit/test/test_nucleo_hooks.sh
       - name: "test_nucleo_nudge.sh (PostToolUse: aviso al modelo por banda del airbag, una vez, solo con nucleo rancio, < 50 ms)"
         run: bash kit/test/test_nucleo_nudge.sh
-      - name: "test_nucleo_gate.sh (PreToolUse: una denegación por banda 70/85 con el nucleo sin escribir, solo hilo principal, falla en abierto)"
-        run: bash kit/test/test_nucleo_gate.sh
       - name: "test_settings_template.sh (plantilla de settings: hooks de nucleo, un PreCompact, ventana, cleanupPeriodDays, sin LangSmith)"
         run: bash kit/test/test_settings_template.sh
 
@@ -245,9 +290,27 @@ jobs:
       - name: "test_changelog_cifras.sh (toda release >= 1.10.0 publica sus cifras en el CHANGELOG)"
         run: bash kit/test/test_changelog_cifras.sh
 
+  cockpit:
+    name: cockpit (tsc en clon limpio, contrato con el CLI real; claude plugin test solo si hay claude)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COCKPIT_REQUIRE_TSC: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: pnpm (corepack)
+        run: corepack enable
+
+      # El runner no trae `claude`: validate y plugin test salen como SKIP anunciado, no como verde.
+      - name: test_cockpit.sh
+        run: bash kit/mods/cockpit/test_cockpit.sh
+
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container:
       image: debian:12-slim
     # Dentro de un `container:`, Actions ejecuta cada `run:` con `sh -e {0}`

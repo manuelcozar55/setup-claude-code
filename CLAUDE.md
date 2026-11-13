@@ -1,21 +1,21 @@
-# mcharness
+# mcharness (andamiaje de desarrollo de SCC)
 
-Harness personal para Claude Code: **guías** (antes de actuar) y **sensores** (miden
-después). Mapa para agentes: `AGENTS.md`. Dos capas:
+Solo el nombre de este andamiaje; el producto es SCC: para usarlo, `README.md`. Aquí, **guías**
+(antes de actuar) y **sensores** (después). Mapa: `AGENTS.md`. Dos capas:
 
-- `kit/` — **capa de instalación**, v1.10.1, estable. Guards, hooks, Sentinel, `install.sh`,
-  49 suites de test. No se toca sin ejecutar `make test`.
+- `kit/` — **capa de instalación**, v2.0.0, estable. Guards, hooks, Sentinel, `install.sh`,
+  64 suites de test. No se toca sin ejecutar `make test`.
 - raíz — **capa de harness**: `.claude/`, `knowledge/`, `scripts/`. Lo nuevo va aquí.
 
 ## Oráculo de este repo
 
 ```
-make test  # 49 suites bash, sin red; 118-179 s (i9), ~410 s (WSL). exit 0 o el trabajo no está hecho.
+make test  # 64 suites bash, sin red; ~410 s (WSL). exit 0 o el trabajo no está hecho.
 ```
 
-Nada está terminado sin esa salida delante. `/verify` lo hace bien.
+Sin esa salida, nada está terminado. `/verify` lo hace.
 
-## Gotchas de este entorno (medidos, no supuestos)
+## Gotchas de este entorno (medidos)
 
 **Un hook `PreToolUse/Bash` sustituía el ejecutable en posición de comando**: `rg` ejecutaba
 `grep`. Retirado en la 1.1.0; el canal sigue siendo reescribible.

@@ -15,16 +15,20 @@ ok "SessionStart startup|clear|resume → session-start-clear.sh" "$(cmd Session
 ok "SessionStart compact → session-start-compact.sh" "$(cmd SessionStart compact | command grep -c 'hooks/session-start-compact.sh')" 1
 ok "PostToolUse \"\" (todas) → nucleo-nudge.sh" "$(cmd PostToolUse '' | command grep -c 'hooks/nucleo-nudge.sh')" 1
 ok "nudge con timeout ≤ 5 s (camino caliente)" "$(q '[.hooks.PostToolUse[].hooks[] | select(.command|test("nucleo-nudge")) | .timeout <= 5] | (length > 0 and all)')" true
-ok "PreToolUse \"\" (todas) → nucleo-gate.sh" "$(cmd PreToolUse '' | command grep -c 'hooks/nucleo-gate.sh')" 1
-ok "compuerta con timeout ≤ 5 s" "$(q '[.hooks.PreToolUse[].hooks[] | select(.command|test("nucleo-gate")) | .timeout <= 5] | (length > 0 and all)')" true
-ok "Stop → stop-context-gauge.sh" "$(cmd Stop '' | command grep -c 'hooks/stop-context-gauge.sh')" 1
+ok "ya no hay nucleo-gate.sh" "$(command grep -c 'nucleo-gate' "$S")" 0
+ok "Stop → agentes.sh (foto de agentes y compuerta de commit)" "$(cmd Stop '' | command grep -c 'hooks/agentes.sh')" 1
+ok "ya no hay stop-context-gauge.sh" "$(command grep -c 'stop-context-gauge' "$S")" 0
 ok "un solo PreCompact" "$(q '.hooks.PreCompact | length')" 1
 ok "PreCompact → pre-compact.sh" "$(q '.hooks.PreCompact[0].hooks[0].command' | command grep -c 'hooks/pre-compact.sh')" 1
-ok "PostCompact → post-compact-check.sh" "$(q '.hooks.PostCompact[0].hooks[0].command' | command grep -c 'hooks/post-compact-check.sh')" 1
-ok "PostCompact con timeout ≤ 5 s" "$(q '.hooks.PostCompact[0].hooks[0].timeout <= 5')" true
+ok "PostCompact → autosave.sh (la medida de anclas va dentro, solo log)" "$(q '.hooks.PostCompact[0].hooks[0].command' | command grep -c 'hooks/autosave.sh')" 1
+ok "PostCompact: un solo hook" "$(q '.hooks.PostCompact | length')" 1
+ok "PostCompact con timeout 8 s (cubre los 5 s del CLI y la medida de anclas)" "$(q '.hooks.PostCompact[0].hooks[0].timeout == 8')" true
 ok "cleanupPeriodDays = 14" "$(q '.cleanupPeriodDays')" 14
-ok "tui = fullscreen" "$(q '.tui')" fullscreen
-ok "theme = dark" "$(q '.theme')" dark
+# W4/7: model, effortLevel, theme y tui son decisiones de quien recibe el kit, no del autor: la plantilla no los
+# fija (install.sh fusiona respetando lo que ya hubiera) y los deny de un MCP ajeno (linkedin) tampoco viajan.
+ok "la plantilla no fija model, effortLevel, theme ni tui" "$(q '[has("model"), has("effortLevel"), has("theme"), has("tui")] | any')" false
+ok ".kit-desactivados se protege como settings.json: deny de Edit" "$(q '[.permissions.deny[] | select(. == "Edit(/.kit-desactivados)")] | length')" 1
+ok "sin deny de mcp__linkedin__*" "$(q '[.permissions.deny[] | select(test("linkedin"))] | length')" 0
 ok "env fija CLAUDE_CODE_AUTO_COMPACT_WINDOW (entero)" "$(q '.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW // "" | test("^[0-9]+$")')" true
 ok "sin CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (es un hook de test)" "$(q '.env | has("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")')" false
 ok "sin ANTHROPIC_BASE_URL" "$(q '.env | has("ANTHROPIC_BASE_URL")')" false
@@ -35,12 +39,12 @@ ok "todo hook registrado existe en el kit" "$(q '.hooks[][].hooks[].command' | c
 ok "sin smart_approve en el settings (eliminado, decisión 3 del plan v3)" "$(command grep -c 'smart_approve' "$S")" 0
 ok "cadena PreToolUse/Bash = los cinco guards bash, en orden" "$(q '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[].command | capture("hooks/(?<n>[a-z-]+)\\.sh").n] | join(" ")')" "block-dangerous-commands branch-guard destructive-guard secret-guard bash-write-guard"
 ok "deny del kit intactos aunque la política gestionada los repita (decisión 2)" "$(q '[.permissions.deny[] | select(. == "Bash(rm -rf /*)" or . == "Bash(rm -rf ~/*)" or . == "Bash(git push --force *)")] | length')" 3
-ok "model sin sufijo [1m] (Opus 4.7+ trae 1M por defecto)" "$(q '.model')" opus
 ok "allow reducido a lo genérico (sin dominios, graphify ni rtk personales)" "$(q '[.permissions.allow[]? | select(. != "Bash(uv tool list)")] | join(" ")')" ""
 ok "ni oraculo ni handoff en allow (envuelven comandos arbitrarios)" "$(q '[.permissions.allow[]? | select(test("oraculo|handoff"))] | length')" 0
 # shellcheck disable=SC2016 # $k y $m son variables de jq, no del shell
 ok "todo plugin de terceros tiene su marketplace en extraKnownMarketplaces" "$(q '(.extraKnownMarketplaces // {} | keys) as $k | [.enabledPlugins | keys[] | split("@")[1] | select(. != "claude-plugins-official") | select(. as $m | $k | index($m) | not)] | join(" ")')" ""
-ok "marketplace setup-claude-code apunta a manuelcozar55/setup-claude-code" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.repo')" manuelcozar55/setup-claude-code
+read -r ORIG < "$(dirname "$0")/../ORIGEN"
+ok "marketplace setup-claude-code apunta al origen de kit/ORIGEN ($ORIG)" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.repo')" "$ORIG"
 ok "sin plugins personales ni de contexto caro (codex, understand-anything, frontend-design)" "$(q '[.enabledPlugins | keys[] | select(test("^(codex|understand-anything|frontend-design)@"))] | length')" 0
 # L4: el marketplace del kit va fijado al tag de esta version (source.ref de la fuente github, doc oficial
 # code.claude.com/docs/en/plugins/marketplace-reference#marketplace-sources). Sin ref seguia la rama por defecto:
@@ -48,4 +52,23 @@ ok "sin plugins personales ni de contexto caro (codex, understand-anything, fron
 V="$(cat "$(dirname "$S")/../../VERSION" 2>/dev/null)"
 ok "marketplace setup-claude-code: source github" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.source')" github
 ok "marketplace setup-claude-code: ref = v<VERSION> (hoy v$V)" "$(q '.extraKnownMarketplaces["setup-claude-code"].source.ref')" "v$V"
+
+# D7: con un HOME con espacios cada comando registrado se resuelve y arranca. Sin comillas en el JSON, el shell partía la
+# ruta y salía 127 en silencio (los hooks fallan en abierto: nadie lo notaba). Se ejecuta cada comando tal cual, con el
+# JSON mínimo de un evento, y solo se exige que no salga 126/127 ni «No such file».
+KITC=$(cd "$(dirname "$S")" && pwd)
+TH=$(mktemp -d); trap 'find "$TH" -depth -delete' EXIT
+HX="$TH/casa con espacios"; mkdir -p "$HX/.claude" "$TH/proy"
+ln -s "$KITC/hooks" "$HX/.claude/hooks"; [ ! -d "$KITC/../sentinel" ] || ln -s "$KITC/../sentinel" "$HX/.claude/sentinel"
+git -C "$TH/proy" init -q 2>/dev/null
+N=0; MAL=""
+while IFS=$'\t' read -r ev c; do
+  N=$((N + 1))
+  J=$(jq -cn --arg e "$ev" --arg d "$TH/proy" '{hook_event_name:$e,session_id:"smoke",cwd:$d,transcript_path:($d+"/t.jsonl"),tool_name:"Bash",tool_input:{command:"true"},prompt:"hola",source:"startup",trigger:"auto",compact_summary:"x"}')
+  out=$(cd "$TH/proy" && printf '%s' "$J" | HOME="$HX" CLAUDE_HOME="$HX/.claude" timeout 20 bash -c "$c" 2>&1 >/dev/null); rc=$?
+  case "$rc:$out" in 126:*|127:*|*"No such file"*|*"command not found"*) MAL="$MAL [$ev rc=$rc: $c]";; esac
+done < <(jq -r '.hooks | to_entries[] | .key as $e | .value[].hooks[] | [$e, .command] | @tsv' "$S")
+ok "smoke: $N comandos registrados arrancan con un HOME con espacios${MAL:+ (fallan:$MAL)}" "${MAL:-}" ""
+# shellcheck disable=SC2016  # filtro jq
+ok "smoke: todo comando cita \$HOME entre comillas" "$(q '[.hooks[][].hooks[].command | select(test("(^|[ ])\\$HOME"))] | length')" 0
 exit $FAIL

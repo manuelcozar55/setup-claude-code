@@ -16,11 +16,10 @@
       "Bash(git push -f* *)",
       "Bash(git push * -f*)",
       "Bash(git push * -*f)",
-      "mcp__linkedin__send_message",
-      "mcp__linkedin__connect_with_person",
       "Edit(/hooks/**)",
       "Edit(/settings.json)",
       "Edit(/settings.local.json)",
+      "Edit(/.kit-desactivados)",
       "Edit(/sentinel-allowlist.json)",
       "Edit(/sentinel/**)",
       "Read(~/.ssh/**)",
@@ -38,7 +37,6 @@
     ],
     "disableBypassPermissionsMode": "disable"
   },
-  "model": "opus",
   "hooks": {
     "PreToolUse": [
       {
@@ -46,17 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/nucleo-gate.sh",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/sentinel/sentinel_preflight.py",
+            "command": "\"$HOME/.claude/hooks/optional-hook.sh\" --python \"$HOME/.claude/sentinel/sentinel_preflight.py\"",
             "timeout": 10
           }
         ]
@@ -66,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/block-dangerous-commands.sh",
+            "command": "\"$HOME/.claude/hooks/block-dangerous-commands.sh\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -77,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/branch-guard.sh",
+            "command": "\"$HOME/.claude/hooks/branch-guard.sh\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -88,7 +76,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/destructive-guard.sh",
+            "command": "\"$HOME/.claude/hooks/destructive-guard.sh\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -99,7 +87,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/secret-guard.sh",
+            "command": "\"$HOME/.claude/hooks/secret-guard.sh\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -110,7 +98,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/bash-write-guard.sh",
+            "command": "\"$HOME/.claude/hooks/bash-write-guard.sh\"",
             "timeout": 5,
             "onFailure": "block"
           }
@@ -121,7 +109,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/stale-read-guard.py",
+            "command": "\"$HOME/.claude/hooks/optional-hook.sh\" --python \"$HOME/.claude/hooks/stale-read-guard.py\"",
             "timeout": 10
           }
         ]
@@ -131,7 +119,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/write-guard.py",
+            "command": "\"$HOME/.claude/hooks/optional-hook.sh\" --python \"$HOME/.claude/hooks/write-guard.py\"",
             "timeout": 10
           }
         ]
@@ -143,7 +131,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/optional-hook.sh --python $HOME/.claude/hooks/narthex-post-mcp.py",
+            "command": "\"$HOME/.claude/hooks/optional-hook.sh\" --python \"$HOME/.claude/hooks/narthex-post-mcp.py\"",
             "timeout": 10
           }
         ]
@@ -153,7 +141,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/nucleo-nudge.sh",
+            "command": "\"$HOME/.claude/hooks/nucleo-nudge.sh\"",
             "timeout": 5
           }
         ]
@@ -164,7 +152,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/session-start.sh",
+            "command": "\"$HOME/.claude/hooks/session-start.sh\"",
             "timeout": 10
           }
         ]
@@ -174,7 +162,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/session-start-clear.sh",
+            "command": "\"$HOME/.claude/hooks/session-start-clear.sh\"",
             "timeout": 10
           }
         ]
@@ -184,7 +172,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/session-start-compact.sh",
+            "command": "\"$HOME/.claude/hooks/session-start-compact.sh\"",
             "timeout": 10
           }
         ]
@@ -196,7 +184,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/pre-compact.sh",
+            "command": "\"$HOME/.claude/hooks/pre-compact.sh\"",
             "timeout": 10
           }
         ]
@@ -207,16 +195,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/post-compact-check.sh",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/autosave.sh",
+            "command": "\"$HOME/.claude/hooks/autosave.sh\"",
             "timeout": 8
           }
         ]
@@ -227,7 +206,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/stop-context-gauge.sh",
+            "command": "\"$HOME/.claude/hooks/agentes.sh\"",
             "timeout": 15
           }
         ]
@@ -236,7 +215,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/autosave.sh",
+            "command": "\"$HOME/.claude/hooks/autosave.sh\"",
             "async": true,
             "timeout": 10
           }
@@ -248,7 +227,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/agentes.sh",
+            "command": "\"$HOME/.claude/hooks/agentes.sh\"",
             "timeout": 3
           }
         ]
@@ -259,7 +238,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/agentes.sh",
+            "command": "\"$HOME/.claude/hooks/agentes.sh\"",
             "timeout": 3
           }
         ]
@@ -270,7 +249,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/agentes.sh",
+            "command": "\"$HOME/.claude/hooks/agentes.sh\"",
             "timeout": 3
           }
         ]
@@ -279,7 +258,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/autosave.sh",
+            "command": "\"$HOME/.claude/hooks/autosave.sh\"",
             "timeout": 10
           }
         ]
@@ -296,15 +275,12 @@
       "source": {
         "source": "github",
         "repo": "manuelcozar55/setup-claude-code",
-        "ref": "v1.10.1"
+        "ref": "v2.0.0"
       }
     }
   },
-  "effortLevel": "xhigh",
   "autoUpdatesChannel": "latest",
   "cleanupPeriodDays": 14,
-  "tui": "fullscreen",
-  "theme": "dark",
   "statusLine": {
     "type": "command",
     "command": "bash $HOME/.claude/statusline-command.sh",
