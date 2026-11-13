@@ -386,3 +386,12 @@ test('fallo visible: /autosave status sin .claude/estado/ manda a handoff --inic
   const res = (await $.command.run({ ...RUN, command: 'autosave', args: 'status' })) as { text?: string }
   expect(res.text ?? '').toContain('handoff --iniciar')
 })
+
+// F8-06: `claude plugin uninstall` falla con scc (--plugin-dir): el aviso manda a arrancar con claude.
+test('versión mínima: el aviso no manda a «claude plugin uninstall» (falla con scc) sino a arrancar con claude', async ($, on) => {
+  mock.clock(on)
+  const { seen } = await setup($, on, { version: '2.1.300' })
+  await start($)
+  expect(seen.toasts[0]).toContain('o arranca con «claude» en vez de «scc».')
+  expect(seen.toasts[0]).not.toContain('plugin uninstall')
+})

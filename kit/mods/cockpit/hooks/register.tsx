@@ -726,7 +726,7 @@ async function resolveState($: $) {
   // The CLI's tope already leaves room for the agents block the next SessionStart injects; 6500 is the pre-reserve contract.
   const tope = 'tope' in state && typeof state.tope === 'number' && Number.isSafeInteger(state.tope) && state.tope > 0 ? state.tope : 6500
   const estadoMd = 'modo' in state && state.modo === 'estado-md' && 'estado' in state && typeof state.estado === 'string' && state.estado.startsWith('/') ? state.estado : null
-  return { ...location, path: state.nucleo, estadoMd, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active, tope, foreignOwner: owner }
+  return { ...location, path: state.nucleo, estadoMd, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active, tope, foreignOwner: owner, sha: 'sha256' in state && typeof state.sha256 === 'string' ? state.sha256 : null }
 }
 
 const readState = async ($: $, path: string) => ((await $.fs.exists(path)) ? await $.fs.read(path) : '')
@@ -768,7 +768,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
   let tmp = ''
   try {
     if (!silent) await update($, handoff, (): Handoff => ({ phase: 'working' }))
-    const { root, start, dir, path, estadoMd, bin, active, tope, foreignOwner } = await resolveState($)
+    const { root, start, dir, path, estadoMd, bin, active, tope, foreignOwner, sha } = await resolveState($)
     // The CLI would refuse with rc 5 after the fork has been paid: ask first (the state's owner is in `--estado`).
     if (foreignOwner !== null) throw new Error(`el estado de este proyecto lo tiene otra sesión (${foreignOwner.slice(0, 8)}): no guardo ni limpio; cierra esa sesión o trabaja con ella`)
     if (andClear && (active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) throw new Error('hay agentes o shells vivos: no limpio; espera o usa /handoff solo')
@@ -840,6 +840,9 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
     await $.fs.write(tmp, draft)
     const sesion = await $.session.id().catch(() => '')
     sameSession()
+    // The CLI only sees edits inside its own merge window: one made while the fork thought would be overwritten (and /clear follows).
+    if (!silent && (await resolveState($)).sha !== sha) throw new Error('nucleo.md cambió durante la consulta; repite /handoff')
+    sameSession()
     const argv = [bin, '--desde', tmp, ...(root === null ? [] : ['--raiz', root]), ...(sesion ? ['--sesion', sesion] : []), '--json']
     let res = await $.process.run(argv, viaStart(start))
     if (res.exitCode === 4) res = await $.process.run(argv, viaStart(start))
@@ -883,7 +886,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
     }
     // The conversation that asked is gone: the new one gets no error banner, only a clean band.
     if (epoch !== sessionEpoch) await update($, handoff, (): Handoff => ({ phase: 'idle' }))
-    else await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}` }))
+    else await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}${errorResets >= 1 ? '; el automático no reintentará; /handoff a mano' : ''}` }))
   } finally {
     if (tmp) await $.process.run(['rm', '-f', '--', tmp]).catch(() => undefined)
     handoffBusy = false
@@ -896,6 +899,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
 // At a main-loop turn end: the context crossed the threshold, the state is the task's own and nothing
 // else is running. Scheduled out of the hook the turn awaits, because /clear is refused inside it.
 // Every turn end over the threshold that does not hand off leaves one debug line with the reason.
+let autoToastedFor = -1
 async function maybeAutoHandoff($: $) {
   const epoch = sessionEpoch
   if (!isAttended) return
@@ -908,14 +912,21 @@ async function maybeAutoHandoff($: $) {
     return
   }
   // The cwd goes with it: the handoff notes the live folder in the nucleo (the root is the session's start).
-  const skip = async (why: string) => $.ui.log(`cockpit: handoff automático omitido al ${pct}%: ${why} (cwd ${await $.session.cwd().catch(() => '?')})`, { to: 'debug' })
+  // `tell`: the person must hear that no save is coming (once per session); not for «no project», «already saved» or a run in progress.
+  const skip = async (why: string, tell = false) => {
+    await $.ui.log(`cockpit: handoff automático omitido al ${pct}%: ${why} (cwd ${await $.session.cwd().catch(() => '?')})`, { to: 'debug' })
+    if (tell && autoToastedFor !== epoch) {
+      autoToastedFor = epoch
+      $.ui.toast(`Handoff automático no disponible al ${pct}%: ${why}; usa /handoff`)
+    }
+  }
   if (isAutoCrossed) return skip('ya guardado en este cruce del umbral; se rearma al bajar de él o con /clear')
   if (await read($, isAutoQueued) || handoffBusy) return skip(isSilentBusy ? 'guardado automático en curso' : 'ya en curso')
   const phase = (await read($, handoff)).phase
-  if (!['idle', 'done'].includes(phase)) return skip(phase === 'error' ? 'error previo' : 'ya en curso')
-  if ((await $.agent.list()).some(a => !DONE.has(a.status))) return skip('agentes vivos')
+  if (!['idle', 'done'].includes(phase)) return skip(phase === 'error' ? 'error previo' : 'ya en curso', phase === 'error')
+  if ((await $.agent.list()).some(a => !DONE.has(a.status))) return skip('agentes vivos', true)
   const blocker = await autoBlocker($)
-  if (blocker) return skip(blocker)
+  if (blocker) return skip(blocker, blocker !== 'sin proyecto')
   if (epoch !== sessionEpoch) return skip('la sesión cambió')
   await update($, isAutoQueued, () => true)
   isAutoCrossed = true
@@ -1125,7 +1136,7 @@ export const register: Register = on => {
     }
     if (isOlder(version, MIN_CLAUDE_CODE)) {
       isAttended = false
-      $.ui.toast(`Cockpit apagado: necesita Claude Code ${MIN_CLAUDE_CODE} o posterior y esta es la ${version}. Actualiza con «claude update» o quítalo con «claude plugin uninstall cockpit@setup-claude-code».`)
+      $.ui.toast(`Cockpit apagado: necesita Claude Code ${MIN_CLAUDE_CODE} o posterior y esta es la ${version}. Actualiza con «claude update» o arranca con «claude» en vez de «scc».`)
       return next(e)
     }
     await $.command.register({ name: 'autonomo', description: 'Tras un handoff sigue solo con el trabajo ya autorizado, sin esperar tu Enter: /autonomo on|off', argumentHint: 'on|off' })
