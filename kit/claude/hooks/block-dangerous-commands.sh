@@ -260,7 +260,7 @@ DENY_RULES=(
   '\bmkfs\b'                           "BLOCKED: mkfs (format filesystem)"
   '\bfdisk\b'                          "BLOCKED: fdisk (partition table editor)"
   '\bwipefs\b'                         "BLOCKED: wipefs (wipe filesystem signatures)"
-  '>\s*/dev/sd'                        "BLOCKED: redirect to block device"
+  '>[|&]?\s*/dev/sd'                   "BLOCKED: redirect to block device"
 
   # ── SYSTEM SHUTDOWN/REBOOT ─────────────────────────────────────────────────
   '(^|[;&|]\s*)(sudo\s+)?reboot\b'    "BLOCKED: reboot"
@@ -296,7 +296,7 @@ DENY_RULES=(
   '(^|[;&|(]\s*)(\$\(|`)\s*(curl|wget)\b'  "BLOCKED: curl/wget output executed as a command (RCE)"
   '=["'"'"']?(\$\(|`)\s*(curl|wget)\b[^;&]*[;&]+\s*["'"'"']?\$\{?[A-Za-z_]'  "BLOCKED: curl/wget output executed as a command (RCE)"
   # Redirigir o `tee` hacia los ficheros de arranque del shell planta codigo que corre en la proxima sesion.
-  '(>>?\|?|\btee\s+(-a\s+)?)\s*["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]"'"'"']+)/\.((bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(["'"'"'[:space:];&|)<>}]|$)|(bashrc|profile|zshrc)\.d/)'  "BLOCKED: write to a shell startup file (persistence)"
+  '(>>?[|&]?|\btee\s+(-a\s+)?)\s*["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]"'"'"']+)/\.((bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(["'"'"'[:space:];&|)<>}]|$)|(bashrc|profile|zshrc)\.d/)'  "BLOCKED: write to a shell startup file (persistence)"
   # Lo mismo con las demas formas de escribir ahi: `sed -i`/`perl -i` sobre el fichero, `cp`/`mv`/`ln`/`install` con el
   # fichero de destino (ultimo operando) y `dd of=`.
   '\b(sed|perl)\b[^;&|]*[[:space:]](-[A-Za-z]*i|--in-place)\b[^;&|]*(~|\$\{?HOME\}?|/root|/home/[^/[:space:]]+)/\.(bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(["'"'"'[:space:];&|)<>}]|$)'  "BLOCKED: in-place edit of a shell startup file (persistence)"

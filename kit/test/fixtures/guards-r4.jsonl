@@ -1147,3 +1147,13 @@
 {"id": "F13-r014", "cmd": "echo $\\\n'a\\'b' ; truncate -s0 ~/.claude/settings.json ; echo $'c\\'d'", "base": "ALLOW", "exp": "BLOCK"}
 {"id": "F13-r015", "cmd": "echo $\\\n$'a\\' ; rm -rf ~/x ; echo 'b'", "base": "BLOCK", "exp": "BLOCK"}
 {"id": "F13-r016", "cmd": "echo $\\\n$'a\\' ; truncate -s0 ~/.claude/settings.json ; echo 'b'", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-d001", "cmd": "echo x>|/dev/sda", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d002", "cmd": "echo x >| /dev/sda", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d003", "cmd": "echo x>&/dev/sda", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d004", "cmd": "echo x >& /dev/sda", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d005", "cmd": "echo x >& ~/.bashrc", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d006", "cmd": "echo x>&~/.bashrc", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d007", "cmd": "make test > salida.log 2>&1; ls /dev/sda", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-d008", "cmd": "make test >& salida.log", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-d009", "cmd": "make test > salida.log 2>& 1", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-d010", "cmd": "cat ~/.bashrc 2>&1 | head", "base": "ALLOW", "exp": "ALLOW"}

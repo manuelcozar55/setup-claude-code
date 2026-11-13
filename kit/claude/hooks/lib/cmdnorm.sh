@@ -46,7 +46,7 @@ function argopt(b, o) {
 function gitopt(o) { return (o == "-C" || o == "-c" || o == "--git-dir" || o == "--work-tree" || o == "--namespace" || o == "--super-prefix" || o == "--config-env" || o == "--attr-source") }
 function clean_opt(t) { return (t ~ /^-[A-Za-z0-9]+$/ || t ~ /^--[A-Za-z0-9][A-Za-z0-9-]*$/ || t == "--") }
 function redir(t) { return (t ~ /^[0-9]*[<>]/) }
-function redir_alone(t) { return (t ~ /^[0-9]*(>>?[|]?|<<?)$/) }
+function redir_alone(t) { return (t ~ /^[0-9]*(>>?[|]?|>&|<<?)$/) }
 function push(body) { qn++; queue[qn] = body }
 
 # Contexto cerrado (regla de las pruebas de exencion): una prueba solo vale si la linea entera es UNA tuberia de la orden exenta y
