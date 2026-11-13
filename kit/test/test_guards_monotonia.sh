@@ -144,8 +144,10 @@ def cases():
         # 1. ejecucion directa: la prueba es la del propio operando (o ninguna)
         for wi, w in enumerate(WRAP):
             add("X%d.%d" % (pi, wi), w.replace("{}", p).replace("{{", "{").replace("}}", "}"), None)
-        # 1b. el par $'a\'b' ... $'c\'d' (la \' no cierra la cadena ANSI-C) no puede esconder la carga que va en medio
-        add("AN%d" % pi, "echo $'a\\'b' ; %s ; echo $'c\\'d'" % p, None)
+        # 1b. el par $'a\'b' ... $'c\'d' (la \' no cierra la cadena ANSI-C) no puede esconder la carga que va en medio. Sin la prueba
+        # del operando: entre dos `;` no hay contexto cerrado, y con ella el caso entraba en las semillas de composicion y desplazaba
+        # su muestreo (el agujero «un interprete vale como consumidor de texto» dejaba de detectarse).
+        out.append(("AN%d" % pi, "echo $'a\\'b' ; %s ; echo $'c\\'d'" % p, None))
         # 2. datos sin consumidor: echo, printf, comentario, mensaje, patron
         for st in "sda":
             add("E%d%s" % (pi, st), "echo %s" % q(p, st), "dato:echo-sin-consumidor")
