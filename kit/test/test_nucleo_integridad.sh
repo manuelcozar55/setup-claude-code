@@ -78,6 +78,10 @@ ok 'fallback tiene ignores de estado e informes' "$(cat "$RF/.gitignore" "$RF/in
 ok 'tras recuperar permisos se mantiene destino real' "$(bash "$BIN" --raiz "$RO" --estado | jq -r .nucleo)" "$RF/nucleo.md"
 bash "$BIN" --raiz "$RO" --desde "$T/draft" --commit >"$T/commit.out" 2>"$T/commit.err"; RC=$?
 ok 'commit fallback rechaza versionar otra ruta sin perder escritura' "$RC,$(git -C "$RO" diff --cached --name-only | wc -l),$(command grep -c nuevo "$RF/nucleo.md")" '1,0,1'
+G=$T/gi; mkdir -p "$G/.claude/estado"; git -C "$G" init -q; git -C "$G" config user.email a@b; git -C "$G" config user.name a
+printf '## Objetivo\nx\n' >"$G/.claude/estado/nucleo.md"
+bash "$BIN" --raiz "$G" --desde "$T/draft" --commit >/dev/null 2>&1
+ok 'F3-5: --commit ignora los temporales .dueno.* y .nucleo.*' "$(command grep -cFx -e '.dueno.*' -e '.nucleo.*' "$G/.claude/estado/.gitignore")" 2
 M=$T/migrate; mkdir -p "$M/.claude/estado"; git -C "$M" init -q
 printf '## Objetivo\nOBJETIVO-LOCAL\n' >"$M/.claude/estado/nucleo.md"
 MF=$(nucleo_estado_fallback "$M"); mkdir -p "$MF/checkpoints"
