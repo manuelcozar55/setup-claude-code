@@ -45,6 +45,18 @@ wait "$PID"
 ok 'dos escritores reales: primero termina y segundo espera reintento' "$LOCKED,$(cat "$T/first.rc"),$RC" '1,0,4'
 ho --desde "$T/second" >/dev/null 2>&1
 ok 'reintento fusiona sin perder primero' "$(command grep -c 'nuevo\|SEGUNDO-ESCRITOR' "$E/nucleo.md")" 2
+# F3-1: el autosave (Stop asíncrono) no pisa una edición que cae entre su lectura y su mv.
+rm -f "$E/.dueno"; printf '## Paso actual\nbase\n' >"$E/nucleo.md"; rm -f "$T/auto-ready"
+(export HANDOFF_TEST_AUTO=$T/auto-ready
+ # shellcheck disable=SC2329  # Invocada por el proceso handoff mediante export -f.
+ sleep() { : >"$HANDOFF_TEST_AUTO"; command sleep "$@"; }
+ export -f sleep
+ printf '{"hook_event_name":"PostCompact","session_id":"auto1","cwd":"%s"}' "$R" | NUCLEO_FUSION_PAUSA=1 bash "$BIN" --auto --json >"$T/auto.out" 2>&1) &
+PID=$!
+for _ in {1..300}; do [ -f "$T/auto-ready" ] && break; command sleep 0.01; done
+printf 'MARCA-EDICION\n' >>"$E/nucleo.md"
+wait "$PID"
+ok 'autosave: la edición hecha en su ventana sobrevive y se omite' "$(command grep -c MARCA-EDICION "$E/nucleo.md"),$(jq -r .omitido "$T/auto.out")" '1,nucleo cambió'
 F=$(nucleo_estado_fallback "$R"); mkdir -p "$F"
 printf '## Paso actual\nFALLBACK-VIVO\n' >"$F/nucleo.md"
 jq -cn --arg r "$R" '{cwd:$r,session_id:"fallback",source:"compact"}' | bash "$HOOK/session-start-compact.sh" >"$T/compact"

@@ -457,6 +457,7 @@ if [ "$MODO" = auto ]; then
   AW=$(mktemp -d "${TMPDIR:-/tmp}/handoff.XXXXXX") || a_omitir "sin temporal"
   TMP=""
   trap 'rm -rf -- "$AW"; [ -z "$TMP" ] || rm -f -- "$TMP"' EXIT
+  ACK=$(cksum <"$NUC" 2>/dev/null) || ACK=""
   if [ -f "$NUC" ]; then
     AVIEJA=$(awk -v h="$AUTOH" '/^[ \t]*(```|~~~)/ { c = !c } !c && /^## / { g = ($0 == h) } !g { print }' "$NUC")
     ABASE=$(sed -n 's/^<!-- git:\([0-9a-f]\{7,40\}\) -->$/\1/p' "$NUC" | head -n 1)
@@ -485,6 +486,9 @@ if [ "$MODO" = auto ]; then
   # ---- escritura: temporal junto al nucleo, mtime y modo del anterior, mv atómico
   TMP=$(mktemp "$E/.nucleo.XXXXXX") || a_omitir "sin temporal"
   printf '%s' "$ANUEVO" >"$TMP"
+  [ -z "${NUCLEO_FUSION_PAUSA:-}" ] || sleep "$NUCLEO_FUSION_PAUSA"
+  # El Stop es asíncrono y el turno siguiente edita: si el nucleo cambió desde la lectura, el mv lo pisaría.
+  [ "$(cksum <"$NUC" 2>/dev/null)" = "$ACK" ] || a_omitir "nucleo cambió"
   if [ -f "$NUC" ]; then touch -r "$NUC" "$TMP" 2>/dev/null || true; chmod "$(stat -c %a "$NUC" 2>/dev/null || stat -f %Lp "$NUC")" "$TMP" 2>/dev/null || true; fi
   mv -f -- "$TMP" "$NUC"; TMP=""
   if [ -n "$AMOT" ]; then
@@ -1147,7 +1151,7 @@ if [ "$COMMIT" -eq 1 ] && [ "$E" != "$RAIZ/.claude/estado" ]; then
   ERRC="nucleo.md escrito en $E; --commit no puede versionar el estado fuera del proyecto"
 elif [ "$COMMIT" -eq 1 ]; then
   GI=$E/.gitignore
-  for pat in .dueno .handoff.lock verificaciones.log recortes.log 'nucleo.prev-*' 'checkpoint-compact*'; do
+  for pat in .dueno '.dueno.*' '.nucleo.*' .handoff.lock verificaciones.log recortes.log 'nucleo.prev-*' 'checkpoint-compact*'; do
     command grep -qFx -- "$pat" "$GI" 2>/dev/null || printf '%s\n' "$pat" >>"$GI"
   done
   # -f: una ejecución previa sin --commit dejó .claude/estado/ en info/exclude. Solo lo que se versiona; nunca lo efímero.
