@@ -1579,6 +1579,10 @@ done
 f202_pad=$(printf '%*s' 25000 '' | tr ' ' x)
 f202_rc=$(cd "$V151_REPO" && trap '' XFSZ && ulimit -f 0 && jq -nc --arg c "echo $f202_pad; git push origin main" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/branch-guard.sh" >/dev/null 2>&1; echo $?)
 if [ "$f202_rc" -eq 2 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [F2-02] branch-guard sin temporal para el here-string salio con rc $f202_rc (se esperaba 2)"; fi
+# F2-03: si jq falla al emitir la decision (aqui, un jq que siempre sale con 2), block-dangerous cierra en vez de salir con 0 y sin veredicto.
+mkdir -p "$GUARDS_TEST_HOME/f203bin"; printf '#!/bin/sh\nexit 2\n' > "$GUARDS_TEST_HOME/f203bin/jq"; chmod +x "$GUARDS_TEST_HOME/f203bin/jq"
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git status"}}' | PATH="$GUARDS_TEST_HOME/f203bin:$PATH" HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" >/dev/null 2>&1; f203_rc=$?
+if [ "$f203_rc" -eq 2 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [F2-03] block-dangerous con un jq que falla salio con rc $f203_rc (se esperaba 2)"; fi
 [ "$v151_rows" -ge 100 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: guards-v151.tsv ejecuto solo $v151_rows filas (se esperaban >=100)"; }
 
 # v1.6.1: cp/mv/install/ln hacia un directorio escriben dir/basename(origen); se juzga ese fichero, no el operando.

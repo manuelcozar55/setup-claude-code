@@ -15,7 +15,7 @@ deny() {
       permissionDecision: "deny",
       permissionDecisionReason: $r
     }
-  }'
+  }' || exit 2
   exit 0
 }
 
@@ -76,7 +76,7 @@ ask() {
       permissionDecision: "ask",
       permissionDecisionReason: $r
     }
-  }'
+  }' || exit 2
   exit 0
 }
 
