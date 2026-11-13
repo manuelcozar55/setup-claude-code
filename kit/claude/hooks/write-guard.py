@@ -145,5 +145,5 @@ try:
     main()
 except Exception as exc:
     print(f"WRITE-GUARD ERROR: no se pudo analizar la escritura ({type(exc).__name__}: {exc}); "
-          "se bloquea por seguridad (fail-closed). Que hacer: reintenta; si se repite, comprueba que python3 y lib/secret-patterns funcionan (python3 write-guard.py --help).", file=sys.stderr)
+          "se bloquea por seguridad (fail-closed). Que hacer: reintenta; si se repite, comprueba que python3 y lib/secret-patterns funcionan.", file=sys.stderr)
     sys.exit(2)

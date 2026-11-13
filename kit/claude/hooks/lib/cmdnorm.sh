@@ -33,7 +33,7 @@ CMDN_FS=$'\034'
 # shellcheck disable=SC2016  # el programa awk va literal: nada se expande en bash.
 CMDN_AWK='
 function base(w) { if (w != "/" && w ~ /\//) sub(/.*\//, "", w); return w }
-function endtok() { if (have) { nt++; toks[nt] = tok } tok = ""; have = 0 }
+function endtok() { if (have) { nt++; toks[nt] = tok; tokr[nt] = rd } tok = ""; have = 0; rd = 0 }
 function argopt(b, o) {
   if (b == "sudo") return (o == "-u" || o == "-g" || o == "-h" || o == "-p" || o == "-C" || o == "-r" || o == "-t" || o == "-U" || o == "--user" || o == "--group")
   if (b == "env") return (o == "-u" || o == "-C" || o == "-S" || o == "--unset" || o == "--chdir")
@@ -193,7 +193,7 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
     for (j = k + 1; j <= nt; j++) {
       t = toks[j]
       if (keepnext) { keepnext = 0; out = out " " t; continue }
-      if (redir(t)) { out = out " " t; if (redir_alone(t)) keepnext = 1; continue }
+      if (redir(t) || tokr[j]) { out = out " " t; if (redir_alone(t)) keepnext = 1; continue }
       if (clean_opt(t)) out = out " " t
     }
     return out
@@ -227,6 +227,10 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl, sp) {
     if (a ~ /^[0-9&]*>>?[|]?/) {
       o = a; sub(/^[0-9&]*>>?[|]?/, "", o)
       if (o == "" && j < nt) o = toks[j + 1]
+      if (o !~ /^&[0-9-]*$/ && !devnull(o)) { nosimple = 1; wf = 1 }
+    }
+    if (tokr[j] && a !~ /^[0-9&]*>/) {
+      o = a; sub(/^[^>]*>>?[|]?/, "", o)
       if (o !~ /^&[0-9-]*$/ && !devnull(o)) { nosimple = 1; wf = 1 }
     }
   }
@@ -328,7 +332,7 @@ function heredocs(s, i, n,   h, o, m, body, rest, p, e, w, isdata, bs, lt, L) {
 }
 
 function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e, w) {
-  txt = ""; nt = 0; tok = ""; have = 0; openq = 0; hdn = 0; subdepth = 0; btick = 0
+  txt = ""; nt = 0; tok = ""; have = 0; rd = 0; dl = -9; ansic = 0; openq = 0; hdn = 0; subdepth = 0; btick = 0
   pend = ismain ? "" : ";"
   forceS = !ismain
   n = length(s); i = 1
@@ -342,19 +346,26 @@ function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e,
     }
     if (c == "$") {
       nx = substr(s, i + 1, 1)
+      # `$$` es el PID: la segunda `$` ya no abre una forma $-comilla (bash la lee como comilla simple normal).
+      if (dl == i - 1) { dl = -9; tok = tok c; have = 1; txt = txt c; i++; continue }
       if ((nx == "\047" || nx == "\"") && !((i + 1) in skip)) {
         # Formas $-comilla (ANSI-C y locale): bash quita el `$` y las comillas. Si lleva una barra invertida dentro, el valor
         # real no se puede calcular aqui: el `$` se queda en el token y el guard de git push lo trata como sospechoso.
         pv = 0
         if (nx == "\047") for (j = i + 2; j <= n && substr(s, j, 1) != nx; j++) if (substr(s, j, 1) == "\\") { pv = 1; break }
         if (pv) tok = tok c
+        ansic = (nx == "\047")
         txt = txt c; i++; continue
       }
+      dl = i
     }
     if ((c == "\047" || c == "\"") && !(i in skip)) {
       start = i; q = c; txt = txt c; i++; have = 1; closed = 0
+      isansi = ansic; ansic = 0
       while (i <= n) {
         d = substr(s, i, 1)
+        # En una cadena ANSI-C la barra escapa el caracter siguiente, tambien la comilla simple: no cierra la cadena.
+        if (isansi && d == "\\") { tok = tok d substr(s, i + 1, 1); txt = txt d substr(s, i + 1, 1); i += 2; continue }
         if (d == q) { closed = 1; txt = txt d; i++; break }
         if (q == "\"" && d == "\\") {
           nx = substr(s, i + 1, 1)
@@ -409,6 +420,7 @@ function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e,
       else { endseg(); pend = pend c }
       txt = txt c; i++; continue
     }
+    if (c == ">" && have) rd = 1
     tok = tok c; have = 1; txt = txt c; i++
   }
   endseg()
@@ -531,16 +543,18 @@ cmdn_parse() {
   # Los cuatro bytes de control con los que el parser separa sus salidas (\034-\037) no pueden ir en el comando: un \036 propio
   # desplazaria texto, EXEC y segmentos. Bash no los trata como separador, asi que pasan a espacio.
   set -- "${1//[$'\034\035\036\037']/ }"
-  if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]]; then
-    CMDN_TEXT=$1; CMDN_EXEC=$1; [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=0; CMDN_LINE_SET=1; }; return 1
-  fi
   # `${out%%…*}` y `${out#*…}` prueban cada longitud de prefijo: cuadráticos (64 KB ≈ 1,5 s de CPU,
   # el timeout del hook corre en abierto). `read` parte en el primer separador en una pasada.
-  IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC CMDN_PSH CMDN_SIMPLE rest <<<"$out"
+  # Un here-string que no puede crear su temporal (disco lleno, /tmp de solo lectura) no lee nada: tambien es un fallo.
+  if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]] \
+    || ! { CMDN_SIMPLE=; IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC CMDN_PSH CMDN_SIMPLE rest <<<"$out"; [[ -n $CMDN_SIMPLE ]]; } \
+    || ! mapfile -t CMDN_SEGS <<<"$rest"; then
+    CMDN_SEGS=(); CMDN_PSH=1; CMDN_SIMPLE=0
+    CMDN_TEXT=$1; CMDN_EXEC=$1; [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=0; CMDN_LINE_SET=1; }; return 1
+  fi
   # CMDN_LINE_SIMPLE: el contexto cerrado de la orden PRINCIPAL (la primera que se analiza); los analisis de ordenes anidadas
   # (bash -c, ssh...) no lo cambian y por tanto nunca lo heredan.
   [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=$CMDN_SIMPLE; CMDN_LINE_SET=1; }
-  mapfile -t CMDN_SEGS <<<"$rest"
   while (( ${#CMDN_SEGS[@]} )) && [[ -z ${CMDN_SEGS[-1]} ]]; do
     unset 'CMDN_SEGS[-1]'
   done

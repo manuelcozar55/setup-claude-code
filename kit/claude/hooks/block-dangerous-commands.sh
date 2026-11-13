@@ -15,7 +15,7 @@ deny() {
       permissionDecision: "deny",
       permissionDecisionReason: $r
     }
-  }'
+  }' || exit 2
   exit 0
 }
 
@@ -76,7 +76,7 @@ ask() {
       permissionDecision: "ask",
       permissionDecisionReason: $r
     }
-  }'
+  }' || exit 2
   exit 0
 }
 
@@ -649,7 +649,7 @@ rm_text_net() {
 }
 token_checks() {
   local seg a i r f dd skip tgt w nxt c
-  local -a T wrote=()
+  local -a T wrote=() cur=()
   RM_REAL=0
   for seg in "${CMDN_SEGS[@]}"; do
     # Prefiltro barato (un comando de 64 KB trae miles de segmentos y cmdn_fields cuesta): solo las ordenes que estas
@@ -717,7 +717,7 @@ token_checks() {
         esac ;;
     esac
     # Un fichero que el propio comando escribe y luego ejecuta: el guard solo ve la orden de arriba, no el contenido.
-    nxt=0
+    nxt=0; cur=()
     for a in "${T[@]:2}"; do
       tgt=''
       if (( nxt )); then tgt=$a; nxt=0
@@ -725,7 +725,7 @@ token_checks() {
       elif [[ $a =~ ^[0-9]*\>\>?\|?([^\&\>\|].*)$ ]]; then tgt=${BASH_REMATCH[1]}
       elif [[ ${T[1]} == tee && $a != -* ]]; then tgt=$a
       fi
-      [[ -n $tgt && $tgt != /dev/* ]] && wrote+=("$tgt")
+      [[ -n $tgt && $tgt != /dev/* ]] && cur+=("$tgt")
     done
     if (( ${#wrote[@]} )); then
       case ${T[1]:-} in
@@ -736,13 +736,14 @@ token_checks() {
         # `bash x.sh`, `source x.sh`, `./x.sh`: el segmento que lo ejecuta es posterior al que lo escribio.
         if [[ -n $w ]]; then
           for a in "${T[@]:2}"; do
-            [[ ${a#./} == "${tgt#./}" ]] && WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."
+            [[ ${a#./} == "${tgt#./}" ]] && { WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."; }
           done
         elif [[ ${T[1]:-} == "${tgt##*/}" && ${tgt##*/} == *.* ]]; then
           WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."
         fi
       done
     fi
+    wrote+=("${cur[@]}")
   done
   (( WX )) && EXECT=$COMMAND
   [[ $COMMAND == *rm* ]] && rm_text_net

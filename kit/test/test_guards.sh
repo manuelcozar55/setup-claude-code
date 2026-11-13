@@ -72,6 +72,7 @@ expect "symlink: Read de un enlace a una credencial denegado"  "$(run_sentinel_r
 expect "symlink: cat de un enlace a una credencial denegado"   "$(run_sentinel "cat $SYM_D/notas.txt")"      BLOCK
 expect "symlink: Read a traves de un enlace a directorio denegado" "$(run_sentinel_read "$SYM_D/dir-enlace/id_rsa")" BLOCK
 expect "symlink: Read de un enlace a un fichero inocuo permitido" "$(run_sentinel_read "$SYM_D/enlace-inocuo.txt")" ALLOW
+rm -r "$SYM_D"
 # Formas de leer o copiar una clave que la primera version de la valla dejo pasar (revision del
 # 15-oct): glob, acento grave, sufijo de copia, directorio, llaves, y el oculto tras una barra.
 expect "clave: glob con ruta denegado"           "$(run_sentinel 'cat /etc/ssl/private/*.key')"            "$IOCS_WANT"
@@ -1575,6 +1576,14 @@ for nh_g in block-dangerous-commands.sh bash-write-guard.sh branch-guard.sh dest
   jq -nc '{tool_name:"Bash",tool_input:{command:"git status; ls ~/x"}}' | env -u HOME bash "$KIT/claude/hooks/$nh_g" >/dev/null 2>&1; nh_rc=$?
   if [ "$nh_rc" -eq 0 ] || [ "$nh_rc" -eq 2 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [F-09] $nh_g sin HOME salio con rc $nh_rc (se esperaba 0 o 2)"; fi
 done
+# F2-02: si el here-string de cmdn_parse no puede crear su temporal (aqui, limite de tamano de fichero a 0), el guard cierra.
+f202_pad=$(printf '%*s' 25000 '' | tr ' ' x)
+f202_rc=$(cd "$V151_REPO" && trap '' XFSZ && ulimit -f 0 && jq -nc --arg c "echo $f202_pad; git push origin main" '{tool_name:"Bash",tool_input:{command:$c}}' | HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/branch-guard.sh" >/dev/null 2>&1; echo $?)
+if [ "$f202_rc" -eq 2 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [F2-02] branch-guard sin temporal para el here-string salio con rc $f202_rc (se esperaba 2)"; fi
+# F2-03: si jq falla al emitir la decision (aqui, un jq que siempre sale con 2), block-dangerous cierra en vez de salir con 0 y sin veredicto.
+mkdir -p "$GUARDS_TEST_HOME/f203bin"; printf '#!/bin/sh\nexit 2\n' > "$GUARDS_TEST_HOME/f203bin/jq"; chmod +x "$GUARDS_TEST_HOME/f203bin/jq"
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git status"}}' | PATH="$GUARDS_TEST_HOME/f203bin:$PATH" HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" >/dev/null 2>&1; f203_rc=$?
+if [ "$f203_rc" -eq 2 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: [F2-03] block-dangerous con un jq que falla salio con rc $f203_rc (se esperaba 2)"; fi
 [ "$v151_rows" -ge 100 ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: guards-v151.tsv ejecuto solo $v151_rows filas (se esperaban >=100)"; }
 
 # v1.6.1: cp/mv/install/ln hacia un directorio escriben dir/basename(origen); se juzga ese fichero, no el operando.
