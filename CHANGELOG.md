@@ -74,9 +74,21 @@ Tope del nucleo (caso real del 11-nov: una sesión con varios encargos apilados 
 - **Validación en Debian 13 (12-nov, bash 5.2):**
   - `test_guards_r1.sh` se interbloqueaba: el `wait` sin argumentos del bucle `done < <(cat fixtures)` esperaba también a la sustitución de proceso, que no termina hasta que se lee el pipe (los fixtures pesan más de 64 KB). `make test` no terminaba tampoco por `test_guards_falsifiability.sh`, que invoca r1. Ahora el corpus se vuelca a un fichero. Con bash 5.3 (Ubuntu) no ocurría.
   - `test_install_manifest.sh`, `test_nucleo_nudge.sh` y `test_empaquetar_entrega.sh` fallaban según el PATH (sin `claude` ni `handoff`) o el locale (`en_US.UTF-8`) de la máquina. Ahora ponen sus propios sustitutos en el PATH y ordenan con `LC_ALL=C`; ninguna aserción se relaja. `empaquetar-entrega.sh` ya ordenaba con `LC_ALL=C`: el paquete no cambia con el locale.
-  - Actualizar desde 1.9.1 dejaba instalados `agents/strategist.md` y las skills `domain-modeling`, `grilling`, `to-questionnaire` y `writing-for-agents` (retirados en esta versión), y `uninstall.sh --kit` tampoco los quitaba, porque 1.9.1 no escribía manifiesto. `kit/hooks-retirados.sha256` lleva ahora las sumas de cada versión publicada de esos ficheros: `install.sh --apply` y `uninstall.sh --kit` borran los que coinciden (y la carpeta de la skill si queda vacía) y conservan y listan los que modificaste; nunca borran a través de una carpeta enlazada (skill proyectada desde otro repo); `doctor` avisa de los que sigan instalados. Si ya actualizaste con 2.0.0 sin este arreglo, repite `install.sh --apply`, o borra a mano `~/.claude/agents/strategist.md` y `~/.claude/skills/{domain-modeling,grilling,to-questionnaire,writing-for-agents}`.
+  - Actualizar desde 1.9.1 dejaba instalados `agents/strategist.md` y las skills `domain-modeling`, `grilling`, `to-questionnaire` y `writing-for-agents` (retirados en esta versión), y `uninstall.sh --kit` tampoco los quitaba, porque 1.9.1 no escribía manifiesto. `kit/hooks-retirados.sha256` lleva ahora las sumas de cada versión publicada de esos ficheros: `install.sh --apply` y `uninstall.sh --kit` retiran los que coinciden a `backups/` (y la carpeta de la skill si queda vacía) y conservan y listan los que modificaste; nunca borran a través de una carpeta enlazada (skill proyectada desde otro repo); `doctor` avisa de los que sigan instalados. Si ya actualizaste con 2.0.0 sin este arreglo, repite `install.sh --apply`, o borra a mano `~/.claude/agents/strategist.md` y `~/.claude/skills/{domain-modeling,grilling,to-questionnaire,writing-for-agents}`.
   - `doctor` distingue «claude no instalado» de «claude instalado en `~/.local/bin` pero fuera del PATH».
   - `ENTREGA.md` ya no cita un `VALIDACION-DEBIAN.md` que el paquete no trae; explica que el clon del bundle exige `--branch` y cómo comprobar `SHA256SUMS` con solo parte de los ficheros (`sha256sum -c --ignore-missing`).
+
+Auditoría final (13-nov):
+
+- **Guards:** `printf x>/dev/sda` (redirección pegada al texto) ya no se toma por prosa y se bloquea; una cadena ANSI-C con comilla escapada (`$'a\'b' ; rm -rf ~/x ; $'c\'d'`) ya no esconde lo que hay entre medias a los guards ni a Sentinel; un glob que alcance `~/.claude/settings*` o `.kit-desacti*` cuenta como ruta protegida.
+- **Guards:** si no pueden leer el comando normalizado, o `jq` falla al emitir el veredicto, cierran (bloquean) en vez de dejar pasar.
+- **Guards:** un script con la salida redirigida (`./run.sh > out.log`) ya no pregunta «escribe y ejecuta»; sigue preguntando si el destino se escribió antes en la misma línea. El mensaje de fallo de `write-guard.py` ya no sugiere un `--help` que no existe.
+- **Estado:** el guardado automático (`handoff --auto`) se omite, y lo anota en `autosave.log`, si `nucleo.md` cambió mientras lo preparaba, en vez de pisar tu edición; la sesión que pierde la carrera por el dueño del estado ve el aviso de «otra sesión dueña»; el `.gitignore` de `handoff --commit` cubre los temporales `.dueno.*` y `.nucleo.*`.
+- **Cockpit:** `/handoff` aborta si `nucleo.md` cambió durante la consulta al modelo («repite /handoff»); el handoff automático avisa con un toast, una vez por sesión, cuando no puede guardar, y tras el segundo fallo dice que no reintentará; el aviso de cockpit apagado manda a arrancar con `claude` en vez de `scc` (ya no a `claude plugin uninstall`).
+- **Instalación:** `install.sh --apply` y `uninstall.sh --kit` mueven a `backups/` lo que el kit retira (agentes, skills y hooks) y `uninstall.sh --kit` guarda también `.kit-settings-pre.json`, en lugar de borrarlos; el simulacro de `uninstall.sh --kit` nombra lo retirado; `hooks-retirados.sha256` incluye la suma de `agents/strategist.md` de la 1.10.1, así que quien actualiza desde ella ya no recibe «modificado por ti».
+- **Instalación:** con un `CLAUDE_HOME` distinto de `~/.claude`, `install.sh --apply` imprime un AVISO y `doctor.sh` un WARN: los hooks cablean `$HOME/.claude` y no se ejecutan.
+- **Entrega:** `aceptacion-local.sh` pasa lanzado desde Claude Code (hereda `CLAUDE_PID`); el ZIP no cambia con la zona horaria ni el umask; `bump.sh` ya no reescribe las citas históricas «la 2.0» y sube 7 ficheros, no 11.
+- **Documentación:** `SECURITY.md` dice «preguntan» donde el veredicto es ask (borrar build, `--force-with-lease` a una rama de trabajo) y ya no promete reglas deny de LinkedIn que la plantilla retiró; `ENTREGA.md` gana la sección «Actualizar» y declara lo que el paquete no trae; correcciones en `02-install.md`, `10-onboarding.md`, `11-cockpit.md`, `OPERAR.md` y `README.md` (CLIs, versiones, anclas, textos que el instalador ya no imprime).
 
 ## [1.10.1] - 2026-11-11
 
@@ -2372,7 +2384,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.1...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.1...v2.0.0
 [1.10.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.0...v1.9.1
