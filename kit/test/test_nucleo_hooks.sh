@@ -390,6 +390,14 @@ ok "dueño: un .dueno ilegible equivale a sin dueño" "$(dsid)" sD
 RN=$T/rn; mkdir -p "$RN"; git -C "$RN" init -q
 ev "$RN" sA "" startup | bash "$H/session-start-clear.sh" >/dev/null
 ok "dueño: sin .claude/estado no se crea nada (no ensucia repos ajenos)" "$([ -e "$RN/.claude" ] && echo hay || echo no)" no
+# F3-2: la sesión que pierde la carrera por .dueno espera el lock y ve el aviso de dueño ajeno, no «ocupado o inseguro».
+rm -f "$DU" "$T/lock-ready"
+( exec {LF}>>"$RD/.claude/estado/.handoff.lock"; flock -x "$LF"; : >"$T/lock-ready"
+  command sleep 0.4; printf 'sesion=sA\ndesde=%s\n' "$(date +%s)" >"$DU" ) &
+LP=$!
+for _ in {1..300}; do [ -f "$T/lock-ready" ] && break; command sleep 0.01; done
+OUT=$(ev "$RD" sB "" startup | bash "$H/session-start-clear.sh"); wait "$LP"
+ok "dueño: perder la carrera por el lock avisa de dueño ajeno (no de estado ocupado)" "$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -Fc 'otra sesión dueña (sA)'),$(jq -r '.systemMessage // ""' <<<"$OUT" | command grep -c 'ocupado o inseguro')" 1,0
 ev "$HOME" sA "" startup | bash "$H/session-start-clear.sh" >/dev/null
 ok "dueño: desde ~ no se reclama nada" "$([ -e "$HOME/.claude/estado/.dueno" ] && echo hay || echo no)" no
 
