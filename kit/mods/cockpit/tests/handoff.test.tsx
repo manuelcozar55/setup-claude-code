@@ -51,7 +51,7 @@ const answered = (text: string) => ({ value: { isAnswered: true, text, usage: {}
 function repo(
   on: Parameters<TestBody>[1],
   files: Record<string, string>,
-  opts: { root?: string; tops?: Record<string, string>; links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; autonomo?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
+  opts: { root?: string; tops?: Record<string, string>; links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; autonomo?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; noProject?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
 ) {
   clears = 0
   let stateReads = 0
@@ -82,6 +82,7 @@ function repo(
       return ok()
     }
     if (e.argv[0] === bin && e.argv[1] === '--estado' && opts.stateFails) return no()
+    if (e.argv[0] === bin && e.argv[1] === '--estado' && opts.noProject) return { value: { exitCode: 3, stdout: '', stderr: '' } } as never
     if (e.argv[0] === bin && e.argv[1] === '--estado') {
       await opts.beforeState?.(++stateReads)
       if (!e.argv.includes('--raiz') && !opts.statePath) return { value: { exitCode: 3, stdout: '', stderr: '' } } as never
@@ -2187,4 +2188,47 @@ test('handoff: sin cambios durante el fork guarda una sola vez (la segunda consu
   const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
   expect(r.calls).toHaveLength(1)
   expect(res.text).toContain('Guardado en')
+})
+
+// F6-2: lo que impide el automático se dice una vez por sesión; «ya guardado» y «sin proyecto» no.
+test('handoff automático: CLI ausente al cruzar el umbral: un toast y ningún otro en el turno siguiente', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000 })
+  repo(on, {}, { noBin: true })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  const said = seen.toasts.filter(t => t.startsWith('Handoff automático no disponible al '))
+  expect(said).toHaveLength(1)
+  expect(said[0]).toContain('no encuentro')
+  expect(said[0]).toContain('usa /handoff')
+  expect(seen.forks).toBe(0)
+})
+
+test('handoff automático: sin proyecto no avisa', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000 })
+  repo(on, {}, { noProject: true })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.toasts.filter(t => t.includes('no disponible'))).toEqual([])
+})
+
+// F6-3
+test('handoff automático: el segundo fallo dice que el automático no reintentará', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000, forkText: 'No puedo.' })
+  repo(on, { [`${EST}/nucleo.md`]: PREV })
+  const band = async () => {
+    const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    return ((await ui.find({ text: /Handoff fallido/ }))?.text ?? '') as string
+  }
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(await band()).not.toContain('no reintentará')
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.forks).toBe(2)
+  expect(await band()).toContain('el automático no reintentará; /handoff a mano')
 })

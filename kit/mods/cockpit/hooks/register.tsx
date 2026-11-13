@@ -886,7 +886,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
     }
     // The conversation that asked is gone: the new one gets no error banner, only a clean band.
     if (epoch !== sessionEpoch) await update($, handoff, (): Handoff => ({ phase: 'idle' }))
-    else await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}` }))
+    else await update($, handoff, (): Handoff => ({ phase: 'error', msg: `Handoff fallido: ${err instanceof Error ? err.message : String(err)}${errorResets >= 1 ? '; el automático no reintentará; /handoff a mano' : ''}` }))
   } finally {
     if (tmp) await $.process.run(['rm', '-f', '--', tmp]).catch(() => undefined)
     handoffBusy = false
@@ -899,6 +899,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
 // At a main-loop turn end: the context crossed the threshold, the state is the task's own and nothing
 // else is running. Scheduled out of the hook the turn awaits, because /clear is refused inside it.
 // Every turn end over the threshold that does not hand off leaves one debug line with the reason.
+let autoToastedFor = -1
 async function maybeAutoHandoff($: $) {
   const epoch = sessionEpoch
   if (!isAttended) return
@@ -911,14 +912,21 @@ async function maybeAutoHandoff($: $) {
     return
   }
   // The cwd goes with it: the handoff notes the live folder in the nucleo (the root is the session's start).
-  const skip = async (why: string) => $.ui.log(`cockpit: handoff automático omitido al ${pct}%: ${why} (cwd ${await $.session.cwd().catch(() => '?')})`, { to: 'debug' })
+  // `tell`: the person must hear that no save is coming (once per session); not for «no project», «already saved» or a run in progress.
+  const skip = async (why: string, tell = false) => {
+    await $.ui.log(`cockpit: handoff automático omitido al ${pct}%: ${why} (cwd ${await $.session.cwd().catch(() => '?')})`, { to: 'debug' })
+    if (tell && autoToastedFor !== epoch) {
+      autoToastedFor = epoch
+      $.ui.toast(`Handoff automático no disponible al ${pct}%: ${why}; usa /handoff`)
+    }
+  }
   if (isAutoCrossed) return skip('ya guardado en este cruce del umbral; se rearma al bajar de él o con /clear')
   if (await read($, isAutoQueued) || handoffBusy) return skip(isSilentBusy ? 'guardado automático en curso' : 'ya en curso')
   const phase = (await read($, handoff)).phase
-  if (!['idle', 'done'].includes(phase)) return skip(phase === 'error' ? 'error previo' : 'ya en curso')
-  if ((await $.agent.list()).some(a => !DONE.has(a.status))) return skip('agentes vivos')
+  if (!['idle', 'done'].includes(phase)) return skip(phase === 'error' ? 'error previo' : 'ya en curso', phase === 'error')
+  if ((await $.agent.list()).some(a => !DONE.has(a.status))) return skip('agentes vivos', true)
   const blocker = await autoBlocker($)
-  if (blocker) return skip(blocker)
+  if (blocker) return skip(blocker, blocker !== 'sin proyecto')
   if (epoch !== sessionEpoch) return skip('la sesión cambió')
   await update($, isAutoQueued, () => true)
   isAutoCrossed = true
@@ -1128,7 +1136,7 @@ export const register: Register = on => {
     }
     if (isOlder(version, MIN_CLAUDE_CODE)) {
       isAttended = false
-      $.ui.toast(`Cockpit apagado: necesita Claude Code ${MIN_CLAUDE_CODE} o posterior y esta es la ${version}. Actualiza con «claude update» o quítalo con «claude plugin uninstall cockpit@setup-claude-code».`)
+      $.ui.toast(`Cockpit apagado: necesita Claude Code ${MIN_CLAUDE_CODE} o posterior y esta es la ${version}. Actualiza con «claude update» o arranca con «claude» en vez de «scc».`)
       return next(e)
     }
     await $.command.register({ name: 'autonomo', description: 'Tras un handoff sigue solo con el trabajo ya autorizado, sin esperar tu Enter: /autonomo on|off', argumentHint: 'on|off' })
