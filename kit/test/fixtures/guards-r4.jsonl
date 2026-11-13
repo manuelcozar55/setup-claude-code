@@ -1157,3 +1157,7 @@
 {"id": "F13-d008", "cmd": "make test >& salida.log", "base": "ALLOW", "exp": "ALLOW"}
 {"id": "F13-d009", "cmd": "make test > salida.log 2>& 1", "base": "ALLOW", "exp": "ALLOW"}
 {"id": "F13-d010", "cmd": "cat ~/.bashrc 2>&1 | head", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-x014", "cmd": "echo 'id' > x.sh; bash ././x.sh", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x015", "cmd": "echo 'id' > x.sh; bash $PWD/x.sh", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x016", "cmd": "echo 'id' > d/x.sh; bash d/../d/x.sh", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x017", "cmd": "echo hecho > build.log; bash build.sh build.txt", "base": "ALLOW", "exp": "ALLOW"}

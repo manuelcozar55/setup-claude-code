@@ -736,7 +736,8 @@ token_checks() {
         # `bash x.sh`, `source x.sh`, `./x.sh`: el segmento que lo ejecuta es posterior al que lo escribio.
         if [[ -n $w ]]; then
           for a in "${T[@]:2}"; do
-            [[ ${a#./} == "${tgt#./}" ]] && { WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."; }
+            # Por nombre base: `././x.sh`, `$PWD/x.sh` y `d/../d/x.sh` son el mismo fichero.
+            [[ ${a##*/} == "${tgt##*/}" ]] && { WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."; }
           done
         elif [[ ${T[1]:-} == "${tgt##*/}" && ${tgt##*/} == *.* ]]; then
           WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."
