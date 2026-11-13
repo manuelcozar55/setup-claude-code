@@ -109,6 +109,14 @@ else
     done <<< "$nombres"
   done
   ck "$falta" "" "toda ruta retirada publicada en una etiqueta v* tiene su suma en hooks-retirados.sha256"
+
+# Con CLAUDE_HOME distinto de $HOME/.claude los hooks de settings.json (rutas $HOME/.claude/...) no corren: el
+# instalador lo avisa; con el directorio por defecto no hay aviso.
+H4="$tmp/h4"; mkdir -p "$H4"
+out="$(HOME="$H4" CLAUDE_HOME="$tmp/alt4" bash "$KIT/install.sh" --apply 2>&1)"
+ck "$(printf '%s\n' "$out" | grep -c 'AVISO: los hooks cablean .HOME/.claude')" "1" "install avisa si CLAUDE_HOME no es \$HOME/.claude"
+out="$(HOME="$H4" CLAUDE_HOME="$H4/.claude" bash "$KIT/install.sh" --apply 2>&1)"
+ck "$(printf '%s\n' "$out" | grep -c 'AVISO: los hooks cablean')" "0" "install no avisa con el directorio por defecto"
 fi
 echo "== $pass ok, $fail fallos =="
 [ "$fail" -eq 0 ]

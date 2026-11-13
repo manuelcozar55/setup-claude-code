@@ -233,7 +233,7 @@ Borra lo que `$CLAUDE_HOME/.kit-manifest` lista y sigue con la suma que escribi�
 modificaste se conserva y se enumera), quita los enlaces de `~/.local/bin` solo si apuntan a
 `$CLAUDE_HOME/bin`, y saca de `settings.json` lo que el kit añadió (sus hooks, `statusLine`, marketplace,
 plugins y las claves de `env` que conservan el valor del kit) sin tocar lo tuyo. Sin manifiesto
-(instalación anterior a 1.11), usa el modo de restaurar de abajo.
+(instalación anterior a la 2.0), usa el modo de restaurar de abajo.
 
 Si actualizaste desde una versión anterior, `settings.json` puede conservar reglas o claves que puso aquella versión y que
 el desinstalador no puede atribuir al kit actual (no hay copia previa con la que compararlas). El desinstalador enumera lo

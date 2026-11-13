@@ -409,7 +409,7 @@ kit_uninstall() {
     echo "no hay kit instalado en $CLAUDE_HOME (ni manifiesto ni ficheros del kit): nada que desinstalar"
     return 0
   fi
-  [ -f "$man" ] || die "hay ficheros del kit en $CLAUDE_HOME pero no $man: el kit no se instalo con una version que lo escriba (1.11 o posterior). Reinstala con bash $HERE/kit/install.sh --apply y repite, o restaura un backup con uninstall.sh (sin --kit)"
+  [ -f "$man" ] || die "hay ficheros del kit en $CLAUDE_HOME pero no $man: el kit no se instalo con una version que lo escriba (la 2.0 o posterior). Reinstala con bash $HERE/kit/install.sh --apply y repite, o restaura un backup con uninstall.sh (sin --kit)"
   command -v jq >/dev/null 2>&1 || die "uninstall --kit necesita jq"
   local localbin="$HOME/.local/bin"
   while IFS= read -r line; do
@@ -430,7 +430,7 @@ kit_uninstall() {
     elif [ "$(sha256sum "$p" | cut -d' ' -f1)" = "$sha" ]; then rm_list+=("$rel")
     else keep_list+=("$rel (modificado por ti)"); fi
   done < "$man"
-  # Agentes y skills que una version anterior instalo y 2.0.0 retiro (strategist, skills): no estan en el manifiesto
+  # Agentes y skills que una version anterior instalo y la 2.0 retiro (strategist, skills): no estan en el manifiesto
   # (1.9.1 no lo escribia). Misma regla que install.sh: se borra el que coincide con una version publicada
   # (hooks-retirados.sha256); el modificado se conserva y se lista.
   local retfile="$HERE/kit/hooks-retirados.sha256"

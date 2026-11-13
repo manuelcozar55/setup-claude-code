@@ -707,6 +707,7 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo backup)-$$-${RANDOM:-0}"
 BK="$CLAUDE_HOME/backups/$STAMP"
 
 echo "==> Instalando en $CLAUDE_HOME"
+clis_enlazables || echo "AVISO: los hooks cablean \$HOME/.claude/...: con $CLAUDE_HOME en su lugar no se ejecutan. Usa HOME=<dir> para una instalacion de prueba."
 # Estado previo de settings.json, para que uninstall.sh --kit lo devuelva byte a byte: solo en la primera
 # instalacion (sin manifiesto ni registro de docs; tras una del kit el fichero ya lleva claves suyas).
 if [ -f "$CLAUDE_HOME/settings.json" ] && [ ! -e "$CLAUDE_HOME/.kit-manifest" ] && [ ! -e "$CLAUDE_HOME/$DOCS_STATE" ] \
@@ -726,7 +727,7 @@ for name in $RETIRADOS; do
     echo "==> hook retirado del kit y modificado por ti, se conserva: hooks/$name (ya no esta cableado; borralo si no lo usas)"
   fi
 done
-# Agentes y skills retirados en 2.0.0 (strategist, domain-modeling, grilling, to-questionnaire, writing-for-agents): la
+# Agentes y skills retirados en la 2.0 (strategist, domain-modeling, grilling, to-questionnaire, writing-for-agents): la
 # misma regla. Una 1.9.1 no dejo manifiesto, asi que lo unico que prueba que son del kit es su suma publicada.
 while IFS= read -r rel; do
   f="$CLAUDE_HOME/$rel"

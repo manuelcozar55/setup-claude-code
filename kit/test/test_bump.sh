@@ -34,6 +34,7 @@ ck "$(grep -c 'release/scc-v9.9.9-debian' "$W/ENTREGA.md")" "1" "el nombre de la
 ck "$(sha256sum < "$W/CHANGELOG.md")" "$cl_antes" "no toca el CHANGELOG"
 ck "$(cd "$W" && find knowledge -type f | sort | xargs sha256sum | sha256sum)" "$kn_antes" "no toca knowledge/"
 ck "$(jq -r .version "$W/kit/mods/cockpit/.claude-plugin/plugin.json")" "$COCK_OLD" "sin --cockpit el cockpit no cambia"
+ck "$(cd "$W" && git diff -U0 | grep -E '^[-+][^-+]' | grep -ci 'retir')" "0" "ninguna linea con «retir» (citas historicas) cambia con el bump"
 
 # --cockpit
 out="$(cd "$W" && bash scripts/bump.sh 9.9.10 --cockpit 7.7.7 --sin-sensores 2>&1)"; rc=$?

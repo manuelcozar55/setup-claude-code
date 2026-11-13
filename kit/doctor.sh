@@ -15,6 +15,10 @@ fail(){ echo "FAIL · $1"; fails=$((fails+1)); }
 
 echo "== doctor: CLAUDE_HOME=$CLAUDE_HOME =="
 
+# 0. Los hooks de settings.json cablean $HOME/.claude/...: con otro directorio efectivo no se ejecutan.
+# shellcheck disable=SC2016 # texto literal, no interpolacion de shell
+[ "$(realpath -m -- "$CLAUDE_HOME")" = "$(realpath -m -- "$HOME/.claude")" ] || warn 'los hooks cablean $HOME/.claude: con otro directorio ('"$CLAUDE_HOME"') no se ejecutan'
+
 # 1. settings.json válido
 if [ -f "$CLAUDE_HOME/settings.json" ] && jq empty "$CLAUDE_HOME/settings.json" 2>/dev/null; then
   pass "settings.json válido  (fuente: jq empty)"
@@ -73,7 +77,7 @@ fi
 kit_clon=""; read -r kit_clon < "$KIT/../VERSION" 2>/dev/null || true
 kit_inst=""; read -r kit_inst < "$CLAUDE_HOME/.kit-version" 2>/dev/null || true
 if [ -z "$kit_inst" ]; then
-  warn "sin .kit-version: instalacion anterior a la 1.11 o no hecha con install.sh. Reinstala para registrar la version: bash $KIT/install.sh --apply"
+  warn "sin .kit-version: instalacion anterior a la 2.0 o no hecha con install.sh. Reinstala para registrar la version: bash $KIT/install.sh --apply"
 elif [ -n "$kit_clon" ] && [ "$kit_inst" != "$kit_clon" ]; then
   warn "version del kit instalada $kit_inst, distinta de la de este clon $kit_clon: actualiza con bash $KIT/install.sh --apply"
 else
