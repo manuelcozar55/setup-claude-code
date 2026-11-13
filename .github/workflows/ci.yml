@@ -39,6 +39,7 @@ jobs:
   shellcheck:
     name: shellcheck (kit/*.sh, hooks, tests, scripts de CI)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -70,6 +71,7 @@ jobs:
   test-suites:
     name: Suites de test (kit/test)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -291,6 +293,7 @@ jobs:
   cockpit:
     name: cockpit (tsc en clon limpio, contrato con el CLI real; claude plugin test solo si hay claude)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       COCKPIT_REQUIRE_TSC: "1"
     steps:
@@ -307,6 +310,7 @@ jobs:
   smoke-install-nonroot:
     name: Smoke test — install.sh en Debian limpio, usuario no root
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container:
       image: debian:12-slim
     # Dentro de un `container:`, Actions ejecuta cada `run:` con `sh -e {0}`

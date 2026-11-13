@@ -152,13 +152,18 @@ cp "$FX/grilling-LICENSE" "$CLAUDE_HOME/skills/grilling/LICENSE"
 cp "$FX/grilling-SKILL.md" "$CLAUDE_HOME/skills/grilling/SKILL.md"
 cp "$FX/grilling-openai.yaml" "$CLAUDE_HOME/skills/grilling/agents/openai.yaml"
 { cat "$FX/to-questionnaire-SKILL.md"; echo "# mi cambio"; } > "$CLAUDE_HOME/skills/to-questionnaire/SKILL.md"
+echo "{}" > "$CLAUDE_HOME/.kit-settings-pre.json"
 bash "$UN" --kit >"$tmp/dry10" 2>&1
 ck "$([ -e "$CLAUDE_HOME/agents/strategist.md" ] && echo y)" "y" "simulacro: el retirado sigue ahi"
+ck "$(grep -c "agents/strategist.md\$" "$tmp/dry10")" "1" "simulacro: nombra el retirado publicado que borrara"
 ck "$(grep -c 'skills/to-questionnaire/SKILL.md (modificado por ti)' "$tmp/dry10")" "1" "simulacro: lista el retirado modificado como conservado"
 bash "$UN" --kit --apply >"$tmp/ap10" 2>&1; rc=$?
 ck "$rc" "0" "--kit --apply con restos de 1.9.1 sale 0"
 ck "$([ -e "$CLAUDE_HOME/agents/strategist.md" ] && echo y || echo n)" "n" "borra el agente retirado publicado"
 ck "$([ -e "$CLAUDE_HOME/skills/grilling" ] && echo y || echo n)" "n" "borra la skill retirada publicada y su carpeta"
+bk10="$(find "$CLAUDE_HOME/backups" -mindepth 1 -maxdepth 1 -name 'uninstall-*')"
+ck "$(cmp -s "$FX/strategist.md" "$bk10/agents/strategist.md" && cmp -s "$FX/grilling-SKILL.md" "$bk10/skills/grilling/SKILL.md" && cmp -s "$FX/grilling-openai.yaml" "$bk10/skills/grilling/agents/openai.yaml" && echo y)" "y" "cada retirado por ruta que borra tiene su copia en la copia previa"
+ck "$(tr -d "[:space:]" < "$bk10/.kit-settings-pre.json" 2>/dev/null)" "{}" "y .kit-settings-pre.json, que uninstall borra"
 ck "$(grep -c 'mi cambio' "$CLAUDE_HOME/skills/to-questionnaire/SKILL.md")" "1" "conserva el retirado que la persona modifico"
 ck "$(find "$CLAUDE_HOME" -mindepth 1 -maxdepth 1 ! -name backups ! -name skills | wc -l | tr -d ' ')" "0" "no quedan restos del kit fuera de lo conservado"
 

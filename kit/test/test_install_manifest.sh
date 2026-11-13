@@ -73,6 +73,7 @@ echo mio > "$CLAUDE_HOME/skills/domain-modeling/mio.md"
 bash "$KIT/install.sh" --apply >"$tmp/i3.log" 2>&1
 ck "$([ -e "$CLAUDE_HOME/agents/strategist.md" ] && echo y || echo n)" "n" "install borra el agente retirado si es una version publicada"
 ck "$([ -e "$CLAUDE_HOME/skills/grilling" ] && echo y || echo n)" "n" "install borra la skill retirada entera (y su carpeta) si todo es publicado"
+ck "$(cmp -s "$FX/strategist.md" "$CLAUDE_HOME"/backups/*/agents/strategist.md && cmp -s "$FX/grilling-SKILL.md" "$CLAUDE_HOME"/backups/*/skills/grilling/SKILL.md && echo y)" "y" "lo retirado que se borra queda copiado en backups/ (puede ser una copia de upstream de la persona)"
 ck "$(grep -c 'mi cambio' "$CLAUDE_HOME/skills/to-questionnaire/SKILL.md")" "1" "el fichero retirado y modificado por la persona se conserva"
 ck "$(grep -c 'skills/to-questionnaire/SKILL.md' "$tmp/i3.log")" "1" "y la instalacion lo dice"
 ck "$(cat "$CLAUDE_HOME/skills/domain-modeling/mio.md")" "mio" "un fichero propio en la carpeta de una skill retirada no se toca"
@@ -90,5 +91,32 @@ ln -s "$O" "$CLAUDE_HOME/skills/grilling"
 bash "$KIT/install.sh" --apply >/dev/null 2>&1
 ck "$([ -f "$O/SKILL.md" ] && [ -f "$O/agents/openai.yaml" ] && echo y || echo n)" "y" "install no borra a traves de una carpeta de skill enlazada"
 
+
+# Cada ruta retirada que publico una etiqueta v* tiene su suma en hooks-retirados.sha256 (si no, quien actualiza
+# desde esa version conserva el fichero y el kit lo da por modificado). Sin etiquetas en el clon: SKIP.
+RET="$KIT/hooks-retirados.sha256"
+tags="$(git -C "$REPO" tag -l 'v*' 2>/dev/null)"
+if [ -z "$tags" ]; then echo "SKIP - el clon no tiene etiquetas v*: no se comparan las sumas retiradas con lo publicado"
+else
+  falta=""
+  nombres="$(awk -F'  ' '$0 !~ /^#/ {print $2}' "$RET" | LC_ALL=C sort -u)"
+  for t in $tags; do
+    while IFS= read -r rel; do
+      case "$rel" in */*) ;; *) rel="hooks/$rel" ;; esac
+      s="$(git -C "$REPO" show "$t:kit/claude/$rel" 2>/dev/null | sha256sum | cut -d' ' -f1)" || continue
+      git -C "$REPO" cat-file -e "$t:kit/claude/$rel" 2>/dev/null || continue
+      grep -qxF "$s  ${rel#hooks/}" "$RET" || grep -qxF "$s  $rel" "$RET" || falta="$falta $t:$rel"
+    done <<< "$nombres"
+  done
+  ck "$falta" "" "toda ruta retirada publicada en una etiqueta v* tiene su suma en hooks-retirados.sha256"
+
+# Con CLAUDE_HOME distinto de $HOME/.claude los hooks de settings.json (rutas $HOME/.claude/...) no corren: el
+# instalador lo avisa; con el directorio por defecto no hay aviso.
+H4="$tmp/h4"; mkdir -p "$H4"
+out="$(HOME="$H4" CLAUDE_HOME="$tmp/alt4" bash "$KIT/install.sh" --apply 2>&1)"
+ck "$(printf '%s\n' "$out" | grep -c 'AVISO: los hooks cablean .HOME/.claude')" "1" "install avisa si CLAUDE_HOME no es \$HOME/.claude"
+out="$(HOME="$H4" CLAUDE_HOME="$H4/.claude" bash "$KIT/install.sh" --apply 2>&1)"
+ck "$(printf '%s\n' "$out" | grep -c 'AVISO: los hooks cablean')" "0" "install no avisa con el directorio por defecto"
+fi
 echo "== $pass ok, $fail fallos =="
 [ "$fail" -eq 0 ]

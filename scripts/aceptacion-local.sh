@@ -9,7 +9,7 @@ mkdir -- "$D"
 exec > >(tee "$D/aceptacion.log") 2>&1
 trap 'rc=$?; printf "FAIL linea=%s rc=%s\n" "$LINENO" "$rc"; exit "$rc"' ERR
 export CLAUDE_HOME=$D/install NUCLEO_REGISTRO=$D/raices GITLEAKS_AUTO_INSTALL=0
-unset CLAUDE_PROJECT_DIR
+unset CLAUDE_PROJECT_DIR CLAUDE_PID
 R=$D/project
 mkdir -p "$R"
 cd "$R"

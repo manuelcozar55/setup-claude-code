@@ -61,5 +61,15 @@ H="$tmp/home"; mkdir "$H"
 (cd "$U/scc-v$VER" && HOME="$H" CLAUDE_HOME="$H/.claude" bash uninstall.sh --kit --apply >"$tmp/u.log" 2>&1); ck "$?" "0" "desempaquetado: uninstall --kit --apply rc 0"
 ck "$(HOME="$H" PATH=/nonexistent "$BASH" "$U/scc-v$VER/scripts/scc.sh" --version >/dev/null 2>&1; echo $?)" "127" "scc.sh sin claude en el PATH falla con 127, no con un error de rutas"
 
+# La aceptacion lanzada desde Claude Code (CLAUDE_PID heredado) no puede tratar S1 y S2 como la misma sesion.
+HA="$tmp/home-acep"; mkdir "$HA"
+ck "$(cd "$U/scc-v$VER" && HOME="$HA" CLAUDE_PID=$$ bash scripts/aceptacion-local.sh "$tmp/acep" >"$tmp/acep.log" 2>&1; echo $?)" "0" "aceptacion-local pasa con CLAUDE_PID heredado"
+
+# Reproducible tambien entre zonas horarias y umask: misma suma del ZIP.
+P3="$tmp/out-tz"; (cd "$R" && TZ=Asia/Tokyo bash -c 'umask 077; exec bash scripts/empaquetar-entrega.sh --out "$0"' "$P3" >/dev/null 2>&1)
+P4="$tmp/out-tz2"; (cd "$R" && TZ=America/Los_Angeles bash -c 'umask 002; exec bash scripts/empaquetar-entrega.sh --out "$0"' "$P4" >/dev/null 2>&1)
+ck "$(sha256sum < "$P3/scc-v$VER.zip")" "$(sha256sum < "$P/scc-v$VER.zip")" "el ZIP no cambia con TZ=Tokyo y umask 077"
+ck "$(sha256sum < "$P4/scc-v$VER.zip")" "$(sha256sum < "$P/scc-v$VER.zip")" "ni con TZ=Los_Angeles y umask 002"
+
 echo "== $pass ok, $fail fallos =="
 [ "$fail" -eq 0 ]

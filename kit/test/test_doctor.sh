@@ -429,6 +429,7 @@ HOME="$tmp/home8" bash "$KIT/install.sh" >/dev/null 2>&1
 set +e; out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home8" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1)"; set -e
 ck "$(echo "$out" | grep -c '^FAIL · statusLine')" "0" "statusLine: CLAUDE_HOME distinto de \$HOME/.claude no da FAIL"
 ck "$(echo "$out" | grep -c "^PASS · statusLine resuelve a $CLAUDE_HOME/")" "1" "statusLine: con otro CLAUDE_HOME resuelve al script instalado en CLAUDE_HOME"
+ck "$(echo "$out" | grep -c '^WARN · .*hooks cablean .HOME/.claude')" "1" "doctor avisa si CLAUDE_HOME no es \$HOME/.claude (los hooks no se ejecutan)"
 export CLAUDE_HOME="$CH_SAVE"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

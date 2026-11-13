@@ -230,13 +230,13 @@ efectividad --antes AAAA-MM-DD --registrar --markdown
 #
 #             Sin cifras: release cortada en una maquina sin transcripts de uso real.
 
-# 3. la prueba que de verdad importa: instalacion limpia en un HOME y CLAUDE_HOME virgenes
+# 3. la prueba que de verdad importa: instalacion limpia en un HOME virgen (los hooks cablean $HOME/.claude: no uses CLAUDE_HOME alterno)
 T=$(mktemp -d)
-HOME="$T" CLAUDE_HOME="$T/h" bash kit/install.sh --apply
-HOME="$T" CLAUDE_HOME="$T/h" bash kit/doctor.sh   # exit 0, 0 FAIL
+HOME="$T" bash kit/install.sh --apply
+HOME="$T" bash kit/doctor.sh   # exit 0, 0 FAIL
 rm -r "$T"
 
-# 4. rama de release y version. La version vive en 8 ficheros (VERSION, BUILD_ID, README, CLAUDE,
+# 4. rama de release y version. La version vive en 7 ficheros (VERSION, BUILD_ID, README, CLAUDE,
 #    ENTREGA, kit/docs/11-cockpit.md, el ref del marketplace en kit/claude/settings.json...):
 #    no los edites a mano, bump.sh los descubre con git grep y los sube todos. Con --cockpit
 #    sube tambien la version del mod (plugin.json y sus dos citas). No toca el CHANGELOG.

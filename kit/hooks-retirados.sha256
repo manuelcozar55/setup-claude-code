@@ -1,6 +1,6 @@
-# Hooks que el kit ya no trae: sha256 de cada version que se publico, para que install.sh solo borre
+# Hooks que el kit ya no trae: sha256 de cada version que estuvo en main, para que install.sh solo borre
 # los que la persona no modifico. Formato: sha256  nombre (en $CLAUDE_HOME/hooks), o sha256  ruta/con/barra
-# (relativa a $CLAUDE_HOME: agentes y skills retirados en 2.0.0; un fichero por linea y version publicada).
+# (relativa a $CLAUDE_HOME: agentes y skills retirados en la 2.0; un fichero por linea y version publicada).
 3518d753cb5da708cebdb418a99a2b4c68b82154f434e28a05eba010d7cc3a47  stop-context-gauge.sh
 39ded76048462ea91abf24c34a32cf03211b6e49ab0c8d1b373a488f219d98e8  stop-context-gauge.sh
 42c8d20c82bbc353b79c67bfc584c919757964e16692516170e8dbfb844dc36f  post-compact-check.sh
@@ -36,3 +36,4 @@ befdff1e27a1dfe2a294d5871169ac1afe16d983911daa4f32627514a48c1e15  skills/grillin
 c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059  skills/writing-for-agents/SKILL-MECHANICS.md
 551adca942227b44192edba88acd4e8db911f0121ce58ad16944ccf6a896a74a  skills/writing-for-agents/SKILL.md
 eacb24b2a618cfb81dacb0416f4fdd75ddf3a8060f8ddb99aae1b1e301907e4b  skills/writing-for-agents/agents/openai.yaml
+b20833297b2aa7a15a06c8bf994eb46ece1ffbefb1117460a43077013550602c  agents/strategist.md
