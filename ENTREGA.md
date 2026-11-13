@@ -54,6 +54,14 @@ bash scripts/aceptacion-local.sh /ruta/nueva     # la carpeta no debe existir
 Esperado: `PASS aceptación local` y `exit=0` en `aceptacion.log`. Prueba scripts y eventos sintéticos, no la
 interfaz ni una respuesta real de Claude Code; para eso, el ejercicio siguiente.
 
+## Actualizar
+
+Cuando llegue un paquete nuevo (`scc-vX.Y.Z.zip`), no uses `git pull` en la carpeta vieja: su `origin` es el fichero
+`.bundle`, no trae nada. Verifica las sumas del paquete nuevo (ver «Verificar la integridad») y, desde su carpeta
+extraída, ejecuta `bash kit/install.sh --plan`, `bash kit/install.sh --apply` y `bash kit/doctor.sh` (debe terminar en
+`== OK (0 FAIL) ==`). Conserva la carpeta nueva y retira la vieja: `uninstall.sh` y `scripts/backup.sh` se ejecutan
+desde ella. Reinicia las sesiones abiertas de Claude Code.
+
 ## Primera tarea y relevo, con datos sintéticos
 
 ```bash
@@ -87,5 +95,8 @@ tras actualizar Claude Code o el kit: [`kit/docs/OPERAR.md`](kit/docs/OPERAR.md)
   posterior no hay garantía, solo la prueba de la CI.
 - Esta entrega no instala hooks, cockpit ni continuidad automática para Codex u opencode.
 - Un paquete sin `.git` no ejecuta `make test`: se verifica con las sumas, `doctor.sh` y `aceptacion-local.sh`.
+- El paquete no trae `Makefile`, `kit/test`, `kit/evals`, `knowledge/`, `CONTRIBUTING.md` ni la mayoría de `scripts/`
+  (`cost-report.sh`, `compact-audit.py`, `recuerda`…): `make …` (`bootstrap`, `evals-dryrun`, `doctor`), la guía de medición de `kit/docs/guia/04-mide-tu-setup.md`
+  y los enlaces a esos ficheros solo funcionan en el clon del repo o del bundle.
 - Restaurar un respaldo (`bash uninstall.sh --list` y `--apply`) devuelve archivos, no desinstala; para quitar el
   kit, `uninstall.sh --kit`. No borres `.claude/estado/` de tus proyectos: contiene su continuidad.

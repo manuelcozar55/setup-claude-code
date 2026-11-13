@@ -24,7 +24,7 @@ No es un tutorial de Claude Code ni funciona en Windows nativo ni en macOS (en W
 - **Llamadas al modelo**: sin el cockpit, ninguna; todo son scripts. Con el cockpit (`scc`), el handoff automático al 70 %
   del contexto hace una; `/autosave` está apagado y, si lo enciendes, gasta tokens en cada guardado.
 - Puede bloquear una orden legítima. Cómo ver qué guard fue, dejarla pasar o quitarlo: `OPERAR.md`.
-- El conjunto de evals (23 tareas) llama al modelo y cuesta dinero: no corre solo; `make evals-dryrun` dice cuánto costaría.
+- El conjunto de evals (23 tareas) llama al modelo y cuesta dinero: no corre solo; `make evals-dryrun` dice cuántas llamadas haría por brazo (`evals-paid` corre dos) y, si hay `runs.jsonl` de una corrida previa, cuánto costaría.
 
 ### Qué hace solo y cómo apagarlo
 

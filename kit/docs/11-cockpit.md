@@ -1,11 +1,11 @@
 # 11 · Cockpit: handoff y Agent Dock
 
-`kit/mods/cockpit/` es un mod de Claude Code (plugin de *function hooks*, superficie de acceso temprano: puede cambiar entre versiones). Es opt-in: `install.sh` no lo carga. Es una interfaz de terminal y solo actúa en sesiones con persona delante (ver «Sesiones no interactivas»).
+`kit/mods/cockpit/` es un mod de Claude Code (plugin de *function hooks*, superficie de acceso temprano: puede cambiar entre versiones). Es opt-in: `install.sh` lo copia a `~/.claude/scc/` y solo lo carga el lanzador `scc` (`--sin-cockpit` para no copiarlo). Es una interfaz de terminal y solo actúa en sesiones con persona delante (ver «Sesiones no interactivas»).
 
 ## Qué hace
 
 - **`/handoff`**: pide al modelo el borrador de las secciones del estado y se lo entrega al CLI `~/.claude/bin/handoff`, que lo valida y lo fusiona en `.claude/estado/nucleo.md`; después limpia el contexto (`/clear`) y la sesión nueva lo recibe del hook `SessionStart`.
-- **Sin cockpit**: `install.sh` no lo instala. El kit guarda solo la sección `## Último turno (auto)` tras cada turno (hook `autosave.sh`, sin modelo) y, además, hace checkpoint + reinyección + aviso: el checkpoint de `pre-compact.sh`, `nucleo.md` reinyectado tras compactar y un aviso al modelo si lleva más de 10 min sin actualizarse (`handoff --desde <borrador>`, con la ruta `~/.claude/bin/handoff` si no está en el `PATH`). `/handoff` es manual y opcional; el cockpit añade la síntesis automática.
+- **Sin cockpit** (arrancando con `claude` en vez de `scc`): el kit guarda solo la sección `## Último turno (auto)` tras cada turno (hook `autosave.sh`, sin modelo) y, además, hace checkpoint + reinyección + aviso: el checkpoint de `pre-compact.sh`, `nucleo.md` reinyectado tras compactar y un aviso al modelo si lleva más de 10 min sin actualizarse (`handoff --desde <borrador>`, con la ruta `~/.claude/bin/handoff` si no está en el `PATH`). `/handoff` es manual y opcional; el cockpit añade la síntesis automática.
 - **Handoff automático** (activo por defecto): al cerrar un turno con el contexto al 70 % del límite de autocompactación, el mod guarda el estado con el mismo handoff, hace `/clear` y deja escrito en el prompt «adelante con la Siguiente acción…: <su primera línea>». Una sola vez por cruce del umbral. Se apaga con `COCKPIT_AUTO_HANDOFF=off`.
 - **Autosave con modelo** (0.8.0, ADR 028; **apagado por defecto desde 0.9.0**): guarda el estado con el mismo handoff, sin `/clear` ni aviso, por hitos y turnos. Gasta tokens: se enciende con `/autosave on` o `COCKPIT_AUTOSAVE=on`. Detalle en «Autosave con modelo» y «Qué cuesta».
 - **`/nueva <tarea>`**: cambia de tarea. Archiva el `nucleo.md` actual, limpia el contexto y deja la tarea nueva en el prompt.
@@ -21,8 +21,8 @@ publicado, para todas tus sesiones. En un paquete transferido, `VERSION` identif
 la publicación, y `BUILD_ID` con el manifiesto SHA-256 identifican el contenido.
 
 **Versión de Claude Code.** Las versiones de referencia de esta entrega son
-2.1.311 en Ubuntu y 2.1.317 en Debian (`claude --version`); el paquete conserva
-los resultados y las versiones efectivamente verificadas. **Versión mínima: 2.1.311**
+2.1.311 en Ubuntu y 2.1.317 en Debian (`claude --version`); el informe de
+validación, que llega aparte, recoge los resultados y las versiones efectivamente verificadas. **Versión mínima: 2.1.311**
 (la más antigua probada; los mods son de acceso temprano y pueden cambiar entre versiones). Al arrancar, el mod
 pregunta su versión a Claude Code (`$.session.version()`): si es anterior, se apaga (sin dock, comandos ni temporizadores)
 y lo dice en un aviso con la orden para actualizar (`claude update`) o quitarlo
@@ -88,6 +88,8 @@ Antes de escribir, el fork recibe un presupuesto en bytes UTF-8: del tope que da
 | 3 | Sin proyecto | «aquí no hay proyecto …: no hay estado que guardar» |
 | 4 | `nucleo.md` cambió durante la fusión | Reintenta una vez con el mismo borrador; si vuelve a fallar, «cambió durante la fusión (dos intentos); repite /handoff» |
 | 5 | El estado tiene otro dueño | Conserva el contexto y pide resolver la propiedad; no reintenta |
+
+Además, el mod pide `--estado` otra vez tras el fork y antes de llamar al CLI: si `nucleo.md` cambió mientras el modelo redactaba (lo editaste a mano), aborta con «nucleo.md cambió durante la consulta; repite /handoff», sin llamar al CLI ni hacer `/clear`. Si el handoff automático no puede guardar (CLI ausente, `--estado` falla, agentes vivos, error previo), avisa con un toast una vez por sesión («Handoff automático no disponible al N %: <motivo>; usa /handoff»); tras el segundo fallo seguido el error dice que el automático no reintentará.
 
 **Volver a la sesión anterior.** Con `--sesion <id>` (solo `[A-Za-z0-9-]`), el CLI busca `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/*/<id>.jsonl` (primera coincidencia) y escribe bajo el título de `nucleo.md` una sola línea: `> sesión anterior: <ruta> · volver: claude --resume <id> · buscar en él con rg, nunca leerlo entero`. Cada handoff sustituye la anterior, cuenta dentro del tope y no se omite; `session-start-clear.sh` y `session-start-compact.sh` la pasan tal cual, así que la sesión nueva sabe dónde está el transcript sin leerlo. Sin coincidencia o sin `--sesion` no hay línea ni error. En el modo `ESTADO.md` (fichero de la persona, versionado) no se escribe: el recibo sí lleva `transcript` y `bytes`.
 
@@ -210,7 +212,7 @@ Sin cockpit, el kit guarda el estado sin modelo (`autosave.sh`). El `usage` de c
 | Continuación automática tras handoff | `/autonomo off`, o quita `COCKPIT_AUTONOMO=on` |
 | Dock | se abre solo al iniciar; ciérralo con su botón y `/dock` lo vuelve a abrir |
 | Modo simple | `/simple` |
-| Todo el cockpit | `claude plugin uninstall cockpit@setup-claude-code` |
+| Todo el cockpit | arranca con `claude` en vez de `scc` (el cockpit solo lo carga `scc`) |
 
 ## Instalar, actualizar, quitar
 
