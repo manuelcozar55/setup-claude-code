@@ -1608,6 +1608,8 @@ def _protected_path(word: str, cwd: str) -> bool:
     if not os.path.isabs(path):
         path = os.path.join(cwd, path)
     path = os.path.normpath(path)
+    if re.search(r"[*?\[]", path) and _hits_protected(path, cwd):  # `rm ~/.claude/settings*`
+        return True
     home = os.path.expanduser("~").rstrip("/")
     return bool(_PROTECTED_CFG.match(path)
                 or home and (path in (f"{home}/.claude/hooks", f"{home}/.claude/sentinel")
