@@ -260,7 +260,7 @@ DENY_RULES=(
   '\bmkfs\b'                           "BLOCKED: mkfs (format filesystem)"
   '\bfdisk\b'                          "BLOCKED: fdisk (partition table editor)"
   '\bwipefs\b'                         "BLOCKED: wipefs (wipe filesystem signatures)"
-  '>\s*/dev/sd'                        "BLOCKED: redirect to block device"
+  '>[|&]?\s*/dev/(sd|nvme|vd|mmcblk)'  "BLOCKED: redirect to block device"
 
   # ── SYSTEM SHUTDOWN/REBOOT ─────────────────────────────────────────────────
   '(^|[;&|]\s*)(sudo\s+)?reboot\b'    "BLOCKED: reboot"
@@ -296,7 +296,7 @@ DENY_RULES=(
   '(^|[;&|(]\s*)(\$\(|`)\s*(curl|wget)\b'  "BLOCKED: curl/wget output executed as a command (RCE)"
   '=["'"'"']?(\$\(|`)\s*(curl|wget)\b[^;&]*[;&]+\s*["'"'"']?\$\{?[A-Za-z_]'  "BLOCKED: curl/wget output executed as a command (RCE)"
   # Redirigir o `tee` hacia los ficheros de arranque del shell planta codigo que corre en la proxima sesion.
-  '(>>?\|?|\btee\s+(-a\s+)?)\s*["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]"'"'"']+)/\.((bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(["'"'"'[:space:];&|)<>}]|$)|(bashrc|profile|zshrc)\.d/)'  "BLOCKED: write to a shell startup file (persistence)"
+  '(>>?[|&]?|\btee\s+(-a\s+)?)\s*["'"'"']?(~|\$\{?HOME\}?|/root|/home/[^/[:space:]"'"'"']+)/\.((bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(["'"'"'[:space:];&|)<>}]|$)|(bashrc|profile|zshrc)\.d/)'  "BLOCKED: write to a shell startup file (persistence)"
   # Lo mismo con las demas formas de escribir ahi: `sed -i`/`perl -i` sobre el fichero, `cp`/`mv`/`ln`/`install` con el
   # fichero de destino (ultimo operando) y `dd of=`.
   '\b(sed|perl)\b[^;&|]*[[:space:]](-[A-Za-z]*i|--in-place)\b[^;&|]*(~|\$\{?HOME\}?|/root|/home/[^/[:space:]]+)/\.(bashrc|zshrc|bash_profile|bash_login|profile|zprofile|zshenv|zlogin)(["'"'"'[:space:];&|)<>}]|$)'  "BLOCKED: in-place edit of a shell startup file (persistence)"
@@ -736,7 +736,9 @@ token_checks() {
         # `bash x.sh`, `source x.sh`, `./x.sh`: el segmento que lo ejecuta es posterior al que lo escribio.
         if [[ -n $w ]]; then
           for a in "${T[@]:2}"; do
-            [[ ${a#./} == "${tgt#./}" ]] && { WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."; }
+            # Por nombre base: `././x.sh`, `$PWD/x.sh` y `d/../d/x.sh` son el mismo fichero. El operando va como patron: `bash x.*`.
+            # shellcheck disable=SC2053
+            [[ ${tgt##*/} == ${a##*/} ]] && { WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."; }
           done
         elif [[ ${T[1]:-} == "${tgt##*/}" && ${tgt##*/} == *.* ]]; then
           WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."

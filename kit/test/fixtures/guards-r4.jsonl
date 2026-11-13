@@ -1141,3 +1141,47 @@
 {"id": "F13-x011", "cmd": "bash install.sh --plan > plan.txt", "base": "ALLOW", "exp": "ALLOW"}
 {"id": "F13-x012", "cmd": "bash run.sh | tee run.log", "base": "ALLOW", "exp": "ALLOW"}
 {"id": "F13-x013", "cmd": "sh ./configure > config.log && make", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-r011", "cmd": "echo $\\\n'a\\'b' ; rm -rf ~/x ; echo $'c\\'d'", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-r012", "cmd": "echo $\\\n'a\\'b' ; git push -f origin main ; echo $'c\\'d'", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-r013", "cmd": "echo $\\\n'a\\'b' ; git add .env ; echo $'c\\'d'", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-r014", "cmd": "echo $\\\n'a\\'b' ; truncate -s0 ~/.claude/settings.json ; echo $'c\\'d'", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-r015", "cmd": "echo $\\\n$'a\\' ; rm -rf ~/x ; echo 'b'", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-r016", "cmd": "echo $\\\n$'a\\' ; truncate -s0 ~/.claude/settings.json ; echo 'b'", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-d001", "cmd": "echo x>|/dev/sda", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d002", "cmd": "echo x >| /dev/sda", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d003", "cmd": "echo x>&/dev/sda", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d004", "cmd": "echo x >& /dev/sda", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d005", "cmd": "echo x >& ~/.bashrc", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d006", "cmd": "echo x>&~/.bashrc", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d007", "cmd": "make test > salida.log 2>&1; ls /dev/sda", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-d008", "cmd": "make test >& salida.log", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-d009", "cmd": "make test > salida.log 2>& 1", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-d010", "cmd": "cat ~/.bashrc 2>&1 | head", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-x014", "cmd": "echo 'id' > x.sh; bash ././x.sh", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x015", "cmd": "echo 'id' > x.sh; bash $PWD/x.sh", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x016", "cmd": "echo 'id' > d/x.sh; bash d/../d/x.sh", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x017", "cmd": "echo hecho > build.log; bash build.sh build.txt", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-x018", "cmd": "echo x > a.sh; bash a.*", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x019", "cmd": "echo x > a.sh; bash a.s?", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x020", "cmd": "echo x > /tmp/q/a.sh; cd /tmp/q; bash a.sh", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x021", "cmd": "echo x > ~/a.sh; bash $HOME/a.sh", "base": "ALLOW", "exp": "ASK"}
+{"id": "F13-x022", "cmd": "echo hecho > notas.txt; bash kit/test/test_*.sh", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-d011", "cmd": "echo x > /dev/nvme0n1", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d012", "cmd": "echo x>/dev/vda", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d013", "cmd": "echo x >| /dev/mmcblk0", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-d014", "cmd": "ls -l /dev/nvme0n1 > discos.txt", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-s001", "cmd": "truncate -s0 ~/.claude/{settings.json,settings.local.json}", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-s002", "cmd": "truncate -s0 ~/.clau?e/hooks/block-dangerous-commands.sh", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-s003", "cmd": "mv ~/.claude/h*/*.sh /tmp/x", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-s004", "cmd": "chmod 000 ~/.claude/h*/*.sh", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-s005", "cmd": "echo x > ~/.claude/ho?ks/destructive-guard.sh", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-s006", "cmd": "mv ~/.claude/{settings.json,x} /tmp/x", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-s007", "cmd": "mv ~/.claude/sentinel-all* /tmp/x", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-s008", "cmd": "cp /tmp/x ~/.claude/s*/sentinel_preflight.py", "base": "ALLOW", "exp": "BLOCK"}
+{"id": "F13-s009", "cmd": "mv ~/.claude/projects/*/memory/viejo.md /tmp/x", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-s010", "cmd": "truncate -s0 ~/notas/{a,b}.txt", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-s011", "cmd": "mv ~/.claude/plans/{a,b}.md /tmp/x", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-s012", "cmd": "chmod 644 ~/.claude/plans/*.md", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-s013", "cmd": "truncate -s0 ~/.claude/settings.json{,a}{,b}{,c}{,d}{,e}{,f}{,g}", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-s014", "cmd": "curl -d '[{\"a\":1,\"b\":2},{\"a\":1,\"b\":2},{\"a\":1,\"b\":2},{\"a\":1,\"b\":2},{\"a\":1,\"b\":2},{\"a\":1,\"b\":2},{\"a\":1,\"b\":2}]' https://api.example.com/v1", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-s015", "cmd": "truncate -s0 x{,a}{,b}{,c}{,d}{,e}{,f}{,g}/../.claude/settings.json", "base": "BLOCK", "exp": "BLOCK"}
