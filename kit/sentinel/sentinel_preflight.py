@@ -1685,13 +1685,18 @@ def _braces(word: str, limit: int = 64) -> list[str]:
 
 def _hits_protected(full: str, cwd: str) -> bool:
     """Ruta final del fichero escrito. Con glob se compara, componente a componente, con los nombres protegidos de
-    ~/.claude (settings.json, settings.local.json, .kit-desactivados, hooks, sentinel y lo que cuelga de los dos ultimos)."""
+    ~/.claude (settings.json, settings.local.json, .kit-desactivados, sentinel-allowlist.json, hooks, sentinel y todo lo
+    que cuelga de los dos ultimos: ahi basta con que el glob alcance el directorio)."""
     if not re.search(r"[*?\[]", full):
         return _protected_path(full, cwd)
-    claude = os.path.expanduser("~").rstrip("/") + "/.claude"
-    cands = [f"{claude}/{n}" for n in ("settings.json", "settings.local.json", ".kit-desactivados", "hooks", "sentinel", "hooks/x", "sentinel/x")]
+    claude = (os.path.expanduser("~").rstrip("/") + "/.claude").split("/")
     parts = full.split("/")
-    return any(len(c.split("/")) == len(parts) and all(fnmatchcase(a, b) for a, b in zip(c.split("/"), parts)) for c in cands)
+
+    def reach(name: str) -> bool:
+        return all(fnmatchcase(a, b) for a, b in zip(claude + [name], parts))
+
+    return (len(parts) == len(claude) + 1 and any(reach(n) for n in ("settings.json", "settings.local.json", ".kit-desactivados", "sentinel-allowlist.json"))
+            or len(parts) > len(claude) and any(reach(n) for n in ("hooks", "sentinel")))
 
 
 def _effective_dest_hit(name: str, args: list[str], pos: list[str], tdir: list[str], flags: set[str], cwd: str) -> str | None:
@@ -1829,7 +1834,8 @@ def _writes_protected(words: list[str], cwd: str, depth: int) -> str | None:
         cand = []
     if name in ("mv", "cp", "install", "ln", "rsync") and (hit := _effective_dest_hit(name, args, pos, tdir, flags, cwd)):
         return hit
-    return next((c for c in cand if _protected_path(c, cwd)), None)
+    # `truncate -s0 ~/.claude/{settings.json,x}`: una alternativa por variante; con demasiadas, se deniega.
+    return next((c for c in cand if len(vs := _braces(c)) > 64 or any(_protected_path(v, cwd) for v in vs)), None)
 
 
 def _protected_write(text: str, cwd: str, depth: int = 0) -> str | None:
