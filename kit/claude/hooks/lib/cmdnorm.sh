@@ -33,7 +33,7 @@ CMDN_FS=$'\034'
 # shellcheck disable=SC2016  # el programa awk va literal: nada se expande en bash.
 CMDN_AWK='
 function base(w) { if (w != "/" && w ~ /\//) sub(/.*\//, "", w); return w }
-function endtok() { if (have) { nt++; toks[nt] = tok } tok = ""; have = 0 }
+function endtok() { if (have) { nt++; toks[nt] = tok; tokr[nt] = rd } tok = ""; have = 0; rd = 0 }
 function argopt(b, o) {
   if (b == "sudo") return (o == "-u" || o == "-g" || o == "-h" || o == "-p" || o == "-C" || o == "-r" || o == "-t" || o == "-U" || o == "--user" || o == "--group")
   if (b == "env") return (o == "-u" || o == "-C" || o == "-S" || o == "--unset" || o == "--chdir")
@@ -193,7 +193,7 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
     for (j = k + 1; j <= nt; j++) {
       t = toks[j]
       if (keepnext) { keepnext = 0; out = out " " t; continue }
-      if (redir(t)) { out = out " " t; if (redir_alone(t)) keepnext = 1; continue }
+      if (redir(t) || tokr[j]) { out = out " " t; if (redir_alone(t)) keepnext = 1; continue }
       if (clean_opt(t)) out = out " " t
     }
     return out
@@ -227,6 +227,10 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl, sp) {
     if (a ~ /^[0-9&]*>>?[|]?/) {
       o = a; sub(/^[0-9&]*>>?[|]?/, "", o)
       if (o == "" && j < nt) o = toks[j + 1]
+      if (o !~ /^&[0-9-]*$/ && !devnull(o)) { nosimple = 1; wf = 1 }
+    }
+    if (tokr[j] && a !~ /^[0-9&]*>/) {
+      o = a; sub(/^[^>]*>>?[|]?/, "", o)
       if (o !~ /^&[0-9-]*$/ && !devnull(o)) { nosimple = 1; wf = 1 }
     }
   }
@@ -328,7 +332,7 @@ function heredocs(s, i, n,   h, o, m, body, rest, p, e, w, isdata, bs, lt, L) {
 }
 
 function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e, w) {
-  txt = ""; nt = 0; tok = ""; have = 0; openq = 0; hdn = 0; subdepth = 0; btick = 0
+  txt = ""; nt = 0; tok = ""; have = 0; rd = 0; openq = 0; hdn = 0; subdepth = 0; btick = 0
   pend = ismain ? "" : ";"
   forceS = !ismain
   n = length(s); i = 1
@@ -409,6 +413,7 @@ function parse(s, ismain,   n, i, j, k, rest, c, d, nx, q, start, closed, pv, e,
       else { endseg(); pend = pend c }
       txt = txt c; i++; continue
     }
+    if (c == ">" && have) rd = 1
     tok = tok c; have = 1; txt = txt c; i++
   }
   endseg()
