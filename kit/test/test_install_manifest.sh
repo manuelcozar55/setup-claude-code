@@ -73,6 +73,7 @@ echo mio > "$CLAUDE_HOME/skills/domain-modeling/mio.md"
 bash "$KIT/install.sh" --apply >"$tmp/i3.log" 2>&1
 ck "$([ -e "$CLAUDE_HOME/agents/strategist.md" ] && echo y || echo n)" "n" "install borra el agente retirado si es una version publicada"
 ck "$([ -e "$CLAUDE_HOME/skills/grilling" ] && echo y || echo n)" "n" "install borra la skill retirada entera (y su carpeta) si todo es publicado"
+ck "$(cmp -s "$FX/strategist.md" "$CLAUDE_HOME"/backups/*/agents/strategist.md && cmp -s "$FX/grilling-SKILL.md" "$CLAUDE_HOME"/backups/*/skills/grilling/SKILL.md && echo y)" "y" "lo retirado que se borra queda copiado en backups/ (puede ser una copia de upstream de la persona)"
 ck "$(grep -c 'mi cambio' "$CLAUDE_HOME/skills/to-questionnaire/SKILL.md")" "1" "el fichero retirado y modificado por la persona se conserva"
 ck "$(grep -c 'skills/to-questionnaire/SKILL.md' "$tmp/i3.log")" "1" "y la instalacion lo dice"
 ck "$(cat "$CLAUDE_HOME/skills/domain-modeling/mio.md")" "mio" "un fichero propio en la carpeta de una skill retirada no se toca"

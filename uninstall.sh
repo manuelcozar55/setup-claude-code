@@ -400,7 +400,7 @@ JQ
 
 kit_uninstall() {
   local apply=0 man="$CLAUDE_HOME/.kit-manifest" line sha rel p n real="" bk stamp tmpj newj names kitjson prejson
-  local rm_list=() keep_list=() lk_rm=() lk_keep=() settings_unmerge=0 d plant=() plant_hint=""
+  local rm_list=() ret_list=() keep_list=() lk_rm=() lk_keep=() settings_unmerge=0 d plant=() plant_hint=""
   [ "$MODE" = apply ] && apply=1
   [ "$MODE" != list ] || die "--kit no se combina con --list"
   [ -z "$FROM" ] || die "--kit no se combina con --from"
@@ -441,7 +441,7 @@ kit_uninstall() {
       # Carpeta enlazada (skill proyectada desde otro repo): borrar escribiria en ese repo.
       [ "$(cd "$(dirname "$p")" && pwd -P)" = "$(cd "$CLAUDE_HOME" && pwd -P)/$(dirname "$rel")" ] || continue
       case " ${rm_list[*]:-} " in *" $rel "*) continue ;; esac
-      if grep -qxF "$(sha256sum < "$p" | cut -d' ' -f1)  $rel" "$retfile"; then rm_list+=("$rel")
+      if grep -qxF "$(sha256sum < "$p" | cut -d' ' -f1)  $rel" "$retfile"; then rm_list+=("$rel"); ret_list+=("$rel")
       else keep_list+=("$rel (modificado por ti)"); fi
     done < <(awk -F'  ' '$0 !~ /^#/ && $2 ~ /\// {print $2}' "$retfile" | LC_ALL=C sort -u)
   fi
@@ -478,7 +478,11 @@ kit_uninstall() {
   fi
 
   echo "== uninstall --kit ($([ "$apply" -eq 1 ] && echo apply || echo 'dry-run: no se modifica nada')) sobre $CLAUDE_HOME =="
-  echo "  se borrarian ${#rm_list[@]} ficheros del kit (su suma coincide con el manifiesto)"
+  echo "  se borrarian ${#rm_list[@]} ficheros del kit (su suma coincide con el manifiesto o con hooks-retirados.sha256)"
+  if [ "${#ret_list[@]}" -gt 0 ]; then
+    echo "  de ellos, ${#ret_list[@]} retirados de versiones anteriores (se copian a la copia previa):"
+    printf '    %s\n' "${ret_list[@]}"
+  fi
   if [ "${#lk_rm[@]}" -gt 0 ]; then echo "  enlaces de $localbin que se quitarian: ${lk_rm[*]}"; fi
   if [ "${#lk_keep[@]}" -gt 0 ]; then echo "  enlaces de $localbin que NO se tocan (no apuntan a $CLAUDE_HOME/bin): ${lk_keep[*]}"; fi
   if [ "$settings_unmerge" -eq 1 ]; then
@@ -511,6 +515,8 @@ kit_uninstall() {
   mkdir -p "$bk"
   [ -f "$CLAUDE_HOME/settings.json" ] && cp -pL "$CLAUDE_HOME/settings.json" "$bk/settings.json"
   cp -p "$man" "$bk/.kit-manifest"
+  [ -f "$prejson" ] && cp -p "$prejson" "$bk/.kit-settings-pre.json"
+  for rel in "${ret_list[@]}"; do mkdir -p "$bk/$(dirname "$rel")" && cp -p "$CLAUDE_HOME/$rel" "$bk/$rel"; done
   ok "copia previa en $bk"
   for rel in "${rm_list[@]}"; do
     rm -f -- "$CLAUDE_HOME/$rel"
