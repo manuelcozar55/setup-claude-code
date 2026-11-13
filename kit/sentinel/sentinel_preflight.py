@@ -1834,8 +1834,9 @@ def _writes_protected(words: list[str], cwd: str, depth: int) -> str | None:
         cand = []
     if name in ("mv", "cp", "install", "ln", "rsync") and (hit := _effective_dest_hit(name, args, pos, tdir, flags, cwd)):
         return hit
-    # `truncate -s0 ~/.claude/{settings.json,x}`: una alternativa por variante; con demasiadas, se deniega.
-    return next((c for c in cand if len(vs := _braces(c)) > 64 or any(_protected_path(v, cwd) for v in vs)), None)
+    # `truncate -s0 ~/.claude/{settings.json,x}`: una alternativa por variante. Pasado el tope no se deniega aqui:
+    # sin comillas ya lo hace el tope de llaves, y entre comillas es un dato (el JSON de `curl -d`).
+    return next((c for c in cand if any(_protected_path(v, cwd) for v in _braces(c))), None)
 
 
 def _protected_write(text: str, cwd: str, depth: int = 0) -> str | None:

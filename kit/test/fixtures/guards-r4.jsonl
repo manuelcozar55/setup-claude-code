@@ -1182,3 +1182,6 @@
 {"id": "F13-s010", "cmd": "truncate -s0 ~/notas/{a,b}.txt", "base": "ALLOW", "exp": "ALLOW"}
 {"id": "F13-s011", "cmd": "mv ~/.claude/plans/{a,b}.md /tmp/x", "base": "ALLOW", "exp": "ALLOW"}
 {"id": "F13-s012", "cmd": "chmod 644 ~/.claude/plans/*.md", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-s013", "cmd": "truncate -s0 ~/.claude/settings.json{,a}{,b}{,c}{,d}{,e}{,f}{,g}", "base": "BLOCK", "exp": "BLOCK"}
+{"id": "F13-s014", "cmd": "curl -d '[{\"a\":1,\"b\":2},{\"a\":1,\"b\":2},{\"a\":1,\"b\":2},{\"a\":1,\"b\":2},{\"a\":1,\"b\":2},{\"a\":1,\"b\":2},{\"a\":1,\"b\":2}]' https://api.example.com/v1", "base": "ALLOW", "exp": "ALLOW"}
+{"id": "F13-s015", "cmd": "truncate -s0 x{,a}{,b}{,c}{,d}{,e}{,f}{,g}/../.claude/settings.json", "base": "BLOCK", "exp": "BLOCK"}
