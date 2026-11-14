@@ -57,6 +57,7 @@ ck "$(grep -cF '`handoff`' "$C")" "1" "CLAUDE.md cita handoff una vez"
 ck "$(has "$C" 'Cambio mínimo por parche; nunca reescribir un fichero entero')" "y" "parche minimo en vez de reescribir"
 ck "$(has "$C" 'Fin de fase = parada válida')" "y" "fin de fase es parada valida"
 ck "$(has "$C" 'autocompact es solo el airbag')" "y" "autocompact queda de airbag"
+ck "$(has "$C" 'espera de fondo lleva')" "y" "F3: espera de fondo con timeout (un shell vivo bloquea el handoff automático)"
 ck "$(has "$D" 'una rama nunca aísla configuración viva')" "y" "deep-change: una rama no aisla config viva"
 # shellcheck disable=SC2016
 ck "$(has "$D" 'cada `[x]` cerrado va a diario con su comando y hash')" "y" "deep-change: [x] cerrado va a diario con comando y hash"
