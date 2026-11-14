@@ -300,7 +300,8 @@ ok "presupuesto: emisión de peor caso ≤ 7 000 chars (cabe con protocolo y git
 S=$(nucleo_emitir "$T/cabe.md")
 ok "cabe en el tope: sale entero" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|FICH-FIN' <<<"$S")" 4
 ok "cabe en el tope: sin marcas de recorte ni [LEE]" "$(command grep -c '^\[recortado\|^\[LEE' <<<"$S")" 0
-# Algo por encima: fuera secciones enteras en el orden de handoff (Ficheros tocados, Plan…; F1 v2.1: Pendientes, lo último), sin partir las reservadas.
+# Algo por encima: fuera secciones enteras (Ficheros tocados, Plan y, lo último, Pendientes: F1 v2.1), sin partir las reservadas.
+# No es el orden de `handoff --desde`, que al escribir omite antes Pendientes (con copia en diario.md y aviso en el acto).
 { cat "$T/cabe.md"; echo '## Pendientes'; big 1200; echo PEND-FIN; } >"$T/pasa-poco.md"
 S=$(nucleo_emitir "$T/pasa-poco.md")
 ok "pasa poco: las reservadas y Pendientes salen enteras" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|PEND-FIN' <<<"$S")" 4
