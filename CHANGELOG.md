@@ -54,6 +54,9 @@ Cifras de uso real del kit (`efectividad`, 2026-10-14 → 2026-11-14, 131 sesion
 ### Conocido
 
 - `test_nucleo_hooks.sh`, «carrera: si nucleo.md cambia durante la fusión», falló 1 de 4 corridas (depende de un `sleep 0.3`); preexistente.
+- El vínculo vale aunque no lo haya escrito `handoff --proyecto`: quien pueda escribir la línea `> proyecto:` en el nucleo de la ranura redirige el estado a cualquier repo que pase la validación. Riesgo aceptado (ADR 029): exige el mismo acceso que ejecutar el comando.
+- Revincular cuando el proyecto anterior ya no es válido no suelta su `.dueno`: caduca con el proceso.
+- Cockpit: si el proyecto vinculado no es escribible y su estado cae al directorio de reserva, el mod se niega a limpiar. El `tsc` del mod sigue sin ejecutarse en las máquinas sin tipos del motor (`test_cockpit.sh` lo anuncia como SKIP).
 
 ## [2.0.0] - 2026-11-12
 
