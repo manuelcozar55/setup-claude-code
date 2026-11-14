@@ -45,6 +45,9 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
           o si el proyecto tiene dueño ajeno vigente (5). Proyecto sin estado: lo siembra con el nucleo de la ranura; con estado: ese nucleo
           va al diario.md de la ranura. Reclama el dueño del proyecto (suelta el del anterior si revincula) y lleva el registro de agentes.
           Idempotente. Con --ranura (la propia) vale desde cualquier cwd; sin ella, la ranura es la del claude de esta sesión.
+          Sale 3 si la sesión no es de ~, la ruta no es proyecto válido o no hay ranura, 5 con dueño ajeno y 64 sin --sesion (vale
+          $CLAUDE_CODE_SESSION_ID). Con --json: {raiz,nucleo,sesion,resultado} (vinculada | vinculada-y-sembrada | vinculada-y-archivada | ya-vinculada).
+          Un --raiz explícito en cualquier modo ignora el vínculo.
 --auto    lo usa el hook autosave.sh, no el modelo: escribe SOLO la sección «## Último turno (auto)» (la última del nucleo, ≤ 600 B:
           rama, última petición, último mensaje, ficheros tocados y comandos, sacados de git y del transcript; sin modelo) y la marca
           autosave.dirty. Lee el JSON del hook por stdin (session_id, transcript_path, cwd, last_assistant_message, compact_summary,

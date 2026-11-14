@@ -7,6 +7,54 @@ etiquetado.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-14
+
+El estado de una sesión lanzada en `~` que trabaja sobre un proyecto vive en el proyecto (ADR 029, que enmienda a 019 y 027). Sin vínculo, una sesión de `~` se comporta como en 2.0.0. Cockpit 0.9.0 → 0.10.0.
+
+### Cifras
+
+| Cifra | Valor |
+|---|---|
+| Sesiones lanzadas en `~` (10 → 14-nov, la causa del cambio) | 40 de 53 |
+| Autocompactaciones de `fable-5-2` a 167-172k (200k − 33k), que el medidor no veía (Claude Code 2.1.311) | 24 de 24 |
+| Coste de `handoff --estado` sin `CLAUDE_PROJECT_DIR` (20 llamadas) | ≈ 106 ms (antes ≈ 95 ms) |
+
+Cifras de uso real del kit (`efectividad`, 2026-10-14 → 2026-11-14, 131 sesiones). Línea base: esta versión no las mueve y la serie no separa antes y después.
+
+| Cifra | Valor |
+|---|---|
+| Compactaciones por día activo | 10.1 (111 en 11 días) |
+| Frescura de nucleo.md al compactar (≤30 min) | 73.9 % (n=666) |
+| Correcciones de la persona (heurística léxica) | 35.0 % (126/360 mensajes) |
+| Falsos positivos revelados (reformulado <60 s) | 69.1 % (76/110 bloqueos) |
+
+### Added
+
+- **`handoff --proyecto <ruta>`: vincula la sesión de `~` con un proyecto.** Escribe `> proyecto: <raíz>` bajo el título del `nucleo.md` de la ranura; desde entonces `nucleo_raiz` devuelve ese proyecto y nucleo, dueño, `--desde`, `--auto`, `--estado`, autosave, PreCompact, registro de agentes y reinyección (clear, compact y resume) usan `<repo>/.claude/estado/`. La ranura queda como coordinación (`## Coordinación`, una línea por vínculo, máximo 10). Un proyecto sin estado se siembra con el de la ranura; uno con estado recibe el de la ranura en el `diario.md` de la ranura. Rechaza sin cambiar nada con rc 3 (la sesión no es de `~`, ruta que no es proyecto válido o sin ranura), 5 (dueño ajeno vigente) o 64 (sin `--sesion`). Idempotente; revincular suelta el dueño anterior.
+- El vínculo es explícito y fijo: nada vincula solo y un `cd` a otro repo no lo mueve. Un `--raiz` explícito lo ignora siempre. Un vínculo inválido (ruta inexistente, no raíz de su repo, enlace, `..`, metacaracteres, `~` o `~/.claude`) se ignora y el aviso que se inyecta no reproduce la ruta.
+- `handoff --estado` con ranura vinculada devuelve `raiz`, `nucleo` y `dueno` del proyecto, `sesion` (la ranura) y `vinculado: true`.
+- `nucleo-nudge.sh` propone el vínculo, una vez por sesión y raíz, cuando una sesión de `~` sin vínculo tiene el cwd dentro de un proyecto git válido. La orden va con su condición y con `--ranura`, y funciona desde cualquier cwd.
+- Cockpit 0.10.0: con vínculo, `/handoff`, el handoff automático, el autosave por hitos y el panel usan el estado del proyecto; el panel dice que la sesión viene de `~` y `/nueva` conserva el vínculo.
+
+### Fixed
+
+- **F1, orden de descarte al reinyectar:** cuando el nucleo no cabe, cae antes «Último turno (auto)», luego «Ficheros tocados» (regenerable desde git), «Plan» y al final «Pendientes». En 2.0.0 caía Pendientes antes que Ficheros tocados (test rojo con 4 fallos sobre esa versión). **F1 solo cambia la reinyección:** `handoff --desde` sobre el tope sigue omitiendo antes Pendientes (decisión previa, fijada por `test_nucleo_hooks.sh`) y deja la copia en `diario.md`. Dos aserciones de «pasa poco» de `test_nucleo_lib.sh` fijaban el orden antiguo y se cambiaron a la par.
+- **F2, medidor de contexto:** `nucleo_ctx` cuenta `fable-5-2` sin sufijo `[1m]` como ventana de 200 000. Antes medía contra 1M y el aviso del 70 % llegaba con ~91 % real. Es un atajo declarado: si un binario nuevo le da 1M, el medidor avisará antes de tiempo.
+- **F3, regla de esperas:** `kit/claude/CLAUDE.md` pide que toda espera de fondo lleve `timeout`; un shell de fondo vivo bloquea el handoff automático.
+
+### No incluido
+
+- Varios proyectos activos a la vez en una ranura (hay uno; revincular sustituye y deja rastro en `## Coordinación`).
+- Que un shell de fondo vivo deje de bloquear el handoff automático (solo la regla F3).
+- Migrar nucleos antiguos que ya superan el tope.
+- Separar bytes de entrada y de salida en `recortes.log`.
+- Leer el límite real de contexto del motor desde shell.
+- Un flag para desvincular (hoy: borrar la línea `> proyecto:` de la ranura).
+
+### Conocido
+
+- `test_nucleo_hooks.sh`, «carrera: si nucleo.md cambia durante la fusión», falló 1 de 4 corridas (depende de un `sleep 0.3`); preexistente.
+
 ## [2.0.0] - 2026-11-12
 
 Versión mayor: los guards cambian de veredicto (órdenes que antes se bloqueaban ahora preguntan o pasan, y al
