@@ -40,7 +40,7 @@ Cifras de uso real del kit (`efectividad`, 2026-10-14 → 2026-11-14, 131 sesion
 
 - **F1, orden de descarte al reinyectar:** cuando el nucleo no cabe, cae antes «Último turno (auto)», luego «Ficheros tocados» (regenerable desde git), «Plan» y al final «Pendientes». En 2.0.0 caía Pendientes antes que Ficheros tocados (test rojo con 4 fallos sobre esa versión). **F1 solo cambia la reinyección:** `handoff --desde` sobre el tope sigue omitiendo antes Pendientes (decisión previa, fijada por `test_nucleo_hooks.sh`) y deja la copia en `diario.md`. Dos aserciones de «pasa poco» de `test_nucleo_lib.sh` fijaban el orden antiguo y se cambiaron a la par.
 - **F2, medidor de contexto:** `nucleo_ctx` cuenta `fable-5-2` sin sufijo `[1m]` como ventana de 200 000. Antes medía contra 1M y el aviso del 70 % llegaba con ~91 % real. Es un atajo declarado: si un binario nuevo le da 1M, el medidor avisará antes de tiempo.
-- **F3, regla de esperas:** `kit/claude/CLAUDE.md` pide que toda espera de fondo lleve `timeout`; un shell de fondo vivo bloquea el handoff automático.
+- **F3, regla de esperas:** `kit/claude/CLAUDE.md` pide que toda espera de fondo lleve `timeout`; un shell de fondo vivo bloquea el handoff automático. Para caber en el tope de instrucciones globales (6900, ADR 018) sale de `AGENTS.md` la línea «Índice: `recuerda -l`…», que repetía la anterior.
 
 ### No incluido
 
