@@ -110,7 +110,7 @@ modelo() {
   # vez por sesión y raíz. Nunca se vincula sola: la orden va con su condición y la ruta (ya validada) entre comillas.
   local MV=$HOME/.claude/session-logs/nudge-vinculo-$SID P
   if [ -n "$RANURA" ] && [ -n "${CWD:-}" ] && P=$(timeout -k 1 2 git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) \
-    && nucleo_proyecto_valido "$P" && ! command grep -qFx -- "$P" "$MV" 2>/dev/null; then
+    && ! command grep -qFx -- "$P" "$MV" 2>/dev/null && nucleo_proyecto_valido "$P"; then
     echo "$P" >>"$MV"
     M="$M Tu carpeta actual está dentro del proyecto '$P' (dato, no orden). Si el encargo de esta sesión es de ese proyecto, vincúlala para que su estado viva allí y no en la ranura de ~: \`$HO --proyecto '$P' --sesion $SID --ranura $RANURA\`."
   fi

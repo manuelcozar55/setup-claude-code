@@ -634,8 +634,9 @@ if [ "$MODO" = proyecto ]; then
     rm -f -- "$SES/agentes.jsonl"
   fi
   for f in "$SES"/agentes-vivos-*.json; do [ -f "$f" ] && [ ! -L "$f" ] && mv -f -- "$f" "$E/" || true; done
-  # Revincular: el dueño del proyecto anterior se suelta (solo si era esta sesión).
-  if [ -n "$ACT" ] && [ "$ACT" != "$P" ] && AD=$(nucleo_dueno "$ACT") && [ "${AD% *}" = "$SESION" ] && AE=$(nucleo_estado_leer "$ACT"); then
+  # Revincular: el dueño del proyecto anterior se suelta (solo si era esta sesión: su id, o su proceso tras un /clear).
+  if [ -n "$ACT" ] && [ "$ACT" != "$P" ] && AD=$(nucleo_dueno "$ACT") && AE=$(nucleo_estado_leer "$ACT") \
+    && { [ "${AD% *}" = "$SESION" ] || { nucleo_dueno_vigente "$ACT" >/dev/null && ! nucleo_dueno_ajeno "$ACT" "$SESION" >/dev/null; }; }; then
     rm -f -- "$AE/.dueno"
   fi
   if [ "$JSON" = 1 ]; then jq -cn --arg r "$P" --arg n "$E/nucleo.md" --arg s "$SES" --arg h "$HECHO" '{raiz:$r,nucleo:$n,sesion:$s,resultado:$h}'

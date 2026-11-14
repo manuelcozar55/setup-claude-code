@@ -293,6 +293,11 @@ nuevo; PV7=$NP; ho "$PV7" --desde "$(borrador V7)" --sesion sidv7 >/dev/null 2>&
 ho "$PV7" --proyecto "$T/repo7a" --sesion sidv7 >/dev/null 2>&1; ho "$PV7" --proyecto "$T/repo7b" --sesion sidv7 >/dev/null 2>&1; ok "22 revincular sale 0" "$?" 0
 ok "22 revincular: suelta el dueño del anterior y toma el nuevo" "$([ -e "$T/repo7a/.claude/estado/.dueno" ] && echo si || echo no),$(sed -n 's/^sesion=//p' "$T/repo7b/.claude/estado/.dueno")" "no,sidv7"
 ok "22 revincular: la coordinación conserva las dos raíces" "$(command grep -c '^- .* · ' "$(ls -d "$SES"/*-"$PV7")/nucleo.md")" 2
+# Tras /clear el proceso sigue y el session_id cambia: el dueño del anterior es esta misma sesión y también se suelta
+# (antes quedaba a nombre del id viejo con el proceso vivo, y el proyecto, bloqueado para las demás: rc 5).
+nuevo; PV8=$NP; ho "$PV8" --desde "$(borrador V8)" --sesion sidv8 >/dev/null 2>&1; mkrepo "$T/repo8a"; mkrepo "$T/repo8b"
+ho "$PV8" --proyecto "$T/repo8a" --sesion sidv8 >/dev/null 2>&1; ho "$PV8" --proyecto "$T/repo8b" --sesion sidv8b >/dev/null 2>&1
+ok "22 revincular tras /clear (otro session_id, mismo proceso): suelta el dueño del anterior" "$([ -e "$T/repo8a/.claude/estado/.dueno" ] && echo si || echo no),$(sed -n 's/^sesion=//p' "$T/repo8b/.claude/estado/.dueno")" "no,sidv8b"
 
 # 23 (criterio 3). Con vínculo todo usa el estado del proyecto; la ranura no cambia (salvo cabecera y coordinación).
 CKS=$(cksum <"$SV1/nucleo.md")
