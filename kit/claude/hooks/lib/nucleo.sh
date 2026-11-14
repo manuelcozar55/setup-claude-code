@@ -17,17 +17,20 @@ NUCLEO_RESERVA_AGENTES=800
 # los hooks ya leen como «sin proyecto» (índice de tareas, nada de nucleo propio). Un worktree de
 # `claude --worktree` vive en <repo>/.claude/worktrees/<rama> y es su propia raíz.
 nucleo_raiz() {
-  local base=${CLAUDE_PROJECT_DIR:-$1} r
+  local base=${CLAUDE_PROJECT_DIR:-$1} r v
   if [ -n "${2:-}" ]; then
     r=$(timeout -k 1 "$2" git -C "$base" rev-parse --show-toplevel 2>/dev/null) || r=$HOME
   else
     r=$(git -C "$base" rev-parse --show-toplevel 2>/dev/null) || r=$HOME
   fi
-  case $r in "$HOME" | "$HOME/.claude" | "$HOME/.claude/"*)
-    # Una sesión de ~ vinculada a un proyecto (handoff --proyecto) se comporta desde aquí como una lanzada en él (D2 de 2.1.0).
-    if [ "${NUCLEO_VINCULO:-}" != 0 ] && r=$(nucleo_vinculo); then printf '%s\n' "$r"; return 0; fi
-    printf '%s\n' "$HOME"; return 1 ;;
-  esac
+  case $r in "$HOME" | "$HOME/.claude" | "$HOME/.claude/"*) r=$HOME ;; esac
+  # Una sesión de ~ vinculada a un proyecto (handoff --proyecto) se comporta desde aquí como una lanzada en él (D2 de 2.1.0).
+  # El vínculo es fijo: tampoco lo mueve un `cd` a otro repo cuando el CLI se invoca a mano (el Bash tool no exporta
+  # CLAUDE_PROJECT_DIR y se resolvería por el cwd vivo). Con CLAUDE_PROJECT_DIR en un repo no se mira: camino caliente intacto.
+  if { [ "$r" = "$HOME" ] || [ -z "${CLAUDE_PROJECT_DIR:-}" ]; } && [ "${NUCLEO_VINCULO:-}" != 0 ] && v=$(nucleo_vinculo); then
+    printf '%s\n' "$v"; return 0
+  fi
+  [ "$r" != "$HOME" ] || { printf '%s\n' "$HOME"; return 1; }
   printf '%s\n' "$r"
 }
 

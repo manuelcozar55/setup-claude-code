@@ -307,6 +307,15 @@ ok "23 y no anota «carpeta de trabajo» (el arranque es ~)" "$(command grep -c 
 (cd "$T" && CLAUDE_PID=$PV1 bash "$HO" --desde "$(borrador V1c)" --sesion sidv1 --ranura "$SV1" >/dev/null 2>&1); ok "23 --desde --ranura desde otra carpeta sale 0" "$?" 0
 ok "23 --desde --ranura escribe en el proyecto" "$(command grep -c 'paso-V1c' "$R1/.claude/estado/nucleo.md")" 1
 ok "23 la ranura no cambió" "$(cksum <"$SV1/nucleo.md")" "$CKS"
+# El vínculo es fijo: con el cwd vivo en OTRO repo, el CLI a mano (el Bash tool no exporta CLAUDE_PROJECT_DIR) sigue yendo
+# al proyecto vinculado. Antes escribía en el repo del cwd y el estado de la sesión quedaba partido. Solo --raiz manda más.
+RO=$HOME/otro-v; mkdir -p "$RO" && git -C "$RO" init -q
+(cd "$RO" && CLAUDE_PID=$PV1 bash "$HO" --desde "$(borrador V1d)" --sesion sidv1 >/dev/null 2>&1); ok "23 --desde con el cwd en otro repo sale 0" "$?" 0
+ok "23 y escribe en el proyecto vinculado, no en el del cwd" "$(command grep -c 'paso-V1d' "$R1/.claude/estado/nucleo.md"),$([ -e "$RO/.claude/estado/nucleo.md" ] && echo existe || echo no)" "1,no"
+(cd "$RO" && CLAUDE_PID=$PV1 bash "$HO" --desde "$(borrador V1e)" --sesion sidv1 --raiz "$RO" >/dev/null 2>&1)
+ok "23 un --raiz explícito sí va al otro repo" "$(command grep -c 'paso-V1e' "$RO/.claude/estado/nucleo.md" 2>/dev/null),$(command grep -c 'paso-V1e' "$R1/.claude/estado/nucleo.md")" "1,0"
+ok "23 con CLAUDE_PROJECT_DIR en otro repo (sesión lanzada en él) el vínculo no se mira" "$(cd "$RO" && CLAUDE_PID=$PV1 CLAUDE_PROJECT_DIR=$RO nucleo_raiz "$RO")" "$RO"
+ok "23 la ranura sigue sin cambiar" "$(cksum <"$SV1/nucleo.md")" "$CKS"
 jq -cn --arg c "$HOME" '{cwd:$c,session_id:"sidv1",hook_event_name:"Stop",last_assistant_message:"hecho"}' | CLAUDE_PID=$PV1 bash "$HO" --auto --json >/dev/null 2>&1; ok "23 --auto sale 0" "$?" 0
 ok "23 --auto escribe en el proyecto, no en la ranura" "$(command grep -c 'Último turno (auto)' "$R1/.claude/estado/nucleo.md"),$(command grep -c 'Último turno (auto)' "$SV1/nucleo.md")" "1,0"
 C=$(hook "$HC" "$PV1" clear sidv1)
