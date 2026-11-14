@@ -494,9 +494,20 @@ test('vínculo: un --estado que dice vinculado pero cuyo nucleo no es el del pro
   const slot = `${HOME}/.claude/estado/sesiones/20261114-1000-42/nucleo.md`
   const r = repo(on, {}, { root: HOME, isRepo: false, cwd: HOME, linked: '/work/otro', statePath: '/work/proyecto/.claude/estado/nucleo.md' })
   const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
-  expect(res.text).toContain('sin estado propio')
+  expect(res.text).toContain('vinculada a un proyecto pero su estado no está')
   expect(r.calls).toHaveLength(0)
   expect(r.files[slot]).toBeUndefined()
+})
+
+// Un CLI roto o ajeno que diga «vinculado a ~»: su nucleo sería el compartido de ~/.claude/estado, el de otras tareas.
+test('vínculo: un --estado que dice vinculado a ~ no llega al nucleo compartido', async ($, on) => {
+  fork(on, NEW)
+  const shared = `${HOME}/.claude/estado/nucleo.md`
+  const r = repo(on, { [shared]: PREV }, { root: HOME, isRepo: false, cwd: HOME, linked: HOME, statePath: shared })
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(res.text).toContain('vinculada a un proyecto pero su estado no está')
+  expect(r.calls).toHaveLength(0)
+  expect(r.files[shared]).toBe(PREV)
 })
 
 test('vínculo: el handoff automático en una sesión de ~ vinculada guarda en el proyecto y limpia con su ruta', async ($, on) => {
