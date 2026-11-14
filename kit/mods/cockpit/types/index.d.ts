@@ -28,7 +28,7 @@ export type TaskRow = { id: string; subject: string; status: 'pending' | 'in_pro
 export type Handoff = { phase: 'idle' | 'confirm' | 'working' | 'waiting' | 'done' | 'error'; msg?: string }
 
 // `handoff --estado`: the share of the cap and who owns the state (null: nobody, or no project).
-export type Estado = { pct: number; bytes: number; tope: number; dueno: { sesion: string; vigente: boolean; isMine: boolean } | null; isSlot?: boolean }
+export type Estado = { pct: number; bytes: number; tope: number; dueno: { sesion: string; vigente: boolean; isMine: boolean } | null; isSlot?: boolean; linkedTo?: string }
 
 // The silent synthesis: when (ISO) and how many times it saved, and the dirty reason that asked for it.
 // `isOn` mirrors the switch (opt-in); `halted` is why it stopped by itself (after repeated failures), '' otherwise.

@@ -689,7 +689,9 @@ async function refreshEstado($: $, force: boolean) {
             bytes: 'bytes' in j && typeof j.bytes === 'number' ? j.bytes : 0,
             tope: 'tope' in j && typeof j.tope === 'number' ? j.tope : 0,
             dueno: owner,
-            isSlot: root === null && 'sesion' in j && typeof j.sesion === 'string' && j.sesion !== '',
+            // The CLI decides «project» (it knows the link, which the start in ~ does not show): `raiz` null is the slot.
+            isSlot: !('raiz' in j && typeof j.raiz === 'string') && 'sesion' in j && typeof j.sesion === 'string' && j.sesion !== '',
+            ...('vinculado' in j && j.vinculado === true && 'raiz' in j && typeof j.raiz === 'string' ? { linkedTo: j.raiz } : {}),
           }
         : null
     await update($, estado, () => next)
@@ -716,8 +718,11 @@ async function resolveState($: $) {
   const state: unknown = JSON.parse(result.stdout)
   if (typeof state !== 'object' || state === null || !('nucleo' in state) || typeof state.nucleo !== 'string' || !state.nucleo.startsWith('/') || !state.nucleo.endsWith('/nucleo.md'))
     throw new Error('handoff --estado no devuelve una ruta nucleo válida; no limpio')
+  // A session started in ~ and linked to a project (`vinculado`, validated by the CLI): the state is the project's own. The
+  // nucleo must be exactly that project's, so an odd answer never reaches the shared estado/nucleo.md.
+  const linkedTo = 'vinculado' in state && state.vinculado === true && 'raiz' in state && typeof state.raiz === 'string' && state.raiz.startsWith('/') && state.nucleo === `${state.raiz}/.claude/estado/nucleo.md` ? state.raiz : null
   // Without a root the only state this session may write is its own slot, never the shared estado/nucleo.md (another task's).
-  if (location.root === null && !isOwnSlot(state.nucleo, location.home)) throw new Error(NO_SLOT)
+  if (location.root === null && linkedTo === null && !isOwnSlot(state.nucleo, location.home)) throw new Error(NO_SLOT)
   if (!('agentes_vivos' in state) || typeof state.agentes_vivos !== 'number' || !Number.isSafeInteger(state.agentes_vivos) || state.agentes_vivos < 0)
     throw new Error('handoff --estado no confirma los agentes vivos; no limpio')
   const active = state.agentes_vivos
@@ -726,7 +731,7 @@ async function resolveState($: $) {
   // The CLI's tope already leaves room for the agents block the next SessionStart injects; 6500 is the pre-reserve contract.
   const tope = 'tope' in state && typeof state.tope === 'number' && Number.isSafeInteger(state.tope) && state.tope > 0 ? state.tope : 6500
   const estadoMd = 'modo' in state && state.modo === 'estado-md' && 'estado' in state && typeof state.estado === 'string' && state.estado.startsWith('/') ? state.estado : null
-  return { ...location, path: state.nucleo, estadoMd, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active, tope, foreignOwner: owner, sha: 'sha256' in state && typeof state.sha256 === 'string' ? state.sha256 : null }
+  return { ...location, linkedTo, path: state.nucleo, estadoMd, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active, tope, foreignOwner: owner, sha: 'sha256' in state && typeof state.sha256 === 'string' ? state.sha256 : null }
 }
 
 const readState = async ($: $, path: string) => ((await $.fs.exists(path)) ? await $.fs.read(path) : '')
@@ -768,7 +773,7 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
   let tmp = ''
   try {
     if (!silent) await update($, handoff, (): Handoff => ({ phase: 'working' }))
-    const { root, start, dir, path, estadoMd, bin, active, tope, foreignOwner, sha } = await resolveState($)
+    const { root, linkedTo, start, dir, path, estadoMd, bin, active, tope, foreignOwner, sha } = await resolveState($)
     // The CLI would refuse with rc 5 after the fork has been paid: ask first (the state's owner is in `--estado`).
     if (foreignOwner !== null) throw new Error(`el estado de este proyecto lo tiene otra sesión (${foreignOwner.slice(0, 8)}): no guardo ni limpio; cierra esa sesión o trabaja con ella`)
     if (andClear && (active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) throw new Error('hay agentes o shells vivos: no limpio; espera o usa /handoff solo')
@@ -874,7 +879,8 @@ async function runHandoff($: $, andClear: boolean, focus = '', canWait = true, s
     const shown = line ? redact(`Handoff: ${line}`) : ''
     if (shown) await update($, receiptLine, () => shown)
     // Saved and confirmed by the receipt: a failed re-read only loses the line, and the generic fill goes on.
-    const fill = fillFor(await readState($, saved.path).catch(() => ''), saved.path.endsWith('/.claude/estado/nucleo.md') ? '.claude/estado/nucleo.md' : saved.path)
+    // Linked from ~: the new session starts in ~, where the relative path would be the shared nucleo: the absolute one.
+    const fill = fillFor(await readState($, saved.path).catch(() => ''), saved.path.endsWith('/.claude/estado/nucleo.md') && !linkedTo ? '.claude/estado/nucleo.md' : saved.path)
     sameSession()
     await clearAfter($, saved.path, fill, revision, shown, epoch)
     return saved
@@ -1212,7 +1218,9 @@ export const register: Register = on => {
     const location = await resolveState($).catch(() => null)
     if (!location) return { text: 'No pude consultar el estado del proyecto con handoff --estado; no archivo ni limpio. Comprueba que ~/.claude/bin/handoff funciona (kit/doctor.sh).' }
     if (location.active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status))) return { text: 'Hay agentes o shells vivos: no archivo ni limpio; espera a que terminen.' }
-    const { path, root } = location
+    const { path } = location
+    // Linked to a project from ~: the state to archive is the project's. Without DIR the CLI archives the slot, and the slot holds the link.
+    const root = location.root ?? location.linkedTo
     let note = ''
     if (await $.fs.exists(path)) {
       const saved = await runHandoff($, false, '', false)
@@ -1665,6 +1673,7 @@ export const register: Register = on => {
         {es && (
           <Box flexDirection="column">
             <Text color={tone(es.pct)} wrap="truncate-end">estado guardado al {es.pct}% de su tamaño máximo</Text>
+            {es.linkedTo && <Text dimColor wrap="truncate-end">{`sesión de ~ vinculada a «${es.linkedTo.split('/').filter(Boolean).pop() ?? es.linkedTo}»: su estado vive ahí`}</Text>}
             <Text dimColor wrap="truncate-end">
               lo escribe: {es.isSlot ? 'esta sesión (estado propio, fuera de un proyecto)' : es.dueno ? `${es.dueno.isMine ? 'esta sesión' : `otra sesión (${es.dueno.sesion.slice(0, 8)})`}${es.dueno.vigente ? '' : ' vencido'}` : 'nadie aún'}
             </Text>
