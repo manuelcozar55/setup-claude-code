@@ -127,7 +127,7 @@ Conserva y lista lo que modificaste, quita los enlaces de `~/.local/bin` solo si
 | Órdenes bloqueadas por `destructive-guard.sh` | `~/.claude/audit-logs/blocked-commands.log` |
 | Sentinel y avisos de inyección en herramientas MCP | `~/.claude/audit-logs/sentinel.jsonl`, `narthex.jsonl` |
 | Frescura del estado al compactar, compuerta de commit | `~/.claude/session-logs/` (`nucleo-freshness.log`, `gate-nucleo.log`) |
-| Estado de cada proyecto | `<proyecto>/.claude/estado/nucleo.md` y su carpeta |
+| Estado de cada proyecto | `<proyecto>/.claude/estado/nucleo.md` y su carpeta. Una sesión lanzada en `~` y vinculada con `handoff --proyecto <ruta>` también guarda ahí su estado; su ranura de `~` (`~/.claude/estado/sesiones/`) solo lleva la línea `> proyecto:` y `## Coordinación`. Para desvincularla, borra esa línea |
 | Qué instaló el kit y con qué suma | `~/.claude/.kit-manifest`, `~/.claude/.kit-version` |
 
 3. Un hook que falla por su cuenta no rompe la sesión salvo los guards, que fallan cerrados (bloquean) a propósito.

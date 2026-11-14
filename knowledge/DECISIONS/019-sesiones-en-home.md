@@ -1,6 +1,6 @@
 # ADR 019 — Sesiones en `~`: una ranura por proceso de Claude
 
-**Fecha:** 2026-10-21 · **Estado:** aceptada; enmienda a 014 solo para `~`
+**Fecha:** 2026-10-21 · **Estado:** aceptada; enmienda a 014 solo para `~` · enmendada por 029 (una ranura puede vincularse a un proyecto)
 
 ## Contexto
 

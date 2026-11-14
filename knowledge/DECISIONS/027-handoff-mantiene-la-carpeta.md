@@ -1,6 +1,6 @@
 # ADR 027 — Tras `/handoff` + `/clear` la sesión conserva su raíz de estado y su carpeta, y siempre recibe un mínimo
 
-**Fecha:** 2026-11-04 · **Estado:** aceptada · **Complementa a:** ADR 014, 019 y 026
+**Fecha:** 2026-11-04 · **Estado:** aceptada · **Complementa a:** ADR 014, 019 y 026 · enmendada por 029 (en `~`, la raíz es el proyecto vinculado si lo hay)
 
 ## Contexto
 
