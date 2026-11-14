@@ -771,7 +771,7 @@ _nucleo_sin_comentarios() {
 }
 
 # _nucleo_emitir_awk <fichero> <kb> <tope> [medir|entero] [datos]: la emisión; con «medir», solo los bytes de las
-# reservadas; con «entero», sin topes por sección y rc 3 si ni quitando Pendientes, Plan y Ficheros tocados cabe.
+# reservadas; con «entero», sin topes por sección y rc 3 si ni quitando el auto, Ficheros tocados, Plan y Pendientes cabe.
 _nucleo_emitir_awk() {
   LC_ALL=C awk -v f="$1" -v kb="$2" -v sec=3000 -v tope="$3" -v res=700 -v medir="${4:-}" "$_NUCLEO_SECCIONES_AWK"'
     BEGIN { if (medir == "entero") { lim = tope; tope = sec = res = 1e9 } }
@@ -853,8 +853,8 @@ _nucleo_emitir_awk() {
       m = split("Objetivo|Invariantes|Paso actual|Siguiente acción|Comandos de verificación|Plan|Pendientes|Ficheros tocados|No repetir|Último turno (auto)", ord, "|")
       if (medir == "entero") {
         total = length(buf["#"]); for (i = 1; i <= m; i++) total += length(buf[ord[i]])
-        # Lo regenerable (la sección de handoff --auto) sale antes que lo accionable, como en handoff.
-        q = split("Último turno (auto)|Pendientes|Plan|Ficheros tocados", cola, "|")
+        # Lo regenerable sale antes que lo accionable: «Ficheros tocados» se rehace desde git; Plan y Pendientes no (Pendientes, lo último).
+        q = split("Último turno (auto)|Ficheros tocados|Plan|Pendientes", cola, "|")
         for (i = 1; total > lim && i <= q; i++) if (buf[cola[i]] != "") { total -= length(buf[cola[i]]); buf[cola[i]] = ""; omitidas = omitidas " «" cola[i] "»" }
         if (total > lim) exit 3
       }

@@ -291,16 +291,34 @@ ok "presupuesto: emisión de peor caso ≤ 7 000 chars (cabe con protocolo y git
 S=$(nucleo_emitir "$T/cabe.md")
 ok "cabe en el tope: sale entero" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|FICH-FIN' <<<"$S")" 4
 ok "cabe en el tope: sin marcas de recorte ni [LEE]" "$(command grep -c '^\[recortado\|^\[LEE' <<<"$S")" 0
-# Algo por encima: fuera secciones enteras en el orden de handoff (Pendientes, Plan…), sin partir las reservadas.
+# Algo por encima: fuera secciones enteras en el orden de handoff (Ficheros tocados, Plan…; F1 v2.1: Pendientes, lo último), sin partir las reservadas.
 { cat "$T/cabe.md"; echo '## Pendientes'; big 1200; echo PEND-FIN; } >"$T/pasa-poco.md"
 S=$(nucleo_emitir "$T/pasa-poco.md")
-ok "pasa poco: las reservadas y Ficheros tocados salen enteras" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|FICH-FIN' <<<"$S")" 4
-ok "pasa poco: Pendientes se omite entera y se dice" "$(command grep -c 'PEND-FIN' <<<"$S"),$(command grep -c '^\[recortado por tope: se omiten «Pendientes»' <<<"$S")" "0,1"
+ok "pasa poco: las reservadas y Pendientes salen enteras" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|PEND-FIN' <<<"$S")" 4
+ok "pasa poco: Ficheros tocados se omite entera y se dice" "$(command grep -c 'FICH-FIN' <<<"$S"),$(command grep -c '^\[recortado por tope: se omiten «Ficheros tocados»' <<<"$S")" "0,1"
 ok "pasa poco: ninguna sección partida; sí pide leer el fichero" "$(command grep -c 'sección incompleta' <<<"$S"),$(command grep -c '^\[LEE ' <<<"$S")" "0,1"
 # Lo regenerable sale antes que lo accionable: con el auto fuera cabe, y Pendientes, Plan y Ficheros se conservan.
 { cat "$T/cabe.md"; echo '## Pendientes'; big 100; echo PEND-FIN; echo '## Último turno (auto)'; big 600; echo AUTO-FIN; } >"$T/pasa-auto.md"
 S=$(nucleo_emitir "$T/pasa-auto.md")
 ok "pasa poco con sección auto: sale el auto y se conservan Pendientes y Ficheros" "$(command grep -c 'PEND-FIN\|FICH-FIN' <<<"$S"),$(command grep -c 'AUTO-FIN' <<<"$S"),$(command grep -c '^\[recortado por tope: se omiten «Último turno (auto)»\.\]$' <<<"$S")" "2,0,1"
+# F1 (v2.1): al reinyectar cae antes «Ficheros tocados» (se regenera desde git) que «Pendientes» y «Plan» (no hay de dónde
+# reconstruirlos). Orden de caída: Último turno (auto) → Ficheros tocados → Plan → Pendientes. Con acentos y rutas largas.
+RL=/home/ñandú/trabajo/proyecto-áéíóú/kit/claude/hooks/lib/subcarpeta-muy-larga/otra-más/nucleo-ñ.sh
+{ echo '# Estado'; echo '## Objetivo'; echo 'Objetivo corto'; echo '## Paso actual'; echo 'PASO-F1'; echo '## Siguiente acción'; echo 'SIG-F1'
+  echo '## Comandos de verificación'; echo 'CMD-F1'
+  echo '## Plan'; for i in $(seq 1 12); do echo "- [ ] paso abierto $i: revisión de $RL"; done; echo PLAN-FIN
+  echo '## Pendientes'; for i in $(seq 1 14); do echo "- PENDIENTE-$i: decisión sin tomar sobre $RL (¿migración añadida?)"; done; echo PEND-FIN
+  echo '## Ficheros tocados'; for i in $(seq 1 34); do echo "- $RL:L$i-$((i + 9)) — modificado"; done; echo FICH-FIN
+  echo '## Último turno (auto)'; echo 'turno auto breve'; echo AUTO-FIN; } >"$T/f1.md"
+ok "F1 fixture: excede el presupuesto" "$([ "$(wc -c <"$T/f1.md")" -gt "$NUCLEO_TOPE" ] && echo si)" si
+S=$(nucleo_emitir "$T/f1.md")
+ok "F1: Pendientes y Plan sobreviven enteros" "$(command grep -c 'PEND-FIN' <<<"$S"),$(command grep -c 'PLAN-FIN' <<<"$S"),$(command grep -c 'PENDIENTE-14' <<<"$S")" "1,1,1"
+ok "F1: cae Ficheros tocados y se dice" "$(command grep -c 'FICH-FIN' <<<"$S"),$(command grep -c '^\[recortado por tope: se omiten.*«Ficheros tocados»' <<<"$S")" "0,1"
+ok "F1: Pendientes y Plan no figuran entre las omitidas" "$(command grep '^\[recortado por tope' <<<"$S" | command grep -c 'Pendientes\|Plan')" 0
+# Si el auto y Ficheros no bastan, antes cae el Plan que Pendientes.
+{ sed '/^## Ficheros tocados/,/^FICH-FIN/d; /^## Último turno/,$d; /^PEND-FIN/d' "$T/f1.md"; for i in $(seq 1 28); do echo "- PEND-EXTRA-$i: relleno largo de pendiente sin tomar para exceder el tope con holgura suficiente"; done; echo PEND-FIN; } >"$T/f1b.md"
+S=$(nucleo_emitir "$T/f1b.md")
+ok "F1: sin Ficheros, cae el Plan antes que Pendientes" "$(command grep -c 'PLAN-FIN' <<<"$S"),$(command grep -c 'PEND-FIN' <<<"$S")" "0,1"
 # Si ni quitando secciones cabe, el corte de una sección cae en un límite de línea (si ya salió alguna) y cierra la
 # cerca que deje abierta; si parte la primera línea, cierra el `código`. Antes la marca quedaba dentro del bloque.
 { echo '# Estado'; echo '## Objetivo'; big 2000; echo '## Invariantes'; big 2000; echo '## Paso actual'
