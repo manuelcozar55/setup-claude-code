@@ -263,5 +263,113 @@ ok "21 la ranura ahora lleva el pid nuevo y su .proceso" "$(find "$SES" -maxdept
 sleep 300 & PZ=$!; PIDS+=("$PZ")
 ok "21 startup no adopta" "$(hook "$HC" "$PZ" startup sid-x >/dev/null; find "$SES" -maxdepth 1 -name "*-$PZ" | wc -l | tr -d ' ')" 0
 
+# ---- 2.1.0: vínculo de una sesión de ~ con un proyecto (`handoff --proyecto`, D1-D5). Los «sin vínculo» de arriba son el criterio 1.
+mkrepo() { mkdir -p "$1"; git -C "$1" init -q; git -C "$1" -c user.email=t@t -c user.name=t commit -q --allow-empty -m inicial; }
+R1=$T/repo1; R2=$T/repo2; mkrepo "$R1"; mkrepo "$R2"
+dirh() { { find "$1" -type f ! -name '.handoff.lock' ! -name '.agentes.lock' | sort; find "$1" -type f ! -name '.handoff.lock' ! -name '.agentes.lock' -exec cksum {} + | sort; } 2>/dev/null | cksum; }
+nuevo() { sleep 300 & NP=$!; PIDS+=("$NP"); }   # un «claude» nuevo; su pid en NP
+
+# 22 (criterio 2). --proyecto desde una sesión de ~: línea en la ranura, dueño reclamado, siembra del proyecto sin estado.
+nuevo; PV1=$NP; ho "$PV1" --desde "$(borrador V1)" --sesion sidv1 >/dev/null 2>&1
+SV1=$(ls -d "$SES"/*-"$PV1")
+ho "$PV1" --proyecto "$R1/." --sesion sidv1 >/dev/null 2>&1; R=$?
+ok "22 --proyecto sale 0" "$R" 0
+ok "22 la ranura lleva «> proyecto: raíz» una vez bajo el título" "$(awk '/^## /{exit} $0 == "> proyecto: '"$R1"'"{n++} END{print n+0}' "$SV1/nucleo.md")" 1
+ok "22 la ranura queda como coordinación (sin el Objetivo)" "$(command grep -c '^## Coordinación$' "$SV1/nucleo.md"),$(command grep -c 'obj-V1' "$SV1/nucleo.md")" "1,0"
+ok "22 dueño del proyecto reclamado por la sesión" "$(sed -n 's/^sesion=//p' "$R1/.claude/estado/.dueno")" sidv1
+ok "22 proyecto sin estado: sembrado con el nucleo de la ranura, sin líneas de cabecera de ranura" "$(command grep -c 'obj-V1' "$R1/.claude/estado/nucleo.md"),$(command grep -c '^> proyecto:' "$R1/.claude/estado/nucleo.md")" "1,0"
+ok "22 .claude/estado/ excluido de git" "$(command grep -cFx '.claude/estado/' "$R1/.git/info/exclude")" 1
+ok "22 idempotente: otra vez sale 0 y no duplica la coordinación" "$(ho "$PV1" --proyecto "$R1" --sesion sidv1 >/dev/null 2>&1; echo $?),$(command grep -c '^- .* · '"$R1"'$' "$SV1/nucleo.md")" "0,1"
+ok "22 --estado: raíz, nucleo y dueño del proyecto; ranura y vinculado" "$(ho "$PV1" --estado --sesion sidv1 | jq -r '[.raiz,.nucleo,.dueno.sesion,.sesion,.vinculado]|join(" ")')" "$R1 $R1/.claude/estado/nucleo.md sidv1 $SV1 true"
+# Proyecto con estado propio: el nucleo de la ranura se archiva en su diario y nada se fusiona.
+nuevo; PV2=$NP; ho "$PV2" --desde "$(borrador V2)" --sesion sidv2 >/dev/null 2>&1; SV2=$(ls -d "$SES"/*-"$PV2")
+mkdir -p "$R2/.claude/estado"; printf '## Objetivo\nobj-propio\n## Paso actual\npaso-propio\n' >"$R2/.claude/estado/nucleo.md"
+CK=$(cksum <"$R2/.claude/estado/nucleo.md")
+ho "$PV2" --proyecto "$R2" --sesion sidv2 >/dev/null 2>&1; ok "22 proyecto con estado: sale 0" "$?" 0
+ok "22 proyecto con estado: su nucleo no cambia" "$(cksum <"$R2/.claude/estado/nucleo.md")" "$CK"
+ok "22 proyecto con estado: el nucleo de la ranura va al diario de la ranura" "$(command grep -c 'obj-V2' "$SV2/diario.md"),$(command grep -c '^## .* nucleo de la ranura, archivado al vincular' "$SV2/diario.md")" "1,1"
+# Revincular suelta el dueño del anterior.
+nuevo; PV7=$NP; ho "$PV7" --desde "$(borrador V7)" --sesion sidv7 >/dev/null 2>&1; mkrepo "$T/repo7a"; mkrepo "$T/repo7b"
+ho "$PV7" --proyecto "$T/repo7a" --sesion sidv7 >/dev/null 2>&1; ho "$PV7" --proyecto "$T/repo7b" --sesion sidv7 >/dev/null 2>&1; ok "22 revincular sale 0" "$?" 0
+ok "22 revincular: suelta el dueño del anterior y toma el nuevo" "$([ -e "$T/repo7a/.claude/estado/.dueno" ] && echo si || echo no),$(sed -n 's/^sesion=//p' "$T/repo7b/.claude/estado/.dueno")" "no,sidv7"
+ok "22 revincular: la coordinación conserva las dos raíces" "$(command grep -c '^- .* · ' "$(ls -d "$SES"/*-"$PV7")/nucleo.md")" 2
+
+# 23 (criterio 3). Con vínculo todo usa el estado del proyecto; la ranura no cambia (salvo cabecera y coordinación).
+CKS=$(cksum <"$SV1/nucleo.md")
+ok "23 nucleo_raiz desde ~ da el proyecto con rc 0" "$(CLAUDE_PID=$PV1 nucleo_raiz "$HOME"; echo "rc=$?")" "$R1
+rc=0"
+ok "23 nucleo_ruta es el nucleo del proyecto" "$(CLAUDE_PID=$PV1 nucleo_ruta "$(CLAUDE_PID=$PV1 nucleo_raiz "$HOME")")" "$R1/.claude/estado/nucleo.md"
+ok "23 otro proceso de ~ sin vínculo sigue sin proyecto" "$(CLAUDE_PID=$PC nucleo_raiz "$HOME"; echo "rc=$?")" "$HOME
+rc=1"
+ho "$PV1" --desde "$(borrador V1b)" --sesion sidv1 >/dev/null 2>&1; ok "23 --desde desde ~ sale 0" "$?" 0
+ok "23 --desde sin --ranura escribe en el proyecto" "$(command grep -c 'obj-V1' "$R1/.claude/estado/nucleo.md"),$(command grep -c 'paso-V1b' "$R1/.claude/estado/nucleo.md")" "1,1"
+ok "23 y no anota «carpeta de trabajo» (el arranque es ~)" "$(command grep -c '^> carpeta de trabajo: ' "$R1/.claude/estado/nucleo.md")" 0
+(cd "$T" && CLAUDE_PID=$PV1 bash "$HO" --desde "$(borrador V1c)" --sesion sidv1 --ranura "$SV1" >/dev/null 2>&1); ok "23 --desde --ranura desde otra carpeta sale 0" "$?" 0
+ok "23 --desde --ranura escribe en el proyecto" "$(command grep -c 'paso-V1c' "$R1/.claude/estado/nucleo.md")" 1
+ok "23 la ranura no cambió" "$(cksum <"$SV1/nucleo.md")" "$CKS"
+jq -cn --arg c "$HOME" '{cwd:$c,session_id:"sidv1",hook_event_name:"Stop",last_assistant_message:"hecho"}' | CLAUDE_PID=$PV1 bash "$HO" --auto --json >/dev/null 2>&1; ok "23 --auto sale 0" "$?" 0
+ok "23 --auto escribe en el proyecto, no en la ranura" "$(command grep -c 'Último turno (auto)' "$R1/.claude/estado/nucleo.md"),$(command grep -c 'Último turno (auto)' "$SV1/nucleo.md")" "1,0"
+C=$(hook "$HC" "$PV1" clear sidv1)
+ok "23 SessionStart clear inyecta el nucleo del proyecto" "$(command grep -c "<nucleo-datos fuente=\"$R1/.claude/estado/nucleo.md\">" <<<"$C")" 1
+ok "23 clear dice que es de ~, vinculada, con la ruta entre comillas" "$(command grep -c "Sesión lanzada en ~ y vinculada al proyecto '$R1'" <<<"$C")" 1
+ok "23 clear no inyecta el índice de ~" "$(command grep -c '<indice-tareas>' <<<"$C")" 0
+C=$(hook "$HK" "$PV1" "" sidv1)
+ok "23 SessionStart compact inyecta el del proyecto y la línea de vínculo" "$(command grep -c "<nucleo-datos fuente=\"$R1/.claude/estado/nucleo.md\">" <<<"$C"),$(command grep -c "vinculada al proyecto '$R1'" <<<"$C")" "1,1"
+jq -cn --arg c "$HOME" '{cwd:$c,session_id:"sidv1",trigger:"auto"}' | CLAUDE_PID=$PV1 bash "$K/hooks/pre-compact.sh" 2>/dev/null
+ok "23 PreCompact deja el checkpoint en el proyecto" "$(find "$R1/.claude/estado/checkpoints" -name 'checkpoint-compact-*.md' | wc -l | tr -d ' ')" 1
+ok "23 PreCompact no deja checkpoint en ~/.claude/estado por esta sesión" "$(find "$HOME/.claude/estado" -maxdepth 1 -name 'checkpoint-compact-*.md' -newer "$SV1/nucleo.md" | wc -l | tr -d ' ')" 0
+jq -cn --arg r "$HOME" '{cwd:$r,hook_event_name:"SubagentStart",session_id:"sidv1",agent_id:"agV",agent_type:"worker"}' | CLAUDE_PID=$PV1 bash "$K/hooks/agentes.sh"
+ok "23 el registro de agentes va al proyecto, no a la ranura" "$(command grep -c '"id":"agV"\|agV' "$R1/.claude/estado/agentes.jsonl" 2>/dev/null),$([ -e "$SV1/agentes.jsonl" ] && echo existe || echo no)" "1,no"
+# nudge: al 75 % pide el estado del proyecto y la orden lleva --ranura (el Bash tool no sabe cuál es su ranura).
+jq -cn '{type:"assistant",message:{model:"claude-opus-5-5",usage:{input_tokens:1000,cache_read_input_tokens:724000},content:[]}}' >"$T/t75.jsonl"
+touch -d '-30 minutes' "$R1/.claude/estado/nucleo.md"
+C=$(jq -cn --arg c "$HOME" --arg t "$T/t75.jsonl" '{session_id:"sidv1",transcript_path:$t,cwd:$c,tool_name:"Bash"}' | CLAUDE_PID=$PV1 NUCLEO_COCKPIT=1 CLAUDE_CODE_AUTO_COMPACT_WINDOW='' bash "$K/hooks/nucleo-nudge.sh" | ctx)
+ok "23 nudge: habla del nucleo del proyecto y la orden lleva --ranura de la ranura" "$(command grep -c "$R1/.claude/estado/nucleo.md" <<<"$C"),$(command grep -cF -- "--sesion sidv1 --ranura $SV1" <<<"$C")" "1,1"
+# D1: el vínculo viaja con la ranura: un --resume en un proceso nuevo, con el dueño muerto, adopta la ranura y vuelve al proyecto.
+kill "$PV1"; wait "$PV1" 2>/dev/null; nuevo; PV1B=$NP
+C=$(hook "$HC" "$PV1B" resume sidv1)
+ok "23 resume en proceso nuevo: adopta la ranura y reinyecta el nucleo del proyecto" "$(command grep -c "<nucleo-datos fuente=\"$R1/.claude/estado/nucleo.md\">" <<<"$C"),$(find "$SES" -maxdepth 1 -name "*-$PV1B" | wc -l | tr -d ' ')" "1,1"
+
+# 24 (criterio 4). Un vínculo que no vale se ignora: la sesión sigue en la ranura y ningún texto reproduce la ruta.
+ln -s "$R1" "$T/MALO-enlace"; mkdir -p "$R1/MALO-sub"
+i=0
+for MAL in "$T/MALO-nada" "$R1/MALO-sub" "$T/MALO-dd/../repo1" "$T/MALO-enlace" "$T/MALO-\$(touch $T/pwned)" "$T/MALO sp" "$HOME/.claude" "$HOME"; do
+  i=$((i + 1)); nuevo; PM4=$NP
+  ho "$PM4" --desde "$(borrador "M$i")" --sesion "sidm$i" >/dev/null 2>&1; SM=$(ls -d "$SES"/*-"$PM4")
+  { printf '# Estado\n> proyecto: %s\n' "$MAL"; sed 1d "$SM/nucleo.md"; } >"$SM/nucleo.new" && mv "$SM/nucleo.new" "$SM/nucleo.md"
+  ok "24.$i nucleo_raiz ignora el vínculo ($i)" "$(CLAUDE_PID=$PM4 nucleo_raiz "$HOME"; echo "rc=$?")" "$HOME
+rc=1"
+  ok "24.$i --estado sigue en la ranura ($i)" "$(ho "$PM4" --estado | jq -r '[.raiz,.sesion]|map(tostring)|join(" ")')" "null $SM"
+  C=$(hook "$HC" "$PM4" clear "sidm$i"); KC=$(hook "$HK" "$PM4" "" "sidm$i")
+  ok "24.$i clear y compact inyectan la ranura y dicen que el vínculo no vale ($i)" "$(command grep -c "<nucleo-datos fuente=\"$SM/nucleo.md\">" <<<"$C"),$(command grep -c 'anota un proyecto vinculado que no uso' <<<"$C"),$(command grep -c 'anota un proyecto vinculado que no uso' <<<"$KC")" "1,1,1"
+  case $MAL in *MALO*) ok "24.$i ningún texto inyectado reproduce la ruta ($i)" "$(printf '%s\n%s\n' "$C" "$KC" | command grep -c 'MALO')" 0 ;; esac
+done
+ok "24 el metacarácter no se ejecutó" "$([ -e "$T/pwned" ] && echo ejecutado || echo no)" no
+nuevo; PM5=$NP; ho "$PM5" --desde "$(borrador M9)" --sesion sidm9 >/dev/null 2>&1
+mkrepo "$T/repo8"; mkdir -p "$T/repo8/sub2"; ho "$PM5" --proyecto "$T/MALO-nada" --sesion sidm9 >/dev/null 2>&1; R=$?; ok "24 --proyecto con ruta inexistente: rc ≠ 0" "$([ $R -ne 0 ] && echo si)" si
+ho "$PM5" --proyecto "$HOME/.claude" --sesion sidm9 >/dev/null 2>&1; R=$?; ok "24 --proyecto con ~/.claude: rc ≠ 0" "$([ $R -ne 0 ] && echo si)" si
+ok "24 --proyecto rechazados no vinculan" "$(command grep -c '^> proyecto:' "$(ls -d "$SES"/*-"$PM5")/nucleo.md")" 0
+ho "$PM5" --proyecto "$T/repo8/sub2" --sesion sidm9 >/dev/null 2>&1; ok "24 --proyecto con una carpeta de dentro vincula a la raíz" "$(command grep -cFx "> proyecto: $T/repo8" "$(ls -d "$SES"/*-"$PM5")/nucleo.md")" 1
+
+# 25 (criterios 5 y 6). Dueño ajeno vigente: --proyecto rechaza (5) y no toca ni la ranura ni el proyecto; dos sesiones de ~, un repo.
+mkrepo "$T/repo5"; mkrepo "$T/repo6"
+nuevo; PA5=$NP; nuevo; PB5=$NP
+ho "$PA5" --desde "$(borrador A5)" --sesion sida5 >/dev/null 2>&1; ho "$PB5" --desde "$(borrador B5)" --sesion sidb5 >/dev/null 2>&1
+SB5=$(ls -d "$SES"/*-"$PB5")
+ho "$PA5" --proyecto "$T/repo5" --sesion sida5 >/dev/null 2>&1; ok "25 la primera sesión vincula" "$?" 0
+H1=$(dirh "$SB5"); H2=$(dirh "$T/repo5/.claude/estado")
+ho "$PB5" --proyecto "$T/repo5" --sesion sidb5 >"$T/o5" 2>&1; R=$?
+ok "25 la segunda sesión de ~ recibe el trato de dueño ajeno: rc 5" "$R" 5
+ok "25 el mensaje es el de --desde con dueño ajeno" "$(command grep -c 'la sesión dueña es otra (sida5)' "$T/o5")" 1
+ok "25 no toca ni la ranura ni el proyecto" "$(dirh "$SB5"),$(dirh "$T/repo5/.claude/estado")" "$H1,$H2"
+ok "25 el dueño sigue siendo el primero" "$(sed -n 's/^sesion=//p' "$T/repo5/.claude/estado/.dueno")" sida5
+# Dueño ajeno vigente sin vínculo previo (otra sesión que trabaja en el repo desde él).
+mkdir -p "$T/repo6/.claude/estado"; printf 'sesion=otra-sesion\ndesde=%s\n' "$(date +%s)" >"$T/repo6/.claude/estado/.dueno"
+H2=$(dirh "$T/repo6/.claude/estado")
+ho "$PB5" --proyecto "$T/repo6" --sesion sidb5 >/dev/null 2>&1; ok "25 dueño ajeno vigente de otra sesión: rc 5" "$?" 5
+ok "25 sin cambios en la ranura ni en el proyecto" "$(dirh "$SB5"),$(dirh "$T/repo6/.claude/estado")" "$H1,$H2"
+ok "25 la ranura rechazada sigue sin proyecto" "$(CLAUDE_PID=$PB5 nucleo_raiz "$HOME"; echo "rc=$?")" "$HOME
+rc=1"
+
 [ "$FAIL" -eq 0 ] && echo "PASS" || echo "FAIL"
 exit "$FAIL"
