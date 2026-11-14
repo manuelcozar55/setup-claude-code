@@ -125,6 +125,23 @@ rm "$SB/proj2/ESTADO.md"; rm -r "$SB/proj2/.claude" 2>/dev/null || true
 set +e; cli "$SB/proj2" --desde "$SB/dec.md" --raiz "$SB/proj2" --sesion s1 --json >/dev/null 2>&1; rc=$?; set -e
 check "$rc" "2" "CLI real: sin ESTADO.md como estado «## Decisiones» es rc 2"
 
+# 2f. Sesión de ~ vinculada a un proyecto (2.1.0): --estado trae raiz y vinculado (el mod los lee) y lo que /nueva ejecuta,
+# `--migrar <raiz>`, archiva el nucleo del proyecto y deja intacta la ranura con su línea «> proyecto:» (sin DIR archivaría la ranura).
+SB2="$tmp/sb2"; mkdir -p "$SB2/home" "$SB2/proj"
+git -C "$SB2/proj" init -q . && git -C "$SB2/proj" -c user.email=t@t -c user.name=t commit -q --allow-empty -m inicial
+sleep 300 & CPID=$!
+hv() { (cd "$SB2/home" && env HOME="$SB2/home" CLAUDE_HOME="$SB2/home/.claude" CLAUDE_PROJECT_DIR="$SB2/home" CLAUDE_PID=$CPID CLAUDE_CONFIG_DIR="$SB2/home/.claude" bash "$CLI" "$@"); }
+printf '## Objetivo\nobj-vinculo\n' >"$SB2/b.md"
+hv --desde "$SB2/b.md" --sesion sv1 >/dev/null 2>&1; hv --proyecto "$SB2/proj" --sesion sv1 >/dev/null 2>&1
+est="$(hv --estado --sesion sv1)"
+check "$(printf '%s' "$est" | jq -r '[.raiz,.vinculado,(.sesion|type)] | join(" ")')" "$SB2/proj true string" "CLI real: --estado de una sesión de ~ vinculada trae raiz del proyecto, vinculado y sesion"
+slot="$(printf '%s' "$est" | jq -r .sesion)"
+hv --migrar "$SB2/proj" --sesion sv1 --esperado "$(printf '%s' "$est" | jq -r .sha256)" --json >"$SB2/mig.json" 2>/dev/null; rc=$?
+check "$rc" "0" "CLI real: --migrar <raiz> de una sesión vinculada sale 0"
+check "$(find "$SB2/proj/.claude/estado/archivo" -type f 2>/dev/null | wc -l | tr -d " "),$([ -e "$SB2/proj/.claude/estado/nucleo.md" ] && echo existe || echo no)" "1,no" "CLI real: /nueva archiva el nucleo del proyecto"
+check "$(grep -cFx "> proyecto: $SB2/proj" "$slot/nucleo.md")" "1" "CLI real: la ranura conserva su línea «> proyecto:» tras archivar"
+kill "$CPID" 2>/dev/null || true; wait "$CPID" 2>/dev/null || true
+
 # ---- 3. claude plugin validate / test
 if command -v claude >/dev/null 2>&1; then
   set +e

@@ -101,6 +101,16 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
   actualiza al abrir la tarea, antes de delegar y al cerrar cada fase (el último turno se guarda solo); tras una compactación se lee antes de
   actuar. Lo cerrado va a `diario.md`, que nunca se inyecta. El índice de tareas que ve una sesión abierta
   desde `~` se **deriva** de los nucleos vivos: no hay nadie que lo escriba, así que no puede desviarse.
+- **`handoff --proyecto <ruta>`** (ADR 029) es para la sesión lanzada en `~` que acaba trabajando sobre un repo. Vincula su
+  ranura con la raíz git de `<ruta>` (la línea `> proyecto: <raíz>` bajo el título del `nucleo.md` de la ranura) y desde
+  entonces el estado de esa sesión (hooks, `--desde`, `--auto`, `--estado`, registro de agentes, reinyección tras `/clear`,
+  compactación y `resume`) vive en `<repo>/.claude/estado/`; la ranura de `~` queda solo como coordinación (`## Coordinación`,
+  una línea por vínculo). Es explícito y fijo: nada vincula solo (el aviso de contexto propone la orden una vez por proyecto
+  cuando el cwd está dentro de uno) y un `cd` a otro repo no mueve el estado; revincular a otro proyecto es el mismo
+  comando. Si el repo no tiene estado, se siembra con el de la ranura; si lo tiene, el de la ranura va a su `diario.md`. Rechaza
+  sin cambiar nada con el proyecto en manos de otra sesión (5) o con una ruta que no es un proyecto válido (3). Sin
+  `CLAUDE_PID` hace falta `--ranura <slot>`. `--raiz` explícito ignora el vínculo. No hay flag para desvincular: se borra la
+  línea `> proyecto:` de la ranura.
 - **`oraculo -- <cmd>`** ejecuta una verificación con `pipefail`, imprime las últimas 40 líneas y `rc=N`, sale
   con ese rc y lo anota en `.claude/estado/verificaciones.log`: `cmd | tail` devolvía el rc de `tail`.
 - **`handoff --desde <borrador>`** cierra la fase: el modelo redacta el borrador y el CLI decide. Valida las

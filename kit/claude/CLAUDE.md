@@ -25,4 +25,5 @@ de los hooks, skills y subagentes que este kit instala en `~/.claude/`.
 - Si el proyecto tiene `ESTADO.md` en la raíz y no `nucleo.md`, ese es su estado; no crees `nucleo.md`.
 - `.claude/estado/nucleo.md` es el estado: se guarda solo tras cada turno, al compactar y al cerrar (`autosave.sh`, ADR 028; también en un repo sin estado), tras compactar llega inyectado y la historia va a `diario.md`. `handoff --desde` (o `/handoff` con cockpit) fija el foco. Variables: `docs/12-metodologia.md`.
 - Fin de fase = parada válida: con el aviso de contexto (persona 60 %, modelo 70 %): `handoff`, informe y propuesta de siguiente foco; después `/clear`. El autocompact es solo el airbag.
+- Toda espera de fondo lleva `timeout`: un shell vivo bloquea el handoff automático.
 - Cambio de tarea: `/nueva <tarea>` con cockpit (archiva el estado y limpia); sin él, `/clear`.

@@ -51,7 +51,7 @@ const answered = (text: string) => ({ value: { isAnswered: true, text, usage: {}
 function repo(
   on: Parameters<TestBody>[1],
   files: Record<string, string>,
-  opts: { root?: string; tops?: Record<string, string>; links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; autonomo?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; noProject?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
+  opts: { linked?: string; root?: string; tops?: Record<string, string>; links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; autonomo?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; noProject?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
 ) {
   clears = 0
   let stateReads = 0
@@ -87,7 +87,7 @@ function repo(
       await opts.beforeState?.(++stateReads)
       if (!e.argv.includes('--raiz') && !opts.statePath) return { value: { exitCode: 3, stdout: '', stderr: '' } } as never
       const at = opts.estadoMd ?? opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`
-      return ok(JSON.stringify({ nucleo: opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`, sha256: (() => { try { return at in files ? `h:${files[at]}` : null } catch { return null } })(), pct: 1, bytes: 10, tope: opts.tope ?? 5700, dueno: null, agentes_vivos: opts.live ?? 0, ...(opts.estadoMd ? { modo: 'estado-md', estado: opts.estadoMd } : {}) }))
+      return ok(JSON.stringify({ nucleo: opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`, sha256: (() => { try { return at in files ? `h:${files[at]}` : null } catch { return null } })(), pct: 1, bytes: 10, tope: opts.tope ?? 5700, dueno: null, agentes_vivos: opts.live ?? 0, ...(opts.linked ? { raiz: opts.linked, sesion: `${home}/.claude/estado/sesiones/20261114-1000-42`, vinculado: true } : {}), ...(opts.estadoMd ? { modo: 'estado-md', estado: opts.estadoMd } : {}) }))
     }
     if (e.argv[0] === bin && e.argv[1] === '--migrar') {
       const path = opts.statePath ?? `${EST}/nucleo.md`
@@ -473,6 +473,65 @@ test('raíz: una sesión abierta en ~ que hizo cd a un repo guarda en su ranura,
   expect(r.files[slot]).toBeTruthy()
   expect(r.files['/work/proyecto/.claude/estado/nucleo.md']).toBeUndefined()
   expect(r.runs.find(x => x.argv.includes('--show-toplevel'))?.argv.slice(0, 3)).toEqual(['git', '-C', HOME])
+})
+
+// 2.1.0: una sesión de ~ vinculada a un proyecto. El mod no decide «proyecto» (git desde ~ da null): llama al CLI sin --raiz y se fía de lo que devuelve.
+const PROJ_NUCLEO = '/work/proyecto/.claude/estado/nucleo.md'
+
+test('vínculo: /handoff en una sesión de ~ vinculada guarda en el proyecto que devuelve el CLI, sin --raiz', async ($, on) => {
+  fork(on, NEW)
+  const slot = `${HOME}/.claude/estado/sesiones/20261114-1000-42/nucleo.md`
+  const r = repo(on, { [slot]: '# Estado\n> proyecto: /work/proyecto\n' }, { root: HOME, isRepo: false, cwd: HOME, linked: '/work/proyecto', statePath: PROJ_NUCLEO })
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(res.text).toContain('Guardado')
+  expect(r.calls.every(call => !call.argv.includes('--raiz'))).toBe(true)
+  expect(r.files[PROJ_NUCLEO]).toBeTruthy()
+  expect(r.files[slot]).toBe('# Estado\n> proyecto: /work/proyecto\n')
+})
+
+test('vínculo: un --estado que dice vinculado pero cuyo nucleo no es el del proyecto no se usa', async ($, on) => {
+  fork(on, NEW)
+  const slot = `${HOME}/.claude/estado/sesiones/20261114-1000-42/nucleo.md`
+  const r = repo(on, {}, { root: HOME, isRepo: false, cwd: HOME, linked: '/work/otro', statePath: '/work/proyecto/.claude/estado/nucleo.md' })
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(res.text).toContain('vinculada a un proyecto pero su estado no está')
+  expect(r.calls).toHaveLength(0)
+  expect(r.files[slot]).toBeUndefined()
+})
+
+// Un CLI roto o ajeno que diga «vinculado a ~»: su nucleo sería el compartido de ~/.claude/estado, el de otras tareas.
+test('vínculo: un --estado que dice vinculado a ~ no llega al nucleo compartido', async ($, on) => {
+  fork(on, NEW)
+  const shared = `${HOME}/.claude/estado/nucleo.md`
+  const r = repo(on, { [shared]: PREV }, { root: HOME, isRepo: false, cwd: HOME, linked: HOME, statePath: shared })
+  const res = await $.command.run({ ...RUN, command: 'handoff', args: 'solo' })
+  expect(res.text).toContain('vinculada a un proyecto pero su estado no está')
+  expect(r.calls).toHaveLength(0)
+  expect(r.files[shared]).toBe(PREV)
+})
+
+test('vínculo: el handoff automático en una sesión de ~ vinculada guarda en el proyecto y limpia con su ruta', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 130_000 })
+  const r = repo(on, { [PROJ_NUCLEO]: PREV }, { root: HOME, isRepo: false, cwd: HOME, linked: '/work/proyecto', statePath: PROJ_NUCLEO })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  await clock.advance(800)
+  expect(seen.forks).toBe(1)
+  expect(seen.cleared).toBe(1)
+  expect(r.calls[0]?.argv).not.toContain('--raiz')
+  expect(seen.fills).toEqual([`adelante con la Siguiente acción de ${PROJ_NUCLEO}: T2`])
+})
+
+test('vínculo: /nueva archiva el nucleo del proyecto, no el de la ranura (que lleva el vínculo)', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = auto(on, { tokens: 1000 })
+  const r = repo(on, { [PROJ_NUCLEO]: PREV }, { root: HOME, isRepo: false, cwd: HOME, linked: '/work/proyecto', statePath: PROJ_NUCLEO })
+  await $.command.run({ ...RUN, command: 'nueva', args: 'arreglar el login' })
+  await clock.advance(400)
+  expect(r.runs.find(x => x.argv.includes('--migrar'))?.argv).toEqual([BIN, '--migrar', '/work/proyecto', '--sesion', 'sesion-1', '--esperado', HASH, '--json'])
+  expect(seen.cleared).toBe(1)
+  expect(seen.fills).toEqual(['arreglar el login'])
 })
 
 test('raíz: el CLI recibe la raíz de arranque en CLAUDE_PROJECT_DIR y corre en el cwd vivo (la carpeta que anota)', async ($, on) => {
