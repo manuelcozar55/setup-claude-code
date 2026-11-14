@@ -91,7 +91,7 @@ general, y que el general solo coordine. Medido antes de cambiar nada (14-nov-20
   `CLAUDE_PROJECT_DIR` en un repo no hay consulta extra. En los hooks, como mucho una lectura de fichero y una llamada a git
   (timeout de 5 s intacto).
 - Una ranura tiene un solo proyecto activo. Revincular sustituye y deja rastro en `## Coordinación`. No hay flag para
-  desvincular: se borra la línea `> proyecto:` de la ranura (o se empieza otra tarea con `/nueva`); `handoff --liberar` suelta el
+  desvincular: se borra la línea `> proyecto:` de la ranura; `handoff --liberar` suelta el
   dueño.
 - Sin `CLAUDE_PID` (el Bash tool lo exporta; otros entornos no), `--proyecto` necesita `--ranura <slot>`; si no, sale con 3.
 - No se arregla aquí que un shell de fondo vivo bloquee el handoff automático (solo la regla F3), ni los nucleos antiguos que ya
