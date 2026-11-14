@@ -141,7 +141,7 @@ test('autosave: sesión de ~ vinculada a un proyecto: lee el dirty y guarda en e
   expect(seen.argvs.filter(a => a[0] === BIN).every(a => !a.includes('--raiz'))).toBe(true)
 })
 
-test('autosave: sin dirty no guarda nunca',async ($, on) => {
+test('autosave: sin dirty no guarda nunca', async ($, on) => {
   const clock = mock.clock(on)
   const { seen } = await setup($, on)
   await $.turn.complete(DONE_TURN)

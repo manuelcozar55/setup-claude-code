@@ -719,8 +719,12 @@ async function resolveState($: $) {
   if (typeof state !== 'object' || state === null || !('nucleo' in state) || typeof state.nucleo !== 'string' || !state.nucleo.startsWith('/') || !state.nucleo.endsWith('/nucleo.md'))
     throw new Error('handoff --estado no devuelve una ruta nucleo válida; no limpio')
   // A session started in ~ and linked to a project (`vinculado`, validated by the CLI): the state is the project's own. The
-  // nucleo must be exactly that project's, so an odd answer never reaches the shared estado/nucleo.md.
-  const linkedTo = 'vinculado' in state && state.vinculado === true && 'raiz' in state && typeof state.raiz === 'string' && state.raiz.startsWith('/') && state.nucleo === `${state.raiz}/.claude/estado/nucleo.md` ? state.raiz : null
+  // nucleo must be exactly that project's and the project never ~ or ~/.claude (same rule as the CLI), so an odd answer never
+  // reaches the shared estado/nucleo.md. A link whose state is elsewhere (project not writable: fallback dir) is refused by name.
+  const linked = 'vinculado' in state && state.vinculado === true
+  const h = location.home
+  const linkedTo = linked && 'raiz' in state && typeof state.raiz === 'string' && state.raiz.startsWith('/') && !state.raiz.includes('/../') && h !== '' && state.raiz !== h && state.raiz !== `${h}/.claude` && !state.raiz.startsWith(`${h}/.claude/`) && state.nucleo === `${state.raiz}/.claude/estado/nucleo.md` ? state.raiz : null
+  if (linked && linkedTo === null) throw new Error(NO_LINK)
   // Without a root the only state this session may write is its own slot, never the shared estado/nucleo.md (another task's).
   if (location.root === null && linkedTo === null && !isOwnSlot(state.nucleo, location.home)) throw new Error(NO_SLOT)
   if (!('agentes_vivos' in state) || typeof state.agentes_vivos !== 'number' || !Number.isSafeInteger(state.agentes_vivos) || state.agentes_vivos < 0)
@@ -751,7 +755,8 @@ async function refuseLinks($: $, dir: string) {
 const missingBin = (bin: string) => `no encuentro ${bin} (el comando handoff del kit): instálalo con «bash kit/install.sh --apply» desde el repo setup-claude-code`
 const NO_PROJECT = 'aquí no hay proyecto (~, ~/.claude o fuera de un repo git): no hay estado que guardar'
 // Distinct from NO_PROJECT: with no root the state lives in a per-session slot, and without it (pid of claude unknown) there is nowhere safe to write.
-const NO_SLOT = 'sin estado propio de esta sesión (fuera de un proyecto git el estado va a ~/.claude/estado/sesiones/<fecha>-<pid>/ y no se pudo resolver): abre la sesión dentro de un repo git'
+const NO_LINK = 'la sesión está vinculada a un proyecto pero su estado no está en <proyecto>/.claude/estado/ (¿proyecto sin permiso de escritura?): no limpio'
+const NO_SLOT ='sin estado propio de esta sesión (fuera de un proyecto git el estado va a ~/.claude/estado/sesiones/<fecha>-<pid>/ y no se pudo resolver): abre la sesión dentro de un repo git'
 
 // CLI: 0 saved (notices in the receipt; old CLIs: stderr) · 2 invalid · 3 no project · 4 busy/conflict (retry once) · 5 foreign owner.
 // `silent` (the autosave): no toast, band, receipt or prompt fill, and errors go to the debug log. It keeps the lock and
