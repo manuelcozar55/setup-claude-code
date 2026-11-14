@@ -39,7 +39,8 @@ general, y que el general solo coordine. Medido antes de cambiar nada (14-nov-20
    encabezado fechado (nada se pierde y nada se fusiona solo); el nucleo de la ranura queda como coordinación (título,
    `> sesión anterior:`, `> proyecto:` y `## Coordinación` con una línea por vínculo, máximo 10); se reclama el dueño del
    proyecto, se asegura `.claude/estado/` en `.git/info/exclude` y el registro de agentes pasa al proyecto. Es idempotente;
-   revincular suelta el dueño del proyecto anterior.
+   revincular suelta el dueño del proyecto anterior, también cuando un `/clear` cambió el `session_id` sin cambiar de proceso
+   (af350cb: antes el proyecto anterior quedaba bloqueado para las demás sesiones, rc 5).
 5. **`handoff --estado` con ranura vinculada** devuelve `raiz`, `nucleo` y `dueno` del proyecto, `sesion` (la ranura) y
    `vinculado: true`. El cockpit no reimplementa nada: llama al CLI sin `--raiz` y se fía de `raiz`.
 6. **Reinyección (clear, compact, resume):** con vínculo válido se inyecta el nucleo del proyecto por el camino normal y una
@@ -53,7 +54,9 @@ general, y que el general solo coordine. Medido antes de cambiar nada (14-nov-20
    hooks llevan `--ranura`, así que funcionan desde cualquier cwd.
 8. **Cockpit 0.10.0:** con vínculo, `/handoff`, el handoff automático, el autosave por hitos y el panel usan el estado del
    proyecto; el panel dice que la sesión viene de `~`; `/nueva` conserva el vínculo (la línea vive en el nucleo de la ranura,
-   así que `/nueva` no debe archivar la ranura). Sin vínculo, nada cambia.
+   así que `/nueva` archiva el estado del proyecto con `--migrar <raíz>` y no la ranura). Sin vínculo, nada cambia. El mod solo
+   da por vinculado un nucleo que sea exactamente `<raíz>/.claude/estado/nucleo.md`: si el proyecto no es escribible y su
+   estado cae al directorio de reserva, se niega a limpiar en vez de seguir.
 9. **Tres arreglos del diagnóstico, en la misma versión:**
    - **F1, orden de descarte al reinyectar** (`_nucleo_emitir_awk`): cuando no cabe todo cae antes «Último turno (auto)», luego
      «Ficheros tocados» (regenerable desde git), «Plan» y al final «Pendientes». Antes caía Pendientes antes que Ficheros. El
@@ -94,6 +97,15 @@ general, y que el general solo coordine. Medido antes de cambiar nada (14-nov-20
   desvincular: se borra la línea `> proyecto:` de la ranura; `handoff --liberar` suelta el
   dueño.
 - Sin `CLAUDE_PID` (el Bash tool lo exporta; otros entornos no), `--proyecto` necesita `--ranura <slot>`; si no, sale con 3.
+- **Riesgo aceptado (revisión independiente del 14-nov):** el vínculo vale aunque no lo haya escrito `handoff --proyecto`. Quien
+  pueda escribir `> proyecto: <ruta>` en la cabecera del nucleo de la ranura redirige el estado a cualquier repo que pase la
+  validación; si ese repo no tiene dueño vigente, autosave crea allí `.claude/estado/`. Exige el mismo acceso que ejecutar el
+  comando, y una marca aparte solo movería el problema a otro fichero del mismo usuario. La validación y el dueño impiden
+  salir a `~/.claude` o pisar una sesión viva.
+- Revincular cuando el proyecto anterior ya no es válido (borrado, o dejó de ser raíz de su repo) no suelta su `.dueno`: queda
+  ligado al proceso y caduca con él. No se libera por una ruta sin validar.
+- Un `claude` anidado que herede el `CLAUDE_PID` del exterior comparte ranura, y con ella el vínculo (diseño previo del ADR
+  019; sin comprobar contra el binario).
 - No se arregla aquí que un shell de fondo vivo bloquee el handoff automático (solo la regla F3), ni los nucleos antiguos que ya
   superan el tope, ni la separación de bytes de entrada y salida en `recortes.log`.
 - Pendiente: el test «carrera: si nucleo.md cambia durante la fusión» de `test_nucleo_hooks.sh` falló 1 de 4 corridas (depende
