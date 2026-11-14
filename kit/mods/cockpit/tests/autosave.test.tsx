@@ -20,13 +20,13 @@ const no = () => ({ value: { exitCode: 1, stdout: '', stderr: '' } }) as never
 async function setup(
   $: any,
   on: Parameters<TestBody>[1],
-  o: { dirty?: string; tokens?: number; files?: Record<string, string>; fork?: 'ok' | 'nothing' | 'error'; cli?: number; live?: boolean; env?: string; hold?: Promise<void> } = {},
+  o: { linked?: boolean; dirty?: string; tokens?: number; files?: Record<string, string>; fork?: 'ok' | 'nothing' | 'error'; cli?: number; live?: boolean; env?: string; hold?: Promise<void> } = {},
 ) {
   const files: Record<string, string> = { [BIN]: '#!/usr/bin/env bash\n', [`${EST}/nucleo.md`]: PREV, ...o.files }
   if (o.dirty !== undefined) files[DIRTY] = o.dirty
-  const seen = { calls: 0, forks: 0, prompts: [] as string[], toasts: [] as string[], logs: [] as string[], fills: [] as string[], cli: 0, tokens: o.tokens ?? 50_000 }
+  const seen = { argvs: [] as (readonly string[])[], calls: 0, forks: 0, prompts: [] as string[], toasts: [] as string[], logs: [] as string[], fills: [] as string[], cli: 0, tokens: o.tokens ?? 50_000 }
   on('session.cwd', () => ({ value: '/work/proyecto/sub' }))
-  on('session.root', () => ({ value: '/work/proyecto/sub' }))
+  on('session.root', () => ({ value: o.linked ? HOME : '/work/proyecto/sub' }))
   on('session.id', () => ({ value: 'sesion-1' }) as never)
   on('session.end', (_, e) => ({ sessionId: e.sessionId }))
   on('session.usage', () => ({
@@ -38,15 +38,16 @@ async function setup(
   }) as never)
   on('agent.list', () => ({ value: o.live === false ? [] : [{ id: 'a1', status: 'running', description: '', type: 'x' }] }) as never)
   on('process.run', (_, e) => {
+    seen.argvs.push(e.argv)
     const a = e.argv.join(' ')
     if (a === 'printenv HOME') return ok(HOME)
     if (a === 'printenv CLAUDE_HOME') return ok('')
     if (a === 'printenv COCKPIT_AUTO_HANDOFF') return ok(o.env ?? 'off')
-    if (a.includes('--show-toplevel')) return ok('/work/proyecto\n')
+    if (a.includes('--show-toplevel')) return o.linked ? no() : ok('/work/proyecto\n')
     if (e.argv[0] === 'find') return ok('')
     if (e.argv[0] === 'mktemp') return ok(`${TMP}\n`)
     if (e.argv[0] === 'rm') return ok()
-    if (e.argv[0] === BIN && e.argv[1] === '--estado') return ok(JSON.stringify({ nucleo: `${EST}/nucleo.md`, pct: 1, bytes: 10, tope: 5700, dueno: null, agentes_vivos: o.live === false ? 0 : 1 }))
+    if (e.argv[0] === BIN && e.argv[1] === '--estado') return ok(JSON.stringify({ nucleo: `${EST}/nucleo.md`, pct: 1, bytes: 10, tope: 5700, dueno: null, agentes_vivos: o.live === false ? 0 : 1, ...(o.linked ? { raiz: '/work/proyecto', sesion: `${HOME}/.claude/estado/sesiones/20261114-1000-42`, vinculado: true } : {}) }))
     if (e.argv[0] === BIN) {
       seen.calls++
       if (o.cli) return { value: { exitCode: o.cli, stdout: '', stderr: 'dueño ajeno' } } as never
@@ -129,7 +130,18 @@ test('autosave: con dirty, ≥5 turnos y ≥10 min por turnos (8) guarda en sile
   expect(await $.command.run({ ...RUN, command: 'autosave', args: 'status' })).toEqual({ text: expect.stringMatching(/Autosave on\. Última síntesis: \d\d:\d\d \(1 en la sesión\)/) })
 })
 
-test('autosave: sin dirty no guarda nunca', async ($, on) => {
+test('autosave: sesión de ~ vinculada a un proyecto: lee el dirty y guarda en el proyecto que devuelve el CLI, sin --raiz', async ($, on) => {
+  const clock = mock.clock(on)
+  const { files, seen } = await setup($, on, { linked: true, dirty: 'motivo=compact\ndesde=2026-11-09T10:00:00Z\nultimo=2026-11-09T10:05:00Z\n' })
+  await turns($, clock, 1, 0)
+  await clock.advance(2 * MIN)
+  await turns($, clock, 1)
+  expect(seen.forks).toBe(1)
+  expect(files[`${EST}/nucleo.md`]).toContain('T2')
+  expect(seen.argvs.filter(a => a[0] === BIN).every(a => !a.includes('--raiz'))).toBe(true)
+})
+
+test('autosave: sin dirty no guarda nunca',async ($, on) => {
   const clock = mock.clock(on)
   const { seen } = await setup($, on)
   await $.turn.complete(DONE_TURN)

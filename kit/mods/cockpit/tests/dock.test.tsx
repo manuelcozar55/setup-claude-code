@@ -219,18 +219,18 @@ test('dock: waiting e idle están parados por diseño: siguen en Trabajando con 
 // The dock reads the owner and the share of the cap from `handoff --estado`: one source, the CLI's.
 const HOME = '/usr/u'
 const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '' } }) as never
-function estadoCli(on: never, estado: unknown, opts: { hangs?: boolean; exitCode?: number; noBin?: boolean } = {}) {
+function estadoCli(on: never, estado: unknown, opts: { start?: string; hangs?: boolean; exitCode?: number; noBin?: boolean } = {}) {
   const o = on as any
   const runs: { argv: readonly string[]; init?: { timeoutMs?: number } }[] = []
   o('fs.exists', () => ({ value: !opts.noBin }))
   o('session.cwd', () => ({ value: '/w/p' }))
-  o('session.root', () => ({ value: '/w/p' }))
+  o('session.root', () => ({ value: opts.start ?? '/w/p' }))
   o('session.id', () => ({ value: 'sesion-1' }))
   o('process.run', (_: unknown, e: { argv: readonly string[]; init?: { timeoutMs?: number } }) => {
     runs.push(e)
     const a = e.argv.join(' ')
     if (a === 'printenv HOME') return out(HOME)
-    if (a.includes('--show-toplevel')) return out('/w/p\n')
+    if (a.includes('--show-toplevel')) return opts.start ? out('', 1) : out('/w/p\n')
     if (e.argv[0] === `${HOME}/.claude/bin/handoff`) return opts.hangs ? new Promise(() => undefined) : out(JSON.stringify(estado), opts.exitCode)
     return out('')
   })
@@ -312,4 +312,21 @@ test('el inicio muestra degradación cuando el CLI no da estado', async ($, on) 
   estadoCli(on as never, ESTADO, { exitCode: 1 })
   const { ui } = await mountDock($ as never, on as never, 56)
   expect(await ui.find({ text: /Continuidad degradada/ })).toBeTruthy()
+})
+
+// 2.1.0: sesión lanzada en ~ y vinculada a un proyecto: el CLI devuelve la raíz del proyecto y `vinculado`; el mod no pasa --raiz.
+test('dock: sesión de ~ vinculada: lo dice, nombra el proyecto y no es «estado propio»', async ($, on) => {
+  const runs = estadoCli(on as never, { ...ESTADO, sesion: `${HOME}/.claude/estado/sesiones/20261114-1000-42`, vinculado: true, dueno: { sesion: 'sesion-1', desde: '2026-10-19T10:00:00Z', vigente: true } }, { start: HOME })
+  const { ui } = await mountDock($ as never, on as never, 80)
+  expect(await ui.find({ type: 'Text', text: 'sesión de ~ vinculada a «p»: su estado vive ahí' })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /lo escribe: esta sesión$/ })).toBeTruthy()
+  expect(await ui.find({ text: /estado propio/ })).toBeFalsy()
+  expect(runs.find(r => r.argv[0] === `${HOME}/.claude/bin/handoff`)?.argv).toEqual([`${HOME}/.claude/bin/handoff`, '--estado', '--sesion', 'sesion-1'])
+})
+
+test('dock: sesión de ~ sin vínculo sigue diciendo «estado propio» y no habla de vínculo', async ($, on) => {
+  estadoCli(on as never, { raiz: null, nucleo: `${HOME}/.claude/estado/sesiones/20261114-1000-42/nucleo.md`, sesion: `${HOME}/.claude/estado/sesiones/20261114-1000-42`, bytes: 10, tope: 6500, pct: 1, dueno: null }, { start: HOME })
+  const { ui } = await mountDock($ as never, on as never, 80)
+  expect(await ui.find({ text: /lo escribe: esta sesión \(estado propio/ })).toBeTruthy()
+  expect(await ui.find({ text: /vinculada/ })).toBeFalsy()
 })
