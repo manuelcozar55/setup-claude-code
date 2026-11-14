@@ -10,6 +10,7 @@ set -euo pipefail
 uso() {
   cat <<'EOF'
 uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--solo] [--commit]
+     handoff --proyecto RUTA [--ranura DIR] [--sesion ID] [--json]
      handoff --auto [--raiz DIR] [--sesion ID] [--transcript RUTA] [--motivo stop|compact|fin] [--json] < hook.json
      handoff --iniciar [--raiz DIR]
      handoff --informe TEMA [--raiz DIR]
@@ -38,6 +39,12 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
 --ranura  solo con --desde: escribe en esa ranura de sesión (~/.claude/estado/sesiones/<id>/) sea cual sea el cwd; es lo que
           dicta el aviso de contexto en una sesión abierta desde ~. Se acepta solo si, resuelta con realpath, es un hijo directo de
           $CLAUDE_HOME/estado/sesiones/ y no contiene enlaces; si no, sale 1 sin escribir. Excluye --raiz y --commit.
+--proyecto vincula la sesión de ~ con el repo git de RUTA (vale cualquier carpeta de dentro): desde entonces su estado (hooks, --desde,
+          --auto, --estado, agentes) vive en <repo>/.claude/estado/ y la ranura de ~ solo coordina («> proyecto: RAÍZ» y «## Coordinación»).
+          Rechaza sin cambiar nada si la sesión no es de ~, si RUTA no es un proyecto válido (raíz de su repo, ruta simple, ni ~ ni ~/.claude)
+          o si el proyecto tiene dueño ajeno vigente (5). Proyecto sin estado: lo siembra con el nucleo de la ranura; con estado: ese nucleo
+          va al diario.md de la ranura. Reclama el dueño del proyecto (suelta el del anterior si revincula) y lleva el registro de agentes.
+          Idempotente. Con --ranura (la propia) vale desde cualquier cwd; sin ella, la ranura es la del claude de esta sesión.
 --auto    lo usa el hook autosave.sh, no el modelo: escribe SOLO la sección «## Último turno (auto)» (la última del nucleo, ≤ 600 B:
           rama, última petición, último mensaje, ficheros tocados y comandos, sacados de git y del transcript; sin modelo) y la marca
           autosave.dirty. Lee el JSON del hook por stdin (session_id, transcript_path, cwd, last_assistant_message, compact_summary,
@@ -57,6 +64,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
 --liberar ID libera solamente al dueño cuyo ID coincida; conserva el núcleo.
 --agentes tabla del registro persistente; no crea estado ni archiva agentes.
 --estado  una línea JSON: raíz, nucleo, bytes, tope, pct, dueño, sha256 y agentes_vivos de --sesion (sin proyecto: {"raiz":null}).
+          Con la ranura de esta sesión vinculada a la raíz: los del proyecto, más «sesion» (la ranura) y «vinculado»:true.
 Raíz: la del directorio actual (raíz git; no $HOME ni un directorio sin git) o --raiz DIR.
 Con ESTADO.md en la raíz y sin nucleo.md, ese es el estado del proyecto y --desde lo fusiona en él (nunca crea nucleo.md):
           Paso actual y Siguiente acción sustituyen a sus viñetas (el Objetivo solo si está vacío o es plantilla RELLENAR; Invariantes solo
@@ -93,17 +101,18 @@ avisos_stderr() {
 bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
 iso_de() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 
-MODO="" DESDE="" MIGRAR="" TEMA="" RAIZ_ARG="" RANURA_ARG="" SESION="" ESPERADO="" JSON=0 SOLO=0 COMMIT=0 TRANSCRIPT_ARG="" MOTIVO=""
+MODO="" DESDE="" MIGRAR="" TEMA="" PROYECTO_ARG="" RAIZ_ARG="" RANURA_ARG="" SESION="" ESPERADO="" JSON=0 SOLO=0 COMMIT=0 TRANSCRIPT_ARG="" MOTIVO=""
 while [ $# -gt 0 ]; do
   case $1 in
     -h | --help) uso; exit 0 ;;
     --migrar)
       MODO=migrar; shift
       if [ $# -gt 0 ] && [[ $1 != --* ]]; then MIGRAR=$1; shift; fi ;;
-    --desde | --informe | --raiz | --ranura | --sesion | --liberar | --esperado | --transcript | --motivo)
+    --desde | --proyecto | --informe | --raiz | --ranura | --sesion | --liberar | --esperado | --transcript | --motivo)
       [ $# -ge 2 ] || { echo "uso: handoff: a $1 le falta su argumento (handoff --help)" >&2; exit 64; }
       case $1 in
         --desde) MODO=desde; DESDE=$2 ;;
+        --proyecto) MODO=proyecto; PROYECTO_ARG=$2 ;;
         --informe) MODO=informe; TEMA=$2 ;;
         --raiz) RAIZ_ARG=$2 ;;
         --ranura) RANURA_ARG=$2 ;;
@@ -125,12 +134,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 # Sin --sesion, en --desde vale la sesión que corre este Bash (Claude Code la exporta): quien ya es dueño no tiene que repetirla.
-[ "$MODO" != desde ] || [ -n "$SESION" ] || SESION=${CLAUDE_CODE_SESSION_ID:-}
+[ "$MODO" != desde ] && [ "$MODO" != proyecto ] || [ -n "$SESION" ] || SESION=${CLAUDE_CODE_SESSION_ID:-}
 { [ -z "$TRANSCRIPT_ARG" ] && [ -z "$MOTIVO" ]; } || [ "$MODO" = auto ] || die 64 "--transcript y --motivo solo van con --auto"
 [ -n "$MODO" ] || { echo "uso: handoff --desde BORRADOR.md | --iniciar | --informe TEMA | --migrar DIR | --estado (handoff --help)" >&2; exit 64; }
 
 if [ -n "$RANURA_ARG" ]; then
-  [ "$MODO" = desde ] && [ -z "$RAIZ_ARG" ] || die 64 "--ranura solo va con --desde y sin --raiz"
+  { [ "$MODO" = desde ] || [ "$MODO" = proyecto ]; } && [ -z "$RAIZ_ARG" ] || die 64 "--ranura solo va con --desde o --proyecto y sin --raiz"
   [ "$COMMIT" -eq 0 ] || die 3 "--commit no aplica al estado de una sesión (no hay repo): no escribo nada"
 fi
 
@@ -141,10 +150,22 @@ fi
 
 # La raíz de proyecto, o rc 1 sin tocar nada (decisión 6: ni $HOME, ni ~/.claude, ni un directorio sin git).
 resolver_raiz() {
-  if [ -n "$RAIZ_ARG" ]; then RAIZ=$(CLAUDE_PROJECT_DIR=$RAIZ_ARG nucleo_raiz "$RAIZ_ARG") || RAIZ=""
+  # Un --raiz explícito no pasa por el vínculo de la ranura: quien lo da quiere esa raíz (o ninguna, con ~).
+  if [ -n "$RAIZ_ARG" ]; then RAIZ=$(CLAUDE_PROJECT_DIR=$RAIZ_ARG NUCLEO_VINCULO=0 nucleo_raiz "$RAIZ_ARG") || RAIZ=""
   else RAIZ=$(nucleo_raiz "$PWD") || RAIZ=""
   fi
   [ -n "$RAIZ" ]
+}
+
+# vinculada: VSLOT = la ranura de este proceso si está vinculada a $RAIZ (sin --raiz); vacío si no. Distingue «sesión de ~
+# vinculada a un proyecto» de «sesión lanzada en el proyecto» (esta no tiene ranura). rc 1 si no está vinculada.
+VSLOT=""
+vinculada() {
+  local s
+  VSLOT=""
+  [ -z "$RAIZ_ARG" ] || return 1
+  s=$(nucleo_sesion_dir 2>/dev/null) && [ -d "$s" ] && [ "$(nucleo_proyecto "$s/nucleo.md")" = "$RAIZ" ] || return 1
+  VSLOT=$s
 }
 
 # Modo sesión: sin proyecto y sin --raiz, el estado de este claude vive en su ranura (nucleo_sesion_dir). SES = la
@@ -192,8 +213,10 @@ if [ "$MODO" = estado ]; then
     DJ=$(jq -cn --arg s "${D% *}" --arg d "$(iso_de "${D#* }")" --argjson v "$V" '{sesion:$s,desde:$d,vigente:$v}')
   fi
   VIVOS=$(nucleo_agentes_vivos "$E" "$SESION" | jq length) || die 1 "no puedo leer la foto de agentes de $SESION"
-  jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg r "$RAIZ" --arg n "$NUC" --arg ej "$EJ" --argjson b "$B" --argjson t "$TOPE" --argjson p "$((B * 100 / TOPE))" --argjson d "$DJ" \
-    '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d,agentes_vivos:$av,sha256:(if $sha == "" then null else $sha end)} + (if $ej == "" then {} else {modo:"estado-md",estado:$ej} end)'
+  # Sesión de ~ vinculada a este proyecto: el estado es el del proyecto y se dice cuál es la ranura (`sesion`) y que hay vínculo.
+  vinculada || true
+  jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg r "$RAIZ" --arg n "$NUC" --arg ej "$EJ" --arg vs "$VSLOT" --argjson b "$B" --argjson t "$TOPE" --argjson p "$((B * 100 / TOPE))" --argjson d "$DJ" \
+    '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d,agentes_vivos:$av,sha256:(if $sha == "" then null else $sha end)} + (if $ej == "" then {} else {modo:"estado-md",estado:$ej} end) + (if $vs == "" then {} else {sesion:$vs,vinculado:true} end)'
   exit 0
 fi
 
@@ -496,6 +519,8 @@ if [ "$MODO" = auto ]; then
   fi
   # Se reescribe si cambió: un /resume dentro del mismo proceso cambia el session_id y por_sid busca por igualdad.
   if [ -n "$AES" ] && [ -n "$SESION" ] && [ "$(cat "$AES/.sesion" 2>/dev/null)" != "$SESION" ]; then printf '%s\n' "$SESION" >"$AES/.sesion" 2>/dev/null || true; fi
+  # Lo mismo en una ranura vinculada: el estado va al proyecto, pero un `claude --resume` la busca por el session_id.
+  if [ -z "$AES" ] && [ -n "$SESION" ] && vinculada && [ "$(cat "$VSLOT/.sesion" 2>/dev/null)" != "$SESION" ]; then printf '%s\n' "$SESION" >"$VSLOT/.sesion" 2>/dev/null || true; fi
   if [ "$MOTIVO" = compact ] && [ -n "$SESION" ]; then
     a_json .compact_summary | head -c 4096 >"$AW/resumen"
     if [ -s "$AW/resumen" ]; then
@@ -518,9 +543,9 @@ if [ "$MODO" = auto ]; then
 fi
 
 # ---------------------------------------------------------------- --desde
-[ -f "$DESDE" ] && [ -r "$DESDE" ] || die 2 "no puedo leer el borrador «$DESDE»"
-[ "$(wc -c <"$DESDE")" -le 262144 ] || die 2 "el borrador pasa de 256 KB: un estado no es un volcado"
-if [ -n "$RANURA_ARG" ]; then
+# ranura_propia: SES = la ranura que da --ranura, si es de esta sesión; si no, sale sin escribir nada.
+ranura_propia() {
+  local f
   # El destino explícito solo vale dentro de sesiones/: realpath resuelve «..» y enlaces antes de comparar.
   RBASE=$(realpath -- "${CLAUDE_HOME:-$HOME/.claude}/estado/sesiones" 2>/dev/null) || die 1 "--ranura: no existe ${CLAUDE_HOME:-$HOME/.claude}/estado/sesiones"
   SES=$(realpath -- "$RANURA_ARG" 2>/dev/null) && [ -d "$SES" ] && [ "$(dirname "$SES")" = "$RBASE" ] || die 1 "--ranura «$RANURA_ARG» no es una ranura dentro de $RBASE: no escribo nada"
@@ -529,8 +554,105 @@ if [ -n "$RANURA_ARG" ]; then
   MIA=$(nucleo_sesion_dir 2>/dev/null) || MIA=""
   [ -n "$MIA" ] && [ "$(realpath -- "$MIA" 2>/dev/null)" = "$SES" ] ||
     die 5 "--ranura «$RANURA_ARG» es de otra sesión${MIA:+; la tuya es $MIA}: no escribo nada"
+}
+
+# ---------------------------------------------------------------- --proyecto
+# Vincula la ranura de esta sesión de ~ con un proyecto (D3 de 2.1.0): desde aquí el estado de trabajo vive en
+# <proyecto>/.claude/estado/ y la ranura queda como coordinación. Bajo el lock de la ranura y el del proyecto; todo lo que
+# puede rechazarse (ruta, dueño ajeno) se mira antes de escribir nada.
+if [ "$MODO" = proyecto ]; then
+  [ -n "$SESION" ] || die 64 "--proyecto necesita --sesion ID (o CLAUDE_CODE_SESSION_ID): el dueño del proyecto es una sesión"
+  case $SESION in *[!A-Za-z0-9_-]*) die 64 "--sesion: solo letras, cifras, «_» y «-»" ;; esac
+  if [ -n "$RANURA_ARG" ]; then ranura_propia
+  else
+    # La ranura es lo único que dice que la sesión es de ~: una lanzada en un proyecto ya tiene el suyo.
+    [ -z "${CLAUDE_PROJECT_DIR:-}" ] || ! NUCLEO_VINCULO=0 nucleo_raiz "$CLAUDE_PROJECT_DIR" >/dev/null || die 3 "esta sesión ya tiene proyecto ($CLAUDE_PROJECT_DIR): --proyecto es solo para sesiones lanzadas en ~"
+    SES=$(nucleo_sesion_dir crear 2>/dev/null) || die 3 "sin ranura de sesión (¿no es de ~, o no se sabe su pid? pásala con --ranura): no escribo nada"
+  fi
+  [ -d "$PROYECTO_ARG" ] || die 3 "--proyecto: «$PROYECTO_ARG» no es un directorio: no escribo nada"
+  P=$(timeout -k 1 3 git -C "$PROYECTO_ARG" rev-parse --show-toplevel 2>/dev/null) || die 3 "--proyecto: «$PROYECTO_ARG» no está dentro de un repo git: no escribo nada"
+  nucleo_proyecto_valido "$P" || die 3 "--proyecto: «$P» no es un proyecto válido (ruta absoluta simple, raíz de su repo git, y ni ~ ni ~/.claude): no escribo nada"
+  ! nucleo_enlazado "$P" || die 3 "$P/.claude, su estado o algo dentro de él es un enlace o apunta fuera del proyecto: no escribo nada"
+  if D=$(nucleo_dueno_ajeno "$P" "$SESION"); then
+    die 5 "la sesión dueña es otra ($D): no escribo. Si está abandonada: handoff --liberar $D; si no, trabaja en otra carpeta"
+  fi
+  SN=$SES/nucleo.md
+  [ ! -L "$SN" ] || die 3 "el nucleo de la ranura es un enlace: no escribo nada"
+  ACT=$(nucleo_proyecto "$SN") || ACT=""
+  nucleo_bloquear "$SES" || die "$?" "ranura ocupada o insegura: reintenta"
+  E=$(nucleo_estado_dir "$P") || die 3 "no puedo escribir el estado de $P (sin permiso aquí y en el directorio de usuario)"
+  nucleo_bloquear "$E" || die "$?" "estado de $P ocupado o inseguro: reintenta"
+  RC=0; nucleo_dueno_tomar "$P" "$E" "$SESION" || RC=$?
+  case $RC in
+    0) ;;
+    5) die 5 "la sesión dueña es otra: no escribo. Si está abandonada: handoff --liberar <id>; si no, trabaja en otra carpeta" ;;
+    *) die 1 "no puedo reclamar el dueño de $P" ;;
+  esac
+  W=$(mktemp -d "${TMPDIR:-/tmp}/handoff.XXXXXX")
+  TMP=""
+  trap 'rm -rf -- "$W"; [ -z "$TMP" ] || rm -f -- "$TMP"' EXIT
+  HECHO=ya-vinculada
+  if [ "$ACT" != "$P" ]; then
+    HECHO=vinculada
+    # El nucleo de la ranura (si no es ya solo coordinación) no se pierde ni se fusiona solo: siembra un proyecto sin estado
+    # y se archiva en el diario de la ranura si el proyecto ya tiene el suyo.
+    if [ -f "$SN" ] && ! command grep -qx '## Coordinación' "$SN"; then
+      if [ -f "$E/nucleo.md" ] || nucleo_modo_estado_md "$P"; then
+        # shellcheck disable=SC2094  # diario.md solo se añade; lo que se lee es el nucleo de la ranura
+        { [ -s "$SES/diario.md" ] || printf '# Diario\n'
+          printf '## %s nucleo de la ranura, archivado al vincular con %s\n' "$(date -u +%F)" "$P"; cat -- "$SN"; } >>"$SES/diario.md"
+        HECHO=vinculada-y-archivada
+      else
+        TMP=$(mktemp "$E/.nucleo.XXXXXX") || die 1 "no puedo escribir el estado de $P"
+        awk '/^## / { h = 1 } !h && /^> (sesión anterior|carpeta de trabajo|proyecto): / { next } { print }' "$SN" >"$TMP"
+        mv -f -- "$TMP" "$E/nucleo.md"; TMP=""
+        [ "$E" = "$P/.claude/estado" ] || : >"$E/.nucleo-fallback"
+        HECHO=vinculada-y-sembrada
+      fi
+    fi
+    if EX=$(git -C "$P" rev-parse --git-path info/exclude 2>/dev/null); then
+      case $EX in /*) ;; *) EX=$P/$EX ;; esac
+      mkdir -p "$(dirname "$EX")" 2>/dev/null || true
+      command grep -qFx '.claude/estado/' "$EX" 2>/dev/null || printf '.claude/estado/\n' >>"$EX" 2>/dev/null || true
+    fi
+    # La ranura queda como coordinación: título, sesión anterior, vínculo y una línea por vínculo (las 10 últimas).
+    TIT=$(sed -n 's/^\(# .*\)$/\1/p;/^## /q' "$SN" 2>/dev/null | head -n 1) || TIT=""; TIT=${TIT:-# Estado}
+    TMP=$(mktemp "$SES/.nucleo.XXXXXX") || die 1 "no puedo escribir la ranura"
+    {
+      printf '%s\n' "$TIT"
+      [ ! -f "$SN" ] || awk '/^## / { exit } /^> sesión anterior: / { print; exit }' "$SN"
+      printf '> proyecto: %s\n\n## Coordinación\n' "$P"
+      [ ! -f "$SN" ] || awk '/^## Coordinación$/ { c = 1; next } /^## / { c = 0 } c && /^- /' "$SN" | tail -n 9
+      printf -- '- %s · %s\n' "$(date -u +%F)" "$P"
+    } >"$TMP"
+    mv -f -- "$TMP" "$SN"; TMP=""
+  fi
+  printf '%s\n' "$SESION" >"$SES/.sesion" 2>/dev/null || true
+  # El registro de agentes pasa al estado del proyecto: desde ahora los hooks escriben allí.
+  if [ -f "$SES/agentes.jsonl" ] && [ ! -L "$SES/agentes.jsonl" ]; then
+    while IFS= read -r l || [ -n "$l" ]; do nucleo_agentes_anotar "$E" "$l" || true; done <"$SES/agentes.jsonl"
+    rm -f -- "$SES/agentes.jsonl"
+  fi
+  for f in "$SES"/agentes-vivos-*.json; do [ -f "$f" ] && [ ! -L "$f" ] && mv -f -- "$f" "$E/" || true; done
+  # Revincular: el dueño del proyecto anterior se suelta (solo si era esta sesión).
+  if [ -n "$ACT" ] && [ "$ACT" != "$P" ] && AD=$(nucleo_dueno "$ACT") && [ "${AD% *}" = "$SESION" ] && AE=$(nucleo_estado_leer "$ACT"); then
+    rm -f -- "$AE/.dueno"
+  fi
+  if [ "$JSON" = 1 ]; then jq -cn --arg r "$P" --arg n "$E/nucleo.md" --arg s "$SES" --arg h "$HECHO" '{raiz:$r,nucleo:$n,sesion:$s,resultado:$h}'
+  else echo "handoff: sesión vinculada a $P: su estado vive en $E/nucleo.md ($HECHO); la ranura $SES solo coordina"
+  fi
+  exit 0
+fi
+
+[ -f "$DESDE" ] && [ -r "$DESDE" ] || die 2 "no puedo leer el borrador «$DESDE»"
+[ "$(wc -c <"$DESDE")" -le 262144 ] || die 2 "el borrador pasa de 256 KB: un estado no es un volcado"
+if [ -n "$RANURA_ARG" ]; then
+  ranura_propia
+  # Con la ranura vinculada a un proyecto el estado de trabajo es el del proyecto (D2): se escribe allí, desde cualquier cwd.
+  if P=$(nucleo_proyecto "$SES/nucleo.md"); then RAIZ=$P; VSLOT=$SES; SES=""; fi
 else
   resolver_raiz || sesion crear || die 3 "sin proyecto ni ranura de sesión (ni \$HOME, ni ~/.claude, ni un directorio sin git es proyecto): no escribo nada"
+  [ -n "$SES" ] || vinculada || true
 fi
 # ESTMD=1: el estado del proyecto es ESTADO.md (sin nucleo.md propio): se fusiona en él y no se crea un nucleo.md en paralelo.
 ESTMD=0; [ -n "$SES" ] || ! nucleo_modo_estado_md "$RAIZ" || ESTMD=1
@@ -560,7 +682,7 @@ esac
 # directorio, sin controles y de ≤ 400 chars: va dentro de una línea que el hook de SessionStart lee como dato.
 CARPETA=""
 if [[ $PWD == /* && $PWD != *[[:cntrl:]]* ]] && [ "${#PWD}" -le 400 ] && [ -d "$PWD" ]; then
-  INICIO=${CLAUDE_PROJECT_DIR:-${SES:+$HOME}}; INICIO=${INICIO:-$RAIZ}
+  INICIO=${CLAUDE_PROJECT_DIR:-${SES:+$HOME}${VSLOT:+$HOME}}; INICIO=${INICIO:-$RAIZ}
   [ "${PWD%/}" = "${INICIO%/}" ] || CARPETA=$PWD
 fi
 # YA: los cierres que diario.md ya tiene, sin fecha ni hash. El borrador de cada handoff suele traer otra vez los [x] ya cerrados.
@@ -1124,6 +1246,7 @@ printf '%s' "$TEXTO" >"$TMP"
 mv -f -- "$TMP" "$NUC"
 rm -f -- "$E/autosave.dirty"
 [ -z "$SES" ] || case $SESION in '' | *[!A-Za-z0-9_-]*) ;; *) [ "$(cat "$SES/.sesion" 2>/dev/null)" = "$SESION" ] || printf '%s\n' "$SESION" >"$SES/.sesion" 2>/dev/null || true ;; esac
+[ -z "$VSLOT" ] || case $SESION in '' | *[!A-Za-z0-9_-]*) ;; *) [ "$(cat "$VSLOT/.sesion" 2>/dev/null)" = "$SESION" ] || printf '%s\n' "$SESION" >"$VSLOT/.sesion" 2>/dev/null || true ;; esac
 [ -n "$SES" ] || [ "$E" = "$RAIZ/.claude/estado" ] || : >"$E/.nucleo-fallback"
 
 HASH=sin-commit; [ -n "$SES" ] || HASH=$(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sin-commit)

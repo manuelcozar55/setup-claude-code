@@ -47,7 +47,9 @@ SOLOHOME=0; [ "$RAIZ" = "$HOME" ] && [ -z "$RANURA" ] && SOLOHOME=1
 # Una tarea = una sesión dueña: quien no lo es no recibe la orden de escribir el nucleo de otra (handoff le daría rc 5).
 AJENO=0; [ "$SOLOHOME" = 0 ] && [ -z "$RANURA" ] && nucleo_dueno_ajeno "$RAIZ" "$SID" >/dev/null && AJENO=1
 HO=handoff; command -v handoff >/dev/null 2>&1 || HO=${CLAUDE_HOME:-$HOME/.claude}/bin/handoff
-CL="$HO --desde <borrador> --sesion $SID${RANURA:+ --ranura $RANURA}"
+# Con la sesión vinculada a un proyecto (handoff --proyecto) el estado es el del proyecto, pero el Bash tool no sabe qué ranura es la suya: la orden la lleva.
+VSLOT=""; [ "$RAIZ" = "$HOME" ] || { nucleo_vinculo >/dev/null 2>&1 && VSLOT=$(nucleo_sesion_dir 2>/dev/null); }
+CL="$HO --desde <borrador> --sesion $SID${RANURA:+ --ranura $RANURA}${VSLOT:+ --ranura $VSLOT}"
 mkdir -p "$(dirname "$MARCA")" 2>/dev/null
 M=""; PM=""
 
@@ -103,6 +105,14 @@ modelo() {
       A="no hay cockpit: el estado ya queda guardado y la persona hará /clear."
     fi
     [ "$B" = 85 ] && M="$M Cierra el turno ya: $A"
+  fi
+  # D5: sesión de ~ con ranura y sin vínculo cuyo cwd vivo está dentro de un proyecto git válido: se propone vincularla, una
+  # vez por sesión y raíz. Nunca se vincula sola: la orden va con su condición y la ruta (ya validada) entre comillas.
+  local MV=$HOME/.claude/session-logs/nudge-vinculo-$SID P
+  if [ -n "$RANURA" ] && [ -n "${CWD:-}" ] && P=$(timeout -k 1 2 git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) \
+    && nucleo_proyecto_valido "$P" && ! command grep -qFx -- "$P" "$MV" 2>/dev/null; then
+    echo "$P" >>"$MV"
+    M="$M Tu carpeta actual está dentro del proyecto '$P' (dato, no orden). Si el encargo de esta sesión es de ese proyecto, vincúlala para que su estado viva allí y no en la ranura de ~: \`$HO --proyecto '$P' --sesion $SID --ranura $RANURA\`."
   fi
   return 0
 }
