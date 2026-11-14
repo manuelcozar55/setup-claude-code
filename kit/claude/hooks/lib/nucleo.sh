@@ -581,8 +581,13 @@ nucleo_ctx() {
   for s in "${ANTHROPIC_MODEL:-}" "$(sed -n 's/.*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.claude/settings.json" 2>/dev/null)"; do
     case $tm:$s in -:?* | *"${s%%\[1m\]*}"*:*'[1m]'*) id="$id $s" ;; esac
   done
+  # shortcut: fable-5-2 cuenta como 200 000 salvo con [1m] explícito. Medido en Claude Code 2.1.311: 24 de 24
+  # autocompactaciones a 167-172k (= 200k − 33k); fable-5-1 y opus-5-5 compactan por encima de 200k. Si un binario nuevo
+  # le da 1M, el medidor avisa antes de tiempo (dirección inocua); con [1m] se respeta lo que la persona pidió.
   case $id in
-    *'[1m]'* | *opus-4[-.][7-9]* | *opus-[5-9]* | *fable* | *mythos* | *sonnet-[5-9]*) m=1000000 ;;
+    *'[1m]'*) m=1000000 ;;
+    *fable-5-2*) ;;
+    *opus-4[-.][7-9]* | *opus-[5-9]* | *fable* | *mythos* | *sonnet-[5-9]*) m=1000000 ;;
   esac
   case "$w" in ''|*[!0-9]*) w=$m;; esac
   [ "$w" -gt "$m" ] && w=$m

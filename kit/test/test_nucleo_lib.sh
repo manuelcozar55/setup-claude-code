@@ -143,6 +143,15 @@ printf '{"model": "opus[1m]"}\n' >"$HOME/.claude/settings.json"
 ok "transcript haiku + settings opus[1m] → 167 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='' nucleo_ctx "$T/tm3.jsonl")" "100000 59"
 ok "transcript opus-4-6 + settings opus[1m] → 217 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='' nucleo_ctx "$T/tm2.jsonl")" "100000 46"
 ok "transcript sonnet-4-6 + su [1m] en el env → 217 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='claude-sonnet-4-6[1m]' nucleo_ctx "$T/tm4.jsonl")" "100000 46"
+# F2 (v2.1): claude-fable-5-2 autocompacta a 167-172k (ventana efectiva 200 000, medido 24/24 en 2.1.311); fable-5-1 y opus-5-5, por encima de 200k.
+printf '{"model": "opus"}\n' >"$HOME/.claude/settings.json"
+ok "fable-5-2 sin [1m], env 250 000 → 167 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL=claude-fable-5-2 nucleo_ctx "$T/t.jsonl")" "100000 59"
+ok "fable-5-2 sin [1m], env sin definir → 167 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW='' ANTHROPIC_MODEL=claude-fable-5-2 nucleo_ctx "$T/t.jsonl")" "100000 59"
+ok "fable-5-2[1m] (sufijo explícito), env 250 000 → 217 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='claude-fable-5-2[1m]' nucleo_ctx "$T/t.jsonl")" "100000 46"
+ok "fable-5-1, env 250 000 → 217 000 (sin cambio)" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL=claude-fable-5-1 nucleo_ctx "$T/t.jsonl")" "100000 46"
+ok "opus-5-5, env 250 000 → 217 000 (sin cambio)" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL=claude-opus-5-5 nucleo_ctx "$T/t.jsonl")" "100000 46"
+jq -cn '{type:"assistant",message:{model:"claude-fable-5-2",usage:{input_tokens:100000}}}' >"$T/tf.jsonl"
+ok "transcript fable-5-2 + alias en settings, env 250 000 → 167 000" "$(CLAUDE_CODE_AUTO_COMPACT_WINDOW=250000 ANTHROPIC_MODEL='' nucleo_ctx "$T/tf.jsonl")" "100000 59"
 # Forma vista en vivo (15-oct): la tarea bajo «## TAREA ACTUAL» con sus secciones en ###. Solo
 # con ## se inyectaba el título (148 chars) y el modelo retomaba a ciegas.
 A=$T/anidado.md
