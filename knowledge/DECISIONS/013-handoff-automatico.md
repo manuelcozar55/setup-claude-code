@@ -1,6 +1,6 @@
 # ADR 013 — El cockpit lanza el handoff solo, entre turnos
 
-**Fecha:** 2026-10-16 · **Estado:** aceptada
+**Fecha:** 2026-10-16 · **Estado:** aceptada · enmendada por 030 (el `/clear` espera al próximo mensaje de la persona)
 
 ## Contexto
 
