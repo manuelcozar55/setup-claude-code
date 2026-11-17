@@ -498,7 +498,7 @@ let deferredClear: { revision: number; path: string } | null = null
 // The prompt held for that /clear, sent again as the person's in the new session with the answer it replied to.
 type Resend = { text: string; answer: string; path: string; epoch: number }
 // `heldText`: that prompt while it is on its way (null otherwise). `holdCheck`: the person's prompts are judged one at a time;
-// a check stuck past HOLD_WAIT_MS no longer holds the next one (holdForClear rechecks the armed /clear before taking it).
+// a check that does not answer in HOLD_WAIT_MS counts as failed (its prompt goes as typed) and its late answer changes nothing.
 let heldText: string | null = null
 let holdCheck: Promise<void> = Promise.resolve()
 const HOLD_WAIT_MS = 10_000
@@ -648,10 +648,12 @@ async function disarm($: $, rearm: boolean) {
 // What a resend cannot carry (attachments, @file mentions, other plugins' context), a prompt that is not the person's at
 // rest, or a busy session lets it through and the next turn end saves and arms again. Returns the reason shown for the
 // hold, or '' to let the prompt pass.
-async function holdForClear($: $, e: PromptSubmitInput) {
+async function holdForClear($: $, e: PromptSubmitInput, check: { isLate: boolean }) {
   const armed = deferredClear
   if (!armed) return ''
   const pass = async (why: string) => {
+    // Past HOLD_WAIT_MS the prompt already went as typed: a late answer must not drop a /clear armed since.
+    if (check.isLate) return ''
     await $.ui.log(`cockpit: /clear diferido aplazado: ${why}`, { to: 'debug' })
     await disarm($, true)
     return ''
@@ -670,7 +672,7 @@ async function holdForClear($: $, e: PromptSubmitInput) {
   const limit = await autoThreshold($)
   const c = await read($, ctx)
   if (limit === null || !c || pctOf(c) < limit) return pass('el contexto ya está bajo el umbral')
-  if (deferredClear !== armed || handoffBusy || clearPending) return pass('actividad nueva durante la comprobación')
+  if (check.isLate || deferredClear !== armed || handoffBusy || clearPending) return pass('actividad nueva durante la comprobación')
   deferredClear = null
   clearPending = true
   heldText = e.text
@@ -1487,12 +1489,17 @@ export const register: Register = on => {
     let done = () => {}
     holdCheck = new Promise<void>(resolve => { done = resolve })
     try {
-      await Promise.race([prior, $.clock.sleep(HOLD_WAIT_MS)])
+      await prior
       if (heldText !== null && (e.origin.kind === 'composer' || e.origin.kind === 'bridge')) {
         return { drop: heldText.trim() === e.text.trim() ? 'Tu mensaje ya va a la sesión nueva' : 'Limpiando el contexto: envía este mensaje cuando acabe' }
       }
-      const why = await holdForClear($, e)
-      if (why) return { drop: why }
+      // The check is bounded, not the wait for it: a check still running beside the next one could send its prompt late.
+      const check = { isLate: false }
+      const why = await Promise.race([holdForClear($, e, check), $.clock.sleep(HOLD_WAIT_MS).then(() => { check.isLate = true; return null })])
+      if (why === null) {
+        await $.ui.log(`cockpit: /clear diferido aplazado: la comprobación no respondió en ${HOLD_WAIT_MS / 1000} s`, { to: 'debug' })
+        await disarm($, true)
+      } else if (why) return { drop: why }
     } finally {
       done()
     }

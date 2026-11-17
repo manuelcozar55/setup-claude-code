@@ -595,7 +595,7 @@ const VOUCHED = `AUTORIZADO: sí\n${PLAN}`
 // The engine beneath the mod: usage (limit 180k = 200k - 20k buffer), agents, fork, clear and fill.
 function auto(
   on: Parameters<TestBody>[1],
-  o: { tokens: number | (() => number); window?: number; agents?: { id: string; status: string }[]; agentsHang?: () => boolean; usageFailsAfter?: number; forkText?: string | ((prompt: string) => string); nothingToFork?: number; fill?: { isFilled: boolean; refusal?: 'dialog' } | 'throws'; clearFails?: boolean; draft?: string | (() => string); beforeFork?: () => Promise<void>; afterClear?: () => Promise<void> },
+  o: { tokens: number | (() => number); window?: number; agents?: { id: string; status: string }[]; beforeAgents?: () => Promise<void>; usageFailsAfter?: number; forkText?: string | ((prompt: string) => string); nothingToFork?: number; fill?: { isFilled: boolean; refusal?: 'dialog' } | 'throws'; clearFails?: boolean; draft?: string | (() => string); beforeFork?: () => Promise<void>; afterClear?: () => Promise<void> },
 ) {
   const seen = { forks: 0, cleared: 0, fills: [] as string[], toasts: [] as string[], logs: [] as string[], usageCalls: 0 }
   clears = 0
@@ -613,7 +613,10 @@ function auto(
     },
     } as never
   })
-  on('agent.list', () => (o.agentsHang?.() ? new Promise(() => undefined) : { value: (o.agents ?? []).map(a => ({ ...a, description: '', type: 'x' })) }) as never)
+  on('agent.list', async () => {
+    await o.beforeAgents?.()
+    return { value: (o.agents ?? []).map(a => ({ ...a, description: '', type: 'x' })) } as never
+  })
   on('model.fork', async (_, e) => {
     await o.beforeFork?.()
     seen.forks++
@@ -883,23 +886,58 @@ test('/clear diferido: un turno que empieza entre el drop y el /clear (un aviso 
   expect(await said($)).toContain(ARMED)
 })
 
-test('/clear diferido: una comprobación colgada no bloquea los mensajes siguientes', async ($, on) => {
+test('/clear diferido: una comprobación que no responde en 10 s deja pasar su mensaje tal cual y no bloquea los siguientes', async ($, on) => {
   const clock = mock.clock(on)
   let hangs = false
-  auto(on, { tokens: 130_000, agentsHang: () => hangs })
+  const seen = auto(on, { tokens: 130_000, beforeAgents: () => (hangs ? new Promise(() => undefined) : Promise.resolve()) })
   repo(on, { [`${EST}/nucleo.md`]: PREV })
   const sent = prompts(on)
   await armed($, clock)
   hangs = true
-  void $.prompt.submit({ text: 'uno', wait: false, origin: { kind: 'composer' } })
+  const first = $.prompt.submit({ text: 'uno', wait: false, origin: { kind: 'composer' } })
   await clock.advance(100)
   hangs = false
   const second = $.prompt.submit({ text: 'dos', wait: false, origin: { kind: 'composer' } })
   await clock.advance(10_000)
-  expect((await second).drop).toContain('sigue en la sesión nueva')
+  expect((await first).drop).toBeUndefined()
+  expect((await second).drop).toBeUndefined()
   await clock.advance(800)
-  expect(sent.map(s => s.text)).toEqual(['dos'])
+  expect(sent.map(s => s.text)).toEqual(['uno', 'dos'])
+  expect(seen.cleared).toBe(0)
 })
+
+// The 10 s were a race: a check that answered after them took the next prompt's armed /clear, or sent its own again.
+for (const when of ['antes', 'durante', 'después'] as const) {
+  test(`/clear diferido: la respuesta tardía de una comprobación vencida no cuenta (${when} del reenvío siguiente): cada mensaje sale una vez`, async ($, on) => {
+    const clock = mock.clock(on)
+    let isSlow = false
+    let release = () => {}
+    const late = new Promise<void>(resolve => { release = resolve })
+    const seen = auto(on, { tokens: 130_000, beforeAgents: () => (isSlow ? late : Promise.resolve()) })
+    repo(on, { [`${EST}/nucleo.md`]: PREV })
+    const sent = prompts(on)
+    await armed($, clock)
+    isSlow = true
+    const first = $.prompt.submit({ text: 'uno', wait: false, origin: { kind: 'composer' } })
+    await clock.advance(10_000)
+    expect((await first).drop).toBeUndefined()
+    isSlow = false
+    await $.turn.start({ text: 'uno', turnId: 't2' })
+    await armed($, clock)
+    expect(await said($)).toContain(ARMED)
+    if (when === 'antes') {
+      release()
+      await clock.advance(100)
+    }
+    expect((await $.prompt.submit({ text: 'dos', wait: false, origin: { kind: 'composer' } })).drop).toContain('sigue en la sesión nueva')
+    if (when === 'durante') release()
+    await clock.advance(800)
+    if (when === 'después') release()
+    await clock.advance(800)
+    expect(sent.map(s => [s.text, s.asUser])).toEqual([['uno', false], ['dos', true]])
+    expect(seen.cleared).toBe(1)
+  })
+}
 
 // What a resend cannot carry, or a prompt that is not the person's at rest: it passes as typed, nothing is cleared, and the
 // armed /clear goes (the turn it starts saves again at its end).
