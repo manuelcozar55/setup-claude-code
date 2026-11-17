@@ -47,6 +47,14 @@ mkdir -p "$tmp/homeph"; printf 'ej: /home/ciuser/x y /home/usuario/y y /home/*/z
 set +e; bash "$SCAN" "$tmp/homeph" >/dev/null 2>&1; rc=$?; set -e
 check "$rc" "0" "marcadores de posicion de home no falso-positivan"
 
+# Y el resultado no depende del locale: con en_US.UTF-8, [a-z] casaba «ñ», y el fixture /home/ñandú/
+# de test_nucleo_lib.sh daba FAIL en el doctor de Debian y PASS en CI (C.UTF-8). Sin un locale asi
+# instalado el caso no discrimina, y su nombre lo dice.
+loc="$(locale -a 2>/dev/null | grep -iE '^(en_US|es_ES)\.utf-?8$' | head -n 1 || true)"
+mkdir -p "$tmp/homeutf8"; printf 'raiz: /home/ñandú/proyecto\n' > "$tmp/homeutf8/ok.txt"
+set +e; LC_ALL="${loc:-C.UTF-8}" bash "$SCAN" "$tmp/homeutf8" >/dev/null 2>&1; rc=$?; set -e
+check "$rc" "0" "el home no ASCII no depende del locale (${loc:-sin locale que lo discrimine})"
+
 # Dentro de un repo git, lo IGNORADO no se escanea; lo trackeado si.
 # Por que se prueba: test_harness_structure.sh corre este escaner sobre la raiz, y antes
 # daba rojo en la maquina de quien tuviera scratch en disco y verde en CI (clon limpio).
