@@ -7,6 +7,32 @@ etiquetado.
 
 ## [Unreleased]
 
+### Cambiado
+
+- **Cockpit 0.10.0 → 0.11.0: el handoff automático ya no borra la respuesta que acabas de recibir** (ADR 030, que
+  enmienda a 013). Guarda al cerrar el turno, pero deja el `/clear` para tu próximo mensaje. Cuando lo envías, el mod
+  lo retiene, limpia y lo reenvía como tuyo a la sesión nueva, con tu respuesta anterior como contexto oculto (fila de
+  `$.session.append`, como datos). No retiene mensajes con `@fichero`, adjuntos, contexto ajeno o `!`, ni con agentes
+  o shells vivos; esos pasan tal cual. Si algo falla, o la sesión cambia antes del `/clear`, el mensaje acaba en la
+  sesión o en el prompt (entero en la transcripción si el prompt no lo admite), nunca se pierde. La × de la banda deja
+  sin limpiar. Con el `/clear` pendiente, cada turno que no abre un mensaje retenido vuelve a guardar al cerrar por
+  encima del umbral (1 fork).
+- **Con `/autonomo on` solo continúa si el fork responde «AUTORIZADO: sí»**; una respuesta ausente, dudosa o con algún
+  «no» cuenta como «no». La continuación cita la «Siguiente acción» y tu última orden literal entre etiquetas, como
+  datos, no el primer mensaje de la sesión.
+
+### Añadido
+
+- **`/anterior`** muestra la última respuesta de la conversación anterior al `/clear`.
+
+### Cifras
+
+| Cifra | Valor |
+|---|---|
+| Continuaciones automáticas de 0.10.0 que contestaron «no queda nada / falta tu OK» (hasta el 16-nov) | 11 de 19 |
+| Tests del arnés del cockpit que fallan contra 0.10.0 (antes del test de la caja) | 34 de 322 |
+| Mutaciones de las guardas del `/clear` diferido que dan rojo | 17 de 17 |
+
 ## [2.1.0] - 2026-11-14
 
 El estado de una sesión lanzada en `~` que trabaja sobre un proyecto vive en el proyecto (ADR 029, que enmienda a 019 y 027). Sin vínculo, una sesión de `~` se comporta como en 2.0.0. Cockpit 0.9.0 → 0.10.0.

@@ -97,3 +97,4 @@ Todas las que leen los hooks, las órdenes de `bin/` y Sentinel con un valor por
 | `/handoff` | Guarda el estado de la tarea en .claude/estado/nucleo.md y limpia el contexto (/clear) para seguir en una sesión nueva |
 | `/nueva` | Cambia de tarea: archiva el estado de la actual, limpia el contexto y deja la tarea nueva escrita en el prompt |
 | `/autosave` | Guardado automático del estado en segundo plano con el modelo (gasta tokens; apagado por defecto): /autosave on\|off\|status |
+| `/anterior` | Muestra la última respuesta de la conversación anterior al último /clear de este proceso |
