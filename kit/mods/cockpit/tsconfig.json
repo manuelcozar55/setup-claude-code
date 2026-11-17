@@ -3,7 +3,7 @@
     "target": "es2023",
     "lib": ["es2023"],
     "typeRoots": [".claude-plugin/types"],
-    "types": ["claude-code"],
+    "types": ["claude-code", "claude-code-tools", "claude-code-mcp"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "strict": true,

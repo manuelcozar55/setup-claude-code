@@ -36,11 +36,12 @@ if [ "${#TSC[@]}" -gt 0 ]; then
     [ -f "$copy/kit/mods/cockpit/$GEN" ] || (cd "$copy/kit/mods/cockpit" && claude plugin test . >/dev/null 2>&1) || true
     [ ! -f "$copy/kit/mods/cockpit/$GEN" ] || types_from="los que escribe claude plugin validate/test"
   fi
+  # The whole types root, not index.d.ts alone: the built-in tools' inputs (TodoWrite, Bash…) live in claude-code-tools.
   if [ -z "$types_from" ] && [ -f "$MOD/$GEN" ]; then
-    mkdir -p "$copy/kit/mods/cockpit/${GEN%/*}" && cp "$MOD/$GEN" "$copy/kit/mods/cockpit/$GEN" && types_from="los de $MOD/$GEN"
+    mkdir -p "$copy/kit/mods/cockpit/.claude-plugin/types" && cp -r "$MOD/.claude-plugin/types/." "$copy/kit/mods/cockpit/.claude-plugin/types/" && types_from="los de $MOD/$GEN"
   fi
   if [ -z "$types_from" ] && [ -n "${COCKPIT_TYPES:-}" ] && [ -f "$COCKPIT_TYPES" ]; then
-    mkdir -p "$copy/kit/mods/cockpit/${GEN%/*}" && cp "$COCKPIT_TYPES" "$copy/kit/mods/cockpit/$GEN" && types_from="COCKPIT_TYPES"
+    mkdir -p "$copy/kit/mods/cockpit/.claude-plugin/types" && cp -r "$(dirname "$(dirname "$COCKPIT_TYPES")")/." "$copy/kit/mods/cockpit/.claude-plugin/types/" && types_from="COCKPIT_TYPES"
   fi
 fi
 if [ "${#TSC[@]}" -gt 0 ] && [ -n "$types_from" ]; then

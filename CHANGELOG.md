@@ -19,7 +19,7 @@ etiquetado.
   encima del umbral (1 fork).
 - **Con `/autonomo on` solo continúa si el fork responde «AUTORIZADO: sí»**; una respuesta ausente, dudosa o con algún
   «no» cuenta como «no». La continuación cita la «Siguiente acción» y tu última orden literal entre etiquetas, como
-  datos, no el primer mensaje de la sesión.
+  datos, no el primer mensaje de la sesión, y pide contrastar la acción con esa orden antes de actuar.
 
 ### Añadido
 
