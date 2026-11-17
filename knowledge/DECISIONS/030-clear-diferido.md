@@ -66,7 +66,7 @@ hubiera en la caja debajo; si el prompt no admite el relleno, se muestra entero 
 - El handoff automático sin autonomía ya no borra nada en pantalla, y el relleno del prompt solo aparece cuando hay
   `/clear` en el acto (`/handoff`, o el automático con «sí»).
 - La precisión de «AUTORIZADO» no está medida. El fallo seguro es «no», que cuesta un Enter y no trabajo de más.
-- Tests (arnés del mod, 2.1.311): 332 en verde. Contra 0.10.0, los tests nuevos y adaptados fallan. 17 mutaciones,
+- Tests (arnés del mod, 2.1.311): 335 en verde. Contra 0.10.0, los tests nuevos y adaptados fallan. 17 mutaciones,
   una por guarda, dan rojo.
 - Sesión interactiva real (2.1.311, `haiku`, umbral bajado con `CLAUDE_CODE_AUTO_COMPACT_WINDOW`). En la sesión
   nueva, el orden fue: `SessionStart` (nucleo), `/clear`, fila oculta y reenvío. El motor confirma que el hook
@@ -86,6 +86,13 @@ hubiera en la caja debajo; si el prompt no admite el relleno, se muestra entero 
   ahora el mensaje vuelve al prompt y el final de ese turno guarda y arma otra vez. (2) Una comprobación colgada
   bloqueaba todos los mensajes siguientes: ahora cada uno espera a la anterior 10 s como máximo. De paso,
   `resendAfterClear` tiene un solo camino de error, de modo que cualquier fallo antes del envío devuelve el mensaje.
+- La revisión del cierre (17-nov, noche) bloqueó el arreglo (2). La espera acotada dejaba viva la comprobación
+  anterior, y su respuesta tardía mandaba su mensaje después del reenvío del siguiente: dos veces si era el mismo
+  texto, y tras el `/clear` si era otro. Ahora se acota la comprobación, no la espera. Si no responde en 10 s cuenta
+  como fallida y su mensaje pasa tal cual, sin `/clear` y en orden. Su respuesta tardía no retiene, no limpia ni
+  desarma nada. Se descartó dejar pasar al siguiente y anular el anterior: el mensaje anterior llegaría después del
+  `/clear`, fuera de orden. Límite: dos Enter con el mismo texto durante una comprobación que vence salen dos veces,
+  igual que cuando cualquier comprobación deja pasar el mensaje.
 - Riesgo de inyección acotado, no eliminado. Con «sí», la continuación lleva una «Siguiente acción» escrita por el
   modelo, igual que el relleno que la persona aprueba con Enter. Un contenido hostil leído en la sesión podría
   colarla. Para acotarlo, la continuación pide contrastarla con la última orden literal de la persona y detenerse si
