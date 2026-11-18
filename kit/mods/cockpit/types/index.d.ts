@@ -25,7 +25,8 @@ export type AgentRow = {
 
 export type TaskRow = { id: string; subject: string; status: 'pending' | 'in_progress' | 'completed'; activeForm?: string }
 
-export type Handoff = { phase: 'idle' | 'confirm' | 'working' | 'waiting' | 'done' | 'error'; msg?: string }
+// `isDeferred`: the band says the automatic handoff saved and the /clear waits for the person's next prompt.
+export type Handoff = { phase: 'idle' | 'confirm' | 'working' | 'waiting' | 'done' | 'error'; msg?: string; isDeferred?: boolean }
 
 // `handoff --estado`: the share of the cap and who owns the state (null: nobody, or no project).
 export type Estado = { pct: number; bytes: number; tope: number; dueno: { sesion: string; vigente: boolean; isMine: boolean } | null; isSlot?: boolean; linkedTo?: string }

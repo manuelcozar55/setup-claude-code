@@ -3,6 +3,9 @@
 # Uso: scan-secrets.sh [DIR]   (default: carpeta del propio script)
 # Exit 0 = limpio (PASS); 1 = hallazgos (FAIL).
 set -euo pipefail
+# Los rangos como [a-z] dependen del locale: con en_US.UTF-8 casan «ñ» y con C.UTF-8 no. El
+# mismo kit daba FAIL en el doctor de Debian y PASS en CI. Un gate determinista no depende de eso.
+export LC_ALL=C
 TARGET="${1:-$(cd "$(dirname "$0")" && pwd)}"
 SELF="$(basename "$0")"
 
