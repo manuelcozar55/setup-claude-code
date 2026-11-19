@@ -2014,7 +2014,11 @@ def main() -> None:
     tool_name = payload.get("tool_name") or payload.get("tool", "<unknown>")
     tool_input = effective_input(payload)
     command = tool_input.get("command")
+    # In auto mode a call Sentinel cannot analyze goes to the classifier, which reads it whole, instead of prompting the person.
+    auto_mode = payload.get("permission_mode") == "auto"
     if tool_name == "Bash" and isinstance(command, str) and len(command.encode()) > MAX_COMMAND_BYTES:
+        if auto_mode:
+            sys.exit(0)
         # A hook past its timeout does not block: the tool runs. Above the cap, ask instead of risking it.
         kb = len(command.encode()) // 1024
         print(json.dumps({
@@ -2033,6 +2037,8 @@ def main() -> None:
     result = decide_within_budget(payload)
     if result is None:
         audit_log(tool_name, "ask", "analysis over budget")
+        if auto_mode:
+            sys.exit(0)
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
