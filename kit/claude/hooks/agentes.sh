@@ -73,7 +73,7 @@ case ${EV:-} in
   Stop)
     # Solo el hilo principal (un subagente trae agent_id; el Stop de un subagente es SubagentStop).
     [ -z "$ID" ] || exit 0
-    VIVOS=$(jq -c '[ (.background_tasks // [])[] | select(.status == null or .status == "running") ]' <<<"$IN" 2>/dev/null) || VIVOS='[]'
+    VIVOS=$(jq -c '[ (.background_tasks // [])[] | select(.status == null or .status == "running") | {id,type,status,d:((.description // .command // "") | tostring | .[0:200] | gsub("[\\p{C}\\p{Z}]+"; " ") | .[0:40])} ]' <<<"$IN" 2>/dev/null) || VIVOS='[]'
     nucleo_agentes_foto "$RAIZ" "$SID" "$VIVOS" 2>/dev/null || true
     [ -n "$TP" ] && [ -f "$TP" ] || exit 0
     REASON=$(nucleo_puerta_commit "$IN" "$TP" "$SID" "$RAIZ")

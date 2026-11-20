@@ -127,6 +127,15 @@ ok 'estado sin SID no mezcla fotos' "$(bash "$BIN" --raiz "$R" --estado | jq -r 
 # F2b: la foto guarda la descripción de cada tarea viva y --estado la devuelve resumida (una sola verdad para el Stop y el cockpit).
 jq -cn --arg r "$R" '{hook_event_name:"Stop",cwd:$r,session_id:"desc",background_tasks:[{type:"shell",id:"b1",status:"running",description:"oráculo",command:"make test"},{type:"monitor",id:"m1",status:"running",description:"espera eterna"},{type:"shell",id:"b2",status:"completed",description:"viejo"}]}' | bash "$H/agentes.sh"
 ok 'estado: bloquea nombra tipo y descripción de lo vivo, sin lo terminado' "$(bash "$BIN" --raiz "$R" --estado --sesion desc | jq -r '"\(.agentes_vivos)|\(.bloquea)"')" '2|monitor (espera eterna); shell de fondo (oráculo)'
+# Una orden enorme (heredoc) sin description no puede impedir la foto: ni por E2BIG al pasarla a jq, ni por un limpiado cuadrático.
+big() { local i; for i in $(seq 1 "$2"); do printf 'ab cd\tef\n'; done | { printf 'cat <<EOF > notas.md\n'; cat; } > "$T/orden-$1"; }
+stop_big() { jq -cn --rawfile c "$T/orden-$1" --arg r "$R" --arg s "$1" '{hook_event_name:"Stop",cwd:$r,session_id:$s,background_tasks:[{type:"shell",id:"big",status:"running",command:$c}]}' | bash "$H/agentes.sh"; }
+big g130 22000
+stop_big g130
+ok 'orden de 130 KB sin description: la foto cuenta el shell vivo' "$(bash "$BIN" --raiz "$R" --estado --sesion g130 | jq -r '"\(.agentes_vivos)|\(.bloquea | length > 0)"')" '1|true'
+big g100 10000
+timeout 2 bash -c "$(declare -f stop_big); H=$H R=$R T=$T; stop_big g100"
+ok 'orden de 100 KB: el Stop deja la foto en menos de 2 s' "$(bash "$BIN" --raiz "$R" --estado --sesion g100 | jq -r .agentes_vivos)" 1
 for HOOK in session-start-clear session-start-compact; do
   OUT=$(jq -cn --arg r "$R" '{cwd:$r,session_id:"own",source:"clear"}' | bash "$H/$HOOK.sh" | jq -r '.hookSpecificOutput.additionalContext // ""')
   ok "$HOOK reinyecta agentes sin núcleo" "$(grep -c '^<agentes>' <<<"$OUT")" 1
