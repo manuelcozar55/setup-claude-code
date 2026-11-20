@@ -804,7 +804,6 @@ async function autoThreshold($: $) {
 async function autoBlocker($: $) {
   try {
     const location = await resolveState($)
-    if (location.active > 0) return 'agentes vivos'
     return (await $.fs.exists(location.bin)) ? '' : 'falta el CLI handoff (bash kit/install.sh --apply)'
   } catch (err) {
     const why = err instanceof Error ? err.message : ''
@@ -899,12 +898,28 @@ async function resolveState($: $) {
   if (!('agentes_vivos' in state) || typeof state.agentes_vivos !== 'number' || !Number.isSafeInteger(state.agentes_vivos) || state.agentes_vivos < 0)
     throw new Error('handoff --estado no confirma los agentes vivos; no limpio')
   const active = state.agentes_vivos
+  // What is alive, as the CLI words it (one line, bounded): it is data from a task's description, shown, never obeyed.
+  const blocks = 'bloquea' in state && typeof state.bloquea === 'string' ? state.bloquea.slice(0, 200) : ''
   const rawOwner = 'dueno' in state ? state.dueno : null
   const owner = typeof rawOwner === 'object' && rawOwner !== null && 'sesion' in rawOwner && typeof rawOwner.sesion === 'string' && 'vigente' in rawOwner && rawOwner.vigente === true && rawOwner.sesion !== mine ? rawOwner.sesion : null
   // The CLI's tope already leaves room for the agents block the next SessionStart injects; 6500 is the pre-reserve contract.
   const tope = 'tope' in state && typeof state.tope === 'number' && Number.isSafeInteger(state.tope) && state.tope > 0 ? state.tope : 6500
   const estadoMd = 'modo' in state && state.modo === 'estado-md' && 'estado' in state && typeof state.estado === 'string' && state.estado.startsWith('/') ? state.estado : null
-  return { ...location, linkedTo, path: state.nucleo, estadoMd, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active, tope, foreignOwner: owner, sha: 'sha256' in state && typeof state.sha256 === 'string' ? state.sha256 : null }
+  return { ...location, linkedTo, path: state.nucleo, estadoMd, dir: state.nucleo.slice(0, -'/nucleo.md'.length), active, blocks, tope, foreignOwner: owner, sha: 'sha256' in state && typeof state.sha256 === 'string' ? state.sha256 : null }
+}
+
+// What keeps /clear from running, in one line: the CLI's own wording (the photo the Stop hook reads too) or, when it has
+// none, this session's live agents. '' = nothing alive. An unreadable answer counts as alive: the conservative side.
+async function liveWork($: $) {
+  try {
+    const { active, blocks } = await resolveState($)
+    if (active > 0) return blocks || `${active} tarea(s) de fondo`
+    const agents = (await $.agent.list()).filter(a => !DONE.has(a.status))
+    const named = agents.map(a => a.description).filter(Boolean).slice(0, 3)
+    return agents.length ? `subagente ${named.length ? `(${named.join(', ')})` : `×${agents.length}`}` : ''
+  } catch (err) {
+    return `no pude comprobar lo vivo (${err instanceof Error ? err.message : String(err)})`
+  }
 }
 
 const readState = async ($: $, path: string) => ((await $.fs.exists(path)) ? await $.fs.read(path) : '')
@@ -955,7 +970,7 @@ async function runHandoff($: $, andClear: boolean | 'auto', focus = '', canWait 
     const { root, linkedTo, start, dir, path, estadoMd, bin, active, tope, foreignOwner, sha } = await resolveState($)
     // The CLI would refuse with rc 5 after the fork has been paid: ask first (the state's owner is in `--estado`).
     if (foreignOwner !== null) throw new Error(`el estado de este proyecto lo tiene otra sesión (${foreignOwner.slice(0, 8)}): no guardo ni limpio; cierra esa sesión o trabaja con ella`)
-    if (andClear && (active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) throw new Error('hay agentes o shells vivos: no limpio; espera o usa /handoff solo')
+    if (andClear === true && (active > 0 || (await $.agent.list()).some(a => !DONE.has(a.status)))) throw new Error('hay agentes o shells vivos: no limpio; espera o usa /handoff solo')
     await refuseLinks($, dir)
     // In ESTADO.md mode nucleo.md does not exist: the current state the fork must see is ESTADO.md.
     const prev = await readState($, estadoMd ?? path)
@@ -1017,7 +1032,9 @@ async function runHandoff($: $, andClear: boolean | 'auto', focus = '', canWait 
     if (silent) silent.reply = encoder.encode(draft).length
     const oversize = size > budget ? `borrador de ${size} B tras dos intentos (presupuesto ${budget} B): el CLI lo ajusta al tope y lo que omita queda en diario.md` : ''
     const isVouched = verdict === true
-    const clears = andClear === 'auto' ? isVouched : andClear
+    // Live work: the automatic one only saves (the /clear waits for the last of it, see maybeAutoHandoff).
+    const hasLive = andClear === 'auto' ? await liveWork($) : ''
+    const clears = andClear === 'auto' ? isVouched && !hasLive : andClear
     if (asksVerdict) $.ui.log(`cockpit: AUTORIZADO ${verdict === null ? 'ausente' : isVouched ? 'sí' : 'no'} (${andClear === 'auto' ? 'automático' : '/handoff'}): ${isVouched ? 'limpia y continúa' : clears ? 'limpia y deja el prompt relleno' : 'espera tu próximo mensaje para limpiar'}`, { to: 'debug' })
     // The title only feeds the fill that /clear leaves in the prompt: a save without /clear would pay the call for nothing.
     const notes: string[] = []
@@ -1067,6 +1084,13 @@ async function runHandoff($: $, andClear: boolean | 'auto', focus = '', canWait 
           return saved
         }
         sameSession()
+        if (hasLive) {
+          // Saved under live work (even if it started during the fork): the next turn end decides again, not «ya guardado».
+          isLiveSaved = true
+          isAutoCrossed = false
+          await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${saved.path} · no limpio mientras siga vivo: ${hasLive}${tail}` }))
+          return saved
+        }
         deferredClear = { revision, path: saved.path }
         await update($, handoff, (): Handoff => ({ phase: 'done', isDeferred: true, msg: `Guardado en ${saved.path} · se limpiará al enviar tu próximo mensaje (× para no limpiar)${tail}` }))
         return saved
@@ -1106,6 +1130,10 @@ async function runHandoff($: $, andClear: boolean | 'auto', focus = '', canWait 
 // else is running. Scheduled out of the hook the turn awaits, because /clear is refused inside it.
 // Every turn end over the threshold that does not hand off leaves one debug line with the reason.
 let autoToastedFor = -1
+// Live work at a crossing (ADR 031): the state is saved once, the person is told once per set of blockers, and the next
+// turn end after the last of it goes the usual way (saves again, arms or clears). Both reset below the threshold and on /clear.
+let isLiveSaved = false
+let liveToldFor = ''
 async function maybeAutoHandoff($: $) {
   const epoch = sessionEpoch
   if (!isAttended) return
@@ -1115,6 +1143,8 @@ async function maybeAutoHandoff($: $) {
   const pct = pctOf(c)
   if (pct < limit) {
     isAutoCrossed = false
+    isLiveSaved = false
+    liveToldFor = ''
     return
   }
   // The cwd goes with it: the handoff notes the live folder in the nucleo (the root is the session's start).
@@ -1130,14 +1160,24 @@ async function maybeAutoHandoff($: $) {
   if (await read($, isAutoQueued) || handoffBusy) return skip(isSilentBusy ? 'guardado automático en curso' : 'ya en curso')
   const phase = (await read($, handoff)).phase
   if (!['idle', 'done'].includes(phase)) return skip(phase === 'error' ? 'error previo' : 'ya en curso', phase === 'error')
-  if ((await $.agent.list()).some(a => !DONE.has(a.status))) return skip('agentes vivos', true)
   const blocker = await autoBlocker($)
   if (blocker) return skip(blocker, blocker !== 'sin proyecto')
+  const live = await liveWork($)
+  if (!live) {
+    isLiveSaved = false
+    liveToldFor = ''
+  } else {
+    if (liveToldFor !== `${epoch}|${live}`) {
+      liveToldFor = `${epoch}|${live}`
+      $.ui.toast(`Contexto al ${pct}%: sigue vivo ${live}. ${isLiveSaved ? '' : 'Guardo el estado ya, sin limpiar. '}El /clear llegará cuando termine; para desbloquearlo, espera o para ese trabajo (/tasks)`)
+    }
+    if (isLiveSaved) return skip(`trabajo vivo (${live}): ya guardado en este cruce`)
+  }
   if (epoch !== sessionEpoch) return skip('la sesión cambió')
   await update($, isAutoQueued, () => true)
   isAutoCrossed = true
   try {
-    $.ui.toast(`Contexto al ${pct}%: handoff automático (guarda ahora; la sesión nueva empieza con tu próximo mensaje)`)
+    if (!live) $.ui.toast(`Contexto al ${pct}%: handoff automático (guarda ahora; la sesión nueva empieza con tu próximo mensaje)`)
     $.clock.after(300, async () => {
       try {
         if (epoch !== sessionEpoch) return
@@ -1466,6 +1506,8 @@ export const register: Register = on => {
       autosaveFailedAt = null
       autosaveFailures = 0
       isAutoCrossed = false
+      isLiveSaved = false
+      liveToldFor = ''
       const keepMission = clearPending
       if (!clearPending) autonomousEnabled = null
       await update($, turn, t => ({ ...t, mission: keepMission ? t.mission : '', isRunning: false }))

@@ -124,6 +124,9 @@ OUT=$(bash "$BIN" --raiz "$R" --agentes 2>&1); RC=$?
 ok 'CLI agentes muestra tabla y estado' "$RC,$(grep -c 'integration.*worker.*sin cierre' <<<"$OUT")" '0,1'
 ok 'estado cuenta foto de SID solicitado' "$(bash "$BIN" --raiz "$R" --estado --sesion own | jq -r .agentes_vivos)" 1
 ok 'estado sin SID no mezcla fotos' "$(bash "$BIN" --raiz "$R" --estado | jq -r .agentes_vivos)" 0
+# F2b: la foto guarda la descripción de cada tarea viva y --estado la devuelve resumida (una sola verdad para el Stop y el cockpit).
+jq -cn --arg r "$R" '{hook_event_name:"Stop",cwd:$r,session_id:"desc",background_tasks:[{type:"shell",id:"b1",status:"running",description:"oráculo",command:"make test"},{type:"monitor",id:"m1",status:"running",description:"espera eterna"},{type:"shell",id:"b2",status:"completed",description:"viejo"}]}' | bash "$H/agentes.sh"
+ok 'estado: bloquea nombra tipo y descripción de lo vivo, sin lo terminado' "$(bash "$BIN" --raiz "$R" --estado --sesion desc | jq -r '"\(.agentes_vivos)|\(.bloquea)"')" '2|monitor (espera eterna); shell de fondo (oráculo)'
 for HOOK in session-start-clear session-start-compact; do
   OUT=$(jq -cn --arg r "$R" '{cwd:$r,session_id:"own",source:"clear"}' | bash "$H/$HOOK.sh" | jq -r '.hookSpecificOutput.additionalContext // ""')
   ok "$HOOK reinyecta agentes sin núcleo" "$(grep -c '^<agentes>' <<<"$OUT")" 1
