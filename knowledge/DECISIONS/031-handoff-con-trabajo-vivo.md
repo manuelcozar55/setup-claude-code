@@ -48,4 +48,8 @@ resultado.
 - Un Monitor que no termina nunca deja el estado guardado una vez y el `/clear` sin llegar; el toast lo dice.
 - La foto se escribe en el Stop: si el cockpit la lee antes que el hook, puede ver aún lo ya terminado y esperar un
   turno más. `PostToolUse` ve la foto del último Stop, no los shells lanzados en el turno actual. A medir en F4.
+- La foto del Stop puede ir un turno por detrás de lo real. El efecto es conservador (espera de más, nunca limpia de
+  más): el `/clear` vuelve a consultar `resolveState` justo antes de ejecutarse.
+- Lo vivo puede aparecer mientras el fork escribe el borrador: ese guardado cuenta como hecho con trabajo vivo
+  (`isLiveSaved`) y el siguiente fin de turno decide de nuevo, sin quedar en «ya guardado en este cruce».
 - El texto de `bloquea` viene de descripciones de tareas: se muestra como dato, acotado, sin obedecerlo.
