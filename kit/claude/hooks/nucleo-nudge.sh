@@ -132,12 +132,12 @@ persona() {
     [ -z "$E" ] || NAG=$(nucleo_agentes_vivos "$E" "$SID" 2>/dev/null | jq length 2>/dev/null) || NAG=0
     [ -z "$E" ] || TXT=$(nucleo_agentes_texto "$E" "$SID")
     if nucleo_cockpit; then
-      if [ "${NAG:-0}" -gt 0 ]; then PM="$P En vuelo ($TXT): /handoff solo guarda el estado y no limpia hasta que termine. Recoge sus resultados, o para ese trabajo, antes de limpiar."
+      if [ "${NAG:-0}" -gt 0 ]; then PM="$P En vuelo (${TXT:-$NAG tarea(s) de fondo}): /handoff solo guarda el estado y no limpia hasta que termine. Recoge sus resultados, o para ese trabajo, antes de limpiar."
       elif [ "$BP" = 85 ]; then PM="$P El airbag compactará en breve: /handoff ya (guarda el estado) y /clear."
       else PM="$P Fase cerrada: /handoff (deja el estado en $NOM y retoma limpio). Si no, delega el resto a subagentes."
       fi
     else
-      if [ "${NAG:-0}" -gt 0 ]; then PM="$P En vuelo ($TXT): guarda el estado con \`$CL\` y no hagas /clear todavía. Recoge sus resultados, o para ese trabajo, antes de limpiar."
+      if [ "${NAG:-0}" -gt 0 ]; then PM="$P En vuelo (${TXT:-$NAG tarea(s) de fondo}): guarda el estado con \`$CL\` y no hagas /clear todavía. Recoge sus resultados, o para ese trabajo, antes de limpiar."
       elif [ "$BP" = 85 ]; then PM="$P El airbag compactará en breve: guarda el estado con \`$CL\` y haz /clear."
       else PM="$P Fase cerrada: actualiza $NOM con \`$CL\` y haz /clear (el hook de arranque lo re-inyecta). Si no, delega el resto a subagentes."
       fi
