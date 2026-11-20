@@ -23,10 +23,10 @@ es decisión del propietario del repo, nunca del agente.
 | # | URL | Autor | Tipo | Verificada | Ventana | Estado |
 |---|---|---|---|---|---|---|
 | 1 | https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents | Equipo Applied AI de Anthropic (Rajasekaran, Dixon, Ryan, Hadfield) | primaria | 2026-08-21 | 365 d | vigente |
-| 2 | https://code.claude.com/docs/en/best-practices | Anthropic | primaria | 2026-08-21 | 90 d | vigente |
+| 2 | https://code.claude.com/docs/en/best-practices | Anthropic | primaria | 2026-08-21 | 90 d | [STALE] vencida el 2026-11-19, sin reverificar |
 | 3 | https://martinfowler.com/articles/harness-engineering.html | **Birgitta Böckeler** (Thoughtworks) | primaria | 2026-08-21 | 365 d | vigente |
 | 4 | https://martinfowler.com/articles/sensors-for-coding-agents.html | Birgitta Böckeler | primaria | 2026-08-21 | 365 d | vigente |
-| 5 | https://github.com/anthropics/skills | Anthropic | primaria | 2026-08-21 | 90 d | vigente |
+| 5 | https://github.com/anthropics/skills | Anthropic | primaria | 2026-08-21 | 90 d | [STALE] vencida el 2026-11-19, sin reverificar |
 | 6 | https://github.com/multica-ai/andrej-karpathy-skills | comunidad | secundaria | 2026-08-21 | 180 d | vigente |
 | 7 | X/@bcherny — cita de verificación de Boris Cherny | Boris Cherny (vía terceros) | **secundaria** | 2026-08-21 | 180 d | vigente |
 
