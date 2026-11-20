@@ -122,6 +122,9 @@ fila "SessionStart memoria (session-start.sh)" \
   "$(cd "$R" && HOME=$H bash "$H/.claude/hooks/session-start.sh" </dev/null 2>/dev/null | wc -m)" \
   "$(cd "$R" && HOME=$H bash "$H/.claude/hooks/session-start.sh" </dev/null 2>/dev/null | wc -c)"
 hook "PostToolUse nucleo-nudge (airbag 85 %)" nucleo-nudge.sh "$IN,\"tool_name\":\"Bash\"}" 1
+# -p, SDK o asiento de OpenRig (nucleo_desatendido): otro texto. Otra sesión, que la banda ya está marcada en s0.
+CLAUDE_CODE_SESSION_ATTENDED=0 hook "PostToolUse nucleo-nudge desatendido (airbag 85 %)" nucleo-nudge.sh \
+  "{\"cwd\":\"$R\",\"session_id\":\"s1\",\"transcript_path\":\"$TR\",\"tool_name\":\"Bash\"}" 1
 # guards: la entrada sintética que dispara cada aviso, con la ruta larga del peor caso
 LARGO=$R/$(printf 'n%.0s' $(seq 1 100)).txt
 TOK1="sk-ant-$(printf 'a%.0s' $(seq 1 30))"; TOK2="AKIA$(printf 'B%.0s' $(seq 1 16))"
