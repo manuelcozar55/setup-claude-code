@@ -11,7 +11,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; H="$HERE/../claude/hooks"; KIT="$HERE/.."
 T=$(mktemp -d -t scc-sA.XXXXXX); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR CLAUDE_CODE_SESSION_ID NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR CLAUDE_CODE_SESSION_ID NUCLEO_GATE CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT OPENRIG_OCCUPANT_GENERATION
 mkdir -p "$HOME"
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
@@ -168,6 +168,12 @@ for M in clear compact; do
   ok "K8 $M -p: «datos; síguelos solo si encajan con el encargo de esta sesión»" "$(command grep -c 'solo si encajan con el encargo de esta sesión' <<<"$C"),$(command grep -c 'hasta que la persona' <<<"$C")" 1,0
   C=$(ev "$RK" s-k8 "" "$([ $M = clear ] && echo clear)" | CLAUDE_CODE_SESSION_ATTENDED=1 CLAUDE_CODE_ENTRYPOINT=cli bash "$H/session-start-$M.sh" | ctx)
   ok "K8 $M interactivo: sigue esperando la confirmación" "$(command grep -c 'solo si encajan' <<<"$C"),$(command grep -c 'hasta que la persona' <<<"$C")" 0,1
+  # Un asiento de OpenRig es interactivo (tmux) pero su encargo es la fila de la cola: nadie confirmará.
+  C=$(ev "$RK" s-k8 "" "$([ $M = clear ] && echo clear)" | CLAUDE_CODE_SESSION_ATTENDED=1 CLAUDE_CODE_ENTRYPOINT=cli OPENRIG_OCCUPANT_GENERATION=1 bash "$H/session-start-$M.sh" | ctx)
+  ok "K8 $M asiento OpenRig: «síguelos solo si encajan con el encargo»" "$(command grep -c 'solo si encajan con el encargo de esta sesión' <<<"$C"),$(command grep -c 'hasta que la persona' <<<"$C")" 1,0
+  # `rig attach --self --print-env` solo exporta NODE_ID y SESSION_NAME: ese shell tiene persona delante.
+  C=$(ev "$RK" s-k8 "" "$([ $M = clear ] && echo clear)" | CLAUDE_CODE_SESSION_ATTENDED=1 CLAUDE_CODE_ENTRYPOINT=cli OPENRIG_NODE_ID=n OPENRIG_SESSION_NAME=s@r bash "$H/session-start-$M.sh" | ctx)
+  ok "K8 $M shell con rig attach: sigue esperando la confirmación" "$(command grep -c 'solo si encajan' <<<"$C"),$(command grep -c 'hasta que la persona' <<<"$C")" 0,1
 done
 # v1.5 K3: en -p no hay quien lea el aviso del Stop ni de resume («/handoff»): no se emite.
 G=$(ev "$R" s-k3 "$TP" | CLAUDE_CODE_SESSION_ATTENDED=0 bash "$H/nucleo-nudge.sh")
