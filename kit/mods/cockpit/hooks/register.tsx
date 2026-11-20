@@ -1085,6 +1085,9 @@ async function runHandoff($: $, andClear: boolean | 'auto', focus = '', canWait 
         }
         sameSession()
         if (hasLive) {
+          // Saved under live work (even if it started during the fork): the next turn end decides again, not «ya guardado».
+          isLiveSaved = true
+          isAutoCrossed = false
           await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${saved.path} · no limpio mientras siga vivo: ${hasLive}${tail}` }))
           return saved
         }
@@ -1183,10 +1186,6 @@ async function maybeAutoHandoff($: $) {
         await runHandoff($, 'auto')
         // A failed save may try once more at the next turn end (errorResets); a saved one waits for the next crossing.
         if ((await read($, handoff)).phase === 'error') isAutoCrossed = false
-        else if (live && !deferredClear) {
-          isLiveSaved = true
-          isAutoCrossed = false
-        }
       } finally {
         await update($, isAutoQueued, () => false)
       }

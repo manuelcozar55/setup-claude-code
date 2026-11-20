@@ -2521,6 +2521,22 @@ test('F2b: al terminar lo último vivo, el siguiente fin de turno guarda de nuev
   expect(await said($)).toContain(ARMED)
 })
 
+test('F2b: nada vivo al cruzar y algo vivo al acabar el fork: no queda atascado en «ya guardado»', async ($, on) => {
+  const clock = mock.clock(on)
+  let live = 0
+  const seen = auto(on, { tokens: 130000, beforeFork: async () => { if (!live) live = seen.forks === 0 ? 1 : 0 } })
+  repo(on, { [`${EST}/nucleo.md`]: PREV }, { live: () => live, bloquea: () => (live ? BLOCKS : '') })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.forks).toBe(1)
+  expect(await said($)).toContain('no limpio mientras siga vivo')
+  live = 0
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.forks).toBe(2)
+  expect(await said($)).toContain(ARMED)
+})
+
 test('F2b: el aviso de trabajo vivo sale en cada cruce del umbral y de nuevo si cambia lo que bloquea', async ($, on) => {
   const clock = mock.clock(on)
   let tokens = 130000
