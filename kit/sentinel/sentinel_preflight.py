@@ -2014,7 +2014,8 @@ def main() -> None:
     tool_name = payload.get("tool_name") or payload.get("tool", "<unknown>")
     tool_input = effective_input(payload)
     command = tool_input.get("command")
-    # In auto mode a call Sentinel cannot analyze goes to the classifier, which reads it whole, instead of prompting the person.
+    # In auto mode a call over the size cap goes to the classifier, which reads it whole, instead of prompting the
+    # person; the bash guard still asks for it (cmdn_oversize).
     auto_mode = payload.get("permission_mode") == "auto"
     if tool_name == "Bash" and isinstance(command, str) and len(command.encode()) > MAX_COMMAND_BYTES:
         if auto_mode:
@@ -2036,9 +2037,9 @@ def main() -> None:
         sys.exit(0)
     result = decide_within_budget(payload)
     if result is None:
+        # Not even in auto mode: whoever writes the command can pad it past the budget (see ANALYSIS_BUDGET_S), and an
+        # IOC Sentinel would deny must not become the classifier's call.
         audit_log(tool_name, "ask", "analysis over budget")
-        if auto_mode:
-            sys.exit(0)
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
