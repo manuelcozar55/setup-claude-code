@@ -202,6 +202,10 @@ SessionStart del peor caso (9.488) queda a 12 chars del de `nucleo_tope`: cualqu
 Propuesta (no aplicada): si hay que recortar, el candidato es el protocolo de arranque de `session-start-clear.sh`
 (~1.100 chars), no las instrucciones globales.
 
+**2026-11-20, rama desatendida del nudge.** `contexto-base.sh --peor` medía solo la rama atendida (heredaba el
+entorno). Con el #73 todo asiento de OpenRig toma la desatendida, que medía 644 en el peor caso: se mide aparte con
+el mismo tope de 600 (no se sube) y el texto se acorta a 586. La atendida, aislada del entorno, mide 541.
+
 ## Tirada M7 del eval set, dos brazos — 2026-10-29/30, v1.7.0 (harness 9f7d81e)
 
 Comando: `EVAL_MODEL=claude-fable-5-1 ARM=off bash kit/evals/run.sh` y `ARM=on` (`RUNS=1`, 23 tareas, 46 filas válidas). Informe: `python3 -I kit/evals/report.py --since 2026-10-29T22:30` sobre `kit/evals/runs.jsonl` (no versionado; copia en el informe de cierre del 29-oct). Modelo en los dos brazos: `claude-fable-5-1` (el `settings.json` fija `fable`; con `--safe-mode` ese ajuste desaparece, así que `EVAL_MODEL` va explícito o `report.py` declara los brazos no comparables).
