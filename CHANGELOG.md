@@ -25,6 +25,13 @@ etiquetado.
 
 - **`/anterior`** muestra la última respuesta de la conversación anterior al `/clear`.
 
+### Arreglado
+
+- **`make test` ya pasa en Debian 13 (mawk)**: los topes PERF de `test_guards_falsifiability.sh` se calibraban solo con
+  arranques de awk, y mawk arranca más rápido que gawk (113 ms contra 207) pero concatena cadenas largas ~12 veces más
+  lento. El mismo guard gastaba 1020 ms con mawk contra 570 con gawk y superaba el tope de 1000. La calibración suma
+  ahora una pasada de awk sobre 126 KB (local 225 ms, Debian 421 ms, tope 1500 ms).
+
 ### Cifras
 
 | Cifra | Valor |

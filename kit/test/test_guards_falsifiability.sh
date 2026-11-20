@@ -230,16 +230,21 @@ monotonic_ms() { python3 -c 'import time; print(time.monotonic_ns() // 1000000)'
 # Los topes de tiempo son absolutos (1000 ms de CPU, 2000 de reloj), pero una maquina cargada (tres `make test` a la vez, WSL, Debian)
 # infla cualquier medida: se vio 1041 ms contra un tope de 1000 y paso al repetir. Un sensor que cae segun la carga no puede ir en una
 # entrega, y subir el tope a ciegas le quitaria el filo. Se calibra EN ESTA CORRIDA con una referencia que gasta lo mismo que un guard
-# (150 arranques de awk, 210 ms de CPU medidos en una maquina en reposo y estables con carga 8): el tope se escala por lo que la
+# (150 arranques de awk y la pasada de abajo, 225 ms de CPU medidos en una maquina en reposo y estables con carga 8): el tope se escala por lo que la
 # referencia haya inflado, con suelo 1 (nunca mas estricto) y techo 1,5 (150 %). Una regresion real (un proceso por segmento: 7 a 36 s contra
 # 1 s) sigue muy por encima del techo, asi que se sigue cazando. Lo que este techo NO ve: una regresion que cueste menos de 1,5 veces el
 # tope (1 a 1,5 s de CPU en una orden de 128 KB) pasa; con la maquina saturada el tope sube a lo sumo a 1500 ms y no mas.
-CAL_REF_MS=210
+CAL_REF_MS=225
+# Los arranques solos no ven el interprete: mawk (Debian) arranca en 113 ms frente a los 207 de gawk, pero concatena cadenas largas
+# unas 12 veces mas lento (24 ms contra 301 en este programa), y el guard gasta ahi su tiempo (21000 x «x git»: 570 ms con gawk,
+# 1020 con mawk, mismo commit). Con solo los arranques la calibracion le daba 100 % y el tope se quedaba en 1000. Se suma una pasada
+# de awk por un texto de 126 KB, que concatena como el normalizador (tok = tok c).
+CAL_AWK='BEGIN { for (i = 0; i < 21000; i++) s = s "x git;"; n = length(s); for (i = 1; i <= n; i++) { c = substr(s, i, 1); if (c == ";") tok = ""; else tok = tok c; out = out c } }'
 calib_cpu_ms() {
   local best=999999 t u s ms
   TIMEFORMAT='%3U %3S'
   for _ in 1 2 3; do
-    t=$({ time bash -c 'for ((i=0;i<150;i++)); do awk "BEGIN{x=1}" </dev/null; done'; } 2>&1)
+    t=$({ time bash -c 'for ((i=0;i<150;i++)); do awk "BEGIN{x=1}" </dev/null; done; awk "$1" </dev/null' _ "$CAL_AWK"; } 2>&1)
     read -r u s <<<"$t"
     ms=$(awk -v u="$u" -v s="$s" 'BEGIN { printf "%d", (u + s) * 1000 + 0.5 }')
     [ "$ms" -lt "$best" ] && best=$ms
