@@ -27,6 +27,13 @@ etiquetado.
 
 ### Arreglado
 
+- **El handoff automático ya no se calla con trabajo de fondo vivo** (F2b, ADR 031). Antes, un shell, un Monitor o un
+  subagente vivo lo omitía sin más y la sesión llegaba al airbag; el aviso del Stop solo contaba subagentes y decía
+  «Fase cerrada: /handoff» mientras el cockpit no iba a poder limpiar. Ahora: la foto de agentes guarda la descripción
+  de cada tarea, `handoff --estado` devuelve `bloquea` (tipo y descripción) y el Stop y el cockpit dicen lo mismo; al
+  cruzar el umbral con trabajo vivo el cockpit guarda el estado una vez, sin limpiar, y avisa de qué bloquea y cómo
+  desbloquearlo (en cada cruce y cada vez que cambia el conjunto, no una vez por sesión); al terminar lo último, el
+  siguiente fin de turno sigue el camino de siempre (guarda y arma el `/clear`).
 - **`make test` ya pasa en Debian 13 (mawk)**: los topes PERF de `test_guards_falsifiability.sh` se calibraban solo con
   arranques de awk, y mawk arranca más rápido que gawk (113 ms contra 207) pero concatena cadenas largas ~12 veces más
   lento. El mismo guard gastaba 1020 ms con mawk contra 570 con gawk y superaba el tope de 1000. La calibración suma

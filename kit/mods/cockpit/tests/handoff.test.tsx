@@ -51,7 +51,7 @@ const answered = (text: string) => ({ value: { isAnswered: true, text, usage: {}
 function repo(
   on: Parameters<TestBody>[1],
   files: Record<string, string>,
-  opts: { linked?: string; root?: string; tops?: Record<string, string>; links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; autonomo?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; noProject?: boolean; session?: () => string; live?: number; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
+  opts: { linked?: string; root?: string; tops?: Record<string, string>; links?: string[]; isRepo?: boolean; top?: string; cwd?: string; home?: string; env?: string; autonomo?: string; cli?: number[]; stderr?: string; noBin?: boolean; statePath?: string; claudeHome?: string; stateFails?: boolean; noProject?: boolean; session?: () => string; live?: number | (() => number); bloquea?: () => string; beforeState?: (count: number) => Promise<void>; migrateCode?: number; tope?: number; estadoMd?: string; avisos?: string[]; recibo?: Record<string, unknown> } = {},
 ) {
   clears = 0
   let stateReads = 0
@@ -87,7 +87,7 @@ function repo(
       await opts.beforeState?.(++stateReads)
       if (!e.argv.includes('--raiz') && !opts.statePath) return { value: { exitCode: 3, stdout: '', stderr: '' } } as never
       const at = opts.estadoMd ?? opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`
-      return ok(JSON.stringify({ nucleo: opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`, sha256: (() => { try { return at in files ? `h:${files[at]}` : null } catch { return null } })(), pct: 1, bytes: 10, tope: opts.tope ?? 5700, dueno: null, agentes_vivos: opts.live ?? 0, ...(opts.linked ? { raiz: opts.linked, sesion: `${home}/.claude/estado/sesiones/20261114-1000-42`, vinculado: true } : {}), ...(opts.estadoMd ? { modo: 'estado-md', estado: opts.estadoMd } : {}) }))
+      return ok(JSON.stringify({ nucleo: opts.statePath ?? `${opts.top ?? '/work/proyecto'}/.claude/estado/nucleo.md`, sha256: (() => { try { return at in files ? `h:${files[at]}` : null } catch { return null } })(), pct: 1, bytes: 10, tope: opts.tope ?? 5700, dueno: null, agentes_vivos: typeof opts.live === 'function' ? opts.live() : opts.live ?? 0, ...(opts.bloquea ? { bloquea: opts.bloquea() } : {}), ...(opts.linked ? { raiz: opts.linked, sesion: `${home}/.claude/estado/sesiones/20261114-1000-42`, vinculado: true } : {}), ...(opts.estadoMd ? { modo: 'estado-md', estado: opts.estadoMd } : {}) }))
     }
     if (e.argv[0] === bin && e.argv[1] === '--migrar') {
       const path = opts.statePath ?? `${EST}/nucleo.md`
@@ -1061,13 +1061,14 @@ for (const [verdict, clears] of [['AUTORIZADO: sí\n', true], ['AUTORIZADO: no\n
   })
 }
 
-test('handoff automático: con un subagente vivo no dispara', async ($, on) => {
+test('handoff automático: con un subagente vivo guarda pero no limpia', async ($, on) => {
   const clock = mock.clock(on)
   const seen = auto(on, { tokens: 130_000, agents: [{ id: 'a1', status: 'running' }] })
   repo(on, { [`${EST}/nucleo.md`]: PREV })
   await $.turn.complete(DONE_TURN)
   await clock.advance(800)
-  expect(seen.forks).toBe(0)
+  expect(seen.forks).toBe(1)
+  expect(seen.cleared).toBe(0)
 })
 
 type AutoThresholdCase = {
@@ -1263,8 +1264,12 @@ test('log: cada cierre de turno sobre el umbral sin handoff deja su motivo', asy
   repo(on, { [`${EST}/nucleo.md`]: PREV })
   await $.turn.complete(DONE_TURN)
   await clock.advance(800)
-  expect(seen.logs).toHaveLength(1)
-  expect(seen.logs[0]).toContain('agentes vivos')
+  // Primer cruce: guarda sin limpiar. Segundo fin de turno con lo mismo vivo: no repite y deja el motivo.
+  expect(seen.forks).toBe(1)
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.forks).toBe(1)
+  expect(seen.logs.filter(l => l.includes('trabajo vivo'))).toHaveLength(1)
 })
 
 test('log: sin ranura', async ($, on) => {
@@ -2481,13 +2486,63 @@ for (const command of ['handoff', 'nueva'] as const) {
   })
 }
 
-test('el handoff automático no dispara con shells vivos', async ($, on) => {
+// F2b (ADR 031): con trabajo vivo el automático guarda ya y no limpia; el /clear llega cuando termina lo último.
+const BLOCKS = 'shell de fondo ×2 (oráculo, Monitor)'
+test('el handoff automático con shells vivos guarda sin limpiar ni armar el /clear', async ($, on) => {
   const clock = mock.clock(on)
   const seen = auto(on, { tokens: 130000 })
-  repo(on, {}, { live: 1 })
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV }, { live: 2, bloquea: () => BLOCKS })
   await $.turn.complete(DONE_TURN)
   await clock.advance(800)
-  expect(seen.forks).toBe(0)
+  expect(seen.forks).toBe(1)
+  expect(r.calls).toHaveLength(1)
+  expect(seen.cleared).toBe(0)
+  expect(await said($)).not.toContain(ARMED)
+  expect(await said($)).toContain(BLOCKS)
+})
+
+test('F2b: al terminar lo último vivo, el siguiente fin de turno guarda de nuevo y arma el /clear; mientras tanto no repite guardado ni aviso', async ($, on) => {
+  const clock = mock.clock(on)
+  let live = 2
+  const seen = auto(on, { tokens: 130000 })
+  const r = repo(on, { [`${EST}/nucleo.md`]: PREV }, { live: () => live, bloquea: () => (live ? BLOCKS : '') })
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.forks).toBe(1)
+  expect(seen.toasts.filter(t => t.includes(BLOCKS))).toHaveLength(1)
+  live = 0
+  await $.turn.complete(DONE_TURN)
+  await clock.advance(800)
+  expect(seen.forks).toBe(2)
+  expect(r.calls).toHaveLength(2)
+  expect(seen.cleared).toBe(0)
+  expect(await said($)).toContain(ARMED)
+})
+
+test('F2b: el aviso de trabajo vivo sale en cada cruce del umbral y de nuevo si cambia lo que bloquea', async ($, on) => {
+  const clock = mock.clock(on)
+  let tokens = 130000
+  let text = BLOCKS
+  const seen = auto(on, { tokens: () => tokens })
+  repo(on, { [`${EST}/nucleo.md`]: PREV }, { live: 2, bloquea: () => text })
+  const turn = async () => { await $.turn.complete(DONE_TURN); await clock.advance(800) }
+  const told = () => seen.toasts.filter(t => t.includes('sigue vivo')).length
+  await turn()
+  expect(told()).toBe(1)
+  expect(seen.toasts.find(t => t.includes('sigue vivo'))).toContain('/tasks')
+  await turn()
+  expect(told()).toBe(1)
+  text = 'Monitor (espera eterna)'
+  await turn()
+  expect(told()).toBe(2)
+  tokens = 1000
+  await turn()
+  tokens = 130000
+  text = BLOCKS
+  await turn()
+  expect(told()).toBe(3)
 })
 
 test('dos ciclos de clear conservan el objetivo autorizado en memoria', async ($, on) => {

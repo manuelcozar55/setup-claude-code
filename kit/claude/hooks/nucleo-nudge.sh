@@ -120,7 +120,7 @@ modelo() {
 # Aviso a la persona (systemMessage). Las órdenes dependen de que haya cockpit (/handoff) o no (el CLI), de que esta
 # sesión sea la dueña y de que haya agentes en vuelo (limpiar la sesión los perdería).
 persona() {
-  local NAG=0 E="" P="Contexto $CTX tok ($PCT % del airbag)."
+  local NAG=0 E="" TXT="" P="Contexto $CTX tok ($PCT % del airbag)."
   if [ "$SOLOHOME" = 1 ]; then
     PM="$P Sesión abierta desde ~, sin estado propio: si trabajas en una tarea, guárdala en el estado de su proyecto; después /clear."
   elif [ "$AJENO" = 1 ]; then
@@ -129,14 +129,15 @@ persona() {
     # shellcheck source=SCRIPTDIR/lib/agentes.sh
     . "$(dirname "${BASH_SOURCE[0]}")/lib/agentes.sh"
     if [ -n "$RANURA" ]; then E=$RANURA; else E=$(nucleo_estado_leer "$RAIZ") || E=""; fi
-    [ -z "$E" ] || NAG=$(nucleo_agentes_vivos "$E" "$SID" 2>/dev/null | jq 'map(select(.type == "subagent")) | length' 2>/dev/null) || NAG=0
+    [ -z "$E" ] || NAG=$(nucleo_agentes_vivos "$E" "$SID" 2>/dev/null | jq length 2>/dev/null) || NAG=0
+    [ -z "$E" ] || TXT=$(nucleo_agentes_texto "$E" "$SID")
     if nucleo_cockpit; then
-      if [ "${NAG:-0}" -gt 0 ]; then PM="$P $NAG agente(s) en vuelo: /handoff solo para guardar el estado, no /clear. Recoge sus resultados antes de limpiar la sesión."
+      if [ "${NAG:-0}" -gt 0 ]; then PM="$P En vuelo ($TXT): /handoff solo guarda el estado y no limpia hasta que termine. Recoge sus resultados, o para ese trabajo, antes de limpiar."
       elif [ "$BP" = 85 ]; then PM="$P El airbag compactará en breve: /handoff ya (guarda el estado) y /clear."
       else PM="$P Fase cerrada: /handoff (deja el estado en $NOM y retoma limpio). Si no, delega el resto a subagentes."
       fi
     else
-      if [ "${NAG:-0}" -gt 0 ]; then PM="$P $NAG agente(s) en vuelo: guarda el estado con \`$CL\` y no hagas /clear todavía. Recoge sus resultados antes de limpiar la sesión."
+      if [ "${NAG:-0}" -gt 0 ]; then PM="$P En vuelo ($TXT): guarda el estado con \`$CL\` y no hagas /clear todavía. Recoge sus resultados, o para ese trabajo, antes de limpiar."
       elif [ "$BP" = 85 ]; then PM="$P El airbag compactará en breve: guarda el estado con \`$CL\` y haz /clear."
       else PM="$P Fase cerrada: actualiza $NOM con \`$CL\` y haz /clear (el hook de arranque lo re-inyecta). Si no, delega el resto a subagentes."
       fi
