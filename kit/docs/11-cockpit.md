@@ -15,7 +15,7 @@
 
 ## Cómo se carga
 
-La versión 2.2.0 del kit incluye cockpit 0.11.0.
+La versión 2.3.0 del kit incluye cockpit 0.11.1.
 `scc` carga la copia que `install.sh` deja en `~/.claude/scc/` mediante `--plugin-dir`, sin instalar
 nada; las órdenes de marketplace de abajo instalan esa misma versión desde el tag
 publicado, para todas tus sesiones. En un paquete transferido, `VERSION` identifica

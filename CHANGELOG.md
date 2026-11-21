@@ -7,6 +7,25 @@ etiquetado.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-21
+
+En modo auto, lo que el guard no sabe leer lo juzga el clasificador en vez de preguntarte; un asiento de OpenRig cuenta como sesión desatendida; y la foto de trabajo vivo no se pierde con órdenes enormes. Cockpit 0.11.0 → 0.11.1.
+
+### Cambiado
+
+- **En modo auto, lo que el guard no sabe leer lo juzga el clasificador** (#77). Una orden, subcomando u operando
+  que sale de una variable o sustitución, un `rm` recursivo con operando opaco o pasado por `xargs`/`find -exec`, un
+  operando opaco de `git reset`/`clean` o un fichero que se escribe y ejecuta en la misma orden ya no te preguntan en
+  auto: el clasificador ve la orden entera. Fuera de auto (también en `plan`, `acceptEdits` y `bypassPermissions`) todo
+  sigue igual, y en auto no cambia ningún deny ni lo que se ve y es de política: `DROP TABLE`, el lease a una rama de
+  trabajo, la tubería hacia una orden en variable, el `rm -rf` de un directorio de build, el push con rama, remoto u
+  opción en variable y la orden por encima del tope de 128 KiB siguen preguntando. Sentinel, al pasarse de su
+  presupuesto de análisis, sigue preguntando también en auto. El modo se lee solo del campo `permission_mode` del
+  payload (exactamente `auto`), no de la orden ni del entorno.
+  **Ojo (H3):** antes un «ask» del hook se imponía a cualquier regla allow tuya; ahora, en auto, una regla allow
+  estrecha propia (p. ej. de `git reset`) puede aprobar sin persona una orden con variable que el guard deja al
+  clasificador. El kit solo trae un allow (`uv tool list`); revisa los tuyos.
+
 ### Arreglado
 
 - **Un asiento de OpenRig cuenta como sesión desatendida.** Los asientos corren interactivos en tmux, así que el
@@ -14,6 +33,23 @@ etiquetado.
   turno; nadie confirma ahí (medido con OpenRig 0.7.16: un asiento 45 h parado esperando un sí). Se reconoce por
   `OPENRIG_OCCUPANT_GENERATION`, que solo tiene el proceso del asiento; un shell con `rig attach --self` sigue contando
   con persona delante. Si OpenRig renombra la variable, se vuelve a suponer persona delante.
+- **El aviso desatendido del airbag cabe en su tope** (#76). `contexto-base.sh --peor` medía solo la rama atendida;
+  ahora mide también la desatendida, sin `handoff` en el PATH (CI o instalación sin enlace en `~/.local/bin`, donde
+  la orden sale con ruta larga), con el mismo tope de 600 y el texto acortado.
+- **La foto de trabajo vivo no se pierde con órdenes enormes** (#75). Por encima de ~128 KB el Stop no podía pasar
+  las tareas de fondo a jq (E2BIG, tragado por `|| true`): el cockpit veía 0 vivos y un `/clear` podía cortar un shell
+  vivo; y la limpieza del texto era cuadrática (95 KB, 8,5 s con un timeout de 15). Ahora pasa solo id, tipo, estado
+  y la descripción recortada. «En vuelo» ya no queda vacío si la foto está rota (cae a «N tarea(s) de fondo») y el
+  texto de lo vivo pasa por `redact()` en el toast y en la banda del handoff del cockpit (0.11.1).
+
+### Cifras
+
+| Cifra | Valor |
+|---|---|
+| Preguntas de hooks del 14 al 19-nov con 2.1.0 en auto, frente a denegaciones del clasificador | 283 frente a 12 |
+| De esas 283, por orden, operando o subcomando en variable | 249 |
+| Replay de 733 órdenes reales en auto, antes del parche de revisión (H1, H2): ask / deny | 290 → 10 / 32 → 32 |
+| Aviso desatendido del airbag, peor caso sin `handoff` en el PATH (tope 600) | 620 → 597 caracteres |
 
 ## [2.2.0] - 2026-11-20
 
@@ -2488,7 +2524,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.1...v2.0.0
