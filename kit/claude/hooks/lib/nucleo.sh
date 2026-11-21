@@ -606,8 +606,9 @@ nucleo_ctx() {
 # hereda CLAUDE_CODE_SESSION_ATTENDED=0 y CLAUDE_CODE_ENTRYPOINT=sdk-cli (Claude Code los fija él, un valor
 # heredado no los cambia); interactivo, 1 y cli. Sin ninguna de las dos, se asume persona delante.
 # Un asiento de OpenRig corre interactivo en tmux, pero su encargo es la fila de la cola y nadie confirma (medido en
-# 0.7.16: 45 h parado esperando un sí). Se reconoce por OPENRIG_OCCUPANT_GENERATION, que solo tiene el proceso del
-# asiento: `rig attach --self --print-env` exporta NODE_ID y SESSION_NAME a un shell con persona delante.
+# 0.7.16: 45 h parado esperando un sí). Se reconoce por OPENRIG_OCCUPANT_GENERATION, que OpenRig da al asiento y al
+# entorno de su sesión tmux (un panel nuevo en ella también cuenta como asiento); `rig attach --self --print-env`
+# solo exporta NODE_ID y SESSION_NAME a un shell con persona delante.
 nucleo_desatendido() {
   [ "${CLAUDE_CODE_SESSION_ATTENDED:-}" = 0 ] && return 0
   [ -n "${OPENRIG_OCCUPANT_GENERATION:-}" ] && return 0
