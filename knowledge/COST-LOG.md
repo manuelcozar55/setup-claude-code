@@ -205,6 +205,9 @@ Propuesta (no aplicada): si hay que recortar, el candidato es el protocolo de ar
 **2026-11-20, rama desatendida del nudge.** `contexto-base.sh --peor` medía solo la rama atendida (heredaba el
 entorno). Con el #73 todo asiento de OpenRig toma la desatendida, que medía 644 en el peor caso: se mide aparte con
 el mismo tope de 600 (no se sube) y el texto se acorta a 586. La atendida, aislada del entorno, mide 541.
+Corrección del 21-nov (revisión de #76): esos 586 eran con `handoff` en el PATH; sin él (CI, instalación sin enlace en
+`~/.local/bin`) la orden sale con ruta larga y daba 620. `--peor` corre ahora sin `handoff` en el PATH y el texto se
+acorta otra vez: 597 en el peor caso (margen 3).
 
 ## Tirada M7 del eval set, dos brazos — 2026-10-29/30, v1.7.0 (harness 9f7d81e)
 
