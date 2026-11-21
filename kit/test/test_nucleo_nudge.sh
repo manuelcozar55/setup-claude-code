@@ -5,7 +5,7 @@
 # Uso: test_nucleo_nudge.sh [ruta al hook]. Sin red; HOME falso en un mktemp que se borra.
 set -u
 H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/nucleo-nudge.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT; export NUCLEO_COCKPIT=1
-export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT
+export HOME=$T/home GIT_CEILING_DIRECTORIES=$T; unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT OPENRIG_OCCUPANT_GENERATION
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
 R=$T/repo; mkdir -p "$R/.claude/estado" "$HOME"; git -C "$R" init -q
@@ -75,7 +75,7 @@ ok "K8 en proyecto: igual que antes" "$(run s54 p60 | ctx | command grep -c "act
 # y CLAUDE_CODE_ENTRYPOINT=sdk-cli al hook; el interactivo, 1 y cli). Se pide guardar el estado y seguir.
 # Sin handoff en el PATH (CI) el aviso da la ruta …/bin/handoff: eso no es el comando /handoff.
 echo x >"$NUC"; touch -d '-30 minutes' "$NUC"
-for SEN in "CLAUDE_CODE_SESSION_ATTENDED=0" "CLAUDE_CODE_ENTRYPOINT=sdk-cli"; do
+for SEN in "CLAUDE_CODE_SESSION_ATTENDED=0" "CLAUDE_CODE_ENTRYPOINT=sdk-cli" "OPENRIG_OCCUPANT_GENERATION=1"; do
   for B in p72 p90; do
     C=$( (export "${SEN?}"; run "k3${SEN//[^A-Za-z]/}$B" "$B") | ctx)
     ok "K3 -p ($SEN, $B): no pide cerrar el turno ni /handoff ni tecla h" "$(command grep -ciE 'cierra el turno|(^|[^[:alnum:]_.-])/handoff|tecla|/clear' <<<"$C"),$([ -n "$C" ] && echo avisa)" 0,avisa

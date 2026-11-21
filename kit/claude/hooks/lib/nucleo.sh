@@ -605,8 +605,12 @@ nucleo_ctx() {
 # nucleo_desatendido: rc 0 si la sesión no tiene a nadie delante (`claude -p`, SDK). Medido en 2.1.308: el hook
 # hereda CLAUDE_CODE_SESSION_ATTENDED=0 y CLAUDE_CODE_ENTRYPOINT=sdk-cli (Claude Code los fija él, un valor
 # heredado no los cambia); interactivo, 1 y cli. Sin ninguna de las dos, se asume persona delante.
+# Un asiento de OpenRig corre interactivo en tmux, pero su encargo es la fila de la cola y nadie confirma (medido en
+# 0.7.16: 45 h parado esperando un sí). Se reconoce por OPENRIG_OCCUPANT_GENERATION, que solo tiene el proceso del
+# asiento: `rig attach --self --print-env` exporta NODE_ID y SESSION_NAME a un shell con persona delante.
 nucleo_desatendido() {
   [ "${CLAUDE_CODE_SESSION_ATTENDED:-}" = 0 ] && return 0
+  [ -n "${OPENRIG_OCCUPANT_GENERATION:-}" ] && return 0
   case ${CLAUDE_CODE_ENTRYPOINT:-} in sdk-*) return 0 ;; esac
   return 1
 }
