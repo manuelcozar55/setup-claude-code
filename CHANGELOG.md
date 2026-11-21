@@ -7,6 +7,10 @@ etiquetado.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-20
+
+El handoff automático deja de borrar la respuesta que acabas de recibir: guarda al cerrar el turno y limpia con tu próximo mensaje (ADR 030, que enmienda a 013). Cockpit 0.10.0 → 0.11.0.
+
 ### Cambiado
 
 - **Cockpit 0.10.0 → 0.11.0: el handoff automático ya no borra la respuesta que acabas de recibir** (ADR 030, que
@@ -2476,7 +2480,9 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.1...v2.0.0
 [1.10.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.1...v1.10.0
