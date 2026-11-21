@@ -7,6 +7,14 @@ etiquetado.
 
 ## [Unreleased]
 
+### Arreglado
+
+- **Un asiento de OpenRig cuenta como sesión desatendida.** Los asientos corren interactivos en tmux, así que el
+  arranque les inyectaba «nada se ejecuta hasta que la persona lo confirme» y el aviso del airbag les pedía cerrar el
+  turno; nadie confirma ahí (medido con OpenRig 0.7.16: un asiento 45 h parado esperando un sí). Se reconoce por
+  `OPENRIG_OCCUPANT_GENERATION`, que solo tiene el proceso del asiento; un shell con `rig attach --self` sigue contando
+  con persona delante. Si OpenRig renombra la variable, se vuelve a suponer persona delante.
+
 ## [2.2.0] - 2026-11-20
 
 El handoff automático deja de borrar la respuesta que acabas de recibir: guarda al cerrar el turno y limpia con tu próximo mensaje (ADR 030, que enmienda a 013). Cockpit 0.10.0 → 0.11.0.

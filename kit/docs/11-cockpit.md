@@ -274,7 +274,9 @@ arma temporizadores y no hace handoff automático ni autosave (ni gasta tokens).
 prueba y `claude -p` de un turno (2.1.308): en `-p` llegan `CLAUDE_CODE_SESSION_ATTENDED=0` y
 `CLAUDE_CODE_ENTRYPOINT=sdk-cli` (Claude Code los fija él; un valor heredado no los cambia), y el payload no trae
 ningún campo que lo distinga; en una sesión interactiva valen `1` y `cli`. Sin ninguna de las dos variables se asume
-persona delante.
+persona delante. Un asiento de OpenRig corre interactivo en tmux (el cockpit funciona igual), pero nadie confirma: los
+hooks del kit lo tratan como desatendido si el proceso tiene `OPENRIG_OCCUPANT_GENERATION`. No basta
+`OPENRIG_NODE_ID`: `rig attach --self --print-env` lo exporta a shells con persona delante.
 
 En una sesión desatendida:
 
