@@ -2014,8 +2014,9 @@ def main() -> None:
     tool_name = payload.get("tool_name") or payload.get("tool", "<unknown>")
     tool_input = effective_input(payload)
     command = tool_input.get("command")
-    # In auto mode a call over the size cap goes to the classifier, which reads it whole, instead of prompting the
-    # person; the bash guard still asks for it (cmdn_oversize).
+    # In auto mode Sentinel stays silent on a call over the size cap, but the person is still prompted: the bash guard
+    # has the same cap and asks for it (cmdn_oversize). If the guard ever stops asking there, this silence lets an
+    # unanalyzed call through without a prompt: keep both caps and decisions in step.
     auto_mode = payload.get("permission_mode") == "auto"
     if tool_name == "Bash" and isinstance(command, str) and len(command.encode()) > MAX_COMMAND_BYTES:
         if auto_mode:

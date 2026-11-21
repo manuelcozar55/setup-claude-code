@@ -424,6 +424,8 @@ tok_ask() { [[ -n $TOK_ASK ]] || TOK_ASK=$1; }
 # pregunta a la persona, lo juzga el clasificador, que ve el comando entero. Del 14 al 19-nov fueron 270 de 283 preguntas, casi todas
 # texto de un heredoc leido como orden. Los deny no cambian: TOK_ASK solo se emite al final, tras todas las reglas de bloqueo.
 tok_opaque() { [[ $PMODE == auto ]] || tok_ask "$1"; }
+# Un push con operando opaco (rama o remoto en una variable) sigue preguntando en auto: es irreversible hacia fuera y la politica pide confirmar los push.
+tok_gitop() { if [[ ${T[2]:-} == push ]]; then tok_ask "$1"; else tok_opaque "$1"; fi; }
 # lease_work_ok <rama>: PRUEBA de que un nombre de rama es de trabajo (lista cerrada de prefijos: feat/, fix/, chore/...; no release/ ni hotfix/,
 # que en muchos equipos estan protegidas). Con ella el lease PREGUNTA; nunca da allow. Solo mira el
 # texto: `HEAD` (la rama en curso, que lee del disco lo que la propia linea puede haber cambiado) no tiene prueba. Un nombre sin prefijo
@@ -600,7 +602,7 @@ judge_rm() {
     # Con prueba de que el operando parece un directorio de build (cmdn_rm_proof: ruta de build relativa, ~/proyecto/.../build,
     # /tmp/<subruta>) el guard PREGUNTA con la ruta resuelta delante; sin prueba manda el criterio de la base: un `rm -rf` se deniega.
     if (( r && f )) && cmdn_rm_proof "$a"; then
-      tok_opaque "Confirm: rm -rf de $a, que se resuelve a $CMDN_RM_RESOLVED (un directorio de build conocido). Borrado recursivo y forzado: confirma que es esa ruta y no otra."
+      tok_ask "Confirm: rm -rf de $a, que se resuelve a $CMDN_RM_RESOLVED (un directorio de build conocido). Borrado recursivo y forzado: confirma que es esa ruta y no otra."
       continue
     fi
     if cmdn_sensitive_operand "$a"; then
@@ -709,7 +711,7 @@ token_checks() {
               if (( skip )); then skip=0; continue; fi
               [[ $a == -o || $a == --push-option || $a == --repo ]] && { skip=1; continue; }
               if [[ $a != -* ]] && cmdn_opaque_operand "$a"; then
-                tok_opaque "Confirm: git ${T[2]} con un operando que sale de una variable o sustitucion ($a): el guard no puede saber si apunta a main, a un --hard o a un clean forzado. Escribe la rama o la opcion a la vista."
+                tok_gitop "Confirm: git ${T[2]} con un operando que sale de una variable o sustitucion ($a): el guard no puede saber si apunta a main, a un --hard o a un clean forzado. Escribe la rama o la opcion a la vista."
               elif [[ ${T[2]} != push && $a == -* ]] && cmdn_opaque_operand "$a"; then
                 tok_opaque "Confirm: git ${T[2]} con una opcion que sale de una variable ($a): el guard no puede saber si es --hard o --force. Escribe la opcion a la vista."
               fi

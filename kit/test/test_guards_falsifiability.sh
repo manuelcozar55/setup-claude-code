@@ -420,7 +420,7 @@ mutate "el heredoc vale como dato sea cual sea su lector" sentinel/sentinel_pref
 mutate "escribir el echo a un fichero sigue siendo dato" claude/hooks/lib/cmdnorm.sh 's/&& !devnull\(o\)\) \{ nosimple = 1; wf = 1 \}/\&\& 0) { nosimple = 1; wf = 1 }/'
 mutate "tee a un fichero sigue siendo dato" claude/hooks/lib/cmdnorm.sh 's/&& !devnull\(toks\[j\]\)\) \{ nosimple = 1; wf = 1 \}/\&\& 0) { nosimple = 1; wf = 1 }/'
 # shellcheck disable=SC2016  # el `$` es texto de la expresion sed
-mutate "rm -rf de un build con prueba pasa sin preguntar" claude/hooks/block-dangerous-commands.sh 's/tok_opaque "Confirm: rm -rf de \$a, que se resuelve/: "Confirm: rm -rf de $a, que se resuelve/'
+mutate "rm -rf de un build con prueba pasa sin preguntar" claude/hooks/block-dangerous-commands.sh 's/tok_ask "Confirm: rm -rf de \$a, que se resuelve/: "Confirm: rm -rf de $a, que se resuelve/'
 mutate "git rm --cached admite cualquier opcion (-f)" sentinel/sentinel_preflight.py 's/all\(a\[0\] in \(.*startswith\("-"\)\)$/True/'
 # shellcheck disable=SC2016  # el `$` es texto de la expresion sed
 mutate "el lease a una rama de trabajo pasa sin preguntar" claude/hooks/block-dangerous-commands.sh 's/tok_ask "Confirm: git push --force-with-lease \$\{pos\[0\]\}/: "Confirm: git push --force-with-lease ${pos[0]}/'
