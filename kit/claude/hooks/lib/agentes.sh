@@ -24,7 +24,7 @@ nucleo_agentes_foto() {
   [ ! -L "$f" ] || return 1
   tmp=$(mktemp "$d/.foto.XXXXXX") || return 1
   if jq -cn --arg s "$2" --arg t "$(date -u +%FT%T.%NZ)" --argjson v "$3" \
-    '{sid:$s,t:$t,vivos:[$v[] | select(.status == null or .status == "running") | {id:.id,type:.type,d:((.description // .command // "") | tostring | gsub("[\\p{C}\\p{Z}]+"; " ") | .[0:40])}]}' > "$tmp"; then
+    '{sid:$s,t:$t,vivos:[$v[] | select(.status == null or .status == "running") | {id:.id,type:.type,d:((.d // .description // .command // "") | tostring | .[0:200] | gsub("[\\p{C}\\p{Z}]+"; " ") | .[0:40])}]}' > "$tmp"; then
     mv -f -- "$tmp" "$f"
   else rm -f -- "$tmp"; return 1; fi
 }

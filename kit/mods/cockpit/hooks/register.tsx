@@ -1088,7 +1088,7 @@ async function runHandoff($: $, andClear: boolean | 'auto', focus = '', canWait 
           // Saved under live work (even if it started during the fork): the next turn end decides again, not «ya guardado».
           isLiveSaved = true
           isAutoCrossed = false
-          await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${saved.path} · no limpio mientras siga vivo: ${hasLive}${tail}` }))
+          await update($, handoff, (): Handoff => ({ phase: 'done', msg: `Guardado en ${saved.path} · no limpio mientras siga vivo: ${redact(hasLive)}${tail}` }))
           return saved
         }
         deferredClear = { revision, path: saved.path }
@@ -1169,7 +1169,7 @@ async function maybeAutoHandoff($: $) {
   } else {
     if (liveToldFor !== `${epoch}|${live}`) {
       liveToldFor = `${epoch}|${live}`
-      $.ui.toast(`Contexto al ${pct}%: sigue vivo ${live}. ${isLiveSaved ? '' : 'Guardo el estado ya, sin limpiar. '}El /clear llegará cuando termine; para desbloquearlo, espera o para ese trabajo (/tasks)`)
+      $.ui.toast(`Contexto al ${pct}%: sigue vivo ${redact(live)}. ${isLiveSaved ? '' : 'Guardo el estado ya, sin limpiar. '}El /clear llegará cuando termine; para desbloquearlo, espera o para ese trabajo (/tasks)`)
     }
     if (isLiveSaved) return skip(`trabajo vivo (${live}): ya guardado en este cruce`)
   }
