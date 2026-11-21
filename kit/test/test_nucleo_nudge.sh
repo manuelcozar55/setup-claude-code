@@ -162,7 +162,11 @@ ok "no dueña: aviso a la persona sin orden de handoff, y nada para el modelo" "
 rm -f "$R2/.claude/estado/.dueno"
 # Agentes en vuelo: limpiar la sesión los perdería.
 jq -cn '{sid:"d8",t:"2099-01-01T00:00:00Z",vivos:[{id:"a1",type:"subagent"}]}' >"$R2/.claude/estado/agentes-vivos-d8.json"
-ok "agentes en vuelo: guarda sin /clear" "$(NUCLEO_COCKPIT=0 runr d8 p60 | sysm | command grep -c '1 agente(s) en vuelo: guarda el estado con .* y no hagas /clear')" 1
+ok "agentes en vuelo: guarda sin /clear" "$(NUCLEO_COCKPIT=0 runr d8 p60 | sysm | command grep -c 'En vuelo (subagente ×1): guarda el estado con .* y no hagas /clear')" 1
+# F2b (ADR 031): el aviso cuenta todo lo vivo, de la misma foto que el CLI, y dice qué es; no manda a limpiar si el cockpit no podrá.
+jq -cn '{sid:"d8b",t:"2099-01-01T00:00:00Z",vivos:[{id:"b1",type:"shell",d:"oráculo"},{id:"m1",type:"monitor",d:"espera eterna"}]}' >"$R2/.claude/estado/agentes-vivos-d8b.json"
+VW=$(NUCLEO_COCKPIT=1 runr d8b p60 | sysm)
+ok "trabajo vivo (shell+monitor): el aviso dice qué bloquea y no habla de fase cerrada" "$(command grep -c 'monitor (espera eterna); shell de fondo (oráculo)' <<<"$VW"),$(command grep -c 'Fase cerrada' <<<"$VW")" "1,0"
 # Detección del cockpit: plugin activo en settings.json de usuario (NUCLEO_COCKPIT manda si está).
 mkdir -p "$HOME/.claude"; printf '{"enabledPlugins":{"cockpit@setup-claude-code":true}}' >"$HOME/.claude/settings.json"
 ok "cockpit detectado por enabledPlugins" "$(unset NUCLEO_COCKPIT; runr d9 p60 | sysm | command grep -c '/handoff')" 1

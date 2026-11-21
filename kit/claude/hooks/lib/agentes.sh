@@ -24,7 +24,7 @@ nucleo_agentes_foto() {
   [ ! -L "$f" ] || return 1
   tmp=$(mktemp "$d/.foto.XXXXXX") || return 1
   if jq -cn --arg s "$2" --arg t "$(date -u +%FT%T.%NZ)" --argjson v "$3" \
-    '{sid:$s,t:$t,vivos:[$v[] | select(.status == null or .status == "running") | {id:.id,type:.type}]}' > "$tmp"; then
+    '{sid:$s,t:$t,vivos:[$v[] | select(.status == null or .status == "running") | {id:.id,type:.type,d:((.description // .command // "") | tostring | gsub("[\\p{C}\\p{Z}]+"; " ") | .[0:40])}]}' > "$tmp"; then
     mv -f -- "$tmp" "$f"
   else rm -f -- "$tmp"; return 1; fi
 }
@@ -36,6 +36,15 @@ nucleo_agentes_vivos() {
   if [ -f "$f" ] && [ ! -L "$f" ]; then
     jq -c --arg s "$2" 'if .sid == $s then (.vivos // []) else [] end' "$f" 2>/dev/null
   else printf '[]\n'; fi
+}
+
+# nucleo_agentes_texto <estado> <sid>: qué hay vivo, en una línea («monitor (espera eterna); shell de fondo (oráculo, make)»), de la
+# misma foto que cuenta `handoff --estado`. Vacío si no hay nada. Es el único sitio que lo redacta: el Stop y el cockpit lo repiten.
+nucleo_agentes_texto() {
+  nucleo_agentes_vivos "$1" "$2" 2>/dev/null | jq -r '
+    def et: {shell:"shell de fondo", subagent:"subagente", monitor:"monitor", workflow:"workflow"}[.] // .;
+    group_by(.type) | map(length as $n | (.[0].type | tostring | et) as $t | [.[] | .d // empty | select(. != "")] | .[0:3] as $d
+      | if ($d | length) > 0 then "\($t) (\($d | join(", ")))" else "\($t) ×\($n)" end) | join("; ")' 2>/dev/null
 }
 
 # nucleo_agentes_anotar <estado> <línea JSON>: añade una línea a agentes.jsonl y rota a 200 líneas o 14 días. Falla en

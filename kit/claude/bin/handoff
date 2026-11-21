@@ -66,7 +66,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
 --json    --desde devuelve {nucleo,sha256,transcript,bytes} del documento guardado (transcript: la ruta o null; bytes: lo escrito); --migrar añade archivo.
 --liberar ID libera solamente al dueño cuyo ID coincida; conserva el núcleo.
 --agentes tabla del registro persistente; no crea estado ni archiva agentes.
---estado  una línea JSON: raíz, nucleo, bytes, tope, pct, dueño, sha256 y agentes_vivos de --sesion (sin proyecto: {"raiz":null}).
+--estado  una línea JSON: raíz, nucleo, bytes, tope, pct, dueño, sha256 y agentes_vivos y bloquea (qué hay vivo) de --sesion (sin proyecto: {"raiz":null}).
           Con la ranura de esta sesión vinculada a la raíz: los del proyecto, más «sesion» (la ranura) y «vinculado»:true.
 Raíz: la del directorio actual (raíz git; no $HOME ni un directorio sin git) o --raiz DIR.
 Con ESTADO.md en la raíz y sin nucleo.md, ese es el estado del proyecto y --desde lo fusiona en él (nunca crea nucleo.md):
@@ -197,8 +197,9 @@ if [ "$MODO" = estado ]; then
     if sesion; then
       NUC=$SES/nucleo.md; B=0; SHA=""; [ ! -f "$NUC" ] || SHA=$(sha256sum <"$NUC" | cut -d' ' -f1); [ ! -f "$NUC" ] || B=$(wc -c <"$NUC" | tr -d ' ')
       VIVOS=$(nucleo_agentes_vivos "$SES" "$SESION" | jq length) || die 1 "registro ilegible"
-      jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg s "$SES" --arg n "$NUC" --argjson b "$B" --argjson t "$TOPE" --argjson p "$((B * 100 / TOPE))" \
-        '{raiz:null,sesion:$s,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:null,sha256:(if $sha == "" then null else $sha end),agentes_vivos:$av}'
+      BLOQ=$(nucleo_agentes_texto "$SES" "$SESION")
+      jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg bq "$BLOQ" --arg s "$SES" --arg n "$NUC" --argjson b "$B" --argjson t "$TOPE" --argjson p "$((B * 100 / TOPE))" \
+        '{raiz:null,sesion:$s,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:null,sha256:(if $sha == "" then null else $sha end),agentes_vivos:$av,bloquea:$bq}'
       exit 0
     fi
     echo '{"raiz":null}'; exit 3
@@ -216,10 +217,11 @@ if [ "$MODO" = estado ]; then
     DJ=$(jq -cn --arg s "${D% *}" --arg d "$(iso_de "${D#* }")" --argjson v "$V" '{sesion:$s,desde:$d,vigente:$v}')
   fi
   VIVOS=$(nucleo_agentes_vivos "$E" "$SESION" | jq length) || die 1 "no puedo leer la foto de agentes de $SESION"
+  BLOQ=$(nucleo_agentes_texto "$E" "$SESION")
   # Sesión de ~ vinculada a este proyecto: el estado es el del proyecto y se dice cuál es la ranura (`sesion`) y que hay vínculo.
   vinculada || true
-  jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg r "$RAIZ" --arg n "$NUC" --arg ej "$EJ" --arg vs "$VSLOT" --argjson b "$B" --argjson t "$TOPE" --argjson p "$((B * 100 / TOPE))" --argjson d "$DJ" \
-    '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d,agentes_vivos:$av,sha256:(if $sha == "" then null else $sha end)} + (if $ej == "" then {} else {modo:"estado-md",estado:$ej} end) + (if $vs == "" then {} else {sesion:$vs,vinculado:true} end)'
+  jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg bq "$BLOQ" --arg r "$RAIZ" --arg n "$NUC" --arg ej "$EJ" --arg vs "$VSLOT" --argjson b "$B" --argjson t "$TOPE" --argjson p "$((B * 100 / TOPE))" --argjson d "$DJ" \
+    '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d,agentes_vivos:$av,bloquea:$bq,sha256:(if $sha == "" then null else $sha end)} + (if $ej == "" then {} else {modo:"estado-md",estado:$ej} end) + (if $vs == "" then {} else {sesion:$vs,vinculado:true} end)'
   exit 0
 fi
 

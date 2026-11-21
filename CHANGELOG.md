@@ -7,6 +7,10 @@ etiquetado.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-20
+
+El handoff automático deja de borrar la respuesta que acabas de recibir: guarda al cerrar el turno y limpia con tu próximo mensaje (ADR 030, que enmienda a 013). Cockpit 0.10.0 → 0.11.0.
+
 ### Cambiado
 
 - **Cockpit 0.10.0 → 0.11.0: el handoff automático ya no borra la respuesta que acabas de recibir** (ADR 030, que
@@ -27,6 +31,13 @@ etiquetado.
 
 ### Arreglado
 
+- **El handoff automático ya no se calla con trabajo de fondo vivo** (F2b, ADR 031). Antes, un shell, un Monitor o un
+  subagente vivo lo omitía sin más y la sesión llegaba al airbag; el aviso del Stop solo contaba subagentes y decía
+  «Fase cerrada: /handoff» mientras el cockpit no iba a poder limpiar. Ahora: la foto de agentes guarda la descripción
+  de cada tarea, `handoff --estado` devuelve `bloquea` (tipo y descripción) y el Stop y el cockpit dicen lo mismo; al
+  cruzar el umbral con trabajo vivo el cockpit guarda el estado una vez, sin limpiar, y avisa de qué bloquea y cómo
+  desbloquearlo (en cada cruce y cada vez que cambia el conjunto, no una vez por sesión); al terminar lo último, el
+  siguiente fin de turno sigue el camino de siempre (guarda y arma el `/clear`).
 - **`make test` ya pasa en Debian 13 (mawk)**: los topes PERF de `test_guards_falsifiability.sh` se calibraban solo con
   arranques de awk, y mawk arranca más rápido que gawk (113 ms contra 207) pero concatena cadenas largas ~12 veces más
   lento. El mismo guard gastaba 1020 ms con mawk contra 570 con gawk y superaba el tope de 1000. La calibración suma
@@ -2469,7 +2480,9 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.1...v2.0.0
 [1.10.1]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v1.9.1...v1.10.0
