@@ -6,6 +6,8 @@
 # Subir un tope exige repetir la medida y apuntarla en COST-LOG.md: no se sube «por si acaso».
 set -uo pipefail
 unset CLAUDE_PID   # bajo Claude Code se hereda y daría ranura de sesión a los hooks de ~
+# desde `claude -p` o un asiento de OpenRig se heredan y los avisos saldrían por su rama desatendida, que se mide aparte
+unset CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT OPENRIG_OCCUPANT_GENERATION
 HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(cd "$HERE/../.." && pwd)"
 pass=0; fail=0
 
@@ -17,6 +19,7 @@ SessionStart clear|9500
 SessionStart resume|9500
 SessionStart memoria|100
 PostToolUse nucleo-nudge|600
+PostToolUse nucleo-nudge desatendido|600
 write-guard (fichero nuevo|500
 write-guard (secretos|600
 stale-read-guard|800
@@ -52,7 +55,7 @@ else echo 'NOT ok - registro lleno no genera bloque de agentes'; fail=$((fail+1)
 TOPE_EVENTO=10000
 # evento | filas que disparan juntas (+) con alternativas (/): prefijos de TAB
 EVENTOS='SessionStart|SessionStart memoria+SessionStart compact/SessionStart startup/SessionStart clear/SessionStart resume
-PostToolUse|PostToolUse nucleo-nudge+narthex
+PostToolUse|PostToolUse nucleo-nudge (/PostToolUse nucleo-nudge desatendido+narthex
 PreToolUse|write-guard (fichero nuevo/write-guard (secretos/stale-read-guard'
 suma_evento() { # tabla spec -> suma de los hooks que disparan juntos
   local tab=$1 spec=$2 total=0 grupo alt m v

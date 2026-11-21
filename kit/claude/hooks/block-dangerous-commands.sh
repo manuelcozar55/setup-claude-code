@@ -28,9 +28,11 @@ if ! command -v jq >/dev/null 2>&1; then
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (fail-closed): falta jq en el PATH, asi que este guard no puede evaluar el comando. Que hacer: instala jq (apt install jq) y reintenta."}}'
   exit 0
 fi
-COMMAND=$(jq -r '.tool_input.command // empty' 2>/dev/null) \
+PAYLOAD=$(cat)
+COMMAND=$(jq -r '.tool_input.command // empty' <<<"$PAYLOAD" 2>/dev/null) \
   || deny "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable, asi que este guard no puede evaluar el comando. Que hacer: reintenta; si se repite es un fallo de Claude Code, no de tu comando."
 [[ -z "$COMMAND" ]] && exit 0
+PMODE=$(jq -r '.permission_mode // empty' <<<"$PAYLOAD" 2>/dev/null)
 
 ALLOWLIST_FILE="${HOME:-/nonexistent}/.claude/sentinel-allowlist.json"
 
@@ -418,6 +420,12 @@ NEST=0
 TOK_ASK=''
 WX=0
 tok_ask() { [[ -n $TOK_ASK ]] || TOK_ASK=$1; }
+# Lo que el guard no sabe leer (la orden, el subcomando, la ruta o el script salen de una variable o de otra orden): en modo auto no se
+# pregunta a la persona, lo juzga el clasificador, que ve el comando entero. Del 14 al 19-nov fueron 270 de 283 preguntas, casi todas
+# texto de un heredoc leido como orden. Los deny no cambian: TOK_ASK solo se emite al final, tras todas las reglas de bloqueo.
+tok_opaque() { [[ $PMODE == auto ]] || tok_ask "$1"; }
+# Un push con operando opaco (rama o remoto en una variable) sigue preguntando en auto: es irreversible hacia fuera y la politica pide confirmar los push.
+tok_gitop() { if [[ ${T[2]:-} == push ]]; then tok_ask "$1"; else tok_opaque "$1"; fi; }
 # lease_work_ok <rama>: PRUEBA de que un nombre de rama es de trabajo (lista cerrada de prefijos: feat/, fix/, chore/...; no release/ ni hotfix/,
 # que en muchos equipos estan protegidas). Con ella el lease PREGUNTA; nunca da allow. Solo mira el
 # texto: `HEAD` (la rama en curso, que lee del disco lo que la propia linea puede haber cambiado) no tiene prueba. Un nombre sin prefijo
@@ -600,7 +608,7 @@ judge_rm() {
     if cmdn_sensitive_operand "$a"; then
       (( r && f )) && deny "BLOCKED: rm -rf (recursive force delete) sobre una ruta sensible ($a). Un directorio de build conocido (node_modules, dist, build...) dentro del proyecto o una subruta concreta de /tmp si se puede borrar. Si de verdad quieres borrar esa ruta, ejecutalo tu con ! en la sesion."
     elif (( r || f )) && cmdn_opaque_operand "$a"; then
-      tok_ask "Confirm: rm con un operando que el guard no puede resolver ($a): una variable o sustitucion puede apuntar a una ruta que no es de build. Escribe la ruta a la vista (rm -rf build)."
+      tok_opaque "Confirm: rm con un operando que el guard no puede resolver ($a): una variable o sustitucion puede apuntar a una ruta que no es de build. Escribe la ruta a la vista (rm -rf build)."
     elif (( r && f )) && cmdn_cwd_operand "$a"; then
       deny "BLOCKED: rm -rf $a vacia el directorio de trabajo (o el repo entero). Borra rutas concretas (rm -rf build dist); si de verdad quieres vaciarlo, ejecutalo tu con ! en la sesion."
     elif (( r )) && cmdn_cwd_operand "$a"; then
@@ -645,7 +653,7 @@ rm_text_net() {
       fi
     done
   done
-  tok_ask "Confirm: un rm recursivo llega como argumento de otra orden (xargs, flock, parallel, find -exec, at, awk, bash -c...): el guard no ve que ruta va a borrar. Ejecuta el rm directamente con la ruta a la vista (rm -rf build)."
+  tok_opaque "Confirm: un rm recursivo llega como argumento de otra orden (xargs, flock, parallel, find -exec, at, awk, bash -c...): el guard no ve que ruta va a borrar. Ejecuta el rm directamente con la ruta a la vista (rm -rf build)."
 }
 token_checks() {
   local seg a i r f dd skip tgt w nxt c
@@ -667,7 +675,7 @@ token_checks() {
     # La propia orden sale de una variable, una sustitucion o una llave (`$X -rf ~`, `$(echo rm) -rf ~`, `{rm,-rf,~}`): no se sabe cual es.
     case ${T[1]:-} in
       '$'*|*'$'*|-*|*'`'*|*'{'*,*'}'*)
-        tok_ask "Confirm: la orden que se va a ejecutar sale de una variable, una sustitucion o una llave (${T[1]:-}): el guard no puede saber cual es. Escribe el nombre de la orden a la vista." ;;
+        tok_opaque "Confirm: la orden que se va a ejecutar sale de una variable, una sustitucion o una llave (${T[1]:-}): el guard no puede saber cual es. Escribe el nombre de la orden a la vista." ;;
     esac
     case ${T[1]:-} in
       rm) judge_rm "${T[@]:2}"; (( RM_R )) && RM_REAL=$(( RM_REAL + 1 ))
@@ -686,7 +694,7 @@ token_checks() {
         done ;;
       git)
         if [[ ${T[2]:-} == '$'* || ${T[2]:-} == *'`'* ]]; then
-          tok_ask "Confirm: el subcomando de git sale de una variable o una sustitucion (git \$X): el guard no puede saber si es push, reset o clean. Escribe el subcomando a la vista."
+          tok_opaque "Confirm: el subcomando de git sale de una variable o una sustitucion (git \$X): el guard no puede saber si es push, reset o clean. Escribe el subcomando a la vista."
         fi
         case ${T[2]:-} in
           branch)
@@ -703,9 +711,9 @@ token_checks() {
               if (( skip )); then skip=0; continue; fi
               [[ $a == -o || $a == --push-option || $a == --repo ]] && { skip=1; continue; }
               if [[ $a != -* ]] && cmdn_opaque_operand "$a"; then
-                tok_ask "Confirm: git ${T[2]} con un operando que sale de una variable o sustitucion ($a): el guard no puede saber si apunta a main, a un --hard o a un clean forzado. Escribe la rama o la opcion a la vista."
+                tok_gitop "Confirm: git ${T[2]} con un operando que sale de una variable o sustitucion ($a): el guard no puede saber si apunta a main, a un --hard o a un clean forzado. Escribe la rama o la opcion a la vista."
               elif [[ ${T[2]} != push && $a == -* ]] && cmdn_opaque_operand "$a"; then
-                tok_ask "Confirm: git ${T[2]} con una opcion que sale de una variable ($a): el guard no puede saber si es --hard o --force. Escribe la opcion a la vista."
+                tok_opaque "Confirm: git ${T[2]} con una opcion que sale de una variable ($a): el guard no puede saber si es --hard o --force. Escribe la opcion a la vista."
               fi
             done ;;
           config)
@@ -738,10 +746,10 @@ token_checks() {
           for a in "${T[@]:2}"; do
             # Por nombre base: `././x.sh`, `$PWD/x.sh` y `d/../d/x.sh` son el mismo fichero. El operando va como patron: `bash x.*`.
             # shellcheck disable=SC2053
-            [[ ${tgt##*/} == ${a##*/} ]] && { WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."; }
+            [[ ${tgt##*/} == ${a##*/} ]] && { WX=1; tok_opaque "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."; }
           done
         elif [[ ${T[1]:-} == "${tgt##*/}" && ${tgt##*/} == *.* ]]; then
-          WX=1; tok_ask "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."
+          WX=1; tok_opaque "Confirm: el comando escribe $tgt y lo ejecuta en la misma orden; el guard no ve el contenido que va a correr. Escribe el script con la herramienta Write, revisalo y ejecutalo aparte."
         fi
       done
     fi

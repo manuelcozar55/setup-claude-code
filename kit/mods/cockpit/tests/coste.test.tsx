@@ -329,7 +329,7 @@ test('versión mínima: con Claude Code anterior a 2.1.311 el mod se apaga con u
 
 test('versión mínima: 2.1.311 o posterior funciona (dock abierto)', async ($, on) => {
   mock.clock(on)
-  const { seen } = await setup($, on, { version: '2.2.0' })
+  const { seen } = await setup($, on, { version: '2.3.0' })
   await start($)
   expect(seen.opens).toBe(1)
   expect(seen.toasts).toEqual([])

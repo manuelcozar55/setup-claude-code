@@ -2014,7 +2014,13 @@ def main() -> None:
     tool_name = payload.get("tool_name") or payload.get("tool", "<unknown>")
     tool_input = effective_input(payload)
     command = tool_input.get("command")
+    # In auto mode Sentinel stays silent on a call over the size cap, but the person is still prompted: the bash guard
+    # has the same cap and asks for it (cmdn_oversize). If the guard ever stops asking there, this silence lets an
+    # unanalyzed call through without a prompt: keep both caps and decisions in step.
+    auto_mode = payload.get("permission_mode") == "auto"
     if tool_name == "Bash" and isinstance(command, str) and len(command.encode()) > MAX_COMMAND_BYTES:
+        if auto_mode:
+            sys.exit(0)
         # A hook past its timeout does not block: the tool runs. Above the cap, ask instead of risking it.
         kb = len(command.encode()) // 1024
         print(json.dumps({
@@ -2032,6 +2038,8 @@ def main() -> None:
         sys.exit(0)
     result = decide_within_budget(payload)
     if result is None:
+        # Not even in auto mode: whoever writes the command can pad it past the budget (see ANALYSIS_BUDGET_S), and an
+        # IOC Sentinel would deny must not become the classifier's call.
         audit_log(tool_name, "ask", "analysis over budget")
         print(json.dumps({
             "hookSpecificOutput": {
