@@ -44,6 +44,12 @@ if [ "$PEOR" != 0 ]; then
   R=$W/$(printf 'd%.0s' $(seq 1 "$nd"))/$(printf 'r%.0s' $(seq 1 $((fill - nd))))
 fi
 mkdir -p "$H" "$R"
+# El aviso lleva la orden de handoff: con handoff en el PATH sale «handoff», sin él la ruta larga de $CLAUDE_HOME/bin.
+# El peor caso es el segundo: los hooks de --peor corren sin handoff en el PATH, midan donde midan (CI lo trae limpio).
+PATH_HOOK=$PATH
+if [ "$PEOR" != 0 ]; then
+  PATH_HOOK=$(tr ":" "\n" <<<"$PATH" | while IFS= read -r d; do [ -x "$d/handoff" ] || printf "%s\n" "$d"; done | paste -sd: -)
+fi
 
 # --- fixtures deterministas --------------------------------------------------
 CLAUDE_HOME=$H/.claude HOME=$H bash "$KIT/install.sh" </dev/null >/dev/null 2>&1
@@ -98,7 +104,7 @@ medir "bloque de agentes" "$BLOQUE"
 hook() { # etiqueta, script, stdin
   local out sh=bash
   case $2 in *.py) sh=python3 ;; esac
-  out=$(cd "$R" && HOME=$H CLAUDE_HOME=$H/.claude "$sh" "$H/.claude/hooks/$2" <<<"$3" 2>/dev/null \
+  out=$(cd "$R" && PATH=$PATH_HOOK HOME=$H CLAUDE_HOME=$H/.claude "$sh" "$H/.claude/hooks/$2" <<<"$3" 2>/dev/null \
     | jq -r --arg ctx "${4:-}" '[.hookSpecificOutput.additionalContext // empty, .hookSpecificOutput.permissionDecisionReason // empty, (if $ctx == "1" then empty else .systemMessage end // empty), .reason // empty] | join("\n")') || out=""
   medir "$1" "$out"
 }

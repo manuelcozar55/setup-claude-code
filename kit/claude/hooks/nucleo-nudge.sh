@@ -94,7 +94,7 @@ modelo() {
   elif nucleo_desatendido; then
     # -p/SDK: nadie pulsa /handoff ni cierra el turno, y cerrarlo termina la sesión. Con acceptEdits, Write/Edit bajo
     # .claude/ se deniegan, pero handoff (un script por Bash) sí escribe: el borrador va fuera de .claude/.
-    [ "$B" = 50 ] || M="$M Nadie cerrará la sesión: guarda el estado (\`$CL\`, borrador fuera de .claude/, o nucleo.md) y sigue."
+    [ "$B" = 50 ] || M="$M Sin cierre: guarda el estado con \`$CL\` (borrador fuera de .claude/) y sigue."
   else
     if nucleo_cockpit; then
       [ "$B" = 70 ] && M="$M Fin de fase = parada válida: si hay agentes en vuelo, no lances más: espera y recoge sus resultados; después cierra la fase, escribe el handoff con \`$CL\` y termina el turno. Con /autonomo on el trabajo sigue solo tras el /clear."
