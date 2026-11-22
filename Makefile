@@ -26,6 +26,9 @@ ifndef SCC_SKIP_LOG
 export SCC_SKIP_LOG := $(shell mktemp -u "$${TMPDIR:-/tmp}/scc-skips.XXXXXX")
 endif
 
+# Un asiento de OpenRig que corre la suite le pasaria su marca de desatendido a los guards, y cada `ask` esperado saldria deny.
+unexport OPENRIG_OCCUPANT_GENERATION CLAUDE_CODE_SESSION_ATTENDED
+
 test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	@rm -f "$(SCC_SKIP_LOG)"
 	bash kit/test/test_guards.sh

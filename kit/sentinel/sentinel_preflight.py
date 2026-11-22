@@ -2003,6 +2003,23 @@ def audit_log(tool: str, decision: str, reason: str | None) -> None:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+# Same rule as cmdn_desatendido in the shell guards (cmdnorm): in an OpenRig seat or with CLAUDE_CODE_SESSION_ATTENDED=0
+# nobody answers an "ask", which parks the session with no deadline, so Sentinel denies with the reason instead.
+UNATTENDED_NOTE = (" ASIENTO DESATENDIDO: aqui nadie puede confirmar y la pregunta te dejaria parado, asi que se deniega. "
+                   "Si hace falta de verdad, escalalo a la persona por la cola de OpenRig (rig queue create) y sigue con "
+                   "otra parte del encargo.")
+
+
+def ask_or_deny(reason: str) -> dict:
+    unattended = (os.environ.get("CLAUDE_CODE_SESSION_ATTENDED") == "0"
+                  or bool(os.environ.get("OPENRIG_OCCUPANT_GENERATION")))
+    return {"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny" if unattended else "ask",
+        "permissionDecisionReason": reason + UNATTENDED_NOTE if unattended else reason,
+    }}
+
+
 def main() -> None:
     raw = sys.stdin.read()
     try:
@@ -2023,35 +2040,21 @@ def main() -> None:
             sys.exit(0)
         # A hook past its timeout does not block: the tool runs. Above the cap, ask instead of risking it.
         kb = len(command.encode()) // 1024
-        print(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "ask",
-                "permissionDecisionReason": (
-                    f"Confirm: el comando pesa {kb} KB (tope {MAX_COMMAND_BYTES // 1024} KB): Sentinel no puede "
-                    "analizarlo dentro de su timeout, y un guard que se pasa de tiempo deja ejecutar la "
-                    "herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un "
-                    "comando corto."
-                ),
-            }
-        }))
+        print(json.dumps(ask_or_deny(
+            f"Confirm: el comando pesa {kb} KB (tope {MAX_COMMAND_BYTES // 1024} KB): Sentinel no puede "
+            "analizarlo dentro de su timeout, y un guard que se pasa de tiempo deja ejecutar la "
+            "herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un "
+            "comando corto.")))
         sys.exit(0)
     result = decide_within_budget(payload)
     if result is None:
         # Not even in auto mode: whoever writes the command can pad it past the budget (see ANALYSIS_BUDGET_S), and an
         # IOC Sentinel would deny must not become the classifier's call.
         audit_log(tool_name, "ask", "analysis over budget")
-        print(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "ask",
-                "permissionDecisionReason": (
-                    f"Confirm: Sentinel no pudo analizar la llamada en {ANALYSIS_BUDGET_S:g} s (un comando relleno de "
-                    "parentesis o de `$(` encarece sus patrones), y un guard que se pasa de tiempo deja ejecutar la "
-                    "herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto."
-                ),
-            }
-        }))
+        print(json.dumps(ask_or_deny(
+            f"Confirm: Sentinel no pudo analizar la llamada en {ANALYSIS_BUDGET_S:g} s (un comando relleno de "
+            "parentesis o de `$(` encarece sus patrones), y un guard que se pasa de tiempo deja ejecutar la "
+            "herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto.")))
         sys.exit(0)
     decision, reason = result
 
