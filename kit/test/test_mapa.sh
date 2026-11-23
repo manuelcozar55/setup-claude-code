@@ -39,11 +39,11 @@ ck "$n_map" "$n_fil" "3: una fila por cada entrada de settings.json"
 
 # 4: el generador se niega a inventar
 mkdir -p "$tmp/kit"; cp -r "$KIT/claude" "$KIT/sentinel" "$tmp/kit/"
-grep -v '^# QUE-HACE:' "$KIT/claude/hooks/nucleo-nudge.sh" > "$tmp/kit/claude/hooks/nucleo-nudge.sh"
+grep -v '^# QUE-HACE:' "$KIT/claude/hooks/autosave.sh" > "$tmp/kit/claude/hooks/autosave.sh"
 MAPA_KIT="$tmp/kit" bash "$GEN" >/dev/null 2>"$tmp/err"; rc=$?
 ck "$([ "$rc" -ne 0 ] && echo si)" "si" "4: sin cabecera normalizada el generador falla"
-ck "$(grep -c 'nucleo-nudge.sh no tiene descripción' "$tmp/err")" "1" "4: y dice que script es"
-cp "$KIT/claude/hooks/nucleo-nudge.sh" "$tmp/kit/claude/hooks/nucleo-nudge.sh"
+ck "$([ "$(grep -c 'autosave.sh no tiene descripción' "$tmp/err")" -gt 0 ] && echo si)" "si" "4: y dice que script es"
+cp "$KIT/claude/hooks/autosave.sh" "$tmp/kit/claude/hooks/autosave.sh"
 printf 'pre-compact.sh\tNUCLEO_INVENTADA\tno existe\n' > "$tmp/tsv"
 MAPA_KIT="$tmp/kit" MAPA_TSV="$tmp/tsv" bash "$GEN" >/dev/null 2>"$tmp/err"; rc=$?
 ck "$([ "$rc" -ne 0 ] && echo si)" "si" "4: una variable de la tabla que el script no lee hace fallar al generador"

@@ -577,7 +577,7 @@ pieza_uninstall() {
   jq --arg ps "$PIEZA" '[($ps | split(",")[]) as $p | .[$p] // {}] as $fs | {
       hooks: (reduce $fs[] as $f ({}; reduce (($f.hooks // {}) | to_entries[]) as $e (.; .[$e.key] += $e.value))),
       enabledPlugins: (reduce $fs[] as $f ({}; . + ($f.enabledPlugins // {})))}' "$HERE/kit/opcional-settings.json" > "$tmpj/kit.json"
-  names="$(jq -c '[.hooks[]?[]?.hooks[]?.command | strings | splits(" +") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")] | unique | map(select(. != "optional-hook.sh"))' "$tmpj/kit.json")"
+  names="$(jq -c '[.hooks[]?[]?.hooks[]?.command | strings | splits(" +") | gsub("[\"\u0027]"; "") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")] | unique | map(select(. != "optional-hook.sh"))' "$tmpj/kit.json")"
   real="$CLAUDE_HOME/settings.json"
   if [ -f "$real" ] && jq empty "$real" 2>/dev/null; then
     [ -L "$real" ] && real="$(readlink -f "$real")"

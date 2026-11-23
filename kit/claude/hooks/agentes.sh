@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# QUE-HACE: registra cada subagente (inicio, fin e informe) en .claude/estado/agentes.jsonl y, en el Stop, anota si hubo un commit sin actualizar nucleo.md (solo bloquea con NUCLEO_GATE=block).
+# QUE-HACE: registra cada subagente (inicio, fin e informe) en .claude/estado/agentes.jsonl y, en el Stop, con NUCLEO_GATE=observe|block, anota si hubo un commit sin actualizar nucleo.md (solo bloquea con =block).
 # SubagentStart | SubagentStop | Stop | SessionEnd — registro mecánico de agentes (ADR 017): una línea JSON por evento en
 # <raíz>/.claude/estado/agentes.jsonl (lib/nucleo.sh: nucleo_agentes_anotar, que rota a 200 líneas o 14 días).
 # Por qué: SubagentStop marca el fin del *turno* del agente, no el de su trabajo, y no trae resultado; tras /clear, una
@@ -12,7 +12,7 @@
 #                  (primer mensaje de su transcript; barato: 3 líneas; vacía si no la nombra).
 #                  background_tasks puede contener hermanos: no demuestra descendencia ni trabajo pendiente del agente.
 #   Stop:          la foto de los agentes vivos (background_tasks) y la compuerta de commit sin nucleo actualizado
-#                  (nucleo_puerta_commit; observe por defecto, NUCLEO_GATE=block bloquea). Es lo único que sale por stdout.
+#                  (nucleo_puerta_commit; apagada por defecto, NUCLEO_GATE=observe anota, =block bloquea). Es lo único que sale por stdout.
 #   SessionEnd:    los subagentes que seguían vivos en la última foto de Stop de esta sesión (SessionEnd no trae
 #                  background_tasks; la foto la deja el Stop): «cortado al cerrar».
 # Agentes internos (sugerencias de prompt, resúmenes de /compact): llegan con agent_type vacío (medido en S0, una muestra;

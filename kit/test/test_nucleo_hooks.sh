@@ -4,7 +4,7 @@
 #     sea un diario de 78 KB, contenido envuelto en <nucleo-datos> tras una línea de «datos»,
 #     checkpoint ≤ 1 500, sin *-cambios.md;
 #   - pre-compact.sh: checkpoint en .claude/estado con su .gitignore y línea de KPI;
-#   - agentes.sh (Stop): gate de commit (observe por defecto); aviso de contexto a la persona: nucleo-nudge.sh;
+#   - agentes.sh (Stop): gate de commit (apagada por defecto; observe y block si se piden); aviso de contexto a la persona: nucleo-nudge.sh;
 #   - statusline y pre-compact no ejecutan el core.fsmonitor del repo;
 #   - la plantilla de settings registra un solo PreCompact.
 # Sin red; HOME falso en un mktemp que se borra.
@@ -82,6 +82,9 @@ ok "nudge: aviso a la persona al 71 % del airbag" "$(jq -r '.systemMessage // em
 touch -d '2026-01-01 00:00:00' "$NUC"
 jq -cn '{type:"assistant",timestamp:"2026-01-01T01:00:00.000Z",message:{content:[{type:"tool_use",name:"Bash",input:{command:"git commit -m x"}}]}}' >>"$TP"
 G=$(evs "$R" s2 "$TP" | bash "$H/agentes.sh")
+ok "gate: apagada por defecto, no bloquea" "$(dec <<<"$G")" nada
+ok "gate: apagada por defecto, no registra" "$([ -e "$HOME/.claude/session-logs/gate-nucleo.log" ] && echo hay-log || echo sin-log)" sin-log
+G=$(evs "$R" s2 "$TP" | NUCLEO_GATE=observe bash "$H/agentes.sh")
 ok "gate: en observe no bloquea" "$(dec <<<"$G")" nada
 ok "gate: en observe registra" "$(command grep -c "	s2	$R	observe" "$HOME/.claude/session-logs/gate-nucleo.log")" 1
 G=$(evs "$R" s3 "$TP" | NUCLEO_GATE=block bash "$H/agentes.sh")

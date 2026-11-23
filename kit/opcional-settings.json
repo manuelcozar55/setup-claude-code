@@ -3,5 +3,21 @@
     "enabledPlugins": {
       "esenciales@setup-claude-code": true
     }
+  },
+  "nudge": {
+    "hooks": {
+      "PostToolUse": [
+        {
+          "matcher": "",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"$HOME/.claude/hooks/nucleo-nudge.sh\"",
+              "timeout": 5
+            }
+          ]
+        }
+      ]
+    }
   }
 }

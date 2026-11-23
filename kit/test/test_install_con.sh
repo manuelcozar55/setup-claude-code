@@ -17,7 +17,7 @@ cuenta() { local h=$1 p=$2 g n=0 f rel; while IFS= read -r -d '' f; do rel="${f#
 cableado() { jq -r --arg p "$2" --slurpfile k "$KIT/opcional-settings.json" '
     def nombres: [.. | .command? | strings | splits(" +") | gsub("\""; "") | sub(".*/"; "") | select(test("\\.(py|sh)$") and . != "optional-hook.sh")];
     ([$k[0][$p].hooks // {} | nombres] | add // []) as $n
-    | [.hooks // {} | nombres | select(. as $c | $n | index($c) != null)] | length' "$1/.claude/settings.json"; }
+    | [.hooks // {} | nombres | .[] | select(. as $c | $n | index($c) != null)] | length' "$1/.claude/settings.json"; }
 plugins_hab() { jq -r --arg p "$2" --slurpfile k "$KIT/opcional-settings.json" '
     ($k[0][$p].enabledPlugins // {}) as $e | [(.enabledPlugins // {}) | to_entries[] | select(.value == true and ($e[.key] == true))] | length' "$1/.claude/settings.json"; }
 

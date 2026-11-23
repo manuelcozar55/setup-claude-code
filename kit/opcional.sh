@@ -2,13 +2,14 @@
 # Una sola fuente para install.sh, doctor.sh, uninstall.sh y .github/scripts/assert-install.sh. Se lee con `.`.
 # El código de cada pieza sigue en el repo; lo que cambia es que la instalación sin flags no lo copia ni lo cablea.
 # Lo que cablean en settings.json va en opcional-settings.json (una clave por pieza).
-PIEZAS_OPCIONALES="esenciales revisores cockpit"
+PIEZAS_OPCIONALES="esenciales revisores cockpit nudge"
 
 opcional_globs() {  # pieza -> rutas relativas a CLAUDE_HOME (patron de case; `dir/*` = todo lo de dentro), una por linea
   case $1 in
     esenciales) printf '%s\n' 'scc/plugins/*' ;;
     revisores)  printf '%s\n' 'agents/silent-failure-hunter.md' 'agents/pr-test-analyzer.md' ;;
     cockpit)    printf '%s\n' 'scc/mods/cockpit/*' ;;
+    nudge)      printf '%s\n' 'hooks/nucleo-nudge.sh' ;;
   esac
 }
 
