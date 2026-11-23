@@ -38,6 +38,8 @@ for p in $PIEZAS_OPCIONALES; do
   inst "$H" --apply --con "$p"
   ck "$([ "$(cuenta "$H" "$p")" -gt 0 ] && echo y)" "y" "$p: --con $p instala sus ficheros"
   ck "$(grep -c "opcional, no instalado:.* $p" "$H.log")" "0" "$p: instalada ya no figura como no instalada"
+  ck "$(grep -c '^==> doctor: OK, [0-9]* WARN' "$H.log")" "1" "$p: el instalador acaba con el veredicto de doctor en una linea"
+  ck "$(tail -n 1 "$H.log" | grep -c '^==> doctor: ')" "1" "$p: y es la ultima linea"
   if [ "$(jq -e --arg p "$p" '.[$p]' "$KIT/opcional-settings.json" >/dev/null 2>&1; echo $?)" = 0 ]; then
     ck "$([ "$(( $(cableado "$H" "$p") + $(plugins_hab "$H" "$p") ))" -gt 0 ] && echo y)" "y" "$p: --con $p cablea lo suyo en settings.json"
   fi
