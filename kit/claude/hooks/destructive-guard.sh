@@ -305,10 +305,35 @@ fi
 # Los checks de arriba siguen mirando el texto porque su patron no esta anclado y por eso ven
 # tambien lo que va dentro de un `bash -c "..."`; este cubre las grafias que sacaban el comando del
 # patron: `git -C dir reset --hard`, `sudo git clean --force -d`, `rm -rv`, `rm -R`, `rm -rf --`.
-for seg in "${CMDN_SEGS[@]}"; do
+# Un `bash -c "..."`, `sh -c` o `eval` con el texto a la vista se vuelve a normalizar (hasta 3 niveles, NEST compartido con las demas
+# vueltas): sin eso `bash -c "git reset --hard"` pasaba los cinco guards. `bash -c "$X"` (valor construido antes) sigue siendo un limite.
+check5() {
+  local depth=$1 seg a dd force dry inner i rc
+  local -a T segs saved
+  segs=("${CMDN_SEGS[@]}")
+for seg in "${segs[@]}"; do
   [[ $seg == *rm* || $seg == *git* ]] || continue
   cmdn_fields "$seg"
   case ${T[1]:-} in
+    sh|bash|zsh|dash|ksh|eval)
+      inner=
+      if [[ ${T[1]} == eval ]]; then
+        inner="${T[*]:2}"
+      else
+        for (( i = 2; i < ${#T[@]}; i++ )); do
+          if [[ ${T[i]} == -*c* ]]; then inner=${T[i+1]:-}; break; fi
+        done
+      fi
+      [[ $inner == *rm* || $inner == *git* ]] || continue
+      if (( depth >= 3 || ++NEST > 16 )); then
+        log_block "nested too deep"
+        echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, eval...) con rm o git: no caben en el timeout del guard." >&2
+        echo "Que hacer: parte el comando en pasos mas cortos y ejecutalos por separado." >&2
+        exit 2
+      fi
+      saved=("${CMDN_SEGS[@]}")
+      if cmdn_parse "$inner"; then check5 $(( depth + 1 )); fi
+      CMDN_SEGS=("${saved[@]}") ;;
     rm)
       dd=0
       for a in "${T[@]:2}"; do
@@ -357,5 +382,7 @@ for seg in "${CMDN_SEGS[@]}"; do
       esac ;;
   esac
 done
+}
+check5 0
 
 exit 0
