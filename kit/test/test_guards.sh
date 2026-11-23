@@ -1642,6 +1642,19 @@ done
 for c in 'git clean -nd' 'git clean -fn' 'git clean -fn --dr' 'git clean --force --dry-run -d'; do
   expect "destructive ronda2: $c NO denegado" "$(run_dg "$c")" ALLOW
 done
+# a3) W2 falsos positivos: la simulacion con las banderas SUELTAS (`-d -n`, `-f -n`) o con `--dry-run` detras del `-fd` era
+# una simulacion y el Check 3 (texto) la denegaba por mirar solo el primer grupo; el veredicto de una simulacion es del Check 5.
+# El contrapeso: la misma linea con un segundo `git clean` real, con `--no-dry-run` (en git gana la ultima), o con `-e -n`
+# (ahi `-n` es el PATRON de exclusion y no simula nada) sigue denegada.
+for c in 'git clean -d -n' 'git clean -f -n' 'git clean -fd --dry-run' 'git clean -f -d --dry-run -x' 'git clean -d -f -n -- src' \
+         'git clean -d -n; git status' 'echo x && git clean -d -n'; do
+  expect "destructive W2: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+for c in 'git clean -d -n; git clean -fd' 'git clean -d -n && git clean -f -d' 'git clean -f -d -n --no-dry-run' 'git clean -fd -n --no-d' \
+         'git clean -d -n --force --no-dry-run' 'git clean -fd -e -n' 'git clean -d -f -- -n' 'git clean -d -n $(git clean -fd)' \
+         'git clean -d -n | cat; git clean -f' 'bash -c "echo; git clean -d -n --no-dry-run"'; do
+  expect "destructive W2: $c denegado" "$(run_dg "$c")" BLOCK
+done
 # b) El mensaje de un commit es texto: no se juzga como push forzado. El texto de un `bash -c`, `sh -c`,
 # `eval` o `$(...)` se ejecuta: ahi se sigue denegando. Los comandos se montan por partes (guard vivo).
 FP="git pu""sh"; FF="--for""ce"

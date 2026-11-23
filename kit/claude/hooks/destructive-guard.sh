@@ -88,7 +88,20 @@ if echo "$COMMAND_SCAN" | grep -qE '^\s*git\s+reset\s+--hard|[;&|]\s*git\s+reset
 fi
 
 # Check 3: git clean -fd. Un grupo de banderas con `n` (-nd, -dn, -fdn) es simulacion, como `-n -d`: no casa.
-if echo "$COMMAND_SCAN" | grep -qE '(^|[;&|])\s*git\s+clean\s+-[a-mo-z]*[fd][a-mo-z]*([[:space:]]|$)'; then
+# Una simulacion con las banderas sueltas (`-d -n`, `-f -n`) o con `--dry-run` detras de `-fd` tambien lo es, y su veredicto es del Check 5
+# (ultima opcion gana). Aqui solo se aparta un segmento con una `-n`/`--dry-run` ANTES de `--` y sin nada que la ponga en duda: `--no-d...`,
+# un `-e`/`--exclude` (ahi `-n` es el patron, no una bandera), ni `$`, comilla invertida o parentesis (una sustitucion lleva otro git clean).
+CLEAN_FORCE_RX='(^|[;&|])\s*git\s+clean\s+-[a-mo-z]*[fd][a-mo-z]*([[:space:]]|$)'
+CLEAN_DRY_RX='(^|[[:space:]])(-[a-df-zA-Z]*n[a-df-zA-Z]*|--dry-run)([[:space:]]|$)'
+CLEAN_DOUBT_RX='(^|[[:space:]])(--no-d|--exclude|-[A-Za-z]*e)'
+CLEAN_HIT=0
+while IFS= read -r clean_seg; do
+  grep -qE "$CLEAN_FORCE_RX" <<<"$clean_seg" || continue
+  clean_opts=${clean_seg%% -- *}
+  if [[ $clean_opts =~ $CLEAN_DRY_RX && ! $clean_opts =~ $CLEAN_DOUBT_RX && $clean_seg != *['$`()']* ]]; then continue; fi
+  CLEAN_HIT=1; break
+done < <(grep -oE '(^|[;&|])\s*git\s+clean\s+[^;&|]*' <<<"$COMMAND_SCAN")
+if (( CLEAN_HIT )); then
   log_block "git clean"
   echo "BLOCKED: git clean removes untracked files permanently." >&2
   echo "Run: git clean -n (dry run) first to verify what would be deleted." >&2
