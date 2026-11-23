@@ -11,9 +11,9 @@ usage() {
     '  --apply: aplica la instalacion.' \
     '  --plan: prepara el plan sin modificar CLAUDE_HOME.' \
     '  --enable-secrets-layer2: activa la capa 2 en el repo actual.' \
-    '  --con: instala ademas piezas opcionales: esenciales (plugin de skills), revisores (agentes silent-failure-hunter y pr-test-analyzer).' \
+    '  --con: instala ademas piezas opcionales: esenciales (plugin de skills), revisores (agentes silent-failure-hunter y pr-test-analyzer), cockpit (mod de Claude Code y lanzador con plugins).' \
     '         Lo opcional que ya estaba instalado se conserva y se sigue actualizando.' \
-    '  --sin-cockpit: no copia el cockpit ni los plugins a CLAUDE_HOME/scc (el lanzador scc queda sin ellos).' \
+    '  --sin-cockpit: sin efecto (el cockpit ya no se instala por defecto); se acepta por compatibilidad.' \
     '  --sin-python: sigue sin python3 aun sabiendo que Sentinel, write-guard, stale-read-guard y efectividad quedan apagados.' \
     '  --help, -h: muestra esta ayuda sin instalar.'
 }
@@ -37,6 +37,7 @@ if [ "$CON_PENDIENTE" -eq 1 ]; then printf '%s\n' 'Error: --con exige una o vari
 if [ "$MODE_ARG" = "--enable-secrets-layer2" ] && (( $# > 1 )); then
   printf '%s\n' 'Error: --enable-secrets-layer2 no admite otras opciones.' >&2; usage >&2; exit 64
 fi
+if [ "$SIN_COCKPIT" -eq 1 ]; then printf '%s\n' 'Aviso: --sin-cockpit ya no hace falta: el cockpit solo se instala con --con cockpit.' >&2; fi
 KIT="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=opcional.sh
 . "$KIT/opcional.sh"
@@ -523,7 +524,6 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   # node_modules: pesan y no se ejecutan. Entran en el manifiesto como cualquier otro fichero.
   for f in mods/cockpit plugins/esenciales; do
     [ -d "$KIT/$f" ] || continue
-    if [ "$f" = mods/cockpit ] && [ "$SIN_COCKPIT" -eq 1 ]; then continue; fi
     if pz="$(opcional_de "scc/$f/x")"; then seleccionada "$pz" || continue; fi
     while IFS= read -r -d '' src; do
       rel="${src#"$KIT"/}"
@@ -721,10 +721,8 @@ run_diff_first() {
     diff -u "$CLAUDE_HOME/$rel" "$out/$rel" || true
   done
   mostrar_fusion_settings "$CLAUDE_HOME/settings.json" "$out/settings.json"
-  if [ "$SIN_COCKPIT" -eq 1 ]; then
-    echo "==> --sin-cockpit: no se copiaria el cockpit a $CLAUDE_HOME/scc."
-  else
-    echo "==> cockpit del kit: se copiaria a $CLAUDE_HOME/scc (lanzador: scc; omitir con --sin-cockpit)."
+  if seleccionada cockpit; then
+    echo "==> cockpit del kit: se copiaria a $CLAUDE_HOME/scc (lanzador: scc)."
   fi
   aviso_opcionales
   aviso_conservadas
