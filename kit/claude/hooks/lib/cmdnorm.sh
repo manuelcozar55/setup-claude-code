@@ -188,6 +188,23 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
     }
     return out
   }
+  # `rig send` entrega su texto a otro agente y las notas de `rig queue` van a la cola: ningun shell lo ejecuta, como el cuerpo de
+  # un gh pr create. Sale el texto posicional de send y el valor de --body/--summary/--note/--resolution; un `$( )` de dentro se
+  # sigue analizando aparte. Los asientos se avisan de `DROP TABLE` o `git push` entre ellos y eso no es ejecutarlo.
+  if (b == "rig" && (toks[k + 1] == "send" || toks[k + 1] == "queue")) {
+    keepnext = 0
+    for (j = k + 1; j <= nt; j++) {
+      t = toks[j]
+      if (keepnext) { keepnext = 0; out = out " " t; continue }
+      if (drop) { drop = 0; continue }
+      if (redir(t) || tokr[j]) { out = out " " t; if (redir_alone(t)) keepnext = 1; continue }
+      if (t ~ /^--(body|summary|note|resolution)$/) { out = out " " t; drop = 1; continue }
+      if (t ~ /^--(body|summary|note|resolution)=/) { sub(/=.*/, "", t); out = out " " t; continue }
+      if (toks[k + 1] == "send" && j > k + 1 && t !~ /^-/) continue
+      out = out " " t
+    }
+    return out
+  }
   if (mode == 1 && (b in prose)) {
     keepnext = 0
     for (j = k + 1; j <= nt; j++) {
@@ -515,8 +532,11 @@ END {
     if (m == 1) { if (sepn[m] != "") simple = 0 }
     else if (sepn[m] != "|" && sepn[m] != "|&") simple = 0
   }
+  # exseg: el mismo texto por segmento antes de cerrar el contexto. Solo para reglas que preguntan sobre lo que se ejecuta (SQL),
+  # nunca para eximir un deny.
+  exseg = ex
   if (!simple) ex = maintxt
-  printf "%s\036%s\036%s\036%s\036%s", maintxt, ex, psh, simple + 0, segs
+  printf "%s\036%s\036%s\036%s\036%s\036%s", maintxt, ex, psh, simple + 0, exseg, segs
 }
 '
 
@@ -526,14 +546,25 @@ END {
 # tiempo y pide confirmacion, que es fallar CERRADO.
 CMDN_MAX_BYTES=131072
 
-# cmdn_oversize "$COMMAND": si pasa del tope imprime la decision `ask` y devuelve 0; si no, devuelve 1.
+# cmdn_desatendido: rc 0 si nadie puede contestar una pregunta en esta sesion: un asiento de OpenRig o
+# CLAUDE_CODE_SESSION_ATTENDED=0 (el criterio de nucleo_desatendido en lib/nucleo.sh, sin su rama del SDK). Ahi un `ask` no
+# protege nada: deja la sesion parada sin plazo, y un hook que pregunta gana al modo auto. Los guards lo cambian por deny con el
+# porque. OPENRIG_NODE_ID no vale: `rig attach --self --print-env` lo exporta a shells con persona delante.
+cmdn_desatendido() {
+  [ "${CLAUDE_CODE_SESSION_ATTENDED:-}" = 0 ] || [ -n "${OPENRIG_OCCUPANT_GENERATION:-}" ]
+}
+CMDN_DESATENDIDO=' ASIENTO DESATENDIDO: aqui nadie puede confirmar y la pregunta te dejaria parado, asi que se deniega. No lo reformules para esquivar la regla. Si hace falta de verdad, escalalo a la persona por la cola de OpenRig (rig queue create, a la persona o a tu operador) y sigue con otra parte del encargo.'
+
+# cmdn_oversize "$COMMAND": si pasa del tope imprime la decision `ask` (deny en un asiento desatendido) y devuelve 0; si no, devuelve 1.
 cmdn_oversize() {
-  local LC_ALL=C
+  local LC_ALL=C d=ask r
   (( ${#1} > CMDN_MAX_BYTES )) || return 1
-  jq -n --arg r "Confirm: el comando pesa $(( ${#1} / 1024 )) KB (tope $(( CMDN_MAX_BYTES / 1024 )) KB): los guards no pueden analizarlo dentro de su timeout, y un guard que se pasa de tiempo deja ejecutar la herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto." '{
+  r="Confirm: el comando pesa $(( ${#1} / 1024 )) KB (tope $(( CMDN_MAX_BYTES / 1024 )) KB): los guards no pueden analizarlo dentro de su timeout, y un guard que se pasa de tiempo deja ejecutar la herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto."
+  cmdn_desatendido && { d=deny; r+=$CMDN_DESATENDIDO; }
+  jq -n --arg r "$r" --arg d "$d" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
-      permissionDecision: "ask",
+      permissionDecision: $d,
       permissionDecisionReason: $r
     }
   }'
@@ -541,7 +572,7 @@ cmdn_oversize() {
 
 cmdn_parse() {
   local out rest
-  CMDN_SEGS=(); CMDN_CWD=""; CMDN_EXEC=""; CMDN_PSH=1; CMDN_SIMPLE=0
+  CMDN_SEGS=(); CMDN_CWD=""; CMDN_EXEC=""; CMDN_EXSEG=""; CMDN_PSH=1; CMDN_SIMPLE=0
   # Los cuatro bytes de control con los que el parser separa sus salidas (\034-\037) no pueden ir en el comando: un \036 propio
   # desplazaria texto, EXEC y segmentos. Bash no los trata como separador, asi que pasan a espacio.
   set -- "${1//[$'\034\035\036\037']/ }"
@@ -549,10 +580,10 @@ cmdn_parse() {
   # el timeout del hook corre en abierto). `read` parte en el primer separador en una pasada.
   # Un here-string que no puede crear su temporal (disco lleno, /tmp de solo lectura) no lee nada: tambien es un fallo.
   if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]] \
-    || ! { CMDN_SIMPLE=; IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC CMDN_PSH CMDN_SIMPLE rest <<<"$out"; [[ -n $CMDN_SIMPLE ]]; } \
+    || ! { CMDN_SIMPLE=; IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC CMDN_PSH CMDN_SIMPLE CMDN_EXSEG rest <<<"$out"; [[ -n $CMDN_SIMPLE ]]; } \
     || ! mapfile -t CMDN_SEGS <<<"$rest"; then
     CMDN_SEGS=(); CMDN_PSH=1; CMDN_SIMPLE=0
-    CMDN_TEXT=$1; CMDN_EXEC=$1; [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=0; CMDN_LINE_SET=1; }; return 1
+    CMDN_TEXT=$1; CMDN_EXEC=$1; CMDN_EXSEG=$1; [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=0; CMDN_LINE_SET=1; }; return 1
   fi
   # CMDN_LINE_SIMPLE: el contexto cerrado de la orden PRINCIPAL (la primera que se analiza); los analisis de ordenes anidadas
   # (bash -c, ssh...) no lo cambian y por tanto nunca lo heredan.

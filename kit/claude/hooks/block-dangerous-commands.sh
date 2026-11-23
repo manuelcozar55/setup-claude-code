@@ -57,7 +57,7 @@ OVER=0
 if cmdn_oversize "$COMMAND" >/dev/null; then
   OVER=1
   (( ${#COMMAND} > 8 * CMDN_MAX_BYTES )) && { cmdn_oversize "$COMMAND"; exit 0; }
-  CMDN_TEXT=$COMMAND; CMDN_EXEC=$COMMAND; CMDN_SEGS=(); CMDN_PSH=1
+  CMDN_TEXT=$COMMAND; CMDN_EXEC=$COMMAND; CMDN_EXSEG=$COMMAND; CMDN_SEGS=(); CMDN_PSH=1
 else
   cmdn_parse "$COMMAND" \
     || deny "BLOCKED (fail-closed): awk no pudo normalizar el comando, asi que este guard no puede evaluarlo."
@@ -66,21 +66,33 @@ COMMAND=$CMDN_TEXT
 # Las reglas de DENY juzgan EXECT: el texto de las ordenes sin la prosa (mensaje de commit, patron de grep, argumento de echo,
 # cuerpo de un heredoc que solo guarda texto). Las de ASK siguen sobre COMMAND: preguntar de mas es el lado seguro.
 EXECT=$CMDN_EXEC
+# Las de SQL juzgan el texto que se ejecuta segmento a segmento, tambien en una orden compuesta (`cd x && rg 'DROP TABLE' f; ...`).
+SQLT=$CMDN_EXSEG
 # El valor de `git push -o <valor>` es texto para el servidor, no un flag: `-o '-f'` no es un force push.
 if [[ $EXECT == *push* && $EXECT =~ (-o|--push-option)[[:space:]=] ]]; then
   EXECT=$(LC_ALL=C sed -E "s/(git[^;&|]*push[^;&|]*[[:space:]](-o|--push-option)[[:space:]=]+)('[^'~\/][^']*'|\"[^\"~\/][^\"]*\"|[^[:space:];&|'\"~\/][^[:space:];&|]*)/\1_/" <<<"$EXECT")
 fi
 
+# En un asiento desatendido (cmdn_desatendido) la pregunta pasa a deny con el porque: nadie la contestaria.
 ask() {
-  jq -n --arg r "$1" '{
+  local r=$1 d=ask
+  cmdn_desatendido && { d=deny; r+=$CMDN_DESATENDIDO; }
+  jq -n --arg r "$r" --arg d "$d" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
-      permissionDecision: "ask",
+      permissionDecision: $d,
       permissionDecisionReason: $r
     }
   }' || exit 2
   exit 0
 }
+
+# El push lo confirma la persona (regla `ask` de settings.json), y en un asiento desatendido esa pregunta lo dejaria parado: se
+# deniega antes, con el camino de salida. Solo `push` como subcomando de git (`git stash push` no lo es), sobre EXECT.
+if [[ $EXECT == *push* ]] && cmdn_desatendido \
+  && LC_ALL=C grep -qiE '\bgit([[:space:]]+(-[Cc][[:space:]]+[^[:space:];&|]+|--?[A-Za-z][-A-Za-z]*(=[^[:space:];&|]*)?))*[[:space:]]+push\b' <<<"$EXECT"; then
+  deny "BLOCKED: git push desde un asiento desatendido; el push lo confirma la persona. Que hacer: deja el trabajo en un commit local, avisa a la persona por la cola de OpenRig (rig queue create) de que la rama esta lista para push y sigue con otra parte del encargo."
+fi
 
 # Las reglas de `curl`/`wget` tras un pipe a interprete viven en variables porque la excepcion
 # estrecha de K1 (fetch_safe_reader, mas abajo) necesita reconocerlas por identidad para saltarlas
@@ -377,11 +389,6 @@ ASK_RULES=(
   # husky/.githooks: se pregunta, no se niega. Lo de una sola orden (`git -c core.hooksPath=...`) sigue en deny.
   '\bgit\b[^;&|]*\bconfig\b[^;&|]*core\.hookspath[[:space:]]+[^-[:space:]]'  "Confirm: git config core.hooksPath cambia donde busca git los hooks de este repo (los del repo y los del kit dejan de correr si apunta a otro sitio). Para activar la Capa 2 de secretos: bash install.sh --enable-secrets-layer2"
 
-  # ── DATABASE OPERATIONS (ASK — HITL) ───────────────────────────────────────
-  '\bDROP\s+DATABASE\b'   "Confirm: DROP DATABASE — irreversible data loss"
-  '\bDROP\s+TABLE\b'      "Confirm: DROP TABLE — irreversible data loss"
-  '\bTRUNCATE\s+TABLE\b'  "Confirm: TRUNCATE TABLE — deletes all rows permanently"
-
   # ── DOCKER DESTRUCTIVE (ASK — HITL) ────────────────────────────────────────
   '\bdocker\s+system\s+prune'  "Confirm: docker system prune — removes all unused containers/images"
   '\bdocker\s+volume\s+rm'     "Confirm: docker volume rm — permanent volume data loss"
@@ -393,6 +400,17 @@ ASK_RULES=(
   '\bnpm\s+publish'             "Confirm: npm publish — will publish to public npm registry"
   '\bpip\s+install\s+https?://' "Confirm: pip install from URL — verify source before installing"
 )
+
+# ── DATABASE OPERATIONS (ASK — HITL) ─────────────────────────────────────────
+# Sobre EXECT, como las de DENY: el patron de un grep, el texto de un echo o la nota de un `rig send` que nombran DROP TABLE no
+# lo ejecutan, y paraban a los asientos (22-nov: varias paradas en un dia, una sola con SQL de verdad). El SQL que la misma
+# linea escribe en un fichero y pasa a un cliente (`cat > x.sql <<EOF ... && sqlite3 db < x.sql`) sigue preguntando.
+ASK_SQL_RULES=(
+  '\bDROP\s+DATABASE\b'   "Confirm: DROP DATABASE — irreversible data loss"
+  '\bDROP\s+TABLE\b'      "Confirm: DROP TABLE — irreversible data loss"
+  '\bTRUNCATE\s+TABLE\b'  "Confirm: TRUNCATE TABLE — deletes all rows permanently"
+)
+SQL_CLIENT='\b(sqlite3|psql|mysql|mariadb|duckdb|clickhouse(-client)?|sqlcmd|usql|cockroach)\b'
 
 # --no-verify (y su forma corta `commit -n`, tambien agrupada: `-nm`) se mira sobre EXECT: el mensaje de un commit
 # (`git commit -m "skip --no-verify docs"`) ya no esta ahi, es texto, no un flag.
@@ -774,6 +792,7 @@ if [[ $COMMAND == *rm* || $COMMAND == *git* || $COMMAND == *'|'* || $COMMAND == 
 UNION=''
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do UNION+="|${DENY_RULES[i]}"; done
 for ((i = 0; i < ${#ASK_RULES[@]}; i += 2)); do UNION+="|${ASK_RULES[i]}"; done
+for ((i = 0; i < ${#ASK_SQL_RULES[@]}; i += 2)); do UNION+="|${ASK_SQL_RULES[i]}"; done
 # `|| exit 0` confundia "no ha emparejado" (grep rc=1) con "la regex no compila" (grep rc=2):
 # un solo patron mal formado en la tabla convertia TODO el blocklist en un permiso silencioso,
 # porque el error de grep sale por stderr y con exit 0 no se muestra. Se distinguen los dos.
@@ -798,7 +817,7 @@ writes_text_to_file() {
 }
 
 # Un fichero que el propio comando escribe y ejecuta: el texto que escribe es CODIGO, no prosa; manda el criterio de la base (el texto entero).
-(( WX )) && EXECT=$COMMAND
+(( WX )) && { EXECT=$COMMAND; SQLT=$COMMAND; }
 SAFE_FETCH=''
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do
   LC_ALL=C grep -qiE "${DENY_RULES[i]}" <<<"$EXECT" || continue
@@ -816,6 +835,12 @@ for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do
 done
 for ((i = 0; i < ${#ASK_RULES[@]}; i += 2)); do
   LC_ALL=C grep -qiE "${ASK_RULES[i]}" <<<"$COMMAND" && ask "${ASK_RULES[i + 1]}"
+done
+for ((i = 0; i < ${#ASK_SQL_RULES[@]}; i += 2)); do
+  msg=${ASK_SQL_RULES[i + 1]}
+  writes_text_to_file && msg+="; si es texto para un fichero, escribelo con la herramienta Write"
+  LC_ALL=C grep -qiE "${ASK_SQL_RULES[i]}" <<<"$SQLT" && ask "$msg"
+  LC_ALL=C grep -qiE "${ASK_SQL_RULES[i]}" <<<"$COMMAND" && LC_ALL=C grep -qiE "$SQL_CLIENT" <<<"$SQLT" && ask "$msg"
 done
 [[ -n $TOK_ASK ]] && ask "$TOK_ASK"
 (( OVER )) && cmdn_oversize "$COMMAND"

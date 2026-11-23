@@ -7,6 +7,22 @@ etiquetado.
 
 ## [Unreleased]
 
+### Cambiado
+
+- **Un asiento de OpenRig ya no se queda esperando una pregunta que nadie contesta.** Un hook que pregunta gana al modo
+  auto, y en un asiento (`OPENRIG_OCCUPANT_GENERATION`, o `CLAUDE_CODE_SESSION_ATTENDED=0`) esa pregunta lo dejaba
+  parado sin plazo (medido en noviembre: un asiento esperó 45 h un sí a una orden de solo lectura). Ahí cada «ask» del guard, del tope de tamaño y de
+  Sentinel pasa a deny, con el porqué y la salida: escalarlo a la persona por `rig queue create` y seguir con otra
+  parte del encargo. El `git push` desde un asiento se deniega antes de llegar a la regla `ask` de `settings.json`:
+  lo sigue confirmando la persona. Con persona delante no cambia nada. `make test` no pasa esa marca a las suites.
+- **`DROP TABLE`, `DROP DATABASE` y `TRUNCATE TABLE` se juzgan sobre el texto que se ejecuta**, segmento a segmento
+  también en una orden compuesta (`cd x && rg …; echo …`): el patrón de un `grep`, un mensaje de commit, el texto de
+  un `echo` o un mensaje de `rig send`/`rig queue` que los nombran ya no preguntan (12 de los 13 «ask» de las 3079
+  órdenes reales de los asientos desde el 17-nov; ninguna orden permitida pasa a preguntar o denegarse). El texto
+  escrito a un fichero sigue preguntando (el decimotercero). El SQL que llega a un cliente (`sqlite3`, `psql`, `mysql`...) sigue preguntando, también si la misma orden
+  lo escribe en un fichero y se lo pasa. El texto de `rig send` y los valores de `--body`/`--summary`/`--note`/
+  `--resolution` de `rig queue` cuentan como prosa para todos los guards; un `$( )` dentro se sigue analizando.
+
 ## [2.3.0] - 2026-11-21
 
 En modo auto, lo que el guard no sabe leer lo juzga el clasificador en vez de preguntarte; un asiento de OpenRig cuenta como sesión desatendida; y la foto de trabajo vivo no se pierde con órdenes enormes. Cockpit 0.11.0 → 0.11.1.
