@@ -90,8 +90,8 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
 
 - Dos o más flujos independientes se lanzan **en paralelo**, cada uno en su contexto aislado:
   al hilo principal vuelve la conclusión, no el volcado. Secuencial solo ante una dependencia
-  real. El kit trae los agentes de [`kit/claude/agents/`](../claude/agents/) (orquestador,
-  estratega, implementador autónomo, revisores, explorador y verificador).
+  real. El kit trae los agentes de [`kit/claude/agents/`](../claude/agents/) (implementador
+  autónomo, explorador, verificador y cuatro revisores).
 - El prompt a un subagente **apunta a un fichero de spec**; no lo pega. Cada uno es dueño de
   sus ficheros, y ninguno hace commit ni push: lo hace el hilo principal.
 - El estado de una tarea larga vive **en disco**, en `.claude/estado/nucleo.md` de la raíz git del proyecto
