@@ -21,7 +21,7 @@ printf '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "9.9.9 (fake)"; exit 0; 
 
 # ---- 10. lanzador y copia
 export HOME="$tmp/h"; mkdir -p "$HOME"; export CLAUDE_HOME="$HOME/.claude"
-bash "$KIT/install.sh" --apply >"$tmp/i.log" 2>&1
+bash "$KIT/install.sh" --apply --con esenciales >"$tmp/i.log" 2>&1
 ck "$([ -f "$CLAUDE_HOME/scc/mods/cockpit/.claude-plugin/plugin.json" ] && echo y)" "y" "copia el cockpit a CLAUDE_HOME/scc/mods/cockpit"
 ck "$([ -d "$CLAUDE_HOME/scc/plugins/esenciales/skills" ] && echo y)" "y" "copia los plugins esenciales"
 ck "$(find "$CLAUDE_HOME/scc" \( -name tests -o -name node_modules \) | wc -l | tr -d ' ')" "0" "sin tests ni node_modules"
@@ -53,12 +53,16 @@ ck "$(echo "$out" | grep -c '^ARG:hola$')" "1" "con los argumentos de la persona
 H2="$tmp/h2"; mkdir -p "$H2"
 out="$(HOME="$H2" CLAUDE_HOME="$H2/.claude" TMPDIR="$tmp" bash "$KIT/install.sh" --plan 2>&1)"
 ck "$(echo "$out" | grep -c 'scc/mods/cockpit/.claude-plugin/plugin.json')" "1" "--plan lista los ficheros del cockpit"
-ck "$(echo "$out" | grep -c 'cockpit y plugins del kit: se copiarian')" "1" "--plan lo explica"
+ck "$(echo "$out" | grep -c 'cockpit del kit: se copiaria')" "1" "--plan lo explica"
 out="$(HOME="$H2" CLAUDE_HOME="$H2/.claude" TMPDIR="$tmp" bash "$KIT/install.sh" --plan --sin-cockpit 2>&1)"
 ck "$(echo "$out" | grep -c 'scc/mods/cockpit')" "0" "--plan --sin-cockpit no lista el cockpit"
 H3="$tmp/h3"; mkdir -p "$H3"
 HOME="$H3" CLAUDE_HOME="$H3/.claude" bash "$KIT/install.sh" --apply --sin-cockpit >/dev/null 2>&1
 ck "$([ -e "$H3/.claude/scc" ] && echo y)" "" "--sin-cockpit: no hay CLAUDE_HOME/scc"
+H6="$tmp/h6"; mkdir -p "$H6"
+HOME="$H6" CLAUDE_HOME="$H6/.claude" bash "$KIT/install.sh" --apply >/dev/null 2>&1
+ck "$([ -e "$H6/.claude/scc/plugins" ] && echo y)" "" "sin --con: el plugin esenciales no se copia"
+ck "$(jq -r '.enabledPlugins | keys | map(select(startswith("esenciales"))) | length' "$H6/.claude/settings.json")" "0" "sin --con: settings.json no habilita esenciales"
 out="$(PATH="$tmp/fake:$PATH" "$H3/.claude/bin/scc" -p hola 2>&1 | tr '\n' ' ')"
 ck "$out" "ARG:-p ARG:hola " "scc sin cockpit arranca claude sin --plugin-dir"
 ck "$(HOME="$H3" CLAUDE_HOME="$H3/.claude" bash "$KIT/install.sh" --apply --sin-cockpit --plan >/dev/null 2>&1; echo $?)" "64" "dos modos siguen dando 64"

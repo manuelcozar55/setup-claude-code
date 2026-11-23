@@ -6,17 +6,20 @@
 #      en el repo git DESDE el que se invoca; opt-in, por repositorio)
 set -euo pipefail
 usage() {
-  printf '%s\n' 'Uso: bash install.sh [--apply | --plan | --enable-secrets-layer2 | --help | -h] [--sin-cockpit] [--sin-python]' \
-    '  sin argumentos: instala el kit; muestra un plan si CLAUDE_HOME es un repo con remoto.' \
+  printf '%s\n' 'Uso: bash install.sh [--apply | --plan | --enable-secrets-layer2 | --help | -h] [--con PIEZA[,PIEZA...]] [--sin-python]' \
+    '  sin argumentos: instala solo el nucleo; muestra un plan si CLAUDE_HOME es un repo con remoto.' \
     '  --apply: aplica la instalacion.' \
     '  --plan: prepara el plan sin modificar CLAUDE_HOME.' \
     '  --enable-secrets-layer2: activa la capa 2 en el repo actual.' \
+    '  --con: instala ademas piezas opcionales: esenciales (plugin de skills).' \
+    '         Lo opcional que ya estaba instalado se conserva y se sigue actualizando.' \
     '  --sin-cockpit: no copia el cockpit ni los plugins a CLAUDE_HOME/scc (el lanzador scc queda sin ellos).' \
     '  --sin-python: sigue sin python3 aun sabiendo que Sentinel, write-guard, stale-read-guard y efectividad quedan apagados.' \
     '  --help, -h: muestra esta ayuda sin instalar.'
 }
-MODE_ARG=""; SIN_COCKPIT=0; SIN_PYTHON=0
+MODE_ARG=""; SIN_COCKPIT=0; SIN_PYTHON=0; CON=""; CON_PENDIENTE=0
 for arg in "$@"; do
+  if [ "$CON_PENDIENTE" -eq 1 ]; then CON="$CON ${arg//,/ }"; CON_PENDIENTE=0; continue; fi
   case $arg in
     --help|-h)
       if (( $# > 1 )); then printf '%s\n' 'Error: --help no se combina con otras opciones.' >&2; usage >&2; exit 64; fi
@@ -24,15 +27,22 @@ for arg in "$@"; do
     --apply|--plan|--enable-secrets-layer2)
       if [ -n "$MODE_ARG" ]; then printf '%s\n' 'Error: se admite como maximo una de --apply, --plan y --enable-secrets-layer2.' >&2; usage >&2; exit 64; fi
       MODE_ARG=$arg ;;
+    --con) CON_PENDIENTE=1 ;;
     --sin-cockpit) SIN_COCKPIT=1 ;;
     --sin-python)  SIN_PYTHON=1 ;;
     *) printf 'Error: argumento no reconocido: %s\n' "$arg" >&2; usage >&2; exit 64 ;;
   esac
 done
+if [ "$CON_PENDIENTE" -eq 1 ]; then printf '%s\n' 'Error: --con exige una o varias piezas separadas por comas.' >&2; usage >&2; exit 64; fi
 if [ "$MODE_ARG" = "--enable-secrets-layer2" ] && (( $# > 1 )); then
   printf '%s\n' 'Error: --enable-secrets-layer2 no admite otras opciones.' >&2; usage >&2; exit 64
 fi
 KIT="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=opcional.sh
+. "$KIT/opcional.sh"
+for p in $CON; do
+  case " $PIEZAS_OPCIONALES " in *" $p "*) ;; *) printf 'Error: pieza desconocida: %s (opcionales: %s)\n' "$p" "$PIEZAS_OPCIONALES" >&2; usage >&2; exit 64 ;; esac
+done
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 GITLEAKS_VERSION="8.30.1"
 
@@ -179,6 +189,27 @@ case "$MODE_ARG" in
   --plan)  MODE_PLAN=1 ;;
 esac
 
+# Piezas opcionales (opcional.sh): solo se instalan las pedidas con --con. Una actualizacion NUNCA retira en silencio lo
+# que ya hay: lo opcional ya instalado se trata como pedido (se sigue actualizando) y se dice en CONSERVADAS.
+SEL=" "; CONSERVADAS=""
+for p in $CON; do case "$SEL" in *" $p "*) ;; *) SEL="$SEL$p " ;; esac; done
+for p in $PIEZAS_OPCIONALES; do
+  case "$SEL" in *" $p "*) continue ;; esac
+  if pieza_instalada "$CLAUDE_HOME" "$p"; then SEL="$SEL$p "; CONSERVADAS="$CONSERVADAS $p"; fi
+done
+seleccionada() { case "$SEL" in *" $1 "*) return 0 ;; esac; return 1; }
+aviso_conservadas() {
+  local p
+  for p in $CONSERVADAS; do
+    echo "==> conservado (ya estaba instalado): $p. Para quitarlo: bash ${KIT%/*}/uninstall.sh --kit --pieza $p --apply"
+  done
+}
+aviso_opcionales() {
+  local p no=""
+  for p in $PIEZAS_OPCIONALES; do seleccionada "$p" || no="$no $p"; done
+  [ -z "$no" ] || echo "==> opcional, no instalado:$no (se pide con: bash $KIT/install.sh --con <pieza>)"
+}
+
 # Lo que el kit escribe de verdad (no los symlinks omitidos): de ahi sale .kit-manifest, que uninstall.sh --kit usa.
 INSTALLED=()
 # Lo que la persona apago a proposito consta en $CLAUDE_HOME/.kit-desactivados (una linea por script o ruta, como lo ve
@@ -207,7 +238,8 @@ aviso_desactivados() {
   echo "==> desactivado por ti (consta en .kit-desactivados; solo evita recrear lo que falta, no quita nada): $d"
 }
 install_file() {  # src dst
-  local src="$1" dst="$2"
+  local src="$1" dst="$2" pz
+  if pz="$(opcional_de "${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}")" && ! seleccionada "$pz"; then return 0; fi
   if [ ! -e "$dst" ] && [ ! -L "$dst" ] && desactivado "${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}"; then
     echo "   no se copia (desactivado por ti): ${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}"
     return 0
@@ -339,6 +371,39 @@ install_settings() {  # src dst
   fi
 }
 
+# Lo que cablean las piezas opcionales elegidas (opcional-settings.json), sobre el settings.json ya fusionado: sus
+# hooks delante de los demas, salvo los que ya esten cableados (por nombre de script), y sus plugins sin pisar un
+# valor tuyo. Idempotente; el backup, si no hay ya uno de este settings.json en esta pasada.
+aplicar_opcional_settings() {  # settings.json
+  local dst="$1" p tmp real name
+  [ -f "$dst" ] && jq empty "$dst" 2>/dev/null || return 0
+  name="${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}"; real="$dst"
+  [ -L "$dst" ] && real="$(readlink -f "$dst")"
+  for p in $SEL; do
+    jq -e --arg p "$p" '.[$p]' "$KIT/opcional-settings.json" >/dev/null 2>&1 || continue
+    tmp="$(mktemp "$real.XXXXXX")"
+    # shellcheck disable=SC2016 # filtro jq
+    if jq --slurpfile k "$KIT/opcional-settings.json" --arg p "$p" '
+        def scripts: [.. | .command? | strings | splits(" +") | gsub("[\"\u0027]"; "") | sub(".*/"; "") | select(test("\\.(py|sh)$") and . != "optional-hook.sh")];
+        ($k[0][$p] // {}) as $f | ([.hooks // {} | scripts] | add // []) as $vivos
+        | .hooks = (reduce (($f.hooks // {}) | to_entries[]) as $e (.hooks // {};
+            .[$e.key] = ([$e.value[] | select(([.hooks[] | scripts] | any(. as $t | $vivos | index($t) != null)) | not)] + (.[$e.key] // []))))
+        | if .hooks == {} then del(.hooks) else . end
+        | if $f.enabledPlugins then .enabledPlugins = ($f.enabledPlugins + (.enabledPlugins // {})) else . end
+      ' "$real" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
+      if ! cmp -s "$tmp" "$real"; then
+        if [ -n "${BK:-}" ] && [ ! -e "$BK/$name" ]; then mkdir -p "$(dirname "$BK/$name")"; cp -p "$real" "$BK/$name"; fi
+        chmod --reference="$real" "$tmp"
+        mv "$tmp" "$real"
+      fi
+      rm -f "$tmp"
+    else
+      rm -f "$tmp"
+      echo "   AVISO: no se pudo cablear la pieza opcional $p en settings.json" >&2
+    fi
+  done
+}
+
 # Tres claves tuyas dejan al kit sin efecto, y la fusion las respeta porque son tuyas: se avisa.
 # disableAllHooks apaga todos los hooks, guards incluidos; defaultMode bypassPermissions pide el
 # modo sin permisos, que el "disable" del kit deja inerte; env.CC_ALLOW_DESTRUCTIVE=1 apaga destructive-guard.sh. Se mira el fichero que queda: al
@@ -431,12 +496,13 @@ aviso_claude_md() {
 }
 
 install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
-  local base="$1" f rel
+  local base="$1" f rel pz
   KIT_BASE="$base"
   mkdir -p "$base/hooks/lib" "$base/agents" "$base/sentinel" "$base/templates" "$base/bin"
   install_claude_md "$KIT/claude/CLAUDE.md"       "$base/CLAUDE.md"
   install_claude_md "$KIT/claude/AGENTS.md"       "$base/AGENTS.md"
   install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
+  aplicar_opcional_settings "$base/settings.json"
   install_file "$KIT/claude/sentinel-allowlist.json" "$base/sentinel-allowlist.json"
   install_file "$KIT/claude/.gitleaks.toml"       "$base/.gitleaks.toml"
   install_file "$KIT/claude/statusline-command.sh" "$base/statusline-command.sh"
@@ -455,16 +521,16 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
   # El cockpit y los plugins del kit, copiados para que `scc` no dependa de donde este el clon. Sin tests ni
   # node_modules: pesan y no se ejecutan. Entran en el manifiesto como cualquier otro fichero.
-  if [ "$SIN_COCKPIT" -ne 1 ]; then
-    for f in mods/cockpit plugins/esenciales; do
-      [ -d "$KIT/$f" ] || continue
-      while IFS= read -r -d '' src; do
-        rel="${src#"$KIT"/}"
-        mkdir -p "$base/scc/$(dirname "$rel")"
-        install_file "$src" "$base/scc/$rel"
-      done < <(find "$KIT/$f" \( -name tests -o -name node_modules \) -prune -o -type f -print0)
-    done
-  fi
+  for f in mods/cockpit plugins/esenciales; do
+    [ -d "$KIT/$f" ] || continue
+    if [ "$f" = mods/cockpit ] && [ "$SIN_COCKPIT" -eq 1 ]; then continue; fi
+    if pz="$(opcional_de "scc/$f/x")"; then seleccionada "$pz" || continue; fi
+    while IFS= read -r -d '' src; do
+      rel="${src#"$KIT"/}"
+      mkdir -p "$base/scc/$(dirname "$rel")"
+      install_file "$src" "$base/scc/$rel"
+    done < <(find "$KIT/$f" \( -name tests -o -name node_modules \) -prune -o -type f -print0)
+  done
   chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit "$base"/statusline-command.sh "$base"/bin/* 2>/dev/null || true
 }
 
@@ -656,10 +722,12 @@ run_diff_first() {
   done
   mostrar_fusion_settings "$CLAUDE_HOME/settings.json" "$out/settings.json"
   if [ "$SIN_COCKPIT" -eq 1 ]; then
-    echo "==> --sin-cockpit: no se copiarian el cockpit ni los plugins a $CLAUDE_HOME/scc."
+    echo "==> --sin-cockpit: no se copiaria el cockpit a $CLAUDE_HOME/scc."
   else
-    echo "==> cockpit y plugins del kit: se copiarian a $CLAUDE_HOME/scc (lanzador: scc; omitir con --sin-cockpit)."
+    echo "==> cockpit del kit: se copiaria a $CLAUDE_HOME/scc (lanzador: scc; omitir con --sin-cockpit)."
   fi
+  aviso_opcionales
+  aviso_conservadas
   aviso_claude_md
   aviso_desactivados
   avisos_settings "$CLAUDE_HOME/settings.json"
@@ -851,6 +919,8 @@ echo "       bash $KIT/install.sh --enable-secrets-layer2   # ejecútalo dentro 
 echo "    o el one-liner manual:  git config core.hooksPath \"$CLAUDE_HOME/hooks/git\""
 echo "==> Verifica:            bash $KIT/doctor.sh"
 echo "==> Reinicia las sesiones abiertas de Claude Code: no recargan el cockpit ni los hooks del kit."
+aviso_opcionales
+aviso_conservadas
 aviso_claude_md
 aviso_desactivados
 avisos_settings "$CLAUDE_HOME/settings.json"

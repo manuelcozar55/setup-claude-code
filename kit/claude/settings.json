@@ -267,8 +267,7 @@
   },
   "enabledPlugins": {
     "code-review@claude-plugins-official": true,
-    "skill-creator@claude-plugins-official": true,
-    "esenciales@setup-claude-code": true
+    "skill-creator@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "setup-claude-code": {

@@ -1,0 +1,7 @@
+{
+  "esenciales": {
+    "enabledPlugins": {
+      "esenciales@setup-claude-code": true
+    }
+  }
+}

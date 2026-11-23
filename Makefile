@@ -63,6 +63,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_install_manifest.sh
 	bash kit/test/test_install_plan.sh
 	bash kit/test/test_install_scc_deps.sh
+	bash kit/test/test_install_con.sh
 	bash kit/test/test_uninstall_kit.sh
 	bash kit/test/test_bump.sh
 	bash kit/test/test_empaquetar_entrega.sh

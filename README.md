@@ -86,4 +86,4 @@ Conserva lo que modificaste y deshace en `settings.json` solo lo que el kit aña
 - [`SECURITY.md`](SECURITY.md): qué protegen los guards y qué no.
 
 Si recibiste el paquete por transferencia, [`ENTREGA.md`](ENTREGA.md) explica cómo verificar su integridad.
-Para contribuir: [`CONTRIBUTING.md`](CONTRIBUTING.md) (`make test`, `kit/` tiene 64 suites).
+Para contribuir: [`CONTRIBUTING.md`](CONTRIBUTING.md) (`make test`, `kit/` tiene 65 suites).

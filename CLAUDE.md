@@ -4,13 +4,13 @@ Solo el nombre de este andamiaje; el producto es SCC: para usarlo, `README.md`. 
 (antes de actuar) y **sensores** (después). Mapa: `AGENTS.md`. Dos capas:
 
 - `kit/` — **capa de instalación**, v2.3.0, estable. Guards, hooks, Sentinel, `install.sh`,
-  64 suites de test. No se toca sin ejecutar `make test`.
+  65 suites de test. No se toca sin ejecutar `make test`.
 - raíz — **capa de harness**: `.claude/`, `knowledge/`, `scripts/`. Lo nuevo va aquí.
 
 ## Oráculo de este repo
 
 ```
-make test  # 64 suites bash, sin red; ~410 s (WSL). exit 0 o el trabajo no está hecho.
+make test  # 65 suites bash, sin red; ~410 s (WSL). exit 0 o el trabajo no está hecho.
 ```
 
 Sin esa salida, nada está terminado. `/verify` lo hace.
