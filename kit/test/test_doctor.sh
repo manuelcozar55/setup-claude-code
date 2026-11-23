@@ -21,6 +21,9 @@ run_doctor(){ env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/h
 HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
 set +e; run_doctor; rc=$?; set -e
 ck "$rc" "0" "doctor PASS sobre instalación limpia"
+out0="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" bash "$KIT/doctor.sh" 2>&1 || true)"
+ck "$(grep -c '^WARN .*[Ss]entinel' <<<"$out0")" "0" "sin --con sentinel, doctor no avisa de Sentinel ausente"
+ck "$(grep -c '^INFO · opcional, no instalada:.*sentinel' <<<"$out0")" "1" "y lista las piezas opcionales no instaladas"
 
 # El inventario obligatorio incluye instrucciones y skills aunque settings.json
 # no las referencie. Un symlink personalizado que resuelve a fichero sigue
@@ -77,7 +80,7 @@ fi
 
 # La deriva tambien cubre hooks/lib/ (nucleo.sh, del que dependen los hooks de estado) y sentinel/
 # (sentinel_preflight.py): antes solo se comparaba hooks/*, y esos dos podian divergir sin aviso.
-HOME="$tmp/home" bash "$KIT/install.sh" >/dev/null 2>&1
+HOME="$tmp/home" bash "$KIT/install.sh" --con sentinel >/dev/null 2>&1
 echo "# tocado a mano" >> "$CLAUDE_HOME/hooks/lib/nucleo.sh"
 echo "# tocado a mano" >> "$CLAUDE_HOME/sentinel/sentinel_preflight.py"
 out="$(env -u ANTHROPIC_BASE_URL HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" \

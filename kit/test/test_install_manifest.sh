@@ -22,7 +22,7 @@ bad=0; while IFS= read -r l; do
   [ "$(sha256sum "$CLAUDE_HOME/$p" 2>/dev/null | cut -d' ' -f1)" = "$s" ] || bad=$((bad+1))
 done < "$M"
 ck "$bad" "0" "las sumas del manifiesto coinciden con lo instalado"
-for f in hooks/branch-guard.sh bin/handoff sentinel/sentinel_preflight.py statusline-command.sh CLAUDE.md AGENTS.md settings.json .gitleaks.toml sentinel-allowlist.json; do
+for f in hooks/branch-guard.sh bin/handoff statusline-command.sh CLAUDE.md AGENTS.md settings.json .gitleaks.toml sentinel-allowlist.json; do
   ck "$(grep -c "  $f\$" "$M")" "1" "manifiesto lista $f"
 done
 ck "$(grep -c '  ~bin/' "$M")" "5" "manifiesto lista los 5 enlaces del bindir (con scc)"

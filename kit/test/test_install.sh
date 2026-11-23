@@ -41,7 +41,7 @@ ck "$([ -f "$CLAUDE_HOME/CLAUDE.md" ] && echo y)" "y" "instala CLAUDE.md"
 ck "$([ -f "$CLAUDE_HOME/AGENTS.md" ] && echo y)" "y" "instala AGENTS.md junto a CLAUDE.md (su @AGENTS.md lo importa)"
 ck "$([ -f "$CLAUDE_HOME/settings.json" ] && echo y)" "y" "instala settings.json"
 ck "$([ -x "$CLAUDE_HOME/hooks/branch-guard.sh" ] && echo y)" "y" "hook ejecutable"
-ck "$([ -f "$CLAUDE_HOME/sentinel/sentinel_preflight.py" ] && echo y)" "y" "instala sentinel"
+ck "$([ -e "$CLAUDE_HOME/sentinel" ] && echo y)" "" "sin --con sentinel no se instala sentinel"
 ck "$([ -f "$CLAUDE_HOME/hooks/lib/nucleo.sh" ] && echo y)" "y" "instala hooks/lib"
 ck "$([ -f "$CLAUDE_HOME/templates/nucleo.md" ] && echo y)" "y" "instala templates"
 ck "$([ -x "$CLAUDE_HOME/bin/handoff" ] && [ -x "$CLAUDE_HOME/bin/oraculo" ] && echo y)" "y" "instala bin/handoff y bin/oraculo ejecutables"
@@ -155,7 +155,7 @@ ck "$(grep -c 'cp .*\.env\.example' "$tmp/install.log")" "0" "el mensaje final n
 mkdir "$tmp/kitsrc"; git -C "$HERE/.." archive HEAD . | tar -x -C "$tmp/kitsrc"; mv "$tmp/kitsrc" "$tmp/kitcopy"
 mkdir -p "$tmp/kitcopy/sentinel/__pycache__" "$tmp/kitcopy/claude/agents/__pycache__"
 : > "$tmp/kitcopy/sentinel/__pycache__/sentinel_preflight.cpython-314.pyc"
-set +e; CLAUDE_HOME="$tmp/dot2" bash "$tmp/kitcopy/install.sh" >"$tmp/pyc.log" 2>&1; prc=$?; set -e
+set +e; CLAUDE_HOME="$tmp/dot2" bash "$tmp/kitcopy/install.sh" --con sentinel >"$tmp/pyc.log" 2>&1; prc=$?; set -e
 ck "$prc" "0" "un __pycache__ en el kit no rompe la instalacion"
 ck "$(grep -c 'omitting directory' "$tmp/pyc.log" || true)" "0" "install.sh no intenta copiar directorios"
 ck "$([ -f "$tmp/dot2/sentinel/sentinel_preflight.py" ] && echo y)" "y" "sentinel se instala con __pycache__ presente"
