@@ -209,6 +209,9 @@ jobs:
       - name: "test_install_scc_deps.sh (lanzador scc, copia del cockpit y puertas de dependencias)"
         run: bash kit/test/test_install_scc_deps.sh
 
+      - name: "test_install_con.sh (piezas opcionales: --con, actualizar sin quitarlas, uninstall --pieza)"
+        run: bash kit/test/test_install_con.sh
+
       - name: "test_uninstall_kit.sh (uninstall --kit: quita lo del manifiesto y des-fusiona settings.json)"
         run: bash kit/test/test_uninstall_kit.sh
 

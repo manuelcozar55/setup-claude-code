@@ -3,6 +3,8 @@
 # Uso: [CLAUDE_HOME=$HOME/.claude] bash doctor.sh
 set -uo pipefail
 KIT="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=opcional.sh
+. "$KIT/opcional.sh"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 if ! command -v jq >/dev/null 2>&1; then
   echo "FAIL · jq no instalado (requerido por doctor; ver docs/02-install.md)"
@@ -226,6 +228,8 @@ for tree in claude sentinel; do
       sentinel) nombre="sentinel/$rel"; dst="$CLAUDE_HOME/sentinel/$rel"; comparar=0
         case "$rel" in *.py) comparar=1 ;; esac ;;
     esac
+    # Una pieza opcional que no esta instalada no es un fallo (se lista abajo como «opcional, no instalada»).
+    if pz="$(opcional_de "$nombre")" && ! pieza_instalada "$CLAUDE_HOME" "$pz"; then continue; fi
     if [ ! -f "$dst" ]; then
       if desact_consta "$nombre"; then
         case "$nombre" in hooks/*|sentinel/*) guard_apagado "$nombre" && continue ;; esac
@@ -246,6 +250,9 @@ for tree in claude sentinel; do
     fi
   done < <(find "$KIT/$tree" -type d -name __pycache__ -prune -o -type f -print0)
 done
+opcionales_no=""
+for pz in $PIEZAS_OPCIONALES; do pieza_instalada "$CLAUDE_HOME" "$pz" || opcionales_no="$opcionales_no $pz"; done
+[ -z "$opcionales_no" ] || echo "INFO · opcional, no instalada:$opcionales_no  (se pide con: bash $KIT/install.sh --con <pieza>)"
 if [ "$derivados" -gt 0 ]; then
   warn "$derivados componente(s) desplegados difieren de los del kit ($derivados_lista): compara antes de reinstalar; conserva tus personalizaciones"
 elif [ "$ausentes" -eq 0 ] && [ "$no_ejecutables" -eq 0 ]; then

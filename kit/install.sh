@@ -11,7 +11,7 @@ usage() {
     '  --apply: aplica la instalacion.' \
     '  --plan: prepara el plan sin modificar CLAUDE_HOME.' \
     '  --enable-secrets-layer2: activa la capa 2 en el repo actual.' \
-    '  --con: instala ademas piezas opcionales: esenciales (plugin de skills).' \
+    '  --con: instala ademas piezas opcionales: esenciales (plugin de skills), revisores (agentes silent-failure-hunter y pr-test-analyzer).' \
     '         Lo opcional que ya estaba instalado se conserva y se sigue actualizando.' \
     '  --sin-cockpit: no copia el cockpit ni los plugins a CLAUDE_HOME/scc (el lanzador scc queda sin ellos).' \
     '  --sin-python: sigue sin python3 aun sabiendo que Sentinel, write-guard, stale-read-guard y efectividad quedan apagados.' \

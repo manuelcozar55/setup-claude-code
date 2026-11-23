@@ -26,7 +26,7 @@ quitar() {  # script... -> los quita de settings.json (lo que haria la persona a
 HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
 out="$(doc)"; rc=$?
 ck "$rc" "0" "linea base: doctor sale 0 sobre una instalacion limpia"
-ck "$(grep -c '^INFO ' <<<"$out")" "0" "linea base: sin .kit-desactivados no hay INFO"
+ck "$(grep -c '^INFO · desactivado' <<<"$out")" "0" "linea base: sin .kit-desactivados no hay INFO de desactivados"
 
 quitar branch-guard.sh
 out="$(doc)"; rc=$?
