@@ -88,7 +88,20 @@ if echo "$COMMAND_SCAN" | grep -qE '^\s*git\s+reset\s+--hard|[;&|]\s*git\s+reset
 fi
 
 # Check 3: git clean -fd. Un grupo de banderas con `n` (-nd, -dn, -fdn) es simulacion, como `-n -d`: no casa.
-if echo "$COMMAND_SCAN" | grep -qE '(^|[;&|])\s*git\s+clean\s+-[a-mo-z]*[fd][a-mo-z]*([[:space:]]|$)'; then
+# Una simulacion con las banderas sueltas (`-d -n`, `-f -n`) o con `--dry-run` detras de `-fd` tambien lo es, y su veredicto es del Check 5
+# (ultima opcion gana). Aqui solo se aparta un segmento con una `-n`/`--dry-run` ANTES de `--` y sin nada que la ponga en duda: `--no-d...`,
+# un `-e`/`--exclude` (ahi `-n` es el patron, no una bandera), ni `$`, comilla invertida o parentesis (una sustitucion lleva otro git clean).
+CLEAN_FORCE_RX='(^|[;&|])\s*git\s+clean\s+-[a-mo-z]*[fd][a-mo-z]*([[:space:]]|$)'
+CLEAN_DRY_RX='(^|[[:space:]])(-[a-df-zA-Z]*n[a-df-zA-Z]*|--dry-run)([[:space:]]|$)'
+CLEAN_DOUBT_RX='(^|[[:space:]])(--no-d|--exclude|-[A-Za-z]*e)'
+CLEAN_HIT=0
+while IFS= read -r clean_seg; do
+  grep -qE "$CLEAN_FORCE_RX" <<<"$clean_seg" || continue
+  clean_opts=${clean_seg%% -- *}
+  if [[ $clean_opts =~ $CLEAN_DRY_RX && ! $clean_opts =~ $CLEAN_DOUBT_RX && $clean_seg != *['$`()']* ]]; then continue; fi
+  CLEAN_HIT=1; break
+done < <(grep -oE '(^|[;&|])\s*git\s+clean\s+[^;&|]*' <<<"$COMMAND_SCAN")
+if (( CLEAN_HIT )); then
   log_block "git clean"
   echo "BLOCKED: git clean removes untracked files permanently." >&2
   echo "Run: git clean -n (dry run) first to verify what would be deleted." >&2
@@ -292,10 +305,35 @@ fi
 # Los checks de arriba siguen mirando el texto porque su patron no esta anclado y por eso ven
 # tambien lo que va dentro de un `bash -c "..."`; este cubre las grafias que sacaban el comando del
 # patron: `git -C dir reset --hard`, `sudo git clean --force -d`, `rm -rv`, `rm -R`, `rm -rf --`.
-for seg in "${CMDN_SEGS[@]}"; do
+# Un `bash -c "..."`, `sh -c` o `eval` con el texto a la vista se vuelve a normalizar (hasta 3 niveles, NEST compartido con las demas
+# vueltas): sin eso `bash -c "git reset --hard"` pasaba los cinco guards. `bash -c "$X"` (valor construido antes) sigue siendo un limite.
+check5() {
+  local depth=$1 seg a dd force dry inner i rc
+  local -a T segs saved
+  segs=("${CMDN_SEGS[@]}")
+for seg in "${segs[@]}"; do
   [[ $seg == *rm* || $seg == *git* ]] || continue
   cmdn_fields "$seg"
   case ${T[1]:-} in
+    sh|bash|zsh|dash|ksh|eval)
+      inner=
+      if [[ ${T[1]} == eval ]]; then
+        inner="${T[*]:2}"
+      else
+        for (( i = 2; i < ${#T[@]}; i++ )); do
+          if [[ ${T[i]} == -*c* ]]; then inner=${T[i+1]:-}; break; fi
+        done
+      fi
+      [[ $inner == *rm* || $inner == *git* ]] || continue
+      if (( depth >= 3 || ++NEST > 16 )); then
+        log_block "nested too deep"
+        echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, eval...) con rm o git: no caben en el timeout del guard." >&2
+        echo "Que hacer: parte el comando en pasos mas cortos y ejecutalos por separado." >&2
+        exit 2
+      fi
+      saved=("${CMDN_SEGS[@]}")
+      if cmdn_parse "$inner"; then check5 $(( depth + 1 )); fi
+      CMDN_SEGS=("${saved[@]}") ;;
     rm)
       dd=0
       for a in "${T[@]:2}"; do
@@ -344,5 +382,7 @@ for seg in "${CMDN_SEGS[@]}"; do
       esac ;;
   esac
 done
+}
+check5 0
 
 exit 0

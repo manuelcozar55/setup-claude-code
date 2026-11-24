@@ -1642,6 +1642,32 @@ done
 for c in 'git clean -nd' 'git clean -fn' 'git clean -fn --dr' 'git clean --force --dry-run -d'; do
   expect "destructive ronda2: $c NO denegado" "$(run_dg "$c")" ALLOW
 done
+# a3) W2 falsos positivos: la simulacion con las banderas SUELTAS (`-d -n`, `-f -n`) o con `--dry-run` detras del `-fd` era
+# una simulacion y el Check 3 (texto) la denegaba por mirar solo el primer grupo; el veredicto de una simulacion es del Check 5.
+# El contrapeso: la misma linea con un segundo `git clean` real, con `--no-dry-run` (en git gana la ultima), o con `-e -n`
+# (ahi `-n` es el PATRON de exclusion y no simula nada) sigue denegada.
+for c in 'git clean -d -n' 'git clean -f -n' 'git clean -fd --dry-run' 'git clean -f -d --dry-run -x' 'git clean -d -f -n -- src' \
+         'git clean -d -n; git status' 'echo x && git clean -d -n'; do
+  expect "destructive W2: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+for c in 'git clean -d -n; git clean -fd' 'git clean -d -n && git clean -f -d' 'git clean -f -d -n --no-dry-run' 'git clean -fd -n --no-d' \
+         'git clean -d -n --force --no-dry-run' 'git clean -fd -e -n' 'git clean -d -f -- -n' 'git clean -d -n $(git clean -fd)' \
+         'git clean -d -n | cat; git clean -f' 'bash -c "echo; git clean -d -n --no-dry-run"'; do
+  expect "destructive W2: $c denegado" "$(run_dg "$c")" BLOCK
+done
+# a4) W2 hueco: `git reset --hard` y `git clean` ENVUELTOS en `bash -c`, `sh -c` o `eval` literal pasaban los cinco guards (los
+# regex del Check 2/3 solo ven el git al inicio de orden o tras `;&|`). El Check 5 vuelve a normalizar la cadena (hasta 3 niveles).
+# Los vecinos legitimos (`git status`, la simulacion, `reset --soft`, el texto de un echo) siguen pasando. `bash -c "$X"` con el valor
+# construido antes sigue siendo un limite declarado (SECURITY.md).
+for c in 'bash -c "git reset --hard"' "sh -c 'git reset --hard HEAD~1'" 'bash -c "git clean -fd"' 'bash -lc "git clean -f"' \
+         'sudo bash -c "git reset --hard"' 'eval "git reset --hard"' 'eval "git clean -fd"' "bash -c \"bash -c 'git reset --hard'\"" \
+         'bash -c "git clean -n -f --no-dry-run"' 'echo x; bash -c "git reset --hard"' 'bash -c "git status; git clean -d -f"'; do
+  expect "destructive W2 envuelto: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'bash -c "git status"' 'bash -c "git clean -n"' 'bash -c "git clean -d -n"' 'bash -c "git reset --soft HEAD~1"' \
+         'eval "git status"' 'bash -c "echo git reset --hard"' 'bash script.sh' 'bash -c "git log --oneline"'; do
+  expect "destructive W2 envuelto: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
 # b) El mensaje de un commit es texto: no se juzga como push forzado. El texto de un `bash -c`, `sh -c`,
 # `eval` o `$(...)` se ejecuta: ahi se sigue denegando. Los comandos se montan por partes (guard vivo).
 FP="git pu""sh"; FF="--for""ce"
