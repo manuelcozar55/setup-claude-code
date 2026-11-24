@@ -176,8 +176,19 @@ por seguridad). `git clean -id` y `-di` se deniegan aunque sean interactivos (la
 texto: el literal dentro de `grep`, `git commit -m`, `echo`, un heredoc de texto o un comentario pasa, y también `ls ~/.ssh`,
 `ssh -i`, `ssh-add`, `cat ~/.ssh/config|known_hosts|*.pub` y `cp .env.example .env`. Donde un caso benigno y uno malo no se
 distinguen, gana el benigno. **Sin barrera por defecto; `--con sentinel`**: exfiltrar a una IP en crudo, la inyección por salida
-de MCP o web, y leer con `python -c`, variables o `source .env`, `xargs cat`, `find -exec cat`, `ssh host cat`. Tampoco se
+de MCP o web, y leer con `python -c`, variables, `xargs cat`, `find -exec cat`, `ssh host cat`. Tampoco se
 cubren `secrets.*` (`secrets.md` es legítimo) ni un heredoc que escribe un script y lo ejecuta después.
+
+Ronda 3 (fijada en `test/test_guards.sh`, secciones 13d a 13f y a6). Cerrado: `cat f` con miles de operandos o segmentos ya no agota el
+timeout de 10 s (coste lineal, sin un fork por operando, y un tope de 1500 operandos con nombre sensible y 2000 segmentos: pasado el tope
+se pregunta, o se deniega en un asiento desatendido); las plantillas (`.env.local.example`, `.envrc.example`, cualquier `.env*` o `.envrc*`
+cuyo último sufijo sea `example|sample|template|dist`) y `x.env.ts|js|mjs|cjs|mts|cts|d.ts|py|rb|go` ya no se deniegan (`.env.json` y `x.env.json` sí);
+`printf '%s' "git clean -fd" | bash`; `< credencial` hacia cualquier orden (`tr`, `nc`, `ssh`, `while read … done < .env`, `mapfile`), `source`/`.`
+de una credencial y `busybox cat`. **Declarado, no cerrado**: `… | tee x | bash` y `| xargs -I{} sh -c {}`; envoltorios fuera de lista
+(`chrt`, `unbuffer`, `strace`, `runuser`, `systemd-run`, `fakeroot`, `unshare`, `nsenter`, `xvfb-run`); `requireForce` o un alias fijados en una orden
+anterior, `--config-env` y `GIT_CONFIG_*`; `parallel git clean {} ::: -fd`; leer una credencial con `$(<f)`, `perl`, `vim`, `git show HEAD:.env`,
+`git diff --no-index` o un volumen de Docker (`-v ~/.ssh`); los globs `cat *.local`, `*rc` y `.*` se deniegan (falso positivo aceptado, no se sabe qué hay detrás);
+y el tope de trabajo de arriba (una orden legítima de más de 2000 segmentos pregunta).
 
 `git push --force-with-lease` y `--force-if-includes` a una rama de trabajo (prefijo `feat/`, `fix/`, `release/`… o la rama actual si lo
 lleva) **preguntan** (solo pisan la rama si nadie la ha tocado); a `main`/`master`, a una rama sin prefijo de trabajo (`develop`,
