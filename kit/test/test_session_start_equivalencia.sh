@@ -17,7 +17,10 @@ export GIT_AUTHOR_DATE="2026-01-01T00:00:00Z" GIT_COMMITTER_DATE="2026-01-01T00:
 unset CLAUDE_PID CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR CLAUDE_HOME CLAUDE_CODE_SESSION_ID NUCLEO_GATE \
   CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_ENTRYPOINT OPENRIG_NODE_ID \
   OPENRIG_SESSION_NAME OPENRIG_OCCUPANT_GENERATION
-mkdir -p "$HOME" "$T/out"
+mkdir -p "$HOME" "$T/out" "$T/bin"
+# El aviso tras compactar nombra `handoff` a secas si está en el PATH y con su ruta si no: se fija aquí, o el golden
+# depende de si la máquina que corre el test tiene el kit instalado (el runner de CI no lo tiene).
+printf '#!/bin/sh\n' >"$T/bin/handoff"; chmod +x "$T/bin/handoff"; export PATH="$T/bin:$PATH"
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1"; FAIL=1; fi; }
 G() { git -C "$1" -c user.email=t@t -c user.name=t "${@:2}"; }
