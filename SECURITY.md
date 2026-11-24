@@ -31,7 +31,7 @@ Lo que cada capa protege y lo que no, de un vistazo:
 | `permissions.deny` (Capa 0) | Borrados de la raíz y de `$HOME`, `git push --force`, la config del kit, antes de que corra ningún hook. | A `Bash` frente a lo que no reconoce como comando de fichero (un script que borra, `rsync --delete`). |
 | Guards de Bash (Capa 1, 5 hooks) | Comandos destructivos, pipe-a-shell, push a ramas protegidas, `git add` de credenciales, secretos escritos desde Bash, **decididos sobre el comando parseado** (no sobre el texto crudo). | Lo que solo existe tras la expansión del shell y el código dentro de un intérprete (`python -c`, `perl -e`). |
 | `gitleaks` en `pre-commit` (Capa 2) | Credenciales con firma textual que llegan al índice por cualquier vía. | Contenido binario sin firma; repos que no activaron `core.hooksPath`. |
-| Sentinel | Rutas sensibles, comandos y redes sospechosas, escrituras sobre la config del kit, en cualquier herramienta. | Un comando que construye el nombre del fichero en el shell; el contenido de `python -c`/`node -e`. |
+| Sentinel (opcional: `install.sh --con sentinel`) | Rutas sensibles, comandos y redes sospechosas, escrituras sobre la config del kit, en cualquier herramienta. | Un comando que construye el nombre del fichero en el shell; el contenido de `python -c`/`node -e`. |
 
 ### Capa 0 — `permissions.deny` de `settings.json` (antes de que corra un hook)
 
@@ -197,7 +197,8 @@ de ahí, con los límites de "por nombre" ya descritos arriba — no de la Capa
 
 ### Sentinel (`sentinel/sentinel_preflight.py`)
 
-Corre antes de **cualquier** herramienta, no solo `Bash`. Un error interno **falla cerrado** (`exit 2`); si falta su
+Es una pieza opcional: la instalación por defecto no lo cablea (`bash kit/install.sh --con sentinel`). Si lo instalas,
+corre antes de **cualquier** herramienta, no solo `Bash`. Un error interno **falla cerrado** (`exit 2`); si falta su
 `iocs.json` (`kit/sentinel/iocs.json`, que el kit **sí** distribuye, así que en una instalación normal está), `decide()` resuelve «allow»; si falta
 `python3`, `optional-hook.sh` no bloquea pero **avisa una vez por sesión** de que Sentinel no está activo; y un hook que
 agota su `timeout` deja ejecutar la herramienta (Sentinel no lleva `onFailure`), por eso se da un presupuesto de 1,5 s y
@@ -271,7 +272,7 @@ Un interruptor es una decisión de la persona sobre su máquina: un agente que l
 
 ## Cuánto cuesta
 
-Una llamada a `Bash` pasa por los cinco guards y Sentinel **en paralelo** (los hooks de un mismo evento corren a la vez):
+Una llamada a `Bash` pasa por los cinco guards (y Sentinel, si lo instalaste) **en paralelo** (los hooks de un mismo evento corren a la vez):
 el coste medido es de **62 a 67 ms** de reloj, el del más lento, no la suma (≈ 270 ms si se encadenaran). Es una
 medida de esta máquina: la tuya variará, pero el orden de magnitud sirve para decidir si merece la pena añadir un hook más.
 
