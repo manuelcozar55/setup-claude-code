@@ -72,5 +72,19 @@ ck "$n" "$(echo $PIEZAS_OPCIONALES | wc -w | tr -d ' ')" "--con a,b,c instala to
 unin "$H" --kit --apply
 ck "$(find "$H" -path "$H/.claude/backups" -prune -o -type f -print -o -type l -print | grep -v '\.log$' | wc -l | tr -d ' ')" "0" "uninstall --kit retira todo, lo opcional incluido"
 
+# rc del instalador: 0 con doctor en OK o con solo WARN, 1 solo si doctor da algun FAIL (doctor de mentira en una copia)
+R="$tmp/rc"; mkdir -p "$R"; cp -r "$KIT" "$R/kit"; rm -r "$R/kit/test"; cp "$REPO/VERSION" "$R/VERSION"
+for caso in ok:0 warn:0 fail:1; do
+  nombre="${caso%%:*}"; esperado="${caso##*:}"; H="$tmp/rc-$nombre"; mkdir -p "$H"
+  case $nombre in
+    ok)   printf '%s\n' '#!/usr/bin/env bash' 'echo "PASS todo"' > "$R/kit/doctor.sh" ;;
+    warn) printf '%s\n' '#!/usr/bin/env bash' 'echo "WARN algo opcional"' > "$R/kit/doctor.sh" ;;
+    fail) printf '%s\n' '#!/usr/bin/env bash' 'echo "FAIL algo roto"; exit 1' > "$R/kit/doctor.sh" ;;
+  esac
+  HOME="$H" CLAUDE_HOME="$H/.claude" bash "$R/kit/install.sh" --apply > "$H.log" 2>&1 && rc=0 || rc=$?
+  ck "$rc" "$esperado" "rc del instalador con doctor en $nombre"
+  ck "$(tail -n 1 "$H.log" | grep -c '^==> doctor: ')" "1" "$nombre: el veredicto sigue siendo la ultima linea"
+done
+
 echo "== $pass ok, $fail fallos =="
 [ "$fail" -eq 0 ]
