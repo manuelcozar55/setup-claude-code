@@ -12,7 +12,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(cd "$HERE/../.." && pwd)"
 pass=0; fail=0
 
 # prefijo de la fila de contexto-base.sh | tope en caracteres
-TOPES='instrucciones globales|6900
+TOPES='instrucciones globales|6741
 SessionStart compact|9500
 SessionStart startup|9500
 SessionStart clear|9500
