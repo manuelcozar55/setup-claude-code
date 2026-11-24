@@ -365,7 +365,7 @@ r2_descend() {
   CMDN_SEGS=("${saved[@]}")
 }
 check5() {
-  local depth=$1 seg a dd force dry skip inner i k g prev= pt
+  local depth=$1 seg a dd force dry skip inner i k g pt prev=''
   local -a T segs gopts
   segs=("${CMDN_SEGS[@]}")
 for seg in "${segs[@]}"; do
