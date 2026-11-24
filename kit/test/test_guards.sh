@@ -1682,6 +1682,71 @@ for c in 'echo a | xargs git status' 'echo a | xargs git clean -n' 'echo a | xar
          'find . -name x -exec grep foo {} +' 'find . -name x -exec git clean -n \;'; do
   expect "destructive W2 xargs/exec: $c NO denegado" "$(run_dg "$c")" ALLOW
 done
+# a6) Ronda 2 de la revision independiente: huecos que ya estaban en main. `-e` de `git clean` toma un valor (`-fen`: la `n` es el patron, la
+# limpieza es real); `-c clean.requireForce=false` quita el freno; `--norc`, `--` tras `-c` y `eval --` esconden el programa del shell;
+# git acepta abreviaturas de `--hard`; `busybox`, `flock`, `watch`, `taskset` y `parallel` ejecutan la orden que les sigue; el texto de un
+# here-string o de un `echo | bash` ES la orden; `-c alias.x=...` esconde el subcomando. Cada denegado lleva su vecino benigno.
+for c in 'git clean -fen' 'git clean -fxen' 'git clean -fe n' 'git -c clean.requireForce=false clean' 'git -c clean.requireForce=false clean -x' \
+         'git -c clean.requireForce=no clean -d' 'git -C . -c clean.requireforce=0 clean'; do
+  expect "destructive R2 clean: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'git clean -fn' 'git clean -nd' 'git clean -dn' 'git clean -f -n' 'git clean -en' 'git -c clean.requireForce=false clean -n' \
+         'git -c clean.requireForce=true clean -n' 'git -c core.pager=cat clean -nd'; do
+  expect "destructive R2 clean: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+for c in 'bash --norc -c "git reset --hard"' 'bash --norc -c "git clean -fd"' 'bash -c -- "git reset --hard"' 'sh -c -- "git clean -f"' \
+         'eval -- "git reset --hard"' 'eval -- "git clean -f"' 'bash --noprofile --norc -lc "git clean -fd"' 'sudo sh --norc -c -- "git reset --hard"'; do
+  expect "destructive R2 shell: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'bash --norc -c "git status"' 'bash -c -- "git status"' 'sh -c -- "git log"' 'eval -- "git status"' 'bash --norc script.sh' \
+         'bash --norc -c "git clean -n"' 'eval -- "echo git reset --hard"'; do
+  expect "destructive R2 shell: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+for c in 'git reset --h' 'git reset --ha' 'git reset --har' 'git reset -q --ha HEAD~1' 'git reset HEAD~1 --har' 'bash -c "git reset --ha"'; do
+  expect "destructive R2 abreviatura: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'git reset --HARD' 'git reset --soft HEAD~1' 'git reset --mixed' 'git reset --keep HEAD~1' 'git reset --he' 'git reset HEAD file.txt'; do
+  expect "destructive R2 abreviatura: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+for c in 'busybox sh -c "git reset --hard"' 'flock /tmp/l git reset --hard' 'flock /tmp/l -c "git clean -fd"' 'flock -n /tmp/l git clean -fd' \
+         'flock -w 5 -x /tmp/l git clean -f' 'parallel git clean -fd ::: a' 'parallel -j4 "git reset --hard" ::: a' 'parallel -j 2 git clean -f ::: a b' \
+         'watch git reset --hard' 'watch -n 5 git clean -fd' 'watch "git reset --hard"' 'taskset 1 git reset --hard' 'taskset -c 0 git clean -fd' \
+         'taskset 0x3 sh -c "git reset --hard"' 'busybox rm -rf ~/x'; do
+  expect "destructive R2 prefijo: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'busybox sh -c "git status"' 'busybox ls' 'flock /tmp/l git status' 'flock /tmp/l -c "git log"' 'flock -n /tmp/l git clean -n' 'parallel echo ::: a b' \
+         'parallel -j4 git status ::: a' 'parallel echo git reset --hard ::: a' 'watch git status' 'watch -n 5 date' 'taskset 1 git status' 'taskset -c 0 ls' \
+         'taskset -p 1234' 'busybox rm foo.txt'; do
+  expect "destructive R2 prefijo: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+for c in 'bash <<<"git reset --hard"' 'bash -s <<<"git clean -fd"' 'bash -s <<< "git clean -fd"' 'echo "git reset --hard" | bash' \
+         'printf "git clean -fd\n" | sh' 'echo "git reset --hard" | sudo bash -s' 'echo "echo hi; git clean -f" | bash'; do
+  expect "destructive R2 texto-a-shell: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'bash <<<"git status"' 'echo "git status" | bash' 'echo "git reset --hard"' 'echo "git reset --hard" | cat' 'echo "git reset --hard" | grep reset' \
+         'bash script.sh <<<"git reset --hard"' 'echo "git reset --hard" > notas.txt' 'printf "%s\n" "git clean -fd" | tee notas.txt'; do
+  expect "destructive R2 texto-a-shell: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+for c in "git -c alias.x='clean -fd' x" "git -c alias.x='reset --hard' x" "git -c alias.x='!git reset --hard' x" "git -c alias.x='clean -f' x -d"; do
+  expect "destructive R2 alias: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in "git -c alias.x=status x" "git -c alias.co=checkout co main" "git -c alias.x='clean -n' x" "git -c alias.x='clean -fd' y" "git -c user.name=a status"; do
+  expect "destructive R2 alias: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
+# El tope de anidamiento es de PROFUNDIDAD, no de numero de envoltorios: 40 `bash -c` benignos en una linea pasan (antes, el contador
+# global los denegaba a partir del 17), y 4 niveles con git a la vista siguen fallando cerrado. Los repetidos y los que no llevan rm ni
+# git destructivo no cuestan una normalizacion cada uno.
+R2_MANY=$(for i in $(seq 1 40); do printf 'bash -c "git status %s"; ' "$i"; done)
+expect "destructive R2 anidamiento: 40 bash -c con git status NO denegado" "$(run_dg "${R2_MANY}true")" ALLOW
+R2_MANY=$(for i in $(seq 1 40); do printf 'bash -c "git clean -n -- f%s"; ' "$i"; done)
+expect "destructive R2 anidamiento: 40 bash -c con git clean -n distintos NO denegado" "$(run_dg "${R2_MANY}true")" ALLOW
+R2_MANY=$(for i in $(seq 1 40); do printf 'bash -c "git clean -n"; '; done)
+expect "destructive R2 anidamiento: 40 bash -c con git clean -n iguales NO denegado" "$(run_dg "${R2_MANY}true")" ALLOW
+R2_L=$(printf 'bash -c %q' 'git clean -n'); R2_L2=$(printf 'bash -c %q' "$R2_L"); R2_L3=$(printf 'bash -c %q' "$R2_L2"); R2_L4=$(printf 'bash -c %q' "$R2_L3")
+expect "destructive R2 anidamiento: 3 niveles con git clean -n NO denegado" "$(run_dg "$R2_L3")" ALLOW
+expect "destructive R2 anidamiento: 4 niveles con git clean -n falla cerrado" "$(run_dg "$R2_L4")" BLOCK
+R2_L=$(printf 'bash -c %q' 'git reset --hard'); R2_L2=$(printf 'bash -c %q' "$R2_L"); R2_L3=$(printf 'bash -c %q' "$R2_L2"); R2_L4=$(printf 'bash -c %q' "$R2_L3")
+expect "destructive R2 anidamiento: 4 niveles con git reset --hard denegado" "$(run_dg "$R2_L4")" BLOCK
 # b) El mensaje de un commit es texto: no se juzga como push forzado. El texto de un `bash -c`, `sh -c`,
 # `eval` o `$(...)` se ejecuta: ahi se sigue denegando. Los comandos se montan por partes (guard vivo).
 FP="git pu""sh"; FF="--for""ce"
