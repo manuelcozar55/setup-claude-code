@@ -1,6 +1,6 @@
 # 11 · Cockpit: handoff y Agent Dock
 
-`kit/mods/cockpit/` es un mod de Claude Code (plugin de *function hooks*, superficie de acceso temprano: puede cambiar entre versiones). Es opt-in: `install.sh` lo copia a `~/.claude/scc/` y solo lo carga el lanzador `scc` (`--sin-cockpit` para no copiarlo). Es una interfaz de terminal y solo actúa en sesiones con persona delante (ver «Sesiones no interactivas»).
+`kit/mods/cockpit/` es un mod de Claude Code (plugin de *function hooks*, superficie de acceso temprano: puede cambiar entre versiones). Es opcional: `bash kit/install.sh --con cockpit` lo copia a `~/.claude/scc/` y solo lo carga el lanzador `scc` (sin él, `scc` lo dice y sale con 1; `claude` a secas no lo necesita). `--sin-cockpit` ya no hace nada: se acepta con un aviso. Es una interfaz de terminal y solo actúa en sesiones con persona delante (ver «Sesiones no interactivas»).
 
 ## Qué hace
 
@@ -16,9 +16,9 @@
 ## Cómo se carga
 
 La versión 2.3.0 del kit incluye cockpit 0.11.1.
-`scc` carga la copia que `install.sh` deja en `~/.claude/scc/` mediante `--plugin-dir`, sin instalar
-nada; las órdenes de marketplace de abajo instalan esa misma versión desde el tag
-publicado, para todas tus sesiones. En un paquete transferido, `VERSION` identifica
+`scc` carga la copia que `install.sh --con cockpit` deja en `~/.claude/scc/` mediante `--plugin-dir`, sin instalar
+nada. Esa es la vía del kit. Las órdenes de marketplace de abajo son una alternativa para quien solo quiere el cockpit
+de una versión publicada, para todas sus sesiones. En un paquete transferido, `VERSION` identifica
 la publicación, y `BUILD_ID` con el manifiesto SHA-256 identifican el contenido.
 
 **Versión de Claude Code.** Las versiones de referencia de esta entrega son
@@ -283,7 +283,7 @@ En una sesión desatendida:
 - El aviso del airbag (`nucleo-nudge.sh`) pide actualizar `nucleo.md`, o `handoff --desde <borrador> --sesion <id>`, y
   seguir. No pide «cierra el turno» (cerrarlo termina la sesión) ni `/handoff`, `/clear` ni la tecla `h`. El Stop no
   emite su `systemMessage`, ni el arranque el de «retomas con la caché caducada».
-- La compuerta que denegaba la 4.ª llamada tras el aviso (ADR 020) se retiró: era opt-in y nadie la usaba. Queda la de commit sin nucleo actualizado en el `Stop` (`NUCLEO_GATE=observe|block`).
+- La compuerta que denegaba la 4.ª llamada tras el aviso (ADR 020) se retiró: era opt-in y nadie la usaba. Queda la de commit sin nucleo actualizado en el `Stop` (`NUCLEO_GATE=observe|block`; apagada por defecto desde la 3.0.0).
 - El estado inyectado va sin los comentarios `<!-- -->` de la plantilla, y se presenta como datos que se siguen solo si
   encajan con el encargo de esta sesión (interactivo: no se ejecutan hasta que la persona los confirme).
 - Con `nucleo.md` sin rellenar se inyecta un aviso corto para rellenarlo.

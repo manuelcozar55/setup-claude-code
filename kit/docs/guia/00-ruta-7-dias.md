@@ -16,7 +16,7 @@ Las cifras citadas se midieron en un setup real en 2026 y están anonimizadas. E
 
 ## Día 1 · Instala y mide
 
-1. `bash kit/install.sh` y `bash kit/doctor.sh` desde la raíz del clon ([`10-onboarding.md`](../10-onboarding.md) lo explica paso a paso, con cada `FAIL` y `WARN`).
+1. `bash kit/install.sh` desde la raíz del clon; acaba con el veredicto del doctor, y `bash kit/doctor.sh` da el detalle ([`10-onboarding.md`](../10-onboarding.md) lo explica paso a paso, con cada `FAIL` y `WARN`). Después, `claude` a secas.
 2. Abre `claude` dentro de un repo tuyo y, **antes de escribir nada**, teclea `/context`.
 3. Apunta el total y las cuatro partidas grandes: esquemas de herramientas, skills, memoria e instrucciones.
 
@@ -26,13 +26,9 @@ Las cifras citadas se midieron en un setup real en 2026 y están anonimizadas. E
 
 ## Día 2 · `nucleo.md`: el estado en disco, con forma fija
 
-En la raíz git de tu proyecto (si no es un repo, `git init` primero) ejecuta:
-
-```bash
-handoff --iniciar
-```
-
-Crea `.claude/estado/nucleo.md` desde la plantilla del kit, que fija las secciones y su orden (puedes verla con `cat kit/claude/templates/nucleo.md`):
+No hay que crearlo: en un repo git (si no lo es, `git init` primero), el primer guardado con trabajo crea `.claude/estado/nucleo.md`
+solo, desde la plantilla del kit, que fija las secciones y su orden (puedes verla con `cat kit/claude/templates/nucleo.md`).
+Si quieres verlo hoy sin esperar a ese guardado, en la raíz del proyecto ejecuta `handoff --iniciar`. Las secciones son estas:
 
 ```markdown
 # Estado

@@ -15,7 +15,7 @@ Si recibiste una consolidación con `BUILD_ID`, sigue también [`ENTREGA.md`](..
 | `bash`, `make` | `install.sh`, `doctor.sh`, los guards y la suite son bash; `make bootstrap` y `make test` | `bash --version` · `make --version` |
 | `git` | clonar el repo, y los guards de `secret-guard.sh`/`branch-guard.sh` operan sobre `git` | `git --version` |
 | Claude Code autenticado | ejecutar las sesiones; la distribución nativa no necesita Node para arrancar | `claude --version` |
-| `python3` (≥ 3.10) | Sentinel y los hooks Python; usan el venv si existe y, si no, el Python del sistema | `python3 --version` |
+| `python3` (≥ 3.10) | `write-guard`, `stale-read-guard` y, si lo pides, Sentinel; usan el venv si existe y, si no, el Python del sistema | `python3 --version` |
 | `zip`, `unzip` | copias de seguridad y restauración con `scripts/backup.sh` y `uninstall.sh --apply`; en Debian: `sudo apt install zip unzip` | `zip -v` · `unzip -v` |
 | `node` + `pnpm` (opcionales) | herramientas JavaScript externas, como agent-browser; según los requisitos de cada herramienta | `node --version` · `pnpm --version` |
 | `gh` (opcional) | flujo de PRs en GitHub | `gh --version` |
@@ -159,7 +159,7 @@ El kit no instala esto por ti; solo lo documenta:
   instalación global se hace con `bash install-plugins.sh` (diff-first).
   Que un plugin figure en `enabledPlugins` no demuestra que esté cargado: comprueba `/plugin`.
 - **agent-browser** es una herramienta externa: ver `docs/04-superpowers.md`.
-- **El mod `cockpit`** (opcional): da `/handoff` y `/nueva` dentro de Claude Code. Instálalo con `claude plugin install cockpit@setup-claude-code` después de registrar el marketplace en el tag del kit (las dos órdenes, en [`11-cockpit.md`](11-cockpit.md)). Sin él, `handoff --desde` hace lo mismo desde la terminal.
+- **El mod `cockpit`** (opcional): da `/handoff` y `/nueva` dentro de Claude Code. Se pide con `bash kit/install.sh --con cockpit`; la vía por marketplace, con `claude plugin install cockpit@setup-claude-code`, está en [`11-cockpit.md`](11-cockpit.md). Sin él, `handoff --desde` hace lo mismo desde la terminal.
 
 Lo anterior es el esqueleto. Para la pila completa (plugins de Claude Code, servidores MCP, skills adicionales como `agent-browser`), ver [`08-plugins-mcp-y-skills.md`](08-plugins-mcp-y-skills.md).
 
