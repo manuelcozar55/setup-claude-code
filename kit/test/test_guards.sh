@@ -1668,6 +1668,20 @@ for c in 'bash -c "git status"' 'bash -c "git clean -n"' 'bash -c "git clean -d 
          'eval "git status"' 'bash -c "echo git reset --hard"' 'bash script.sh' 'bash -c "git log --oneline"'; do
   expect "destructive W2 envuelto: $c NO denegado" "$(run_dg "$c")" ALLOW
 done
+# a5) W2 hueco: la orden que recibe `xargs` o `find -exec` tambien se ejecuta (`| xargs git reset --hard`). El Check 5 la vuelve a
+# normalizar como la de un `bash -c`. Vecinos que siguen pasando: lectura (`git status`), simulacion, `reset --soft`, grep, rm sin ruta.
+# `ssh host '...'` queda fuera: lo que corre en otra maquina es un limite declarado (SECURITY.md).
+for c in 'echo a | xargs git reset --hard' 'ls | xargs git clean -fd' 'echo a | xargs -I{} git clean -fd' 'echo a | xargs -n1 git reset --hard' \
+         'echo a | xargs -P4 git clean -f' 'echo a | xargs sudo git reset --hard' 'echo a | xargs env git clean -fd' \
+         'echo a | xargs sh -c "git reset --hard"' 'find . -name x -exec git reset --hard \;' 'find . -name x -exec git clean -fd \;' \
+         'find . -name x -execdir git clean -f {} +'; do
+  expect "destructive W2 xargs/exec: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'echo a | xargs git status' 'echo a | xargs git clean -n' 'echo a | xargs git clean -d -n' 'echo a | xargs grep foo' 'echo a | xargs rm' \
+         'echo a | xargs rm -f' 'echo a | xargs git reset --soft' 'echo a | xargs grep git' 'find . -name x -exec git status \;' \
+         'find . -name x -exec grep foo {} +' 'find . -name x -exec git clean -n \;'; do
+  expect "destructive W2 xargs/exec: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
 # b) El mensaje de un commit es texto: no se juzga como push forzado. El texto de un `bash -c`, `sh -c`,
 # `eval` o `$(...)` se ejecuta: ahi se sigue denegando. Los comandos se montan por partes (guard vivo).
 FP="git pu""sh"; FF="--for""ce"

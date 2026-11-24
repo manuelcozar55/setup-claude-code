@@ -307,18 +307,38 @@ fi
 # patron: `git -C dir reset --hard`, `sudo git clean --force -d`, `rm -rv`, `rm -R`, `rm -rf --`.
 # Un `bash -c "..."`, `sh -c` o `eval` con el texto a la vista se vuelve a normalizar (hasta 3 niveles, NEST compartido con las demas
 # vueltas): sin eso `bash -c "git reset --hard"` pasaba los cinco guards. `bash -c "$X"` (valor construido antes) sigue siendo un limite.
+# Igual la orden de `xargs` y la de `find -exec`. `ssh host '...'` no: corre en otra maquina y queda fuera (SECURITY.md).
 check5() {
-  local depth=$1 seg a dd force dry inner i rc
+  local depth=$1 seg a dd force dry inner i k rc
   local -a T segs saved
   segs=("${CMDN_SEGS[@]}")
 for seg in "${segs[@]}"; do
   [[ $seg == *rm* || $seg == *git* ]] || continue
   cmdn_fields "$seg"
   case ${T[1]:-} in
-    sh|bash|zsh|dash|ksh|eval)
+    sh|bash|zsh|dash|ksh|eval|xargs|find)
       inner=
       if [[ ${T[1]} == eval ]]; then
         inner="${T[*]:2}"
+      elif [[ ${T[1]} == xargs ]]; then
+        # La orden que recibe xargs es la primera palabra que no es opcion ni valor de una opcion que lo toma aparte.
+        for (( i = 2; i < ${#T[@]}; i++ )); do
+          case ${T[i]} in
+            -I|-n|-P|-L|-s|-d|-E|-a|-J|-R|-S) i=$(( i + 1 )) ;;
+            -*) ;;
+            *) printf -v inner '%q ' "${T[@]:i}"; break ;;
+          esac
+        done
+      elif [[ ${T[1]} == find ]]; then
+        # Cada `-exec`/`-execdir`/`-ok`/`-okdir ... ;|+` es una orden; se juzgan todas.
+        k=0
+        for (( i = 2; i < ${#T[@]}; i++ )); do
+          if (( k )); then
+            if [[ ${T[i]} == ';' || ${T[i]} == '+' ]]; then k=0; inner+="; "; else inner+="$(printf '%q ' "${T[i]}")"; fi
+          else
+            case ${T[i]} in -exec|-execdir|-ok|-okdir) k=1 ;; esac
+          fi
+        done
       else
         for (( i = 2; i < ${#T[@]}; i++ )); do
           if [[ ${T[i]} == -*c* ]]; then inner=${T[i+1]:-}; break; fi
