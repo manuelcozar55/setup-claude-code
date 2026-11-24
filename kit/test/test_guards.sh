@@ -1824,6 +1824,15 @@ for c in 'bash <<<"git status"' 'echo "git status" | bash' 'echo "git reset --ha
          'bash script.sh <<<"git reset --hard"' 'echo "git reset --hard" > notas.txt' 'printf "%s\n" "git clean -fd" | tee notas.txt'; do
   expect "destructive R2 texto-a-shell: $c NO denegado" "$(run_dg "$c")" ALLOW
 done
+# R3: el formato de printf no esconde el texto (`%s` no era la orden y el argumento se perdia).
+for c in 'printf "%s" "git clean -fd" | bash' "printf '%s\n' 'git reset --hard' | sh" 'printf "%s %s" git "reset --hard" | bash' \
+         'printf "%s" "git clean -f" | sudo bash -s' 'printf -- "%s" "git clean -fd" | bash' 'printf "%s;%s" "echo hi" "git clean -fd" | bash'; do
+  expect "destructive R3 printf: $c denegado" "$(run_dg "$c")" BLOCK
+done
+for c in 'printf "%s" "git status" | bash' 'printf "%s\n" "git clean -n" | bash' 'printf "%s" "git reset --hard"' 'printf "%s\n" "git clean -fd" | cat' \
+         'printf "%s %s" git status | bash' 'printf "%s\n" "git clean -fd" | tee notas.txt'; do
+  expect "destructive R3 printf: $c NO denegado" "$(run_dg "$c")" ALLOW
+done
 for c in "git -c alias.x='clean -fd' x" "git -c alias.x='reset --hard' x" "git -c alias.x='!git reset --hard' x" "git -c alias.x='clean -f' x -d"; do
   expect "destructive R2 alias: $c denegado" "$(run_dg "$c")" BLOCK
 done

@@ -62,7 +62,10 @@ env_name() {
     done
     return 1
   fi
-  [[ $n =~ \.env\.(example|template|sample|dist)$ ]] && return 1
+  # Plantilla: el ULTIMO sufijo es example|sample|template|dist (`.env.local.example`, `.envrc.example`). Codigo: `x.env.ts`, `jest.env.js` no
+  # son entornos; sin `.env.<codigo>` a secas ni `.json` (un `.env.json` puede llevar secretos).
+  [[ $n =~ \.env.*\.(example|template|sample|dist)$ ]] && return 1
+  [[ $n =~ .\.env\.(d\.ts|ts|mts|cts|js|mjs|cjs|py|rb|go)$ ]] && return 1
   [[ $n =~ (\.env($|[.~_-])|\.envrc) ]]
 }
 # Expande las llaves `{a,b}` de un operando (una por pasada); las variantes quedan en el array BEX. Sin subshell ni fork: cada operando
