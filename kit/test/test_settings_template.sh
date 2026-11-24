@@ -11,8 +11,8 @@ q() { jq -r "$1" "$S" 2>/dev/null; }
 cmd() { q "[.hooks.$1[]? | select((.matcher // \"\") == \"$2\") | .hooks[].command] | join(\" \")"; }
 
 ok "JSON válido" "$(jq empty "$S" 2>/dev/null && echo si)" si
-ok "SessionStart startup|clear|resume → session-start-clear.sh" "$(cmd SessionStart 'startup|clear|resume' | command grep -c 'hooks/session-start-clear.sh')" 1
-ok "SessionStart compact → session-start-compact.sh" "$(cmd SessionStart compact | command grep -c 'hooks/session-start-compact.sh')" 1
+ok "SessionStart startup|clear|resume|compact → session-start-estado.sh" "$(cmd SessionStart 'startup|clear|resume|compact' | command grep -c 'hooks/session-start-estado.sh')" 1
+ok "la plantilla ya no cablea session-start-clear.sh ni session-start-compact.sh (fundidos)" "$(command grep -c 'session-start-clear\|session-start-compact' "$S")" 0
 ok "la plantilla no cablea nucleo-nudge.sh (opcional: install.sh --con nudge)" "$(command grep -c 'nucleo-nudge' "$S")" 0
 ok "el nudge opcional se cablea en PostToolUse \"\" desde opcional-settings.json" "$(jq -r '[.nudge.hooks.PostToolUse[] | select((.matcher // "") == "") | .hooks[].command] | join(" ")' "$(dirname "$S")/../opcional-settings.json" | command grep -c 'hooks/nucleo-nudge.sh')" 1
 ok "nudge con timeout ≤ 5 s (camino caliente)" "$(jq -r '[.nudge.hooks.PostToolUse[].hooks[] | .timeout <= 5] | (length > 0 and all)' "$(dirname "$S")/../opcional-settings.json")" true

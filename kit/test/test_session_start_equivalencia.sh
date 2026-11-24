@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # test_session_start_equivalencia.sh — la salida EXACTA (stdout y rc) de lo que corre SessionStart, por `source` y con
 # fixtures de estado representativos, contra los ficheros de kit/test/golden/session-start/. Existe para poder fundir
-# session-start.sh, session-start-clear.sh y session-start-compact.sh (B-008) sin cambiar lo que recibe el modelo.
+# session-start-clear.sh y session-start-compact.sh en session-start-estado.sh (B-008) sin cambiar lo que recibe el
+# modelo: los golden se capturaron con los tres hooks de antes, byte a byte.
 # Por source, el arnés lanza (settings.json): session-start.sh siempre (texto plano: la línea de memoria) y, además,
-# session-start-clear.sh con startup|clear|resume o session-start-compact.sh con compact (JSON). Cada caso guarda los
+# session-start-estado.sh (JSON; antes -clear con startup|clear|resume y -compact con compact). Cada caso guarda los
 # dos flujos por separado, porque el arnés los recibe por separado.
-# GOLDEN_ACTUALIZAR=1 reescribe los golden desde los hooks actuales (solo al capturar; revisa el diff con git).
+# GOLDEN_ACTUALIZAR=1 reescribe los golden desde los hooks actuales: no lo uses para «arreglar» un rojo, un rojo es
+# un cambio de lo que recibe el modelo.
 # Sin red; HOME falso en un mktemp que se borra; fechas y rutas fijas para que la salida sea reproducible.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; H="$HERE/../claude/hooks"; GOLD="$HERE/golden/session-start"
@@ -44,7 +46,7 @@ mkdir -p "$HOME/.claude/estado"
 corre() {
   local caso=$1 cwd=$2 sid=$3 src=$4 ev est m e rm re f=$T/out/$1.txt; shift 4
   ev=$(jq -cn --arg c "$cwd" --arg s "$sid" --arg src "$src" '{cwd:$c,session_id:$s,source:$src,transcript_path:"",hook_event_name:"SessionStart"}')
-  case $src in compact) est=session-start-compact.sh ;; *) est=session-start-clear.sh ;; esac
+  est=session-start-estado.sh
   m=$(cd "$cwd" && env "$@" bash "$H/session-start.sh" <<<"$ev" 2>/dev/null); rm=$?
   e=$(cd "$cwd" && env "$@" bash "$H/$est" <<<"$ev" 2>/dev/null); re=$?
   { printf '=== %s memoria rc=%s ===\n%s\n=== %s estado rc=%s ===\n%s\n' "$src" "$rm" "$m" "$src" "$re" "$e"; } >>"$f"
@@ -53,7 +55,7 @@ corre() {
 corre_caducado() {
   local caso=$1 cwd=$2 sid=$3 ev m e f=$T/out/$1.txt
   ev=$(jq -cn --arg c "$cwd" --arg s "$sid" '{cwd:$c,session_id:$s,source:"resume",context_tokens:150000,prompt_cache_likely_expired:true,hook_event_name:"SessionStart"}')
-  m=$(cd "$cwd" && bash "$H/session-start.sh" <<<"$ev" 2>/dev/null); e=$(cd "$cwd" && bash "$H/session-start-clear.sh" <<<"$ev" 2>/dev/null)
+  m=$(cd "$cwd" && bash "$H/session-start.sh" <<<"$ev" 2>/dev/null); e=$(cd "$cwd" && bash "$H/session-start-estado.sh" <<<"$ev" 2>/dev/null)
   printf '=== resume-caducado memoria rc=0 ===\n%s\n=== resume-caducado estado rc=0 ===\n%s\n' "$m" "$e" >>"$f"
 }
 

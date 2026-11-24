@@ -2,7 +2,7 @@
 # Uso: test_session_start_clear.sh [ruta al hook; por defecto el del kit]. Sin red; todo en un mktemp que se borra.
 # shellcheck disable=SC2016  # los acentos graves de los literales del protocolo no se expanden
 set -u
-H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/session-start-clear.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
+H=$(realpath "${1:-$(dirname "$0")/../claude/hooks/session-start-estado.sh}"); T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
 export HOME=$T/home; mkdir -p "$HOME"; unset NUCLEO_REGISTRO CLAUDE_PROJECT_DIR CLAUDE_PID
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }

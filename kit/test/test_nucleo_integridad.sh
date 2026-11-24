@@ -59,12 +59,12 @@ wait "$PID"
 ok 'autosave: la edición hecha en su ventana sobrevive y se omite' "$(command grep -c MARCA-EDICION "$E/nucleo.md"),$(jq -r .omitido "$T/auto.out")" '1,nucleo cambió'
 F=$(nucleo_estado_fallback "$R"); mkdir -p "$F"
 printf '## Paso actual\nFALLBACK-VIVO\n' >"$F/nucleo.md"
-jq -cn --arg r "$R" '{cwd:$r,session_id:"fallback",source:"compact"}' | bash "$HOOK/session-start-compact.sh" >"$T/compact"
+jq -cn --arg r "$R" '{cwd:$r,session_id:"fallback",source:"compact"}' | bash "$HOOK/session-start-estado.sh" >"$T/compact"
 ok 'compact lee núcleo fallback' "$(jq -r '.hookSpecificOutput.additionalContext' "$T/compact" | command grep -c '^FALLBACK-VIVO$')" 1
 ok 'estado publica ruta real fallback' "$(ho --estado | jq -r .nucleo)" "$F/nucleo.md"
 ho --desde "$T/draft" >/dev/null 2>&1
 ok 'escritor conserva ruta fallback' "$(command grep -c nuevo "$F/nucleo.md")" 1
-jq -cn --arg r "$R" '{cwd:$r,session_id:"new",source:"clear"}' | bash "$HOOK/session-start-clear.sh" >"$T/hook"
+jq -cn --arg r "$R" '{cwd:$r,session_id:"new",source:"clear"}' | bash "$HOOK/session-start-estado.sh" >"$T/hook"
 ok 'lector clear usa fallback' "$(jq -r '.hookSpecificOutput.additionalContext' "$T/hook" | command grep -c '^nuevo$')" 1
 mv "$F/nucleo.md" "$T/outside"; ln -s "$T/outside" "$F/nucleo.md"
 ho --estado >/dev/null 2>&1; ok 'fallback enlazado rechazado' "$?" 3
@@ -137,11 +137,11 @@ HINT_NUC=$HINT_ROOT/.claude/estado/nucleo.md
 HINT_HOME=$T/hint-install; mkdir -p "$HINT_HOME/bin"
 ln -s "$BIN" "$HINT_HOME/bin/handoff"
 printf '%s\n' '{"type":"assistant","message":{"model":"claude-opus-4-6","usage":{"input_tokens":120000}}}' >"$T/hint-transcript"
-for HINT_HOOK in nucleo-nudge session-start-compact; do
+for HINT_HOOK in nucleo-nudge session-start-estado; do
   SID=hint-${HINT_HOOK}
   printf '## Paso actual\nANTES-HINT\n' >"$HINT_NUC"; touch -d '-30 minutes' "$HINT_NUC"
   printf 'sesion=%s\ndesde=%s\n' "$SID" "$(date +%s)" >"$HINT_ROOT/.claude/estado/.dueno"
-  OUT=$(jq -cn --arg r "$HINT_ROOT" --arg s "$SID" --arg t "$T/hint-transcript" '{cwd:$r,session_id:$s,transcript_path:$t}' | CLAUDE_HOME=$HINT_HOME PATH=/usr/bin:/bin bash "$HOOK/$HINT_HOOK.sh" | jq -r '.hookSpecificOutput.additionalContext // .systemMessage // ""')
+  OUT=$(jq -cn --arg r "$HINT_ROOT" --arg s "$SID" --arg t "$T/hint-transcript" '{cwd:$r,session_id:$s,transcript_path:$t,source:"compact"}' | CLAUDE_HOME=$HINT_HOME PATH=/usr/bin:/bin bash "$HOOK/$HINT_HOOK.sh" | jq -r '.hookSpecificOutput.additionalContext // .systemMessage // ""')
   # shellcheck disable=SC2016  # Backticks literales delimitan el comando emitido.
   COMMAND=$(sed -n 's/.*`\([^`]*--desde <borrador>[^`]*\)`.*/\1/p' <<<"$OUT")
   read -r -a ARGS <<<"${COMMAND//<borrador>/$T/draft}"
@@ -152,7 +152,7 @@ for HINT_HOOK in nucleo-nudge session-start-compact; do
   (cd "$HINT_ROOT" && "${ARGS[@]}") >"$T/hint.out" 2>"$T/hint.err"; RC=$?
   ok "$HINT_HOOK comando no suplanta dueño ajeno" "$RC,$(sha256sum "$HINT_NUC" | cut -d' ' -f1)" "5,$BEFORE"
   for BAD_SID in '' 'invalid;sid'; do
-    OUT=$(jq -cn --arg r "$HINT_ROOT" --arg s "$BAD_SID" --arg t "$T/hint-transcript" '{cwd:$r,session_id:$s,transcript_path:$t}' | CLAUDE_HOME=$HINT_HOME PATH=/usr/bin:/bin bash "$HOOK/$HINT_HOOK.sh" | jq -r '.hookSpecificOutput.additionalContext // .systemMessage // ""')
+    OUT=$(jq -cn --arg r "$HINT_ROOT" --arg s "$BAD_SID" --arg t "$T/hint-transcript" '{cwd:$r,session_id:$s,transcript_path:$t,source:"compact"}' | CLAUDE_HOME=$HINT_HOME PATH=/usr/bin:/bin bash "$HOOK/$HINT_HOOK.sh" | jq -r '.hookSpecificOutput.additionalContext // .systemMessage // ""')
     ok "$HINT_HOOK sin SID válido no emite comando ejecutable" "$(grep -c -- '--desde <borrador>' <<<"$OUT")" 0
   done
  done
@@ -162,7 +162,7 @@ CLAUDE_PID=$$ nucleo_dueno_reclamar "$LIVE" live
 sleep 300 & RIVALPID=$!
 NUCLEO_DUENO_TTL=0 CLAUDE_PID=$RIVALPID nucleo_dueno_reclamar "$LIVE" rival
 ok 'proceso vivo protege dueño incluso con TTL vencido' "$?" 5
-jq -cn --arg r "$LIVE" '{cwd:$r,session_id:"rival",source:"clear"}' | bash "$HOOK/session-start-clear.sh" >"$T/rival-clear"
+jq -cn --arg r "$LIVE" '{cwd:$r,session_id:"rival",source:"clear"}' | bash "$HOOK/session-start-estado.sh" >"$T/rival-clear"
 ok 'clear ajeno no roba propietario vivo' "$(nucleo_dueno "$LIVE" | cut -d' ' -f1)" live
 # D1 (cv2/estado): el dueño es un proceso, no un reloj.
 sleep 300 & PA=$!; sleep 300 & PB=$!; sleep 300 & PC=$!; sleep 300 & PA2=$!; sleep 300 & PB2=$!
@@ -176,14 +176,14 @@ CLAUDE_PID=$PB nucleo_dueno_reclamar "$D1" sid-clear; ok 'D1: /clear (mismo proc
 CLAUDE_PID=$PC nucleo_dueno_reclamar "$D1" sid-rival; ok 'D1: otro proceso vivo no la quita' "$?,$(nucleo_dueno "$D1" | cut -d' ' -f1)" '5,sid-clear'
 printf 'sesion=sin-pid\ndesde=%s\n' "$(date +%s)" >"$D1/.claude/estado/.dueno"
 nucleo_dueno_vigente "$D1" >/dev/null; ok 'D1: un dueño sin identidad de proceso sigue por TTL' "$?" 0
-jq -cn --arg r "$D1" '{cwd:$r,session_id:"sid-rival",source:"startup"}' | CLAUDE_PID=$PC bash "$HOOK/session-start-clear.sh" >"$T/d1-aviso"
+jq -cn --arg r "$D1" '{cwd:$r,session_id:"sid-rival",source:"startup"}' | CLAUDE_PID=$PC bash "$HOOK/session-start-estado.sh" >"$T/d1-aviso"
 ok 'D1: el aviso de dueño ajeno dice qué hacer (liberar o trabajar en otra carpeta)' "$(jq -r '.systemMessage' "$T/d1-aviso" | command grep -c 'handoff --liberar sin-pid.*otra carpeta')" 1
 # B-4: la sesión que arrancó antes de que existiera estado/ lo reclama al escribir; la segunda terminal no se lo quita.
 D4=$T/d4; mkdir -p "$D4"; git -C "$D4" init -q
-jq -cn --arg r "$D4" '{cwd:$r,session_id:"sid-A",source:"startup"}' | CLAUDE_PID=$PA2 bash "$HOOK/session-start-clear.sh" >/dev/null
+jq -cn --arg r "$D4" '{cwd:$r,session_id:"sid-A",source:"startup"}' | CLAUDE_PID=$PA2 bash "$HOOK/session-start-estado.sh" >/dev/null
 jq -cn --arg r "$D4" '{hook_event_name:"SubagentStart",cwd:$r,session_id:"sid-A",agent_id:"ag1",agent_type:"Explore"}' | CLAUDE_PID=$PA2 bash "$HOOK/agentes.sh"
 printf '## Paso actual\nB\n' >"$T/d4-b"
-jq -cn --arg r "$D4" '{cwd:$r,session_id:"sid-B",source:"startup"}' | CLAUDE_PID=$PB2 bash "$HOOK/session-start-clear.sh" >/dev/null
+jq -cn --arg r "$D4" '{cwd:$r,session_id:"sid-B",source:"startup"}' | CLAUDE_PID=$PB2 bash "$HOOK/session-start-estado.sh" >/dev/null
 ok 'B-4: la segunda terminal que arranca después no se queda el dueño de un estado/ sin nucleo' "$(nucleo_dueno "$D4" 2>/dev/null | cut -d' ' -f1)" ""
 bash "$BIN" --iniciar --raiz "$D4" >/dev/null 2>&1
 printf 'cambio\n' >"$D4/trabajo.md"
@@ -245,7 +245,7 @@ B=$T/los-dos; repo "$B"; estado "$B/ESTADO.md"; mkdir -p "$B/.claude/estado"; pr
 N=$T/ninguno; repo "$N"
 
 # --- solo ESTADO.md ---
-OUT=$(ev "$E" s1 "" startup | bash "$H/session-start-clear.sh"); C=$(ctx <<<"$OUT")
+OUT=$(ev "$E" s1 "" startup | bash "$H/session-start-estado.sh"); C=$(ctx <<<"$OUT")
 ok "clear: inyecta ESTADO.md como datos" "$(command grep -c "^<nucleo-datos fuente=\"$E/ESTADO.md\">" <<<"$C")" 1
 ok "clear: trae el contenido tal cual (secciones y viñetas propias)" "$(command grep -c 'OBJETIVO-VIVO\|PASO-VIVO\|DECISION-UNICA' <<<"$C")" 3
 ok "clear: los comentarios <!-- --> no se inyectan" "$(command grep -c 'nota para quien escribe' <<<"$C")" 0
@@ -253,17 +253,17 @@ ok "clear: no nombra nucleo.md" "$(command grep -c 'nucleo\.md' <<<"$C")" 0
 ok "clear: el protocolo nombra ESTADO.md" "$(command grep -c 'corrige ESTADO.md' <<<"$C")" 1
 ok "clear: no crea .claude/estado" "$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" no
 { for i in $(seq 1 400); do echo "- linea de relleno numero $i para pasar el tope de inyeccion del estado"; done; } >>"$E/ESTADO.md"
-OUT=$(ev "$E" s1 "" startup | bash "$H/session-start-clear.sh")
+OUT=$(ev "$E" s1 "" startup | bash "$H/session-start-estado.sh")
 ok "clear: mismo tope (≤ 9 500) con un ESTADO.md de 28 KB" "$([ "$(printf '%s' "$OUT" | wc -m)" -le 9500 ] && echo si)" si
 ok "clear: lo recortado se dice" "$(ctx <<<"$OUT" | command grep -c '\[recortado')" 1
 estado "$E/ESTADO.md"
 
-C=$(ev "$E" s1 | bash "$H/session-start-compact.sh" | ctx)
+C=$(ev "$E" s1 "" compact | bash "$H/session-start-estado.sh" | ctx)
 ok "compact: re-inyecta ESTADO.md" "$(command grep -c "^<nucleo-datos fuente=\"$E/ESTADO.md\">" <<<"$C"),$(command grep -c 'PASO-VIVO' <<<"$C")" 1,1
 ok "compact: no nombra nucleo.md" "$(command grep -c 'nucleo\.md' <<<"$C")" 0
 ok "compact: fresco, sin aviso de edad" "$(command grep -c 'sin actualizarse' <<<"$C")" 0
 touch -d '-30 minutes' "$E/ESTADO.md"
-C=$(ev "$E" s2 | bash "$H/session-start-compact.sh" | ctx)
+C=$(ev "$E" s2 "" compact | bash "$H/session-start-estado.sh" | ctx)
 ok "compact: aviso de edad con ESTADO.md rancio, nombrándolo" "$(command grep -c "Aviso del hook: $E/ESTADO.md lleva más de 10 min sin actualizarse" <<<"$C")" 1
 ok "compact: el aviso dicta handoff --desde con --sesion y no nombra nucleo.md" "$(command grep -c 'nucleo\.md' <<<"$C"),$(command grep -c 'handoff --desde <borrador> --sesion s2' <<<"$C"),$(command grep -c 'a mano' <<<"$C")" 0,1,0
 
@@ -303,7 +303,7 @@ ok "handoff --desde en modo ESTADO.md: sin línea de transcript en ESTADO.md; el
 # shellcheck disable=SC2016  # los acentos graves son markdown, no sustituciones
 for i in 1 2 3; do printf '## Paso actual\nP%s\n## Plan\n- [x] cerrado-E — `make test`\n' "$i" >"$T/bx.md"; bash "$HO" --desde "$T/bx.md" --raiz "$E" >/dev/null 2>&1; done
 ok "handoff --desde en modo ESTADO.md: el mismo [x] tres veces queda una vez en diario.md" "$(command grep -c 'cerrado-E' "$E/.claude/estado/diario.md")" 1
-# El comando que dictan nucleo-nudge.sh y session-start-compact.sh: --desde con --sesion y sin --ranura, desde un cwd dentro del repo.
+# El comando que dictan nucleo-nudge.sh y session-start-estado.sh: --desde con --sesion y sin --ranura, desde un cwd dentro del repo.
 estado "$E/ESTADO.md"
 ok "handoff --desde --sesion sin --ranura (el que dictan los hooks) funciona en modo ESTADO.md" "$(cd "$E" && bash "$HO" --desde "$T/b.md" --sesion s-h5 >/dev/null 2>&1; echo $?),$(command grep -c 'PASO-NUEVO' "$E/ESTADO.md"),$([ -e "$E/.claude/estado/nucleo.md" ] && echo si || echo no)" 0,1,no
 printf '# Estado\n## Cosa rara\nX\n' >"$T/mala.md"
@@ -317,21 +317,21 @@ ok "handoff --desde --solo en modo ESTADO.md: no aplica (64)" "$(bash "$HO" --de
 
 # ESTADO.md enlazado: el repo es de terceros, no decide qué fichero de fuera se inyecta.
 L=$T/enlazado; repo "$L"; echo SECRETO-DE-FUERA >"$T/fuera.md"; ln -s "$T/fuera.md" "$L/ESTADO.md"
-ok "ESTADO.md enlazado: no se inyecta" "$(ev "$L" s5 "" startup | bash "$H/session-start-clear.sh" | ctx | command grep -c 'SECRETO-DE-FUERA')" 0
+ok "ESTADO.md enlazado: no se inyecta" "$(ev "$L" s5 "" startup | bash "$H/session-start-estado.sh" | ctx | command grep -c 'SECRETO-DE-FUERA')" 0
 
 # --- los dos: manda nucleo.md, como hoy ---
-C=$(ev "$B" s6 "" startup | bash "$H/session-start-clear.sh" | ctx)
+C=$(ev "$B" s6 "" startup | bash "$H/session-start-estado.sh" | ctx)
 ok "clear con los dos: manda nucleo.md" "$(command grep -c "fuente=\"$B/.claude/estado/nucleo.md\"" <<<"$C"),$(command grep -c 'PASO-NUCLEO' <<<"$C"),$(command grep -c 'PASO-VIVO\|corrige ESTADO.md' <<<"$C")" 1,1,0
-C=$(ev "$B" s6 | bash "$H/session-start-compact.sh" | ctx)
+C=$(ev "$B" s6 "" compact | bash "$H/session-start-estado.sh" | ctx)
 ok "compact con los dos: manda nucleo.md" "$(command grep -c 'PASO-NUCLEO' <<<"$C"),$(command grep -c 'PASO-VIVO' <<<"$C")" 1,0
 touch -d '-30 minutes' "$B/.claude/estado/nucleo.md"
 ok "nudge con los dos: habla de nucleo.md" "$(nudge "$B" s6 | ctx | command grep -c 'nucleo.md lleva 30 min')" 1
 ok "handoff --iniciar con los dos: sigue su curso (nucleo.md ya existe)" "$(bash "$HO" --iniciar --raiz "$B" 2>&1 | command grep -c 'ya existe')" 1
 
 # --- ninguno: comportamiento actual ---
-C=$(ev "$N" s8 | bash "$H/session-start-compact.sh" | ctx)
+C=$(ev "$N" s8 "" compact | bash "$H/session-start-estado.sh" | ctx)
 ok "compact sin ninguno: pide nucleo.md con la plantilla" "$(command grep -c "No existe $N/.claude/estado/nucleo.md" <<<"$C")" 1
-ok "clear sin ninguno: nada que inyectar" "$(ev "$N" s8 "" startup | bash "$H/session-start-clear.sh" | ctx | command grep -c 'nucleo-datos')" 0
+ok "clear sin ninguno: nada que inyectar" "$(ev "$N" s8 "" startup | bash "$H/session-start-estado.sh" | ctx | command grep -c 'nucleo-datos')" 0
 ok "handoff --iniciar sin ninguno: crea nucleo.md" "$(bash "$HO" --iniciar --raiz "$N" >/dev/null 2>&1; [ -f "$N/.claude/estado/nucleo.md" ] && echo si)" si
 
 

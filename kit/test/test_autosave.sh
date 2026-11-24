@@ -145,8 +145,7 @@ auto Stop >/dev/null 2>&1
 EM=$(nucleo_emitir "$NUC")
 ok "12 nucleo_emitir emite la sección" "$(grep -c "^$AUTOH\$" <<<"$EM"),$(grep -c 'fuera de forma\|recortado' <<<"$EM")" "1,0"
 for src in clear compact; do
-  h=session-start-clear.sh; [ "$src" != compact ] || h=session-start-compact.sh
-  CTX=$(jq -cn --arg c "$R" --arg s other '{cwd:$c,session_id:$s,source:"'"$src"'"}' | bash "$HOOK/$h" | jq -r '.hookSpecificOutput.additionalContext // empty')
+  CTX=$(jq -cn --arg c "$R" --arg s other '{cwd:$c,session_id:$s,source:"'"$src"'"}' | bash "$HOOK/session-start-estado.sh" | jq -r '.hookSpecificOutput.additionalContext // empty')
   ok "12 SessionStart $src inyecta la sección" "$(grep -c "^$AUTOH\$" <<<"$CTX"),$(grep -c 'fuera de forma' <<<"$CTX")" "1,0"
 done
 rm -f "$E/.dueno"   # el SessionStart de 12 reclamó el dueño para otra sesión

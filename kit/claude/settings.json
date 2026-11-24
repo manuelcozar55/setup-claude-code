@@ -126,21 +126,11 @@
         ]
       },
       {
-        "matcher": "startup|clear|resume",
+        "matcher": "startup|clear|resume|compact",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$HOME/.claude/hooks/session-start-clear.sh\"",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/.claude/hooks/session-start-compact.sh\"",
+            "command": "\"$HOME/.claude/hooks/session-start-estado.sh\"",
             "timeout": 10
           }
         ]

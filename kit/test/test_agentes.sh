@@ -136,13 +136,13 @@ ok 'orden de 200 KB sin description: la foto cuenta el shell vivo' "$(bash "$BIN
 big g90 10000
 timeout 2 bash -c "$(declare -f stop_big); H=$H R=$R T=$T; stop_big g90"
 ok 'orden de 90 KB (110 KB escapada, bajo E2BIG): el Stop deja la foto en menos de 2 s' "$(bash "$BIN" --raiz "$R" --estado --sesion g90 | jq -r .agentes_vivos)" 1
-for HOOK in session-start-clear session-start-compact; do
-  OUT=$(jq -cn --arg r "$R" '{cwd:$r,session_id:"own",source:"clear"}' | bash "$H/$HOOK.sh" | jq -r '.hookSpecificOutput.additionalContext // ""')
+for HOOK in clear compact; do
+  OUT=$(jq -cn --arg r "$R" --arg s "$HOOK" '{cwd:$r,session_id:"own",source:$s}' | bash "$H/session-start-estado.sh" | jq -r '.hookSpecificOutput.additionalContext // ""')
   ok "$HOOK reinyecta agentes sin núcleo" "$(grep -c '^<agentes>' <<<"$OUT")" 1
  done
 printf '## Objetivo\nOBJ-AGENTES\n## Paso actual\nPASO-AGENTES\n' >"$E/nucleo.md"
-for HOOK in session-start-clear session-start-compact; do
-  OUT=$(jq -cn --arg r "$R" '{cwd:$r,session_id:"own",source:"clear"}' | bash "$H/$HOOK.sh" | jq -r '.hookSpecificOutput.additionalContext // ""')
+for HOOK in clear compact; do
+  OUT=$(jq -cn --arg r "$R" --arg s "$HOOK" '{cwd:$r,session_id:"own",source:$s}' | bash "$H/session-start-estado.sh" | jq -r '.hookSpecificOutput.additionalContext // ""')
   ok "$HOOK agentes preceden al núcleo" "$(awk '/^<agentes>/{a=NR} /^<nucleo-datos/{print (a>0 && a<NR); exit}' <<<"$OUT")" 1
   ok "$HOOK conserva núcleo y tope" "$(grep -c '^PASO-AGENTES$' <<<"$OUT"),$([ "${#OUT}" -le 9500 ] && echo acotado)" '1,acotado'
  done
@@ -153,7 +153,7 @@ mkdir -p "$T/isolated-home" "$T/alternate"
 touch -d '-30 minutes' "$E/nucleo.md"
 INPUT=$(jq -cn --arg r "$R" '{cwd:$r,session_id:"own",source:"compact"}')
 HOME=$T/isolated-home CLAUDE_HOME=$T/alternate bash "$H/pre-compact.sh" <<<"$INPUT" >/dev/null
-OUT=$(HOME=$T/isolated-home CLAUDE_HOME=$T/alternate PATH=/usr/bin:/bin bash "$H/session-start-compact.sh" <<<"$INPUT")
+OUT=$(HOME=$T/isolated-home CLAUDE_HOME=$T/alternate PATH=/usr/bin:/bin bash "$H/session-start-estado.sh" <<<"$INPUT")
 ok 'compactación respeta CLAUDE_HOME para logs y marca' "$([ -f "$T/alternate/session-logs/nucleo-freshness.log" ] && [ -f "$T/alternate/session-logs/compact-aviso-own" ] && [ ! -d "$T/isolated-home/.claude/session-logs" ] && echo aislado)" aislado
 ok 'aviso compact usa handoff de CLAUDE_HOME' "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$OUT" | grep -c "$T/alternate/bin/handoff --desde")" 1
 R=$T/lifecycle; mkdir -p "$R"; git -C "$R" init -q
@@ -181,10 +181,10 @@ sleep 0.3
 end_session rival; wait "$LKPID"
 ok 'SessionEnd espera un lock breve y libera al dueño' "$([ -e "$E/.dueno" ] && echo ocupado || echo libre)" libre
 for CYCLE in 1 2; do
-  jq -cn --arg r "$R" --arg s "cycle-$CYCLE" '{cwd:$r,session_id:$s,source:"clear"}' | bash "$H/session-start-clear.sh" >/dev/null
+  jq -cn --arg r "$R" --arg s "cycle-$CYCLE" '{cwd:$r,session_id:$s,source:"clear"}' | bash "$H/session-start-estado.sh" >/dev/null
   ok "clear ciclo$CYCLE reclama nueva sesión" "$(sed -n 's/^sesion=//p' "$E/.dueno")" "cycle-$CYCLE"
   end_session "cycle-$CYCLE"
-  jq -cn --arg r "$R" --arg s "next-$CYCLE" '{cwd:$r,session_id:$s,source:"clear"}' | bash "$H/session-start-clear.sh" >/dev/null
+  jq -cn --arg r "$R" --arg s "next-$CYCLE" '{cwd:$r,session_id:$s,source:"clear"}' | bash "$H/session-start-estado.sh" >/dev/null
   printf '## Paso actual\nCICLO-%s\n' "$CYCLE" >"$T/lifecycle-draft"
   bash "$BIN" --raiz "$R" --desde "$T/lifecycle-draft" --sesion "next-$CYCLE" >/dev/null 2>&1; RC=$?
   ok "clear ciclo$CYCLE permite handoff de siguiente sesión" "$RC" 0
