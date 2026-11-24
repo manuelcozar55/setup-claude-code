@@ -929,8 +929,10 @@ if [ -n "${LINK_AJENOS:-}" ]; then
   echo "==> AVISO: no se enlazo$LINK_AJENOS (ya existia en $LOCAL_BIN). Usa la ruta $CLAUDE_HOME/bin/<nombre> o resuelve el conflicto."
 fi
 # Veredicto de una linea: doctor sobre lo recien instalado. El instalador sale 1 solo si doctor da algun FAIL; un WARN no cambia el rc.
-doc_out="$(CLAUDE_HOME="$CLAUDE_HOME" bash "$KIT/doctor.sh" 2>&1)" || true
+doc_out="$(CLAUDE_HOME="$CLAUDE_HOME" bash "$KIT/doctor.sh" 2>&1)" && doc_rc=0 || doc_rc=$?
 doc_fail="$(grep -c '^FAIL' <<<"$doc_out" || true)"; doc_warn="$(grep -c '^WARN' <<<"$doc_out" || true)"
+# Un doctor que muere sin imprimir FAIL no es un OK.
+if [ "$doc_rc" -ne 0 ] && [ "$doc_fail" -eq 0 ]; then echo "==> doctor: no termino (rc=$doc_rc). Detalle: bash $KIT/doctor.sh"; exit 1; fi
 if [ "$doc_fail" -eq 0 ]; then doc_veredicto="OK"; else doc_veredicto="$doc_fail FAIL"; fi
 echo "==> doctor: $doc_veredicto, $doc_warn WARN. Detalle: bash $KIT/doctor.sh"
 [ "$doc_fail" -eq 0 ] || exit 1

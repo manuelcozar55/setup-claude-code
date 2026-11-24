@@ -28,6 +28,8 @@ opcional_de() {  # ruta relativa a CLAUDE_HOME -> imprime su pieza (rc 0), o rc 
 
 pieza_instalada() {  # CLAUDE_HOME pieza: ¿hay algo suyo en disco?
   local g
+  # sentinel/ puede tener solo un iocs.json de la persona: eso no es tener Sentinel instalado.
+  if [ "$2" = sentinel ]; then [ -e "$1/sentinel/sentinel_preflight.py" ] || [ -e "$1/hooks/narthex-post-mcp.py" ]; return; fi
   while IFS= read -r g; do
     case $g in
       */\*) [ -n "$(find "$1/${g%/\*}" -mindepth 1 \( -type f -o -type l \) -print -quit 2>/dev/null)" ] && return 0 ;;

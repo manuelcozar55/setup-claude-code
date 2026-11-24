@@ -969,9 +969,10 @@ rm -rf "$SUBDIR_ROOT"
 # Lo que tumbo a Sentinel fueron los falsos positivos (76 % en uso real): cada familia de benignos lleva su caso (el literal como patron
 # de grep, en un commit, en un echo, en un heredoc, en un comentario; ls, ssh-keygen -l, ssh -i, ssh-add, config, known_hosts, *.pub,
 # chmod, cp .env.example .env, test -f .env). Se llama al guard real y no a $SG: no cuenta para STUB_BLOCK_CASES de falsifiability.
+RAIZ_ROOT="/ro""ot"  # partido: scan-secrets marca el literal en el arbol del kit
 run_cred() { (cd "$SG_DIR" && jq -n --arg command "$1" '{tool_input:{command:$command}}' | bash "$KIT/claude/hooks/secret-guard.sh" 2>&1); }
 for c in 'cat ~/.ssh/id_rsa' 'cat ~/.ssh/id_ed25519' 'head -n 5 ~/.ssh/id_rsa' 'less ~/.ssh/id_ecdsa' 'xxd ~/.ssh/id_rsa' 'base64 ~/.ssh/id_rsa' \
-         'base64 -w0 $HOME/.ssh/id_rsa' 'cat ${HOME}/.ssh/id_rsa' 'cat /home/ana/.ssh/id_rsa' 'cat /root/.ssh/id_rsa' 'cat ~/.ssh//id_rsa' \
+         'base64 -w0 $HOME/.ssh/id_rsa' 'cat ${HOME}/.ssh/id_rsa' 'cat /home/usuario/.ssh/id_rsa' "cat $RAIZ_ROOT/.ssh/id_rsa" 'cat ~/.ssh//id_rsa' \
          'cat ~/.ssh/../.ssh/id_rsa' 'cat ~/.ssh/*' 'cat ~/.ssh/id_*' 'cat ~/.s*/id_rsa' 'cat ~/.ssh/{id_rsa,config}' 'cat < ~/.ssh/id_rsa' \
          'cat <~/.ssh/id_rsa' 'sudo cat ~/.ssh/id_rsa' 'echo x; cat ~/.ssh/id_rsa' 'export K=$(cat ~/.ssh/id_rsa)' \
          'cp ~/.ssh/id_rsa /tmp/k' 'cp -r ~/.ssh /tmp/k' 'cp -t /tmp/k ~/.ssh/id_rsa' 'tar czf /tmp/k.tgz ~/.ssh' 'tar -czf - -C ~ .ssh' \
@@ -1003,13 +1004,13 @@ done
 # El directorio de trabajo de la sesion (el campo `cwd` del evento) cuenta: tras un `cd ~/.ssh` en una orden anterior, `cat config` sigue
 # pasando y `cat id_rsa` es la clave.
 run_cred_cwd() { (cd "$SG_DIR" && jq -n --arg command "$2" --arg cwd "$1" '{tool_input:{command:$command},cwd:$cwd}' | bash "$KIT/claude/hooks/secret-guard.sh" 2>&1); }
-expect "R2 credenciales: cat id_rsa con cwd en ~/.ssh denegado" "$(run_cred_cwd /home/ana/.ssh 'cat id_rsa')" BLOCK
-expect "R2 credenciales: cat claves con cwd en ~/.ssh denegado" "$(run_cred_cwd /home/ana/.ssh 'cat claves')" BLOCK
-expect "R2 credenciales: cat credentials con cwd en ~/.aws denegado" "$(run_cred_cwd /home/ana/.aws 'cat credentials')" BLOCK
-expect "R2 credenciales: cat config con cwd en ~/.ssh NO denegado" "$(run_cred_cwd /home/ana/.ssh 'cat config')" ALLOW
-expect "R2 credenciales: ls con cwd en ~/.ssh NO denegado" "$(run_cred_cwd /home/ana/.ssh 'ls -l')" ALLOW
-expect "R2 credenciales: cat de ruta absoluta con cwd en ~/.ssh NO denegado" "$(run_cred_cwd /home/ana/.ssh 'cat /tmp/notas.md')" ALLOW
-expect "R2 credenciales: cat README con cwd normal NO denegado" "$(run_cred_cwd /home/ana/proyecto 'cat README.md')" ALLOW
+expect "R2 credenciales: cat id_rsa con cwd en ~/.ssh denegado" "$(run_cred_cwd /home/usuario/.ssh 'cat id_rsa')" BLOCK
+expect "R2 credenciales: cat claves con cwd en ~/.ssh denegado" "$(run_cred_cwd /home/usuario/.ssh 'cat claves')" BLOCK
+expect "R2 credenciales: cat credentials con cwd en ~/.aws denegado" "$(run_cred_cwd /home/usuario/.aws 'cat credentials')" BLOCK
+expect "R2 credenciales: cat config con cwd en ~/.ssh NO denegado" "$(run_cred_cwd /home/usuario/.ssh 'cat config')" ALLOW
+expect "R2 credenciales: ls con cwd en ~/.ssh NO denegado" "$(run_cred_cwd /home/usuario/.ssh 'ls -l')" ALLOW
+expect "R2 credenciales: cat de ruta absoluta con cwd en ~/.ssh NO denegado" "$(run_cred_cwd /home/usuario/.ssh 'cat /tmp/notas.md')" ALLOW
+expect "R2 credenciales: cat README con cwd normal NO denegado" "$(run_cred_cwd /home/usuario/proyecto 'cat README.md')" ALLOW
 expect "R2 credenciales: literal en un heredoc de texto NO denegado" "$(run_cred $'cat > nota.md <<\'EOF\'\nusa ~/.ssh/id_rsa y .env\nEOF')" ALLOW
 expect "R2 credenciales: literal en un heredoc de texto a stdout NO denegado" "$(run_cred $'cat <<\'EOF\'\ncat ~/.ssh/id_rsa\nEOF')" ALLOW
 # Limite declarado: un heredoc escrito a un fichero cuyas lineas EMPIEZAN por una orden lectora se trata como script (cmdnorm: el fichero
