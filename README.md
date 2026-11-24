@@ -1,6 +1,6 @@
 # SCC · setup-claude-code
 
-**v2.3.0, estable** · cockpit: 0.11.1 · necesita Claude Code 2.1.311 o posterior, bash ≥ 5, jq, git y python3 · Linux o WSL2.
+**v3.0.0, estable** · cockpit: 0.11.1 · necesita Claude Code 2.1.311 o posterior, bash ≥ 5, jq, git y python3 · Linux o WSL2.
 
 SCC frena en tu Claude Code los errores caros (borrados destructivos, un push a `main`, secretos en un commit) y guarda
 el estado de cada tarea para que un `/clear` o una compactación no te la haga perder.

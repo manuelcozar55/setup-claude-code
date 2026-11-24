@@ -3,7 +3,7 @@
 Solo el nombre de este andamiaje; el producto es SCC: para usarlo, `README.md`. Aquí, **guías**
 (antes de actuar) y **sensores** (después). Mapa: `AGENTS.md`. Dos capas:
 
-- `kit/` — **capa de instalación**, v2.3.0, estable. Guards, hooks, Sentinel, `install.sh`,
+- `kit/` — **capa de instalación**, v3.0.0, estable. Guards, hooks, Sentinel, `install.sh`,
   67 suites de test. No se toca sin ejecutar `make test`.
 - raíz — **capa de harness**: `.claude/`, `knowledge/`, `scripts/`. Lo nuevo va aquí.
 

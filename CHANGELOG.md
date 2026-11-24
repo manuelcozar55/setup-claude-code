@@ -7,6 +7,8 @@ etiquetado.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-24
+
 La instalación sin flags deja solo el núcleo. Lo que casi nadie usaba sale del camino por defecto y se recupera con
 `bash kit/install.sh --con <pieza>` (ADR 032). El código sigue en el repo; se borrará en la versión siguiente si la
 retro del 2026-12-09 confirma que nadie lo echa en falta.
@@ -44,6 +46,20 @@ WARN. `scc` sin cockpit dice en una línea cómo instalarlo.
   que sin envolver. `ssh host '<orden destructiva>'` queda declarado como límite en `SECURITY.md` y `05-security.md`:
   lo que corre en otra máquina queda fuera del guard local.
 
+- **Un asiento de OpenRig ya no se queda esperando una pregunta que nadie contesta.** Un hook que pregunta gana al modo
+  auto, y en un asiento (`OPENRIG_OCCUPANT_GENERATION`, o `CLAUDE_CODE_SESSION_ATTENDED=0`) esa pregunta lo dejaba
+  parado sin plazo (medido en noviembre: un asiento esperó 45 h un sí a una orden de solo lectura). Ahí cada «ask» del guard, del tope de tamaño y de
+  Sentinel pasa a deny, con el porqué y la salida: escalarlo a la persona por `rig queue create` y seguir con otra
+  parte del encargo. El `git push` desde un asiento se deniega antes de llegar a la regla `ask` de `settings.json`:
+  lo sigue confirmando la persona. Con persona delante no cambia nada. `make test` no pasa esa marca a las suites.
+- **`DROP TABLE`, `DROP DATABASE` y `TRUNCATE TABLE` se juzgan sobre el texto que se ejecuta**, segmento a segmento
+  también en una orden compuesta (`cd x && rg …; echo …`): el patrón de un `grep`, un mensaje de commit, el texto de
+  un `echo` o un mensaje de `rig send`/`rig queue` que los nombran ya no preguntan (12 de los 13 «ask» de las 3079
+  órdenes reales de los asientos desde el 17-nov; ninguna orden permitida pasa a preguntar o denegarse). El texto
+  escrito a un fichero sigue preguntando (el decimotercero). El SQL que llega a un cliente (`sqlite3`, `psql`, `mysql`...) sigue preguntando, también si la misma orden
+  lo escribe en un fichero y se lo pasa. El texto de `rig send` y los valores de `--body`/`--summary`/`--note`/
+  `--resolution` de `rig queue` cuentan como prosa para todos los guards; un `$( )` dentro se sigue analizando.
+
 ### Añadido
 
 - **`test_presupuesto_kit.sh`**: cuenta los hooks cableados, los agentes y las skills que instala el kit por defecto y
@@ -66,20 +82,6 @@ Cifras de uso real que motivaron el cambio (una máquina, 04-nov → 23-nov, 255
 `deep-change` 28 usos y 0 las otras ocho skills; guards con bloqueo en 85 de 255 sesiones y un 64,9 % de falsos positivos
 (`efectividad.tsv`, 11-nov); `/handoff` como orden, 0 veces; avisos de contexto cumplidos, el 47 %. Criterio de salida:
 falsos positivos por debajo del 20 % en la retro del 2026-12-09.
-
-- **Un asiento de OpenRig ya no se queda esperando una pregunta que nadie contesta.** Un hook que pregunta gana al modo
-  auto, y en un asiento (`OPENRIG_OCCUPANT_GENERATION`, o `CLAUDE_CODE_SESSION_ATTENDED=0`) esa pregunta lo dejaba
-  parado sin plazo (medido en noviembre: un asiento esperó 45 h un sí a una orden de solo lectura). Ahí cada «ask» del guard, del tope de tamaño y de
-  Sentinel pasa a deny, con el porqué y la salida: escalarlo a la persona por `rig queue create` y seguir con otra
-  parte del encargo. El `git push` desde un asiento se deniega antes de llegar a la regla `ask` de `settings.json`:
-  lo sigue confirmando la persona. Con persona delante no cambia nada. `make test` no pasa esa marca a las suites.
-- **`DROP TABLE`, `DROP DATABASE` y `TRUNCATE TABLE` se juzgan sobre el texto que se ejecuta**, segmento a segmento
-  también en una orden compuesta (`cd x && rg …; echo …`): el patrón de un `grep`, un mensaje de commit, el texto de
-  un `echo` o un mensaje de `rig send`/`rig queue` que los nombran ya no preguntan (12 de los 13 «ask» de las 3079
-  órdenes reales de los asientos desde el 17-nov; ninguna orden permitida pasa a preguntar o denegarse). El texto
-  escrito a un fichero sigue preguntando (el decimotercero). El SQL que llega a un cliente (`sqlite3`, `psql`, `mysql`...) sigue preguntando, también si la misma orden
-  lo escribe en un fichero y se lo pasa. El texto de `rig send` y los valores de `--body`/`--summary`/`--note`/
-  `--resolution` de `rig queue` cuentan como prosa para todos los guards; un `$( )` dentro se sigue analizando.
 
 ## [2.3.0] - 2026-11-21
 
@@ -2598,7 +2600,8 @@ opt-in, y `install.sh`/`doctor.sh` como bucle de instalación y diagnóstico.
   contenido), pasos de verificación y el porqué de mantener el eval set
   fuera de CI.
 
-[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/manuelcozar55/setup-claude-code/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.3.0...v3.0.0
 [2.3.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/manuelcozar55/setup-claude-code/compare/v2.0.0...v2.1.0
