@@ -305,21 +305,116 @@ fi
 # Los checks de arriba siguen mirando el texto porque su patron no esta anclado y por eso ven
 # tambien lo que va dentro de un `bash -c "..."`; este cubre las grafias que sacaban el comando del
 # patron: `git -C dir reset --hard`, `sudo git clean --force -d`, `rm -rv`, `rm -R`, `rm -rf --`.
-# Un `bash -c "..."`, `sh -c` o `eval` con el texto a la vista se vuelve a normalizar (hasta 3 niveles, NEST compartido con las demas
-# vueltas): sin eso `bash -c "git reset --hard"` pasaba los cinco guards. `bash -c "$X"` (valor construido antes) sigue siendo un limite.
-# Igual la orden de `xargs` y la de `find -exec`. `ssh host '...'` no: corre en otra maquina y queda fuera (SECURITY.md).
+# Un `bash -c "..."`, `sh -c` o `eval` con el texto a la vista se vuelve a normalizar (hasta 3 niveles de anidamiento): sin eso
+# `bash -c "git reset --hard"` pasaba los cinco guards. `bash -c "$X"` (valor construido antes) sigue siendo un limite.
+# Igual la orden de `xargs` y la de `find -exec`, la que siguen `busybox`, `flock`, `watch`, `taskset` y `parallel`, el texto de un
+# here-string o de un `echo ... | bash` y un `-c alias.x=...` de git. `ssh host '...'` no: corre en otra maquina y queda fuera (SECURITY.md).
+# El tope es de PROFUNDIDAD (el cuarto nivel falla cerrado). Para no gastar un awk por envoltorio, solo se baja a un texto que menciona
+# rm o un git con reset/clean/alias (con las comillas quitadas: `git "res""et"`), y un texto ya analizado no se repite. El contador de
+# textos distintos (NEST5, tope 100) solo protege el timeout del guard: un guard que se pasa de tiempo deja ejecutar el comando entero.
+NEST5=0
+declare -A SEEN5=()
+r2_wants() {
+  local s=${1//[\"\'\\]/}
+  [[ $s =~ (^|[^[:alnum:]_])rm([^[:alnum:]_]|$) ]] && return 0
+  [[ $s =~ (^|[^[:alnum:]_])git([^[:alnum:]_]|$) && ( $s == *reset* || $s == *clean* || $s == *[aA][lL][iI][aA][sS]* ) ]]
+}
+# El programa de un `sh -c`: la primera agrupacion corta con `c` (`-c`, `-lc`), sin contar las largas (`--norc`) ni el valor de -o/-O;
+# un `--` tras `-c` no es el programa. REPLY = el programa; rc 1 si no hay.
+shell_prog() {
+  local i
+  for (( i = 2; i < ${#T[@]}; i++ )); do
+    case ${T[i]} in
+      --rcfile|--init-file|-o|-O|+o|+O) i=$(( i + 1 )) ;;
+      --*|+*) ;;
+      -*c*) REPLY=${T[i+1]:-}; [[ $REPLY == -- ]] && REPLY=${T[i+2]:-}; [[ -n $REPLY ]]; return ;;
+    esac
+  done
+  return 1
+}
+# Un shell sin `-c` y sin fichero de script lee su programa de la entrada: devuelve en REPLY el here-string (vacio si no hay); rc 1 si
+# lleva un operando (un script, `<` fichero), y entonces no se sabe que lee.
+shell_stdin() {
+  local i here=
+  for (( i = 2; i < ${#T[@]}; i++ )); do
+    case ${T[i]} in
+      '<<<') here=${T[i+1]:-}; i=$(( i + 1 )) ;;
+      '<<<'*) here=${T[i]#'<<<'} ;;
+      -*|+*) ;;
+      *) return 1 ;;
+    esac
+  done
+  REPLY=$here
+}
+nested_deny() {
+  log_block "nested too deep"
+  echo "BLOCKED: mas de 3 niveles de anidamiento (o 100 textos distintos) con rm o git destructivo (bash -c, eval...): no caben en el timeout del guard." >&2
+  echo "Que hacer: parte el comando en pasos mas cortos y ejecutalos por separado." >&2
+  exit 2
+}
+# Baja a un texto que se ejecutara: $1 = profundidad actual, $2 = el texto. Deja CMDN_SEGS como estaba.
+r2_descend() {
+  local -a saved
+  r2_wants "$2" || return 0
+  (( $1 < 3 )) || nested_deny
+  [[ -z ${SEEN5[$2]:-} ]] || return 0
+  SEEN5[$2]=1
+  (( ++NEST5 <= 100 )) || nested_deny
+  saved=("${CMDN_SEGS[@]}")
+  if cmdn_parse "$2"; then check5 $(( $1 + 1 )); fi
+  CMDN_SEGS=("${saved[@]}")
+}
 check5() {
-  local depth=$1 seg a dd force dry inner i k rc
-  local -a T segs saved
+  local depth=$1 seg a dd force dry skip inner i k g prev= pt
+  local -a T segs gopts
   segs=("${CMDN_SEGS[@]}")
 for seg in "${segs[@]}"; do
-  [[ $seg == *rm* || $seg == *git* ]] || continue
+  [[ $seg == *rm* || $seg == *git* || -n $prev ]] || continue
   cmdn_fields "$seg"
+  pt=$prev; prev=
   case ${T[1]:-} in
-    sh|bash|zsh|dash|ksh|eval|xargs|find)
+    echo|printf)
+      # Su texto es una orden si lo recibe un shell por tuberia (`echo "git clean -fd" | bash`): se guarda para el segmento siguiente.
+      inner=
+      for a in "${T[@]:2}"; do [[ -z $inner && $a == -* ]] || inner+="$a "; done
+      prev=${inner//\\n/$'\n'} ;;
+    sh|bash|zsh|dash|ksh|eval|xargs|find|busybox|flock|watch|taskset|parallel)
       inner=
       if [[ ${T[1]} == eval ]]; then
         inner="${T[*]:2}"
+        [[ ${T[2]:-} == -- ]] && inner="${T[*]:3}"
+      elif [[ ${T[1]} == busybox ]]; then
+        printf -v inner '%q ' "${T[@]:2}"
+      elif [[ ${T[1]} == taskset ]]; then
+        # La primera palabra que no es opcion es la mascara o la lista de CPU; lo que sigue es la orden.
+        for (( i = 2; i < ${#T[@]}; i++ )); do
+          case ${T[i]} in -*) ;; *) printf -v inner '%q ' "${T[@]:i+1}"; break ;; esac
+        done
+      elif [[ ${T[1]} == flock ]]; then
+        # `flock [opciones] fichero orden...` o `flock [opciones] fichero -c 'orden'`.
+        for (( i = 2; i < ${#T[@]}; i++ )); do
+          case ${T[i]} in
+            -w|-E|--timeout|--wait|--conflict-exit-code) i=$(( i + 1 )) ;;
+            -c|--command) inner=${T[i+1]:-}; break ;;
+            -*) ;;
+            *) if [[ ${T[i+1]:-} == -c || ${T[i+1]:-} == --command ]]; then inner=${T[i+2]:-}; else printf -v inner '%q ' "${T[@]:i+1}"; fi; break ;;
+          esac
+        done
+      elif [[ ${T[1]} == watch || ${T[1]} == parallel ]]; then
+        # Un solo argumento es una cadena de shell (`watch "git clean -fd"`); varios, una orden con sus argumentos. `parallel` acaba en `:::`.
+        for (( i = 2; i < ${#T[@]}; i++ )); do
+          case ${T[i]} in
+            -n|--interval) i=$(( i + 1 )) ;;
+            -j|-N|-a|-S|-L|-I|-E|-s|-d|-P|--jobs|--max-args|--arg-file|--sshlogin|--colsep|--delimiter|--results|--joblog|--workdir)
+              [[ ${T[1]} == parallel ]] && i=$(( i + 1 )) ;;
+            :::*) break ;;
+            -*) ;;
+            *)
+              for (( k = i; k < ${#T[@]}; k++ )); do [[ ${T[k]} == :::* ]] && break; done
+              if (( k - i == 1 )); then inner=${T[i]}; else printf -v inner '%q ' "${T[@]:i:k-i}"; fi
+              break ;;
+          esac
+        done
       elif [[ ${T[1]} == xargs ]]; then
         # La orden que recibe xargs es la primera palabra que no es opcion ni valor de una opcion que lo toma aparte.
         for (( i = 2; i < ${#T[@]}; i++ )); do
@@ -339,21 +434,13 @@ for seg in "${segs[@]}"; do
             case ${T[i]} in -exec|-execdir|-ok|-okdir) k=1 ;; esac
           fi
         done
-      else
-        for (( i = 2; i < ${#T[@]}; i++ )); do
-          if [[ ${T[i]} == -*c* ]]; then inner=${T[i+1]:-}; break; fi
-        done
+      elif shell_prog; then
+        inner=$REPLY
+      elif shell_stdin; then
+        inner=$REPLY
+        [[ -n $inner || ( $T_SEP != '|' && $T_SEP != '|&' ) ]] || inner=$pt
       fi
-      [[ $inner == *rm* || $inner == *git* ]] || continue
-      if (( depth >= 3 || ++NEST > 16 )); then
-        log_block "nested too deep"
-        echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, eval...) con rm o git: no caben en el timeout del guard." >&2
-        echo "Que hacer: parte el comando en pasos mas cortos y ejecutalos por separado." >&2
-        exit 2
-      fi
-      saved=("${CMDN_SEGS[@]}")
-      if cmdn_parse "$inner"; then check5 $(( depth + 1 )); fi
-      CMDN_SEGS=("${saved[@]}") ;;
+      r2_descend "$depth" "$inner" ;;
     rm)
       dd=0
       for a in "${T[@]:2}"; do
@@ -371,7 +458,8 @@ for seg in "${segs[@]}"; do
       case ${T[2]:-} in
         reset)
           for a in "${T[@]:3}"; do
-            if [[ $a == --hard ]]; then
+            # git acepta cualquier prefijo no ambiguo de la opcion: `--h`, `--ha` y `--har` son `--hard`.
+            if [[ $a == --h || $a == --ha || $a == --har || $a == --hard ]]; then
               log_block "git reset --hard"
               echo "BLOCKED: git reset --hard discards all uncommitted changes." >&2
               echo "Consider: git stash, or git reset --soft" >&2
@@ -380,16 +468,30 @@ for seg in "${segs[@]}"; do
             fi
           done ;;
         clean)
-          force=0; dry=0
+          force=0; dry=0; skip=0
+          # `-c clean.requireForce=false` quita el freno: sin `-f` ni `-n` la limpieza ya es real.
+          g=${T[0]:-}; g=${g,,}
+          [[ $g =~ clean\.requireforce=(false|no|off|0)($|$CMDN_GS) ]] && force=1
           for a in "${T[@]:3}"; do
+            if (( skip )); then skip=0; continue; fi
             # En git gana la ultima opcion: `-n --no-dry-run` NO es simulacion. Tambien valen los prefijos
-            # no ambiguos (`--no-dry`, `--dry`, `--forc`), que git acepta igual.
+            # no ambiguos (`--no-dry`, `--dry`, `--forc`), que git acepta igual. `-e` toma un valor (el resto de la
+            # agrupacion o la palabra siguiente): en `-fen` la `n` es el patron, no una simulacion. Tras `--` solo hay rutas.
             case $a in
+              --) break ;;
               --f|--fo|--for|--forc|--force) force=1 ;;
               --d|--dr|--dry|--dry-|--dry-r|--dry-ru|--dry-run) dry=1 ;;
               --no-d|--no-dr|--no-dry|--no-dry-|--no-dry-r|--no-dry-ru|--no-dry-run) dry=0 ;;
+              --e|--ex|--exc|--excl|--exclu|--exclud|--exclude) skip=1 ;;
               --*) ;;
-              -*) [[ $a == -*[fd]* ]] && force=1; [[ $a == -*n* ]] && dry=1 ;;
+              -*)
+                for (( k = 1; k < ${#a}; k++ )); do
+                  case ${a:k:1} in
+                    f|d) force=1 ;;
+                    n) dry=1 ;;
+                    e) (( k + 1 < ${#a} )) || skip=1; break ;;
+                  esac
+                done ;;
             esac
           done
           if (( force && ! dry )); then
@@ -399,6 +501,21 @@ for seg in "${segs[@]}"; do
             echo "Que hacer: git clean -n (simulacion) para ver que borraria; si quieres borrar de verdad, ejecutalo tu con ! en la sesion." >&2
             exit 2
           fi ;;
+        '')  ;;
+        *)
+          # `git -c alias.x='clean -fd' x`: el subcomando es un alias de la propia linea (`!...` es una orden de shell). Un alias
+          # definido antes con `git config alias.x ...` en otra orden no se ve (SECURITY.md).
+          [[ ${T[0]:-} == *[aA][lL][iI][aA][sS].* ]] || continue
+          IFS=$CMDN_GS read -r -a gopts <<<"${T[0]}"
+          for (( i = 0; i < ${#gopts[@]}; i++ )); do
+            [[ ${gopts[i]} == -c ]] || continue
+            g=${gopts[i+1]:-}
+            [[ ${g,,} == "alias.${T[2],,}="* ]] || continue
+            g=${g#*=}
+            if [[ $g == '!'* ]]; then inner=${g#!}; else inner="git $g"; fi
+            printf -v g '%q ' "${T[@]:3}"
+            r2_descend "$depth" "$inner $g"
+          done ;;
       esac ;;
   esac
 done
