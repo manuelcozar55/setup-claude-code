@@ -7,7 +7,65 @@ etiquetado.
 
 ## [Unreleased]
 
+La instalación sin flags deja solo el núcleo. Lo que casi nadie usaba sale del camino por defecto y se recupera con
+`bash kit/install.sh --con <pieza>` (ADR 032). El código sigue en el repo; se borrará en la versión siguiente si la
+retro del 2026-12-09 confirma que nadie lo echa en falta.
+
+### Retirado del camino por defecto
+
+Cada pieza, con la orden para recuperarla (se pueden pedir varias: `--con sentinel,cockpit`):
+
+- **Sentinel** y `narthex-post-mcp.py`: `--con sentinel`.
+- **Cockpit** (`scc`, `/handoff`, `/nueva`, Dock de agentes): `--con cockpit`. `--sin-cockpit` se acepta y ya no hace nada.
+- **Plugin `esenciales`**: `--con esenciales`.
+- **Agentes `silent-failure-hunter` y `pr-test-analyzer`**: `--con revisores`.
+- **Skills `verification-before-completion` y `retro`**: `--con skills-extra`. Queda `deep-change` como única skill
+  por defecto; recoge ahora la regla rojo-luego-verde y la prueba por mutación (deshacer con la edición inversa
+  exacta, nunca con `git checkout`, `restore` o `stash`).
+- **Avisos de contexto** (`nucleo-nudge.sh`): `--con nudge`.
+- **`NUCLEO_GATE`** pasa de `observe` a apagada. `observe` anota y `block` bloquea el `Stop`, como antes.
+
+Una actualización no retira en silencio lo que ya tenías: lo conserva y te dice cómo quitarlo
+(`uninstall.sh --kit --pieza <pieza> --apply`). `doctor.sh` lista lo ausente como «opcional, no instalada» y no da
+WARN. `scc` sin cockpit dice en una línea cómo instalarlo.
+
 ### Cambiado
+
+- **Un solo `session-start` para `/clear` y compactación**: `session-start-clear.sh` y `session-start-compact.sh`
+  desaparecen y los cubre `session-start-estado.sh` (`startup|clear|resume|compact`). `session-start.sh` se queda
+  aparte. Una actualización retira los dos viejos. Hooks cableados por defecto, 17.
+- **`install.sh` sale con código 1 si el doctor final da algún FAIL.** Un WARN no cambia el código de salida.
+- **`AGENTS.md` pierde lo que ya impone un guard o una regla `deny`** (leer credenciales, pipe-a-shell, borrados de
+  raíz o home, push forzado, `npm`, `--no-verify`); queda una línea que lo dice.
+- **`12-metodologia.md` pasa a una página** con un solo bucle, y el README a una pantalla con una orden de instalación.
+- **`git clean` en simulación con banderas sueltas ya no se deniega** (`-d -n`, `-f -n`, `-fd --dry-run`): el guard
+  miraba solo el primer grupo de banderas. `git clean -fd -e -n` sigue denegándose (el `-n` es un patrón).
+- **`git reset --hard` y `git clean` envueltos en `bash -c`, `sh -c`, `eval`, `xargs` o `find -exec` se deniegan**, igual
+  que sin envolver. `ssh host '<orden destructiva>'` queda declarado como límite en `SECURITY.md` y `05-security.md`:
+  lo que corre en otra máquina queda fuera del guard local.
+
+### Añadido
+
+- **`test_presupuesto_kit.sh`**: cuenta los hooks cableados, los agentes y las skills que instala el kit por defecto y
+  falla al pasar del tope (17, 2 de `SessionStart`, 5 y 1).
+- **Sensor de agentes en `test_doc_claims.sh`**: falla si un doc nombra un agente retirado o que no existe en
+  `kit/claude/agents/`.
+- **`scripts/mapa-interruptores.tsv`** cubre las variables del estado y de `NUCLEO_GATE`.
+
+### Cifras
+
+| Cifra | Valor |
+|---|---|
+| Hooks cableados por defecto | 21 → 17 |
+| Agentes instalados por defecto | 7 → 5 |
+| Skills instaladas por defecto | 9 → 1 |
+| Instrucciones globales en el peor caso (`contexto-base.sh --peor`) | 6893 → 6734 caracteres (6998 → 6833 bytes) |
+| Suites de `kit/test` | 66 → 67 |
+
+Cifras de uso real que motivaron el cambio (una máquina, 04-nov → 23-nov, 255 sesiones; no son efecto de esta versión):
+`deep-change` 28 usos y 0 las otras ocho skills; guards con bloqueo en 85 de 255 sesiones y un 64,9 % de falsos positivos
+(`efectividad.tsv`, 11-nov); `/handoff` como orden, 0 veces; avisos de contexto cumplidos, el 47 %. Criterio de salida:
+falsos positivos por debajo del 20 % en la retro del 2026-12-09.
 
 - **Un asiento de OpenRig ya no se queda esperando una pregunta que nadie contesta.** Un hook que pregunta gana al modo
   auto, y en un asiento (`OPENRIG_OCCUPANT_GENERATION`, o `CLAUDE_CODE_SESSION_ATTENDED=0`) esa pregunta lo dejaba
