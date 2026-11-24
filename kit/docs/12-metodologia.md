@@ -1,218 +1,96 @@
-# 12 · Metodología: el método de trabajo, de punta a punta
+# 12 · Metodología: un solo bucle
 
-El kit no solo endurece `~/.claude`: también instala **la forma de trabajar** que hay detrás.
-Este documento la cuenta entera y señala qué pieza del kit implementa cada paso. La regla que
-lo gobierna es una: **adapta la ceremonia al riesgo**. Un typo, una búsqueda o una pregunta se
-hacen directamente; un cambio que cruza módulos, toca seguridad o producción pasa por el bucle.
+El kit instala una forma de trabajar y la reduce a una regla: **adapta la ceremonia al riesgo**.
+Un typo, una búsqueda o una pregunta se hacen directos. Un cambio grande, ambiguo, irreversible o
+que toca seguridad o producción entra por `/deep-change`. No hay más bucles.
 
-```mermaid
-flowchart TD
-    E(["Encargo"]) --> R{"¿cuesta caro<br/>equivocarse?"}
-    R -->|"no"| D(["Hazlo directo"])
-    R -->|"sí"| IG["<b>IntentGate</b><br/>resultado · alcance · criterios · supuestos"]
-    IG --> PL["<b>Plan</b> como artefacto<br/>tareas verificables"]
-    PL --> AP{"¿aprobado?"}
-    AP -->|"no"| IG
-    AP -->|"sí"| SA["<b>Subagentes en paralelo</b><br/>contexto aislado · spec en fichero"]
-    SA --> VE["<b>Verificar con evidencia</b><br/>rojo → verde"]
-    VE -->|"rojo"| SA
-    VE -->|"verde"| CO["<b>Contención</b><br/>copia aislada → producción aparte"]
-    CO --> CL["Commits con su porqué<br/>+ <code>nucleo.md</code> al día"]
-    CL --> CI{"¿cambio de<br/>sesión?"}
-    CI -->|"sí"| HO(["<b>/handoff</b>"])
-    CI -->|"no"| RT(["<b>/retro</b>"])
+## El bucle: `/deep-change`
 
-    classDef puerta fill:#3B4CCA,stroke:#2A379B,color:#FFFFFF
-    classDef paso fill:#475569,stroke:#334155,color:#FFFFFF
-    classDef evid fill:#1F7A38,stroke:#166534,color:#FFFFFF
-    classDef fin fill:#A34A2C,stroke:#8F4026,color:#FFFFFF
-    class IG puerta
-    class PL,SA,CO,CL paso
-    class VE evid
-    class HO,RT,D fin
-```
+La skill [`deep-change`](../claude/skills/deep-change/SKILL.md) es lo único que el kit instala por defecto en
+`~/.claude/skills/`. Sus pasos, en orden:
 
-## 1 · IntentGate: antes de tocar nada
+1. **Apertura** (IntentGate, en [`AGENTS.md`](../claude/AGENTS.md)): resultado, alcance, criterios
+   verificables y supuestos. Si hay un camino más simple, se dice. Una sola ronda de preguntas.
+2. **Diseño aprobado antes de ejecutar.** Tareas pequeñas, cada una con ficheros, cambio y prueba.
+3. **Ejecutar sin parar** (Never-Stop): sin «¿sigo?». Ante una duda a mitad, la opción conservadora y
+   reversible, anotada en el informe. Solo para un bloqueo que exige a la persona.
+4. **Verificar con el código de salida.** El test que primero falla y luego pasa; el artefacto real mejor
+   que «compila, luego funciona». Lo que no se pudo verificar se dice, no se insinúa.
+5. **Commits con su porqué** y el estado al día.
 
-Ante un encargo ambiguo o de varios pasos, una apertura corta fija cuatro cosas:
+El criterio para dar algo por entregado es doble: **la entrega** (el cambio hace lo pedido, con la prueba que lo
+demuestra) y **el lector** (quien lo reciba entiende qué cambió y por qué sin reconstruirlo). Sin evidencia de las
+dos, no está hecho.
 
-1. **Resultado**: qué necesita la persona de verdad, no solo lo que pidió literalmente.
-2. **Alcance**: qué entra y qué queda fuera.
-3. **Criterios verificables**: cómo se sabrá que está hecho. «Que funcione» no es un criterio.
-4. **Supuestos**: explícitos. Si hay varias lecturas, se presentan, no se elige una en silencio.
+Si instalas la pieza opcional `esenciales`, su skill de ejecución manda dentro de su propio worktree; fuera de él,
+manda `deep-change`.
 
-Si hay un camino más simple, se dice. Si algo no está claro, se pregunta **una sola ronda**.
-Vive en la plantilla [`kit/claude/AGENTS.md`](../claude/AGENTS.md) (sección *IntentGate*), que
-`install.sh` deja en tu `~/.claude` junto al `CLAUDE.md` que la importa.
+## El estado, en disco y sin pedirlo
 
-## 3 · `deep-change`: el bucle operativo
+El estado de una tarea vive en `.claude/estado/nucleo.md` de la raíz git del proyecto: una tarea, un
+worktree, un fichero. No hay que crearlo ni actualizarlo a mano.
 
-Se invoca con `/deep-change` o entra solo cuando el cambio es sustancial, ambiguo, irreversible
-o toca seguridad o producción. Sus fases:
+- Tras cada turno, `autosave.sh` guarda la sección `## Último turno (auto)` (hora, rama, HEAD, ficheros tocados,
+  comandos con su rc). En un repo sin estado, el primer guardado con trabajo crea `nucleo.md` desde la plantilla
+  y deja `.claude/estado/` fuera de git. Las claves y tokens se redactan antes de guardarse (ADR 028).
+- Tras `/clear`, `resume` o una compactación, `session-start-estado.sh` entrega el estado a la sesión nueva como
+  dato, no como orden. Si lleva más de 10 min sin tocarse, pide al modelo actualizarlo.
+- Secciones, en el orden en que se inyectan: Objetivo, Invariantes, Paso actual, Siguiente acción, Comandos de
+  verificación, Plan, Pendientes y Ficheros tocados ([`templates/nucleo.md`](../claude/templates/nucleo.md)). Lo
+  cerrado va a `diario.md`, que nunca se inyecta.
+- Cada `[x]` del Plan nombra el comando que lo verificó. `oraculo -- <cmd>` lo ejecuta con `pipefail`, imprime las
+  últimas 40 líneas y `rc=N`, sale con ese rc y lo anota en `.claude/estado/verificaciones.log`.
+- `handoff --desde <borrador>` es la orden manual y opcional para fijar un foco al cerrar una fase; valida las
+  cabeceras, conserva Objetivo y nunca borra una Invariante. `handoff --proyecto <ruta>` vincula una sesión
+  lanzada en `~` con un repo (ADR 029). Con el mod [`cockpit`](11-cockpit.md), `/handoff` y `/nueva` lo hacen por ti.
+- Una sesión es dueña del estado mientras su proceso `claude` esté vivo (`.claude/estado/.dueno`); otra sesión
+  recibe un aviso y `--auto` no escribe en el estado ajeno. `handoff --liberar <sesión>` lo suelta.
 
-| Fase | Qué se hace |
-|---|---|
-| Resolver la incertidumbre | Solo lo que cambia el alcance, el riesgo o el resultado |
-| Investigar | Subagentes independientes con dueño explícito; vuelve evidencia, no volcados |
-| **Plan como artefacto** | `<tema>-plan.md`: tareas pequeñas y verificables, cada una con ficheros exactos, cambio y prueba. Es un documento duradero, no una conversación |
-| Ejecutar | Tarea a tarea; tras cada una, verificar y anotar. No se avanza en rojo |
-| Verificar | Reproducir el fallo primero, probar el arreglo después. Evidencia antes de «hecho» |
-| **Contener el riesgo** | Construir y validar en una **copia aislada** (carpeta, rama, worktree). Aplicar a producción es un **paso aparte**, con copia de seguridad y rollback conocido |
-| Cuentas claras | Beneficio, riesgo y coste de tokens de cada propuesta, y qué se descartó y por qué |
-
-Dos hábitos que el tooling no hace por ti:
-
-- **Registro = commits + `nucleo.md`**: cada commit dice qué y por qué; cada `[x]` del Plan en
-  `.claude/estado/nucleo.md` nombra el comando que lo verificó. Sin `*-cambios.md` aparte: quedó
-  vacío en dos sesiones seguidas. Un hook Stop puede señalar un commit de la sesión que deja nucleo atrás.
-- **Libro de contención**: en todo momento queda dicho qué está hecho en la copia aislada y qué
-  está ya en producción. Si ya existe una instrucción explícita de aplicar lo revisado, no se
-  vuelve a preguntar.
-
-## 4 · Never-Stop y verificación con evidencia
-
-La puerta de diseño va **antes** de ejecutar. Una vez aprobado el plan rige **Never-Stop**:
-se avanza hasta el final sin «¿continúo?». Si surge una ambigüedad a mitad, se toma la opción
-conservadora y reversible y se anota en el informe. Lo único que justifica parar es un
-bloqueo que no se resuelve sin la persona.
-
-La verificación se hace con evidencia, no con afirmaciones:
-
-- Un test que solo comprueba lo que el código ya hace no prueba nada. Se escribe el que
-  **falla primero** (rojo) y pasa con el arreglo (verde).
-- Mejor ejecutar el artefacto real que concluir «compila, luego funciona».
-- Lo que no se pudo verificar se dice, no se insinúa que pasó.
-
-En este repo el sensor es `make test`, y el hook `Stop` del harness impide cerrar el turno con
-el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.md)).
-
-## 5 · Subagentes en paralelo y estado en disco
-
-- Dos o más flujos independientes se lanzan **en paralelo**, cada uno en su contexto aislado:
-  al hilo principal vuelve la conclusión, no el volcado. Secuencial solo ante una dependencia
-  real. El kit trae los agentes de [`kit/claude/agents/`](../claude/agents/) (implementador
-  autónomo, explorador, verificador y cuatro revisores).
-- El prompt a un subagente **apunta a un fichero de spec**; no lo pega. Cada uno es dueño de
-  sus ficheros, y ninguno hace commit ni push: lo hace el hilo principal.
-- El estado de una tarea larga vive **en disco**, en `.claude/estado/nucleo.md` de la raíz git del proyecto
-  (una tarea = un worktree = un nucleo = una sesión dueña; `$HOME`, `~/.claude` y un directorio sin git no son
-  proyecto). Secciones, en el orden en que se inyectan: Objetivo, Invariantes, Paso actual, Siguiente acción,
-  Comandos de verificación, Plan, Pendientes y Ficheros tocados (plantilla en `templates/nucleo.md`). Se
-  actualiza al abrir la tarea, antes de delegar y al cerrar cada fase (el último turno se guarda solo); tras una compactación se lee antes de
-  actuar. Lo cerrado va a `diario.md`, que nunca se inyecta. El índice de tareas que ve una sesión abierta
-  desde `~` se **deriva** de los nucleos vivos: no hay nadie que lo escriba, así que no puede desviarse.
-- **`handoff --proyecto <ruta>`** (ADR 029) es para la sesión lanzada en `~` que acaba trabajando sobre un repo. Vincula su
-  ranura con la raíz git de `<ruta>` (la línea `> proyecto: <raíz>` bajo el título del `nucleo.md` de la ranura) y desde
-  entonces el estado de esa sesión (hooks, `--desde`, `--auto`, `--estado`, registro de agentes, reinyección tras `/clear`,
-  compactación y `resume`) vive en `<repo>/.claude/estado/`; la ranura de `~` queda solo como coordinación (`## Coordinación`,
-  una línea por vínculo). Es explícito y fijo: nada vincula solo (el aviso de contexto propone la orden una vez por proyecto
-  cuando el cwd está dentro de uno) y un `cd` a otro repo no mueve el estado; revincular a otro proyecto es el mismo
-  comando. Si el repo no tiene estado, se siembra con el de la ranura; si lo tiene, el de la ranura va a su `diario.md`. Rechaza
-  sin cambiar nada con el proyecto en manos de otra sesión (5) o con una ruta que no es un proyecto válido (3). Sin
-  `CLAUDE_PID` hace falta `--ranura <slot>`. `--raiz` explícito ignora el vínculo. No hay flag para desvincular: se borra la
-  línea `> proyecto:` de la ranura.
-- **`oraculo -- <cmd>`** ejecuta una verificación con `pipefail`, imprime las últimas 40 líneas y `rc=N`, sale
-  con ese rc y lo anota en `.claude/estado/verificaciones.log`: `cmd | tail` devolvía el rc de `tail`.
-- **`handoff --desde <borrador>`** cierra la fase: el modelo redacta el borrador y el CLI decide. Valida las
-  cabeceras, conserva Objetivo, une las Invariantes por líneas (nunca borra una), mueve los `[x]` del Plan a
-  `diario.md` con su comando y hash, pliega el último rc de `oraculo`, rota tres copias `nucleo.prev-*`, recorta
-  al tope menos la reserva del bloque de agentes (así se inyecta entero) y libera al dueño. Para recortar omite
-  secciones enteras desde el final hasta Comandos, corta Paso actual por línea con un aviso y no toca Siguiente
-  acción; lo quitado va entero a `diario.md`. `--solo`, `--commit`, `--migrar <dir>` y `--estado` (JSON de una
-  línea) completan el contrato.
-- **`handoff --auto`** (ADR 028) es el guardado sin modelo, y lo lanza solo el hook `autosave.sh` en `Stop`
-  (asíncrono, `timeout` 10), `PostCompact` (8) y `SessionEnd` (10; sin timeout declarado se cancela a 1,5 s). Lee
-  el stdin del hook (`session_id`, `transcript_path`, `cwd`) y fusiona solo `## Último turno (auto)`: hora y evento,
-  rama, HEAD y % de contexto, el último mensaje de la persona y de la sesión, ficheros tocados (git más transcript) y
-  comandos con su rc. No toca las demás secciones, no rota `nucleo.prev-*`, no libera al dueño y conserva el mtime del
-  fichero; es lo primero que recorta el tope (también al inyectar), sin copia en `diario.md`, y con el nucleo ya
-  por encima del tope se escribe igual, en dos líneas: la vieja engañaría tras compactar. Si `handoff --desde` o el cockpit tienen el
-  lock, sale 0 sin escribir. Cuando hubo trabajo (ficheros o comandos) deja `.claude/estado/autosave.dirty`
-  (`motivo=edit|compact`, `desde=`, `ultimo=`); `handoff --desde` lo borra. Cada guardado anota una línea en
-  `~/.claude/session-logs/autosave.log`. En `~`, sin proyecto, escribe en la ranura de la sesión; con `claude --resume`
-  `session-start-estado.sh` adopta por `session_id` la ranura de la sesión anterior si su proceso ya no existe.
-  El KPI de `pre-compact.sh` suma `edad_auto` (segundos desde esa sección, `-1` si no hay). Límite: `Stop` no corre
-  si la persona interrumpe el turno; lo cubren el siguiente `Stop`, `PostCompact` y `SessionEnd`.
-- Dueño: `.claude/estado/.dueno` (`sesion=`, `desde=`, `pid=`, `proceso=`). El dueño es un proceso `claude` vivo
-  (se compara su `ticks` de `/proc/<pid>/stat`), no un reloj: lo reclama SessionStart, o el primer `handoff --auto` si
-  quien arrancó antes de que hubiera estado, y lo libera SessionEnd (espera el lock 2 s; si no puede, lo anota en
-  `autosave.log`). Sin identidad de proceso (macOS, `pid` ajeno) vale el TTL de 4 h. La sesión ajena recibe un aviso al
-  arrancar, su aviso de contexto le pide terminar o seguir en otra carpeta, y `--auto` no escribe en el estado de otra.
-  `handoff --liberar <sesión>` lo suelta a mano.
-- **Un repo sin estado se guarda solo**: el primer `--auto` con trabajo (ficheros tocados o comandos) crea `nucleo.md`
-  desde la plantilla, deja `.claude/estado/` en `.git/info/exclude` y marca el fallback. Sin repo, o desde `~`, usa la
-  ranura de la sesión. `NUCLEO_AUTOINICIO=0` lo apaga.
-- **La sección auto no copia secretos**: el último mensaje de la persona y del asistente se redactan antes de cortarse
-  (claves `sk-`, tokens `gh*`, `AKIA`, `xox`, JWT, `github_pat`, `glpat`, PEM, credenciales en URL, `Bearer`,
-  `password|token|api_key=`; las mismas reglas que el `redact` del cockpit). Es un respaldo, no un escáner.
-
-### Cuándo se guarda, qué avisa y cómo se apaga
+## Qué se dispara y cuándo
 
 | Evento | Hooks (timeout) | Efecto visible |
 |---|---|---|
-| `SessionStart` | `session-start.sh`, `session-start-estado.sh` (`startup\|clear\|resume\|compact`) | Inyecta el nucleo como dato; avisa a la persona si retoma con la caché caducada o si otra sesión es la dueña; tras compactar pide al modelo actualizarlo si lleva más de 10 min |
-| `PostToolUse` | `nucleo-nudge.sh` (5) | Único emisor de avisos de contexto: al modelo en el 50, 70 y 85 % del airbag, a la persona en el 60 y el 85 % |
-| `Stop` | `autosave.sh` (10, asíncrono), `agentes.sh` (15) | Guarda `## Último turno (auto)`; anota los agentes en vuelo; compuerta de commit (`NUCLEO_GATE`, por defecto solo registra) |
+| `SessionStart` | `session-start.sh`, `session-start-estado.sh` (`startup\|clear\|resume\|compact`) | Inyecta el nucleo como dato; avisa si otra sesión es la dueña o si se retoma con la caché caducada |
+| `Stop` | `autosave.sh` (10, asíncrono), `agentes.sh` (15) | Guarda `## Último turno (auto)`; anota los agentes en vuelo; compuerta de commit (`NUCLEO_GATE`, apagada por defecto) |
 | `PreCompact` | `pre-compact.sh` (10) | Checkpoint y la línea de `nucleo-freshness.log` |
-| `PostCompact` | `autosave.sh` (8) | Guarda y mide cuántas anclas del checkpoint nombra el resumen (`compact-AAAA-MM.log`, sin aviso) |
+| `PostCompact` | `autosave.sh` (8) | Guarda y mide cuántas anclas del checkpoint nombra el resumen |
 | `SessionEnd` | `autosave.sh` (10), `agentes.sh` (3) | Guarda, libera al dueño y anota los agentes que se cortan al cerrar |
 | `SubagentStart` / `SubagentStop` | `agentes.sh` (3) | Registro de agentes (el bloque `<agentes>` del arranque) |
 
-Qué ve la persona al subir el contexto (el literal completo, en `nucleo-nudge.sh`): con cockpit, al 60 %
-«Fase cerrada: /handoff (deja el estado en nucleo.md y retoma limpio)…» y al 85 % «El airbag compactará en breve:
-/handoff ya (guarda el estado) y /clear.»; sin cockpit, lo mismo con la orden `handoff --desde <borrador> --sesion <id>`
-y `/clear`. Con agentes en vuelo el aviso dice que no se limpie la sesión todavía. Sin cockpit el estado ya queda
-guardado por `autosave.sh`; el cockpit añade el handoff y el `/clear` automáticos al 70 % y los comandos
-`/handoff`, `/nueva` y `/autonomo`. El cockpit se detecta por `enabledPlugins` (`cockpit@…`) en el `settings.json` de usuario.
+Los avisos de contexto (50, 70 y 85 %) son la pieza opcional `nudge` (`--con nudge`): sin ella, el estado ya queda
+guardado por `autosave.sh` y no hay avisos. Para apagar el guardado quita las entradas de `autosave.sh` del
+`settings.json`; el resto sigue funcionando.
 
-Cómo se apaga cada cosa (no hay variables `AUTOSAVE_*` ni `HANDOFF_*`; el guardado se quita del `settings.json`):
+## Variables
+
+No hay variables `AUTOSAVE_*` ni `HANDOFF_*`. Las que quedan:
 
 | Variable | Defecto | Efecto |
 |---|---|---|
 | `NUCLEO_TOPE` | `6500` | Bytes que se inyectan del nucleo y que `handoff` deja escritos (menos 800 de reserva para `<agentes>`) |
 | `NUCLEO_AUTOINICIO` | `1` | `0`: un repo sin `nucleo.md` no se crea solo desde `--auto` |
 | `NUCLEO_DUENO_TTL` | `14400` | Segundos tras los que caduca un dueño sin identidad de proceso |
-| `NUCLEO_GATE` | `observe` | `block`: el `Stop` bloquea tras un `git commit` si el nucleo no se tocó; `observe` solo anota en `gate-nucleo.log` |
+| `NUCLEO_GATE` | `off` | `observe` solo anota en `gate-nucleo.log` un commit sin nucleo tocado; `block` bloquea el `Stop` en ese caso |
 | `NUCLEO_COCKPIT` | sin fijar | `1` o `0` fuerza «hay cockpit» o «no hay»; sin fijar se detecta |
 | `NUCLEO_CHECKPOINT_KEEP` | `5` | Checkpoints de `pre-compact.sh` que se conservan por proyecto |
 | `NUCLEO_REGISTRO` | `~/.claude/estado/raices` | Registro de raíces que alimenta el índice de `~` |
-| `COCKPIT_AUTO_HANDOFF` | sin fijar | `off`: el cockpit no hace el handoff automático (el aviso lo dice) |
+| `COCKPIT_AUTO_HANDOFF` | sin fijar | `off`: el cockpit no hace el handoff automático |
 
-Para apagar el guardado quita las entradas de `autosave.sh` (`Stop`, `PostCompact`, `SessionEnd`); para apagar los
-avisos, la de `nucleo-nudge.sh` (`PostToolUse`). El resto sigue funcionando.
+La tabla de todos los interruptores, con su efecto, está en [`MAPA.md`](MAPA.md).
 
-## 6 · Cambiar de sesión y cerrar el ciclo
+## Subagentes
 
-- **El estado se guarda solo** (ADR 028): la capa 1 (`handoff --auto`, arriba) siempre; la capa 2, con el mod
-  [`cockpit`](11-cockpit.md), sintetiza con modelo y en silencio las secciones redactadas por hitos y turnos.
-  `/handoff` queda como orden manual opcional, p. ej. para fijar un foco o antes de un `/clear` sin cockpit.
-- **`/handoff`** (mod [`cockpit`](11-cockpit.md), o `handoff --desde` a mano en cualquier runtime; `install.sh` no instala el cockpit) escribe un documento de traspaso —objetivo,
-  invariantes, plan, paso actual, pendientes, comandos de verificación—, limpia el contexto y
-  retoma desde él. Con `solo` guarda el documento y no limpia nada.
-  El cockpit lo lanza también solo al cerrar un turno con el contexto al 70 % del límite de autocompactación
-  (`COCKPIT_AUTO_HANDOFF=off` lo desactiva); `/nueva <tarea>` archiva el estado y cambia de tarea.
-  Sin cockpit el defecto es guardado automático + checkpoint + reinyección + aviso: `autosave.sh` guarda tras cada turno,
-  `pre-compact.sh` deja un checkpoint, tras compactar `session-start-estado.sh` reinyecta `nucleo.md` y, si lleva más
-  de 10 min sin tocarse, pide al modelo actualizarlo con `handoff --desde`; `/handoff` es manual y opcional.
-- **`/retro`** cierra el ciclo: revisa una sesión y propone mejoras al **entorno** del agente
-  (punteros de navegación, comprobaciones automáticas, estándares de revisión, tamaño de los
-  ficheros de guía, acceso a información), ordenadas por gravedad. Aplicarlas es un cambio
-  aparte, por `deep-change`. Es manual: nunca se invoca solo.
+Dos o más flujos independientes se lanzan en paralelo, cada uno con su contexto: al hilo principal vuelve la
+conclusión, no el volcado. El prompt a un subagente apunta a un fichero de spec; no lo pega. Cada uno es dueño de
+sus ficheros y ninguno hace commit ni push: lo hace el hilo principal. Los agentes que instala el kit están en
+[`kit/claude/agents/`](../claude/agents/); los revisores extra son la pieza `revisores`.
 
-> **No confundir dos retros.** El comando de proyecto `/retro-repo`
-> ([`.claude/commands/retro-repo.md`](../../.claude/commands/retro-repo.md)) es para trabajar *en este repo*
-> (convierte lo aprendido en `knowledge/` versionado); la skill `retro` del kit se instala en el
-> `~/.claude` de quien use el kit y analiza el entorno del agente en cualquier proyecto.
+## Cerrar el ciclo
 
-## Qué instala el kit y qué no
+`/retro` revisa una sesión y propone mejoras al entorno del agente; es manual y es la pieza `skills-extra`
+(`bash kit/install.sh --con skills-extra`). Aplicarlas es un cambio aparte, por `deep-change`. No confundir con
+`/retro-repo` ([`.claude/commands/retro-repo.md`](../../.claude/commands/retro-repo.md)), que es de este repo y
+convierte lo aprendido en `knowledge/` versionado.
 
-| Pieza | Cómo llega a tu entorno |
-|---|---|
-| Skills `deep-change`, `retro`, `verification-before-completion` | `install.sh` las copia a `$CLAUDE_HOME/skills/` (diff-first, como los agentes) |
-| Agentes | `install.sh` los copia a `$CLAUDE_HOME/agents/` |
-| Mod `cockpit` (`/handoff`, Agent Dock) | **No** lo instala `install.sh`: se carga con `--plugin-dir` ([doc 11](11-cockpit.md)) |
-
-La skill `retro`
-deriva de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su licencia en
-cada carpeta y la atribución en [`THIRD-PARTY.md`](../../THIRD-PARTY.md)). `deep-change` es
-propia.
+La skill `retro` deriva de [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, con su licencia en
+cada carpeta y la atribución en [`THIRD-PARTY.md`](../../THIRD-PARTY.md)). `deep-change` es propia.
