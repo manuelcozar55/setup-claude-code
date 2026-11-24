@@ -65,10 +65,11 @@ env_name() {
   [[ $n =~ \.env\.(example|template|sample|dist)$ ]] && return 1
   [[ $n =~ (\.env($|[.~_-])|\.envrc) ]]
 }
-# Expande las llaves `{a,b}` de un operando (una por pasada), una variante por linea.
+# Expande las llaves `{a,b}` de un operando (una por pasada); las variantes quedan en el array BEX. Sin subshell ni fork: cada operando
+# pasa por aqui y un fork por operando hacia superar el timeout del hook con una orden larga.
 brace_expand() {
   local w=$1 pre alt post a
-  if [[ $w =~ ^([^{]*)\{([^{}]*,[^{}]*)\}(.*)$ ]]; then
+  if [[ $w == *\{*,*\}* && $w =~ ^([^{]*)\{([^{}]*,[^{}]*)\}(.*)$ ]]; then
     pre=${BASH_REMATCH[1]} alt=${BASH_REMATCH[2]} post=${BASH_REMATCH[3]}
     alt+=,
     while [[ -n $alt ]]; do
@@ -76,7 +77,7 @@ brace_expand() {
       brace_expand "$pre$a$post"
     done
   else
-    printf '%s\n' "$w"
+    BEX+=("$w")
   fi
 }
 
@@ -88,13 +89,25 @@ brace_expand() {
 # en un commit, un echo, un heredoc o un comentario no es operando; ls, chmod, ssh, ssh-keygen, ssh-add, test y git no estan en la lista;
 # de cp/scp/rsync el ultimo operando es el destino y no se lee; las opciones de identidad (-i, -F, -o, -e) no se leen. Ante un caso que no
 # se distingue del benigno gana el benigno (SECURITY.md: sin barrera por defecto, `--con sentinel`).
+# Tope duro de trabajo (el guard corre con un timeout de 10 s y, pasado, la herramienta se ejecuta): operandos que llegan al analisis de
+# ruta y segmentos. Pasado cualquiera, misma salida que cmdn_oversize (ask; deny en un asiento desatendido), nunca allow silencioso.
+CRED_W=0 CRED_MAX_W=1500 CRED_MAX_SEGS=3000
+cred_overwork() {
+  local d=ask r="Confirm: la orden tiene demasiados operandos o segmentos para analizarla dentro del timeout del guard (tope: $CRED_MAX_W operandos con nombre sensible, $CRED_MAX_SEGS segmentos), y un guard que se pasa de tiempo deja ejecutar la herramienta. Dividela en ordenes mas cortas o usa un fichero con la lista."
+  cmdn_desatendido && { d=deny; r+=$CMDN_DESATENDIDO; }
+  jq -n --arg r "$r" --arg d "$d" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:$d,permissionDecisionReason:$r}}'
+  exit 0
+}
 # cred_path "$operando" dir: rc 0 si nombra material de credenciales; dir=1 si la orden recorre directorios (cp -r, tar, grep -r).
 cred_path() {
   local v n i c b d k
   local -a comps
-  # Atajo de coste (cada operando cuesta un fork): sin glob, llave ni un trozo de los nombres sensibles no puede casar.
-  case $1 in *.s*|*.a*|*.g*|*.e*|*.n*|*_n*|*id_*|*hosts*|*[*?[{]*) ;; *) return 1 ;; esac
-  while IFS= read -r v; do
+  # Atajo de coste: sin glob, llave ni un trozo de los nombres sensibles no puede casar (todo lo de abajo exige uno de estos trozos).
+  case $1 in *.ssh*|*.aws*|*.gnupg*|*.env*|*.netrc*|*_netrc*|*.git-credentials*|*id_*|*hosts.yml*|*[*?[{]*) ;; *) return 1 ;; esac
+  # Tope de trabajo: cada operando que llega aqui cuesta un analisis de ruta; pasado el tope el guard pide confirmacion (nunca allow en silencio).
+  (( ++CRED_W <= CRED_MAX_W )) || cred_overwork
+  BEX=(); brace_expand "$1"
+  for v in "${BEX[@]}"; do
     cmdn_path_norm "$v"; v=$REPLY
     IFS=/ read -r -a comps <<<"$v"
     n=${#comps[@]}; (( n )) || continue
@@ -120,7 +133,7 @@ cred_path() {
         .gnupg) [[ $b == *.conf ]] || return 0 ;;
       esac
     done
-  done < <(brace_expand "$1")
+  done
   return 1
 }
 cred_deny() {
@@ -232,6 +245,7 @@ cred_segs() {
 }
 
 shopt -s nocasematch
+(( ${#CMDN_SEGS[@]} <= CRED_MAX_SEGS )) || cred_overwork
 # El directorio de trabajo de la sesion cuenta: tras un `cd ~/.ssh` en una orden anterior, `cat id_rsa` es la clave.
 CDCRED=
 CWD0=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
@@ -257,7 +271,7 @@ for seg in "${CMDN_SEGS[@]}"; do
     # `.env` solo cuenta seguido de fin de nombre o de un separador (`.`, `~`, `-`, `_`): `.environment.md` no es un
     # .env, pero `production.env.bak`, `config.env~` y `.env_local` si. Se mira cada componente de la ruta (`.env.d/x`)
     # y los globs y llaves, que los interpreta git (o la shell) y no pasan por un nombre literal.
-    mapfile -t variants < <(brace_expand "$op")
+    BEX=(); brace_expand "$op"; variants=("${BEX[@]}")
     for expanded in "${variants[@]}"; do
       IFS=/ read -r -a comps <<<"$expanded"
       for comp in "${comps[@]}"; do

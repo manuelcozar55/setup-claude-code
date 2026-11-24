@@ -1022,7 +1022,7 @@ expect "R2 credenciales: literal en un heredoc sin comillas NO denegado" "$(run_
 # ask (o allow si es benigna y entra en el tope de trabajo). Se mide con `timeout 10`: un 124 (sin salida) cuenta como fallo.
 run_cost() { # $1 orden; imprime "<ms> <salida>"
   local t0=$EPOCHREALTIME out ms
-  out=$(cd "$SG_DIR" && jq -n --arg command "$1" '{tool_input:{command:$command}}' | timeout 10 bash "$KIT/claude/hooks/secret-guard.sh" 2>&1)
+  out=$(cd "$SG_DIR" && printf '%s' "$1" | jq -Rs '{tool_input:{command:.}}' | timeout 10 bash "$KIT/claude/hooks/secret-guard.sh" 2>&1)
   ms=$(( (${EPOCHREALTIME/./} - ${t0/./}) / 1000 ))
   printf '%s %s' "$ms" "$out"
 }
