@@ -377,6 +377,17 @@ for seg in "${segs[@]}"; do
       # Su texto es una orden si lo recibe un shell por tuberia (`echo "git clean -fd" | bash`): se guarda para el segmento siguiente.
       inner=
       for a in "${T[@]:2}"; do [[ -z $inner && $a == -* ]] || inner+="$a "; done
+      # printf: el formato (`%s`) no es texto de la orden pero SI lo son todos los argumentos, sueltos (`printf '%s' "git clean -fd"`) o
+      # unidos por el formato (`printf '%s %s' git clean`): cada argumento en su linea, y ademas los argumentos tras el formato juntos.
+      if [[ ${T[1]} == printf ]]; then
+        inner=
+        k=0
+        for a in "${T[@]:2}"; do
+          if (( ! k )) && [[ $a == -* ]]; then continue; fi
+          inner+="$a"$'\n'; k=1
+        done
+        inner+=${T[*]:3}
+      fi
       prev=${inner//\\n/$'\n'} ;;
     sh|bash|zsh|dash|ksh|eval|xargs|find|busybox|flock|watch|taskset|parallel)
       inner=

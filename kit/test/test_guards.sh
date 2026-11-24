@@ -1969,14 +1969,14 @@ for c in "git add $EN" "git add sub/$EN" "git add ${EN}rc" "git add $EN.local" "
   expect "secret-guard v1.6.1: $c denegado" "$(run_secret "$c")" BLOCK
 done
 # Ronda 2: `.env` seguido de fin de nombre o separador (`.`, `~`, `-`, `_`), en cualquier componente de la ruta, y los
-# globs y llaves que puedan casar con un fichero de entorno. Falso positivo aceptado: `venv.env.ts` (indistinguible de
-# `production.env.bak`) y los globs `*.bak`, `*~`, `*.local`.
+# globs y llaves que puedan casar con un fichero de entorno. Falso positivo aceptado (R3 resolvio `venv.env.ts`, ver 13e):
+# los globs `*.bak`, `*~`, `*.local`.
 for c in "git add '*$EN'" "git add *$EN" "git add production$EN.bak" "git add config$EN~" "git add $EN.production/config.json" \
          "git add $EN-prod" "git add $EN""_local" "git add '$EN*'" "git add '*$EN*'" "git add {$EN,notes.md}" "git add {notes.md,$EN.local}" \
-         "git add sub/$EN.d/x" "git add venv$EN.ts" "git add '$EN.l*'" "git add '[.]env'" "git add '.e?v'"; do
+         "git add sub/$EN.d/x" "git add '$EN.l*'" "git add '[.]env'" "git add '.e?v'"; do
   expect "secret-guard ronda2: $c denegado" "$(run_secret "$c")" BLOCK
 done
-for c in "git add {a,b}.txt" "git add src/{a,b}/*.py" "git add '*'" "git add ${EN}ironment.md"; do
+for c in "git add venv$EN.ts" "git add {a,b}.txt" "git add src/{a,b}/*.py" "git add '*'" "git add ${EN}ironment.md"; do
   expect "secret-guard ronda2: $c NO denegado" "$(run_secret "$c")" ALLOW
 done
 for c in "git add $EN.example" "git add sub/$EN.template" "git add $EN.sample" "git add $EN.dist"; do
