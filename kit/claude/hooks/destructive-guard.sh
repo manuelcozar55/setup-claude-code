@@ -458,6 +458,7 @@ for seg in "${segs[@]}"; do
       case ${T[2]:-} in
         reset)
           for a in "${T[@]:3}"; do
+            [[ $a == -- ]] && break
             # git acepta cualquier prefijo no ambiguo de la opcion: `--h`, `--ha` y `--har` son `--hard`.
             if [[ $a == --h || $a == --ha || $a == --har || $a == --hard ]]; then
               log_block "git reset --hard"
