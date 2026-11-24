@@ -92,6 +92,8 @@ brace_expand() {
 cred_path() {
   local v n i c b d k
   local -a comps
+  # Atajo de coste (cada operando cuesta un fork): sin glob, llave ni un trozo de los nombres sensibles no puede casar.
+  case $1 in *.s*|*.a*|*.g*|*.e*|*.n*|*_n*|*id_*|*hosts*|*[*?[{]*) ;; *) return 1 ;; esac
   while IFS= read -r v; do
     cmdn_path_norm "$v"; v=$REPLY
     IFS=/ read -r -a comps <<<"$v"
@@ -137,6 +139,8 @@ CRED_N=0
 # cred_seg depth: la orden ya troceada en T. Un `sh -c "..."` o `eval "..."` a la vista se vuelve a mirar (3 niveles); `xargs`, `find -exec`,
 # `ssh host '...'`, un script, `python -c` o una variable quedan fuera (SECURITY.md).
 cred_seg() {
+  # Atajo de coste: las ordenes mas frecuentes que ninguna clase de abajo mira ni se declaran ni se trocean.
+  case ${T[1]:-} in git|ls|cd|echo|printf|test|\[|\[\[|true|false|pwd|mkdir|rm|mv|touch|chmod|ssh|ssh-keygen|ssh-add|make|npm|pnpm|node|python|python3|pytest|docker|sleep|export|set) return 0 ;; esac
   local depth=$1 c=${T[1]:-} n=${#T[@]} i a inner='' vals='' pat=0 dir=0 dest=0 first=0 tflag=0 given=0 skip=0 chk=0 dat=0
   local -a pos=() inn
   case $c in
@@ -173,6 +177,8 @@ cred_seg() {
     a=${T[i]}
     if (( skip )); then skip=0; continue; fi
     if (( chk )); then chk=0; cred_check "$a" 0; continue; fi
+    # Camino corto (coste): un operando sin redireccion, sin `-` ni `=` va directo a la lista.
+    if (( ! dat )) && [[ $a != -* && $a != *[\<\>=]* ]]; then pos+=("$a"); continue; fi
     # Redireccion: el destino de `>` no se lee; `<` fichero si, y el texto de `<<` y `<<<` no es un fichero.
     if [[ $a =~ ^[0-9\&]*\>+\|?$ ]]; then skip=1; continue; fi
     [[ $a =~ ^[0-9\&]*\> ]] && continue
