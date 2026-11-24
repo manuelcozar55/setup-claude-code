@@ -80,6 +80,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/mods/cockpit/test_cockpit.sh
 	bash kit/test/test_statusline.sh
 	bash kit/test/test_session_start_clear.sh
+	bash kit/test/test_session_start_equivalencia.sh
 	bash kit/test/test_nucleo_lib.sh
 	bash kit/test/test_nucleo_integridad.sh
 	bash kit/test/test_autosave.sh
