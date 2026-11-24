@@ -281,6 +281,8 @@ jobs:
         run: bash kit/test/test_scripts_audit.sh
       - name: "test_presupuesto_contexto.sh (tope de contexto por canal, peor caso)"
         run: bash kit/test/test_presupuesto_contexto.sh
+      - name: "test_presupuesto_kit.sh (tope de hooks, agentes y skills por defecto)"
+        run: bash kit/test/test_presupuesto_kit.sh
 
       - name: "test_guia.sh (guía didáctica: existe, enlazada desde 01-overview, sin enlaces rotos)"
         run: bash kit/test/test_guia.sh
