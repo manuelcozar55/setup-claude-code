@@ -10,9 +10,10 @@ apunta para que no entre por la puerta de atrás.
 **Levantada el 2026-11-11** por decisión del dueño (iba hasta el 2026-12-09: solo arreglos,
 documentación y retiradas). Lo que entró al levantarla está en B-007.
 
-**Hasta v2.0**, ningún hook, agente, skill ni mecanismo nuevo entra en el kit sin
-una entrada en este fichero con evidencia medida. Una entrada no es una aprobación: la
-decisión se escribe en ella, con su fecha.
+**Sin fecha de fin**: ningún hook, agente, skill ni mecanismo nuevo entra en el kit sin
+una entrada en este fichero con evidencia medida, y el sensor `test_presupuesto_kit.sh` fija el tope de lo que se
+instala por defecto (ADR 032). Una entrada no es una aprobación: la decisión se escribe en ella, con su fecha.
+Se revisa en la retro del 2026-12-09.
 
 ## Plantilla de entrada
 
@@ -90,6 +91,9 @@ correr el comando que lo prueba, revisar si los tests de un PR cubren el comport
 el listado de cada sesión.
 **Decisión:** entra (2026-11-11), por decisión del dueño al levantar la congelación. Se mide su
 uso en la retro del 2026-12-09; sin usos, se retira.
+**Actualización (2026-11-24):** el uso medido del 04 al 23-nov fue `silent-failure-hunter` 6, `pr-test-analyzer` 1 y
+`verification-before-completion` 0. Dejan de instalarse por defecto (`--con revisores`, `--con skills-extra`, ADR
+032); se miden en la retro del 2026-12-09, que decide si se borran en la versión siguiente.
 
 ---
 
@@ -104,6 +108,10 @@ lo que mide `nucleo-freshness.log`. Sin ganancia visible para la persona.
 **Decisión:** aplazada (2026-11-12). Se hizo antes lo que sí se notaba: dueño por proceso, un
 solo aviso de contexto, `post-compact-check.sh` plegado en `autosave.sh`. Reabrir si un cuarto
 arreglo vuelve a tocar los tres.
+**Actualización (2026-11-24):** hecho a medias (ADR 032). Se fundieron `session-start-clear.sh` y
+`session-start-compact.sh` en `session-start-estado.sh` (matcher `startup|clear|resume|compact`, ramifica por
+`source`), con equivalencia comprobada por rama. `session-start.sh` se queda aparte: el arranque normal no comparte la
+rama de estado. Hooks cableados por defecto: 18 → 17. Una actualización retira los dos viejos.
 
 ## B-009 · Aplazados de la auditoría final del 13-nov (2.0.0)
 
@@ -157,3 +165,48 @@ Documentación, lo que exige código o tests (`F8-docs.md`):
 - F8-18: la salida de `install.sh:677` dice «se enlazarian handoff y oraculo» y luego lista cinco.
 - F8-21: `scripts/generar-mapa.sh:17` filtra variables por prefijo y deja fuera `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, que mueve los umbrales del aviso y del handoff automático.
 - F8-22: `CONTRIBUTING.md:196-199` («Hasta v2.0, ningún hook… sin entrada en BACKLOG») caduca con la 2.0.0, y decidir si sigue vigente es del dueño; el «camino corto» de `02-install.md` y `10-onboarding.md` es `bash kit/install.sh` sin `--plan`, frente al camino `--plan` → `--apply` del README.
+  *Actualización (2026-11-24):* la congelación ya no dice «hasta v2.0» (ver arriba) y el README da una sola orden, `bash kit/install.sh`.
+
+## B-010 · Las 13 propuestas de `scc-cambios-propuestos.md` (v2) y sus decisiones
+
+**Fecha:** 2026-11-24
+**Propuesta:** no añade nada: registra la decisión sobre cada una de las 13 propuestas del documento de cambios
+(grupos A, B y C), tomada el 23-nov y revisada el 24-nov. `plan-lint` no se copia al repo.
+**Problema que resuelve:** que ninguna entre por la puerta de atrás y que cada «no» lleve su evidencia. Criterio que
+ordena todo: una regla vale por quién la entrega y quién lee el resultado; script determinista > hook > texto en una
+skill que se invoca > texto en `AGENTS.md`.
+**Coste:** el de lo que entra: A-1 un sensor en `test_doc_claims.sh`; B-4 unas líneas en `deep-change`.
+**Decisión:** (evidencia: uso real del 04 al 23-nov, 255 sesiones, una máquina)
+
+| Id | Propuesta | Decisión | Evidencia |
+|---|---|---|---|
+| A-1 | La metodología cita dos agentes retirados | **Entra**, con su sensor (`test_doc_claims.sh`) | `12-metodologia.md` citaba `orchestrator` y `strategist`, retirados |
+| A-2 | Quién hace commit: metodología y skill se contradicen | No entra: sin objeto | `esenciales` sale de la instalación por defecto; la metodología dice que el commit lo hace el hilo principal y que, si se instala `esenciales`, su skill manda en su worktree |
+| B-1 | El plan gana criterios con su prueba y marca de paralelismo | No entra | `writing-plans`: 0 usos; 0 de 24 planes recientes enlazan criterio con test, pero la skill no se invoca |
+| B-2 | Modo paralelo por checkpoint con subagentes | No entra | `subagent-driven-development`: 0 usos; 42 de 94 pares de `deep-worker` ya van en paralelo sin la skill |
+| B-3 | Revisión en frío del plan | No entra | `writing-plans`: 0 usos; la plantilla `plan-document-reviewer-prompt.md` sigue huérfana |
+| B-4 | Prueba por mutación en la skill de verificación | **Entra reubicada** | Sus frases van a `deep-change` (28 usos), no a `verification-before-completion` (0 usos) |
+| B-5 | `deep-worker`: si el alcance crece, parar y proponer la división | Pospuesto | 73 de 120 ejecuciones tocaron ficheros no nombrados en el encargo; sobrestima porque los encargos apuntan a un spec. Reabrir con una medida contra el spec (candidato 1, abajo) |
+| B-6 | Oráculo de evaluación para lo que produce un modelo | No entra | El repo no es un proyecto de IA; el dueño ya lo cubre con una skill personal |
+| B-7 | `plan-lint`: sensor del formato del plan | No entra como está; candidato reorientado | Valida `### Task N:` con `**Verify:**` (formato de `writing-plans`, 0 usos); los planes reales son `[x] paso — comando` en `nucleo.md`, y sobre ellos sale 2 |
+| B-8 | `scope-check`: quién tocó qué | No entra como está; candidato reorientado | Depende del plan de `writing-plans` |
+| C-1 | Aislamiento real para el modo autónomo y paralelo | Pospuesto | Investigación pendiente del aislamiento de Claude Code; ningún revisor tiene Write/Edit, el vector es Bash |
+| C-2 | Estándar de respuesta con lazo cerrado | No entra; medir antes y gratis | Respuesta final: mediana 1.206 caracteres (~190 palabras); el contexto fijo quedaba a 7 caracteres de su tope |
+| C-3 | Reestimar un «inviable» tras el primer checkpoint | No entra | 0 `BLOCKED` y 0 `Ruling:` en 6 ledgers (285 ficheros) |
+
+Límite de la evidencia: una máquina, 20 días (los transcripts anteriores ya no existen).
+
+## B-011 · Candidatos para después de esta rama, en este orden
+
+**Fecha:** 2026-11-24
+**Propuesta:** tres medidas baratas que dan evidencia o cierran huecos sin añadir piezas al camino por defecto.
+**Problema que resuelve:** sin ellas, B-5, B-7 y C-2 se deciden sin datos.
+**Coste:** sin medir.
+**Decisión:** pospuesto; ninguno entra antes de la retro del 2026-12-09 (2026-11-24). Orden:
+
+1. **`agentes.sh` registra los ficheros tocados frente a los del spec** (reorienta B-8). Corre ya en `SubagentStop`;
+   solo registro, sin bloquear. Daría la evidencia que le falta a B-5. `agentes.sh` se queda cableado en esta versión y
+   se revisa en esa retro.
+2. **`handoff` señala un `[x]` sin comando** (reorienta B-7), sobre el `## Plan` real de `nucleo.md`.
+3. **Medir la deriva de longitud de la respuesta por turno** (5, 20, 40) en los transcripts existentes, sin evals de
+   pago (C-2). Solo si aparece deriva, valorar la variante «solo al fallar».
