@@ -1035,6 +1035,20 @@ expect_cost() { # $1 desc, $2 orden, $3 BLOCK|ASK|ANY: debe decidir (o dejar pas
     *) true ;;
   esac && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: $1 no decidio: $out"; }
 }
+# 13e) R3: plantillas y nombres que no son ficheros de entorno. La plantilla es cualquier `.env*`/`.envrc*` cuyo ULTIMO sufijo es
+# example|sample|template|dist; `x.env.<codigo>` (config.env.ts, jest.env.js) es codigo: lista minima ts js mjs cjs mts cts d.ts py rb go, a
+# proposito sin json y sin `.env.<codigo>` (un `.env.json` o `.env.py` a secas sigue siendo un fichero de entorno). Siguen denegados los de verdad.
+for c in 'cat .env.local.example' 'cat .env.development.example' 'cat .env.production.example' 'cp .env.production.example .env.production' \
+         'cat .envrc.example' 'cat .env.test.sample' 'cat config/.env.staging.template' 'head .env.local.dist' 'git diff -- .env.production.example' \
+         'git add .env.local.example' 'git add .envrc.example' 'cat config.env.ts' 'cat jest.env.js' 'cat src/setup.env.mjs' 'cat a.env.cjs' 'cat types.env.d.ts' \
+         'cat a.env.py' 'cat a.env.rb' 'cat a.env.go' 'git add config.env.ts'; do
+  expect "R3 plantillas: $c NO denegado" "$(run_cred "$c")" ALLOW
+done
+for c in 'cat .env' 'cat .env.local' 'cat .env.development' 'cat .env.test' 'cat .env.production' 'cat prod.env' 'cat .envrc' 'sed -i s/a/b/ .env' \
+         'cat .env.example.bak' 'cat .env.example.env' 'cat .env.json' 'cat .env.py' 'cat .env.ts' 'cat a.env.json' 'git add .env.production' 'git add prod.env'; do
+  expect "R3 plantillas: $c denegado" "$(run_cred "$c")" BLOCK
+done
+
 COST_KEY='~/.ssh/id_rsa'
 COST_OPS=$(printf 'a/b.s%d ' $(seq 0 10998))
 COST_SEGS=$(printf '; cat a/b.s%d' $(seq 0 6999))
