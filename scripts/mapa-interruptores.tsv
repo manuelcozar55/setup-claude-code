@@ -7,3 +7,9 @@ optional-hook.sh	CC_WARN_DIR	cambia dónde anota los avisos
 optional-hook.sh	PYTHON_HOOK_BIN	elige el intérprete de Python
 nucleo-nudge.sh	NUCLEO_COCKPIT	fuerza «hay cockpit» (`1`) o «no hay» (`0`)
 pre-compact.sh	NUCLEO_CHECKPOINT_KEEP	cuántos checkpoints se conservan por proyecto
+nucleo-nudge.sh	COCKPIT_AUTO_HANDOFF	`off`: el cockpit no hace el handoff automático y el aviso lo dice
+session-start-estado.sh	NUCLEO_TOPE	bytes de `nucleo.md` que se inyectan (por defecto 6500, menos la reserva del bloque de agentes)
+session-start-estado.sh	NUCLEO_REGISTRO	fichero con las raíces de proyecto que alimentan el índice de tareas de `~`
+session-start-estado.sh	NUCLEO_DUENO_TTL	segundos tras los que caduca un dueño de estado sin identidad de proceso (por defecto 14400)
+session-start-estado.sh	NUCLEO_VINCULO	`0`: ignora el proyecto al que una sesión lanzada en `~` se vinculó
+agentes.sh	NUCLEO_GATE	apagada por defecto; `observe` anota un commit sin `nucleo.md` tocado, `block` bloquea el `Stop` en ese caso
