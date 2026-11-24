@@ -4,7 +4,7 @@
 # una línea de KPI: ¿llega nucleo.md fresco a la compactación?
 # stdin: {"trigger":"manual|auto","session_id":"...","transcript_path":"...","cwd":"..."}
 # El campo es `trigger`; `triggerReason` no existe en el binario.
-# El checkpoint lo re-inyecta session-start-compact.sh (recortado). Vive en <raíz>/.claude/estado/checkpoints/,
+# El checkpoint lo re-inyecta session-start-estado.sh (rama compact, recortado). Vive en <raíz>/.claude/estado/checkpoints/,
 # que nucleo_estado_dir crea si falta junto con su .gitignore interno (trae los últimos prompts de la
 # persona: nunca a git). Desde ~ no hay proyecto: solo se escribe donde ya hubiera un estado/ heredado.
 # Observacional: nunca bloquea (exit 0 siempre).

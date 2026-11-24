@@ -114,13 +114,13 @@ dueno_otra() { # en --peor, otra sesión viva es dueña de la tarea: sale el avi
 IN="{\"cwd\":\"$R\",\"session_id\":\"s0\",\"transcript_path\":\"$TR\""
 touch -d '2026-01-01' "$NUC"
 rm -f "$R/.claude/estado/.dueno"
-hook "SessionStart compact (con nucleo.md)" session-start-compact.sh "$IN,\"source\":\"compact\"}" 1
+hook "SessionStart compact (con nucleo.md)" session-start-estado.sh "$IN,\"source\":\"compact\"}" 1
 dueno_otra
-hook "SessionStart startup (con nucleo.md)" session-start-clear.sh "$IN,\"source\":\"startup\"}" 1
+hook "SessionStart startup (con nucleo.md)" session-start-estado.sh "$IN,\"source\":\"startup\"}" 1
 dueno_otra
-hook "SessionStart clear (con nucleo.md)" session-start-clear.sh "$IN,\"source\":\"clear\"}" 1
+hook "SessionStart clear (con nucleo.md)" session-start-estado.sh "$IN,\"source\":\"clear\"}" 1
 dueno_otra
-hook "SessionStart resume (+aviso caché caducada)" session-start-clear.sh \
+hook "SessionStart resume (+aviso caché caducada)" session-start-estado.sh \
   "$IN,\"source\":\"resume\",\"prompt_cache_likely_expired\":true,\"context_tokens\":150000}" 1
 rm -f "$R/.claude/estado/.dueno"
 # session-start.sh imprime al stdout (texto plano): también entra como contexto

@@ -278,7 +278,7 @@ install_file() {  # src dst
 # contexto por sesion), ANTHROPIC_MODEL con el sufijo de la ventana de 1M,
 # CLAUDE_CODE_AUTO_COMPACT_WINDOW y tres limites mas. Habia backup, pero un backup que hay que
 # descubrir no es una salvaguarda: es una autopsia.
-RETIRADOS="nucleo-gate.sh stop-context-gauge.sh post-compact-check.sh"
+RETIRADOS="nucleo-gate.sh stop-context-gauge.sh post-compact-check.sh session-start-clear.sh session-start-compact.sh"
 retirado_publicado() {  # fichero nombre: su suma es la de una version publicada del hook
   grep -qxF "$(sha256sum < "$1" | cut -d' ' -f1)  $2" "$KIT/hooks-retirados.sha256"
 }
@@ -337,7 +337,7 @@ install_settings() {  # src dst
           else . end] else . end))
         | with_entries(select((.value | type) != "array" or (.value | length) > 0));
       (([$kit.hooks // {} | .. | .command? // empty | splits(" +") | gsub("[\"\u0027]"; "") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")]
-        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh", "nucleo-gate.sh", "stop-context-gauge.sh", "post-compact-check.sh"] | unique) - $conserva) as $suyos |
+        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh", "nucleo-gate.sh", "stop-context-gauge.sh", "post-compact-check.sh", "session-start-clear.sh", "session-start-compact.sh"] | unique) - $conserva) as $suyos |
       def propio: ("/" + .) as $t | any($suyos[]; . as $s | $t | endswith("/.claude/hooks/" + $s) or endswith("/.claude/sentinel/" + $s));
       def del_kit: [(.command | strings // "") | splits(" +") | gsub("[\"\u0027]"; "") | select(length > 0)]
         | any(.[]; propio) and all(.[]; propio or startswith("-") or (sub(".*/"; "") | test("^(optional-hook\\.sh|python[0-9.]*|bash|sh)$")));

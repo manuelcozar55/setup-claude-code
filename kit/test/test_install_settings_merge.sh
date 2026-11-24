@@ -294,6 +294,29 @@ ck "$([ -e "$CLAUDE_HOME/hooks/nucleo-gate.sh" ] && echo y || echo n)" "n" "reti
 ck "$([ -e "$CLAUDE_HOME/hooks/stop-context-gauge.sh" ] && echo y || echo n)" "y" "retirados: el script que la persona modifico se conserva"
 ck "$(dice 'stop-context-gauge.sh')" "y" "retirados: y el instalador lo dice"
 
+# Caso r2: actualizar una instalacion con los tres SessionStart de antes. -clear y -compact se fundieron en
+# session-start-estado.sh: sus entradas se van (la del script modificado por la persona, no) y el instalador lo dice;
+# session-start.sh (la linea de memoria) sigue cableado una sola vez.
+seed r2 <<'EOF'
+{ "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "\"$HOME/.claude/hooks/session-start.sh\"" } ] },
+      { "matcher": "startup|clear|resume", "hooks": [ { "type": "command", "command": "\"$HOME/.claude/hooks/session-start-clear.sh\"" } ] },
+      { "matcher": "compact", "hooks": [ { "type": "command", "command": "\"$HOME/.claude/hooks/session-start-compact.sh\"" } ] } ] } }
+EOF
+mkdir -p "$CLAUDE_HOME/hooks"
+cp "$HERE/fixtures/session-start-clear.retirado.sh" "$CLAUDE_HOME/hooks/session-start-clear.sh"   # la ultima version antes de fundir, sin tocar
+echo "# editado por la persona" > "$CLAUDE_HOME/hooks/session-start-compact.sh"
+run
+ck "$(jq '[.hooks.SessionStart | .. | strings | select(test("session-start-clear"))] | length' "$S")" "0" "fundidos: la entrada de session-start-clear.sh se va"
+ck "$(jq '[.hooks.SessionStart | .. | strings | select(test("session-start-compact"))] | length' "$S")" "1" "fundidos: la de session-start-compact.sh, con el script modificado, se conserva"
+ck "$(jq '[.hooks.SessionStart | .. | strings | select(test("session-start-estado"))] | length' "$S")" "1" "fundidos: y el hook único queda cableado una vez"
+ck "$(jq '[.hooks.SessionStart | .. | strings | select(test("session-start\\.sh"))] | length' "$S")" "1" "fundidos: session-start.sh (memoria) sigue cableado una vez"
+ck "$([ -e "$CLAUDE_HOME/hooks/session-start-clear.sh" ] && echo y || echo n)" "n" "fundidos: el script intacto se borra de hooks/"
+ck "$([ -e "$CLAUDE_HOME/hooks/session-start-compact.sh" ] && echo y || echo n)" "y" "fundidos: el script que la persona modifico se conserva"
+ck "$(dice 'hook retirado del kit, movido a')" "y" "fundidos: y el instalador dice que retira el viejo"
+ck "$(dice 'session-start-compact.sh')" "y" "fundidos: y dice que conserva el modificado"
+
 # Caso s: lo que la persona apago a proposito (.kit-desactivados, una linea por script o ruta) sigue apagado tras
 # actualizar: ni se recablea el hook, ni se recopia el agente, y el plan y el resumen lo dicen.
 seed s <<'EOF'

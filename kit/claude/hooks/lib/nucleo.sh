@@ -1000,7 +1000,7 @@ nucleo_compact_medir() {
   if [ "$cm_raiz" = "$HOME" ]; then cm_medida=home
   elif [ -z "$cm_ck" ] || [ ! -f "$cm_ck" ] || [ -L "$cm_ck" ]; then cm_medida=sin_checkpoint
   else
-    # Se excluye el propio estado (.claude/estado/*): lo reinyecta session-start-compact.sh. Un «??» tampoco cuenta: el
+    # Se excluye el propio estado (.claude/estado/*): lo reinyecta session-start-estado.sh. Un «??» tampoco cuenta: el
     # git status lista todo lo no seguido, lo haya tocado la sesión o no (medido: 12 de 12 anclas falsas).
     while read -r cm_f; do
       [ -n "$cm_f" ] || continue

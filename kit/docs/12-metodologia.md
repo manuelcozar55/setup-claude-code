@@ -130,7 +130,7 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
   lock, sale 0 sin escribir. Cuando hubo trabajo (ficheros o comandos) deja `.claude/estado/autosave.dirty`
   (`motivo=edit|compact`, `desde=`, `ultimo=`); `handoff --desde` lo borra. Cada guardado anota una línea en
   `~/.claude/session-logs/autosave.log`. En `~`, sin proyecto, escribe en la ranura de la sesión; con `claude --resume`
-  `session-start-clear.sh` adopta por `session_id` la ranura de la sesión anterior si su proceso ya no existe.
+  `session-start-estado.sh` adopta por `session_id` la ranura de la sesión anterior si su proceso ya no existe.
   El KPI de `pre-compact.sh` suma `edad_auto` (segundos desde esa sección, `-1` si no hay). Límite: `Stop` no corre
   si la persona interrumpe el turno; lo cubren el siguiente `Stop`, `PostCompact` y `SessionEnd`.
 - Dueño: `.claude/estado/.dueno` (`sesion=`, `desde=`, `pid=`, `proceso=`). El dueño es un proceso `claude` vivo
@@ -150,7 +150,7 @@ el oráculo en rojo (ver [ADR 010](../../knowledge/DECISIONS/010-modo-autonomo.m
 
 | Evento | Hooks (timeout) | Efecto visible |
 |---|---|---|
-| `SessionStart` | `session-start.sh`, `session-start-clear.sh` (`startup\|clear\|resume`), `session-start-compact.sh` (`compact`) | Inyecta el nucleo como dato; avisa a la persona si retoma con la caché caducada o si otra sesión es la dueña; tras compactar pide al modelo actualizarlo si lleva más de 10 min |
+| `SessionStart` | `session-start.sh`, `session-start-estado.sh` (`startup\|clear\|resume\|compact`) | Inyecta el nucleo como dato; avisa a la persona si retoma con la caché caducada o si otra sesión es la dueña; tras compactar pide al modelo actualizarlo si lleva más de 10 min |
 | `PostToolUse` | `nucleo-nudge.sh` (5) | Único emisor de avisos de contexto: al modelo en el 50, 70 y 85 % del airbag, a la persona en el 60 y el 85 % |
 | `Stop` | `autosave.sh` (10, asíncrono), `agentes.sh` (15) | Guarda `## Último turno (auto)`; anota los agentes en vuelo; compuerta de commit (`NUCLEO_GATE`, por defecto solo registra) |
 | `PreCompact` | `pre-compact.sh` (10) | Checkpoint y la línea de `nucleo-freshness.log` |
@@ -192,7 +192,7 @@ avisos, la de `nucleo-nudge.sh` (`PostToolUse`). El resto sigue funcionando.
   El cockpit lo lanza también solo al cerrar un turno con el contexto al 70 % del límite de autocompactación
   (`COCKPIT_AUTO_HANDOFF=off` lo desactiva); `/nueva <tarea>` archiva el estado y cambia de tarea.
   Sin cockpit el defecto es guardado automático + checkpoint + reinyección + aviso: `autosave.sh` guarda tras cada turno,
-  `pre-compact.sh` deja un checkpoint, tras compactar `session-start-compact.sh` reinyecta `nucleo.md` y, si lleva más
+  `pre-compact.sh` deja un checkpoint, tras compactar `session-start-estado.sh` reinyecta `nucleo.md` y, si lleva más
   de 10 min sin tocarse, pide al modelo actualizarlo con `handoff --desde`; `/handoff` es manual y opcional.
 - **`/retro`** cierra el ciclo: revisa una sesión y propone mejoras al **entorno** del agente
   (punteros de navegación, comprobaciones automáticas, estándares de revisión, tamaño de los
