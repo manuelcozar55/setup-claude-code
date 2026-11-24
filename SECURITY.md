@@ -151,7 +151,8 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
 **Lo que sigue sin ver ningún guard** (límites declarados, fijados en `test/fixtures/guards-bypass.jsonl`): el código de
 un intérprete (`python3 -c "import shutil; shutil.rmtree('/home/u')"`, `perl -e "unlink glob q(/home/*/*)"`: el hook ve
 texto, no lo que ejecutará Python o Perl), `eval "$X"` y `bash -c "$X"` con el valor construido antes, un nombre armado
-con comillas (`cur''l`, `b""ash`), `rsync --delete` y cualquier cosa que borre sin nombrar una ruta. También pasan, y ya
+con comillas (`cur''l`, `b""ash`), `ssh host '<orden destructiva>'` (lo que corre en otra máquina queda fuera del guard local),
+`rsync --delete` y cualquier cosa que borre sin nombrar una ruta. También pasan, y ya
 pasaban en la versión anterior, estos que la revisión R1 midió (39 filas `limite` en `test/fixtures/guards-r1.jsonl`: 36 que la
 base ya dejaba pasar y 3 falsos positivos preexistentes que siguen bloqueados, L36, Q17 y Q74; y otras 125 de la ronda 2 en
 `guards-r2.jsonl`, todas con el mismo veredicto que la base):
