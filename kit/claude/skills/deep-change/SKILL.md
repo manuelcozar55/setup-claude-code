@@ -83,6 +83,9 @@ otherwise request approval for the concrete result. Record a rollback path to th
 
 - A test that only asserts what the code already does proves nothing. Write the test that
   **fails first** on the bug, then passes on the fix.
+- Red then green: for a fix, revert it and watch the test fail, then restore it. For a new
+  feature, make the one-line change that must break the test, watch it fail, and undo it.
+  Undo with the exact inverse edit, never `git checkout`, `restore` or `stash`.
 - Never edit a test to make it green. If the test is wrong, say why and fix it as its own change.
 - Prefer driving the actual artifact (run it, screenshot it, pipe the real protocol) over
   "types check, so it works."
@@ -107,4 +110,4 @@ otherwise request approval for the concrete result. Record a rollback path to th
 - [ ] Risk contained: isolated copy validated; production apply is a separate authorized step
       with a known rollback.
 - [ ] Rejected alternatives and residual risks stated honestly.
-- [ ] If the person had to correct course more than once, the report suggests `/retro`.
+- [ ] If the person had to correct course more than once, the report suggests `/retro` (optional piece: `install.sh --con skills-extra`).

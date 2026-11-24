@@ -11,7 +11,7 @@ usage() {
     '  --apply: aplica la instalacion.' \
     '  --plan: prepara el plan sin modificar CLAUDE_HOME.' \
     '  --enable-secrets-layer2: activa la capa 2 en el repo actual.' \
-    '  --con: instala ademas piezas opcionales: esenciales (plugin de skills), revisores (agentes silent-failure-hunter y pr-test-analyzer), cockpit (mod de Claude Code y lanzador con plugins).' \
+    '  --con: instala ademas piezas opcionales: esenciales (plugin de skills), revisores (agentes silent-failure-hunter y pr-test-analyzer), skills-extra (skills verification-before-completion y retro), cockpit (mod de Claude Code y lanzador con plugins).' \
     '         Lo opcional que ya estaba instalado se conserva y se sigue actualizando.' \
     '  --sin-cockpit: sin efecto (el cockpit ya no se instala por defecto); se acepta por compatibilidad.' \
     '  --sin-python: sigue sin python3 aun sabiendo que Sentinel, write-guard, stale-read-guard y efectividad quedan apagados.' \
@@ -510,6 +510,7 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   for f in "$KIT"/claude/agents/*; do [ -f "$f" ] && install_file "$f" "$base/agents/$(basename "$f")"; done
   while IFS= read -r -d '' f; do
     rel="${f#"$KIT"/claude/skills/}"
+    if pz="$(opcional_de "skills/$rel")"; then seleccionada "$pz" || continue; fi
     mkdir -p "$base/skills/$(dirname "$rel")"
     install_file "$f" "$base/skills/$rel"
   done < <(find "$KIT/claude/skills" -type f -print0 2>/dev/null)

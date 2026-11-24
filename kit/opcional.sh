@@ -2,12 +2,13 @@
 # Una sola fuente para install.sh, doctor.sh, uninstall.sh y .github/scripts/assert-install.sh. Se lee con `.`.
 # El código de cada pieza sigue en el repo; lo que cambia es que la instalación sin flags no lo copia ni lo cablea.
 # Lo que cablean en settings.json va en opcional-settings.json (una clave por pieza).
-PIEZAS_OPCIONALES="esenciales revisores cockpit nudge sentinel"
+PIEZAS_OPCIONALES="esenciales revisores skills-extra cockpit nudge sentinel"
 
 opcional_globs() {  # pieza -> rutas relativas a CLAUDE_HOME (patron de case; `dir/*` = todo lo de dentro), una por linea
   case $1 in
     esenciales) printf '%s\n' 'scc/plugins/*' ;;
     revisores)  printf '%s\n' 'agents/silent-failure-hunter.md' 'agents/pr-test-analyzer.md' ;;
+    skills-extra) printf '%s\n' 'skills/verification-before-completion/*' 'skills/retro/*' ;;
     cockpit)    printf '%s\n' 'scc/mods/cockpit/*' ;;
     nudge)      printf '%s\n' 'hooks/nucleo-nudge.sh' ;;
     sentinel)   printf '%s\n' 'sentinel/*' 'hooks/narthex-post-mcp.py' ;;
@@ -29,7 +30,7 @@ pieza_instalada() {  # CLAUDE_HOME pieza: ¿hay algo suyo en disco?
   local g
   while IFS= read -r g; do
     case $g in
-      */\*) [ -n "$(find "$1/${g%/\*}" -mindepth 1 -print -quit 2>/dev/null)" ] && return 0 ;;
+      */\*) [ -n "$(find "$1/${g%/\*}" -mindepth 1 \( -type f -o -type l \) -print -quit 2>/dev/null)" ] && return 0 ;;
       *) [ -e "$1/$g" ] && return 0 ;;
     esac
   done < <(opcional_globs "$2")
