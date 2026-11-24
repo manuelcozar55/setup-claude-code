@@ -47,7 +47,7 @@ Para usarlo, abre `claude` como siempre.
 - **Guards.** Scripts que se ejecutan antes de cada orden de Bash y la bloquean si es peligrosa, sin depender del modelo.
   Qué cubren y qué no: [`SECURITY.md`](SECURITY.md).
 - **Estado automático.** Tras cada turno se guarda `.claude/estado/nucleo.md` (objetivo, plan, siguiente paso). Se crea solo
-  en el primer guardado con trabajo en un repo git. Tras `/clear` o una compactación, la sesión nueva lo recibe sola.
+  en el primer guardado con trabajo en un repo git. Tras `/clear` o una compactación, la sesión nueva lo recibe sola (hasta 6500 bytes, `NUCLEO_TOPE`).
   Cómo funciona: [`12-metodologia.md`](kit/docs/12-metodologia.md).
 - **`/deep-change`.** Para un cambio grande, ambiguo o de riesgo: diseño aprobado antes de ejecutar, commits con su porqué
   y verificación con el código de salida real. Lo pequeño se hace directo.
