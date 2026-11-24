@@ -155,10 +155,22 @@ CRED_N=0
 # cred_seg depth: la orden ya troceada en T. Un `sh -c "..."` o `eval "..."` a la vista se vuelve a mirar (3 niveles); `xargs`, `find -exec`,
 # `ssh host '...'`, un script, `python -c` o una variable quedan fuera (SECURITY.md).
 cred_seg() {
-  # Atajo de coste: las ordenes mas frecuentes que ninguna clase de abajo mira ni se declaran ni se trocean.
-  case ${T[1]:-} in git|ls|cd|echo|printf|test|\[|\[\[|true|false|pwd|mkdir|rm|mv|touch|chmod|ssh|ssh-keygen|ssh-add|make|npm|pnpm|node|python|python3|pytest|docker|sleep|export|set) return 0 ;; esac
   local depth=$1 c=${T[1]:-} n=${#T[@]} i a inner='' vals='' pat=0 dir=0 dest=0 first=0 tflag=0 given=0 skip=0 chk=0 dat=0
   local -a pos=() inn
+  # `< fichero` hacia CUALQUIER orden (tr, nc, ssh, `done < f` de un while read, mapfile): el shell abre el fichero y se lo da por la entrada.
+  # Solo echo, printf y test no leen su entrada (`[ a \< b ]` es una comparacion). `<<` y `<<<` son texto, no ficheros.
+  if [[ ${T[*]:2} == *'<'* ]]; then
+    case $c in echo|printf|test|\[|\[\[) ;; *)
+      for (( i = 2; i < n; i++ )); do
+        a=${T[i]}
+        case $a in '<<'*|'<(') ;; '<') cred_check "${T[i+1]:-}" 0 ;; '<'?*) cred_check "${a#<}" 0 ;; esac
+      done ;;
+    esac
+  fi
+  # `busybox cat f` es `cat f`: se quita el envoltorio y se mira la orden de dentro.
+  if [[ $c == busybox && -n ${T[2]:-} ]]; then T=("${T[0]}" "${T[@]:2}"); c=${T[1]}; n=${#T[@]}; fi
+  # Atajo de coste: las ordenes mas frecuentes que ninguna clase de abajo mira ni se declaran ni se trocean.
+  case $c in git|ls|cd|echo|printf|test|\[|\[\[|true|false|pwd|mkdir|rm|mv|touch|chmod|ssh|ssh-keygen|ssh-add|make|npm|pnpm|node|python|python3|pytest|docker|sleep|export|set) return 0 ;; esac
   case $c in
     sh|bash|zsh|dash|ksh)
       for (( i = 2; i < n; i++ )); do
@@ -166,7 +178,7 @@ cred_seg() {
       done
       [[ -n $inner ]] || return 0 ;;
     eval) inner="${T[*]:2}"; [[ ${T[2]:-} == -- ]] && inner="${T[*]:3}"; [[ -n $inner ]] || return 0 ;;
-    cat|tac|head|tail|less|more|most|bat|batcat|nl|xxd|od|hexdump|hd|base64|base32|basenc|strings|cut|sort|uniq|paste|diff|cmp|comm|dd|gzip|bzip2|xz|zstd|zcat|split|fold|rev|shuf|column|fmt) ;;
+    cat|tac|head|tail|less|more|most|bat|batcat|nl|xxd|od|hexdump|hd|base64|base32|basenc|strings|cut|sort|uniq|paste|diff|cmp|comm|dd|gzip|bzip2|xz|zstd|zcat|split|fold|rev|shuf|column|fmt|source|.) ;;
     openssl) vals='-out -keyout -passin -passout -pass -rand -CAfile -CApath -config -name' ;;
     awk|gawk|mawk) pat=1; vals='-v -F' ;;
     sed) pat=1 ;;
