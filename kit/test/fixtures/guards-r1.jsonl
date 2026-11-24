@@ -242,13 +242,13 @@
 {"id": "P100", "cmd": "cat ~/.netrc", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "P101", "cmd": "cat ~/.config/gh/hosts.yml", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "P102", "cmd": "cat ~/.docker/config.json", "exp": "BLOCK", "base": "BLOCK"}
-{"id": "P103", "cmd": "cat ~/.git-credentials", "exp": "ALLOW", "base": "ALLOW", "limite": "cat de las credenciales de git (lista de ficheros sensibles cerrada)"}
+{"id": "P103", "cmd": "cat ~/.git-credentials", "exp": "BLOCK", "base": "ALLOW"}
 {"id": "P104", "cmd": "cat ./.env", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "P105", "cmd": "cat \".e\"nv", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "P106", "cmd": "cat .e\\nv", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "P107", "cmd": "cat $(echo .env)", "exp": "BLOCK", "base": "BLOCK"}
-{"id": "P108", "cmd": "cat .en*", "exp": "ALLOW", "base": "ALLOW", "limite": "glob .en* que expande a .env"}
-{"id": "P109", "cmd": "cat .e?v", "exp": "ALLOW", "base": "ALLOW", "limite": "glob .e?v"}
+{"id": "P108", "cmd": "cat .en*", "exp": "BLOCK", "base": "ALLOW"}
+{"id": "P109", "cmd": "cat .e?v", "exp": "BLOCK", "base": "ALLOW"}
 {"id": "P110", "cmd": "cp .env /tmp/x", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "P111", "cmd": "mv .env x", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "P112", "cmd": "grep . .env", "exp": "BLOCK", "base": "BLOCK"}
@@ -474,9 +474,9 @@
 {"id": "W64", "cmd": "cat ~/.npmrc", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "W65", "cmd": "cat ~/.pgpass", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "W66", "cmd": "cat ~/.config/gcloud/credentials.db", "exp": "ALLOW", "base": "ALLOW", "limite": "cat de credenciales de gcloud (lista cerrada)"}
-{"id": "W67", "cmd": "cat ~/.git-credentials", "exp": "ALLOW", "base": "ALLOW", "limite": "cat de las credenciales de git"}
+{"id": "W67", "cmd": "cat ~/.git-credentials", "exp": "BLOCK", "base": "ALLOW"}
 {"id": "W68", "cmd": "cat ~/.netrc", "exp": "BLOCK", "base": "BLOCK"}
-{"id": "W69", "cmd": "cat id_rsa", "exp": "ALLOW", "base": "ALLOW", "limite": "cat de una clave sin ruta"}
+{"id": "W69", "cmd": "cat id_rsa", "exp": "BLOCK", "base": "ALLOW"}
 {"id": "W70", "cmd": "cat /etc/shadow", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "W71", "cmd": "cat /etc/sudoers", "exp": "BLOCK", "base": "BLOCK"}
 {"id": "W72", "cmd": "rm -rf ~root", "exp": "BLOCK", "base": "BLOCK"}
