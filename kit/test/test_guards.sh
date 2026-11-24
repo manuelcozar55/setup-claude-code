@@ -1987,7 +1987,7 @@ done
 # los globs `*.bak`, `*~`, `*.local`.
 for c in "git add '*$EN'" "git add *$EN" "git add production$EN.bak" "git add config$EN~" "git add $EN.production/config.json" \
          "git add $EN-prod" "git add $EN""_local" "git add '$EN*'" "git add '*$EN*'" "git add {$EN,notes.md}" "git add {notes.md,$EN.local}" \
-         "git add sub/$EN.d/x" "git add '$EN.l*'" "git add '[.]env'" "git add '.e?v'"; do
+         "git add sub/$EN.d/x" "git add $EN.example.bak" "git add '$EN.l*'" "git add '[.]env'" "git add '.e?v'"; do
   expect "secret-guard ronda2: $c denegado" "$(run_secret "$c")" BLOCK
 done
 for c in "git add venv$EN.ts" "git add {a,b}.txt" "git add src/{a,b}/*.py" "git add '*'" "git add ${EN}ironment.md"; do
