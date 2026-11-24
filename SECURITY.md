@@ -153,17 +153,31 @@ un intérprete (`python3 -c "import shutil; shutil.rmtree('/home/u')"`, `perl -e
 texto, no lo que ejecutará Python o Perl), `eval "$X"` y `bash -c "$X"` con el valor construido antes, un nombre armado
 con comillas (`cur''l`, `b""ash`), `ssh host '<orden destructiva>'` (lo que corre en otra máquina queda fuera del guard local),
 `rsync --delete` y cualquier cosa que borre sin nombrar una ruta. También pasan, y ya
-pasaban en la versión anterior, estos que la revisión R1 midió (39 filas `limite` en `test/fixtures/guards-r1.jsonl`: 36 que la
-base ya dejaba pasar y 3 falsos positivos preexistentes que siguen bloqueados, L36, Q17 y Q74; y otras 125 de la ronda 2 en
+pasaban en la versión anterior, estos que la revisión R1 midió (34 filas `limite` en `test/fixtures/guards-r1.jsonl`: 31 que la
+base ya dejaba pasar y 3 falsos positivos preexistentes que siguen bloqueados, L36, Q17 y Q74; y otras 111 de la ronda 2 en
 `guards-r2.jsonl`, todas con el mismo veredicto que la base):
 `git checkout -- .`, `git checkout .` y `git restore .` (descartan cambios sin pasar por el reflog), `git branch -D` de una
 rama que no es `main`/`master`, `git stash clear`, `git filter-branch`, `git reflog expire`, `git gc --prune=now`,
 `git reset --merge|--keep`, `git checkout -f`, `git switch -f`, `mv ~ …`, `truncate` de un dotfile, `kill -9 -1`, `pkill -9 -u`,
-`printenv`, `cat /proc/self/environ`, `cat` de ficheros de credenciales que no están en la lista cerrada
-(`~/.git-credentials`, la config de gcloud), un nombre armado con `printf` o con `${X:-…}` (`cat $(printf .en%s v)`), el
-nombre por glob (`cat .en*`), `rm${IFS}-rf${IFS}~/x` y `$'\x72m' -rf ~`
+`printenv`, `cat /proc/self/environ`, `cat` de la config de gcloud, un nombre armado con `printf` o con `${X:-…}`
+(`cat $(printf .en%s v)`), `rm${IFS}-rf${IFS}~/x` y `$'\x72m' -rf ~`
 (esta última sí pregunta: lleva un `$` en la orden; la expansión de llaves `{rm,-rf,~/x}` también pregunta). La barrera real es la capa de permisos de Claude Code y, para lo
 catastrófico, que el agente no corra con permisos que no necesita.
+
+Límites de la ronda 2 de guards (fijados en `test/test_guards.sh`, secciones a6 y 13c): un texto que no se ve entero, como
+`cat fichero | bash` (el contenido del fichero es opaco); un alias definido en una orden y usado en otra
+(`git config alias.x 'clean -fd'` y luego `git x`; el `git -c alias.x=… x` de una sola línea sí se deniega); envoltorios que no
+están en la lista (`script -c`, `su -c`, `setpriv`, `chroot`…), y más de 3 niveles de `bash -c` anidados (ese caso se deniega
+por seguridad). `git clean -id` y `-di` se deniegan aunque sean interactivos (lado conservador).
+
+**Leer credenciales por Bash** (`secret-guard.sh`, espejo de los `deny` de Read): se deniega cuando la clave de `~/.ssh`,
+`~/.aws/credentials`, un `.env`, `~/.git-credentials`, `~/.config/gh/hosts.yml`, `~/.netrc` o `~/.gnupg` es **operando** de
+`cat`, `head`, `base64`, `xxd`, `cp`, `tar`, `scp`, `openssl`, `curl -F f=@…` y similares. Se decide por el operando, no por el
+texto: el literal dentro de `grep`, `git commit -m`, `echo`, un heredoc de texto o un comentario pasa, y también `ls ~/.ssh`,
+`ssh -i`, `ssh-add`, `cat ~/.ssh/config|known_hosts|*.pub` y `cp .env.example .env`. Donde un caso benigno y uno malo no se
+distinguen, gana el benigno. **Sin barrera por defecto; `--con sentinel`**: exfiltrar a una IP en crudo, la inyección por salida
+de MCP o web, y leer con `python -c`, variables o `source .env`, `xargs cat`, `find -exec cat`, `ssh host cat`. Tampoco se
+cubren `secrets.*` (`secrets.md` es legítimo) ni un heredoc que escribe un script y lo ejecuta después.
 
 `git push --force-with-lease` y `--force-if-includes` a una rama de trabajo (prefijo `feat/`, `fix/`, `release/`… o la rama actual si lo
 lleva) **preguntan** (solo pisan la rama si nadie la ha tocado); a `main`/`master`, a una rama sin prefijo de trabajo (`develop`,
