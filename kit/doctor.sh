@@ -3,7 +3,7 @@
 # Uso: [CLAUDE_HOME=$HOME/.claude] bash doctor.sh
 set -uo pipefail
 KIT="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=opcional.sh
+# shellcheck source=SCRIPTDIR/opcional.sh
 . "$KIT/opcional.sh"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 if ! command -v jq >/dev/null 2>&1; then

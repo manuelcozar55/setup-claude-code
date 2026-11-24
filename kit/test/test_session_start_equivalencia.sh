@@ -25,7 +25,7 @@ G() { git -C "$1" -c user.email=t@t -c user.name=t "${@:2}"; }
 NUCLEO=$'# Estado\n## Objetivo\nhacer X\n## Invariantes\n- no tocar Y\n## Paso actual\nPASO-VIVO\n## Siguiente acción\nrun-tests\n## Pendientes\n- [ ] PENDIENTE-1\n## Comandos de verificación\nmake test'
 repo() { mkdir -p "$1"; git -C "$1" init -q; G "$1" commit -q --allow-empty -m base; }
 memoria() { # memoria <cwd> <entradas>: el MEMORY.md que busca session-start.sh para ese cwd
-  local d="$HOME/.claude/projects/$(printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g')/memory" i
+  local d i; d="$HOME/.claude/projects/$(printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g')/memory"
   mkdir -p "$d"; : >"$d/MEMORY.md"; for i in $(seq 1 "$2"); do echo "- [m$i](m$i.md) — memoria $i" >>"$d/MEMORY.md"; done; }
 viejo() { touch -d '2020-01-01 00:00:00 UTC' "$1"; }
 
@@ -44,7 +44,7 @@ mkdir -p "$HOME/.claude/estado"
 
 # corre <caso> <cwd> <sid> <source> [VAR=valor…] : añade al fichero del caso los dos flujos y los rc de esa source.
 corre() {
-  local caso=$1 cwd=$2 sid=$3 src=$4 ev est m e rm re f=$T/out/$1.txt; shift 4
+  local cwd=$2 sid=$3 src=$4 ev est m e rm re f=$T/out/$1.txt; shift 4
   ev=$(jq -cn --arg c "$cwd" --arg s "$sid" --arg src "$src" '{cwd:$c,session_id:$s,source:$src,transcript_path:"",hook_event_name:"SessionStart"}')
   est=session-start-estado.sh
   m=$(cd "$cwd" && env "$@" bash "$H/session-start.sh" <<<"$ev" 2>/dev/null); rm=$?
@@ -53,7 +53,7 @@ corre() {
 }
 # resume con la caché caducada: los campos de contexto que manda Claude Code desde v2.1.251.
 corre_caducado() {
-  local caso=$1 cwd=$2 sid=$3 ev m e f=$T/out/$1.txt
+  local cwd=$2 sid=$3 ev m e f=$T/out/$1.txt
   ev=$(jq -cn --arg c "$cwd" --arg s "$sid" '{cwd:$c,session_id:$s,source:"resume",context_tokens:150000,prompt_cache_likely_expired:true,hook_event_name:"SessionStart"}')
   m=$(cd "$cwd" && bash "$H/session-start.sh" <<<"$ev" 2>/dev/null); e=$(cd "$cwd" && bash "$H/session-start-estado.sh" <<<"$ev" 2>/dev/null)
   printf '=== resume-caducado memoria rc=0 ===\n%s\n=== resume-caducado estado rc=0 ===\n%s\n' "$m" "$e" >>"$f"

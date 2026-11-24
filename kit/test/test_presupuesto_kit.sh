@@ -7,7 +7,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."
 pass=0; fail=0
-# shellcheck source=../opcional.sh
+# shellcheck source=SCRIPTDIR/../opcional.sh
 . "$KIT/opcional.sh"
 
 TOPE_HOOKS=17

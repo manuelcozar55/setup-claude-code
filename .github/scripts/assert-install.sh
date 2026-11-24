@@ -18,7 +18,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 KIT="$HERE/../../kit"
 CLAUDE_HOME="${1:?uso: assert-install.sh CLAUDE_HOME}"
-# shellcheck source=../../kit/opcional.sh
+# shellcheck source=SCRIPTDIR/../../kit/opcional.sh
 . "$KIT/opcional.sh"
 
 fail=0

@@ -7,12 +7,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; KIT="$HERE/.."; REPO="$KIT/.."
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 pass=0; fail=0
 ck(){ if [ "$1" = "$2" ]; then echo "ok - $3"; pass=$((pass+1)); else echo "NOT ok - $3 ($1 != $2)"; fail=$((fail+1)); fi; }
-# shellcheck source=../opcional.sh
+# shellcheck source=SCRIPTDIR/../opcional.sh
 . "$KIT/opcional.sh"
 inst() { local h=$1; shift; HOME="$h" CLAUDE_HOME="$h/.claude" bash "$KIT/install.sh" "$@" > "$h.log" 2>&1; }
 unin() { local h=$1; shift; HOME="$h" CLAUDE_HOME="$h/.claude" bash "$REPO/uninstall.sh" "$@" > "$h.unin.log" 2>&1; }
 # Cuantos ficheros de una pieza hay instalados en $1/.claude
-cuenta() { local h=$1 p=$2 g n=0 f rel; while IFS= read -r -d '' f; do rel="${f#"$h/.claude/"}"; [ "$(opcional_de "$rel")" = "$p" ] && n=$((n+1)); done < <(find "$h/.claude" -path "$h/.claude/backups" -prune -o -type f -print0); echo "$n"; }
+cuenta() { local h=$1 p=$2 n=0 f rel; while IFS= read -r -d '' f; do rel="${f#"$h/.claude/"}"; [ "$(opcional_de "$rel")" = "$p" ] && n=$((n+1)); done < <(find "$h/.claude" -path "$h/.claude/backups" -prune -o -type f -print0); echo "$n"; }
 # Entradas de settings.json que son de la pieza: hooks que nombran sus scripts, y plugins que habilita.
 cableado() { jq -r --arg p "$2" --slurpfile k "$KIT/opcional-settings.json" '
     def nombres: [.. | .command? | strings | splits(" +") | gsub("\""; "") | sub(".*/"; "") | select(test("\\.(py|sh)$") and . != "optional-hook.sh")];
@@ -65,12 +65,12 @@ done
 
 # Todas juntas y la desinstalacion completa las retira todas
 H="$tmp/h-todas"; mkdir -p "$H"
-con="$(echo $PIEZAS_OPCIONALES | tr ' ' ',')"
+con="${PIEZAS_OPCIONALES// /,}"
 inst "$H" --apply --con "$con"
 n=0; for p in $PIEZAS_OPCIONALES; do [ "$(cuenta "$H" "$p")" -gt 0 ] && n=$((n+1)); done
-ck "$n" "$(echo $PIEZAS_OPCIONALES | wc -w | tr -d ' ')" "--con a,b,c instala todas las piezas pedidas"
+ck "$n" "$(echo "$PIEZAS_OPCIONALES" | wc -w | tr -d ' ')" "--con a,b,c instala todas las piezas pedidas"
 unin "$H" --kit --apply
-ck "$(find "$H" -path "$H/.claude/backups" -prune -o -type f -print -o -type l -print | grep -v '\.log$' | wc -l | tr -d ' ')" "0" "uninstall --kit retira todo, lo opcional incluido"
+ck "$(find "$H" -path "$H/.claude/backups" -prune -o -type f -print -o -type l -print | grep -vc '\.log$')" "0" "uninstall --kit retira todo, lo opcional incluido"
 
 # rc del instalador: 0 con doctor en OK o con solo WARN, 1 solo si doctor da algun FAIL (doctor de mentira en una copia)
 R="$tmp/rc"; mkdir -p "$R"; cp -r "$KIT" "$R/kit"; rm -r "$R/kit/test"; cp "$REPO/VERSION" "$R/VERSION"

@@ -106,6 +106,7 @@ cred_path() {
   local v n i c b d k
   local -a comps
   # Atajo de coste: sin glob, llave ni un trozo de los nombres sensibles no puede casar (todo lo de abajo exige uno de estos trozos).
+  # shellcheck disable=SC1083  # la { va literal dentro del corchete: es uno de los caracteres que se buscan
   case $1 in *.ssh*|*.aws*|*.gnupg*|*.env*|*.netrc*|*_netrc*|*.git-credentials*|*id_*|*hosts.yml*|*[*?[{]*) ;; *) return 1 ;; esac
   # Tope de trabajo: cada operando que llega aqui cuesta un analisis de ruta; pasado el tope el guard pide confirmacion (nunca allow en silencio).
   (( ++CRED_W <= CRED_MAX_W )) || cred_overwork

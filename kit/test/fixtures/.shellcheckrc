@@ -1,0 +1,3 @@
+# Los .retirado.sh son copias literales de hooks publicados (su hash esta en hooks-retirados.sha256): no se editan,
+# y aqui no tienen al lado el lib/ que cargan.
+disable=SC1091

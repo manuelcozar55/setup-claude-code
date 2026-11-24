@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # opcional.sh — las piezas que el kit NO instala por defecto y se piden con `install.sh --con <pieza>[,<pieza>…]`.
 # Una sola fuente para install.sh, doctor.sh, uninstall.sh y .github/scripts/assert-install.sh. Se lee con `.`.
 # El código de cada pieza sigue en el repo; lo que cambia es que la instalación sin flags no lo copia ni lo cablea.

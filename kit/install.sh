@@ -39,7 +39,7 @@ if [ "$MODE_ARG" = "--enable-secrets-layer2" ] && (( $# > 1 )); then
 fi
 if [ "$SIN_COCKPIT" -eq 1 ]; then printf '%s\n' 'Aviso: --sin-cockpit ya no hace falta: el cockpit solo se instala con --con cockpit.' >&2; fi
 KIT="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=opcional.sh
+# shellcheck source=SCRIPTDIR/opcional.sh
 . "$KIT/opcional.sh"
 for p in $CON; do
   case " $PIEZAS_OPCIONALES " in *" $p "*) ;; *) printf 'Error: pieza desconocida: %s (opcionales: %s)\n' "$p" "$PIEZAS_OPCIONALES" >&2; usage >&2; exit 64 ;; esac
