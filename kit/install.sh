@@ -934,11 +934,13 @@ doc_fail="$(grep -c '^FAIL' <<<"$doc_out" || true)"; doc_warn="$(grep -c '^WARN'
 # Un doctor que muere sin imprimir FAIL no es un OK.
 if [ "$doc_rc" -ne 0 ] && [ "$doc_fail" -eq 0 ]; then echo "==> doctor: no termino (rc=$doc_rc). Detalle: bash $KIT/doctor.sh"; exit 1; fi
 if [ "$doc_fail" -eq 0 ]; then doc_veredicto="OK"; else doc_veredicto="$doc_fail FAIL"; fi
+[ "$doc_fail" -eq 0 ] || grep '^FAIL' <<<"$doc_out"
 echo "==> doctor: $doc_veredicto, $doc_warn WARN. Detalle: bash $KIT/doctor.sh"
 if [ "$doc_fail" -gt 0 ]; then
-  grep '^FAIL' <<<"$doc_out"
   # No cambian el rc dos FAIL que este instalador ya anuncio arriba y con los que sigue a proposito:
   # python3 ausente cuando se pidio --sin-python, y el checksum de gitleaks (dependencia opcional, con su ALERTA).
-  doc_asumidos="$(grep '^FAIL' <<<"$doc_out" | grep -c -e 'checksum de gitleaks no coincidio' ${SIN_PYTHON:+-e 'python3 no instalado'} || true)"
+  doc_asumidos_re='checksum de gitleaks no coincidio'
+  [ "$SIN_PYTHON" -eq 1 ] && doc_asumidos_re="$doc_asumidos_re|python3 no instalado"
+  doc_asumidos="$(grep '^FAIL' <<<"$doc_out" | grep -cE "$doc_asumidos_re" || true)"
   [ "$doc_fail" -le "$doc_asumidos" ] || exit 1
 fi
