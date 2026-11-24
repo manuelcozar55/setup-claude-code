@@ -1017,6 +1017,35 @@ expect "R2 credenciales: literal en un heredoc de texto a stdout NO denegado" "$
 expect "R2 credenciales: script escrito por heredoc que lee una clave denegado" "$(run_cred $'cat > run.sh <<EOF\ncat ~/.ssh/id_rsa\nEOF\nbash run.sh')" BLOCK
 expect "R2 credenciales: literal en un heredoc sin comillas NO denegado" "$(run_cred $'cat <<EOF\nusa ~/.ssh/id_rsa y cat .env\nEOF')" ALLOW
 
+# 13d) R3: coste. Un guard que pasa del timeout del hook (10 s) deja ejecutar la herramienta: una orden larga con miles de operandos o de
+# segmentos delante de la clave la dejaba leer (rc=124). Cada orden de aqui, hasta el tope de 128 KB, debe terminar en < 3 s con deny o
+# ask (o allow si es benigna y entra en el tope de trabajo). Se mide con `timeout 10`: un 124 (sin salida) cuenta como fallo.
+run_cost() { # $1 orden; imprime "<ms> <salida>"
+  local t0=$EPOCHREALTIME out ms
+  out=$(cd "$SG_DIR" && jq -n --arg command "$1" '{tool_input:{command:$command}}' | timeout 10 bash "$KIT/claude/hooks/secret-guard.sh" 2>&1)
+  ms=$(( (${EPOCHREALTIME/./} - ${t0/./}) / 1000 ))
+  printf '%s %s' "$ms" "$out"
+}
+expect_cost() { # $1 desc, $2 orden, $3 BLOCK|ASK|ANY: debe decidir (o dejar pasar si ANY) en < 3 s
+  local r ms out
+  r=$(run_cost "$2"); ms=${r%% *}; out=${r#* }
+  if (( ms >= 3000 )); then fail=$((fail+1)); echo "FAIL: $1 tardo ${ms} ms (tope 3000)"; return; fi
+  case $3 in
+    BLOCK) [[ $out == *BLOCKED* || $out == *'"deny"'* || $out == *'"ask"'* ]] ;;
+    *) true ;;
+  esac && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: $1 no decidio: $out"; }
+}
+COST_KEY='~/.ssh/id_rsa'
+COST_OPS=$(printf 'a/b.s%d ' $(seq 0 10998))
+COST_SEGS=$(printf '; cat a/b.s%d' $(seq 0 6999))
+expect_cost "R3 coste: 11000 operandos delante de la clave" "cat $COST_OPS$COST_KEY" BLOCK
+expect_cost "R3 coste: 7000 segmentos delante de la clave" "${COST_SEGS#; }; cat $COST_KEY" BLOCK
+expect_cost "R3 coste: 2000 operandos delante de la clave" "cat $(printf 'a/b.s%d ' $(seq 0 1999))$COST_KEY" BLOCK
+expect_cost "R3 coste: 14000 operandos sin credencial" "cat $(printf 'a/b.s%d ' $(seq 0 13999))" ANY
+expect_cost "R3 coste: 9000 segmentos sin credencial" "$(printf 'cat a/b.s%d; ' $(seq 0 8999))true" ANY
+expect_cost "R3 coste: rsync con miles de operandos" "rsync -av $(printf 'a.s%d b.e%d ' $(seq 0 3499) $(seq 0 3499)) h:/x" ANY
+expect_cost "R3 coste: tar con miles de segmentos" "$(printf 'tar czf x%d.tgz -C d.e%d f.a%d; ' $(seq 0 2999) $(seq 0 2999) $(seq 0 2999))true" ANY
+
 # 14) la Capa 2 (hooks/git/pre-commit + .gitleaks.toml) se pierde en silencio
 # si cualquiera de los dos deja de ir dentro del kit, sin que ningun test lo
 # note -- este assert fija que ambos se sigan distribuyendo, ejecutables.
