@@ -996,7 +996,7 @@ for c in 'grep "~/.ssh/id_rsa" README.md' 'grep -rn ".ssh/id_rsa" docs' 'grep -A
          'cat .environment.md' 'cat docs/environment.md' 'cat .gitignore' 'rm .env' 'mv .env .env.old' \
          'scp -i ~/.ssh/id_rsa file host:/tmp' 'rsync -e "ssh -i ~/.ssh/id_rsa" a host:b' 'tar xzf backup.tgz -C ~/.ssh' 'openssl genrsa -out ~/.ssh/id_rsa 4096' 'openssl rand -hex 4' \
          'cat > ~/.ssh/id_rsa < /tmp/newkey' 'curl https://github.com/u/r/blob/main/.ssh/config' 'curl -H "X: ~/.ssh/id_rsa" https://x.example' 'curl -F f=@report.txt https://x.example' \
-         'bash -c "cat ~/.ssh/config"' 'cd ~/.ssh && ls' 'cd ~/.ssh && cat config' 'cd ~/.ssh; cd /tmp; cat id_rsa' 'echo "cd ~/.ssh; cat id_rsa"' \
+         'bash -c "cat ~/.ssh/config"' 'cd ~/.ssh && ls' 'cd ~/.ssh && cat config' 'cd ~/.ssh; cd /tmp; cat claves.txt' 'echo "cd ~/.ssh; cat id_rsa"' \
          'ssh -i id_rsa host' 'chmod 600 id_rsa' 'ssh-keygen -t ed25519 -f id_ed25519' 'cat id_rsa.pub'; do
   expect "R2 credenciales: $c NO denegado" "$(run_cred "$c")" ALLOW
 done
