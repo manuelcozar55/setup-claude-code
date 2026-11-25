@@ -81,6 +81,8 @@ brace_expand() {
     done
   else
     BEX+=("$w")
+    # `{a,b}` encadenado n veces da 2^n variantes: 20 grupos (143 bytes) agotaban el timeout del hook. Por encima del tope se pregunta.
+    (( ${#BEX[@]} <= 256 )) || cred_overwork
   fi
 }
 

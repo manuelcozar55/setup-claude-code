@@ -195,7 +195,9 @@ directorio de `-C`; git corre con `core.fsmonitor` y `core.hooksPath` apagados y
 `git -c core.fsmonitor='<orden>' add -A` git ejecutaba `<orden>` mientras el hook juzgaba; `< credencial cat` con la redirección delante; `cat $(x) credencial`
 (sustitución sin comillas delante del operando); banderas que `nocasematch` confundía (`grep -a`, `cp -T`, `scp -p`, `rsync -t`); `jq --rawfile|--slurpfile`;
 un tope de 3000 tokens por segmento con lector (pasado, pregunta); y los lectores `pr`, `expand`, `unexpand`, `csplit`, `look`, `join`, `ptx`, `tsort` y `numfmt`.
-**Declarado, no cerrado**: `ed -s`, `tar -T credencial`, `curl file://credencial`, `curl -K credencial`, `ssh -F credencial` y `wget -i credencial`; y
+**Declarado, no cerrado**: `ed -s`, `tar -T credencial`, `curl file://credencial`, `curl -K credencial`, `ssh -F credencial` y `wget -i credencial`;
+la lectura dentro de `function f { …; }` o `coproc`, y una ruta que sale de una sustitución (`cat "$(echo credencial)"`); `git --git-dir=X add -A` y
+`GIT_DIR=X git add -A`, que se juzgan en el directorio del hook y no en `X` (el guard ya no pasa a git opciones de la orden que juzga); y
 `.env_example.md`, que se deniega (falso positivo aceptado). La regla de lectura por Bash es una barrera de mejor esfuerzo sobre una **lista cerrada de
 lectores**, no una garantía: la garantía es la regla `deny` de `Read` y `--con sentinel`.
 

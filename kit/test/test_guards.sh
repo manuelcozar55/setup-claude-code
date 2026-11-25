@@ -1146,6 +1146,8 @@ expect_cost "R4 H6 coste: 32000 asignaciones a=b" "cat $(printf 'a=b %.0s' $(seq
 expect_cost "R4 H6 coste: 43000 banderas -a" "cat $(printf -- '-a %.0s' $(seq 1 43000))" ANY
 expect_cost "R4 H6 coste: 32000 operandos entrecomillados" "cat $(printf '"a" %.0s' $(seq 1 32000))" ANY
 expect_cost "R4 H6 coste: 60000 operandos simples" "cat $(printf 'a %.0s' $(seq 1 60000))" ANY
+# Llaves encadenadas: 2^20 variantes en 143 bytes agotaban el timeout del hook con la clave detras (revision de regresion r4).
+expect_cost "R4 H6 coste: 20 llaves {a,b} delante de la clave" "cat $(printf '{a,b}%.0s' $(seq 1 20)) $COST_KEY" ASK
 H6_OUT=$(run_cost "cat $(printf 'a %.0s' $(seq 1 4000))")
 if [[ $H6_OUT == *'"ask"'* ]]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: R4 H6: 4000 operandos en un lector piden confirmacion (ask): $H6_OUT"; fi
 H6_OUT=$(run_cost "cat $(printf 'a %.0s' $(seq 1 2900))")
