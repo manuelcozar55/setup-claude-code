@@ -82,6 +82,10 @@ WARN. `scc` sin cockpit dice en una línea cómo instalarlo.
 - **Sustitución sin comillas delante del operando** (`cat $(echo x) ~/.ssh/id_rsa`, acentos graves, `$(( ))`, `<( )`, `>( )`):
   los tokens tras el cierre seguían siendo operandos del lector pero se juzgaban como una orden nueva; ahora se atribuyen a su lector
   (`cmdn_fields` deja la primera palabra intacta en `T_RAW`).
+- **Banderas confundidas por `nocasematch`** (`grep -a . K`, `-b`, `-c`, `-G`, `rg -a`, `tar -c`, `scp -p/-C`, `rsync -t/-m`, `cp -T`): se
+  leían como `-A`, `-C`, `-P` o `-t` y la clave quedaba sin operando. Las banderas se comparan ya con mayúsculas exactas y `-t` solo
+  es «directorio destino» en `cp` e `install`.
+- **`jq --rawfile` y `--slurpfile`** llevan dos argumentos (nombre y fichero): el guard saltaba uno y no miraba el fichero.
 
 ### Cifras
 

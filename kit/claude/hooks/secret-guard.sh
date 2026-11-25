@@ -147,17 +147,32 @@ cred_deny() {
   exit 2
 }
 # cred_check "$operando" dir: lo deniega si es una credencial, tambien relativa al directorio de credenciales en el que se hizo `cd`.
+# Los nombres de fichero se comparan sin distinguir mayusculas (nocasematch: `.ENV`, `.SSH`, un disco de Windows); las banderas, no (`-a` no es `-A`).
+# cred_seg0 corre con nocasematch apagado y cred_check lo enciende solo mientras compara el nombre.
 cred_check() {
+  local nc=0
+  shopt -q nocasematch && nc=1
+  shopt -s nocasematch
   if cred_path "$1" "${2:-0}"; then cred_deny "$1"; fi
   if [[ -n $CDCRED && $1 != /* && $1 != '~'* && $1 != '$'* ]] && cred_path "$CDCRED/$1" "${2:-0}"; then cred_deny "$1"; fi
+  (( nc )) || shopt -u nocasematch
 }
 cred_in() { [[ " $2 " == *" $1 "* ]]; }
 CRED_N=0
 # cred_seg depth: la orden ya troceada en T. Un `sh -c "..."` o `eval "..."` a la vista se vuelve a mirar (3 niveles); `xargs`, `find -exec`,
 # `ssh host '...'`, un script, `python -c` o una variable quedan fuera (SECURITY.md).
 cred_seg() {
+  local nc=0 r
+  shopt -q nocasematch && nc=1
+  shopt -u nocasematch
+  cred_seg0 "$1"; r=$?
+  (( nc )) && shopt -s nocasematch
+  return $r
+}
+cred_seg0() {
   local depth=$1 c=${T[1]:-} n=${#T[@]} i a inner='' vals='' pat=0 dir=0 dest=0 first=0 tflag=0 given=0 skip=0 chk=0 dat=0
   local -a pos=() inn
+  c=${c,,}
   # `< fichero` hacia CUALQUIER orden (tr, nc, ssh, `done < f` de un while read, mapfile): el shell abre el fichero y se lo da por la entrada.
   # Solo echo, printf y test no leen su entrada (`[ a \< b ]` es una comparacion). `<<` y `<<<` son texto, no ficheros.
   # Se mira desde T[1]: `< f cat`, `<f cat` y `0<f cat` abren el fichero igual aunque la redireccion vaya delante de la orden.
@@ -172,7 +187,7 @@ cred_seg() {
     esac
   fi
   # `busybox cat f` es `cat f`: se quita el envoltorio y se mira la orden de dentro.
-  if [[ $c == busybox && -n ${T[2]:-} ]]; then T=("${T[0]}" "${T[@]:2}"); c=${T[1]}; n=${#T[@]}; fi
+  if [[ $c == busybox && -n ${T[2]:-} ]]; then T=("${T[0]}" "${T[@]:2}"); c=${T[1]}; c=${c,,}; n=${#T[@]}; fi
   # Atajo de coste: las ordenes mas frecuentes que ninguna clase de abajo mira ni se declaran ni se trocean.
   case $c in git|ls|cd|echo|printf|test|\[|\[\[|true|false|pwd|mkdir|rm|mv|touch|chmod|ssh|ssh-keygen|ssh-add|make|npm|pnpm|node|python|python3|pytest|docker|sleep|export|set) return 0 ;; esac
   case $c in
@@ -186,7 +201,7 @@ cred_seg() {
     openssl) vals='-out -keyout -passin -passout -pass -rand -CAfile -CApath -config -name' ;;
     awk|gawk|mawk) pat=1; vals='-v -F' ;;
     sed) pat=1 ;;
-    jq|yq) pat=1; vals='--arg --argjson --slurpfile --rawfile' ;;
+    jq|yq) pat=1; vals='--arg --argjson' ;;
     grep|egrep|fgrep|rg|ag) pat=1; dir=1; vals='-A -B -C -m -d -D -g -t -T -M -j --max-count --glob --type --type-not --include --exclude --exclude-dir --context --after-context --before-context --max-depth --threads --color --colour' ;;
     cp|install) dest=1; dir=1; vals='-S -m -o -g --suffix --mode --owner --group' ;;
     scp) dest=1; dir=1; vals='-i -F -o -J -S -l -P -c' ;;
@@ -231,10 +246,12 @@ cred_seg() {
     fi
     case $a in
       --) continue ;;
-      -t|--target-directory) tflag=1; skip=1; continue ;;
+      -t|--target-directory) if [[ $c == cp || $c == install ]]; then tflag=1; skip=1; continue; fi ;;
       -e|-f|--regexp|--file) if (( pat )); then given=1; [[ $a == -f || $a == --file ]] && chk=1 || skip=1; continue; fi ;;
       --file=*|--input=*|--pattern-file=*|--files-from=*|--from-file=*) cred_check "${a#*=}" 0; continue ;;
       --regexp=*) given=1; continue ;;
+      # `--rawfile nombre fichero` y `--slurpfile nombre fichero` llevan dos argumentos: el nombre se salta y el fichero se lee.
+      --rawfile|--slurpfile) skip=1; chk=1; continue ;;
       of=*) continue ;;
       if=*) cred_check "${a#*=}" 0; continue ;;
     esac
