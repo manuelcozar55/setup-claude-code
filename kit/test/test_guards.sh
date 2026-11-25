@@ -1101,6 +1101,20 @@ h5_check "R4 H5: fsmonitor del .git/config local no se ejecuta" "git add -A" "$H
 expect "R4 H5: git add -A con .env sin ignorar sigue denegado" "$(run_h5 "$H5_DIR/repo" 'git add -A')" BLOCK
 rm -rf "$H5_DIR"
 
+# 13g) R4 H1 y H2. H1: la redireccion de entrada al PRINCIPIO de la orden (`< K cat`) tambien abre el fichero: se mira desde el primer token.
+# H2: una sustitucion sin comillas delante del operando (`cat $(echo x) K`) no corta el segmento: los tokens que la siguen siguen siendo
+# operandos del lector (con comillas ya se denegaba).
+# shellcheck disable=SC2016  # el $ y el $(...) van literales: son los comandos que se evaluan
+for c in '< ~/.ssh/id_rsa cat' '<~/.ssh/id_rsa cat' '0<~/.ssh/id_rsa cat' '{ < .env cat; }' 'true && < .env cat' 'FOO=1 < .env cat' '< .env cat' \
+         'cat $(echo x) ~/.ssh/id_rsa' 'cat `echo x` .env' 'cat $((1+1)) .env' 'cat <(true) ~/.ssh/id_rsa' 'cat >(cat) .env' \
+         'cat $(echo x) $(echo y) .env' 'head -n 1 $(echo x) ~/.ssh/id_rsa'; do
+  expect "R4 H1/H2: $c denegado" "$(run_cred "$c")" BLOCK
+done
+# shellcheck disable=SC2016
+for c in '< notas.txt cat' 'cat $(echo x) notas.txt' 'cat $((1+1)) README.md' 'cat <(true) notas.txt' 'echo $(echo x) .env' 'ls $(echo x) .env'; do
+  expect "R4 H1/H2: $c NO denegado" "$(run_cred "$c")" ALLOW
+done
+
 # 14) la Capa 2 (hooks/git/pre-commit + .gitleaks.toml) se pierde en silencio
 # si cualquiera de los dos deja de ir dentro del kit, sin que ningun test lo
 # note -- este assert fija que ambos se sigan distribuyendo, ejecutables.

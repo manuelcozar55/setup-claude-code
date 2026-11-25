@@ -77,6 +77,11 @@ WARN. `scc` sin cockpit dice en una línea cómo instalarlo.
 - **Fallo de seguridad en `secret-guard.sh` (ejecución inducida)**: para decidir `git add -A` el guard reenviaba a git las
   opciones de la orden juzgada, así que `git -c core.fsmonitor='<orden>' add -A` hacía ejecutar `<orden>` mientras el hook
   juzgaba. Ahora solo pasa el directorio de cada `-C` y git corre con fsmonitor y hooks apagados y sin la config global.
+- **Redirección de entrada al principio de la orden** (`< fichero cat`, `<f cat`, `0<f cat`, `{ < f cat; }`): `secret-guard.sh`
+  la miraba solo desde el tercer token y la dejaba pasar; ahora la mira desde el primero.
+- **Sustitución sin comillas delante del operando** (`cat $(echo x) ~/.ssh/id_rsa`, acentos graves, `$(( ))`, `<( )`, `>( )`):
+  los tokens tras el cierre seguían siendo operandos del lector pero se juzgaban como una orden nueva; ahora se atribuyen a su lector
+  (`cmdn_fields` deja la primera palabra intacta en `T_RAW`).
 
 ### Cifras
 

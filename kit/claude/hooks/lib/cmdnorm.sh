@@ -32,7 +32,7 @@ CMDN_FS=$'\034'
 
 # shellcheck disable=SC2016  # el programa awk va literal: nada se expande en bash.
 CMDN_AWK='
-function base(w) { if (w != "/" && w ~ /\//) sub(/.*\//, "", w); return w }
+function base(w) { if (w != "/" && w ~ /\// && w !~ /^[0-9]*</) sub(/.*\//, "", w); return w }
 function endtok() { if (have) { nt++; toks[nt] = tok; tokr[nt] = rd } tok = ""; have = 0; rd = 0 }
 function argopt(b, o) {
   if (b == "sudo") return (o == "-u" || o == "-g" || o == "-h" || o == "-p" || o == "-C" || o == "-r" || o == "-t" || o == "-U" || o == "--user" || o == "--group")
@@ -219,7 +219,7 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
   return out
 }
 
-function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl, sp) {
+function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl, sp, rw) {
   k = 1
   while (k <= nt) {
     w = toks[k]; b = base(w)
@@ -274,7 +274,7 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl, sp) {
     if (nt > 0 && !(nt == 1 && (toks[1] in ctl)) && (sp ~ /[|]/ || sepn[nseg] ~ /@/)) segpsh[nseg] = 1
     return
   }
-  b = base(toks[k]); g = ""
+  b = base(toks[k]); g = ""; rw = toks[k]
   exA[nseg] = pre (pre == "" ? "" : " ") toks[k] render(k, b, 0)
   exB[nseg] = (kd == "S") ? exA[nseg] : pre (pre == "" ? "" : " ") toks[k] render(k, b, 1)
   segcmd[nseg] = b
@@ -302,6 +302,9 @@ function emit(   k, w, b, o, g, line, j, kd, pre, a, ok, psh, shl, sp) {
   sq = sepn[nseg]; gsub(/@/, "", sq)
   line = kd sq FSEP g US b
   for (j = k; j <= nt; j++) line = line US toks[j]
+  # Tras el cierre de una sustitucion (`cat $(x) ~/.ssh/id_rsa`) el resto sigue siendo de la orden de fuera, pero aqui se toma por una
+  # orden nueva y `base` le quita el directorio a su primera palabra: se anade la palabra tal cual (cmdn_fields la deja en T_RAW).
+  if (sq == ")" || sq == "))" || sq == "`") line = line FSEP rw
   segline[nseg] = line
 }
 function endseg() { endtok(); if (nt > 0) emit(); nt = 0 }
@@ -596,10 +599,12 @@ cmdn_parse() {
 
 # cmdn_fields "$seg": T[0]=opciones globales de git, T[1]=cmd, T[2…]=args; T_KIND = P (orden) o S (dentro de una
 # sustitución o un subshell); T_SEP = lo que separó este comando del anterior (`;`, `|`, `&&`, `(`…).
+# T_RAW: solo tras el cierre de una sustitución (T_SEP `)`, `))` o `` ` ``), la primera palabra tal cual, sin quitarle el directorio.
 cmdn_fields() {
-  local pre=${1%%"$CMDN_FS"*}
-  T_KIND=${pre:0:1}; T_SEP=${pre:1}
-  IFS=$CMDN_US read -r -a T <<<"${1#*"$CMDN_FS"}"
+  local pre=${1%%"$CMDN_FS"*} rest=${1#*"$CMDN_FS"}
+  T_KIND=${pre:0:1}; T_SEP=${pre:1}; T_RAW=
+  if [[ $rest == *"$CMDN_FS"* ]]; then T_RAW=${rest#*"$CMDN_FS"}; rest=${rest%%"$CMDN_FS"*}; fi
+  IFS=$CMDN_US read -r -a T <<<"$rest"
 }
 
 # cmdn_pipes_to_shell: 0 si el texto de un echo/printf (o de un heredoc) puede acabar EJECUTADO: algun receptor de una tuberia (o de un

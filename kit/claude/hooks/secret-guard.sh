@@ -160,11 +160,14 @@ cred_seg() {
   local -a pos=() inn
   # `< fichero` hacia CUALQUIER orden (tr, nc, ssh, `done < f` de un while read, mapfile): el shell abre el fichero y se lo da por la entrada.
   # Solo echo, printf y test no leen su entrada (`[ a \< b ]` es una comparacion). `<<` y `<<<` son texto, no ficheros.
-  if [[ ${T[*]:2} == *'<'* ]]; then
+  # Se mira desde T[1]: `< f cat`, `<f cat` y `0<f cat` abren el fichero igual aunque la redireccion vaya delante de la orden.
+  if [[ ${T[*]:1} == *'<'* ]]; then
     case $c in echo|printf|test|\[|\[\[) ;; *)
-      for (( i = 2; i < n; i++ )); do
+      for (( i = 1; i < n; i++ )); do
         a=${T[i]}
-        case $a in '<<'*|'<(') ;; '<') cred_check "${T[i+1]:-}" 0 ;; '<'?*) cred_check "${a#<}" 0 ;; esac
+        case $a in '<<'*|'<(') ;; '<') cred_check "${T[i+1]:-}" 0 ;; '<'?*) cred_check "${a#<}" 0 ;;
+          *) if [[ $a =~ ^[0-9]+\<$ ]]; then cred_check "${T[i+1]:-}" 0; elif [[ $a =~ ^[0-9]+\<([^\<\(\&].*)$ ]]; then cred_check "${BASH_REMATCH[1]}" 0; fi ;;
+        esac
       done ;;
     esac
   fi
@@ -245,19 +248,43 @@ cred_seg() {
     pos+=("$a")
   done
   (( ${#pos[@]} )) || return 0
-  (( pat && ! given || first )) && pos=("${pos[@]:1}")
+  (( pat && ! given && ! CRED_CONT || first && ! CRED_CONT )) && pos=("${pos[@]:1}")
   (( dest && ! tflag && ${#pos[@]} >= 2 )) && unset 'pos[-1]'
   for a in "${pos[@]}"; do cred_check "$a" "$dir"; done
   return 0
 }
+# cred_ctx: tras cmdn_fields. cmdnorm parte la orden en el `)` (o el acento grave) de una sustitucion: en `cat $(echo x) K` la K llega como
+# una orden nueva, sin lector, y con el directorio quitado. Se lleva una pila con la orden de fuera de cada sustitucion abierta; el
+# segmento que la cierra (T_SEP `)`, `))` o `` ` ``) se reescribe como operandos de esa orden (T_RAW es su primera palabra intacta).
+CRED_STK=() CRED_PC='' CRED_CONT=0
+cred_ctx() {
+  local c
+  CRED_CONT=0
+  case $T_SEP in
+    ')'*|'`'*)
+      if [[ $T_SEP == ')'* || $T_KIND == P ]] && (( ${#CRED_STK[@]} )); then
+        c=${CRED_STK[-1]}; unset 'CRED_STK[-1]'
+        if [[ $T_SEP == ')' || $T_SEP == '))' || $T_SEP == '`' ]]; then
+          T=("${T[0]}" "$c" "$T_RAW" "${T[@]:2}"); CRED_CONT=1
+        fi
+        CRED_PC=$c
+        return
+      fi ;;
+  esac
+  [[ $T_KIND == S && ( $T_SEP == '(' || $T_SEP == '((' || $T_SEP == '`' ) ]] && CRED_STK+=("$CRED_PC")
+  CRED_PC=${T[1]:-}
+}
 cred_segs() {
-  local seg
+  local seg stk=("${CRED_STK[@]}") pc=$CRED_PC
   local -a T segs
   segs=("${CMDN_SEGS[@]}")
+  CRED_STK=() CRED_PC=''
   for seg in "${segs[@]}"; do
     cmdn_fields "$seg"
+    cred_ctx
     cred_seg "$1"
   done
+  CRED_STK=("${stk[@]}") CRED_PC=$pc
 }
 
 shopt -s nocasematch
@@ -268,6 +295,7 @@ CWD0=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 [[ -n $CWD0 ]] && cred_path "$CWD0" 1 && CDCRED=$CWD0
 for seg in "${CMDN_SEGS[@]}"; do
   cmdn_fields "$seg"
+  cred_ctx
   cmdn_track_cd
   if [[ ${T[1]:-} == cd ]]; then
     CDCRED=
