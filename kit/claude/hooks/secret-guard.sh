@@ -94,9 +94,11 @@ brace_expand() {
 # se distingue del benigno gana el benigno (SECURITY.md: sin barrera por defecto, `--con sentinel`).
 # Tope duro de trabajo (el guard corre con un timeout de 10 s y, pasado, la herramienta se ejecuta): operandos que llegan al analisis de
 # ruta y segmentos. Pasado cualquiera, misma salida que cmdn_oversize (ask; deny en un asiento desatendido), nunca allow silencioso.
-CRED_W=0 CRED_MAX_W=1500 CRED_MAX_SEGS=3000
+# CRED_MAX_OPS cuenta TODOS los tokens de un segmento (no solo los de nombre sensible): `cat <a <a ...` o `cat a=b ...` de 128 KB no tienen
+# ningun nombre sensible pero cada token pasa por el recorrido del segmento (6 s).
+CRED_W=0 CRED_MAX_W=1500 CRED_MAX_SEGS=3000 CRED_MAX_OPS=3000
 cred_overwork() {
-  local d=ask r="Confirm: la orden tiene demasiados operandos o segmentos para analizarla dentro del timeout del guard (tope: $CRED_MAX_W operandos con nombre sensible, $CRED_MAX_SEGS segmentos), y un guard que se pasa de tiempo deja ejecutar la herramienta. Dividela en ordenes mas cortas o usa un fichero con la lista."
+  local d=ask r="Confirm: la orden tiene demasiados operandos o segmentos para analizarla dentro del timeout del guard (tope: $CRED_MAX_W operandos con nombre sensible, $CRED_MAX_OPS operandos en total por orden, $CRED_MAX_SEGS segmentos), y un guard que se pasa de tiempo deja ejecutar la herramienta. Dividela en ordenes mas cortas o usa un fichero con la lista."
   cmdn_desatendido && { d=deny; r+=$CMDN_DESATENDIDO; }
   jq -n --arg r "$r" --arg d "$d" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:$d,permissionDecisionReason:$r}}'
   exit 0
@@ -178,6 +180,7 @@ cred_seg0() {
   # Se mira desde T[1]: `< f cat`, `<f cat` y `0<f cat` abren el fichero igual aunque la redireccion vaya delante de la orden.
   if [[ ${T[*]:1} == *'<'* ]]; then
     case $c in echo|printf|test|\[|\[\[) ;; *)
+      (( n <= CRED_MAX_OPS )) || cred_overwork
       for (( i = 1; i < n; i++ )); do
         a=${T[i]}
         case $a in '<<'*|'<(') ;; '<') cred_check "${T[i+1]:-}" 0 ;; '<'?*) cred_check "${a#<}" 0 ;;
@@ -211,6 +214,7 @@ cred_seg0() {
     curl|wget) dat=1 ;;
     *) return 0 ;;
   esac
+  (( n <= CRED_MAX_OPS )) || cred_overwork
   if [[ -n $inner ]]; then
     # Cada texto anidado cuesta un awk: el tope de profundidad y el de textos protegen el timeout del guard (pasado, se ejecuta todo).
     [[ -n $CDCRED || $inner == *[.@/~]* ]] || return 0

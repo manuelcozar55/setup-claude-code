@@ -1130,6 +1130,18 @@ for c in 'grep -A 3 foo notas.txt' 'grep -a foo notas.txt' 'tar -C /tmp -cf x.ta
   expect "R4 H3/H4: $c NO denegado" "$(run_cred "$c")" ALLOW
 done
 
+# 13i) R4 H6: coste de ordenes benignas de hasta 128 KB cuyos operandos no son nombres sensibles (el tope de operandos con nombre sensible
+# no los cuenta): cada token pasaba por el recorrido entero del segmento. El tope de operandos TOTALES por segmento las manda a `ask`.
+expect_cost "R4 H6 coste: 43000 redirecciones <a" "cat $(printf '<a %.0s' $(seq 1 43000))" ANY
+expect_cost "R4 H6 coste: 32000 asignaciones a=b" "cat $(printf 'a=b %.0s' $(seq 1 32000))" ANY
+expect_cost "R4 H6 coste: 43000 banderas -a" "cat $(printf -- '-a %.0s' $(seq 1 43000))" ANY
+expect_cost "R4 H6 coste: 32000 operandos entrecomillados" "cat $(printf '"a" %.0s' $(seq 1 32000))" ANY
+expect_cost "R4 H6 coste: 60000 operandos simples" "cat $(printf 'a %.0s' $(seq 1 60000))" ANY
+H6_OUT=$(run_cost "cat $(printf 'a %.0s' $(seq 1 4000))")
+if [[ $H6_OUT == *'"ask"'* ]]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: R4 H6: 4000 operandos en un lector piden confirmacion (ask): $H6_OUT"; fi
+H6_OUT=$(run_cost "cat $(printf 'a %.0s' $(seq 1 2900))")
+if [[ $H6_OUT != *'"ask"'* && $H6_OUT != *BLOCKED* ]]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: R4 H6: 2900 operandos benignos siguen pasando: $H6_OUT"; fi
+
 # 14) la Capa 2 (hooks/git/pre-commit + .gitleaks.toml) se pierde en silencio
 # si cualquiera de los dos deja de ir dentro del kit, sin que ningun test lo
 # note -- este assert fija que ambos se sigan distribuyendo, ejecutables.

@@ -86,6 +86,8 @@ WARN. `scc` sin cockpit dice en una línea cómo instalarlo.
   leían como `-A`, `-C`, `-P` o `-t` y la clave quedaba sin operando. Las banderas se comparan ya con mayúsculas exactas y `-t` solo
   es «directorio destino» en `cp` e `install`.
 - **`jq --rawfile` y `--slurpfile`** llevan dos argumentos (nombre y fichero): el guard saltaba uno y no miraba el fichero.
+- **Coste de órdenes benignas de 128 KB** (`cat <a <a …` 6,7 s, `cat a=b …` 3,8 s, `cat -a …` 3,1 s, `cat "a" …` 2,2 s): el tope solo contaba
+  los operandos con nombre sensible; ahora hay también un tope de 3000 tokens por segmento y, pasado, el guard pregunta sin recorrerlos.
 
 ### Cifras
 
