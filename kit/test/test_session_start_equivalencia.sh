@@ -84,9 +84,10 @@ corre dueno-ajeno "$R9" c9b compact CLAUDE_PID=$PB
 kill "$PA" "$PB" 2>/dev/null
 
 # Lo que cambia entre ejecuciones (ruta del mktemp, también codificada como la codifica Claude Code, y la hora de
-# <git-hechos>) fuera de los golden.
-TC=$(printf '%s' "$T" | sed 's/[^A-Za-z0-9]/-/g')
-for f in "$T"/out/*.txt; do sed -i -e "s|$T|@T@|g" -e "s|$TC|@T@|g" -e 's|calculado=\\"[^\\]*\\"|calculado=\\"@HORA@\\"|g' "$f"; done
+# <git-hechos>) fuera de los golden. También la fecha del índice de tareas: es el mtime de cada nucleo.md, que el test
+# acaba de crear, así que es la de hoy (el golden llevaba la del día en que se capturó y solo pasaba ese día).
+TC=$(printf '%s' "$T" | sed 's/[^A-Za-z0-9]/-/g'); HOY=$(date +%F)
+for f in "$T"/out/*.txt; do sed -i -e "s|$T|@T@|g" -e "s|$TC|@T@|g" -e 's|calculado=\\"[^\\]*\\"|calculado=\\"@HORA@\\"|g' -e "s|· $HOY\\\\n|· @HOY@\\\\n|g" "$f"; done
 
 if [ "${GOLDEN_ACTUALIZAR:-}" = 1 ]; then
   mkdir -p "$GOLD"; cp "$T"/out/*.txt "$GOLD/"; echo "golden actualizados en $GOLD"; exit 0
