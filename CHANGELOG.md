@@ -88,6 +88,10 @@ WARN. `scc` sin cockpit dice en una línea cómo instalarlo.
 - **`jq --rawfile` y `--slurpfile`** llevan dos argumentos (nombre y fichero): el guard saltaba uno y no miraba el fichero.
 - **Coste de órdenes benignas de 128 KB** (`cat <a <a …` 6,7 s, `cat a=b …` 3,8 s, `cat -a …` 3,1 s, `cat "a" …` 2,2 s): el tope solo contaba
   los operandos con nombre sensible; ahora hay también un tope de 3000 tokens por segmento y, pasado, el guard pregunta sin recorrerlos.
+- **Lectores fuera de la lista cerrada**: `pr`, `expand`, `unexpand`, `csplit`, `look`, `join`, `ptx`, `tsort` y `numfmt` leen e imprimen un
+  fichero como `cat` y ahora cuentan como lectores; `ed -s`, `tar -T`, `curl file://`/`-K`, `ssh -F` y `wget -i` quedan declarados como límite
+  en `SECURITY.md` (la regla es una barrera de mejor esfuerzo, no una garantía).
+- **Falsos positivos de `.env`**: `cat docs/dev.env.md` y `cat .env.d.ts` ya no se deniegan (`.env.md` a secas y `.env_example.md` siguen denegados).
 
 ### Cifras
 

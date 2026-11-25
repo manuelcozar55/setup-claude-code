@@ -190,6 +190,15 @@ anterior, `--config-env` y `GIT_CONFIG_*`; `parallel git clean {} ::: -fd`; leer
 `git diff --no-index` o un volumen de Docker (`-v ~/.ssh`); los globs `cat *.local`, `*rc` y `.*` se deniegan (falso positivo aceptado, no se sabe qué hay detrás);
 y el tope de trabajo de arriba (una orden legítima de más de 2000 segmentos pregunta).
 
+Ronda 4 (fijada en `test/test_guards.sh`, secciones 13f a 13j). Cerrado: el guard ya no pasa a git las opciones de la orden juzgada (solo el
+directorio de `-C`; git corre con `core.fsmonitor` y `core.hooksPath` apagados y sin la config de sistema ni la global), porque con
+`git -c core.fsmonitor='<orden>' add -A` git ejecutaba `<orden>` mientras el hook juzgaba; `< credencial cat` con la redirección delante; `cat $(x) credencial`
+(sustitución sin comillas delante del operando); banderas que `nocasematch` confundía (`grep -a`, `cp -T`, `scp -p`, `rsync -t`); `jq --rawfile|--slurpfile`;
+un tope de 3000 tokens por segmento con lector (pasado, pregunta); y los lectores `pr`, `expand`, `unexpand`, `csplit`, `look`, `join`, `ptx`, `tsort` y `numfmt`.
+**Declarado, no cerrado**: `ed -s`, `tar -T credencial`, `curl file://credencial`, `curl -K credencial`, `ssh -F credencial` y `wget -i credencial`; y
+`.env_example.md`, que se deniega (falso positivo aceptado). La regla de lectura por Bash es una barrera de mejor esfuerzo sobre una **lista cerrada de
+lectores**, no una garantía: la garantía es la regla `deny` de `Read` y `--con sentinel`.
+
 `git push --force-with-lease` y `--force-if-includes` a una rama de trabajo (prefijo `feat/`, `fix/`, `release/`… o la rama actual si lo
 lleva) **preguntan** (solo pisan la rama si nadie la ha tocado); a `main`/`master`, a una rama sin prefijo de trabajo (`develop`,
 `trunk`), con `--tags`, `--all` o `--mirror`, con `--force` junto a ellos o con un `+refspec`, se deniegan. El texto de

@@ -1132,6 +1132,15 @@ done
 
 # 13i) R4 H6: coste de ordenes benignas de hasta 128 KB cuyos operandos no son nombres sensibles (el tope de operandos con nombre sensible
 # no los cuenta): cada token pasaba por el recorrido entero del segmento. El tope de operandos TOTALES por segmento las manda a `ask`.
+# 13j) R4 H7 y H8. H7: lectores que imprimen un fichero con la forma de `cat` y no estaban en la lista cerrada. H8: falsos positivos de
+# env_name (documentacion y declaraciones de tipos que no son un fichero de entorno); `.env.md` a secas y `.env_example.md` no se tocan.
+for c in 'pr ~/.ssh/id_rsa' 'expand ~/.ssh/id_rsa' 'unexpand ~/.ssh/id_rsa' 'csplit ~/.ssh/id_rsa 1' 'look a ~/.ssh/id_rsa' 'join ~/.ssh/id_rsa x' \
+         'ptx ~/.ssh/id_rsa' 'tsort ~/.ssh/id_rsa' 'numfmt ~/.ssh/id_rsa' 'pr .env' 'cat .env.md'; do
+  expect "R4 H7: $c denegado" "$(run_cred "$c")" BLOCK
+done
+for c in 'pr notas.txt' 'expand notas.txt' 'join a.txt b.txt' 'cat docs/dev.env.md' 'cat .env.d.ts' 'cat src/.env.d.ts'; do
+  expect "R4 H7/H8: $c NO denegado" "$(run_cred "$c")" ALLOW
+done
 expect_cost "R4 H6 coste: 43000 redirecciones <a" "cat $(printf '<a %.0s' $(seq 1 43000))" ANY
 expect_cost "R4 H6 coste: 32000 asignaciones a=b" "cat $(printf 'a=b %.0s' $(seq 1 32000))" ANY
 expect_cost "R4 H6 coste: 43000 banderas -a" "cat $(printf -- '-a %.0s' $(seq 1 43000))" ANY

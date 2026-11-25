@@ -65,7 +65,7 @@ env_name() {
   # Plantilla: el ULTIMO sufijo es example|sample|template|dist (`.env.local.example`, `.envrc.example`). Codigo: `x.env.ts`, `jest.env.js` no
   # son entornos; sin `.env.<codigo>` a secas ni `.json` (un `.env.json` puede llevar secretos).
   [[ $n =~ \.env.*\.(example|template|sample|dist)$ ]] && return 1
-  [[ $n =~ .\.env\.(d\.ts|ts|mts|cts|js|mjs|cjs|py|rb|go)$ ]] && return 1
+  [[ $n =~ (.\.env\.(d\.ts|ts|mts|cts|js|mjs|cjs|py|rb|go|md)|^\.env\.d\.ts)$ ]] && return 1
   [[ $n =~ (\.env($|[.~_-])|\.envrc) ]]
 }
 # Expande las llaves `{a,b}` de un operando (una por pasada); las variantes quedan en el array BEX. Sin subshell ni fork: cada operando
@@ -200,7 +200,7 @@ cred_seg0() {
       done
       [[ -n $inner ]] || return 0 ;;
     eval) inner="${T[*]:2}"; [[ ${T[2]:-} == -- ]] && inner="${T[*]:3}"; [[ -n $inner ]] || return 0 ;;
-    cat|tac|head|tail|less|more|most|bat|batcat|nl|xxd|od|hexdump|hd|base64|base32|basenc|strings|cut|sort|uniq|paste|diff|cmp|comm|dd|gzip|bzip2|xz|zstd|zcat|split|fold|rev|shuf|column|fmt|source|.) ;;
+    cat|tac|head|tail|less|more|most|bat|batcat|nl|xxd|od|hexdump|hd|base64|base32|basenc|strings|cut|sort|uniq|paste|diff|cmp|comm|dd|gzip|bzip2|xz|zstd|zcat|split|fold|rev|shuf|column|fmt|pr|expand|unexpand|csplit|look|join|ptx|tsort|numfmt|source|.) ;;
     openssl) vals='-out -keyout -passin -passout -pass -rand -CAfile -CApath -config -name' ;;
     awk|gawk|mawk) pat=1; vals='-v -F' ;;
     sed) pat=1 ;;
