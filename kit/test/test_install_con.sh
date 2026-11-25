@@ -26,6 +26,13 @@ set +e
 HOME="$tmp/a1" CLAUDE_HOME="$tmp/a1/.claude" bash "$KIT/install.sh" --con nada >/dev/null 2>&1; ck "$?" "64" "--con con una pieza desconocida da 64"
 ck "$(find "$tmp/a1" -mindepth 1 2>/dev/null | wc -l | tr -d ' ')" "0" "y no escribe nada"
 HOME="$tmp/a2" CLAUDE_HOME="$tmp/a2/.claude" bash "$KIT/install.sh" --con >/dev/null 2>&1; ck "$?" "64" "--con sin pieza da 64"
+for v in '' ',' ' , '; do
+  HOME="$tmp/a3" CLAUDE_HOME="$tmp/a3/.claude" bash "$KIT/install.sh" --plan --con "$v" >/dev/null 2>&1; ck "$?" "64" "--con '$v' (sin ninguna pieza) da 64"
+done
+HOME="$tmp/a3" CLAUDE_HOME="$tmp/a3/.claude" bash "$KIT/install.sh" --plan --con 'revisores,' >/dev/null 2>&1; ck "$?" "0" "--con 'revisores,' (coma sobrante) sigue valiendo"
+for v in '' ','; do
+  HOME="$tmp/a3" CLAUDE_HOME="$tmp/a3/.claude" bash "$REPO/uninstall.sh" --kit --pieza "$v" >/dev/null 2>&1; ck "$?" "1" "uninstall --pieza '$v' (sin ninguna pieza) falla"
+done
 set -e
 
 for p in $PIEZAS_OPCIONALES; do

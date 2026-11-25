@@ -68,6 +68,11 @@ WARN. `scc` sin cockpit dice en una línea cómo instalarlo.
   `kit/claude/agents/`.
 - **`scripts/mapa-interruptores.tsv`** cubre las variables del estado y de `NUCLEO_GATE`.
 
+### Arreglado
+
+- **`--con ''` y `--con ,`** salían con 0 sin instalar nada: ahora dan 64 como cuando falta el valor, y
+  `uninstall.sh --pieza ,` falla igual.
+
 ### Cifras
 
 | Cifra | Valor |

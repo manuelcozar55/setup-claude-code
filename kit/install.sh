@@ -19,7 +19,10 @@ usage() {
 }
 MODE_ARG=""; SIN_COCKPIT=0; SIN_PYTHON=0; CON=""; CON_PENDIENTE=0
 for arg in "$@"; do
-  if [ "$CON_PENDIENTE" -eq 1 ]; then CON="$CON ${arg//,/ }"; CON_PENDIENTE=0; continue; fi
+  if [ "$CON_PENDIENTE" -eq 1 ]; then
+    [ -n "${arg//[ ,]/}" ] || { printf '%s\n' 'Error: --con exige una o varias piezas separadas por comas.' >&2; usage >&2; exit 64; }
+    CON="$CON ${arg//,/ }"; CON_PENDIENTE=0; continue
+  fi
   case $arg in
     --help|-h)
       if (( $# > 1 )); then printf '%s\n' 'Error: --help no se combina con otras opciones.' >&2; usage >&2; exit 64; fi

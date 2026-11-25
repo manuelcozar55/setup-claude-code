@@ -555,6 +555,7 @@ pieza_uninstall() {
   [ -f "$HERE/kit/opcional.sh" ] || die "falta $HERE/kit/opcional.sh"
   # shellcheck source=kit/opcional.sh
   . "$HERE/kit/opcional.sh"
+  [ -n "${PIEZA//[ ,]/}" ] || die "--pieza exige el nombre de una pieza opcional"
   lista=" ${PIEZA//,/ } "
   for p in ${PIEZA//,/ }; do
     case " $PIEZAS_OPCIONALES " in *" $p "*) ;; *) die "pieza desconocida: $p (opcionales: $PIEZAS_OPCIONALES)" ;; esac
