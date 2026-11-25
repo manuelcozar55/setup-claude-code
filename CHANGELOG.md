@@ -72,6 +72,8 @@ WARN. `scc` sin cockpit dice en una línea cómo instalarlo.
 
 - **`--con ''` y `--con ,`** salían con 0 sin instalar nada: ahora dan 64 como cuando falta el valor, y
   `uninstall.sh --pieza ,` falla igual.
+- **Orden de `PreToolUse` con Sentinel**: al actualizar una instalación con la pieza, su preflight quedaba detrás de
+  los guards de Bash; ahora queda delante en los tres caminos (limpia, sin y luego con, reinstalar).
 
 ### Cifras
 

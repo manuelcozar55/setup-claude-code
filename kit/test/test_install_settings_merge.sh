@@ -366,4 +366,17 @@ ck "$(cuenta stale-read-guard.py)" "0" "lista-no-descablea: lo anotado como hook
 ck "$([ -e "$CLAUDE_HOME/hooks/stale-read-guard.py" ] && echo y || echo n)" "n" "lista-no-descablea: y su fichero ausente no se recrea"
 ck "$([ -e "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo y || echo n)" "n" "lista-no-descablea: ni el agente ausente"
 
+# --- Caso sentinel: el orden de PreToolUse no depende del camino ----------
+# El preflight de Sentinel va delante de los guards. Al actualizar (reinstalar, con o sin --con) la fusion lo trataba
+# como un hook tuyo y lo dejaba detras: mismo kit, otro orden segun el historial de la maquina.
+orden(){ jq -c '[.hooks.PreToolUse[] | .hooks[0].command | split("/") | last]' "$S"; }
+seed sa <<< '{}'; run --apply --con sentinel; ref="$(orden)"
+ck "$(jq -r 'first' <<< "$ref")" 'sentinel_preflight.py"' "sentinel limpio: su preflight abre PreToolUse"
+ck "$(jq -c 'del(.[0])' <<< "$ref")" "$(jq -c '[.hooks.PreToolUse[] | .hooks[0].command | split("/") | last]' "$KIT/claude/settings.json")" "sentinel limpio: detras, los guards en el orden de la plantilla"
+run --apply --con sentinel; ck "$(orden)" "$ref" "sentinel: reinstalar con --con deja el mismo orden"
+run --apply; ck "$(orden)" "$ref" "sentinel: actualizar sin --con (se conserva) deja el mismo orden"
+seed sb <<< '{}'; run --apply; run --apply --con sentinel
+ck "$(orden)" "$ref" "sentinel: instalar sin y luego con --con deja el mismo orden"
+ck "$(jq -c '[.hooks[][] | .hooks[].command | select(contains("sentinel_preflight"))] | length' "$S")" "1" "sentinel: y no se duplica"
+
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

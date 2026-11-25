@@ -376,8 +376,8 @@ install_settings() {  # src dst
 }
 
 # Lo que cablean las piezas opcionales elegidas (opcional-settings.json), sobre el settings.json ya fusionado: sus
-# hooks delante de los demas, salvo los que ya esten cableados (por nombre de script), y sus plugins sin pisar un
-# valor tuyo. Idempotente; el backup, si no hay ya uno de este settings.json en esta pasada.
+# hooks delante de los demas (si ya estaban cableados, por nombre de script, se recolocan delante: la fusion los deja
+# detras al actualizar), y sus plugins sin pisar un valor tuyo. Idempotente; el backup, si no hay ya uno de este settings.json en esta pasada.
 aplicar_opcional_settings() {  # settings.json
   local dst="$1" p tmp real name
   [ -f "$dst" ] && jq empty "$dst" 2>/dev/null || return 0
@@ -389,9 +389,10 @@ aplicar_opcional_settings() {  # settings.json
     # shellcheck disable=SC2016 # filtro jq
     if jq --slurpfile k "$KIT/opcional-settings.json" --arg p "$p" '
         def scripts: [.. | .command? | strings | splits(" +") | gsub("[\"\u0027]"; "") | sub(".*/"; "") | select(test("\\.(py|sh)$") and . != "optional-hook.sh")];
-        ($k[0][$p] // {}) as $f | ([.hooks // {} | scripts] | add // []) as $vivos
-        | .hooks = (reduce (($f.hooks // {}) | to_entries[]) as $e (.hooks // {};
-            .[$e.key] = ([$e.value[] | select(([.hooks[] | scripts] | any(. as $t | $vivos | index($t) != null)) | not)] + (.[$e.key] // []))))
+        ($k[0][$p] // {}) as $f | ([$f.hooks // {} | scripts] | add // []) as $mios
+        | def suyo: [.hooks[] | scripts] | any(. as $t | $mios | index($t) != null);
+        .hooks = (reduce (($f.hooks // {}) | to_entries[]) as $e (.hooks // {};
+            .[$e.key] = ($e.value + [(.[$e.key] // [])[] | select(suyo | not)])))
         | if .hooks == {} then del(.hooks) else . end
         | if $f.enabledPlugins then .enabledPlugins = ($f.enabledPlugins + (.enabledPlugins // {})) else . end
       ' "$real" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
