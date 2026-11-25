@@ -63,6 +63,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_install_manifest.sh
 	bash kit/test/test_install_plan.sh
 	bash kit/test/test_install_scc_deps.sh
+	bash kit/test/test_install_con.sh
 	bash kit/test/test_uninstall_kit.sh
 	bash kit/test/test_bump.sh
 	bash kit/test/test_empaquetar_entrega.sh
@@ -79,6 +80,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/mods/cockpit/test_cockpit.sh
 	bash kit/test/test_statusline.sh
 	bash kit/test/test_session_start_clear.sh
+	bash kit/test/test_session_start_equivalencia.sh
 	bash kit/test/test_nucleo_lib.sh
 	bash kit/test/test_nucleo_integridad.sh
 	bash kit/test/test_autosave.sh
@@ -91,6 +93,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_recall.sh
 	bash kit/test/test_scripts_audit.sh
 	bash kit/test/test_presupuesto_contexto.sh
+	bash kit/test/test_presupuesto_kit.sh
 	bash kit/test/test_guia.sh
 	bash kit/test/test_plugin_esenciales.sh
 	bash kit/test/test_sesiones_home.sh

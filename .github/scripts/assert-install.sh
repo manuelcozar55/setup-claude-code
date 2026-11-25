@@ -18,6 +18,8 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 KIT="$HERE/../../kit"
 CLAUDE_HOME="${1:?uso: assert-install.sh CLAUDE_HOME}"
+# shellcheck source=SCRIPTDIR/../../kit/opcional.sh
+. "$KIT/opcional.sh"
 
 fail=0
 check() { # desc, expresion-bash
@@ -48,6 +50,8 @@ for tree in claude sentinel; do
       claude) dst="$CLAUDE_HOME/$rel"; nombre="$rel" ;;
       sentinel) dst="$CLAUDE_HOME/sentinel/$rel"; nombre="sentinel/$rel" ;;
     esac
+    # Una pieza opcional (kit/opcional.sh) solo se exige si esta instalada: sin --con no se copia.
+    if pz="$(opcional_de "$nombre")" && ! pieza_instalada "$CLAUDE_HOME" "$pz"; then continue; fi
     check "$nombre instalado" '[ -f "$dst" ]'
     if [ -x "$src" ]; then
       check "$nombre ejecutable" '[ -x "$dst" ]'

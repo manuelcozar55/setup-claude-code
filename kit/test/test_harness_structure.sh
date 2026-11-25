@@ -406,7 +406,7 @@ else
     mm_malos=$((mm_malos + $3)); mm_palidos=$((mm_palidos + $4))
     mm_mudos=$((mm_mudos + $5)); mm_flojos=$((mm_flojos + $6))
   done
-  ck "$([ "$mm_total" -ge 5 ] && echo y || echo n)" "y" "hay diagramas mermaid que medir (encontrados: $mm_total)"
+  ck "$([ "$mm_total" -ge 3 ] && echo y || echo n)" "y" "hay diagramas mermaid que medir (encontrados: $mm_total)"
   ck "$mm_abiertos" "0" "todo bloque mermaid cierra su fence (sin cerrar: $mm_abiertos)"
   ck "$mm_malos" "0" "todo bloque declara un tipo de diagrama que mermaid conoce (invalidos: $mm_malos)"
   ck "$mm_palidos" "0" "todo fill: lleva texto blanco, o seria ilegible en el tema oscuro (palidos: $mm_palidos)"

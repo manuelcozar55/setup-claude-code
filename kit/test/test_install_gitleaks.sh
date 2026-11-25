@@ -35,7 +35,7 @@ ck "$(echo "$out" | grep -qc 'gitleaks ya presente' && echo y || echo n)" "y" "r
 # sort: lo usa el manifiesto .kit-manifest.
 # cut, awk y mv: el registro de lo que el instalador escribe (.kit-docs.sha256) y la copia atomica de los hooks.
 RESTRICTED="$tmp/restrictedbin"; mkdir -p "$RESTRICTED"
-for b in bash uname date cp mkdir mv ln readlink chmod cmp cut awk dirname basename sed sha256sum tar install curl mktemp cat jq git python3 sort; do
+for b in bash uname date cp mkdir mv ln readlink chmod cmp cut awk dirname basename sed sha256sum tar install curl mktemp cat jq git python3 sort realpath head wc tr; do
   p="$(command -v "$b" 2>/dev/null || true)"
   [ -n "$p" ] && ln -sf "$p" "$RESTRICTED/$b"
 done

@@ -6,17 +6,23 @@
 #      en el repo git DESDE el que se invoca; opt-in, por repositorio)
 set -euo pipefail
 usage() {
-  printf '%s\n' 'Uso: bash install.sh [--apply | --plan | --enable-secrets-layer2 | --help | -h] [--sin-cockpit] [--sin-python]' \
-    '  sin argumentos: instala el kit; muestra un plan si CLAUDE_HOME es un repo con remoto.' \
+  printf '%s\n' 'Uso: bash install.sh [--apply | --plan | --enable-secrets-layer2 | --help | -h] [--con PIEZA[,PIEZA...]] [--sin-python]' \
+    '  sin argumentos: instala solo el nucleo; muestra un plan si CLAUDE_HOME es un repo con remoto.' \
     '  --apply: aplica la instalacion.' \
     '  --plan: prepara el plan sin modificar CLAUDE_HOME.' \
     '  --enable-secrets-layer2: activa la capa 2 en el repo actual.' \
-    '  --sin-cockpit: no copia el cockpit ni los plugins a CLAUDE_HOME/scc (el lanzador scc queda sin ellos).' \
+    '  --con: instala ademas piezas opcionales: esenciales (plugin de skills), revisores (agentes silent-failure-hunter y pr-test-analyzer), skills-extra (skills verification-before-completion y retro), cockpit (mod de Claude Code y lanzador con plugins).' \
+    '         Lo opcional que ya estaba instalado se conserva y se sigue actualizando.' \
+    '  --sin-cockpit: sin efecto (el cockpit ya no se instala por defecto); se acepta por compatibilidad.' \
     '  --sin-python: sigue sin python3 aun sabiendo que Sentinel, write-guard, stale-read-guard y efectividad quedan apagados.' \
     '  --help, -h: muestra esta ayuda sin instalar.'
 }
-MODE_ARG=""; SIN_COCKPIT=0; SIN_PYTHON=0
+MODE_ARG=""; SIN_COCKPIT=0; SIN_PYTHON=0; CON=""; CON_PENDIENTE=0
 for arg in "$@"; do
+  if [ "$CON_PENDIENTE" -eq 1 ]; then
+    [ -n "${arg//[ ,]/}" ] || { printf '%s\n' 'Error: --con exige una o varias piezas separadas por comas.' >&2; usage >&2; exit 64; }
+    CON="$CON ${arg//,/ }"; CON_PENDIENTE=0; continue
+  fi
   case $arg in
     --help|-h)
       if (( $# > 1 )); then printf '%s\n' 'Error: --help no se combina con otras opciones.' >&2; usage >&2; exit 64; fi
@@ -24,15 +30,23 @@ for arg in "$@"; do
     --apply|--plan|--enable-secrets-layer2)
       if [ -n "$MODE_ARG" ]; then printf '%s\n' 'Error: se admite como maximo una de --apply, --plan y --enable-secrets-layer2.' >&2; usage >&2; exit 64; fi
       MODE_ARG=$arg ;;
+    --con) CON_PENDIENTE=1 ;;
     --sin-cockpit) SIN_COCKPIT=1 ;;
     --sin-python)  SIN_PYTHON=1 ;;
     *) printf 'Error: argumento no reconocido: %s\n' "$arg" >&2; usage >&2; exit 64 ;;
   esac
 done
+if [ "$CON_PENDIENTE" -eq 1 ]; then printf '%s\n' 'Error: --con exige una o varias piezas separadas por comas.' >&2; usage >&2; exit 64; fi
 if [ "$MODE_ARG" = "--enable-secrets-layer2" ] && (( $# > 1 )); then
   printf '%s\n' 'Error: --enable-secrets-layer2 no admite otras opciones.' >&2; usage >&2; exit 64
 fi
+if [ "$SIN_COCKPIT" -eq 1 ]; then printf '%s\n' 'Aviso: --sin-cockpit ya no hace falta: el cockpit solo se instala con --con cockpit.' >&2; fi
 KIT="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=SCRIPTDIR/opcional.sh
+. "$KIT/opcional.sh"
+for p in $CON; do
+  case " $PIEZAS_OPCIONALES " in *" $p "*) ;; *) printf 'Error: pieza desconocida: %s (opcionales: %s)\n' "$p" "$PIEZAS_OPCIONALES" >&2; usage >&2; exit 64 ;; esac
+done
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 GITLEAKS_VERSION="8.30.1"
 
@@ -179,6 +193,27 @@ case "$MODE_ARG" in
   --plan)  MODE_PLAN=1 ;;
 esac
 
+# Piezas opcionales (opcional.sh): solo se instalan las pedidas con --con. Una actualizacion NUNCA retira en silencio lo
+# que ya hay: lo opcional ya instalado se trata como pedido (se sigue actualizando) y se dice en CONSERVADAS.
+SEL=" "; CONSERVADAS=""
+for p in $CON; do case "$SEL" in *" $p "*) ;; *) SEL="$SEL$p " ;; esac; done
+for p in $PIEZAS_OPCIONALES; do
+  case "$SEL" in *" $p "*) continue ;; esac
+  if pieza_instalada "$CLAUDE_HOME" "$p"; then SEL="$SEL$p "; CONSERVADAS="$CONSERVADAS $p"; fi
+done
+seleccionada() { case "$SEL" in *" $1 "*) return 0 ;; esac; return 1; }
+aviso_conservadas() {
+  local p
+  for p in $CONSERVADAS; do
+    echo "==> conservado (ya estaba instalado): $p. Para quitarlo: bash ${KIT%/*}/uninstall.sh --kit --pieza $p --apply"
+  done
+}
+aviso_opcionales() {
+  local p no=""
+  for p in $PIEZAS_OPCIONALES; do seleccionada "$p" || no="$no $p"; done
+  [ -z "$no" ] || echo "==> opcional, no instalado:$no (se pide con: bash $KIT/install.sh --con <pieza>)"
+}
+
 # Lo que el kit escribe de verdad (no los symlinks omitidos): de ahi sale .kit-manifest, que uninstall.sh --kit usa.
 INSTALLED=()
 # Lo que la persona apago a proposito consta en $CLAUDE_HOME/.kit-desactivados (una linea por script o ruta, como lo ve
@@ -207,7 +242,8 @@ aviso_desactivados() {
   echo "==> desactivado por ti (consta en .kit-desactivados; solo evita recrear lo que falta, no quita nada): $d"
 }
 install_file() {  # src dst
-  local src="$1" dst="$2"
+  local src="$1" dst="$2" pz
+  if pz="$(opcional_de "${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}")" && ! seleccionada "$pz"; then return 0; fi
   if [ ! -e "$dst" ] && [ ! -L "$dst" ] && desactivado "${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}"; then
     echo "   no se copia (desactivado por ti): ${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}"
     return 0
@@ -245,7 +281,7 @@ install_file() {  # src dst
 # contexto por sesion), ANTHROPIC_MODEL con el sufijo de la ventana de 1M,
 # CLAUDE_CODE_AUTO_COMPACT_WINDOW y tres limites mas. Habia backup, pero un backup que hay que
 # descubrir no es una salvaguarda: es una autopsia.
-RETIRADOS="nucleo-gate.sh stop-context-gauge.sh post-compact-check.sh"
+RETIRADOS="nucleo-gate.sh stop-context-gauge.sh post-compact-check.sh session-start-clear.sh session-start-compact.sh"
 retirado_publicado() {  # fichero nombre: su suma es la de una version publicada del hook
   grep -qxF "$(sha256sum < "$1" | cut -d' ' -f1)  $2" "$KIT/hooks-retirados.sha256"
 }
@@ -304,7 +340,7 @@ install_settings() {  # src dst
           else . end] else . end))
         | with_entries(select((.value | type) != "array" or (.value | length) > 0));
       (([$kit.hooks // {} | .. | .command? // empty | splits(" +") | gsub("[\"\u0027]"; "") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")]
-        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh", "nucleo-gate.sh", "stop-context-gauge.sh", "post-compact-check.sh"] | unique) - $conserva) as $suyos |
+        - ["optional-hook.sh"] + ["smart_approve.py", "preflight.sh", "stop-session-summary.sh", "nucleo-gate.sh", "stop-context-gauge.sh", "post-compact-check.sh", "session-start-clear.sh", "session-start-compact.sh"] | unique) - $conserva) as $suyos |
       def propio: ("/" + .) as $t | any($suyos[]; . as $s | $t | endswith("/.claude/hooks/" + $s) or endswith("/.claude/sentinel/" + $s));
       def del_kit: [(.command | strings // "") | splits(" +") | gsub("[\"\u0027]"; "") | select(length > 0)]
         | any(.[]; propio) and all(.[]; propio or startswith("-") or (sub(".*/"; "") | test("^(optional-hook\\.sh|python[0-9.]*|bash|sh)$")));
@@ -337,6 +373,40 @@ install_settings() {  # src dst
     rm -f "$tmp"
     echo "   AVISO: la fusion de settings.json fallo; se deja el tuyo intacto" >&2
   fi
+}
+
+# Lo que cablean las piezas opcionales elegidas (opcional-settings.json), sobre el settings.json ya fusionado: sus
+# hooks delante de los demas (si ya estaban cableados, por nombre de script, se recolocan delante: la fusion los deja
+# detras al actualizar), y sus plugins sin pisar un valor tuyo. Idempotente; el backup, si no hay ya uno de este settings.json en esta pasada.
+aplicar_opcional_settings() {  # settings.json
+  local dst="$1" p tmp real name
+  [ -f "$dst" ] && jq empty "$dst" 2>/dev/null || return 0
+  name="${dst#"${KIT_BASE:-$CLAUDE_HOME}"/}"; real="$dst"
+  [ -L "$dst" ] && real="$(readlink -f "$dst")"
+  for p in $SEL; do
+    jq -e --arg p "$p" '.[$p]' "$KIT/opcional-settings.json" >/dev/null 2>&1 || continue
+    tmp="$(mktemp "$real.XXXXXX")"
+    # shellcheck disable=SC2016 # filtro jq
+    if jq --slurpfile k "$KIT/opcional-settings.json" --arg p "$p" '
+        def scripts: [.. | .command? | strings | splits(" +") | gsub("[\"\u0027]"; "") | sub(".*/"; "") | select(test("\\.(py|sh)$") and . != "optional-hook.sh")];
+        ($k[0][$p] // {}) as $f | ([$f.hooks // {} | scripts] | add // []) as $mios
+        | def suyo: [.hooks[] | scripts] | any(. as $t | $mios | index($t) != null);
+        .hooks = (reduce (($f.hooks // {}) | to_entries[]) as $e (.hooks // {};
+            .[$e.key] = ($e.value + [(.[$e.key] // [])[] | select(suyo | not)])))
+        | if .hooks == {} then del(.hooks) else . end
+        | if $f.enabledPlugins then .enabledPlugins = ($f.enabledPlugins + (.enabledPlugins // {})) else . end
+      ' "$real" > "$tmp" && jq empty "$tmp" 2>/dev/null; then
+      if ! cmp -s "$tmp" "$real"; then
+        if [ -n "${BK:-}" ] && [ ! -e "$BK/$name" ]; then mkdir -p "$(dirname "$BK/$name")"; cp -p "$real" "$BK/$name"; fi
+        chmod --reference="$real" "$tmp"
+        mv "$tmp" "$real"
+      fi
+      rm -f "$tmp"
+    else
+      rm -f "$tmp"
+      echo "   AVISO: no se pudo cablear la pieza opcional $p en settings.json" >&2
+    fi
+  done
 }
 
 # Tres claves tuyas dejan al kit sin efecto, y la fusion las respeta porque son tuyas: se avisa.
@@ -431,18 +501,20 @@ aviso_claude_md() {
 }
 
 install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
-  local base="$1" f rel
+  local base="$1" f rel pz
   KIT_BASE="$base"
-  mkdir -p "$base/hooks/lib" "$base/agents" "$base/sentinel" "$base/templates" "$base/bin"
+  mkdir -p "$base/hooks/lib" "$base/agents" "$base/templates" "$base/bin"
   install_claude_md "$KIT/claude/CLAUDE.md"       "$base/CLAUDE.md"
   install_claude_md "$KIT/claude/AGENTS.md"       "$base/AGENTS.md"
   install_settings  "$KIT/claude/settings.json"   "$base/settings.json"
+  aplicar_opcional_settings "$base/settings.json"
   install_file "$KIT/claude/sentinel-allowlist.json" "$base/sentinel-allowlist.json"
   install_file "$KIT/claude/.gitleaks.toml"       "$base/.gitleaks.toml"
   install_file "$KIT/claude/statusline-command.sh" "$base/statusline-command.sh"
   for f in "$KIT"/claude/agents/*; do [ -f "$f" ] && install_file "$f" "$base/agents/$(basename "$f")"; done
   while IFS= read -r -d '' f; do
     rel="${f#"$KIT"/claude/skills/}"
+    if pz="$(opcional_de "skills/$rel")"; then seleccionada "$pz" || continue; fi
     mkdir -p "$base/skills/$(dirname "$rel")"
     install_file "$f" "$base/skills/$rel"
   done < <(find "$KIT/claude/skills" -type f -print0 2>/dev/null)
@@ -450,21 +522,21 @@ install_kit_files() {  # base-dir: $CLAUDE_HOME al aplicar, o el arbol de plan
   for f in "$KIT"/claude/hooks/lib/*; do [ -f "$f" ] && install_file "$f" "$base/hooks/lib/$(basename "$f")"; done
   for f in "$KIT"/claude/bin/*;    do [ -f "$f" ] && install_file "$f" "$base/bin/$(basename "$f")"; done
   for f in "$KIT"/claude/templates/*; do [ -f "$f" ] && install_file "$f" "$base/templates/$(basename "$f")"; done
+  if seleccionada sentinel; then mkdir -p "$base/sentinel"; fi
   for f in "$KIT"/sentinel/*;      do [ -f "$f" ] && install_file "$f" "$base/sentinel/$(basename "$f")"; done
   mkdir -p "$base/hooks/git"
   install_file "$KIT/claude/hooks/git/pre-commit" "$base/hooks/git/pre-commit"
   # El cockpit y los plugins del kit, copiados para que `scc` no dependa de donde este el clon. Sin tests ni
   # node_modules: pesan y no se ejecutan. Entran en el manifiesto como cualquier otro fichero.
-  if [ "$SIN_COCKPIT" -ne 1 ]; then
-    for f in mods/cockpit plugins/esenciales; do
-      [ -d "$KIT/$f" ] || continue
-      while IFS= read -r -d '' src; do
-        rel="${src#"$KIT"/}"
-        mkdir -p "$base/scc/$(dirname "$rel")"
-        install_file "$src" "$base/scc/$rel"
-      done < <(find "$KIT/$f" \( -name tests -o -name node_modules \) -prune -o -type f -print0)
-    done
-  fi
+  for f in mods/cockpit plugins/esenciales; do
+    [ -d "$KIT/$f" ] || continue
+    if pz="$(opcional_de "scc/$f/x")"; then seleccionada "$pz" || continue; fi
+    while IFS= read -r -d '' src; do
+      rel="${src#"$KIT"/}"
+      mkdir -p "$base/scc/$(dirname "$rel")"
+      install_file "$src" "$base/scc/$rel"
+    done < <(find "$KIT/$f" \( -name tests -o -name node_modules \) -prune -o -type f -print0)
+  done
   chmod +x "$base"/hooks/*.sh "$base"/hooks/git/pre-commit "$base"/statusline-command.sh "$base"/bin/* 2>/dev/null || true
 }
 
@@ -655,11 +727,11 @@ run_diff_first() {
     diff -u "$CLAUDE_HOME/$rel" "$out/$rel" || true
   done
   mostrar_fusion_settings "$CLAUDE_HOME/settings.json" "$out/settings.json"
-  if [ "$SIN_COCKPIT" -eq 1 ]; then
-    echo "==> --sin-cockpit: no se copiarian el cockpit ni los plugins a $CLAUDE_HOME/scc."
-  else
-    echo "==> cockpit y plugins del kit: se copiarian a $CLAUDE_HOME/scc (lanzador: scc; omitir con --sin-cockpit)."
+  if seleccionada cockpit; then
+    echo "==> cockpit del kit: se copiaria a $CLAUDE_HOME/scc (lanzador: scc)."
   fi
+  aviso_opcionales
+  aviso_conservadas
   aviso_claude_md
   aviso_desactivados
   avisos_settings "$CLAUDE_HOME/settings.json"
@@ -851,10 +923,28 @@ echo "       bash $KIT/install.sh --enable-secrets-layer2   # ejecútalo dentro 
 echo "    o el one-liner manual:  git config core.hooksPath \"$CLAUDE_HOME/hooks/git\""
 echo "==> Verifica:            bash $KIT/doctor.sh"
 echo "==> Reinicia las sesiones abiertas de Claude Code: no recargan el cockpit ni los hooks del kit."
+aviso_opcionales
+aviso_conservadas
 aviso_claude_md
 aviso_desactivados
 avisos_settings "$CLAUDE_HOME/settings.json"
 aviso_path
 if [ -n "${LINK_AJENOS:-}" ]; then
   echo "==> AVISO: no se enlazo$LINK_AJENOS (ya existia en $LOCAL_BIN). Usa la ruta $CLAUDE_HOME/bin/<nombre> o resuelve el conflicto."
+fi
+# Veredicto de una linea: doctor sobre lo recien instalado. El instalador sale 1 solo si doctor da algun FAIL; un WARN no cambia el rc.
+doc_out="$(CLAUDE_HOME="$CLAUDE_HOME" bash "$KIT/doctor.sh" 2>&1)" && doc_rc=0 || doc_rc=$?
+doc_fail="$(grep -c '^FAIL' <<<"$doc_out" || true)"; doc_warn="$(grep -c '^WARN' <<<"$doc_out" || true)"
+# Un doctor que muere sin imprimir FAIL no es un OK.
+if [ "$doc_rc" -ne 0 ] && [ "$doc_fail" -eq 0 ]; then echo "==> doctor: no termino (rc=$doc_rc). Detalle: bash $KIT/doctor.sh"; exit 1; fi
+if [ "$doc_fail" -eq 0 ]; then doc_veredicto="OK"; else doc_veredicto="$doc_fail FAIL"; fi
+[ "$doc_fail" -eq 0 ] || grep '^FAIL' <<<"$doc_out"
+echo "==> doctor: $doc_veredicto, $doc_warn WARN. Detalle: bash $KIT/doctor.sh"
+if [ "$doc_fail" -gt 0 ]; then
+  # No cambian el rc dos FAIL que este instalador ya anuncio arriba y con los que sigue a proposito:
+  # python3 ausente cuando se pidio --sin-python, y el checksum de gitleaks (dependencia opcional, con su ALERTA).
+  doc_asumidos_re='checksum de gitleaks no coincidio'
+  [ "$SIN_PYTHON" -eq 1 ] && doc_asumidos_re="$doc_asumidos_re|python3 no instalado"
+  doc_asumidos="$(grep '^FAIL' <<<"$doc_out" | grep -cE "$doc_asumidos_re" || true)"
+  [ "$doc_fail" -le "$doc_asumidos" ] || exit 1
 fi

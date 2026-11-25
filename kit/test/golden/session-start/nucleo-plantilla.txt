@@ -1,0 +1,16 @@
+=== startup memoria rc=0 ===
+
+=== startup estado rc=0 ===
+{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"@T@/r4/.claude/estado/nucleo.md está sin rellenar (solo la plantilla): cuando el encargo esté claro, escribe Objetivo, Invariantes y Siguiente acción con la forma de $HOME/.claude/templates/nucleo.md."}}
+=== clear memoria rc=0 ===
+
+=== clear estado rc=0 ===
+{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"@T@/r4/.claude/estado/nucleo.md está sin rellenar (solo la plantilla): cuando el encargo esté claro, escribe Objetivo, Invariantes y Siguiente acción con la forma de $HOME/.claude/templates/nucleo.md."}}
+=== resume memoria rc=0 ===
+
+=== resume estado rc=0 ===
+{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"@T@/r4/.claude/estado/nucleo.md está sin rellenar (solo la plantilla): cuando el encargo esté claro, escribe Objetivo, Invariantes y Siguiente acción con la forma de $HOME/.claude/templates/nucleo.md."}}
+=== compact memoria rc=0 ===
+
+=== compact estado rc=0 ===
+{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"Contexto compactado. @T@/r4/.claude/estado/nucleo.md solo tiene la plantilla: antes de seguir, rellénalo con el estado de la tarea."}}

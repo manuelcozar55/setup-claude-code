@@ -114,6 +114,29 @@ claim "$SUITES" suites "${DOCS[@]}"
 claim_flojo "$(count knowledge/DECISIONS/*.md)" ADRs "${DOCS[@]}"
 claim "$(count kit/claude/agents/*.md)" agentes "${DOCS[@]}"
 claim_flojo "$(count .claude/commands/*.md)" comandos "${DOCS[@]}"
+# La metodologia no puede nombrar un agente que ya no esta en kit/claude/agents/ (orchestrator y strategist
+# se citaron retirados). Un nombre con forma de agente (sufijo -worker, -reviewer...) debe existir; los
+# retirados que se conocen (los de hooks-retirados.sha256 y el orquestador del ADR 024) no pueden salir.
+agentes_inexistentes() {  # documento -> nombres de agente que no existen, uno por linea
+  local doc=$1 n retirados
+  retirados="orchestrator|orquestador|estratega|$(sed -n 's|^[0-9a-f]* *agents/\(.*\)\.md$|\1|p' kit/hooks-retirados.sha256 | sort -u | paste -sd'|')"
+  { grep -oE "\b($retirados)\b" "$doc"
+    grep -oE '\b[a-z]+(-[a-z]+)*-(worker|reviewer|explorer|checker|hunter|analyzer)\b' "$doc" | while read -r n; do
+      [ -f "kit/claude/agents/$n.md" ] || echo "$n"; done
+  } | sort -u
+}
+if [ -z "$(agentes_inexistentes kit/docs/12-metodologia.md)" ]; then
+  echo "ok - 12-metodologia.md solo nombra agentes que existen en kit/claude/agents/"; pass=$((pass+1))
+else
+  echo "NOT ok - 12-metodologia.md nombra agentes que no existen: $(agentes_inexistentes kit/docs/12-metodologia.md | paste -sd' ')"; fail=$((fail+1))
+fi
+FALSO_A=$(mktemp -d); printf 'Usa el strategist y el plan-reviewer, y tambien deep-worker.\n' > "$FALSO_A/doc.md"
+if [ "$(agentes_inexistentes "$FALSO_A/doc.md" | paste -sd' ')" = "plan-reviewer strategist" ]; then
+  echo "ok - el check de agentes SI detecta un agente retirado y uno inventado, y deja pasar uno real"; pass=$((pass+1))
+else
+  echo "NOT ok - el check de agentes no distingue retirados, inventados y reales"; fail=$((fail+1))
+fi
+rm -r "$FALSO_A"
 claim "$(count kit/docs/*.md)" documentos kit/README.md kit/docs/01-overview.md
 # El inventario del eval era la unica cifra que nadie juzgaba: "40 tareas reales
 # (30 positivas / 10 negativas)" pasaba verde. Va acotado a los dos indices porque
@@ -1264,7 +1287,7 @@ hr_check "todo plugin que nombra la doc esta declarado en enabledPlugins de sett
 GUARDS=$(jq -r '[.hooks.PreToolUse[] | . as $h
                  | select((($h.matcher // "") != "") and ("Bash" | test("^(" + $h.matcher + ")$")))
                  | .hooks[].command | select(test("optional-hook") | not)] | length' "$SETTINGS")
-# Solo los ficheros de esos guards: otros hooks (session-start-clear.sh) tambien leen con jq
+# Solo los ficheros de esos guards: otros hooks (session-start-estado.sh) tambien leen con jq
 # y no son guards; contarlos tumbaba la frase de 10-onboarding.md, que sigue siendo cierta.
 GUARDS_JQ=$(jq -r '.hooks.PreToolUse[] | . as $h
                    | select((($h.matcher // "") != "") and ("Bash" | test("^(" + $h.matcher + ")$")))
@@ -1355,7 +1378,7 @@ jq '.hooks.PreToolUse += [{"matcher":"Bash","hooks":[{"type":"command","command"
   "$SETTINGS" > "$NUTMP/s-mas-rtk.json"
 jq 'del(.enabledPlugins["skill-creator@claude-plugins-official"])' "$SETTINGS" > "$NUTMP/s-menos-plugin.json"
 # shellcheck disable=SC2016 # los backticks son los del markdown de 05-security.md, literales
-sed 's/6 hooks `PreToolUse`/9 hooks `PreToolUse`/' "$SECDOC"          > "$NUTMP/d-cadena.md"
+sed 's/5 hooks `PreToolUse`/9 hooks `PreToolUse`/' "$SECDOC"          > "$NUTMP/d-cadena.md"
 # shellcheck disable=SC2016 # idem
 sed 's/hooks `PreToolUse` en serie/hooks en serie/'  "$SECDOC"        > "$NUTMP/d-muda.md"
 # shellcheck disable=SC2016 # idem: es la fila fantasma, con sus backticks de markdown

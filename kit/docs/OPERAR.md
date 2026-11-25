@@ -13,7 +13,7 @@ guard fue y termina en «Que hacer: …».
 
 1. **Mira qué guard fue.** Cada guard y lo que bloquea está en [MAPA.md](MAPA.md). Estos dejan rastro:
    - `destructive-guard.sh`: `~/.claude/audit-logs/blocked-commands.log` (una línea por bloqueo, con la orden).
-   - Sentinel: `~/.claude/audit-logs/sentinel.jsonl`.
+   - Sentinel (solo si lo instalaste con `--con sentinel`): `~/.claude/audit-logs/sentinel.jsonl`.
    - Los demás guards solo escriben su mensaje en la sesión.
 2. **Déjala pasar una vez.** Ejecútala tú con `!` delante, en la sesión: `! git reset --hard HEAD~1`. No pasa por los
    hooks y la ves ejecutarse. Un `CC_ALLOW_DESTRUCTIVE=1` delante de la orden no vale: el guard lo lee del entorno.
@@ -52,12 +52,21 @@ echo agents/code-reviewer.md >> ~/.claude/.kit-desactivados
 que existe se tratan como siempre (la lista no quita nada), y `hooks/<nombre>` equivale a `<nombre>`. Apagar un guard de seguridad
 (los hooks `PreToolUse`) deja un WARN en `doctor.sh`, no un INFO. Para encender algo de nuevo, borra su línea y reinstala.
 
+## Piezas opcionales: pedirlas y quitarlas
+
+El kit instala por defecto solo el núcleo. Lo demás se pide con `bash kit/install.sh --con <pieza>[,<pieza>…]`:
+`sentinel`, `cockpit`, `esenciales`, `revisores`, `skills-extra` y `nudge` (qué trae cada una: [MAPA.md](MAPA.md)).
+Una actualización nunca quita en silencio lo que ya tenías: lo conserva y lo dice con la orden para quitarlo.
+Para quitar una sola pieza: `bash uninstall.sh --kit --pieza <pieza> --apply` (sin `--apply` es un simulacro).
+`bash kit/doctor.sh` lista las que faltan como `INFO · opcional, no instalada`, nunca como `WARN`.
+
 ## El aviso de contexto me molesta
 
-El aviso lo emite un solo hook, `nucleo-nudge.sh` (`PostToolUse`): al modelo al 50, 70 y 85 % del contexto antes de
-compactar, y a ti al 60 y al 85 %. Para apagarlo, quita ese hook con el procedimiento de arriba
-(`nucleo-nudge.sh`). El guardado automático del estado (`autosave.sh`) sigue funcionando. Si usas el cockpit y solo
-quieres que no haga el handoff solo al 70 %: `COCKPIT_AUTO_HANDOFF=off scc`.
+El aviso es de la pieza opcional `nudge` (`--con nudge`): no lo tienes si no la pediste. Lo emite un solo hook,
+`nucleo-nudge.sh` (`PostToolUse`): al modelo al 50, 70 y 85 % del contexto antes de compactar, y a ti al 60 y al 85 %.
+Para apagarlo, quítalo con `bash uninstall.sh --kit --pieza nudge --apply`. El guardado automático del estado
+(`autosave.sh`) sigue funcionando. Si usas el cockpit y solo quieres que no haga el handoff solo al 70 %:
+`COCKPIT_AUTO_HANDOFF=off scc`.
 
 ## Lo que el kit hace solo, y cómo apagarlo
 
@@ -65,7 +74,7 @@ quieres que no haga el handoff solo al 70 %: `COCKPIT_AUTO_HANDOFF=off scc`.
 |---|---|---|
 | **Handoff automático del cockpit** (solo con `scc`): al 70 % del contexto guarda el estado y después limpia la conversación (`/clear`), sin pedírtelo | Una llamada al modelo con todo el contexto; la conversación se limpia y retomas desde el estado guardado | `COCKPIT_AUTO_HANDOFF=off` (un número de 50 a 95 cambia el umbral) |
 | **Autoinicio del estado**: el primer guardado con trabajo en cualquier repo git crea `<repo>/.claude/estado/nucleo.md` y añade `.claude/estado/` a `.git/info/exclude` | Un fichero local por repo; no entra en git. El desinstalador no lo borra: es tuyo | `NUCLEO_AUTOINICIO=0` |
-| **Marcas del aviso de contexto**: `nucleo-nudge.sh` escribe `nudge-<sesión>` en `$HOME/.claude/session-logs`, aunque uses otro `CLAUDE_HOME` | Ficheros vacíos en tu carpeta personal | Quitar el hook (ver «Quiero quitar un hook») |
+| **Marcas del aviso de contexto** (solo con `--con nudge`): `nucleo-nudge.sh` escribe `nudge-<sesión>` en `$HOME/.claude/session-logs`, aunque uses otro `CLAUDE_HOME` | Ficheros vacíos en tu carpeta personal | `bash uninstall.sh --kit --pieza nudge --apply` |
 | Guardado con modelo (`/autosave`) | **Apagado por defecto**: encendido, una llamada por guardado | `/autosave on` o `COCKPIT_AUTOSAVE=on` lo encienden; `/autosave off` lo apaga |
 
 Estas variables van en `env` de tu `settings.json` (ver la receta de la guía de adaptación) o en el entorno desde el que
@@ -76,7 +85,7 @@ lanzas `scc`.
 - **Contexto fijo en cada sesión.** Lo que el kit añade son sus ficheros de reglas, las descripciones de agentes y skills,
   y el estado del proyecto que inyecta al arrancar (como mucho `NUCLEO_TOPE`, 6500 bytes, y solo si el proyecto tiene
   `.claude/estado/nucleo.md`). Mídelo en tu máquina: `wc -c ~/.claude/CLAUDE.md ~/.claude/AGENTS.md` (unos 4 bytes por token).
-- **Latencia.** Cada orden de Bash pasa por cinco guards y por Sentinel antes de ejecutarse; arrancan en paralelo.
+- **Latencia.** Cada orden de Bash pasa por cinco guards (y por Sentinel, si lo instalaste) antes de ejecutarse; arrancan en paralelo.
   Mide uno: `time (echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | bash ~/.claude/hooks/destructive-guard.sh)`.
   Los hooks de estado corren una vez por turno (`autosave.sh` va asíncrono, no te espera).
 - **Llamadas al modelo.** Sin cockpit, el kit no hace ninguna: todo son scripts locales. Con cockpit, el handoff
@@ -92,9 +101,11 @@ Una sola receta, desde un clon de GitHub (con el paquete de entrega, ver [`ENTRE
 ```bash
 git pull
 bash kit/install.sh --plan     # qué cambiaría; no escribe nada
-bash kit/install.sh --apply    # aplica, con copia de lo que sobrescribe en ~/.claude/backups/
+bash kit/install.sh            # aplica, con copia de lo que sobrescribe en ~/.claude/backups/
 bash kit/doctor.sh             # debe terminar en == OK (0 FAIL) ==
 ```
+
+El instalador ya acaba con el veredicto del doctor y sale con 1 solo si hay algún FAIL; un WARN no cambia el código de salida.
 
 Reinicia las sesiones abiertas de Claude Code: no recargan los hooks ni el cockpit. Lo que anotaste en
 `.kit-desactivados` no vuelve; lo que quitaste sin anotarlo, sí (ver arriba). `~/.claude/.kit-version` dice qué versión tienes; `scc --version` imprime la del kit, la del
@@ -102,7 +113,8 @@ cockpit y la de Claude Code.
 
 Lo que una versión retira del kit (en la 2.0: el agente `strategist` y las skills `domain-modeling`, `grilling`,
 `to-questionnaire` y `writing-for-agents`) lo retira `install.sh --apply` (lo mueve a `~/.claude/backups/<fecha>-…/`, no lo borra) solo si es idéntico a una versión que el kit
-publicó; si lo modificaste lo conserva y lo dice, y `doctor` lo avisa mientras siga ahí.
+publicó; si lo modificaste lo conserva y lo dice, y `doctor` lo avisa mientras siga ahí. La 3.0.0 hace lo mismo con los dos hooks de
+`SessionStart` que reinyectaban el estado tras `/clear` y tras compactar: ahora los hace `session-start-estado.sh`.
 
 ## Desinstalar
 
@@ -125,7 +137,7 @@ Conserva y lista lo que modificaste, quita los enlaces de `~/.local/bin` solo si
 | Qué | Dónde |
 |---|---|
 | Órdenes bloqueadas por `destructive-guard.sh` | `~/.claude/audit-logs/blocked-commands.log` |
-| Sentinel y avisos de inyección en herramientas MCP | `~/.claude/audit-logs/sentinel.jsonl`, `narthex.jsonl` |
+| Sentinel y avisos de inyección en herramientas MCP (solo con `--con sentinel`) | `~/.claude/audit-logs/sentinel.jsonl`, `narthex.jsonl` |
 | Frescura del estado al compactar, compuerta de commit | `~/.claude/session-logs/` (`nucleo-freshness.log`, `gate-nucleo.log`) |
 | Estado de cada proyecto | `<proyecto>/.claude/estado/nucleo.md` y su carpeta. Una sesión lanzada en `~` y vinculada con `handoff --proyecto <ruta>` también guarda ahí su estado; su ranura de `~` (`~/.claude/estado/sesiones/`) solo lleva la línea `> proyecto:` y `## Coordinación`. Para desvincularla, borra esa línea |
 | Qué instaló el kit y con qué suma | `~/.claude/.kit-manifest`, `~/.claude/.kit-version` |

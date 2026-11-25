@@ -3,6 +3,8 @@
 # Uso: [CLAUDE_HOME=$HOME/.claude] bash doctor.sh
 set -uo pipefail
 KIT="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=SCRIPTDIR/opcional.sh
+. "$KIT/opcional.sh"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 if ! command -v jq >/dev/null 2>&1; then
   echo "FAIL · jq no instalado (requerido por doctor; ver docs/02-install.md)"
@@ -122,9 +124,10 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
     done < "$desactivados"
     return 1
   }
-  # Guards de seguridad = los scripts de los PreToolUse de la plantilla: apagarlos deja de proteger, no es un simple INFO.
+  # Guards de seguridad = los scripts de los PreToolUse de la plantilla y de las piezas opcionales (Sentinel): apagarlos
+  # deja de proteger, no es un simple INFO.
   # shellcheck disable=SC2016 # filtro jq
-  guards="$(jq -r '[.hooks.PreToolUse // [] | .[].hooks[].command | strings | scan("\\.claude/(?:hooks|sentinel)/[^ \"\u0027]+") | sub(".*/"; "")] | unique | join(" ")' "$KIT/claude/settings.json" 2>/dev/null)"
+  guards="$(jq -r --slurpfile o "$KIT/opcional-settings.json" '[((.hooks.PreToolUse // []) + ([$o[0][] | .hooks.PreToolUse? // []] | add // []))[].hooks[].command | strings | scan("\\.claude/(?:hooks|sentinel)/[^ \"\u0027]+") | sub(".*/"; "")] | unique | join(" ")' "$KIT/claude/settings.json" 2>/dev/null)"
   guard_apagado() { # nombre -> avisa y sale 0 si es un guard de seguridad
     case " $guards " in *" ${1##*/} "*) warn "guard de seguridad desactivado por ti: ${1##*/} (consta en .kit-desactivados). Mientras siga apagado deja de proteger lo que ese guard bloquea; si no lo apagaste tu, restaura su entrada en settings.json y borra la linea de $desactivados"; return 0 ;; esac
     return 1
@@ -150,8 +153,8 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   fi
   # install.sh conserva los hooks que no son del kit (fusion por propietario). Se listan para que uno
   # tuyo muerto o duplicado se vea: el 21-oct la reinstalacion se llevo un sensor y nada lo dijo.
-  ajenos="$(jq -r --slurpfile k "$KIT/claude/settings.json" '
-      [$k[0].hooks // {} | .. | .command? // empty] as $kit
+  ajenos="$(jq -r --slurpfile k "$KIT/claude/settings.json" --slurpfile o "$KIT/opcional-settings.json" '
+      [($k[0].hooks // {}), ($o[0][] | .hooks? // {}) | .. | .command? // empty] as $kit
       | [.hooks // {} | to_entries[] | .key as $e | .value[]?.hooks[]? | (.command // "type \(.type)") as $c
          | select($c | IN($kit[]) | not) | "\($e) \($c)"]
       | select(length > 0) | "\(length) (\(join("; ")))"' "$CLAUDE_HOME/settings.json" 2>/dev/null)"
@@ -226,6 +229,8 @@ for tree in claude sentinel; do
       sentinel) nombre="sentinel/$rel"; dst="$CLAUDE_HOME/sentinel/$rel"; comparar=0
         case "$rel" in *.py) comparar=1 ;; esac ;;
     esac
+    # Una pieza opcional que no esta instalada no es un fallo (se lista abajo como «opcional, no instalada»).
+    if pz="$(opcional_de "$nombre")" && ! pieza_instalada "$CLAUDE_HOME" "$pz"; then continue; fi
     if [ ! -f "$dst" ]; then
       if desact_consta "$nombre"; then
         case "$nombre" in hooks/*|sentinel/*) guard_apagado "$nombre" && continue ;; esac
@@ -246,6 +251,9 @@ for tree in claude sentinel; do
     fi
   done < <(find "$KIT/$tree" -type d -name __pycache__ -prune -o -type f -print0)
 done
+opcionales_no=""
+for pz in $PIEZAS_OPCIONALES; do pieza_instalada "$CLAUDE_HOME" "$pz" || opcionales_no="$opcionales_no $pz"; done
+[ -z "$opcionales_no" ] || echo "INFO · opcional, no instalada:$opcionales_no  (se pide con: bash $KIT/install.sh --con <pieza>)"
 if [ "$derivados" -gt 0 ]; then
   warn "$derivados componente(s) desplegados difieren de los del kit ($derivados_lista): compara antes de reinstalar; conserva tus personalizaciones"
 elif [ "$ausentes" -eq 0 ] && [ "$no_ejecutables" -eq 0 ]; then
@@ -270,7 +278,7 @@ for c in "${ioc_dir:+$ioc_dir/iocs.json}" "$CLAUDE_HOME/sentinel/iocs.json" \
 done
 if [ -n "$ioc_file" ]; then
   pass "Sentinel IOC layer activa: $ioc_file  (fuente: mismo orden de busqueda que el hook)"
-else
+elif pieza_instalada "$CLAUDE_HOME" sentinel; then
   warn "Sentinel IOC layer inactiva: falta iocs.json (opcional; ver docs/05-security.md). Los guards de Bash siguen activos."
 fi
 

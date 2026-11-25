@@ -40,16 +40,6 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/.claude/hooks/optional-hook.sh\" --python \"$HOME/.claude/sentinel/sentinel_preflight.py\"",
-            "timeout": 10
-          }
-        ]
-      },
-      {
         "matcher": "Bash",
         "hooks": [
           {
@@ -125,28 +115,6 @@
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "mcp__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/.claude/hooks/optional-hook.sh\" --python \"$HOME/.claude/hooks/narthex-post-mcp.py\"",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/.claude/hooks/nucleo-nudge.sh\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
         "hooks": [
@@ -158,21 +126,11 @@
         ]
       },
       {
-        "matcher": "startup|clear|resume",
+        "matcher": "startup|clear|resume|compact",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$HOME/.claude/hooks/session-start-clear.sh\"",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/.claude/hooks/session-start-compact.sh\"",
+            "command": "\"$HOME/.claude/hooks/session-start-estado.sh\"",
             "timeout": 10
           }
         ]
@@ -267,15 +225,14 @@
   },
   "enabledPlugins": {
     "code-review@claude-plugins-official": true,
-    "skill-creator@claude-plugins-official": true,
-    "esenciales@setup-claude-code": true
+    "skill-creator@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "setup-claude-code": {
       "source": {
         "source": "github",
         "repo": "manuelcozar55/setup-claude-code",
-        "ref": "v2.3.0"
+        "ref": "v3.0.0"
       }
     }
   },

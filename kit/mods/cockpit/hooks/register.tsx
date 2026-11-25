@@ -747,7 +747,7 @@ async function resendAfterClear($: $, held: Resend) {
 }
 
 // The answer the resent prompt replies to, as a hidden row before it: data, not instructions. nucleo.md is not
-// repeated: the kit's SessionStart hook (session-start-clear.sh) already delivers it after a /clear.
+// repeated: the kit's SessionStart hook (session-start-estado.sh) already delivers it after a /clear.
 function answerNote(held: Resend) {
   const text = held.answer
   const body = text.length > ANSWER_HEAD + ANSWER_TAIL ? `${text.slice(0, ANSWER_HEAD)}\n[… recortado …]\n${text.slice(-ANSWER_TAIL)}` : text

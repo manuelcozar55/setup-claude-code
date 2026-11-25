@@ -71,7 +71,8 @@ salida() {
   echo
   echo '## Hooks cableados'
   echo
-  echo 'Cada fila es una entrada de `settings.json`. Todos terminan sin bloquear salvo los guards, que bloquean con un mensaje que dice qué hacer.'
+  echo 'Cada fila es una entrada de `settings.json` de la instalación por defecto. Todos terminan sin bloquear salvo los guards, que bloquean con un mensaje que dice qué hacer.'
+  echo 'Lo que se cablea solo al pedirlo con `install.sh --con <pieza>` (Sentinel, avisos de contexto, cockpit, `esenciales`) no sale en la tabla.'
   echo 'Para quitar un hook, bórralo de `~/.claude/settings.json` y anota el script en `~/.claude/.kit-desactivados` (ver `OPERAR.md`).'
   echo
   echo '| Evento | Matcher | Script | Qué hace | Variables que lee | Cómo se apaga |'

@@ -8,7 +8,7 @@ PIDS=()
 trap 'kill "${PIDS[@]}" 2>/dev/null; rm -rf -- "$T"' EXIT
 export HOME=$T/home GIT_CEILING_DIRECTORIES=$T LC_ALL=C.UTF-8; mkdir -p "$HOME"
 unset CLAUDE_PID CLAUDE_PROJECT_DIR NUCLEO_REGISTRO
-HO=$K/bin/handoff; HC=$K/hooks/session-start-clear.sh; HK=$K/hooks/session-start-compact.sh
+HO=$K/bin/handoff; HC=$K/hooks/session-start-estado.sh; HK=$HC
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
 ctx() { jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null; }
@@ -93,10 +93,10 @@ ok "9 la nueva trae el nuevo" "$(command grep -c obj-N "$SA/nucleo.md")" 1
 
 # 10. .gitignore y compact
 ok "10 sesiones/.gitignore = *" "$(cat "$SES/.gitignore" 2>/dev/null)" '*'
-KC=$(hook "$HK" "$PA" "" sA)
+KC=$(hook "$HK" "$PA" compact sA)
 ok "10 compact en ~ inyecta el nucleo de su ranura" "$(command grep -c 'obj-N' <<<"$KC")" 1
 ok "10 compact en ~ no inyecta el de B" "$(command grep -c 'obj-B' <<<"$KC")" 0
-ok "10 compact sin ranura sigue dando el índice" "$(hook "$HK" "$PM" "" sM | command grep -c '<indice-tareas>')" 1
+ok "10 compact sin ranura sigue dando el índice" "$(hook "$HK" "$PM" compact sM | command grep -c '<indice-tareas>')" 1
 
 # 11. un enlace dentro de la ranura propia: no se usa (ni para leer ni para escribir) y su destino no se toca
 SB=$(ls -d "$SES"/*-"$PB" 2>/dev/null)
@@ -327,7 +327,7 @@ C=$(hook "$HC" "$PV1" clear sidv1)
 ok "23 SessionStart clear inyecta el nucleo del proyecto" "$(command grep -c "<nucleo-datos fuente=\"$R1/.claude/estado/nucleo.md\">" <<<"$C")" 1
 ok "23 clear dice que es de ~, vinculada, con la ruta entre comillas" "$(command grep -c "Sesión lanzada en ~ y vinculada al proyecto '$R1'" <<<"$C")" 1
 ok "23 clear no inyecta el índice de ~" "$(command grep -c '<indice-tareas>' <<<"$C")" 0
-C=$(hook "$HK" "$PV1" "" sidv1)
+C=$(hook "$HK" "$PV1" compact sidv1)
 ok "23 SessionStart compact inyecta el del proyecto y la línea de vínculo" "$(command grep -c "<nucleo-datos fuente=\"$R1/.claude/estado/nucleo.md\">" <<<"$C"),$(command grep -c "vinculada al proyecto '$R1'" <<<"$C")" "1,1"
 jq -cn --arg c "$HOME" '{cwd:$c,session_id:"sidv1",trigger:"auto"}' | CLAUDE_PID=$PV1 bash "$K/hooks/pre-compact.sh" 2>/dev/null
 ok "23 PreCompact deja el checkpoint en el proyecto" "$(find "$R1/.claude/estado/checkpoints" -name 'checkpoint-compact-*.md' | wc -l | tr -d ' ')" 1
@@ -354,7 +354,7 @@ for MAL in "$T/MALO-nada" "$R1/MALO-sub" "$T/MALO-dd/../repo1" "$T/MALO-enlace" 
   ok "24.$i nucleo_raiz ignora el vínculo ($i)" "$(CLAUDE_PID=$PM4 nucleo_raiz "$HOME"; echo "rc=$?")" "$HOME
 rc=1"
   ok "24.$i --estado sigue en la ranura ($i)" "$(ho "$PM4" --estado | jq -r '[.raiz,.sesion]|map(tostring)|join(" ")')" "null $SM"
-  C=$(hook "$HC" "$PM4" clear "sidm$i"); KC=$(hook "$HK" "$PM4" "" "sidm$i")
+  C=$(hook "$HC" "$PM4" clear "sidm$i"); KC=$(hook "$HK" "$PM4" compact "sidm$i")
   ok "24.$i clear y compact inyectan la ranura y dicen que el vínculo no vale ($i)" "$(command grep -c "<nucleo-datos fuente=\"$SM/nucleo.md\">" <<<"$C"),$(command grep -c 'anota un proyecto vinculado que no uso' <<<"$C"),$(command grep -c 'anota un proyecto vinculado que no uso' <<<"$KC")" "1,1,1"
   case $MAL in *MALO*) ok "24.$i ningún texto inyectado reproduce la ruta ($i)" "$(printf '%s\n%s\n' "$C" "$KC" | command grep -c 'MALO')" 0 ;; esac
 done

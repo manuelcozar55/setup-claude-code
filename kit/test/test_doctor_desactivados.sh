@@ -26,7 +26,7 @@ quitar() {  # script... -> los quita de settings.json (lo que haria la persona a
 HOME="$tmp/home" bash "$KIT/install.sh" --apply >/dev/null 2>&1
 out="$(doc)"; rc=$?
 ck "$rc" "0" "linea base: doctor sale 0 sobre una instalacion limpia"
-ck "$(grep -c '^INFO ' <<<"$out")" "0" "linea base: sin .kit-desactivados no hay INFO"
+ck "$(grep -c '^INFO · desactivado' <<<"$out")" "0" "linea base: sin .kit-desactivados no hay INFO de desactivados"
 
 quitar branch-guard.sh
 out="$(doc)"; rc=$?
@@ -41,10 +41,10 @@ ck "$(grep -c '^WARN · guard de seguridad desactivado por ti.*branch-guard.sh' 
 ck "$(grep -c '^INFO · desactivado por ti.*branch-guard.sh' <<<"$out")" "0" "2: y no como INFO"
 ck "$(grep -c 'deja de proteger' <<<"$out")" "1" "2: el WARN dice que deja de protegerse"
 ck "$(grep -c '^FAIL' <<<"$out")" "0" "2: ningun FAIL"
-quitar nucleo-nudge.sh; printf 'nucleo-nudge.sh\n' >> "$CLAUDE_HOME/.kit-desactivados"
+quitar pre-compact.sh; printf 'pre-compact.sh\n' >> "$CLAUDE_HOME/.kit-desactivados"
 out="$(doc)"; rc=$?
-ck "$(grep -c '^INFO · desactivado por ti.*nucleo-nudge.sh' <<<"$out")" "1" "2: un hook que no es guard anotado sigue siendo INFO"
-ck "$(grep -c '^WARN .*nucleo-nudge.sh' <<<"$out")" "0" "2: sin WARN"
+ck "$(grep -c '^INFO · desactivado por ti.*pre-compact.sh' <<<"$out")" "1" "2: un hook que no es guard anotado sigue siendo INFO"
+ck "$(grep -c '^WARN .*pre-compact.sh' <<<"$out")" "0" "2: sin WARN"
 
 quitar destructive-guard.sh
 out="$(doc)"; rc=$?

@@ -294,6 +294,29 @@ ck "$([ -e "$CLAUDE_HOME/hooks/nucleo-gate.sh" ] && echo y || echo n)" "n" "reti
 ck "$([ -e "$CLAUDE_HOME/hooks/stop-context-gauge.sh" ] && echo y || echo n)" "y" "retirados: el script que la persona modifico se conserva"
 ck "$(dice 'stop-context-gauge.sh')" "y" "retirados: y el instalador lo dice"
 
+# Caso r2: actualizar una instalacion con los tres SessionStart de antes. -clear y -compact se fundieron en
+# session-start-estado.sh: sus entradas se van (la del script modificado por la persona, no) y el instalador lo dice;
+# session-start.sh (la linea de memoria) sigue cableado una sola vez.
+seed r2 <<'EOF'
+{ "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "\"$HOME/.claude/hooks/session-start.sh\"" } ] },
+      { "matcher": "startup|clear|resume", "hooks": [ { "type": "command", "command": "\"$HOME/.claude/hooks/session-start-clear.sh\"" } ] },
+      { "matcher": "compact", "hooks": [ { "type": "command", "command": "\"$HOME/.claude/hooks/session-start-compact.sh\"" } ] } ] } }
+EOF
+mkdir -p "$CLAUDE_HOME/hooks"
+cp "$HERE/fixtures/session-start-clear.retirado.sh" "$CLAUDE_HOME/hooks/session-start-clear.sh"   # la ultima version antes de fundir, sin tocar
+echo "# editado por la persona" > "$CLAUDE_HOME/hooks/session-start-compact.sh"
+run
+ck "$(jq '[.hooks.SessionStart | .. | strings | select(test("session-start-clear"))] | length' "$S")" "0" "fundidos: la entrada de session-start-clear.sh se va"
+ck "$(jq '[.hooks.SessionStart | .. | strings | select(test("session-start-compact"))] | length' "$S")" "1" "fundidos: la de session-start-compact.sh, con el script modificado, se conserva"
+ck "$(jq '[.hooks.SessionStart | .. | strings | select(test("session-start-estado"))] | length' "$S")" "1" "fundidos: y el hook único queda cableado una vez"
+ck "$(jq '[.hooks.SessionStart | .. | strings | select(test("session-start\\.sh"))] | length' "$S")" "1" "fundidos: session-start.sh (memoria) sigue cableado una vez"
+ck "$([ -e "$CLAUDE_HOME/hooks/session-start-clear.sh" ] && echo y || echo n)" "n" "fundidos: el script intacto se borra de hooks/"
+ck "$([ -e "$CLAUDE_HOME/hooks/session-start-compact.sh" ] && echo y || echo n)" "y" "fundidos: el script que la persona modifico se conserva"
+ck "$(dice 'hook retirado del kit, movido a')" "y" "fundidos: y el instalador dice que retira el viejo"
+ck "$(dice 'session-start-compact.sh')" "y" "fundidos: y dice que conserva el modificado"
+
 # Caso s: lo que la persona apago a proposito (.kit-desactivados, una linea por script o ruta) sigue apagado tras
 # actualizar: ni se recablea el hook, ni se recopia el agente, y el plan y el resumen lo dicen.
 seed s <<'EOF'
@@ -342,5 +365,18 @@ run --apply
 ck "$(cuenta stale-read-guard.py)" "0" "lista-no-descablea: lo anotado como hooks/x.py y no cableado sigue sin cablearse"
 ck "$([ -e "$CLAUDE_HOME/hooks/stale-read-guard.py" ] && echo y || echo n)" "n" "lista-no-descablea: y su fichero ausente no se recrea"
 ck "$([ -e "$CLAUDE_HOME/agents/code-reviewer.md" ] && echo y || echo n)" "n" "lista-no-descablea: ni el agente ausente"
+
+# --- Caso sentinel: el orden de PreToolUse no depende del camino ----------
+# El preflight de Sentinel va delante de los guards. Al actualizar (reinstalar, con o sin --con) la fusion lo trataba
+# como un hook tuyo y lo dejaba detras: mismo kit, otro orden segun el historial de la maquina.
+orden(){ jq -c '[.hooks.PreToolUse[] | .hooks[0].command | split("/") | last]' "$S"; }
+seed sa <<< '{}'; run --apply --con sentinel; ref="$(orden)"
+ck "$(jq -r 'first' <<< "$ref")" 'sentinel_preflight.py"' "sentinel limpio: su preflight abre PreToolUse"
+ck "$(jq -c 'del(.[0])' <<< "$ref")" "$(jq -c '[.hooks.PreToolUse[] | .hooks[0].command | split("/") | last]' "$KIT/claude/settings.json")" "sentinel limpio: detras, los guards en el orden de la plantilla"
+run --apply --con sentinel; ck "$(orden)" "$ref" "sentinel: reinstalar con --con deja el mismo orden"
+run --apply; ck "$(orden)" "$ref" "sentinel: actualizar sin --con (se conserva) deja el mismo orden"
+seed sb <<< '{}'; run --apply; run --apply --con sentinel
+ck "$(orden)" "$ref" "sentinel: instalar sin y luego con --con deja el mismo orden"
+ck "$(jq -c '[.hooks[][] | .hooks[].command | select(contains("sentinel_preflight"))] | length' "$S")" "1" "sentinel: y no se duplica"
 
 echo "== $pass passed, $fail failed =="; [ "$fail" -eq 0 ]

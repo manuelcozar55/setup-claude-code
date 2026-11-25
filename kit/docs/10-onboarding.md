@@ -3,18 +3,18 @@
 Guía para quien llega nuevo y solo quiere usar el kit. Está pensada para **WSL2 con Ubuntu o Debian**. Dura unos diez minutos. El procedimiento completo y lo opcional está en [`02-install.md`](02-install.md).
 
 **Si recibiste una consolidación local**, empieza por [`ENTREGA.md`](../../ENTREGA.md).
-Instala la base como se explica aquí y arranca con `scc`.
-Ese lanzador carga las copias incluidas de cockpit y esenciales; no necesitas instalarlas
-desde el marketplace. El paso 4 de esta guía es la alternativa para una release publicada.
+Instala la base como se explica aquí; si quieres el cockpit, añade `--con cockpit` (paso 4) y arranca con `scc`.
+El camino normal es `claude` a secas.
 
-Seis palabras que verás enseguida:
+Cuatro palabras que verás enseguida:
 
 - **Guard**: un script que corre antes de cada comando y lo bloquea si es peligroso. No depende del modelo.
 - **Oráculo**: la orden que decide si el trabajo está hecho (por ejemplo, tus tests). Se ejecuta con `oraculo -- <orden>`.
 - **`nucleo.md`**: el fichero `.claude/estado/nucleo.md` donde vive el estado de la tarea: objetivo, plan y siguiente paso.
 - **Handoff**: guardar ese estado al cerrar una fase, para que la sesión siguiente lo reciba sola.
-- **Dueño**: la sesión que ha reclamado `nucleo.md` y es la única que lo escribe.
-- **Diff-first**: si tu `~/.claude` es un repo con remoto, el instalador no escribe nada: te enseña el diff y copias tú lo que quieras.
+
+Otros términos (la sesión que escribe el estado, el modo en que el instalador solo te enseña el diff) están en
+[`12-metodologia.md`](12-metodologia.md) y en [`02-install.md`](02-install.md).
 
 Si eres Claude Code leyendo esto en una máquina nueva: los pasos 2 a 4 son el arranque y el paso 7 es el diagnóstico cuando algo no cuadra.
 
@@ -24,9 +24,9 @@ Si eres Claude Code leyendo esto en una máquina nueva: los pasos 2 a 4 son el a
 
 | Capa | Qué recibes | Cómo se activa |
 |---|---|---|
-| Base `kit/` | Guards, Sentinel, 7 agentes, skills del método, `handoff`, `oraculo` y plantilla de estado | `bash kit/install.sh` |
+| Base `kit/` | Los cinco guards de Bash, los agentes de trabajo (`deep-worker`, `code-explorer`, `quick-checker`, `code-reviewer`, `security-reviewer`), la skill `deep-change`, `handoff`, `oraculo` y plantilla de estado | `bash kit/install.sh` |
 | Aspecto y continuidad | Pantalla completa, tema oscuro, statusline, ventana de autocompactación, checkpoint y reinyección del estado | Se instalan con la base; se conservan los ajustes visuales propios |
-| Cockpit y esenciales incluidos | Dock de agentes, vigía, `/handoff`, `/nueva`, `/simple`, `/autonomo` y skills del plugin | `scc` (lo instala `install.sh`); marketplace como alternativa |
+| Piezas opcionales | Sentinel, cockpit (Dock de agentes, `/handoff`, `/nueva`, `/simple`, `/autonomo`), plugin esenciales, los revisores `silent-failure-hunter` y `pr-test-analyzer`, skills `retro` y `verification-before-completion`, avisos de contexto | `bash kit/install.sh --con <pieza>[,<pieza>…]` (`sentinel`, `cockpit`, `esenciales`, `revisores`, `skills-extra`, `nudge`) |
 | Harness y memoria del repo | `/work`, sensores del repo, `knowledge/` y `scripts/recuerda` | Solo al trabajar en este repo; `recuerda` requiere enlace manual |
 | Herramientas externas | `gitleaks`, venv de tools, agent-browser, MCP y plugins de terceros | Opcionales; ver [`08-plugins-mcp-y-skills.md`](08-plugins-mcp-y-skills.md) |
 
@@ -62,7 +62,7 @@ cd setup-claude-code
 bash kit/install.sh
 ```
 
-No uses `make bootstrap`: ejecuta además la suite de tests y crea un perfil que no necesitas. Lee la salida del instalador hasta el final. Te puede avisar de dos cosas:
+No uses `make bootstrap`: ejecuta además la suite de tests y crea un perfil que no necesitas. Lee la salida del instalador hasta el final: acaba con el veredicto del doctor (`==> doctor: OK, N WARN`) y sale con código 1 solo si hay algún FAIL. Te puede avisar de dos cosas:
 
 - **Ya tenías un `CLAUDE.md`.** No lo toca. Añade la línea `@AGENTS.md` a tu `CLAUDE.md`; la plantilla del kit quedó en `CLAUDE.kit.md`.
 - **`~/.local/bin` no está en tu `PATH`.** El instalador enlaza los CLIs del kit (`handoff`, `oraculo`, `cupo`, `efectividad` y `scc`) ahí. Abre una terminal nueva antes de seguir.
@@ -79,7 +79,7 @@ command -v handoff oraculo cupo efectividad scc   # deben salir cinco rutas
 Cómo leer `doctor.sh`:
 
 - **`FAIL`**: algo está roto o es inseguro. Sale con código distinto de 0. No lo ignores.
-- **`WARN`**: un componente opcional que no instalaste, o un aviso como «falta `@AGENTS.md`». Léelo antes de seguir.
+- **`WARN`**: un aviso como «falta `@AGENTS.md`» o una herramienta externa que no tienes. Léelo antes de seguir. Una pieza opcional que no pediste con `--con` sale como `INFO · opcional, no instalada`, no como `WARN`.
 - Cada `PASS` dice de dónde sale el dato (`(fuente: …)`). Si un check no puede decir su fuente, no es un check.
 
 Debe acabar en `OK (0 FAIL)`. Los `WARN` del venv de herramientas o de la Capa 2 de secretos son normales.
@@ -91,15 +91,15 @@ no demuestra por sí sola que el plugin esté instalado o cargado.
 
 ## 4 · El mod `cockpit` (opcional, recomendado)
 
-Da `/handoff`, `/nueva`, `/simple`, `/autonomo`, el Dock de agentes y el vigía de contexto.
-Para la consolidación local basta el lanzador indicado arriba. Para una release publicada:
+Da `/handoff`, `/nueva`, `/simple`, `/autonomo`, el Dock de agentes y el vigía de contexto. No se instala por defecto:
 
 ```bash
-claude plugin marketplace add "manuelcozar55/setup-claude-code@v$(cat VERSION)"
-claude plugin install cockpit@setup-claude-code
+bash kit/install.sh --con cockpit
+scc            # el lanzador carga el mod; `claude` a secas sigue funcionando sin él
 ```
 
-`install.sh` ya declara el marketplace (fijado a `v<VERSION>`) y habilita `esenciales@setup-claude-code` en `settings.json` antes de que ejecutes nada de esto; estas dos órdenes instalan el cockpit, y `doctor.sh` no mira plugins. El `ref` es una etiqueta de git, mutable: Claude Code no admite `sha` en la fuente de un marketplace (sí en la de cada plugin), así que protege la etiqueta en tu remoto si te importa. Queda fijado al tag de tu versión del kit: al actualizar, repite estas dos órdenes y `claude plugin update cockpit@setup-claude-code` (ver «Actualizar» en [`02-install.md`](02-install.md)). Detalle en [`11-cockpit.md`](11-cockpit.md). Sin el mod puedes guardar el estado con la CLI, pero no tienes Dock ni handoff automático.
+`scc --version` imprime la versión del kit, la del cockpit y la de Claude Code. Detalle en [`11-cockpit.md`](11-cockpit.md). Sin el mod
+puedes guardar el estado con la CLI, pero no tienes Dock ni handoff automático. Si lo instalas y luego actualizas el kit sin `--con`, se conserva y el instalador te dice cómo quitarlo.
 
 ## 5 · Tu primer proyecto
 
@@ -108,12 +108,13 @@ El estado de una tarea vive en `.claude/estado/nucleo.md` dentro de la **raíz g
 ```bash
 cd tu-proyecto
 git init              # solo si aún no es un repo
-handoff --iniciar     # crea .claude/estado/nucleo.md desde la plantilla
+claude                # el primer guardado con trabajo crea .claude/estado/nucleo.md solo
 ```
 
-Abre `nucleo.md` y rellena **Objetivo** (las palabras de quien pidió la tarea) e **Invariantes** (lo que no se toca y por qué). Después abre `scc` en la raíz del proyecto, o `claude` si instalaste los plugins globalmente. El hook de arranque te reclama como dueño del estado y se lo entrega al modelo.
-
-`handoff --iniciar` nunca sobrescribe: si el fichero existe, lo dice y sale sin tocarlo.
+No tienes que crear `nucleo.md`: se crea solo desde la plantilla en el primer guardado con trabajo y se añade a `.git/info/exclude`.
+Cuando quieras, ábrelo y rellena **Objetivo** (las palabras de quien pidió la tarea) e **Invariantes** (lo que no se toca y por qué).
+El hook de arranque se lo entrega al modelo en cada sesión nueva. Si prefieres crearlo antes de empezar, `handoff --iniciar` lo hace
+desde la plantilla y nunca sobrescribe: si el fichero existe, lo dice y sale sin tocarlo.
 
 **Dónde va cada cosa.** Lo temporal, en el scratchpad o un `mktemp`. El estado, los informes y los checkpoints, en `.claude/estado/` del proyecto: el kit lo crea si falta y lo deja ignorado por git (un `.gitignore` interno con `*`), así que nunca llega a un commit. Lo privado de tu máquina, en `~/.claude`. Para el informe de una tarea, `handoff --informe <tema>` crea `informes/AAAA-MM-DD-<tema>/` y te da su ruta.
 
@@ -154,7 +155,7 @@ Una sesión por tarea. Esperar a la compactación automática pierde contexto; e
 Esto es solo para quien cambia el propio kit. Antes de tu primer commit:
 
 ```bash
-make test                  # 64 suites en bash puro, sin red, unos 7 min. exit 0 o no está hecho.
+make test                  # 67 suites en bash puro, sin red, unos 7 min. exit 0 o no está hecho.
 bash kit/scan-secrets.sh   # secretos y PII en el árbol
 shellcheck -x <tus .sh>
 ```

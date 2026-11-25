@@ -16,7 +16,7 @@ Las cifras citadas se midieron en un setup real en 2026 y están anonimizadas. E
 
 ## Día 1 · Instala y mide
 
-1. `bash kit/install.sh` y `bash kit/doctor.sh` desde la raíz del clon ([`10-onboarding.md`](../10-onboarding.md) lo explica paso a paso, con cada `FAIL` y `WARN`).
+1. `bash kit/install.sh` desde la raíz del clon; acaba con el veredicto del doctor, y `bash kit/doctor.sh` da el detalle ([`10-onboarding.md`](../10-onboarding.md) lo explica paso a paso, con cada `FAIL` y `WARN`). Después, `claude` a secas.
 2. Abre `claude` dentro de un repo tuyo y, **antes de escribir nada**, teclea `/context`.
 3. Apunta el total y las cuatro partidas grandes: esquemas de herramientas, skills, memoria e instrucciones.
 
@@ -26,13 +26,9 @@ Las cifras citadas se midieron en un setup real en 2026 y están anonimizadas. E
 
 ## Día 2 · `nucleo.md`: el estado en disco, con forma fija
 
-En la raíz git de tu proyecto (si no es un repo, `git init` primero) ejecuta:
-
-```bash
-handoff --iniciar
-```
-
-Crea `.claude/estado/nucleo.md` desde la plantilla del kit, que fija las secciones y su orden (puedes verla con `cat kit/claude/templates/nucleo.md`):
+No hay que crearlo: en un repo git (si no lo es, `git init` primero), el primer guardado con trabajo crea `.claude/estado/nucleo.md`
+solo, desde la plantilla del kit, que fija las secciones y su orden (puedes verla con `cat kit/claude/templates/nucleo.md`).
+Si quieres verlo hoy sin esperar a ese guardado, en la raíz del proyecto ejecuta `handoff --iniciar`. Las secciones son estas:
 
 ```markdown
 # Estado
@@ -50,7 +46,7 @@ Si el fichero ya existe, `handoff --iniciar` no lo toca.
 
 - «Objetivo» son las palabras de quien pidió la tarea, tal cual. «Invariantes», lo que no se toca y por qué. Esas dos no se reescriben nunca.
 - «Siguiente acción» es **una**, concreta y ejecutable.
-- Lo terminado sale del fichero (a un `diario.md` aparte, que nada inyecta). El hook [`session-start-clear.sh`](../../claude/hooks/session-start-clear.sh) lo entrega a cada sesión nueva (y [`session-start-compact.sh`](../../claude/hooks/session-start-compact.sh) tras cada compactación), pero **solo las secciones de la forma fija**: la primera vez que aparece cada una, con un tope por sección y otro total (3 000 por sección y un tope único de 6 500 bytes en el que «Paso actual», «Siguiente acción» y «Comandos de verificación» entran siempre, cada una con hasta 700, en [`lib/nucleo.sh`](../../claude/hooks/lib/nucleo.sh)). Lo que no tiene esa forma no llega, y una línea lo dice: si el fichero degenera en diario, el modelo recibe el título y el aviso, nada más.
+- Lo terminado sale del fichero (a un `diario.md` aparte, que nada inyecta). El hook [`session-start-estado.sh`](../../claude/hooks/session-start-estado.sh) lo entrega a cada sesión nueva y tras cada compactación, pero **solo las secciones de la forma fija**: la primera vez que aparece cada una, con un tope por sección y otro total (3 000 por sección y un tope único de 6 500 bytes en el que «Paso actual», «Siguiente acción» y «Comandos de verificación» entran siempre, cada una con hasta 700, en [`lib/nucleo.sh`](../../claude/hooks/lib/nucleo.sh)). Lo que no tiene esa forma no llega, y una línea lo dice: si el fichero degenera en diario, el modelo recibe el título y el aviso, nada más.
 
 **Por qué.** El 75 % de las compactaciones medidas llegaron con el estado sin tocar en los 20 turnos previos: lo que sobrevivió fue un estado viejo. Y un `nucleo.md` que degeneró en diario llegó a 78 KB con cuatro «TAREA ACTUAL»: se inyectaba troceado y la siguiente acción vigente quedaba en el centro cortado. Lo ves con salidas reales en [`02-sesion-real.md`](02-sesion-real.md).
 

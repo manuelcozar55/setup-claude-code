@@ -12,7 +12,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(cd "$HERE/../.." && pwd)"
 pass=0; fail=0
 
 # prefijo de la fila de contexto-base.sh | tope en caracteres
-TOPES='instrucciones globales|6900
+TOPES='instrucciones globales|6741
 SessionStart compact|9500
 SessionStart startup|9500
 SessionStart clear|9500
@@ -91,7 +91,7 @@ TS=$(mktemp -d); sleep 300 & SP=$!
   { for s in Objetivo Invariantes Plan "Paso actual" "Siguiente acción" Pendientes "Comandos de verificación" "Ficheros tocados"; do
       printf '## %s\n' "$s"; for _ in 1 2 3 4 5 6 7 8; do printf '%s\n' "- $L$L"; done; done; } >"$TS/b.md"
   cd "$HOME" && CLAUDE_PID=$SP bash "$REPO/kit/claude/bin/handoff" --desde "$TS/b.md" >/dev/null 2>&1
-  jq -cn --arg c "$HOME" '{cwd:$c,session_id:"s",source:"clear"}' | CLAUDE_PID=$SP bash "$REPO/kit/claude/hooks/session-start-clear.sh" \
+  jq -cn --arg c "$HOME" '{cwd:$c,session_id:"s",source:"clear"}' | CLAUDE_PID=$SP bash "$REPO/kit/claude/hooks/session-start-estado.sh" \
     | jq -r '.hookSpecificOutput.additionalContext // empty' >"$TS/ctx"
 )
 kill "$SP" 2>/dev/null; wait "$SP" 2>/dev/null

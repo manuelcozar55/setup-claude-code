@@ -1,0 +1,16 @@
+=== startup memoria rc=0 ===
+[SessionStart] No project memory found. Global: ~/.claude/CLAUDE.md active.
+=== startup estado rc=0 ===
+
+=== clear memoria rc=0 ===
+[SessionStart] No project memory found. Global: ~/.claude/CLAUDE.md active.
+=== clear estado rc=0 ===
+
+=== resume memoria rc=0 ===
+[SessionStart] No project memory found. Global: ~/.claude/CLAUDE.md active.
+=== resume estado rc=0 ===
+
+=== compact memoria rc=0 ===
+[SessionStart] No project memory found. Global: ~/.claude/CLAUDE.md active.
+=== compact estado rc=0 ===
+{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"Contexto compactado. No existe @T@/r3/.claude/estado/nucleo.md: antes de seguir, escríbelo con la forma de $HOME/.claude/templates/nucleo.md."}}

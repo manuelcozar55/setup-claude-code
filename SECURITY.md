@@ -31,7 +31,7 @@ Lo que cada capa protege y lo que no, de un vistazo:
 | `permissions.deny` (Capa 0) | Borrados de la raíz y de `$HOME`, `git push --force`, la config del kit, antes de que corra ningún hook. | A `Bash` frente a lo que no reconoce como comando de fichero (un script que borra, `rsync --delete`). |
 | Guards de Bash (Capa 1, 5 hooks) | Comandos destructivos, pipe-a-shell, push a ramas protegidas, `git add` de credenciales, secretos escritos desde Bash, **decididos sobre el comando parseado** (no sobre el texto crudo). | Lo que solo existe tras la expansión del shell y el código dentro de un intérprete (`python -c`, `perl -e`). |
 | `gitleaks` en `pre-commit` (Capa 2) | Credenciales con firma textual que llegan al índice por cualquier vía. | Contenido binario sin firma; repos que no activaron `core.hooksPath`. |
-| Sentinel | Rutas sensibles, comandos y redes sospechosas, escrituras sobre la config del kit, en cualquier herramienta. | Un comando que construye el nombre del fichero en el shell; el contenido de `python -c`/`node -e`. |
+| Sentinel (opcional: `install.sh --con sentinel`) | Rutas sensibles, comandos y redes sospechosas, escrituras sobre la config del kit, en cualquier herramienta. | Un comando que construye el nombre del fichero en el shell; el contenido de `python -c`/`node -e`. |
 
 ### Capa 0 — `permissions.deny` de `settings.json` (antes de que corra un hook)
 
@@ -151,18 +151,55 @@ separador y su origen** (`;`, `&&`, `|`, subshell, `$(…)`, heredoc) y reconoce
 **Lo que sigue sin ver ningún guard** (límites declarados, fijados en `test/fixtures/guards-bypass.jsonl`): el código de
 un intérprete (`python3 -c "import shutil; shutil.rmtree('/home/u')"`, `perl -e "unlink glob q(/home/*/*)"`: el hook ve
 texto, no lo que ejecutará Python o Perl), `eval "$X"` y `bash -c "$X"` con el valor construido antes, un nombre armado
-con comillas (`cur''l`, `b""ash`), `rsync --delete` y cualquier cosa que borre sin nombrar una ruta. También pasan, y ya
-pasaban en la versión anterior, estos que la revisión R1 midió (39 filas `limite` en `test/fixtures/guards-r1.jsonl`: 36 que la
-base ya dejaba pasar y 3 falsos positivos preexistentes que siguen bloqueados, L36, Q17 y Q74; y otras 125 de la ronda 2 en
+con comillas (`cur''l`, `b""ash`), `ssh host '<orden destructiva>'` (lo que corre en otra máquina queda fuera del guard local),
+`rsync --delete` y cualquier cosa que borre sin nombrar una ruta. También pasan, y ya
+pasaban en la versión anterior, estos que la revisión R1 midió (34 filas `limite` en `test/fixtures/guards-r1.jsonl`: 31 que la
+base ya dejaba pasar y 3 falsos positivos preexistentes que siguen bloqueados, L36, Q17 y Q74; y otras 111 de la ronda 2 en
 `guards-r2.jsonl`, todas con el mismo veredicto que la base):
 `git checkout -- .`, `git checkout .` y `git restore .` (descartan cambios sin pasar por el reflog), `git branch -D` de una
 rama que no es `main`/`master`, `git stash clear`, `git filter-branch`, `git reflog expire`, `git gc --prune=now`,
 `git reset --merge|--keep`, `git checkout -f`, `git switch -f`, `mv ~ …`, `truncate` de un dotfile, `kill -9 -1`, `pkill -9 -u`,
-`printenv`, `cat /proc/self/environ`, `cat` de ficheros de credenciales que no están en la lista cerrada
-(`~/.git-credentials`, la config de gcloud), un nombre armado con `printf` o con `${X:-…}` (`cat $(printf .en%s v)`), el
-nombre por glob (`cat .en*`), `rm${IFS}-rf${IFS}~/x` y `$'\x72m' -rf ~`
+`printenv`, `cat /proc/self/environ`, `cat` de la config de gcloud, un nombre armado con `printf` o con `${X:-…}`
+(`cat $(printf .en%s v)`), `rm${IFS}-rf${IFS}~/x` y `$'\x72m' -rf ~`
 (esta última sí pregunta: lleva un `$` en la orden; la expansión de llaves `{rm,-rf,~/x}` también pregunta). La barrera real es la capa de permisos de Claude Code y, para lo
 catastrófico, que el agente no corra con permisos que no necesita.
+
+Límites de la ronda 2 de guards (fijados en `test/test_guards.sh`, secciones a6 y 13c): un texto que no se ve entero, como
+`cat fichero | bash` (el contenido del fichero es opaco); un alias definido en una orden y usado en otra
+(`git config alias.x 'clean -fd'` y luego `git x`; el `git -c alias.x=… x` de una sola línea sí se deniega); envoltorios que no
+están en la lista (`script -c`, `su -c`, `setpriv`, `chroot`…), y más de 3 niveles de `bash -c` anidados (ese caso se deniega
+por seguridad). `git clean -id` y `-di` se deniegan aunque sean interactivos (lado conservador).
+
+**Leer credenciales por Bash** (`secret-guard.sh`, espejo de los `deny` de Read): se deniega cuando la clave de `~/.ssh`,
+`~/.aws/credentials`, un `.env`, `~/.git-credentials`, `~/.config/gh/hosts.yml`, `~/.netrc` o `~/.gnupg` es **operando** de
+`cat`, `head`, `base64`, `xxd`, `cp`, `tar`, `scp`, `openssl`, `curl -F f=@…` y similares. Se decide por el operando, no por el
+texto: el literal dentro de `grep`, `git commit -m`, `echo`, un heredoc de texto o un comentario pasa, y también `ls ~/.ssh`,
+`ssh -i`, `ssh-add`, `cat ~/.ssh/config|known_hosts|*.pub` y `cp .env.example .env`. Donde un caso benigno y uno malo no se
+distinguen, gana el benigno. **Sin barrera por defecto; `--con sentinel`**: exfiltrar a una IP en crudo, la inyección por salida
+de MCP o web, y leer con `python -c`, variables, `xargs cat`, `find -exec cat`, `ssh host cat`. Tampoco se
+cubren `secrets.*` (`secrets.md` es legítimo) ni un heredoc que escribe un script y lo ejecuta después.
+
+Ronda 3 (fijada en `test/test_guards.sh`, secciones 13d a 13f y a6). Cerrado: `cat f` con miles de operandos o segmentos ya no agota el
+timeout de 10 s (coste lineal, sin un fork por operando, y un tope de 1500 operandos con nombre sensible y 2000 segmentos: pasado el tope
+se pregunta, o se deniega en un asiento desatendido); las plantillas (`.env.local.example`, `.envrc.example`, cualquier `.env*` o `.envrc*`
+cuyo último sufijo sea `example|sample|template|dist`) y `x.env.ts|js|mjs|cjs|mts|cts|d.ts|py|rb|go` ya no se deniegan (`.env.json` y `x.env.json` sí);
+`printf '%s' "git clean -fd" | bash`; `< credencial` hacia cualquier orden (`tr`, `nc`, `ssh`, `while read … done < .env`, `mapfile`), `source`/`.`
+de una credencial y `busybox cat`. **Declarado, no cerrado**: `… | tee x | bash` y `| xargs -I{} sh -c {}`; envoltorios fuera de lista
+(`chrt`, `unbuffer`, `strace`, `runuser`, `systemd-run`, `fakeroot`, `unshare`, `nsenter`, `xvfb-run`); `requireForce` o un alias fijados en una orden
+anterior, `--config-env` y `GIT_CONFIG_*`; `parallel git clean {} ::: -fd`; leer una credencial con `$(<f)`, `perl`, `vim`, `git show HEAD:.env`,
+`git diff --no-index` o un volumen de Docker (`-v ~/.ssh`); los globs `cat *.local`, `*rc` y `.*` se deniegan (falso positivo aceptado, no se sabe qué hay detrás);
+y el tope de trabajo de arriba (una orden legítima de más de 2000 segmentos pregunta).
+
+Ronda 4 (fijada en `test/test_guards.sh`, secciones 13f a 13j). Cerrado: el guard ya no pasa a git las opciones de la orden juzgada (solo el
+directorio de `-C`; git corre con `core.fsmonitor` y `core.hooksPath` apagados y sin la config de sistema ni la global), porque con
+`git -c core.fsmonitor='<orden>' add -A` git ejecutaba `<orden>` mientras el hook juzgaba; `< credencial cat` con la redirección delante; `cat $(x) credencial`
+(sustitución sin comillas delante del operando); banderas que `nocasematch` confundía (`grep -a`, `cp -T`, `scp -p`, `rsync -t`); `jq --rawfile|--slurpfile`;
+un tope de 3000 tokens por segmento con lector (pasado, pregunta); y los lectores `pr`, `expand`, `unexpand`, `csplit`, `look`, `join`, `ptx`, `tsort` y `numfmt`.
+**Declarado, no cerrado**: `ed -s`, `tar -T credencial`, `curl file://credencial`, `curl -K credencial`, `ssh -F credencial` y `wget -i credencial`;
+la lectura dentro de `function f { …; }` o `coproc`, y una ruta que sale de una sustitución (`cat "$(echo credencial)"`); `git --git-dir=X add -A` y
+`GIT_DIR=X git add -A`, que se juzgan en el directorio del hook y no en `X` (el guard ya no pasa a git opciones de la orden que juzga); y
+`.env_example.md`, que se deniega (falso positivo aceptado). La regla de lectura por Bash es una barrera de mejor esfuerzo sobre una **lista cerrada de
+lectores**, no una garantía: la garantía es la regla `deny` de `Read` y `--con sentinel`.
 
 `git push --force-with-lease` y `--force-if-includes` a una rama de trabajo (prefijo `feat/`, `fix/`, `release/`… o la rama actual si lo
 lleva) **preguntan** (solo pisan la rama si nadie la ha tocado); a `main`/`master`, a una rama sin prefijo de trabajo (`develop`,
@@ -196,7 +233,8 @@ de ahí, con los límites de "por nombre" ya descritos arriba — no de la Capa
 
 ### Sentinel (`sentinel/sentinel_preflight.py`)
 
-Corre antes de **cualquier** herramienta, no solo `Bash`. Un error interno **falla cerrado** (`exit 2`); si falta su
+Es una pieza opcional: la instalación por defecto no lo cablea (`bash kit/install.sh --con sentinel`). Si lo instalas,
+corre antes de **cualquier** herramienta, no solo `Bash`. Un error interno **falla cerrado** (`exit 2`); si falta su
 `iocs.json` (`kit/sentinel/iocs.json`, que el kit **sí** distribuye, así que en una instalación normal está), `decide()` resuelve «allow»; si falta
 `python3`, `optional-hook.sh` no bloquea pero **avisa una vez por sesión** de que Sentinel no está activo; y un hook que
 agota su `timeout` deja ejecutar la herramienta (Sentinel no lleva `onFailure`), por eso se da un presupuesto de 1,5 s y
@@ -270,7 +308,7 @@ Un interruptor es una decisión de la persona sobre su máquina: un agente que l
 
 ## Cuánto cuesta
 
-Una llamada a `Bash` pasa por los cinco guards y Sentinel **en paralelo** (los hooks de un mismo evento corren a la vez):
+Una llamada a `Bash` pasa por los cinco guards (y Sentinel, si lo instalaste) **en paralelo** (los hooks de un mismo evento corren a la vez):
 el coste medido es de **62 a 67 ms** de reloj, el del más lento, no la suma (≈ 270 ms si se encadenaran). Es una
 medida de esta máquina: la tuya variará, pero el orden de magnitud sirve para decidir si merece la pena añadir un hook más.
 

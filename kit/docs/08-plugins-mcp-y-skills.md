@@ -7,11 +7,11 @@ no hace falta activarlas todas para usar el kit. **Los terceros se documentan, n
 
 ## Plugins de Claude Code
 
-`claude/settings.json` declara tres plugins en `enabledPlugins`: dos del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual) y `esenciales`, que viene del marketplace de este repo. El `settings.json` declara ese marketplace (`setup-claude-code`, GitHub `manuelcozar55/setup-claude-code`) en `extraKnownMarketplaces`; `kit/install-plugins.sh` (abajo) lo da de alta también por línea de comandos.
+`claude/settings.json` declara dos plugins en `enabledPlugins`, los dos del marketplace oficial `claude-plugins-official` (ya conocido por Claude Code, no requiere alta manual). `esenciales`, que viene del marketplace de este repo, es opcional: `install.sh --con esenciales` lo habilita. El `settings.json` declara ese marketplace (`setup-claude-code`, GitHub `manuelcozar55/setup-claude-code`) en `extraKnownMarketplaces`; `kit/install-plugins.sh` (abajo) lo da de alta también por línea de comandos.
 
 | Plugin | Para qué | Cómo |
 |---|---|---|
-| `esenciales@setup-claude-code` | el método y sus skills (ver `04-superpowers.md`) | marketplace de este repo, que registra `kit/install-plugins.sh --apply`; luego `/plugin` |
+| `esenciales` (opcional) | el método y sus skills (ver `04-superpowers.md`) | marketplace de este repo, que registra `kit/install-plugins.sh --apply`; luego `/plugin` |
 | `code-review@claude-plugins-official` | revisión de PRs | `/plugin` |
 | `skill-creator@claude-plugins-official` | crear y editar skills | `/plugin` |
 

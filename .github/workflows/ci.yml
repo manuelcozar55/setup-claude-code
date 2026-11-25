@@ -209,6 +209,9 @@ jobs:
       - name: "test_install_scc_deps.sh (lanzador scc, copia del cockpit y puertas de dependencias)"
         run: bash kit/test/test_install_scc_deps.sh
 
+      - name: "test_install_con.sh (piezas opcionales: --con, actualizar sin quitarlas, uninstall --pieza)"
+        run: bash kit/test/test_install_con.sh
+
       - name: "test_uninstall_kit.sh (uninstall --kit: quita lo del manifiesto y des-fusiona settings.json)"
         run: bash kit/test/test_uninstall_kit.sh
 
@@ -251,6 +254,8 @@ jobs:
         run: bash kit/test/test_statusline.sh
       - name: "test_session_start_clear.sh (hook SessionStart: nucleo.md como datos, recorte y fail-open)"
         run: bash kit/test/test_session_start_clear.sh
+      - name: "test_session_start_equivalencia.sh (salida exacta de SessionStart por source contra golden)"
+        run: bash kit/test/test_session_start_equivalencia.sh
       - name: "test_nucleo_lib.sh (lib de nucleo: una raíz sin anidados, emisión por secciones bajo el tope)"
         run: bash kit/test/test_nucleo_lib.sh
       - name: test_nucleo_integridad
@@ -276,6 +281,8 @@ jobs:
         run: bash kit/test/test_scripts_audit.sh
       - name: "test_presupuesto_contexto.sh (tope de contexto por canal, peor caso)"
         run: bash kit/test/test_presupuesto_contexto.sh
+      - name: "test_presupuesto_kit.sh (tope de hooks, agentes y skills por defecto)"
+        run: bash kit/test/test_presupuesto_kit.sh
 
       - name: "test_guia.sh (guía didáctica: existe, enlazada desde 01-overview, sin enlaces rotos)"
         run: bash kit/test/test_guia.sh

@@ -2,8 +2,8 @@
 # scc — lanza Claude Code con el cockpit y los plugins del kit cargados desde la copia que install.sh deja en
 # $CLAUDE_HOME/scc/ (no depende de donde este el clon). `scc --version` imprime la version del kit, la del
 # cockpit y la de Claude Code. Cualquier otro argumento pasa tal cual a claude. Si Claude Code falta o es
-# anterior a la minima que declara el cockpit, lo dice y lanza claude a secas. Con install.sh --sin-cockpit no
-# hay copia y scc arranca claude sin plugins.
+# anterior a la minima que declara el cockpit, lo dice y lanza claude a secas. Sin la copia del cockpit (se
+# instala con install.sh --con cockpit) scc lo dice y sale con 1.
 set -euo pipefail
 SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
 CLAUDE_HOME="$(cd "$(dirname "$SELF")/.." && pwd)"
@@ -27,6 +27,8 @@ if [ "${1:-}" = "--version" ] && [ "$#" -eq 1 ]; then
   if [ -n "$claude_v" ]; then echo "claude $claude_v"; else echo "claude: no se encuentra en el PATH"; fi
   exit 0
 fi
+
+[ -d "$COCKPIT" ] || { echo "scc: el cockpit no esta instalado; instalalo con: bash install.sh --con cockpit (usa claude a secas si no lo quieres)" >&2; exit 1; }
 
 command -v claude >/dev/null 2>&1 || { echo "scc: no se encuentra el CLI 'claude' en el PATH; instalalo antes de usar scc" >&2; exit 127; }
 

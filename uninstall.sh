@@ -70,8 +70,9 @@ usage() {
   echo "uso: $0 [--list|--dry-run|--apply] [--from FICHERO]   (restaura un backup; no desinstala el kit)"
   echo "     $0 --kit [--dry-run|--apply]                      (desinstala el kit segun .kit-manifest)"
   echo "     $0 --kit --settings-plantilla [--apply]           (sin copia previa a la instalacion: quita de settings.json lo igual a la plantilla del kit)"
+  echo "     $0 --kit --pieza PIEZA[,PIEZA] [--dry-run|--apply] (quita solo piezas opcionales: ver kit/opcional.sh)"
 }
-MODE="dry-run"; FROM=""; KIT_MODE=0; SETTINGS_PLANTILLA=0
+MODE="dry-run"; FROM=""; KIT_MODE=0; SETTINGS_PLANTILLA=0; PIEZA=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --list)    MODE="list" ;;
@@ -79,6 +80,7 @@ while [ $# -gt 0 ]; do
     --apply)   MODE="apply" ;;
     --kit)     KIT_MODE=1 ;;
     --settings-plantilla) SETTINGS_PLANTILLA=1 ;;
+    --pieza)  [ -n "${2:-}" ] || die "--pieza exige el nombre de una pieza opcional"; PIEZA="$2"; shift ;;
     --from)   [ -n "${2:-}" ] || die "--from exige un fichero ZIP o un directorio de backup"; FROM="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "argumento no reconocido: $1" ;;
@@ -447,16 +449,24 @@ kit_uninstall() {
   fi
   case " ${rm_list[*]:-} " in *" settings.json "*) ;; *) [ -f "$CLAUDE_HOME/settings.json" ] && settings_unmerge=1 ;; esac
 
-  names="$(
-    { while IFS= read -r line; do rel="${line#*  }"; case "$rel" in hooks/*/*|sentinel/*/*) ;; hooks/*|sentinel/*) echo "${rel##*/}" ;; esac; done < "$man"
-      [ -f "$HERE/kit/claude/settings.json" ] && jq -r '[.hooks // {} | .. | .command? // empty | splits(" +") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")] | .[]' "$HERE/kit/claude/settings.json"
-      printf '%s\n' smart_approve.py preflight.sh stop-session-summary.sh
-    } | sort -u | grep -v '^optional-hook.sh$' | jq -R . | jq -s -c .)"
-  kitjson="$HERE/kit/claude/settings.json"; [ -f "$kitjson" ] || kitjson=""
-  prejson="$CLAUDE_HOME/.kit-settings-pre.json"; [ -f "$prejson" ] || prejson=""
-
   tmpj="$(mktemp -d)"; trap 'rm -r "$tmpj"' RETURN
   newj="$tmpj/settings.json"
+  # La plantilla mas lo que cablean las piezas opcionales (kit/opcional-settings.json): se desinstala todo.
+  kitjson="$HERE/kit/claude/settings.json"
+  if [ -f "$kitjson" ] && [ -f "$HERE/kit/opcional-settings.json" ]; then
+    jq -s '.[0] as $t | reduce (.[1] | to_entries[] | .value) as $f ($t;
+        .enabledPlugins = ((.enabledPlugins // {}) + ($f.enabledPlugins // {}))
+        | .hooks = (reduce (($f.hooks // {}) | to_entries[]) as $e (.hooks // {}; .[$e.key] += $e.value)))' \
+      "$kitjson" "$HERE/kit/opcional-settings.json" > "$tmpj/kit.json" && kitjson="$tmpj/kit.json"
+  fi
+  [ -f "$kitjson" ] || kitjson=""
+  names="$(
+    { while IFS= read -r line; do rel="${line#*  }"; case "$rel" in hooks/*/*|sentinel/*/*) ;; hooks/*|sentinel/*) echo "${rel##*/}" ;; esac; done < "$man"
+      [ -n "$kitjson" ] && jq -r '[.hooks // {} | .. | .command? // empty | splits(" +") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")] | .[]' "$kitjson"
+      printf '%s\n' smart_approve.py preflight.sh stop-session-summary.sh
+    } | sort -u | grep -v '^optional-hook.sh$' | jq -R . | jq -s -c .)"
+  prejson="$CLAUDE_HOME/.kit-settings-pre.json"; [ -f "$prejson" ] || prejson=""
+
   if [ "$settings_unmerge" -eq 1 ]; then
     real="$CLAUDE_HOME/settings.json"; [ -L "$real" ] && real="$(readlink -f "$real")"
     if ! jq empty "$real" 2>/dev/null; then
@@ -535,6 +545,86 @@ kit_uninstall() {
   echo "  No se toca lo tuyo: el estado de tus proyectos (<repo>/.claude/estado/, lo crea el autoinicio) y $CLAUDE_HOME/session-logs."
 }
 
+# Quita solo piezas opcionales (kit/opcional.sh): sus ficheros del manifiesto con la suma intacta y lo que cablean en
+# settings.json (kit/opcional-settings.json). El resto del kit y de la configuracion se queda como esta.
+pieza_uninstall() {
+  local apply=0 man="$CLAUDE_HOME/.kit-manifest" p pz line sha rel real="" bk tmpj names rm_list=() keep_list=() d lista
+  [ "$MODE" = apply ] && apply=1
+  [ "$MODE" != list ] || die "--pieza no se combina con --list"
+  [ -z "$FROM" ] || die "--pieza no se combina con --from"
+  [ -f "$HERE/kit/opcional.sh" ] || die "falta $HERE/kit/opcional.sh"
+  # shellcheck source=kit/opcional.sh
+  . "$HERE/kit/opcional.sh"
+  [ -n "${PIEZA//[ ,]/}" ] || die "--pieza exige el nombre de una pieza opcional"
+  lista=" ${PIEZA//,/ } "
+  for p in ${PIEZA//,/ }; do
+    case " $PIEZAS_OPCIONALES " in *" $p "*) ;; *) die "pieza desconocida: $p (opcionales: $PIEZAS_OPCIONALES)" ;; esac
+  done
+  [ -f "$man" ] || die "no hay $man: el kit no esta instalado con install.sh --apply en $CLAUDE_HOME"
+  command -v jq >/dev/null 2>&1 || die "uninstall --kit --pieza necesita jq"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    sha="${line%%  *}"; rel="${line#*  }"
+    case "$rel" in "~bin/"*|/*|*..*) continue ;; esac
+    pz="$(opcional_de "$rel")" || continue
+    case "$lista" in *" $pz "*) ;; *) continue ;; esac
+    p="$CLAUDE_HOME/$rel"
+    if [ -L "$p" ]; then keep_list+=("$rel (enlace: no es del kit)")
+    elif [ ! -e "$p" ]; then :
+    elif [ "$(sha256sum "$p" | cut -d' ' -f1)" = "$sha" ]; then rm_list+=("$rel")
+    else keep_list+=("$rel (modificado por ti)"); fi
+  done < "$man"
+  tmpj="$(mktemp -d)"; trap 'rm -r "$tmpj"' RETURN
+  jq --arg ps "$PIEZA" '[($ps | split(",")[]) as $p | .[$p] // {}] as $fs | {
+      hooks: (reduce $fs[] as $f ({}; reduce (($f.hooks // {}) | to_entries[]) as $e (.; .[$e.key] += $e.value))),
+      enabledPlugins: (reduce $fs[] as $f ({}; . + ($f.enabledPlugins // {})))}' "$HERE/kit/opcional-settings.json" > "$tmpj/kit.json"
+  names="$(jq -c '[.hooks[]?[]?.hooks[]?.command | strings | splits(" +") | gsub("[\"\u0027]"; "") | select(test("\\.claude/(hooks|sentinel)/")) | sub(".*/"; "")] | unique | map(select(. != "optional-hook.sh"))' "$tmpj/kit.json")"
+  real="$CLAUDE_HOME/settings.json"
+  if [ -f "$real" ] && jq empty "$real" 2>/dev/null; then
+    [ -L "$real" ] && real="$(readlink -f "$real")"
+    jq --argjson names "$names" --slurpfile k "$tmpj/kit.json" --slurpfile pr <(echo null) \
+      '$k[0] as $kit | $pr[0] as $pre | '"$UNMERGE_JQ" "$real" > "$tmpj/settings.json" || die "la des-fusion de settings.json fallo"
+  else
+    real=""
+  fi
+  echo "== uninstall --kit --pieza $PIEZA ($([ "$apply" -eq 1 ] && echo apply || echo 'dry-run: no se modifica nada')) sobre $CLAUDE_HOME =="
+  echo "  se borrarian ${#rm_list[@]} ficheros de la pieza (su suma coincide con el manifiesto)"
+  if [ -n "$real" ]; then
+    echo "  settings.json: se quita lo que cablea la pieza; cambios:"
+    diff <(jq -S . "$real") <(jq -S . "$tmpj/settings.json") | sed -n '1,40p' | sed 's/^/    /' || true
+  fi
+  if [ "${#keep_list[@]}" -gt 0 ]; then
+    echo "  se CONSERVAN (no coinciden con lo que instalo el kit):"
+    printf '    %s\n' "${keep_list[@]}"
+  fi
+  if [ "$apply" -eq 0 ]; then
+    echo
+    printf 'Para quitarla de verdad:  bash %q --kit --pieza %s --apply\n' "$HERE/uninstall.sh" "$PIEZA"
+    return 0
+  fi
+  bk="$CLAUDE_HOME/backups/uninstall-pieza-$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo pieza)-$$"
+  mkdir -p "$bk"
+  [ -f "$CLAUDE_HOME/settings.json" ] && cp -pL "$CLAUDE_HOME/settings.json" "$bk/settings.json"
+  cp -p "$man" "$bk/.kit-manifest"
+  ok "copia previa en $bk"
+  for rel in "${rm_list[@]}"; do
+    rm -f -- "$CLAUDE_HOME/$rel"
+    printf '%s\n' "$rel" >> "$tmpj/quitados"
+    d="$(dirname "$rel")"
+    while [ "$d" != . ] && rmdir -- "$CLAUDE_HOME/$d" 2>/dev/null; do d="$(dirname "$d")"; done
+  done
+  if [ -f "$tmpj/quitados" ]; then
+    awk -F'  ' 'NR==FNR {q[$1]=1; next} !($2 in q)' "$tmpj/quitados" "$man" > "$tmpj/manifest" && cat "$tmpj/manifest" > "$man"
+  fi
+  if [ -n "$real" ]; then cat "$tmpj/settings.json" > "$real"; ok "settings.json: quitado lo que cablea la pieza"; fi
+  ok "pieza(s) $PIEZA quitada(s): ${#rm_list[@]} ficheros borrados, ${#keep_list[@]} conservados"
+}
+
+if [ -n "$PIEZA" ]; then
+  [ "$KIT_MODE" -eq 1 ] || die "--pieza va con --kit"
+  pieza_uninstall
+  exit 0
+fi
 if [ "$KIT_MODE" -eq 1 ]; then
   kit_uninstall
   exit 0

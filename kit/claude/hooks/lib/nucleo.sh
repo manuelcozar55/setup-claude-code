@@ -950,8 +950,9 @@ nucleo_puerta_commit() {
   local pc_in=$1 pc_tp=$2 pc_sid=$3 pc_raiz=$4 pc_motivo="" pc_estado pc_nuc pc_mt pc_com pc_modo pc_log
   # Un `git commit` lanzado EN ESTE transcript es posterior a nucleo.md. No vale «HEAD es
   # reciente»: commits ajenos, rebase y amend lo disparaban. Un disparo por (sesión, commit), así
-  # que no hay bucle aunque la persona decida no tocar nucleo. NUCLEO_GATE=observe (defecto) solo
-  # registra en el log; block devuelve decision. Ante cualquier dato que falte: no hace nada.
+  # que no hay bucle aunque la persona decida no tocar nucleo. NUCLEO_GATE apagada (defecto): ni mira ni anota;
+  # observe solo registra en el log; block devuelve decision. Ante cualquier dato que falte: no hace nada.
+  case ${NUCLEO_GATE:-off} in observe|block) ;; *) return 0 ;; esac
   pc_estado=$(nucleo_estado_leer "$pc_raiz") || pc_estado=""
   pc_nuc=${pc_estado:+$pc_estado/nucleo.md}
   # D1: desde ~ el nucleo compartido no es el de esta sesión: sin puerta (en block mandaría actualizar el de otra tarea).
@@ -999,7 +1000,7 @@ nucleo_compact_medir() {
   if [ "$cm_raiz" = "$HOME" ]; then cm_medida=home
   elif [ -z "$cm_ck" ] || [ ! -f "$cm_ck" ] || [ -L "$cm_ck" ]; then cm_medida=sin_checkpoint
   else
-    # Se excluye el propio estado (.claude/estado/*): lo reinyecta session-start-compact.sh. Un «??» tampoco cuenta: el
+    # Se excluye el propio estado (.claude/estado/*): lo reinyecta session-start-estado.sh. Un «??» tampoco cuenta: el
     # git status lista todo lo no seguido, lo haya tocado la sesión o no (medido: 12 de 12 anclas falsas).
     while read -r cm_f; do
       [ -n "$cm_f" ] || continue

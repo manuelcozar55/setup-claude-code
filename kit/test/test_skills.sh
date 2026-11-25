@@ -32,9 +32,14 @@ cp -r "$S" "$tmp/skills-copy"
 printf 'contacto: %s\n' "ci""rce" > "$tmp/skills-copy/retro/PLANTED.md"
 ck "$([ "$(scan "$tmp/skills-copy")" -ge 1 ] && echo rojo || echo verde)" "rojo" "falsabilidad: termino privado plantado => escaneo en rojo"
 
-# install.sh en un HOME temporal instala las skills (recursivo)
-export CLAUDE_HOME="$tmp/dot"
+# Sin flags solo se instala deep-change; retro y verification-before-completion son la pieza skills-extra
+export CLAUDE_HOME="$tmp/dot0"
 HOME="$tmp/fakehome" bash "$KIT/install.sh" >/dev/null 2>&1
+ck "$(ls "$CLAUDE_HOME/skills")" "deep-change" "sin --con solo se instala deep-change"
+
+# install.sh --con skills-extra instala las skills (recursivo)
+export CLAUDE_HOME="$tmp/dot"
+HOME="$tmp/fakehome" bash "$KIT/install.sh" --con skills-extra >/dev/null 2>&1
 ck "$(cd "$S" && find . -type f | sort | md5sum)" "$(cd "$CLAUDE_HOME/skills" && find . -type f | sort | md5sum)" "install.sh instala todos los ficheros de las skills"
 ck "$([ -f "$CLAUDE_HOME/skills/retro/agents/openai.yaml" ] && echo y || echo n)" "y" "install.sh copia subdirectorios (retro/agents)"
 ck "$(cmp -s "$S/deep-change/SKILL.md" "$CLAUDE_HOME/skills/deep-change/SKILL.md" && echo y || echo n)" "y" "contenido instalado identico"
