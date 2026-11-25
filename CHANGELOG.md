@@ -74,6 +74,9 @@ WARN. `scc` sin cockpit dice en una línea cómo instalarlo.
   `uninstall.sh --pieza ,` falla igual.
 - **Orden de `PreToolUse` con Sentinel**: al actualizar una instalación con la pieza, su preflight quedaba detrás de
   los guards de Bash; ahora queda delante en los tres caminos (limpia, sin y luego con, reinstalar).
+- **Fallo de seguridad en `secret-guard.sh` (ejecución inducida)**: para decidir `git add -A` el guard reenviaba a git las
+  opciones de la orden juzgada, así que `git -c core.fsmonitor='<orden>' add -A` hacía ejecutar `<orden>` mientras el hook
+  juzgaba. Ahora solo pasa el directorio de cada `-C` y git corre con fsmonitor y hooks apagados y sin la config global.
 
 ### Cifras
 

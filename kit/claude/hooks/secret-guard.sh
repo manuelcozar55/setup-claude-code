@@ -312,12 +312,27 @@ for seg in "${CMDN_SEGS[@]}"; do
 
   # git add -A / --all / . only when .env is NOT gitignored
   if (( all || dot )); then
+    # Del juicio a git solo pasa el directorio de cada `-C` (un dato). Reenviarle el resto de las opciones globales de la orden juzgada
+    # (`-c core.fsmonitor='cmd'`, `--exec-path`...) hacia que git EJECUTARA `cmd` mientras el hook juzga, antes de que la orden se lance.
     IFS=$CMDN_GS read -r -a gopts <<<"${T[0]}"
-    top=$(git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" rev-parse --show-toplevel 2>/dev/null) || top=""
+    gc=()
+    for (( gi = 0; gi < ${#gopts[@]}; gi++ )); do
+      case ${gopts[gi]} in
+        -C) gc+=(-C "${gopts[gi+1]:-.}"); (( gi++ )) ;;
+        -c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source) (( gi++ )) ;;
+      esac
+    done
+    # git del hook: sin la config de sistema ni la global, sin heredar GIT_CONFIG_COUNT/PARAMETERS, y con fsmonitor y hooks apagados por
+    # linea de ordenes (que pisa tambien el `.git/config` del propio repo, donde `core.fsmonitor` tambien ejecuta una orden).
+    safe_git() {
+      env -u GIT_CONFIG_COUNT -u GIT_CONFIG_PARAMETERS GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+        git -c core.fsmonitor=false -c core.hooksPath=/dev/null ${CMDN_CWD:+-C "$CMDN_CWD"} "${gc[@]}" "$@"
+    }
+    top=$(safe_git rev-parse --show-toplevel 2>/dev/null) || top=""
     if [[ -n $top ]]; then
       base=$top
-      (( all )) || base="$top/$(git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" rev-parse --show-prefix 2>/dev/null)"
-      if [ -f "$base/.env" ] && ! git ${CMDN_CWD:+-C "$CMDN_CWD"} "${gopts[@]}" check-ignore -q "$base/.env" 2>/dev/null; then
+      (( all )) || base="$top/$(safe_git rev-parse --show-prefix 2>/dev/null)"
+      if [ -f "$base/.env" ] && ! safe_git check-ignore -q "$base/.env" 2>/dev/null; then
         echo "BLOCKED: git add -A/. with untracked .env present — add to .gitignore first." >&2
         echo "Que hacer: anade .env a .gitignore, o haz git add de ficheros concretos en vez de -A o ." >&2
         exit 2

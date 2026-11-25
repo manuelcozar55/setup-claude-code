@@ -1079,6 +1079,28 @@ expect_cost "R3 coste: 9000 segmentos sin credencial" "$(printf 'cat a/b.s%d; ' 
 expect_cost "R3 coste: rsync con miles de operandos" "rsync -av $(printf 'a.s%d b.e%d ' $(seq 0 3499) $(seq 0 3499)) h:/x" ANY
 expect_cost "R3 coste: tar con miles de segmentos" "$(printf 'tar czf x%d.tgz -C d.e%d f.a%d; ' $(seq 0 2999) $(seq 0 2999) $(seq 0 2999))true" ANY
 
+# 13f) R4 H5: ejecucion inducida. Para decidir `git add -A` el guard llama a git; si le reenviara las opciones de la orden juzgada, un
+# `git -c core.fsmonitor='touch M' add -A` haria que git EJECUTARA esa orden mientras el hook juzga (y la orden ni siquiera se ha lanzado).
+# El hook no pasa a git ninguna opcion de la orden salvo el directorio de -C, y apaga fsmonitor y hooks con `-c` propios. El marcador no debe
+# existir tras juzgar. El caso del `.git/config` local con fsmonitor cubre el camino que no pasa por la linea de ordenes.
+H5_DIR=$(mktemp -d)
+H5_MARK="$H5_DIR/marcador"
+git init -q "$H5_DIR/repo" && printf 'x=1\n' > "$H5_DIR/repo/.env"
+run_h5() { (cd "$1" && jq -n --arg command "$2" '{tool_input:{command:$command}}' | bash "$KIT/claude/hooks/secret-guard.sh" 2>&1); }
+h5_check() { # $1 desc, $2 orden, $3 cwd; el marcador no debe aparecer
+  rm -f "$H5_MARK"
+  run_h5 "$3" "$2" >/dev/null
+  if [ -e "$H5_MARK" ]; then fail=$((fail+1)); echo "FAIL: $1 (git ejecuto la orden inducida)"; else pass=$((pass+1)); fi
+}
+h5_check "R4 H5: git -c core.fsmonitor en la orden no se ejecuta" "git -c core.fsmonitor='touch $H5_MARK' add -A" "$H5_DIR/repo"
+h5_check "R4 H5: git -c core.fsmonitor con add . no se ejecuta" "git -c core.fsmonitor='touch $H5_MARK' add ." "$H5_DIR/repo"
+h5_check "R4 H5: git -C repo -c core.fsmonitor add . no se ejecuta" "git -C $H5_DIR/repo -c core.fsmonitor='touch $H5_MARK' add ." "$H5_DIR"
+h5_check "R4 H5: --git-dir con fsmonitor en la orden no se ejecuta" "git --git-dir=$H5_DIR/repo/.git -c core.fsmonitor='touch $H5_MARK' add -A" "$H5_DIR/repo"
+git -C "$H5_DIR/repo" config core.fsmonitor "touch $H5_MARK"
+h5_check "R4 H5: fsmonitor del .git/config local no se ejecuta" "git add -A" "$H5_DIR/repo"
+expect "R4 H5: git add -A con .env sin ignorar sigue denegado" "$(run_h5 "$H5_DIR/repo" 'git add -A')" BLOCK
+rm -rf "$H5_DIR"
+
 # 14) la Capa 2 (hooks/git/pre-commit + .gitleaks.toml) se pierde en silencio
 # si cualquiera de los dos deja de ir dentro del kit, sin que ningun test lo
 # note -- este assert fija que ambos se sigan distribuyendo, ejecutables.
