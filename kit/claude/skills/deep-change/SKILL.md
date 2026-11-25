@@ -105,7 +105,7 @@ otherwise request approval for the concrete result. Record a rollback path to th
 - [ ] The approved plan exists in nucleo and every task is checked off with its verifying command.
 - [ ] nucleo holds only the current encargo; closed ones are in `diario.md`.
 - [ ] Every change is in a commit with its why, and in nucleo's Ficheros tocados (with its backup if outside git).
-- [ ] Phase closed with `/handoff` if context passed the Stop hook's soft line (in ESTADO.md mode it merges into `ESTADO.md`).
+- [ ] Phase closed with `handoff --desde <draft>` (`/handoff` with the cockpit) if context passed the Stop hook's soft line (in ESTADO.md mode it merges into `ESTADO.md`).
 - [ ] Claims are backed by evidence (tests run, path driven) — recorded, not asserted.
 - [ ] Risk contained: isolated copy validated; production apply is a separate authorized step
       with a known rollback.
