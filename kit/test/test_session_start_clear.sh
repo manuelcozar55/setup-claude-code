@@ -107,7 +107,7 @@ C=$(run "$R" | ctx)
 ok "recorta al tope (≤ 9 500)" "$([ "${#C}" -le 9500 ] && echo si)" si
 ok "recorte conserva cabeza" "$(command grep -c CABEZA <<<"$C")" 1
 ok "recorte conserva cola" "$(command grep -c COLA <<<"$C")" 1
-ok "recorte declarado" "$(command grep -c 'recortado' <<<"$C")" 1
+ok "recorte declarado" "$(command grep 'recortado' <<<"$C" | command grep -vc 'bytes; lo cerrado va a diario.md')" 1
 ok "source startup también emite" "$(run "$R" startup | jq -r '.hookSpecificOutput.hookEventName')" SessionStart
 mkdir -p "$T/vacio"; git -C "$T/vacio" init -q
 ok "stdin roto: exit 0 y nada" "$(cd "$T/vacio" && echo "no json" | bash "$H"; echo "rc=$?")" "rc=0"

@@ -549,6 +549,11 @@ fi
 # .gitignore interno con «*» lo crea nucleo_estado_dir; un estado anterior a esa version no lo tiene).
 # informes/ crece sin tope propio: avisa al pasar de DOCTOR_INFORMES_MB (50 por omision).
 estado_raiz="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+# nucleo.md por encima de NUCLEO_TOPE: los SessionStart lo recortan al inyectarlo y se pierde la cola. El tope se
+# lee de la lib de hooks (el unico sitio con la cifra; el entorno manda, como en la lib), no se duplica aqui.
+nuc_lib="$CLAUDE_HOME/hooks/lib/nucleo.sh"; [ -f "$nuc_lib" ] || nuc_lib="$KIT/claude/hooks/lib/nucleo.sh"
+# shellcheck disable=SC2016 # patron literal para sed
+nuc_tope="${NUCLEO_TOPE:-$(sed -n 's/^NUCLEO_TOPE=\${NUCLEO_TOPE:-\([0-9][0-9]*\)}.*/\1/p' "$nuc_lib" 2>/dev/null | head -n 1)}"
 if [ -n "$estado_raiz" ] && [ -d "$estado_raiz/.claude/estado" ]; then
   estado_suelto="$(git -C "$estado_raiz" ls-files -o --exclude-standard -- .claude/estado 2>/dev/null | head -n 1)"
   if [ -n "$estado_suelto" ]; then
@@ -562,11 +567,6 @@ if [ -n "$estado_raiz" ] && [ -d "$estado_raiz/.claude/estado" ]; then
   if [ "${informes_kb:-0}" -gt $((informes_mb * 1024)) ]; then
     warn "$estado_raiz/.claude/estado/informes/ pesa $((informes_kb / 1024)) MB (> $informes_mb MB): archiva o borra los informes que ya no hagan falta"
   fi
-  # nucleo.md por encima de NUCLEO_TOPE: los SessionStart lo recortan al inyectarlo y se pierde la cola. El tope se
-  # lee de la lib de hooks (el unico sitio con la cifra; el entorno manda, como en la lib), no se duplica aqui.
-  nuc_lib="$CLAUDE_HOME/hooks/lib/nucleo.sh"; [ -f "$nuc_lib" ] || nuc_lib="$KIT/claude/hooks/lib/nucleo.sh"
-  # shellcheck disable=SC2016 # patron literal para sed
-  nuc_tope="${NUCLEO_TOPE:-$(sed -n 's/^NUCLEO_TOPE=\${NUCLEO_TOPE:-\([0-9][0-9]*\)}.*/\1/p' "$nuc_lib" 2>/dev/null | head -n 1)}"
   nuc_bytes="$(wc -c < "$estado_raiz/.claude/estado/nucleo.md" 2>/dev/null | tr -d ' ')"
   case "$nuc_tope$nuc_bytes" in *[!0-9]*|'') ;; *)
     if [ "$nuc_bytes" -gt "$nuc_tope" ]; then
@@ -574,6 +574,30 @@ if [ -n "$estado_raiz" ] && [ -d "$estado_raiz/.claude/estado" ]; then
     fi ;;
   esac
 fi
+# Mismo aviso para los nucleos que el kit ya enumera: las ranuras de sesion y las raices registradas (nucleo_registrar).
+# Sin rastreo de disco. WARN con el recuento y los 3 peores; la lib se carga en un subshell.
+case "$nuc_tope" in ''|*[!0-9]*) ;; *)
+  nuc_pesados="$(
+    HOME="$(dirname "$CLAUDE_HOME")"
+    # shellcheck source=/dev/null
+    . "$nuc_lib" 2>/dev/null || exit 0
+    for f in "$CLAUDE_HOME"/estado/sesiones/*/nucleo.md; do [ -f "$f" ] && [ ! -L "$f" ] && echo "$f"; done
+    while IFS= read -r r; do
+      case $r in /*) ;; *) continue ;; esac
+      d="$(nucleo_estado_leer "$r" 2>/dev/null)" && [ -f "$d/nucleo.md" ] && echo "$d/nucleo.md"
+    done < "$CLAUDE_HOME/estado/raices" 2>/dev/null
+  )"
+  nuc_pesados="$(printf '%s\n' "$nuc_pesados" | sort -u | while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    b="$(wc -c < "$f" 2>/dev/null | tr -d ' ')"
+    [ "${b:-0}" -gt "$nuc_tope" ] && printf '%s\t%s\n' "$b" "$f"
+  done | sort -rn)"
+  if [ -n "$nuc_pesados" ]; then
+    nuc_n="$(printf '%s\n' "$nuc_pesados" | wc -l | tr -d ' ')"
+    nuc_top3="$(printf '%s\n' "$nuc_pesados" | head -n 3 | awk -F'\t' '{ printf "%s%s (%s B)", (NR > 1 ? ", " : ""), $2, $1 }')"
+    warn "$nuc_n nucleo(s) por encima de NUCLEO_TOPE ($nuc_tope B): se recortan al inyectarlos; peores: $nuc_top3; cierra lo hecho a diario.md con handoff"
+  fi ;;
+esac
 
 # 5d3. Memoria automatica (~/.claude/projects/*/memory). Claude Code carga al arrancar solo las primeras 200
 # lineas o 25 KB de MEMORY.md, lo que llegue antes (code.claude.com/docs/en/memory, «Storage location»/auto memory;

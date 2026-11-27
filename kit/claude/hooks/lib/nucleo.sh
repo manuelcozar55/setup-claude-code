@@ -651,6 +651,9 @@ nucleo_emitir() {
   fi
   [ "$src" = "$1" ] || rm -f "$src"
   out=$(printf '%s\n' "$out" | sed 's|</|<\\/|g')
+  case $out in *'[recortado'* | *'[LEE '*)
+    out="$out"$'\n'"[recortado: $(printf '%s' "$out" | LC_ALL=C wc -c | tr -d ' ') de $(LC_ALL=C wc -c <"$1" | tr -d ' ') bytes; lo cerrado va a diario.md]" ;;
+  esac
   [ -z "$out" ] || printf '%s\n' "$out"
   case $out in *'[recortado'* | *'[LEE '*) _nucleo_log_recorte "$1" "$out" ;; esac
   return 0

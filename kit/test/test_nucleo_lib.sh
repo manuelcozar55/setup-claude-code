@@ -300,10 +300,12 @@ ok "presupuesto: emisión de peor caso ≤ 7 000 chars (cabe con protocolo y git
 S=$(nucleo_emitir "$T/cabe.md")
 ok "cabe en el tope: sale entero" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|FICH-FIN' <<<"$S")" 4
 ok "cabe en el tope: sin marcas de recorte ni [LEE]" "$(command grep -c '^\[recortado\|^\[LEE' <<<"$S")" 0
+ok "recorte: sin la línea «N de M bytes» cuando cabe" "$(command grep -c 'de [0-9]* bytes; lo cerrado' <<<"$S")" 0
 # Algo por encima: fuera secciones enteras (Ficheros tocados, Plan y, lo último, Pendientes: F1 v2.1), sin partir las reservadas.
 # No es el orden de `handoff --desde`, que al escribir omite antes Pendientes (con copia en diario.md y aviso en el acto).
 { cat "$T/cabe.md"; echo '## Pendientes'; big 1200; echo PEND-FIN; } >"$T/pasa-poco.md"
 S=$(nucleo_emitir "$T/pasa-poco.md")
+ok "recorte: una línea «N de M bytes» cuando se recorta" "$(command grep -c '^\[recortado: [0-9]* de [0-9]* bytes; lo cerrado va a diario.md\]$' <<<"$S")" 1
 ok "pasa poco: las reservadas y Pendientes salen enteras" "$(command grep -c 'PASO-FIN\|SIG-FIN\|CMD-FIN\|PEND-FIN' <<<"$S")" 4
 ok "pasa poco: Ficheros tocados se omite entera y se dice" "$(command grep -c 'FICH-FIN' <<<"$S"),$(command grep -c '^\[recortado por tope: se omiten «Ficheros tocados»' <<<"$S")" "0,1"
 ok "pasa poco: ninguna sección partida; sí pide leer el fichero" "$(command grep -c 'sección incompleta' <<<"$S"),$(command grep -c '^\[LEE ' <<<"$S")" "0,1"

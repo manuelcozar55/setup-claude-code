@@ -7,6 +7,10 @@ etiquetado.
 
 ## [Unreleased]
 
+### Añadido
+
+- El tope del nucleo se ve: `doctor.sh` avisa (WARN) con el recuento y los 3 peores cuando hay nucleos por encima de `NUCLEO_TOPE` en las ranuras de sesión y en las raíces registradas, y la inyección de un nucleo recortado añade la línea «[recortado: N de M bytes; lo cerrado va a diario.md]».
+
 ## [3.0.0] - 2026-11-24
 
 La instalación sin flags deja solo el núcleo. Lo que casi nadie usaba sale del camino por defecto y se recupera con
