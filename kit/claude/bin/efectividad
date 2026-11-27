@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""efectividad — cifras de uso real de scc leídas de los transcripts y del log de frescura de nucleo.md.
+"""efectividad — cifras de uso real de scc leídas de los transcripts, del log de frescura de nucleo.md y del registro de decisiones de los guards.
 
 Solo lectura salvo --registrar. Los transcripts reales suman cientos de MB: se leen línea a línea.
 """
@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+from bisect import bisect_right
 from datetime import date, datetime, timedelta
 
 # Heurística léxica: mide dirección, no nivel. Unión de las listas usadas hasta ahora en el repo menos «para»,
@@ -66,7 +67,7 @@ def analiza(path):
                     inp = b.get("input") if isinstance(b.get("input"), dict) else {}
                     usos[b.get("id")] = (b.get("name"), inp.get("command"))
                     if b.get("name") == "Bash" and isinstance(inp.get("command"), str):
-                        bashes.append([b.get("id"), ts, inp["command"]])
+                        bashes.append([b.get("id"), ts, inp["command"], o.get("cwd")])
                 elif b.get("type") == "tool_result" and b.get("is_error"):
                     t = texto_de(b) or ""
                     if not isinstance(t, str):
@@ -114,13 +115,14 @@ def analiza(path):
         if nombre != "Bash" or not isinstance(c0, str):
             continue
         t0 = ts_de(t0)
-        for i1, t1, c1 in bashes:
+        for i1, t1, c1, _ in bashes:
             if i1 in ids_bloqueados or not 0 < (ts_de(t1) - t0).total_seconds() <= 60:
                 continue
             if similar(c0, c1):
                 s["reformulados"] += 1
                 break
     s["inicio"] = inicio
+    s["bashes"] = [(t, w, c[:300]) for _, t, c, w in bashes]
     return s
 
 
@@ -138,6 +140,51 @@ def frescura(home):
                 except ValueError:
                     pass
     return filas
+
+
+def decisiones(home):
+    """Líneas del registro único de guards (kit/claude/hooks/lib/guardlog.sh): una por deny/ask. None si no hay registro."""
+    p = os.environ.get("CC_GUARD_LOG") or os.path.join(home, "audit-logs", "guard-decisions.jsonl")
+    if not os.path.isfile(p):
+        return None
+    ev = []
+    with open(p, encoding="utf-8", errors="replace") as f:
+        for linea in f:
+            try:
+                e = json.loads(linea)
+                if isinstance(e.get("ts"), str) and e.get("guard") and e.get("decision") in ("deny", "ask"):
+                    e["t"] = ts_de(e["ts"]).timestamp()
+                    ev.append(e)
+            except (ValueError, AttributeError):
+                continue
+    return ev
+
+
+def cifras_guards(ev, sesiones, desde, hasta):
+    """Deny/ask por guard y por regla, y las decisiones tras las que el mismo cwd lanzó en <60 s una orden parecida que sí pasó."""
+    ev = [e for e in ev if desde <= e["ts"][:10] < hasta]
+    bashes = sorted((ts_de(t).timestamp(), w, c) for s in sesiones for t, w, c in s["bashes"])
+    ts = [b[0] for b in bashes]
+    por_guard, por_regla, reform = {}, {}, {}
+    for e in ev:
+        g = por_guard.setdefault(e["guard"], dict(deny=0, ask=0, reformulados=0))
+        g[e["decision"]] += 1
+        k = f"{e['guard']}: {e.get('rule') or '?'}"
+        por_regla[k] = por_regla.get(k, 0) + 1
+        # Una orden que a su vez tiene decisión propia (otro bloqueo del mismo cwd en ±5 s) es un reintento, no una reformulación que pasó.
+        for i in range(bisect_right(ts, e["t"]), bisect_right(ts, e["t"] + 60)):
+            _, w, c = bashes[i]
+            if w != e.get("cwd") or not similar(e.get("cmd") or "", c):
+                continue
+            if any(o is not e and o.get("cwd") == w and abs(o["t"] - bashes[i][0]) <= 5 for o in ev):
+                continue
+            g["reformulados"] += 1
+            break
+    n = len(ev)
+    r = sum(g["reformulados"] for g in por_guard.values())
+    return dict(decisiones=n, deny=sum(g["deny"] for g in por_guard.values()), ask=sum(g["ask"] for g in por_guard.values()),
+                desatendidas=sum(1 for e in ev if e.get("unattended")), por_guard=por_guard,
+                por_regla=dict(sorted(por_regla.items(), key=lambda kv: -kv[1])), reformulados=r, fp_pct=pct(r, n))
 
 
 def pct(a, b):
@@ -169,6 +216,19 @@ def fmt(v, suf=""):
     return "s/d" if v is None else f"{v}{suf}"
 
 
+def cifras_log(g):
+    if g is None:
+        return "sin registro"
+    return f"{g['decisiones']} (deny {g['deny']}, ask {g['ask']}) · reformulados <60 s {g['reformulados']} ({fmt(g['fp_pct'], ' %')})"
+
+
+def detalle_guards(g, tope=15):
+    out = ["", "Guards (registro de decisiones deny/ask):"]
+    out += [f"  {k:28} deny {v['deny']:<4} ask {v['ask']:<4} reformulados {v['reformulados']}" for k, v in sorted(g["por_guard"].items())]
+    out += [f"  {n:4} {k}" for k, n in list(g["por_regla"].items())[:tope]]
+    return out
+
+
 def celdas(r):
     g = " · ".join(f"{k} {n}" for k, n in sorted(r["bloqueos_por_guard"].items())) or "-"
     return [
@@ -178,6 +238,7 @@ def celdas(r):
         ("bloqueos", f"{r['bloqueos']} ({g})"),
         ("reformulados <60 s", f"{r['reformulados']} ({fmt(r['fp_pct'], ' %')} de los bloqueos)"),
         ("errores de hook", str(r["hook_errores"])),
+        ("decisiones de guards (log)", cifras_log(r["guards_log"])),
     ]
 
 
@@ -250,6 +311,9 @@ def main():
     filas = frescura(home)
     rangos = [(desde, antes), (antes, hasta)] if antes else [(desde, hasta)]
     rs = [agrega(sesiones, filas, d, h) for d, h in rangos]
+    ev = decisiones(home)
+    for r, (d, h) in zip(rs, rangos):
+        r["guards_log"] = cifras_guards(ev, sesiones, d, h) if ev is not None else None
     if rs[-1]["sesiones"] == 0:
         print(f"efectividad: sin sesiones en la ventana {rs[-1]['desde']} → {rs[-1]['hasta']}", file=sys.stderr)
         sys.exit(2)
@@ -267,6 +331,8 @@ def main():
         cab = f"Efectividad scc · {desde} → {hasta} · {sum(r['sesiones'] for r in rs)} sesiones · " \
               f"{len({s['inicio'][:10] for s in en})} días activos"
         print("\n".join(tabla(rs, cab, antes)))
+        if rs[-1]["guards_log"]:
+            print("\n".join(detalle_guards(rs[-1]["guards_log"])))
         if a.por_sesion:
             for s in en:
                 print("\t".join(str(x) for x in (s["sid"], s["inicio"], s["compactaciones"], s["mensajes"],

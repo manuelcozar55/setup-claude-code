@@ -12,6 +12,17 @@ etiquetado.
 - El tope del nucleo se ve: `doctor.sh` avisa (WARN) con el recuento y los 3 peores cuando hay nucleos por encima de `NUCLEO_TOPE` en las ranuras de sesión y en las raíces registradas, y la inyección de un nucleo recortado añade la línea «[recortado: N de M bytes; lo cerrado va a diario.md]».
 - Las ranuras de sesión sin objetivo ni paso ya no salen en el `<indice-tareas>` de arranque, y `handoff --archivar-vacias [--dias N] [--apply]` las lista (dry-run) o las mueve, sin borrar, a `~/.claude/estado/archivo/` si llevan más de N días (3) sin tocarse; nunca toca la de una sesión viva ni la dudosa.
 - `report.py --resumen [RUTA]` escribe un resumen pequeño y versionable (fecha, versión del kit, nº de casos, `RUNS`, tasa por brazo con su `n`; sin transcripts) en `kit/evals/resultados/AAAA-MM-DD-vX.Y.Z.json`; `kit/evals/README.md` documenta la cadencia: una pasada por release con `RUNS=3`.
+- **Los falsos positivos de los guards se pueden medir en uso real.** Antes `sentinel.jsonl` no guardaba la orden ni el cwd,
+  `blocked-commands.log` solo veía los `deny` de `destructive-guard.sh` y los demás guards no dejaban rastro. Ahora los
+  guards de Bash que cargan `lib/cmdnorm.sh`, `bash-write-guard.sh` y Sentinel escriben cada `deny` y `ask` en un registro
+  único, `~/.claude/audit-logs/guard-decisions.jsonl` (`CC_GUARD_LOG` cambia la ruta): `ts`, `guard`, `decision`, `rule`,
+  `cwd`, `mode`, `unattended`, `tool` y la orden con los secretos enmascarados y truncada a 300 caracteres. Un fallo al
+  escribirlo no cambia el veredicto. `efectividad` suma las cifras por guard y por regla y las órdenes reformuladas en
+  menos de 60 s en el mismo cwd. Suite nueva: `test_guardlog.sh`; `test_guards_falsifiability.sh` comprueba además que la
+  suite no escribe en `blocked-commands.log` ni en el registro nuevo del HOME real.
+- Medido el 27-nov sobre el `blocked-commands.log` vivo: ninguna suite lo contamina. Las líneas de fixture (`rm -rf ~`,
+  `echo $(x) git clean -fd`…) salen de sondeos a mano de sesiones que corrían los guards con el HOME real, y los
+  duplicados exactos son comparaciones guard viejo/guard nuevo del mismo comando.
 
 ### Retirado
 

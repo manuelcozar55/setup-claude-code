@@ -140,6 +140,9 @@ jobs:
       - name: test_guards_degradacion.sh (la tabla de fallos de SECURITY.md)
         run: bash kit/test/test_guards_degradacion.sh
 
+      - name: "test_guardlog.sh (registro unico de decisiones de los guards: campos, secretos enmascarados, fail-open)"
+        run: bash kit/test/test_guardlog.sh
+
       - name: test_secret_content_gitleaks.sh (Capa 2, por contenido)
         run: bash kit/test/test_secret_content_gitleaks.sh
 

@@ -27,6 +27,9 @@ REAL_HOME=$(mktemp -d)
 LOG="$REAL_HOME/.claude/audit-logs/sentinel.jsonl"
 mkdir -p "$(dirname "$LOG")"; printf '{"previo":1}\n{"previo":2}\n' > "$LOG"
 LOG_ANTES=$(wc -l < "$LOG")
+# Los otros dos registros de guards (blocked-commands.log y el registro unico guard-decisions.jsonl): tampoco los toca la suite.
+OTROS_LOGS=("$REAL_HOME/.claude/audit-logs/blocked-commands.log" "$REAL_HOME/.claude/audit-logs/guard-decisions.jsonl")
+for L in "${OTROS_LOGS[@]}"; do printf 'previo 1\nprevio 2\n' > "$L"; done
 
 BASELINE_OUT=$(HOME="$REAL_HOME" bash "$HERE/test_guards.sh")
 BASELINE_FAIL=$(echo "$BASELINE_OUT" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
@@ -35,6 +38,7 @@ STUB_OUT=$(HOME="$REAL_HOME" SECRET_GUARD_BIN="$STUB" bash "$HERE/test_guards.sh
 STUB_FAIL=$(echo "$STUB_OUT" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
 
 LOG_DESPUES=$(wc -l < "$LOG")
+OTROS_DESPUES=0; for L in "${OTROS_LOGS[@]}"; do OTROS_DESPUES=$((OTROS_DESPUES + $(wc -l < "$L") - 2)); done
 rm -f "$STUB"; rm -r -- "$REAL_HOME"
 
 echo "== baseline (guard real) =="
@@ -48,6 +52,10 @@ echo "casos que caen al neutralizar el guard: $FLIPPED"
 
 if [ "$LOG_DESPUES" -ne "$LOG_ANTES" ]; then
   echo "FAIL: la suite escribio en el sentinel.jsonl del HOME real ($LOG_ANTES -> $LOG_DESPUES lineas)."
+  exit 1
+fi
+if [ "$OTROS_DESPUES" -ne 0 ]; then
+  echo "FAIL: la suite escribio en blocked-commands.log o guard-decisions.jsonl del HOME real ($OTROS_DESPUES lineas de mas)."
   exit 1
 fi
 if [ "$BASELINE_FAIL" -ne 0 ]; then

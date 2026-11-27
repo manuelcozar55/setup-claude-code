@@ -24,7 +24,12 @@
 #
 # Solo awk POSIX (mawk y gawk dan lo mismo): sin gensub, sin arrays de arrays.
 
+# Antes de la primera orden, o deja de valer para todo el fichero.
 # shellcheck disable=SC2034  # CMDN_TEXT, CMDN_SEGS y CMDN_GS los consumen los guards que cargan esta lib.
+
+# El registro de decisiones (lib/guardlog.sh) viaja con la lib: sin él, guardlog es un no-op y los veredictos no cambian.
+# shellcheck source=SCRIPTDIR/guardlog.sh
+. "${BASH_SOURCE[0]%/*}/guardlog.sh" 2>/dev/null || guardlog() { return 0; }
 CMDN_US=$'\037'
 CMDN_GS=$'\035'
 CMDN_RS=$'\036'
@@ -564,6 +569,8 @@ cmdn_oversize() {
   (( ${#1} > CMDN_MAX_BYTES )) || return 1
   r="Confirm: el comando pesa $(( ${#1} / 1024 )) KB (tope $(( CMDN_MAX_BYTES / 1024 )) KB): los guards no pueden analizarlo dentro de su timeout, y un guard que se pasa de tiempo deja ejecutar la herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto."
   cmdn_desatendido && { d=deny; r+=$CMDN_DESATENDIDO; }
+  # CMDN_NOLOG=1: sondeo sin decision (block-dangerous mide el tamano y decide despues).
+  [[ -n ${CMDN_NOLOG-} ]] || guardlog "${BASH_SOURCE[-1]##*/}" "$d" "comando por encima del tope de tamano"
   jq -n --arg r "$r" --arg d "$d" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
