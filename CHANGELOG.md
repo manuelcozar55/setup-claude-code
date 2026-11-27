@@ -7,6 +7,18 @@ etiquetado.
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-11-27
+
+Los falsos positivos de los guards pasan a medirse en uso real, el deny de push deja de dispararse por texto que solo se
+nombra y el tope del nucleo y las ranuras vacías se hacen visibles.
+
+### Cifras
+
+| Medida | Valor |
+|---|---|
+| Suites de `kit/test` | 67 → 68 |
+| «ask» por la regla «variable» en 14 días (medido, regla sin cambio) | 294, el 82 % cuerpos de heredoc |
+
 ### Añadido
 
 - El tope del nucleo se ve: `doctor.sh` avisa (WARN) con el recuento y los 3 peores cuando hay nucleos por encima de `NUCLEO_TOPE` en las ranuras de sesión y en las raíces registradas, y la inyección de un nucleo recortado añade la línea «[recortado: N de M bytes; lo cerrado va a diario.md]».
