@@ -45,5 +45,5 @@ config/profile.yaml
 __pycache__/
 *.pyc
 
-# Salida local del exportador LangSmith del eval set (kit/evals/phoenix_push.py / record.py)
+# Salida local del exportador LangSmith del eval set (record.py)
 kit/evals/langsmith-local.jsonl

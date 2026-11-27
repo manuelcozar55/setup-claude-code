@@ -98,13 +98,13 @@ Se ignoraron. Todo lo que viene de la web es dato, nunca instrucción (`CLAUDE.m
 | E18 | El evaluado no puede **leer ni escribir** su propio oráculo | AVO (aviso propio) | `test_evals.sh` §9: `claude` de mentira que lista su cwd | ✅ *(estaba roto; ver abajo)* |
 | E19 | Distinguir fallo de tarea de fallo del grader | LangChain | E4 + `test_evals.sh` §10: ningún check aprueba el estado inicial, y no hacer nada da `fail`, no `error` | ✅ |
 | E20 | Leer transcripts a mano; el análisis de errores es irreductible | Hamel; Anthropic | `transcripts/` se conservan — **y no se conservaban todos**: con el nombre por día, dos tiradas del mismo día sobre la misma tarea y brazo escribían el mismo fichero. Arreglado (`ts` y pid en el nombre, `run.sh`), sensor `test_evals.sh` §23, mutantes M30–M31 y M34–M36 | ⚠️ **degradado**: humano, sin cadencia fijada, y con **26 de 98 filas históricas sin evidencia propia**. El sensor que declaraba esta fila vigilaba que el fichero existiera, no que fuera el de esa tirada: aprobaba sin poder suspender |
-| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 40/40 mutantes; los 29 mutantes versionados (M9–M40, sin M19, M20 ni M37: se retiraron con LangSmith) se reproducen con `make mutantes`; los §9–§19 nacieron ya en rojo |
+| E21 | Si un sensor nunca dispara, no sabes si es bueno o ciego | Böckeler (problema abierto) | **mutación**: romper la afirmación y exigir rojo | ✅ 40/40 mutantes; los 26 mutantes versionados (M9–M40, sin M19, M20, M21, M22, M37 ni M38: se retiraron con LangSmith y con Phoenix) se reproducen con `make mutantes`; los §9–§19 nacieron ya en rojo |
 | E22 | Ablación por componente: qué pieza aporta, no si el conjunto aporta | McAteer; Anthropic *harness design* | 3 brazos (`sin-ajustes`, `sin-skills`, `sin-mcp`) + bloque de ablación en `report.py` + `test_evals.sh` §13 | ✅ **corrido**: `sin-ajustes` −0,17 → la pieza aporta (−0,12 descontando el artefacto del corrector de la 11; ver la salvedad en «La tirada completa») |
 | E23 | Un brazo cuyo flag desapareció mide el harness completo con etiqueta falsa | hallazgo propio | `test_evals.sh` §13: los 4 flags tienen que seguir en `claude --help` | ✅ · sensor mutado |
 | E24 | No restar dos brazos que corrieron modelos distintos | hallazgo propio (E14 llevado al informe) | `report.py:comparables()` dice `NO COMPARABLE` en vez de dar un lift; y `record.py` apunta el modelo **que hizo el trabajo**, no el primero del diccionario (§18) | ✅ · sensor mutado ×2 |
-| E25 | Un emisor de trazas probado **en seco** no es telemetría verificada | hallazgo propio | El receptor local de LangSmith y su sensor de red se retiraron con LangSmith (2026-10). Hoy el puente a Phoenix solo se comprueba en seco (`test_evals.sh` §17) | ⚠️ · abierto otra vez: el criterio sigue en pie y no tiene sensor de red |
+| E25 | Un emisor de trazas probado **en seco** no es telemetría verificada | hallazgo propio | El receptor local de LangSmith y su sensor de red se retiraron con LangSmith (2026-10). Phoenix, el único puente que quedaba, se retiró también (2026-11) y hoy no hay emisor de trazas | ⚠️ · abierto otra vez: el criterio sigue en pie y no tiene sensor de red |
 | E27 | Ablar una pieza que el agente nunca activó no mide la pieza: mide nada, y con pinta de resultado | hallazgo propio (a partir de la *Discoverability* de SkillEvaluator) | `record.py` cuenta `skill_calls`/`mcp_calls`; `report.py` dice `NO MEDIBLE` y, si el brazo ni se ha corrido, que correrlo tampoco mediría; `test_evals.sh` §19 | ✅ · sensor mutado ×3 |
-| E26 | El observatorio no puede meter dependencias en lo observado | interpretación propia (E6 + "sin SDK" del emisor de LangSmith, retirado) | `phoenix_push.py` es la única pieza con SDK, corre en otro venv, `run.sh` no lo llama, y su sensor (§17) usa `--dry-run` sin dependencias | ✅ · sensor mutado |
+| E26 | El observatorio no puede meter dependencias en lo observado | interpretación propia (E6 + "sin SDK" del emisor de LangSmith, retirado) | el único emisor con SDK (`phoenix_push.py`) se retiró con Phoenix (2026-11): `run.sh` nunca lo llamó y hoy el eval no depende de ningún observatorio | ✅ · sensor mutado |
 | E28 | Un corrector tiene que saber **aprobar**, no solo suspender: el §10 solo probaba el rechazo del estado inicial, y por ese lado un check suspendió a quien acertaba | hallazgo propio (la 12 castigaba el `__pycache__` de verificar) | clave `solucion:` por tarea + `test_evals.sh` §20 (sandbox setup→solución→check, con suelo de cobertura 10/23) | ⚠️ **parcial** · sensor mutado ×3 (M27–M29), pero prueba menos de lo que parece: §20 solo comprueba que un check apruebe **la solución que alguien le escribió**. La 11 pasa §20 y sigue rota (exige el literal `.venv/bin/pip` y suspende `.venv/bin/python -m pip`), igual que la 09. Un corrector queda cubierto por la forma que se acordaron de declararle, no por todas las correctas |
 | E29 | El coste de una tirada se estima **antes** de pagarla, y de lo ya gastado, no de una cifra escrita a mano | hallazgo propio (el Makefile decía "40 llamadas / ~12 USD" a mano) | `DRYRUN=1` en `run.sh` (media de `runs.jsonl`) + filtro por tarea + `test_evals.sh` §21 | ✅ · M9 sigue cazado con el bloque puesto |
 
@@ -310,8 +310,8 @@ cuyo instrumento estaba averiado y cuya evidencia ya no existe no se arregla a
 mano: eso sería inventarlo. Queda marcado `excluded` en `runs.jsonl`, fuera de
 todo cómputo, y el informe lo dice en su primera línea en vez de retirarlo en
 silencio. Fuera de todo cómputo es también fuera de los dos puentes al
-observatorio: `phoenix_push.py` no la publica y lo anuncia por `stderr` (sensor
-`test_evals.sh` §17, mutante M38; el emisor de LangSmith hacía lo mismo hasta retirarse).
+observatorio: el puente a Phoenix (retirado) no la publicaba y lo anunciaba por `stderr` (sensor
+`test_evals.sh` y mutante M38, retirados con él; el emisor de LangSmith hacía lo mismo hasta retirarse).
 Publicarla ahí la habría devuelto por la puerta de atrás, enseñada como un `fail`
 normal. **Lo zanja una sola llamada de pago — la 12, brazo `on`, `RUNS=1` — y
 está pendiente: no se hizo en esta ronda.**
@@ -623,7 +623,7 @@ que "medible en LangSmith **local**" no tiene salida por LangSmith, y eso no es 
 limitación de este repo.
 
 Lo que sí tiene salida es el objetivo detrás de la frase: **ver el eval en una interfaz
-local**. `phoenix_push.py` sube las mismas trazas a un Phoenix (Arize, OSS) en
+local**. `phoenix_push.py` (retirado en 2026-11 con el backend; queda como historia) subía las mismas trazas a un Phoenix (Arize, OSS) en
 `localhost:6006` — sin Docker, sin licencia, `pip install` y listo. Comprobado contra
 un Phoenix real: 14 spans, 2 padres (`eval on`, `eval off`), 12 hijos colgando de su
 `parent_id`, proyecto `mcharness-evals`.
@@ -634,7 +634,7 @@ Dos decisiones que evitan que esto contamine el eval:
   necesita `opentelemetry`, corre con el python de `~/.venvs/tools` y `run.sh` no lo
   llama. El eval sigue ejecutándose donde se ejecuta lo que mide.
 - **El sensor no depende del SDK.** `--dry-run` construye el árbol sin red ni
-  dependencias, y ahí es donde §17 lo comprueba con el python del sistema — así el
+  dependencias, y ahí lo comprobaba su sensor (retirado con él) con el python del sistema — así el
   check corre también en CI, en vez de ser un sensor que nunca dispara.
 
 ## Lo que falta, por orden de daño
@@ -657,8 +657,8 @@ Dos decisiones que evitan que esto contamine el eval:
    Es el techo real que queda, y multiplica el coste de arriba.
 3. ~~**LangSmith *el producto* sigue sin levantar.**~~ **RETIRADA en 2026-10**: LangSmith
    salió del repo y la interfaz local es Phoenix (arriba). Lo que sí queda abierto es E25:
-   el puente a Phoenix solo se prueba en seco.
-4. **Solo 29 de los 40 mutantes son reproducibles.** `make mutantes` versiona M9–M40 y
+   Phoenix también se retiró en 2026-11 y no queda emisor de trazas.
+4. **Solo 26 de los 40 mutantes son reproducibles.** `make mutantes` versiona M9–M40 y
    falla si un ancla desaparece del fuente (un mutante que no se aplica deja de vigilar
    **en silencio**). M1–M8 se corrieron con scripts de usar y tirar: de esos ocho queda
    la palabra, no la evidencia, y queda dicho.

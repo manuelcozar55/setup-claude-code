@@ -537,6 +537,8 @@ nucleo_indice() {
     while IFS=$'\t' read -r k v; do
       case $k in O) obj=$v ;; P) paso=$v ;; esac
     done < <(_nucleo_indice_campos "$nuc")
+    # Una ranura sin objetivo ni paso no es una tarea: no sale en el índice (handoff --archivar-vacias las aparta).
+    [ "$obj$paso" != "(sin objetivo)(sin paso)" ] || continue
     rows="$rows$mt"$'\t'"- sesión en ~${r#"$HOME"} · $obj · paso: $paso · $(date -u -d "@$mt" +%F 2>/dev/null || date -u -r "$mt" +%F 2>/dev/null)"$'\n'
   done
   [ -n "$rows$her" ] || return 0
@@ -549,6 +551,30 @@ nucleo_indice() {
     out="${out:+$out$'\n'}$l"
   done < <(printf '%s\n%s\n' "$rows" "$pers" | LC_ALL=C tr -d '\000-\010\013-\037\177' | nucleo_sin_bidi | sed 's|</|<\\/|g')
   printf '%s\n' "$out"
+}
+
+# nucleo_ranuras_vacias [días]: las ranuras de sesiones/ (una por línea) sin objetivo ni paso, con todos sus ficheros más
+# viejos que N días (3 por omisión) y sin sesión viva. Viva = su pid existe con la identidad de .proceso; ante la duda (sin
+# pid en el nombre, sin .proceso, pid vivo de otra identidad ilegible) no sale. Solo lista: no toca nada.
+nucleo_ranuras_vacias() {
+  local base=$HOME/.claude/estado/sesiones d pid id n=${1:-3}
+  case $n in '' | *[!0-9]*) n=3 ;; esac
+  [ -d "$base" ] && [ ! -L "$base" ] || return 0
+  for d in "$base"/*/; do
+    d=${d%/}
+    [ -d "$d" ] && [ ! -L "$d" ] && [ -f "$d/nucleo.md" ] && [ ! -L "$d/nucleo.md" ] || continue
+    [ -n "$(_nucleo_indice_campos "$d/nucleo.md" | command grep -m1 '^[OP]')" ] && continue
+    [ -z "$(find "$d" -mtime -"$n" -print -quit 2>/dev/null)" ] || continue
+    pid=${d##*-}
+    case $pid in '' | *[!0-9]*) continue ;; esac
+    [ -f "$d/.proceso" ] || continue
+    if id=$(_nucleo_proceso_id "$pid" 2>/dev/null); then
+      [ "$id" != "$(cat "$d/.proceso" 2>/dev/null)" ] || continue
+    elif [ -d "/proc/$pid" ]; then continue
+    fi
+    printf '%s\n' "$d"
+  done
+  return 0
 }
 
 # nucleo_indice_ctx [prefijo]: el contexto que reciben las sesiones abiertas desde ~ (arranque y compactación):
@@ -651,6 +677,9 @@ nucleo_emitir() {
   fi
   [ "$src" = "$1" ] || rm -f "$src"
   out=$(printf '%s\n' "$out" | sed 's|</|<\\/|g')
+  case $out in *'[recortado'* | *'[LEE '*)
+    out="$out"$'\n'"[recortado: $(printf '%s' "$out" | LC_ALL=C wc -c | tr -d ' ') de $(LC_ALL=C wc -c <"$1" | tr -d ' ') bytes; lo cerrado va a diario.md]" ;;
+  esac
   [ -z "$out" ] || printf '%s\n' "$out"
   case $out in *'[recortado'* | *'[LEE '*) _nucleo_log_recorte "$1" "$out" ;; esac
   return 0
