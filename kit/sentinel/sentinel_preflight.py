@@ -2003,8 +2003,11 @@ def audit_log(tool: str, decision: str, reason: str | None) -> None:
 
 # Unified deny/ask register shared with the shell guards (hooks/lib/guardlog.sh): same fields, same masking.
 GUARD_LOG_EXTRA = [
-    (r"(?i)((?:pass|password|passwd|secret|token|credential|apikey|api_key|api-key)[A-Za-z0-9_-]*[=:]\s*)[^\s'\"]+", r"\1[SECRETO]"),
+    (r"(?i)((?:pass|password|passwd|secret|token|credential|apikey|api_key|api-key)[A-Za-z0-9_-]*[\"']?\s*[=:]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s'\"]+)", r"\1[SECRETO]"),
+    (r"(?i)(--?(?:pass|password|passwd|secret|token|credential|apikey|api_key|api-key)[A-Za-z0-9_-]*\s+)(?:\"[^\"]*\"|'[^']*'|[^\s'\"]+)", r"\1[SECRETO]"),
     (r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}", r"\1[SECRETO]"),
+    (r"(?i)(authorization: basic\s+)[A-Za-z0-9+/=]+", r"\1[SECRETO]"),
+    (r"((?:-u|--user)\s+[^\s:'\"]+:)[^\s'\"]+", r"\1[SECRETO]"),
     (r"(://)[^/@\s]+:[^/@\s]+@", r"\1[SECRETO]@"),
 ]
 

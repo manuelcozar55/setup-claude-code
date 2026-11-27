@@ -216,6 +216,8 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
       t = toks[j]
       if (keepnext) { keepnext = 0; out = out " " t; continue }
       if (redir(t) || tokr[j]) { out = out " " t; if (redir_alone(t)) keepnext = 1; continue }
+      # `rg --pre CMD`, `ag|ack|man --pager CMD` y `man -P CMD` ejecutan su argumento: no es texto, se conserva.
+      if (t ~ /^--(pre|pager)(=|$)/ || (b == "man" && t ~ /^-P/)) { out = out " " t; if (t !~ /=/ && t !~ /^-P./) keepnext = 1; continue }
       if (clean_opt(t)) out = out " " t
     }
     return out

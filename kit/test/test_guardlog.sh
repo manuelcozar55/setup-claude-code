@@ -75,6 +75,12 @@ for s in "$GHP" "$ANT" abcdefgh12345678 pw0rdXYZ hunter2hunter2 MIIEBODYSECRET; 
   ok "enmascarado: '${s:0:12}…' ausente" "$(grep -c -- "$s" "$LOG")" 0
 done
 ok "enmascarado: hay marcas [SECRETO]" "$(f '.cmd | contains("[SECRETO]")')" true
+# Valores entre comillas, opción sin `=`, usuario:clave de curl y Authorization: Basic.
+# Literales partidos, como el Bearer de arriba: enteros los toma gitleaks por secretos de verdad.
+g destructive-guard.sh "rm -rf ~; TOKEN='quoted1 val' x --pass""word plainpw6 -d '{\"pass""word\":\"jsonpw7\"}'; curl -""u admin:curlpw11 -H 'Authorization: Ba""sic YmFzaWNwdzEy' h"
+for s in quoted1 plainpw6 jsonpw7 curlpw11 YmFzaWNwdzEy; do
+  ok "enmascarado: '$s' ausente" "$(grep -c -- "$s" "$LOG")" 0
+done
 g destructive-guard.sh "rm -rf ~; echo $PAD $ANT"
 ok "corte: ni un prefijo de la clave (sk-ant-)" "$(grep -c 'sk-ant-' "$LOG")" 0
 g destructive-guard.sh "rm -rf ~; echo $(printf 'y%.0s' {1..400})"

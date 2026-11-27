@@ -23,9 +23,13 @@ guardlog_mask() {
   # Sin la bandera I de sed (no es portable): cada letra va en su clase.
   ci() { o=; for (( i = 0; i < ${#1}; i++ )); do c=${1:i:1}; case $c in [a-z]) o+="[$c${c^^}]" ;; *) o+=$c ;; esac; done; REPLY=$o; }
   for w in pass password passwd secret token credential apikey api_key api-key; do
-    ci "$w"; args+=(-e "s${d}(${REPLY}[A-Za-z0-9_-]*[=:][[:space:]]*)[^[:space:]'\"]+${d}\\1[SECRETO]${d}g")
+    # El valor puede ir entre comillas (`TOKEN='x y'`, JSON `"password":"x"`) o tras una opcion sin `=` (`--password x`).
+    ci "$w"; args+=(-e "s${d}(${REPLY}[A-Za-z0-9_-]*[\"']?[[:space:]]*[=:][[:space:]]*)(\"[^\"]*\"|'[^']*'|[^[:space:]'\"]+)${d}\\1[SECRETO]${d}g"
+      -e "s${d}(--?${REPLY}[A-Za-z0-9_-]*[[:space:]]+)(\"[^\"]*\"|'[^']*'|[^[:space:]'\"]+)${d}\\1[SECRETO]${d}g")
   done
   ci bearer; args+=(-e "s${d}(${REPLY}[[:space:]]+)[A-Za-z0-9._~+/=-]{8,}${d}\\1[SECRETO]${d}g")
+  ci 'authorization: basic'; args+=(-e "s${d}(${REPLY}[[:space:]]+)[A-Za-z0-9+/=]+${d}\\1[SECRETO]${d}g")
+  args+=(-e "s${d}((-u|--user)[[:space:]]+[^[:space:]:'\"]+:)[^[:space:]'\"]+${d}\\1[SECRETO]${d}g")
   args+=(-e "s${d}(://)[^/@[:space:]]+:[^/@[:space:]]+@${d}\\1[SECRETO]@${d}g")
   sed -E "${args[@]}"
 }

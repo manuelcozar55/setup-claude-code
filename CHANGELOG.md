@@ -31,7 +31,8 @@ nombra y el tope del nucleo y las ranuras vacías se hacen visibles.
   `cwd`, `mode`, `unattended`, `tool` y la orden con los secretos enmascarados y truncada a 300 caracteres. Un fallo al
   escribirlo no cambia el veredicto. `efectividad` suma las cifras por guard y por regla y las órdenes reformuladas en
   menos de 60 s en el mismo cwd. Suite nueva: `test_guardlog.sh`; `test_guards_falsifiability.sh` comprueba además que la
-  suite no escribe en `blocked-commands.log` ni en el registro nuevo del HOME real.
+  suite no escribe en `blocked-commands.log` ni en el registro nuevo del HOME real. El enmascarado cubre también valores
+  entre comillas (`TOKEN='x y'`, JSON `"password":"x"`), `--password x`, `curl -u usuario:clave` y `Authorization: Basic`.
 - Medido el 27-nov sobre el `blocked-commands.log` vivo: ninguna suite lo contamina. Las líneas de fixture (`rm -rf ~`,
   `echo $(x) git clean -fd`…) salen de sondeos a mano de sesiones que corrían los guards con el HOME real, y los
   duplicados exactos son comparaciones guard viejo/guard nuevo del mismo comando.
@@ -51,7 +52,9 @@ nombra y el tope del nucleo y las ranuras vacías se hacen visibles.
   entero, y el push real sigue denegado con `bash -c`, `sh -c`, `eval`, `xargs`, `env`, `command`, subshell, `git -C`, opciones
   globales y tras `&&`/`;`/`|`. En el asiento, un force push real sale ahora con el mensaje del force push y no con el del asiento
   (mismo deny). El deny de push del asiento se evalúa ya después de `token_checks` (necesita saber si la orden escribe y ejecuta).
-  Tests: `test_guards.sh` (ambos modos) y filas L35-L38, D26-D29 de los corpus.
+  Tests: `test_guards.sh` (ambos modos) y filas L35-L38, D26-D29 de los corpus. Los argumentos que una orden de solo texto
+  ejecuta (`rg --pre CMD`, `--pager CMD`, `man -P CMD`) se conservan como código: sin eso, un push dentro de `rg --pre` pasaba
+  (hallado en la revisión de seguridad de la integración; filas D30-D32).
 - Medido, sin cambio: de 294 «ask» por «la orden sale de una variable, una sustitución o una llave» en 14 días, 240 (82 %) son
   cuerpos de heredoc que escriben texto a un fichero o van a un intérprete (decisión declarada, L01), 27 (9 %) son `$VAR` asignada a
   un literal de una palabra en la misma orden y el resto `$VAR` sin asignar, multipalabra o de bucle. No hay subclase mayoritaria
