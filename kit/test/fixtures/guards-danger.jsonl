@@ -23,3 +23,7 @@
 {"id":"D23","nota":"push a main dentro de bash -c","cmd":"bash -c \"git push origin main\"","exp":"BLOCK"}
 {"id":"D24","nota":"push HEAD:main","cmd":"git push origin HEAD:main","exp":"BLOCK"}
 {"id":"D25","nota":"push a main con comillas partidas","cmd":"git push origin ma''in","exp":"BLOCK"}
+{"id":"D26","nota":"force push real tras un rg que nombra git push como patron","cmd":"cd /r && rg 'git push' docs/; git push --force origin feat","exp":"BLOCK"}
+{"id":"D27","nota":"force push dentro de bash -c en una compuesta","cmd":"cd /r && bash -c 'git push -f origin feat'","exp":"BLOCK"}
+{"id":"D28","nota":"el texto del force push se escribe a un fichero y se ejecuta","cmd":"echo 'git push --force' > a.sh; bash a.sh","exp":"BLOCK|ASK"}
+{"id":"D29","nota":"force push por xargs tras un echo","cmd":"cd /r && echo origin | xargs git push -f","exp":"BLOCK"}
