@@ -388,6 +388,7 @@ rc=1"
 
 # 26. índice sin ranuras vacías y handoff --archivar-vacias (dry-run por defecto, solo mueve, nunca toca una viva)
 mv "$SES" "$T/ses-previas"; mkdir -p "$SES"
+# shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
 IDC=$(. "$K/hooks/lib/nucleo.sh"; _nucleo_proceso_id "$PC")
 mkranura() { mkdir -p "$SES/$1"; printf '%s\n' "$3" >"$SES/$1/nucleo.md"; [ -z "$2" ] || printf '%s\n' "$2" >"$SES/$1/.proceso"; find "$SES/$1" -exec touch -d "$4" {} +; }
 VACIO=$'# Estado\n## Objetivo\n<!-- solo plantilla -->\n## Paso actual\n'
@@ -397,6 +398,7 @@ mkranura 20240103-0000-$PM "" "$VACIO" '-10 days'           # sin .proceso: duda
 mkranura 20240104-0000-$PC "$IDC" "$VACIO" '-10 days'       # vacía, vieja, pero VIVA: no
 mkranura 20240105-0000-$PM ticks:1 $'## Objetivo\nhacer algo\n## Paso actual\nun paso\n' '-10 days'   # con objetivo: no
 mkranura sin-pid ticks:1 "$VACIO" '-10 days'                # nombre sin pid: duda, no
+# shellcheck source=SCRIPTDIR/../claude/hooks/lib/nucleo.sh
 IX=$(. "$K/hooks/lib/nucleo.sh"; nucleo_indice)
 ok "26 índice: omite las vacías y deja la que tiene objetivo" "$(command grep '^- sesión en' <<<"$IX" | command grep -c '(sin objetivo)'),$(command grep -c 'hacer algo' <<<"$IX")" "0,1"
 H0=$(huella)
@@ -406,7 +408,9 @@ ok "26 dry-run: no cambia nada" "$(huella)" "$H0"
 ok "26 --dias con basura se rechaza" "$(ho - --archivar-vacias --dias x >/dev/null 2>&1; echo $?)" 64
 ok "26 --apply fuera de --archivar-vacias se rechaza" "$(ho - --estado --apply >/dev/null 2>&1; echo $?)" 64
 ho - --archivar-vacias --apply >/dev/null 2>&1
+# shellcheck disable=SC2012  # nombres que crea este mismo test
 ok "26 --apply: la mueve a archivo/ (no borra)" "$(ls "$HOME/.claude/estado/archivo" | tr '\n' ' ')" "sesion-20240101-0000-$PM "
+# shellcheck disable=SC2012  # nombres que crea este mismo test
 ok "26 --apply: las demás siguen donde estaban" "$(ls "$SES" | wc -l | tr -d ' ')" 5
 ok "26 --apply: la viva sigue ahí" "$([ -f "$SES/20240104-0000-$PC/nucleo.md" ] && echo si)" si
 [ "$FAIL" -eq 0 ] && echo "PASS" || echo "FAIL"

@@ -563,6 +563,7 @@ nucleo_ranuras_vacias() {
   for d in "$base"/*/; do
     d=${d%/}
     [ -d "$d" ] && [ ! -L "$d" ] && [ -f "$d/nucleo.md" ] && [ ! -L "$d/nucleo.md" ] || continue
+    # shellcheck disable=SC2143  # grep -q cortaria la tuberia: con pipefail una ranura con contenido pareceria vacia
     [ -n "$(_nucleo_indice_campos "$d/nucleo.md" | command grep -m1 '^[OP]')" ] && continue
     [ -z "$(find "$d" -mtime -"$n" -print -quit 2>/dev/null)" ] || continue
     pid=${d##*-}
