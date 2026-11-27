@@ -57,7 +57,7 @@ OVER=0
 if cmdn_oversize "$COMMAND" >/dev/null; then
   OVER=1
   (( ${#COMMAND} > 8 * CMDN_MAX_BYTES )) && { cmdn_oversize "$COMMAND"; exit 0; }
-  CMDN_TEXT=$COMMAND; CMDN_EXEC=$COMMAND; CMDN_EXSEG=$COMMAND; CMDN_SEGS=(); CMDN_PSH=1
+  CMDN_TEXT=$COMMAND; CMDN_EXEC=$COMMAND; CMDN_EXSEG=$COMMAND; CMDN_EXW=$COMMAND; CMDN_SEGS=(); CMDN_PSH=1
 else
   cmdn_parse "$COMMAND" \
     || deny "BLOCKED (fail-closed): awk no pudo normalizar el comando, asi que este guard no puede evaluarlo."
@@ -68,10 +68,17 @@ COMMAND=$CMDN_TEXT
 EXECT=$CMDN_EXEC
 # Las de SQL juzgan el texto que se ejecuta segmento a segmento, tambien en una orden compuesta (`cd x && rg 'DROP TABLE' f; ...`).
 SQLT=$CMDN_EXSEG
+# Igual para los push, pero un segmento que escribe a un fichero (`printf x >> f`) conserva sus argumentos: el fichero lo lee despues
+# otro, y escribir un texto a un fichero no se prueba como dato (L24).
+PUSHT=$CMDN_EXW
 # El valor de `git push -o <valor>` es texto para el servidor, no un flag: `-o '-f'` no es un force push.
-if [[ $EXECT == *push* && $EXECT =~ (-o|--push-option)[[:space:]=] ]]; then
-  EXECT=$(LC_ALL=C sed -E "s/(git[^;&|]*push[^;&|]*[[:space:]](-o|--push-option)[[:space:]=]+)('[^'~\/][^']*'|\"[^\"~\/][^\"]*\"|[^[:space:];&|'\"~\/][^[:space:];&|]*)/\1_/" <<<"$EXECT")
-fi
+strip_push_opt() {
+  if [[ $1 == *push* && $1 =~ (-o|--push-option)[[:space:]=] ]]; then
+    LC_ALL=C sed -E "s/(git[^;&|]*push[^;&|]*[[:space:]](-o|--push-option)[[:space:]=]+)('[^'~\/][^']*'|\"[^\"~\/][^\"]*\"|[^[:space:];&|'\"~\/][^[:space:];&|]*)/\1_/" <<<"$1"
+  else printf "%s" "$1"; fi
+}
+EXECT=$(strip_push_opt "$EXECT")
+PUSHT=$(strip_push_opt "$PUSHT")
 
 # En un asiento desatendido (cmdn_desatendido) la pregunta pasa a deny con el porque: nadie la contestaria.
 ask() {
@@ -88,11 +95,17 @@ ask() {
 }
 
 # El push lo confirma la persona (regla `ask` de settings.json), y en un asiento desatendido esa pregunta lo dejaria parado: se
-# deniega antes, con el camino de salida. Solo `push` como subcomando de git (`git stash push` no lo es), sobre EXECT.
-if [[ $EXECT == *push* ]] && cmdn_desatendido \
-  && LC_ALL=C grep -qiE '\bgit([[:space:]]+(-[Cc][[:space:]]+[^[:space:];&|]+|--?[A-Za-z][-A-Za-z]*(=[^[:space:];&|]*)?))*[[:space:]]+push\b' <<<"$EXECT"; then
-  deny "BLOCKED: git push desde un asiento desatendido; el push lo confirma la persona. Que hacer: deja el trabajo en un commit local, avisa a la persona por la cola de OpenRig (rig queue create) de que la rama esta lista para push y sigue con otra parte del encargo."
-fi
+# deniega antes, con el camino de salida. Solo `push` como subcomando de git (`git stash push` no lo es). Se decide sobre el texto
+# que se ejecuta segmento a segmento (PUSHT), no sobre el texto entero: el patron de un `rg 'git push'` o el mensaje de un commit
+# no son un push, tampoco dentro de una orden compuesta. Se llama tras token_checks, que es quien sabe si la orden escribe y ejecuta
+# un fichero (WX): entonces el texto escrito es codigo y manda el texto entero.
+push_asiento() {
+  (( WX )) && { EXECT=$COMMAND; SQLT=$COMMAND; PUSHT=$COMMAND; }
+  if [[ $PUSHT == *push* ]] && cmdn_desatendido \
+    && LC_ALL=C grep -qiE '\bgit([[:space:]]+(-[Cc][[:space:]]+[^[:space:];&|]+|--?[A-Za-z][-A-Za-z]*(=[^[:space:];&|]*)?))*[[:space:]]+push\b' <<<"$PUSHT"; then
+    deny "BLOCKED: git push desde un asiento desatendido; el push lo confirma la persona. Que hacer: deja el trabajo en un commit local, avisa a la persona por la cola de OpenRig (rig queue create) de que la rama esta lista para push y sigue con otra parte del encargo."
+  fi
+}
 
 # Las reglas de `curl`/`wget` tras un pipe a interprete viven en variables porque la excepcion
 # estrecha de K1 (fetch_safe_reader, mas abajo) necesita reconocerlas por identidad para saltarlas
@@ -784,6 +797,7 @@ if (( OVER )); then
   done < <(LC_ALL=C grep -oE "$RM_TEXT_RX" <<<"$COMMAND")
 fi
 if [[ $COMMAND == *rm* || $COMMAND == *git* || $COMMAND == *'|'* || $COMMAND == *'>'* || $COMMAND == *chmod* || $COMMAND == *chown* || $COMMAND == *chgrp* || $COMMAND == *'$'* || $COMMAND == *'`'* || $COMMAND == *'{'* ]]; then token_checks; fi
+push_asiento
 
 # LC_ALL=C en los grep: con UTF-8 la union de patrones deja de ir por el automata y recorre el
 # comando con retroceso, cuadratico en una linea larga (32 KB = 2,8 s, 64 KB = 13 s de CPU, y el
@@ -817,10 +831,14 @@ writes_text_to_file() {
 }
 
 # Un fichero que el propio comando escribe y ejecuta: el texto que escribe es CODIGO, no prosa; manda el criterio de la base (el texto entero).
-(( WX )) && { EXECT=$COMMAND; SQLT=$COMMAND; }
+(( WX )) && { EXECT=$COMMAND; SQLT=$COMMAND; PUSHT=$COMMAND; }
 SAFE_FETCH=''
 for ((i = 0; i < ${#DENY_RULES[@]}; i += 2)); do
-  LC_ALL=C grep -qiE "${DENY_RULES[i]}" <<<"$EXECT" || continue
+  # Las dos reglas de force push (`--force`, `-f`) juzgan el texto que se ejecuta segmento a segmento, como el push de asiento: el
+  # patron de un `rg 'git push --force'` o un mensaje de commit en una orden compuesta no es un push.
+  dtxt=$EXECT
+  [[ ${DENY_RULES[i + 1]} == "BLOCKED: git push --force" || ${DENY_RULES[i + 1]} == "BLOCKED: git push -f / -uf (force push)" ]] && dtxt=$PUSHT
+  LC_ALL=C grep -qiE "${DENY_RULES[i]}" <<<"$dtxt" || continue
   if [[ ${DENY_RULES[i]} == "$RCE_CURL" || ${DENY_RULES[i]} == "$RCE_WGET" ]]; then
     [[ -z $SAFE_FETCH ]] && { if fetch_safe_reader "$COMMAND"; then SAFE_FETCH=yes; else SAFE_FETCH=no; fi; }
     [[ $SAFE_FETCH == yes ]] && continue

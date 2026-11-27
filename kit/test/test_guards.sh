@@ -2048,6 +2048,25 @@ bdc_as "asiento: cd && git push -u se deniega"               "cd /r && git push 
 bdc_as "asiento: git stash push no es un push"               "git stash push -m w"               allow auto
 bdc_as "asiento: rig send que nombra git push permitido"     "rig send x \"lista para git push\"" allow auto
 bdc_as "asiento: rm -rf del home sigue denegado"             'rm -rf ~/Documentos'               deny auto
+# El push de asiento y los dos force push se deciden sobre el texto que se ejecuta segmento a segmento: en una orden compuesta, el
+# patron de un rg, el mensaje de un commit, un echo o un rig send que nombran `git push` tampoco son un push. En los dos modos.
+for c in "cd /r && rg -n 'git push --force' f; wc -l f" "cd /r && rg 'git push -f' f; ls" "cd /r && git commit -m 'nunca git push --force'; ls" \
+         "cd /r && echo 'luego git push -f'; ls" "cd /r && rig send x 'lista para git push'; ls" "echo hecho; grep -rn 'git push' docs/"; do
+  bdc    "texto: con persona, compuesta que solo nombra git push: $c" "$c" allow auto
+  bdc_as "texto: asiento, compuesta que solo nombra git push: $c"     "$c" allow auto
+done
+# Un push real sigue denegado en el asiento con cualquier envoltorio, tras un texto inocuo y aunque la orden escriba y ejecute un fichero.
+for c in "cd /r && rg 'git push' f; git push origin feat" "bash -c 'cd /r && git push origin feat'" "sh -c \"git push origin feat\"" \
+         "eval 'git push origin feat'" "echo origin | xargs git push" "env X=1 git push origin feat" "command git push origin feat" \
+         "(cd /r; git push origin feat)" "true && git -C /r push origin feat" "git --no-pager push origin feat" "echo x | git push origin feat" \
+         "echo 'git push origin x' > a.sh; bash a.sh" "echo 'git push origin x' | sh" "echo hola; git push origin feat"; do
+  bdc_as "texto: asiento, push real denegado: $c" "$c" deny auto
+done
+for c in "cd /r && git push --force origin feat" "cd /r; git push -f origin feat" "bash -c 'cd /r && git push --force'" \
+         "echo 'git push --force' > a.sh; bash a.sh" "echo 'git push -f' | sh" "cd /r && echo x | xargs git push -f"; do
+  bdc    "texto: con persona, force push real denegado: $c" "$c" deny auto
+  bdc_as "texto: asiento, force push real denegado: $c"     "$c" deny auto
+done
 r=$(jq -nc '{tool_name:"Bash",tool_input:{command:"gh pr merge 12"},permission_mode:"auto"}' | OPENRIG_OCCUPANT_GENERATION=3 HOME="$GUARDS_TEST_HOME" bash "$KIT/claude/hooks/block-dangerous-commands.sh" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty')
 [[ $r == *'ASIENTO DESATENDIDO'*'rig queue create'* ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: asiento: el deny explica la salida"; }
 [[ $(OPENRIG_OCCUPANT_GENERATION=3 gbig auto) == deny ]] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: asiento: guard: orden sobre el tope se deniega"; }

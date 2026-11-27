@@ -7,6 +7,23 @@ etiquetado.
 
 ## [Unreleased]
 
+### Cambiado
+
+- **Falsos positivos de texto en el deny de push** (`block-dangerous-commands.sh`, `lib/cmdnorm.sh`). Con una orden compuesta
+  (`cd x && rg 'git push --force' f; wc -l f`) el patrón de un `rg`/`grep`, el mensaje de un commit, un `echo` o un `rig send` que
+  nombraban `git push` se denegaban como un push: el deny de push del asiento desatendido y las dos reglas de `--force`/`-f`
+  miraban el texto entero. Ahora se deciden sobre el texto que se ejecuta segmento a segmento (campo nuevo `CMDN_EXW`, como el
+  SQL de la 3.0.0), así que el texto solo-dato pasa. Sin relajar nada más: un segmento que escribe a un fichero conserva sus
+  argumentos (L24 sigue en BLOCK), una orden que escribe un fichero y lo ejecuta o que va a un shell/`xargs` se juzga por el texto
+  entero, y el push real sigue denegado con `bash -c`, `sh -c`, `eval`, `xargs`, `env`, `command`, subshell, `git -C`, opciones
+  globales y tras `&&`/`;`/`|`. En el asiento, un force push real sale ahora con el mensaje del force push y no con el del asiento
+  (mismo deny). El deny de push del asiento se evalúa ya después de `token_checks` (necesita saber si la orden escribe y ejecuta).
+  Tests: `test_guards.sh` (ambos modos) y filas L35-L38, D26-D29 de los corpus.
+- Medido, sin cambio: de 294 «ask» por «la orden sale de una variable, una sustitución o una llave» en 14 días, 240 (82 %) son
+  cuerpos de heredoc que escriben texto a un fichero o van a un intérprete (decisión declarada, L01), 27 (9 %) son `$VAR` asignada a
+  un literal de una palabra en la misma orden y el resto `$VAR` sin asignar, multipalabra o de bucle. No hay subclase mayoritaria
+  que se pueda resolver sin adivinar, y la regla no se toca.
+
 ## [3.0.0] - 2026-11-24
 
 La instalación sin flags deja solo el núcleo. Lo que casi nadie usaba sale del camino por defecto y se recupera con

@@ -1,7 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2015  # «cond && pass=$((pass+1)) || bad»: la rama del medio es una asignacion y nunca falla.
 # test_guards_veredictos.sh — los cuatro corpus de la auditoria A (2026-11-12) como suite ejecutable:
-# legitimos (34), peligrosos (25), bypasses (12), extra (18) y prosa (15: formas que parecen prosa y no lo son). Cada caso pasa por la CADENA completa de
+# legitimos (38), peligrosos (29), bypasses (12), extra (18) y prosa (15: formas que parecen prosa y no lo son). Cada caso pasa por la CADENA completa de
 # PreToolUse de Bash (los cinco guards mas Sentinel) y el veredicto de la cadena es el peor de los seis:
 # BLOCK (deny JSON o exit 2) > ASK > ALLOW. Cada fila lleva su veredicto esperado en `exp`:
 #   ALLOW, BLOCK, ASK, o `BLOCK|ASK` cuando valen las dos salidas seguras (frena o pide confirmacion).
