@@ -196,30 +196,18 @@ abstenerse, pedir confirmación, o respetar un límite de alcance). Optimizar so
 dirección (todo "debe hacer X") produce un harness que aprende a ser más permisivo sin
 que se note en el eval set.
 
-## Interfaz local de verdad: Phoenix
+## Cadencia y resumen versionable
+
+Los resultados crudos (`runs.jsonl`, `resultados-*.json`, `transcripts/`) no se comitean, así que sin otra cosa
+no queda rastro de una release a otra. La cadencia es **una pasada por release con `RUNS=3`** (ambos brazos):
 
 ```bash
-make phoenix        # http://localhost:6006  (terminal aparte)
-make phoenix-push   # sube runs.jsonl: un padre por brazo, un hijo por tarea
+RUNS=3 bash kit/evals/run.sh && RUNS=3 ARM=off bash kit/evals/run.sh   # de pago: a mano, nunca en CI
+python3 kit/evals/report.py --resumen                                  # escribe kit/evals/resultados/AAAA-MM-DD-vX.Y.Z.json
 ```
 
-Phoenix (Arize, OSS, trazas openinference) da lo que aquí hacía falta: interfaz web,
-árbol por brazo y atributos por tarea, **sin Docker y sin licencia**.
-
-`phoenix_push.py` es **la única pieza del repo que necesita un SDK**
-(`opentelemetry`, en `~/.venvs/tools`), y por eso corre con el python de ese venv y
-no con el del sistema. No está en el camino caliente: `run.sh` no lo llama y el eval
-no depende de él — si dependiera, el observatorio sería punto único de fallo de la
-medición.
-
-Su `--dry-run` sí es dependency-free, y es donde `test_evals.sh` §17 comprueba lo que
-puede romperse en silencio: que hay **un padre por brazo** y cada tarea lleva la
-etiqueta del suyo, que las tareas salen **ordenadas** (sin eso el árbol se lee
-distinto en cada tirada y comparar dos ejecuciones deja de ser posible), y que un
-`error` viaja como `error` y no como suspenso. Dos mutantes lo vigilan.
-
-Comprobado contra un Phoenix real: 14 spans, 2 padres (`eval on`, `eval off`), 12
-hijos con su `parent_id`, en el proyecto `mcharness-evals`.
+El resumen se comitea con la release: fecha, versión del kit (`VERSION`), nº de casos, `RUNS` y, por brazo, `n`,
+aciertos, errores y tasa (los `error` salen del denominador). Sin transcripts ni filas. `--resumen RUTA` elige otro destino.
 
 ## Por qué `--permission-mode auto`
 

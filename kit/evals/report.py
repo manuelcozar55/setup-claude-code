@@ -10,7 +10,7 @@
 Las tres separadas a proposito: una tarea puede pasar, no deberle nada al harness
 y costar el triple. Meterlo todo en un numero borra justo eso.
 
-Uso:  python3 report.py [--store runs.jsonl] [--since YYYY-MM-DD] [--md]
+Uso:  python3 report.py [--store runs.jsonl] [--since YYYY-MM-DD] [--md] [--resumen [RUTA]]
 """
 import argparse, collections, json, math, os, subprocess, sys
 
@@ -21,6 +21,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--store", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs.jsonl"))
 ap.add_argument("--since", help="ignora runs anteriores a esta fecha (ISO)")
 ap.add_argument("--md", action="store_true", help="tabla markdown en vez de texto plano")
+ap.add_argument("--resumen", nargs="?", const="", metavar="RUTA",
+                help="escribe un resumen pequeño y versionable (por omision kit/evals/resultados/AAAA-MM-DD-vX.Y.Z.json)")
 a = ap.parse_args()
 
 if not os.path.exists(a.store):
@@ -115,8 +117,29 @@ by_arm = collections.defaultdict(list)
 for r in runs:
     by_arm[r.get("arm") or "on"].append(r)
 
+if a.resumen is not None:
+    # Resumen versionable: sin transcripts ni filas, solo lo que permite comparar una release con otra.
+    raiz = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+    try:
+        version = open(os.path.join(raiz, "VERSION")).read().strip()
+    except OSError:
+        version = "desconocida"
+    fecha = (ultimo.get("ts") or "")[:10] or "sin-fecha"
+    resumen = {"fecha": fecha, "version": version, "casos": len({r.get("task") for r in runs}),
+               "RUNS": max([r["attempt"] for r in runs if isinstance(r.get("attempt"), int)] or [1]),
+               "brazos": {arm: {"n": s["n"], "pass": s["k"], "error": s["errors"],
+                                "tasa": None if s["rate"] is None else round(s["rate"], 3)}
+                          for arm, s in ((arm, agg(rs)) for arm, rs in sorted(by_arm.items()))}}
+    dest = a.resumen or os.path.join(os.path.dirname(os.path.abspath(__file__)), "resultados",
+                                     "%s-v%s.json" % (fecha, version))
+    os.makedirs(os.path.dirname(os.path.abspath(dest)), exist_ok=True)
+    with open(dest, "w") as f:
+        json.dump(resumen, f, ensure_ascii=False, indent=2, sort_keys=True)
+        f.write("\n")
+    print("resumen escrito en", dest)
+
 sep = " | " if a.md else "  "
-bar = "|" if a.md else " "
+bar ="|" if a.md else " "
 
 
 def row(cells):

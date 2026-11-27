@@ -11,6 +11,11 @@ etiquetado.
 
 - El tope del nucleo se ve: `doctor.sh` avisa (WARN) con el recuento y los 3 peores cuando hay nucleos por encima de `NUCLEO_TOPE` en las ranuras de sesión y en las raíces registradas, y la inyección de un nucleo recortado añade la línea «[recortado: N de M bytes; lo cerrado va a diario.md]».
 - Las ranuras de sesión sin objetivo ni paso ya no salen en el `<indice-tareas>` de arranque, y `handoff --archivar-vacias [--dias N] [--apply]` las lista (dry-run) o las mueve, sin borrar, a `~/.claude/estado/archivo/` si llevan más de N días (3) sin tocarse; nunca toca la de una sesión viva ni la dudosa.
+- `report.py --resumen [RUTA]` escribe un resumen pequeño y versionable (fecha, versión del kit, nº de casos, `RUNS`, tasa por brazo con su `n`; sin transcripts) en `kit/evals/resultados/AAAA-MM-DD-vX.Y.Z.json`; `kit/evals/README.md` documenta la cadencia: una pasada por release con `RUNS=3`.
+
+### Retirado
+
+- `kit/evals/phoenix_push.py`, los targets `make phoenix` y `make phoenix-push`, sus tests (`test_evals.sh` §17) y los mutantes M21, M22 y M38: el backend de observabilidad se retiró en octubre y no tenían ningún otro uso en el repo.
 
 ## [3.0.0] - 2026-11-24
 

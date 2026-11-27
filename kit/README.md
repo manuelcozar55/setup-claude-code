@@ -39,7 +39,7 @@ Las piezas opcionales se piden con `bash kit/install.sh --con <pieza>[,<pieza>�
 | `install.sh` · `doctor.sh` · `scan-secrets.sh` | scripts de instalación y verificación | instalar sin pisar nada, diagnosticar con evidencia, cerrar la puerta de secretos |
 | `test/` | regresión de guards, instalador y Capa 2 de secretos, en bash puro | `test/test_guards.sh`, `test/test_guards_falsifiability.sh`, `test/test_secret_content_gitleaks.sh` y el resto: 67 suites, todas en `make test` |
 | `claude/skills/` · `mods/cockpit/` | las 3 skills del método (`install.sh` copia `deep-change` a `~/.claude/skills/`; `retro` y `verification-before-completion` con `--con skills-extra`) y el mod de traspaso de sesión (`--con cockpit`; lo carga el lanzador `scc`) | llevar la forma de trabajar, no solo los guards; ver `docs/12-metodologia.md` |
-| `evals/` | 23 tareas reales (10 positivas / 10 negativas / 3 de resultado), brazo de control (`ARM=off`), historico y puente a Phoenix para ver las trazas en local (opt-in, no corre en `test/`, cuesta llamadas reales a `claude -p`) | medir si el harness **sirve**, no solo si el agente pasa — ver [`evals/README.md`](evals/README.md) |
+| `evals/` | 23 tareas reales (10 positivas / 10 negativas / 3 de resultado), brazo de control (`ARM=off`), historico (opt-in, no corre en `test/`, cuesta llamadas reales a `claude -p`) | medir si el harness **sirve**, no solo si el agente pasa — ver [`evals/README.md`](evals/README.md) |
 | `docs/` | 14 documentos, del mapa (`01`) al onboarding (`10`), el cockpit (`11`), la metodología (`12`), la memoria (`13`), cómo operar (`OPERAR`) y el mapa generado de piezas (`MAPA`); todos en el índice de abajo | el mapa mental y el "cómo" de cada pieza, con enlaces a terceros |
 
 ## Cómo funciona

@@ -668,95 +668,6 @@ else
   echo "ok - con la maquina igual de tranquila en los dos brazos no hay aviso"; pass=$((pass+1))
 fi
 
-# --- 17. El puente a Phoenix (interfaz local de verdad) ---------------------
-# Phoenix es la via a "medible en local" con interfaz. El emisor necesita SDK y vive en el venv de
-# herramientas, pero su --dry-run no necesita nada, y es ahi donde se comprueba lo
-# que puede romperse en silencio: la forma del arbol y las etiquetas.
-F=$(mktemp -d) || exit 1
-"$PY" - "$F/mix.jsonl" <<'PYEOF'
-import json, sys
-def r(task, arm, res):
-    return {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": "positiva",
-            "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
-            "duration_api_ms": 5, "input_tokens": 1}
-# A proposito en orden NO alfabetico: si el emisor no ordena, el arbol se lee
-# distinto en cada tirada y comparar dos ejecuciones deja de ser posible.
-rows = [r("03-c", "on", "pass"), r("01-a", "on", "pass"), r("02-b", "on", "fail"),
-        r("01-a", "off", "error")]
-open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
-PYEOF
-"$PY" "$E/phoenix_push.py" --store "$F/mix.jsonl" --dry-run > "$F/arbol.json" 2>/dev/null
-
-etiq=$("$PY" - "$F/arbol.json" <<'PYEOF'
-import json, sys
-t = json.load(open(sys.argv[1]))
-# Un padre por brazo, y cada hijo etiquetado con el brazo de SU padre: sin eso
-# no se puede filtrar por brazo, que es la comparacion entera.
-ok = (len(t) == 2
-      and sorted(p["attrs"]["eval.arm"] for p in t) == ["off", "on"]
-      and all(h["attrs"]["eval.arm"] == p["attrs"]["eval.arm"]
-              for p in t for h in p["hijos"]))
-print("etiquetado" if ok else "suelto")
-PYEOF
-)
-ck "$etiq" "etiquetado" "phoenix: un padre por brazo y cada tarea etiquetada con el suyo"
-
-orden=$("$PY" - "$F/arbol.json" <<'PYEOF'
-import json, sys
-t = json.load(open(sys.argv[1]))
-on = [p for p in t if p["attrs"]["eval.arm"] == "on"][0]
-n = [h["nombre"] for h in on["hijos"]]
-print("ordenado" if n == sorted(n) else "azar:" + ",".join(n))
-PYEOF
-)
-ck "$orden" "ordenado" "phoenix: las tareas salen ordenadas, no al azar del diccionario"
-
-# Cuarta vez que el repo defiende lo mismo: 'error' no es un cero. Si el puente lo
-# coercionara, la interfaz ensenaria un suspenso donde no se pudo medir.
-err=$("$PY" - "$F/arbol.json" <<'PYEOF'
-import json, sys
-t = json.load(open(sys.argv[1]))
-off = [p for p in t if p["attrs"]["eval.arm"] == "off"][0]
-h = off["hijos"][0]
-print(h["attrs"]["eval.result"] + "/" + str(json.loads(h["attrs"]["output.value"])["result"]))
-PYEOF
-)
-ck "$err" "error/error" "phoenix: un 'error' viaja como error, no como suspenso"
-
-# report.py deja la fila retirada fuera de todo computo, y este puente la publicaba
-# como un fail normal: el dato retirado volvia por la puerta de atras.
-X=$(mktemp -d) || exit 1
-"$PY" - "$X/con.jsonl" "$X/sin.jsonl" <<'PYEOF'
-import json, sys
-def r(task, arm, res, **k):
-    d = {"ts": "2026-01-01T00:00:00Z", "task": task, "arm": arm, "tipo": "positiva",
-         "attempt": 1, "result": res, "model": "m", "cost_usd": 0.1,
-         "duration_api_ms": 5, "input_tokens": 1}
-    d.update(k)
-    return d
-# El mismo almacen dos veces, y la unica diferencia entre los dos es la clave
-# 'excluded': asi la asercion mide la retirada y no otra cosa.
-rows = [r("01-a", "on", "pass"), r("02-b", "on", "fail"), r("01-a", "off", "pass")]
-open(sys.argv[2], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
-rows[1]["excluded"] = "instrumento averiado (E28)"
-open(sys.argv[1], "w").write("\n".join(json.dumps(x) for x in rows) + "\n")
-PYEOF
-ph_hijos() {
-  "$PY" "$E/phoenix_push.py" --store "$1" --dry-run 2>/dev/null | "$PY" -c "
-import json, sys
-print(sum(len(p['hijos']) for p in json.load(sys.stdin)))" 2>/dev/null
-}
-ck "$(ph_hijos "$X/con.jsonl") $(ph_hijos "$X/sin.jsonl")" "2 3" \
-   "phoenix: la fila retirada no se publica, y sin retirar si se publicaria"
-avi=$("$PY" "$E/phoenix_push.py" --store "$X/con.jsonl" --dry-run 2>&1 >/dev/null)
-case "$avi" in
-  *"no se publican 1 fila"*02-b*)
-    echo "ok - phoenix dice que retiro una fila, no la calla"; pass=$((pass+1));;
-  *) echo "NOT ok - phoenix retira la fila en silencio: $avi"; fail=$((fail+1));;
-esac
-rm -f "$X"/*.jsonl; rmdir "$X" 2>/dev/null
-rm -rf "$F"
-
 # --- 18. El modelo que se apunta es el que hizo el trabajo (E24) ------------
 # Cada sesion de `claude -p` gasta ~15 tokens en un haiku auxiliar, y ese aparece
 # el primero en modelUsage. Apuntando el primero, 40 tiradas de opus quedaron
@@ -1200,6 +1111,23 @@ else
   ck "$declaradas_doc" "$emitidas_doc" \
      "test_doc_claims.sh emitio $emitidas_doc aserciones y su resumen declara las mismas"
 fi
+
+# --- 26. El resumen versionable es pequeno, sin transcripts, y sale de un store de fixture ---
+RS=$(mktemp -d) || exit 1
+for l in '{"ts":"2026-11-27T10:00:00Z","task":"01-a","arm":"on","tipo":"positiva","attempt":1,"result":"pass","model":"m"}' \
+         '{"ts":"2026-11-27T10:01:00Z","task":"01-a","arm":"on","tipo":"positiva","attempt":2,"result":"fail","model":"m"}' \
+         '{"ts":"2026-11-27T10:02:00Z","task":"02-b","arm":"on","tipo":"positiva","attempt":3,"result":"error","model":"m"}' \
+         '{"ts":"2026-11-27T10:03:00Z","task":"01-a","arm":"off","tipo":"positiva","attempt":1,"result":"fail","model":"m","transcript":"SECRETO-TRANSCRIPT"}'; do
+  printf '%s\n' "$l" >>"$RS/runs.jsonl"
+done
+"$PY" "$E/report.py" --store "$RS/runs.jsonl" --resumen "$RS/res.json" >/dev/null 2>&1
+ck "$("$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["fecha"], d["casos"], d["RUNS"], d["version"]==open(sys.argv[2]).read().strip())' "$RS/res.json" VERSION 2>&1)" \
+   "2026-11-27 2 3 True" "resumen: fecha, casos, RUNS y version del kit"
+ck "$("$PY" -c 'import json,sys; b=json.load(open(sys.argv[1]))["brazos"]; print(b["on"]["n"], b["on"]["pass"], b["on"]["error"], b["on"]["tasa"], b["off"]["n"], b["off"]["tasa"])' "$RS/res.json" 2>&1)" \
+   "2 1 1 0.5 1 0.0" "resumen: tasa por brazo con su n, y el error fuera del denominador"
+ck "$(grep -c 'SECRETO-TRANSCRIPT' "$RS/res.json")" "0" "resumen: sin transcripts ni filas"
+ck "$(wc -c <"$RS/res.json" | tr -d ' ' | awk '{ print ($1 < 1000) ? "pequeno" : "grande" }')" "pequeno" "resumen: ocupa menos de 1 KB"
+rm -f "$RS"/*.json "$RS"/*.jsonl; rmdir "$RS" 2>/dev/null
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ] || exit 1
