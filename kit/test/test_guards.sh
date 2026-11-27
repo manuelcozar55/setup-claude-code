@@ -23,6 +23,9 @@ pass=0; fail=0
 GUARDS_TEST_HOME=$(mktemp -d)
 mkdir -p "$GUARDS_TEST_HOME/.claude"
 printf '{}\n' > "$GUARDS_TEST_HOME/.claude/settings.json"
+# El registro de decisiones tambien: varias llamadas de esta suite no fijan HOME y apuntarian sus deny y ask
+# en el registro de quien la corre (lo vigila test_guards_falsifiability.sh).
+export CC_GUARD_LOG="$GUARDS_TEST_HOME/guard-decisions.jsonl"
 
 # HOME de prueba tambien aqui: cada deny se apunta en $HOME/.claude/audit-logs/sentinel.jsonl, y con
 # el HOME real la suite inflaba el recuento diario de denegaciones del log de quien la corre.

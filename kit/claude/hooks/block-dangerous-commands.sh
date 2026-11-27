@@ -6,8 +6,12 @@
 
 set -uo pipefail
 
+# shellcheck source=SCRIPTDIR/lib/guardlog.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/guardlog.sh" 2>/dev/null || guardlog() { return 0; }
+
 deny() {
   local r=$1
+  guardlog block-dangerous-commands.sh deny "$1"
   [[ $r == *"Que hacer:"* ]] || r+=" Que hacer: reformula sin la parte peligrosa (una ruta concreta, el comando a la vista); si de verdad es lo que quieres, ejecutalo tu con ! en la sesion. No se amplia la allowlist ni se desactiva el guard."
   jq -n --arg r "$r" '{
     hookSpecificOutput: {
@@ -29,6 +33,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 PAYLOAD=$(cat)
+GUARDLOG_PAYLOAD=$PAYLOAD
 COMMAND=$(jq -r '.tool_input.command // empty' <<<"$PAYLOAD" 2>/dev/null) \
   || deny "BLOCKED (fail-closed): el payload de PreToolUse no es JSON parseable, asi que este guard no puede evaluar el comando. Que hacer: reintenta; si se repite es un fallo de Claude Code, no de tu comando."
 [[ -z "$COMMAND" ]] && exit 0
@@ -54,7 +59,7 @@ command_allowlisted && exit 0
 # Por encima del tope (CMDN_MAX_BYTES) el parser no se arriesga, pero tampoco se pasa a `ask` a ciegas: se aplica el criterio de la base
 # (las reglas de DENY sobre el texto entero, sin quitar prosa) y solo si no salta ninguna se pregunta. Sobre 1 MB ni eso cabe en el timeout.
 OVER=0
-if cmdn_oversize "$COMMAND" >/dev/null; then
+if CMDN_NOLOG=1 cmdn_oversize "$COMMAND" >/dev/null; then
   OVER=1
   (( ${#COMMAND} > 8 * CMDN_MAX_BYTES )) && { cmdn_oversize "$COMMAND"; exit 0; }
   CMDN_TEXT=$COMMAND; CMDN_EXEC=$COMMAND; CMDN_EXSEG=$COMMAND; CMDN_SEGS=(); CMDN_PSH=1
@@ -77,6 +82,7 @@ fi
 ask() {
   local r=$1 d=ask
   cmdn_desatendido && { d=deny; r+=$CMDN_DESATENDIDO; }
+  guardlog block-dangerous-commands.sh "$d" "$1"
   jq -n --arg r "$r" --arg d "$d" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",

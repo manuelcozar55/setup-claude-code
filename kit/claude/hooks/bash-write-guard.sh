@@ -27,6 +27,10 @@ fi
 deny() {
   local r=$1
   [[ $r == *"Que hacer:"* ]] || r+=" Que hacer: reinstala el kit (./install.sh --apply)."
+  # Camino frio (solo al denegar): la lib se carga aqui para no pesar en el camino caliente de cada Bash.
+  GUARDLOG_PAYLOAD=$INPUT
+  # shellcheck source=SCRIPTDIR/lib/guardlog.sh
+  { . "$(dirname "${BASH_SOURCE[0]}")/lib/guardlog.sh" && guardlog bash-write-guard.sh deny "$1"; } 2>/dev/null
   jq -n --arg r "$r" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",

@@ -19,6 +19,8 @@
 # positive). Extensions are anchored to end-of-token, not end-of-string.
 
 INPUT=$(cat)
+# shellcheck disable=SC2034  # lo lee guardlog (lib/guardlog.sh)
+GUARDLOG_PAYLOAD=$INPUT
 
 # Fail-closed: sin jq no hay decision posible, y permitir en silencio apagaba toda la
 # Capa 1 sin un mensaje. Denegar puede frenar trabajo legitimo, y por eso install.sh
@@ -102,6 +104,7 @@ CRED_W=0 CRED_MAX_W=1500 CRED_MAX_SEGS=3000 CRED_MAX_OPS=3000
 cred_overwork() {
   local d=ask r="Confirm: la orden tiene demasiados operandos o segmentos para analizarla dentro del timeout del guard (tope: $CRED_MAX_W operandos con nombre sensible, $CRED_MAX_OPS operandos en total por orden, $CRED_MAX_SEGS segmentos), y un guard que se pasa de tiempo deja ejecutar la herramienta. Dividela en ordenes mas cortas o usa un fichero con la lista."
   cmdn_desatendido && { d=deny; r+=$CMDN_DESATENDIDO; }
+  guardlog secret-guard.sh "$d" "limite de analisis (demasiados operandos o segmentos)"
   jq -n --arg r "$r" --arg d "$d" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:$d,permissionDecisionReason:$r}}'
   exit 0
 }
@@ -145,6 +148,7 @@ cred_path() {
   return 1
 }
 cred_deny() {
+  guardlog secret-guard.sh deny "lectura de credenciales por Bash"
   echo "BLOCKED: lectura de material de credenciales por Bash ($1)." >&2
   echo "Command: $COMMAND" >&2
   echo "Que hacer: comprueba la clave sin leerla (ssh-keygen -l -f para la huella, ls -l para el modo, la .pub para la publica); si de verdad tienes que leerla, ejecutalo tu con ! en la sesion." >&2
@@ -343,6 +347,7 @@ for seg in "${CMDN_SEGS[@]}"; do
       IFS=/ read -r -a comps <<<"$expanded"
       for comp in "${comps[@]}"; do
         if env_name "$comp"; then
+          guardlog secret-guard.sh deny "git add de un fichero de entorno"
           echo "BLOCKED: Staging .env file — add to .gitignore instead." >&2
           echo "Que hacer: anade .env a .gitignore y haz git add de los ficheros concretos." >&2
           exit 2
@@ -353,6 +358,7 @@ for seg in "${CMDN_SEGS[@]}"; do
     # operando: `bundle.p12/data` no casa, igual que antes. No hay un "secret" suelto: casaba dentro de
     # palabras ajenas como "secreto".
     if [[ $op =~ (\.pem|\.p12|\.pfx|\.jks|\.keystore|\.key|credentials\.json)$ ]]; then
+      guardlog secret-guard.sh deny "git add de un fichero de credenciales"
       echo "BLOCKED: Staging potential credential file." >&2
       echo "Command: $COMMAND" >&2
       echo "Que hacer: no subas la clave al repo; guardala fuera de el, o ejecuta tu el git add con ! en la sesion si es una clave de prueba." >&2
@@ -384,6 +390,7 @@ for seg in "${CMDN_SEGS[@]}"; do
       base=$top
       (( all )) || base="$top/$(safe_git rev-parse --show-prefix 2>/dev/null)"
       if [ -f "$base/.env" ] && ! safe_git check-ignore -q "$base/.env" 2>/dev/null; then
+        guardlog secret-guard.sh deny "git add -A con un fichero de entorno sin ignorar"
         echo "BLOCKED: git add -A/. with untracked .env present — add to .gitignore first." >&2
         echo "Que hacer: anade .env a .gitignore, o haz git add de ficheros concretos en vez de -A o ." >&2
         exit 2

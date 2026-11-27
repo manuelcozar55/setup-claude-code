@@ -7,6 +7,20 @@ etiquetado.
 
 ## [Unreleased]
 
+### Añadido
+
+- **Los falsos positivos de los guards se pueden medir en uso real.** Antes `sentinel.jsonl` no guardaba la orden ni el cwd,
+  `blocked-commands.log` solo veía los `deny` de `destructive-guard.sh` y los demás guards no dejaban rastro. Ahora los
+  guards de Bash que cargan `lib/cmdnorm.sh`, `bash-write-guard.sh` y Sentinel escriben cada `deny` y `ask` en un registro
+  único, `~/.claude/audit-logs/guard-decisions.jsonl` (`CC_GUARD_LOG` cambia la ruta): `ts`, `guard`, `decision`, `rule`,
+  `cwd`, `mode`, `unattended`, `tool` y la orden con los secretos enmascarados y truncada a 300 caracteres. Un fallo al
+  escribirlo no cambia el veredicto. `efectividad` suma las cifras por guard y por regla y las órdenes reformuladas en
+  menos de 60 s en el mismo cwd. Suite nueva: `test_guardlog.sh`; `test_guards_falsifiability.sh` comprueba además que la
+  suite no escribe en `blocked-commands.log` ni en el registro nuevo del HOME real.
+- Medido el 27-nov sobre el `blocked-commands.log` vivo: ninguna suite lo contamina. Las líneas de fixture (`rm -rf ~`,
+  `echo $(x) git clean -fd`…) salen de sondeos a mano de sesiones que corrían los guards con el HOME real, y los
+  duplicados exactos son comparaciones guard viejo/guard nuevo del mismo comando.
+
 ## [3.0.0] - 2026-11-24
 
 La instalación sin flags deja solo el núcleo. Lo que casi nadie usaba sale del camino por defecto y se recupera con

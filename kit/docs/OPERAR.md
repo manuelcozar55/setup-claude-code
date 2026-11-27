@@ -14,7 +14,7 @@ guard fue y termina en «Que hacer: …».
 1. **Mira qué guard fue.** Cada guard y lo que bloquea está en [MAPA.md](MAPA.md). Estos dejan rastro:
    - `destructive-guard.sh`: `~/.claude/audit-logs/blocked-commands.log` (una línea por bloqueo, con la orden).
    - Sentinel (solo si lo instalaste con `--con sentinel`): `~/.claude/audit-logs/sentinel.jsonl`.
-   - Los demás guards solo escriben su mensaje en la sesión.
+   - Todos, también Sentinel: `~/.claude/audit-logs/guard-decisions.jsonl`, una línea JSON por `deny` y `ask` con guard, regla, cwd, modo, si la sesión iba desatendida y la orden (enmascarada, 300 caracteres). `efectividad` lo resume por guard y por regla y cuenta las órdenes reformuladas en menos de 60 s en el mismo cwd, que es un falso positivo revelado.
 2. **Déjala pasar una vez.** Ejecútala tú con `!` delante, en la sesión: `! git reset --hard HEAD~1`. No pasa por los
    hooks y la ves ejecutarse. Un `CC_ALLOW_DESTRUCTIVE=1` delante de la orden no vale: el guard lo lee del entorno.
 3. **Apaga un guard para toda la sesión.** Solo `destructive-guard.sh` tiene interruptor:
@@ -137,6 +137,7 @@ Conserva y lista lo que modificaste, quita los enlaces de `~/.local/bin` solo si
 | Qué | Dónde |
 |---|---|
 | Órdenes bloqueadas por `destructive-guard.sh` | `~/.claude/audit-logs/blocked-commands.log` |
+| Decisiones `deny`/`ask` de todos los guards y de Sentinel | `~/.claude/audit-logs/guard-decisions.jsonl` |
 | Sentinel y avisos de inyección en herramientas MCP (solo con `--con sentinel`) | `~/.claude/audit-logs/sentinel.jsonl`, `narthex.jsonl` |
 | Frescura del estado al compactar, compuerta de commit | `~/.claude/session-logs/` (`nucleo-freshness.log`, `gate-nucleo.log`) |
 | Estado de cada proyecto | `<proyecto>/.claude/estado/nucleo.md` y su carpeta. Una sesión lanzada en `~` y vinculada con `handoff --proyecto <ruta>` también guarda ahí su estado; su ranura de `~` (`~/.claude/estado/sesiones/`) solo lleva la línea `> proyecto:` y `## Coordinación`. Para desvincularla, borra esa línea |

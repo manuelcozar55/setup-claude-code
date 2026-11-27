@@ -39,6 +39,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_guards_r1.sh
 	bash kit/test/test_guards_monotonia.sh
 	bash kit/test/test_guards_degradacion.sh
+	bash kit/test/test_guardlog.sh
 	bash kit/test/test_secret_content_gitleaks.sh
 	bash kit/test/test_scan_secrets.sh
 	bash kit/test/test_install.sh

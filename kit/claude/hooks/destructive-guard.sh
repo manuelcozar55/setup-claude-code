@@ -6,6 +6,8 @@
 # Protocol: exit 2 = block
 
 INPUT=$(cat)
+# shellcheck disable=SC2034  # lo lee guardlog (lib/guardlog.sh)
+GUARDLOG_PAYLOAD=$INPUT
 # El escape hatch declarado se atiende ANTES del fail-closed de abajo: quien pone
 # CC_ALLOW_DESTRUCTIVE=1 ya ha apagado este guard a proposito, y no necesita jq para eso.
 [[ "${CC_ALLOW_DESTRUCTIVE:-0}" == "1" ]] && exit 0
@@ -30,6 +32,7 @@ log_block() {
   local logfile="${CC_BLOCK_LOG:-$HOME/.claude/audit-logs/blocked-commands.log}"
   mkdir -p "$(dirname "$logfile")" 2>/dev/null
   echo "[$(date -Iseconds)] BLOCKED: $1 | cmd: $COMMAND" >> "$logfile" 2>/dev/null
+  guardlog destructive-guard.sh deny "$1"
 }
 
 # El texto se normaliza con la lib comun: continuaciones unidas y comentarios quitados SOLO fuera
