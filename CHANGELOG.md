@@ -10,6 +10,7 @@ etiquetado.
 ### Añadido
 
 - El tope del nucleo se ve: `doctor.sh` avisa (WARN) con el recuento y los 3 peores cuando hay nucleos por encima de `NUCLEO_TOPE` en las ranuras de sesión y en las raíces registradas, y la inyección de un nucleo recortado añade la línea «[recortado: N de M bytes; lo cerrado va a diario.md]».
+- Las ranuras de sesión sin objetivo ni paso ya no salen en el `<indice-tareas>` de arranque, y `handoff --archivar-vacias [--dias N] [--apply]` las lista (dry-run) o las mueve, sin borrar, a `~/.claude/estado/archivo/` si llevan más de N días (3) sin tocarse; nunca toca la de una sesión viva ni la dudosa.
 
 ## [3.0.0] - 2026-11-24
 

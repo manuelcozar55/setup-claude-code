@@ -18,6 +18,7 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
      handoff --estado [--raiz DIR] [--sesion ID]
      handoff --agentes [--raiz DIR]
      handoff --liberar ID [--raiz DIR]
+     handoff --archivar-vacias [--dias N] [--apply]
 --desde   fusiona el borrador (secciones «## » de la plantilla; «Pendientes y riesgos» vale por «Pendientes») en
           <raíz>/.claude/estado/nucleo.md: Objetivo e Invariantes del nucleo no se tocan (de Invariantes se añaden las líneas
           nuevas del borrador, sin borrar nunca una); los [x] del Plan pasan a diario.md con su
@@ -66,6 +67,8 @@ uso: handoff --desde BORRADOR.md [--raiz DIR | --ranura DIR] [--sesion ID] [--so
 --json    --desde devuelve {nucleo,sha256,transcript,bytes} del documento guardado (transcript: la ruta o null; bytes: lo escrito); --migrar añade archivo.
 --liberar ID libera solamente al dueño cuyo ID coincida; conserva el núcleo.
 --agentes tabla del registro persistente; no crea estado ni archiva agentes.
+--archivar-vacias  lista (dry-run) las ranuras de ~/.claude/estado/sesiones/ sin objetivo ni paso y sin tocar hace más de --dias (3); con --apply las MUEVE
+          (nunca borra) a ~/.claude/estado/archivo/. No toca la de una sesión viva ni la dudosa.
 --estado  una línea JSON: raíz, nucleo, bytes, tope, pct, dueño, sha256 y agentes_vivos y bloquea (qué hay vivo) de --sesion (sin proyecto: {"raiz":null}).
           Con la ranura de esta sesión vinculada a la raíz: los del proyecto, más «sesion» (la ranura) y «vinculado»:true.
 Raíz: la del directorio actual (raíz git; no $HOME ni un directorio sin git) o --raiz DIR.
@@ -104,14 +107,14 @@ avisos_stderr() {
 bytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
 iso_de() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 
-MODO="" DESDE="" MIGRAR="" TEMA="" PROYECTO_ARG="" RAIZ_ARG="" RANURA_ARG="" SESION="" ESPERADO="" JSON=0 SOLO=0 COMMIT=0 TRANSCRIPT_ARG="" MOTIVO=""
+APPLY=0 DIAS=3 MODO="" DESDE="" MIGRAR="" TEMA="" PROYECTO_ARG="" RAIZ_ARG="" RANURA_ARG="" SESION="" ESPERADO="" JSON=0 SOLO=0 COMMIT=0 TRANSCRIPT_ARG="" MOTIVO=""
 while [ $# -gt 0 ]; do
   case $1 in
     -h | --help) uso; exit 0 ;;
     --migrar)
       MODO=migrar; shift
       if [ $# -gt 0 ] && [[ $1 != --* ]]; then MIGRAR=$1; shift; fi ;;
-    --desde | --proyecto | --informe | --raiz | --ranura | --sesion | --liberar | --esperado | --transcript | --motivo)
+    --desde | --proyecto | --informe | --raiz | --ranura | --sesion | --liberar | --esperado | --transcript | --motivo | --dias)
       [ $# -ge 2 ] || { echo "uso: handoff: a $1 le falta su argumento (handoff --help)" >&2; exit 64; }
       case $1 in
         --desde) MODO=desde; DESDE=$2 ;;
@@ -121,6 +124,7 @@ while [ $# -gt 0 ]; do
         --ranura) RANURA_ARG=$2 ;;
         --sesion) SESION=$2 ;;
         --liberar) MODO=liberar; SESION=$2 ;;
+        --dias) case $2 in "" | *[!0-9]*) die 64 "--dias: un número entero de días" ;; esac; DIAS=$2 ;;
         --esperado) [ -n "$2" ] || die 64 "--esperado requiere un SHA256"; ESPERADO=$2 ;;
         --transcript) TRANSCRIPT_ARG=$2 ;;
         --motivo) case $2 in stop | compact | fin) MOTIVO=$2 ;; *) die 64 "--motivo: stop, compact o fin" ;; esac ;;
@@ -130,6 +134,8 @@ while [ $# -gt 0 ]; do
     --estado) MODO=estado; shift ;;
     --auto) MODO=auto; shift ;;
     --agentes) MODO=agentes; shift ;;
+    --archivar-vacias) MODO=archivar; shift ;;
+    --apply) APPLY=1; shift ;;
     --iniciar) MODO=iniciar; shift ;;
     --solo) SOLO=1; shift ;;
     --commit) COMMIT=1; shift ;;
@@ -139,6 +145,7 @@ done
 # Sin --sesion, en --desde vale la sesión que corre este Bash (Claude Code la exporta): quien ya es dueño no tiene que repetirla.
 [ "$MODO" != desde ] && [ "$MODO" != proyecto ] || [ -n "$SESION" ] || SESION=${CLAUDE_CODE_SESSION_ID:-}
 { [ -z "$TRANSCRIPT_ARG" ] && [ -z "$MOTIVO" ]; } || [ "$MODO" = auto ] || die 64 "--transcript y --motivo solo van con --auto"
+[ "$APPLY$DIAS" = 03 ] || [ "$MODO" = archivar ] || die 64 "--apply y --dias solo van con --archivar-vacias"
 [ -n "$MODO" ] || { echo "uso: handoff --desde BORRADOR.md | --iniciar | --informe TEMA | --migrar DIR | --estado (handoff --help)" >&2; exit 64; }
 
 if [ -n "$RANURA_ARG" ]; then
@@ -222,6 +229,22 @@ if [ "$MODO" = estado ]; then
   vinculada || true
   jq -cn --arg sha "$SHA" --argjson av "$VIVOS" --arg bq "$BLOQ" --arg r "$RAIZ" --arg n "$NUC" --arg ej "$EJ" --arg vs "$VSLOT" --argjson b "$B" --argjson t "$TOPE" --argjson p "$((B * 100 / TOPE))" --argjson d "$DJ" \
     '{raiz:$r,nucleo:$n,bytes:$b,tope:$t,pct:$p,dueno:$d,agentes_vivos:$av,bloquea:$bq,sha256:(if $sha == "" then null else $sha end)} + (if $ej == "" then {} else {modo:"estado-md",estado:$ej} end) + (if $vs == "" then {} else {sesion:$vs,vinculado:true} end)'
+  exit 0
+fi
+
+if [ "$MODO" = archivar ]; then
+  AR=$HOME/.claude/estado/archivo; N=0
+  while IFS= read -r D; do
+    [ -n "$D" ] || continue
+    if [ "$APPLY" = 1 ]; then
+      mkdir -p "$AR" && mv -T -- "$D" "$AR/sesion-${D##*/}" 2>/dev/null || { echo "handoff: no pude mover $D" >&2; continue; }
+      N=$((N + 1)); echo "archivada: $D -> $AR/sesion-${D##*/}"
+    else N=$((N + 1)); echo "$D"
+    fi
+  done < <(nucleo_ranuras_vacias "$DIAS")
+  if [ "$APPLY" = 1 ]; then echo "handoff: $N ranura(s) vacía(s) archivada(s) en $AR (nada borrado)"
+  else echo "handoff: $N ranura(s) vacía(s) sin objetivo ni paso y sin tocar hace más de $DIAS días; añade --apply para moverlas a $AR"
+  fi
   exit 0
 fi
 
