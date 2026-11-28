@@ -14,7 +14,7 @@ Output protocol (Claude Code PreToolUse):
   warn  → {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "⚠ [SENTINEL] ..."}}
   allow → exit 0 silently
 
-Audit log: ~/.claude/audit-logs/sentinel.jsonl
+Audit log: ~/.claude/audit-logs/sentinel.jsonl; deny/ask also go to the shared register guard-decisions.jsonl (CC_GUARD_LOG).
 """
 from __future__ import annotations
 import json
@@ -2001,6 +2001,65 @@ def audit_log(tool: str, decision: str, reason: str | None) -> None:
         pass  # an unwritable log must not turn a warn into a block
 
 
+# Unified deny/ask register shared with the shell guards (hooks/lib/guardlog.sh): same fields, same masking.
+GUARD_LOG_EXTRA = [
+    (r"(?i)((?:pass|password|passwd|secret|token|credential|apikey|api_key|api-key)[A-Za-z0-9_-]*[\"']?\s*[=:]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s'\"]+)", r"\1[SECRETO]"),
+    (r"(?i)(--?(?:pass|password|passwd|secret|token|credential|apikey|api_key|api-key)[A-Za-z0-9_-]*\s+)(?:\"[^\"]*\"|'[^']*'|[^\s'\"]+)", r"\1[SECRETO]"),
+    (r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}", r"\1[SECRETO]"),
+    (r"(?i)(authorization: basic\s+)[A-Za-z0-9+/=]+", r"\1[SECRETO]"),
+    (r"((?:-u|--user)\s+[^\s:'\"]+:)[^\s'\"]+", r"\1[SECRETO]"),
+    (r"(://)[^/@\s]+:[^/@\s]+@", r"\1[SECRETO]@"),
+]
+
+
+def _mask_secrets(text: str) -> str | None:
+    """text with every secret replaced by [SECRETO]; None when secret-patterns cannot be read (then nothing is logged)."""
+    here = Path(__file__).resolve().parent
+    for lib in (here.parent / "hooks" / "lib", here.parent / "claude" / "hooks" / "lib"):
+        try:
+            rows = (lib / "secret-patterns").read_text().splitlines()
+        except OSError:
+            continue
+        if "PRIVATE KEY-----" in text:
+            text = text.split("-----BEGIN", 1)[0] + "[SECRETO]"
+        for row in rows:
+            parts = row.split("\t")
+            if len(parts) < 3 or row.startswith("#"):
+                continue
+            text = re.sub(parts[2], "[SECRETO]", text)
+        for rx, repl in GUARD_LOG_EXTRA:
+            text = re.sub(rx, repl, text)
+        return text
+    return None
+
+
+def guard_log(payload: dict, tool: str, decision: str, rule: str | None) -> None:
+    """One JSONL line per deny/ask. A failure here never changes the verdict."""
+    try:
+        path = os.environ.get("CC_GUARD_LOG") or str(Path.home() / ".claude" / "audit-logs" / "guard-decisions.jsonl")
+        tool_input = effective_input(payload)
+        target = tool_input.get("command") if tool == "Bash" else (
+            tool_input.get("file_path") or tool_input.get("path") or tool_input.get("url") or tool_input.get("pattern"))
+        cmd = _mask_secrets(target) if isinstance(target, str) else ""
+        cmd = "[orden omitida: no se pudo enmascarar]" if cmd is None else (cmd[:300] + "…" if len(cmd) > 300 else cmd)
+        why = _mask_secrets(rule or "") or ""
+        why = re.split(r"Que hacer:", why)[0]
+        why = re.sub(r"^.*?BLOCKED[^:]*: ", "", why)
+        why = re.sub(r"^Confirm: ", "", why)
+        why = re.split(r"[.(:;]", why)[0][:80].strip()
+        unattended = (os.environ.get("CLAUDE_CODE_SESSION_ATTENDED") == "0"
+                      or bool(os.environ.get("OPENRIG_OCCUPANT_GENERATION")))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a") as f:
+            f.write(json.dumps({
+                "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "guard": "sentinel",
+                "decision": decision, "rule": why, "cwd": payload.get("cwd") or os.getcwd(),
+                "mode": payload.get("permission_mode") or "", "unattended": unattended, "tool": tool, "cmd": cmd,
+            }, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 # Same rule as cmdn_desatendido in the shell guards (cmdnorm): in an OpenRig seat or with CLAUDE_CODE_SESSION_ATTENDED=0
@@ -2010,9 +2069,11 @@ UNATTENDED_NOTE = (" ASIENTO DESATENDIDO: aqui nadie puede confirmar y la pregun
                    "otra parte del encargo.")
 
 
-def ask_or_deny(reason: str) -> dict:
+def ask_or_deny(reason: str, log: tuple | None = None) -> dict:
     unattended = (os.environ.get("CLAUDE_CODE_SESSION_ATTENDED") == "0"
                   or bool(os.environ.get("OPENRIG_OCCUPANT_GENERATION")))
+    if log:
+        guard_log(log[0], log[1], "deny" if unattended else "ask", log[2])
     return {"hookSpecificOutput": {
         "hookEventName": "PreToolUse",
         "permissionDecision": "deny" if unattended else "ask",
@@ -2044,7 +2105,7 @@ def main() -> None:
             f"Confirm: el comando pesa {kb} KB (tope {MAX_COMMAND_BYTES // 1024} KB): Sentinel no puede "
             "analizarlo dentro de su timeout, y un guard que se pasa de tiempo deja ejecutar la "
             "herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un "
-            "comando corto.")))
+            "comando corto.", (payload, tool_name, "comando por encima del tope de tamano"))))
         sys.exit(0)
     result = decide_within_budget(payload)
     if result is None:
@@ -2054,7 +2115,8 @@ def main() -> None:
         print(json.dumps(ask_or_deny(
             f"Confirm: Sentinel no pudo analizar la llamada en {ANALYSIS_BUDGET_S:g} s (un comando relleno de "
             "parentesis o de `$(` encarece sus patrones), y un guard que se pasa de tiempo deja ejecutar la "
-            "herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto.")))
+            "herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto.",
+            (payload, tool_name, "analisis sin terminar en el presupuesto"))))
         sys.exit(0)
     decision, reason = result
 
@@ -2068,6 +2130,8 @@ def main() -> None:
         sys.exit(0)
 
     audit_log(tool_name, decision, reason)
+    if decision == "deny":
+        guard_log(payload, tool_name, "deny", reason)
 
     if decision == "deny":
         # The allowlist hint is a lie for a never-exempt deny (no allowlist

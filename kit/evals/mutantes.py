@@ -97,17 +97,6 @@ MUTANTES = [
      "            if True:",
      "sale siempre"),
 
-    ("M21 el puente a Phoenix deja de ordenar las tareas",
-     "kit/evals/phoenix_push.py",
-     '        for r in sorted(rs, key=lambda x: x.get("task") or ""):',
-     "        for r in rs:",
-     "al azar del diccionario"),
-
-    ("M22 los hijos pierden la etiqueta de brazo",
-     "kit/evals/phoenix_push.py",
-     '                    "eval.arm": arm,\n                    "eval.result"',
-     '                    "eval.arm": "",\n                    "eval.result"',
-     "etiquetada con el suyo"),
 
     ("M23 se apunta el primer modelo del diccionario, no el que trabajo",
      "kit/evals/record.py",
@@ -209,11 +198,6 @@ MUTANTES = [
      '    "run_pid": None,',
      "derivables de su fila"),
 
-    ("M38 phoenix vuelve a publicar la fila retirada",
-     "kit/evals/phoenix_push.py",
-     '    if str(r.get("excluded") or "").strip():',
-     "    if False:",
-     "phoenix: la fila retirada"),
 
     # La suite que mide la documentacion no se vigilaba a si misma: vaciarla
     # entera dejaba `make test` en rc=0 porque el Makefile solo mira el rc.

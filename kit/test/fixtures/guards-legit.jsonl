@@ -32,3 +32,7 @@
 {"id":"L32","nota":"commit -m que nombra .env y *.pem","cmd":"git commit -m \"chore: ignora .env y *.pem\"","exp":"ALLOW"}
 {"id":"L33","nota":"compuesto con heredoc a python (script de analisis)","cmd":"python3 - <<'PY'\nimport pathlib\nfor p in pathlib.Path('docs').glob('*.md'):\n    if 'rm -rf /' in p.read_text():\n        print(p)\nPY","exp":"BLOCK","limite":"falso positivo preexistente (la base tambien lo bloquea): un interprete (python3 - <<EOF) no prueba que el texto del heredoc sea dato, y el literal peligroso esta dentro; escribe el script con Write"}
 {"id":"L34","nota":"git diff de la plantilla","cmd":"git diff HEAD -- .env.example","exp":"ALLOW"}
+{"id":"L35","nota":"compuesta cuyo rg nombra git push --force como patron","cmd":"cd /r && rg -n 'git push --force' docs/; wc -l docs/a.md","exp":"ALLOW"}
+{"id":"L36","nota":"compuesta cuyo grep nombra git push -f como patron","cmd":"echo hecho; grep -rn 'git push -f' docs/","exp":"ALLOW"}
+{"id":"L37","nota":"compuesta con un mensaje de commit que nombra git push --force","cmd":"cd /r && git commit -m 'nunca git push --force'; ls","exp":"ALLOW"}
+{"id":"L38","nota":"compuesta con un echo que nombra git push -f","cmd":"cd /r && echo 'luego git push -f'; ls","exp":"ALLOW"}

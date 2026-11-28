@@ -376,6 +376,20 @@ set +e; out="$(dr_en "$rp")"; rc=$?; set -e
 ck "$(echo "$out" | grep -c '^WARN · .*nucleo.md pesa 7000 B (> NUCLEO_TOPE 6500)')" "1" "v1.6: WARN si nucleo.md pasa de NUCLEO_TOPE"
 ck "$rc" "0" "v1.6: el WARN de nucleo.md no es FAIL"
 rm -r "$CLAUDE_HOME/projects"
+# 4b. Nucleos pesados fuera del repo actual: ranuras de sesion y raices registradas, un solo WARN con recuento y 3 peores.
+rp2="$tmp/repo-vacio"; mkdir -p "$rp2"; git -C "$rp2" init -q -b main
+set +e; out="$(dr_en "$rp2")"; set -e
+ck "$(echo "$out" | grep -c 'nucleo(s) por encima de NUCLEO_TOPE')" "0" "tope: sin nucleos pesados no avisa"
+for s in a b c d; do mkdir -p "$CLAUDE_HOME/estado/sesiones/$s"; head -c 7000 /dev/zero | tr '\0' 'n' > "$CLAUDE_HOME/estado/sesiones/$s/nucleo.md"; done
+head -c 9000 /dev/zero | tr '\0' 'n' > "$CLAUDE_HOME/estado/sesiones/d/nucleo.md"
+mkdir -p "$CLAUDE_HOME/estado/sesiones/ok"; printf 'x\n' > "$CLAUDE_HOME/estado/sesiones/ok/nucleo.md"
+rr="$tmp/raiz-pesada"; mkdir -p "$rr/.claude/estado"; git -C "$rr" init -q; printf '*\n' > "$rr/.claude/estado/.gitignore"
+head -c 8000 /dev/zero | tr '\0' 'n' > "$rr/.claude/estado/nucleo.md"; printf '%s\n' "$rr" > "$CLAUDE_HOME/estado/raices"
+set +e; out="$(dr_en "$rp2")"; rc=$?; set -e
+ck "$(echo "$out" | grep -c '^WARN · 5 nucleo(s) por encima de NUCLEO_TOPE (6500 B)')" "1" "tope: WARN con el recuento (4 ranuras + 1 raiz)"
+ck "$(echo "$out" | grep -c 'peores: .*sesiones/d/nucleo.md (9000 B), .*raiz-pesada/.claude/estado/nucleo.md (8000 B), ')" "1" "tope: los 3 peores, de mayor a menor"
+ck "$rc" "0" "tope: el WARN no es FAIL"
+rm -r "$CLAUDE_HOME/estado"
 
 # H7: con settings.json sin los hooks del kit, doctor no puede salir verde (antes: "OK (0 FAIL)" con {}).
 CH_SAVE="$CLAUDE_HOME"; export CLAUDE_HOME="$tmp/home7/.claude"; mkdir -p "$tmp/home7"

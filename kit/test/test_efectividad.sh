@@ -5,7 +5,7 @@
 set -u
 C=$(realpath "${1:-$(dirname "$0")/../claude/bin/efectividad}"); FX=$(realpath "$(dirname "$0")/fixtures/efectividad/home")
 T=$(mktemp -d); trap 'rm -rf -- "$T"' EXIT
-export HOME=$T/home; mkdir -p "$HOME"; unset CLAUDE_HOME
+export HOME=$T/home; mkdir -p "$HOME"; unset CLAUDE_HOME CC_GUARD_LOG
 FAIL=0
 ok() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (esperado '$3', sale '$2')"; FAIL=1; fi; }
 V=(--desde 2026-11-01 --hasta 2026-11-10)
@@ -81,5 +81,28 @@ ok "guards: sin ruta → block-dangerous-commands.sh 2" "$(j "$JG" "$W.bloqueos_
 ok "guards: con ruta manda la ruta → secret-guard.sh 1" "$(j "$JG" "$W.bloqueos_por_guard[\"secret-guard.sh\"]")" 1
 ok "guards: ruta ajena a hooks/ → otro 1" "$(j "$JG" "$W.bloqueos_por_guard.otro")" 1
 ok "guards: 4 bloqueos, 0 reformulados" "$(j "$JG" "$W.bloqueos")/$(j "$JG" "$W.reformulados")" "4/0"
+
+# Registro único de guards (audit-logs/guard-decisions.jsonl): sin registro la tabla lo dice; con él salen deny/ask por guard y por regla,
+# y «reformulado <60 s» exige MISMO cwd (transcript) que la decisión. Los cwd se inyectan en una copia: el fixture compartido no los lleva.
+ok "sin registro: json guards_log null" "$(j "$J" "$W.guards_log")" null
+ok "sin registro: la tabla lo dice" "$(cli --home "$FX" "${V[@]}" | grep -c 'sin registro')" 1
+copia; sed -i 's|"timestamp": "2026-11-02T09:59:59Z"|"cwd": "/w", &|; s|"timestamp": "2026-11-02T10:00:30Z"|"cwd": "/w", &|; s|"timestamp": "2026-11-02T10:06:30Z"|"cwd": "/w", &|' "$T/h/projects/-p1/s1.jsonl"
+mkdir -p "$T/h/audit-logs"; GL=$T/h/audit-logs/guard-decisions.jsonl
+{ echo '{"ts":"2026-11-02T10:00:00Z","guard":"destructive-guard.sh","decision":"deny","rule":"rm on sensitive path","cwd":"/w","mode":"","unattended":false,"tool":"Bash","cmd":"rm -rf /tmp/x/foo"}'
+  echo '{"ts":"2026-11-02T10:05:00Z","guard":"sentinel","decision":"ask","rule":"x","cwd":"/w","mode":"","unattended":true,"tool":"Bash","cmd":"rm -rf /tmp/x/bar"}'
+  echo '{"ts":"2026-11-02T10:08:00Z","guard":"sentinel","decision":"ask","rule":"x","cwd":"/otro","mode":"","unattended":false,"tool":"Bash","cmd":"rm -rf /tmp/x/foo"}'
+  echo 'basura que no es JSON'
+  echo '{"ts":"2026-10-01T10:00:00Z","guard":"secret-guard.sh","decision":"deny","rule":"fuera de ventana","cwd":"/w","cmd":"c"}'; } > "$GL"
+JL=$(cli --home "$T/h" "${V[@]}" --json); G='.ventanas[0].guards_log'
+ok "log: 3 decisiones en la ventana (la de octubre y la basura no cuentan)" "$(j "$JL" "$G.decisiones")" 3
+ok "log: deny 1, ask 2, desatendidas 1" "$(j "$JL" "$G | [.deny, .ask, .desatendidas] | join(\",\")")" "1,2,1"
+ok "log: destructive-guard reformulado (mismo cwd, 30 s)" "$(j "$JL" "$G.por_guard[\"destructive-guard.sh\"].reformulados")" 1
+ok "log: sentinel sin reformulado (90 s en /w; el otro cwd no cuenta)" "$(j "$JL" "$G.por_guard.sentinel.reformulados")" 0
+ok "log: fp_pct" "$(j "$JL" "$G.fp_pct")" 33.3
+ok "log: por regla" "$(j "$JL" "$G.por_regla[\"sentinel: x\"]")" 2
+ok "log: la tabla y el detalle por guard" "$(cli --home "$T/h" "${V[@]}" | grep -cE 'decisiones de guards .*3 \(deny 1, ask 2\)|^  sentinel .*ask 2')" 2
+CC_GUARD_LOG=$T/h/otro.jsonl; export CC_GUARD_LOG
+ok "CC_GUARD_LOG que no existe: sin registro" "$(j "$(cli --home "$T/h" "${V[@]}" --json)" "$G")" null
+unset CC_GUARD_LOG
 
 exit $FAIL

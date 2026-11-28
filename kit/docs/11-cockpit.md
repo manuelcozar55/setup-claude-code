@@ -15,7 +15,7 @@
 
 ## Cómo se carga
 
-La versión 3.0.0 del kit incluye cockpit 0.11.1.
+La versión 3.0.1 del kit incluye cockpit 0.11.1.
 `scc` carga la copia que `install.sh --con cockpit` deja en `~/.claude/scc/` mediante `--plugin-dir`, sin instalar
 nada. Esa es la vía del kit. Las órdenes de marketplace de abajo son una alternativa para quien solo quiere el cockpit
 de una versión publicada, para todas sus sesiones. En un paquete transferido, `VERSION` identifica
@@ -283,7 +283,7 @@ En una sesión desatendida:
 - El aviso del airbag (`nucleo-nudge.sh`) pide actualizar `nucleo.md`, o `handoff --desde <borrador> --sesion <id>`, y
   seguir. No pide «cierra el turno» (cerrarlo termina la sesión) ni `/handoff`, `/clear` ni la tecla `h`. El Stop no
   emite su `systemMessage`, ni el arranque el de «retomas con la caché caducada».
-- La compuerta que denegaba la 4.ª llamada tras el aviso (ADR 020) se retiró: era opt-in y nadie la usaba. Queda la de commit sin nucleo actualizado en el `Stop` (`NUCLEO_GATE=observe|block`; apagada por defecto desde la 3.0.0).
+- La compuerta que denegaba la 4.ª llamada tras el aviso (ADR 020) se retiró: era opt-in y nadie la usaba. Queda la de commit sin nucleo actualizado en el `Stop` (`NUCLEO_GATE=observe|block`; apagada por defecto desde la 3.0.1).
 - El estado inyectado va sin los comentarios `<!-- -->` de la plantilla, y se presenta como datos que se siguen solo si
   encajan con el encargo de esta sesión (interactivo: no se ejecutan hasta que la persona los confirme).
 - Con `nucleo.md` sin rellenar se inyecta un aviso corto para rellenarlo.

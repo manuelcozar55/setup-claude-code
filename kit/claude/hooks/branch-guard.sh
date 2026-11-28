@@ -5,6 +5,8 @@
 # Protocol: exit 2 = block with stderr reason
 
 INPUT=$(cat)
+# shellcheck disable=SC2034  # lo lee guardlog (lib/guardlog.sh)
+GUARDLOG_PAYLOAD=$INPUT
 
 # Fail-closed: sin jq no hay decision posible, y permitir en silencio apagaba toda la
 # Capa 1 sin un mensaje. Denegar puede frenar trabajo legitimo, y por eso install.sh
@@ -49,6 +51,7 @@ is_protected() {
 }
 
 block() {
+  guardlog branch-guard.sh deny "push a rama protegida"
   echo "BLOCKED: Attempted push to protected branch '$1'." >&2
   echo "Command: $COMMAND" >&2
   echo "Que hacer: empuja a una rama de feature y abre un PR; si de verdad quieres empujar ahi, ejecutalo tu con ! en la sesion." >&2
@@ -165,6 +168,7 @@ scan() {
 PIPED=0; cmdn_pipes_to_shell && PIPED=1
 scan 0; rc=$?
 if (( rc == 2 )); then
+  guardlog branch-guard.sh deny "anidamiento excesivo en git push"
   echo "BLOCKED: mas de 3 niveles o 16 comandos anidados (bash -c, ssh, xargs...) o repos distintos con git push: no caben en el timeout del guard; dividelo en comandos cortos." >&2
   echo "Que hacer: parte el comando en pasos mas cortos y ejecutalos por separado." >&2
   exit 2

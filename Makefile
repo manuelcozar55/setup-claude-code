@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install bootstrap test test-cockpit bateria doctor mutantes phoenix phoenix-push evals-dryrun evals-paid evals-ablacion-paid
+.PHONY: help install bootstrap test test-cockpit bateria doctor mutantes evals-dryrun evals-paid evals-ablacion-paid
 
 help: ## Lista los targets disponibles
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*##"}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -39,6 +39,7 @@ test: ## Corre las suites de test (NO incluye el eval set: ese cuesta dinero)
 	bash kit/test/test_guards_r1.sh
 	bash kit/test/test_guards_monotonia.sh
 	bash kit/test/test_guards_degradacion.sh
+	bash kit/test/test_guardlog.sh
 	bash kit/test/test_secret_content_gitleaks.sh
 	bash kit/test/test_scan_secrets.sh
 	bash kit/test/test_install.sh
@@ -130,11 +131,6 @@ doctor: ## Verifica una instalacion existente del kit
 mutantes: ## Rompe cada sensor del eval a proposito y exige que la suite se ponga roja (gratis, ~4 min)
 	python3 kit/evals/mutantes.py
 
-phoenix: ## Levanta Phoenix en local (interfaz web en :6006). Sin Docker y sin licencia.
-	~/.venvs/tools/bin/phoenix serve
-
-phoenix-push: ## Sube runs.jsonl al Phoenix local (necesita 'make phoenix' en otra terminal)
-	~/.venvs/tools/bin/python kit/evals/phoenix_push.py
 
 evals-dryrun: ## Ensayo: cuantas llamadas y cuanto costaria, sin gastar nada
 	DRYRUN=1 bash kit/evals/run.sh

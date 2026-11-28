@@ -26,7 +26,8 @@ for f in hooks/register.tsx hooks/hooks.json tsconfig.json .gitignore types/inde
          tests/cockpit.test.tsx tests/dock.test.tsx tests/handoff.test.tsx; do exists "$f"; done
 check "$(jq -r '.modules[0]' "$MOD/hooks/hooks.json")" "./register.tsx" "hooks.json apunta a register.tsx"
 check "$(grep -c 'claude-plugin/types' "$MOD/.gitignore")" "1" "tipos generados por Claude Code gitignorados"
-check "$(find "$MOD" -name node_modules -prune -o -path '*/.claude/*' -print | wc -l | tr -d ' ')" "0" "sin estado privado (.claude/)"
+# Relativo al mod: en un worktree de `.claude/worktrees/` la ruta absoluta ya lleva `/.claude/` y casaría todo.
+check "$(cd "$MOD" && find . -name node_modules -prune -o -path '*/.claude/*' -print | wc -l | tr -d ' ')" "0" "sin estado privado (.claude/)"
 check "$(leaks "$MOD")" "0" "sin terminos privados en el mod"
 
 # El handoff lo fusiona el CLI (kit/claude/bin/handoff): el mod solo redacta el borrador y lo delega.

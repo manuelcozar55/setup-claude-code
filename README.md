@@ -1,6 +1,6 @@
 # SCC · setup-claude-code
 
-**v3.0.0, estable** · cockpit: 0.11.1 · necesita Claude Code 2.1.311 o posterior, bash ≥ 5, jq, git y python3 · Linux o WSL2.
+**v3.0.1, estable** · cockpit: 0.11.1 · necesita Claude Code 2.1.311 o posterior, bash ≥ 5, jq, git y python3 · Linux o WSL2.
 
 SCC frena en tu Claude Code los errores caros (borrados destructivos, un push a `main`, secretos en un commit) y guarda
 el estado de cada tarea para que un `/clear` o una compactación no te la haga perder.
@@ -84,5 +84,5 @@ Conserva lo que modificaste y deshace en `settings.json` solo lo que el kit aña
 - [`SECURITY.md`](SECURITY.md): qué protegen los guards y qué no.
 
 Si recibiste el paquete por transferencia, [`ENTREGA.md`](ENTREGA.md) explica cómo verificar su integridad.
-Para contribuir: [`CONTRIBUTING.md`](CONTRIBUTING.md) (`make test`, `kit/` tiene 67 suites).
+Para contribuir: [`CONTRIBUTING.md`](CONTRIBUTING.md) (`make test`, `kit/` tiene 68 suites).
 El conjunto de evals (23 tareas) llama al modelo y cuesta dinero: no corre solo; `make evals-dryrun` dice cuántas llamadas haría.

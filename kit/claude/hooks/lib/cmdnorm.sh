@@ -24,7 +24,12 @@
 #
 # Solo awk POSIX (mawk y gawk dan lo mismo): sin gensub, sin arrays de arrays.
 
+# Antes de la primera orden, o deja de valer para todo el fichero.
 # shellcheck disable=SC2034  # CMDN_TEXT, CMDN_SEGS y CMDN_GS los consumen los guards que cargan esta lib.
+
+# El registro de decisiones (lib/guardlog.sh) viaja con la lib: sin él, guardlog es un no-op y los veredictos no cambian.
+# shellcheck source=SCRIPTDIR/guardlog.sh
+. "${BASH_SOURCE[0]%/*}/guardlog.sh" 2>/dev/null || guardlog() { return 0; }
 CMDN_US=$'\037'
 CMDN_GS=$'\035'
 CMDN_RS=$'\036'
@@ -211,6 +216,8 @@ function render(k, b, mode,   j, sj, t, out, drop, subc, keepnext, gh) {
       t = toks[j]
       if (keepnext) { keepnext = 0; out = out " " t; continue }
       if (redir(t) || tokr[j]) { out = out " " t; if (redir_alone(t)) keepnext = 1; continue }
+      # `rg --pre CMD`, `ag|ack|man --pager CMD` y `man -P CMD` ejecutan su argumento: no es texto, se conserva.
+      if (t ~ /^--(pre|pager)(=|$)/ || (b == "man" && t ~ /^-P/)) { out = out " " t; if (t !~ /=/ && t !~ /^-P./) keepnext = 1; continue }
       if (clean_opt(t)) out = out " " t
     }
     return out
@@ -514,19 +521,19 @@ END {
     hp++
     drain()
   }
-  if (unparsed) { ex = src; segs = ""; psh = 1 }
+  if (unparsed) { ex = src; exw = src; segs = ""; psh = 1 }
   else {
     psh = 0
     for (m = 1; m <= nseg; m++) if (segpsh[m]) psh = 1
-    ex = ""; segs = ""
+    ex = ""; exw = ""; segs = ""
     for (m = 1; m <= nseg; m++) {
       sq = sepn[m]; gsub(/@/, "", sq)
-      ex = ex sq (psh ? exA[m] : exB[m])
-      if (m == mainlast) ex = ex maintail
+      ex = ex sq (psh ? exA[m] : exB[m]); exw = exw sq ((psh || segwf[m]) ? exA[m] : exB[m])
+      if (m == mainlast) { ex = ex maintail; exw = exw maintail }
       if (segline[m] != "") segs = segs segline[m] "\n"
     }
     # Pasado el tope de cuerpos encolados el resto no se analiza: se deja como texto de orden (falla cerrado).
-    for (m = qi + 1; m <= qn; m++) ex = ex ";" queue[m]
+    for (m = qi + 1; m <= qn; m++) { ex = ex ";" queue[m]; exw = exw ";" queue[m] }
   }
   # Contexto cerrado: una sola tuberia, sin sustituciones, subshells, prefijos ni escrituras a codigo. Sin el, ninguna prueba de
   # exencion vale: el texto vuelve entero (como lo veia la base) y los guards de ordenes no eximen nada.
@@ -539,7 +546,7 @@ END {
   # nunca para eximir un deny.
   exseg = ex
   if (!simple) ex = maintxt
-  printf "%s\036%s\036%s\036%s\036%s\036%s", maintxt, ex, psh, simple + 0, exseg, segs
+  printf "%s\036%s\036%s\036%s\036%s\036%s\036%s", maintxt, ex, psh, simple + 0, exseg, exw, segs
 }
 '
 
@@ -564,6 +571,8 @@ cmdn_oversize() {
   (( ${#1} > CMDN_MAX_BYTES )) || return 1
   r="Confirm: el comando pesa $(( ${#1} / 1024 )) KB (tope $(( CMDN_MAX_BYTES / 1024 )) KB): los guards no pueden analizarlo dentro de su timeout, y un guard que se pasa de tiempo deja ejecutar la herramienta. Escribe los contenidos grandes con la herramienta Write y ejecuta un comando corto."
   cmdn_desatendido && { d=deny; r+=$CMDN_DESATENDIDO; }
+  # CMDN_NOLOG=1: sondeo sin decision (block-dangerous mide el tamano y decide despues).
+  [[ -n ${CMDN_NOLOG-} ]] || guardlog "${BASH_SOURCE[-1]##*/}" "$d" "comando por encima del tope de tamano"
   jq -n --arg r "$r" --arg d "$d" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -575,7 +584,7 @@ cmdn_oversize() {
 
 cmdn_parse() {
   local out rest
-  CMDN_SEGS=(); CMDN_CWD=""; CMDN_EXEC=""; CMDN_EXSEG=""; CMDN_PSH=1; CMDN_SIMPLE=0
+  CMDN_SEGS=(); CMDN_CWD=""; CMDN_EXEC=""; CMDN_EXSEG=""; CMDN_EXW=""; CMDN_PSH=1; CMDN_SIMPLE=0
   # Los cuatro bytes de control con los que el parser separa sus salidas (\034-\037) no pueden ir en el comando: un \036 propio
   # desplazaria texto, EXEC y segmentos. Bash no los trata como separador, asi que pasan a espacio.
   set -- "${1//[$'\034\035\036\037']/ }"
@@ -583,10 +592,10 @@ cmdn_parse() {
   # el timeout del hook corre en abierto). `read` parte en el primer separador en una pasada.
   # Un here-string que no puede crear su temporal (disco lleno, /tmp de solo lectura) no lee nada: tambien es un fallo.
   if ! out=$(awk "$CMDN_AWK" <<<"$1" 2>/dev/null) || [[ $out != *"$CMDN_RS"* ]] \
-    || ! { CMDN_SIMPLE=; IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC CMDN_PSH CMDN_SIMPLE CMDN_EXSEG rest <<<"$out"; [[ -n $CMDN_SIMPLE ]]; } \
+    || ! { CMDN_SIMPLE=; IFS=$CMDN_RS read -r -d '' CMDN_TEXT CMDN_EXEC CMDN_PSH CMDN_SIMPLE CMDN_EXSEG CMDN_EXW rest <<<"$out"; [[ -n $CMDN_SIMPLE ]]; } \
     || ! mapfile -t CMDN_SEGS <<<"$rest"; then
     CMDN_SEGS=(); CMDN_PSH=1; CMDN_SIMPLE=0
-    CMDN_TEXT=$1; CMDN_EXEC=$1; CMDN_EXSEG=$1; [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=0; CMDN_LINE_SET=1; }; return 1
+    CMDN_TEXT=$1; CMDN_EXEC=$1; CMDN_EXSEG=$1; CMDN_EXW=$1; [[ -n ${CMDN_LINE_SET:-} ]] || { CMDN_LINE_SIMPLE=0; CMDN_LINE_SET=1; }; return 1
   fi
   # CMDN_LINE_SIMPLE: el contexto cerrado de la orden PRINCIPAL (la primera que se analiza); los analisis de ordenes anidadas
   # (bash -c, ssh...) no lo cambian y por tanto nunca lo heredan.

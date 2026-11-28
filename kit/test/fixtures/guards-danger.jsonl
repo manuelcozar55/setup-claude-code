@@ -23,3 +23,10 @@
 {"id":"D23","nota":"push a main dentro de bash -c","cmd":"bash -c \"git push origin main\"","exp":"BLOCK"}
 {"id":"D24","nota":"push HEAD:main","cmd":"git push origin HEAD:main","exp":"BLOCK"}
 {"id":"D25","nota":"push a main con comillas partidas","cmd":"git push origin ma''in","exp":"BLOCK"}
+{"id":"D26","nota":"force push real tras un rg que nombra git push como patron","cmd":"cd /r && rg 'git push' docs/; git push --force origin feat","exp":"BLOCK"}
+{"id":"D27","nota":"force push dentro de bash -c en una compuesta","cmd":"cd /r && bash -c 'git push -f origin feat'","exp":"BLOCK"}
+{"id":"D28","nota":"el texto del force push se escribe a un fichero y se ejecuta","cmd":"echo 'git push --force' > a.sh; bash a.sh","exp":"BLOCK|ASK"}
+{"id":"D29","nota":"force push por xargs tras un echo","cmd":"cd /r && echo origin | xargs git push -f","exp":"BLOCK"}
+{"id":"D30","nota":"rg --pre ejecuta su argumento: no es un patron","cmd":"rg x --pre 'git push -f origin main' f","exp":"BLOCK"}
+{"id":"D31","nota":"rg --pre=CMD en una compuesta","cmd":"cd /r && rg x --pre='git push --force origin feat' f; ls","exp":"BLOCK"}
+{"id":"D32","nota":"man -P ejecuta el paginador que se le pasa","cmd":"man -P 'git push -f origin main' ls","exp":"BLOCK"}
